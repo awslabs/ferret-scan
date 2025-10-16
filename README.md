@@ -1431,7 +1431,7 @@ See the existing validator READMEs for examples of the recommended documentation
 For questions, issues, or contributions:
 
 - **Developers**: Andrea Di Fabio (adifabio@), Lee Myers (mlmyers@)
-- **Artwork**: Original logo artwork by Olivia Myers
+- **Artwork**: Original logo artwork by Olivia Myers McMullin
 
 ## License
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
