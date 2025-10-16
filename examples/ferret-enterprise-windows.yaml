@@ -1,0 +1,289 @@
+# Ferret Scanner Enterprise Configuration for Windows
+# Designed for enterprise Windows environments with compliance and security requirements
+
+# Enterprise default settings
+defaults:
+  format: csv # CSV format for enterprise reporting and analysis
+  confidence_levels: all # Include all confidence levels for comprehensive analysis
+  checks: all # Scan for all data types
+  verbose: true # Detailed output for compliance documentation
+  debug: false # Disable debug by default (enable for troubleshooting)
+  no_color: false # Allow colors for interactive use
+  recursive: true # Comprehensive recursive scanning
+  enable_preprocessors: true # Full document processing capability
+  show_match: false # Avoid displaying sensitive data in logs
+  quiet: false # Show progress for long-running enterprise scans
+  show_suppressed: true # Include suppressed findings for audit trails
+  generate_suppressions: false # Manual suppression management for enterprise control
+
+# Enterprise Windows platform configuration
+platform:
+  windows:
+    use_appdata: false # Use system-wide configuration for enterprise deployment
+    system_wide_install: true # System-wide installation for all users
+    create_shortcuts: true # Create shortcuts for user convenience
+    add_to_path: true # Add to system PATH for command-line access
+    config_dir: "%PROGRAMDATA%\\ferret-scan" # System-wide configuration directory
+    temp_dir: "%PROGRAMDATA%\\ferret-scan\\temp" # System-wide temporary directory
+    long_path_support: true # Enable long path support for deep directory structures
+
+# Enterprise preprocessor configuration
+preprocessors:
+  text_extraction:
+    enabled: true # Enable full text extraction for compliance scanning
+    types:
+      - pdf # Process PDF documents (common in enterprise)
+      - office # Process Office documents (Word, Excel, PowerPoint)
+
+# Enterprise redaction configuration with audit trails
+redaction:
+  enabled: true # Enable redaction for compliance requirements
+  output_dir: "%PROGRAMDATA%\\ferret-scan\\redacted" # System-wide redacted output
+  strategy: "synthetic" # Use synthetic data for maximum security
+  audit_log_file: "%PROGRAMDATA%\\ferret-scan\\logs\\audit.log" # Comprehensive audit logging
+  memory_scrub: true # Enable secure memory scrubbing
+  audit_trail: true # Enable detailed audit trails
+
+  strategies:
+    simple:
+      replacement: "[ENTERPRISE-REDACTED]" # Clear enterprise redaction marker
+
+    format_preserving:
+      preserve_length: true # Maintain document formatting
+      preserve_format: true # Preserve data format patterns
+
+    synthetic:
+      secure: true # Use cryptographically secure synthetic data generation
+
+# Enterprise validator configurations
+validators:
+  # Intellectual property validator with enterprise patterns
+  intellectual_property:
+    # Enterprise internal URL patterns
+    internal_urls:
+      # Corporate domain patterns (customize for your organization)
+      - "http[s]?:\\/\\/.*\\.corp\\.company\\.com" # Replace 'company' with actual domain
+      - "http[s]?:\\/\\/.*\\.internal\\.company\\.com"
+      - "http[s]?:\\/\\/.*\\.company\\.local"
+      
+      # Enterprise services and applications
+      - "http[s]?:\\/\\/intranet\\.company\\.com"
+      - "http[s]?:\\/\\/sharepoint\\.company\\.com"
+      - "http[s]?:\\/\\/teams\\.company\\.com"
+      - "http[s]?:\\/\\/confluence\\.company\\.com"
+      - "http[s]?:\\/\\/jira\\.company\\.com"
+      - "http[s]?:\\/\\/wiki\\.company\\.com"
+      
+      # Development and testing environments
+      - "http[s]?:\\/\\/.*-dev\\.company\\.com"
+      - "http[s]?:\\/\\/.*-test\\.company\\.com"
+      - "http[s]?:\\/\\/.*-staging\\.company\\.com"
+      - "http[s]?:\\/\\/.*-uat\\.company\\.com"
+      
+      # Enterprise infrastructure
+      - "http[s]?:\\/\\/.*\\.ad\\.company\\.com" # Active Directory
+      - "http[s]?:\\/\\/.*\\.exchange\\.company\\.com" # Exchange Server
+      - "http[s]?:\\/\\/.*\\.sccm\\.company\\.com" # System Center
+      - "http[s]?:\\/\\/.*\\.wsus\\.company\\.com" # Windows Update Services
+      
+      # Cloud infrastructure (customize as needed)
+      - "http[s]?:\\/\\/.*\\.azurewebsites\\.net" # Azure Web Apps
+      - "http[s]?:\\/\\/.*\\.blob\\.core\\.windows\\.net" # Azure Blob Storage
+      - "http[s]?:\\/\\/.*\\.amazonaws\\.com" # AWS services (if used)
+
+  # Social media validator with enterprise context
+  social_media:
+    # Enhanced platform patterns for enterprise monitoring
+    platform_patterns:
+      linkedin:
+        - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
+        - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
+      
+      twitter:
+        - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
+        - "(?i)@[a-zA-Z0-9_]{1,15}\\b"
+      
+      github:
+        - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
+        - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
+
+    # Enterprise-specific context keywords
+    positive_keywords:
+      - "employee"
+      - "staff"
+      - "team member"
+      - "contact"
+      - "professional"
+      - "business"
+      - "corporate"
+
+    negative_keywords:
+      - "example"
+      - "test"
+      - "demo"
+      - "sample"
+      - "placeholder"
+      - "template"
+
+# Enterprise suppression configuration
+suppressions:
+  file: "%PROGRAMDATA%\\ferret-scan\\suppressions\\enterprise-suppressions.yaml"
+  generate_on_scan: false # Manual suppression management
+  show_suppressed: true # Include in enterprise reports
+
+# Enterprise profiles for different use cases
+profiles:
+  # Compliance audit profile
+  enterprise-compliance:
+    format: csv
+    confidence_levels: all
+    checks: all
+    verbose: true
+    debug: false
+    no_color: true # Clean output for compliance reports
+    recursive: true
+    enable_preprocessors: true
+    quiet: false
+    show_match: false # Avoid sensitive data in compliance reports
+    show_suppressed: true # Include suppressed findings for audit
+    description: "Enterprise compliance audit with comprehensive CSV reporting"
+    redaction:
+      enabled: true
+      output_dir: "%PROGRAMDATA%\\ferret-scan\\compliance\\redacted"
+      strategy: "synthetic"
+      audit_log_file: "%PROGRAMDATA%\\ferret-scan\\compliance\\audit.log"
+
+  # Security assessment profile
+  enterprise-security:
+    format: json
+    confidence_levels: high,medium # Focus on actionable security findings
+    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT,INTELLECTUAL_PROPERTY
+    verbose: true
+    debug: true # Enable debug for security analysis
+    no_color: true
+    recursive: true
+    enable_preprocessors: true
+    quiet: false
+    show_match: true # Show matches for security analysis (controlled environment)
+    show_suppressed: false # Focus on active security issues
+    description: "Enterprise security assessment with detailed JSON output"
+    redaction:
+      enabled: true
+      output_dir: "%PROGRAMDATA%\\ferret-scan\\security\\redacted"
+      strategy: "format_preserving"
+      audit_log_file: "%PROGRAMDATA%\\ferret-scan\\security\\audit.log"
+
+  # Data governance profile
+  enterprise-governance:
+    format: yaml # YAML for detailed data governance analysis
+    confidence_levels: all
+    checks: all
+    verbose: true
+    debug: false
+    no_color: false
+    recursive: true
+    enable_preprocessors: true
+    quiet: false
+    show_match: false
+    show_suppressed: true
+    generate_suppressions: false
+    description: "Enterprise data governance profile with comprehensive YAML output"
+    redaction:
+      enabled: true
+      output_dir: "%PROGRAMDATA%\\ferret-scan\\governance\\redacted"
+      strategy: "synthetic"
+      audit_log_file: "%PROGRAMDATA%\\ferret-scan\\governance\\audit.log"
+
+  # CI/CD integration profile for enterprise pipelines
+  enterprise-cicd:
+    format: junit # JUnit XML for enterprise CI/CD integration
+    confidence_levels: high,medium
+    checks: all
+    verbose: true
+    debug: false
+    no_color: true # No colors in CI/CD logs
+    recursive: true
+    enable_preprocessors: true
+    quiet: true # Suppress progress in automated pipelines
+    show_match: false # Avoid sensitive data in CI/CD logs
+    show_suppressed: false
+    generate_suppressions: false
+    description: "Enterprise CI/CD pipeline integration with JUnit XML output"
+    platform:
+      windows:
+        use_appdata: false # Use pipeline working directory
+        temp_dir: "%TEMP%\\ferret-cicd"
+    redaction:
+      enabled: false # Typically disabled in CI/CD for performance
+      output_dir: "%TEMP%\\ferret-cicd-redacted"
+      strategy: "simple"
+
+  # Executive reporting profile
+  enterprise-executive:
+    format: csv # CSV for executive dashboard integration
+    confidence_levels: high # Focus on high-priority findings for executives
+    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT,INTELLECTUAL_PROPERTY
+    verbose: false # Concise output for executive consumption
+    debug: false
+    no_color: true # Clean output for reports
+    recursive: true
+    enable_preprocessors: true
+    quiet: true # Minimal output for executive reports
+    show_match: false # No sensitive data in executive reports
+    show_suppressed: false # Focus on active issues
+    description: "Enterprise executive reporting with high-priority findings"
+    redaction:
+      enabled: false # Typically not needed for executive summaries
+      output_dir: "%PROGRAMDATA%\\ferret-scan\\executive\\redacted"
+      strategy: "simple"
+
+  # Developer workstation profile
+  enterprise-developer:
+    format: text # Text format for developer-friendly output
+    confidence_levels: all
+    checks: all
+    verbose: true
+    debug: false
+    no_color: false # Allow colors for developer experience
+    recursive: true
+    enable_preprocessors: true
+    quiet: false # Show progress for developers
+    show_match: false # Avoid sensitive data in developer output
+    show_suppressed: false
+    description: "Enterprise developer workstation profile with user-friendly output"
+    platform:
+      windows:
+        use_appdata: true # Use user-specific config for developers
+        config_dir: "%APPDATA%\\ferret-scan"
+        temp_dir: "%TEMP%\\ferret-scan"
+    redaction:
+      enabled: false # Typically disabled for developer productivity
+      output_dir: "%USERPROFILE%\\Documents\\ferret-redacted"
+      strategy: "format_preserving"
+
+# Enterprise deployment notes:
+#
+# 1. System-wide installation:
+#    - Install ferret-scan to %PROGRAMFILES%\ferret-scan
+#    - Add to system PATH for all users
+#    - Configure system-wide settings in %PROGRAMDATA%\ferret-scan
+#
+# 2. Group Policy integration:
+#    - Deploy configuration via Group Policy
+#    - Set registry keys for enterprise defaults
+#    - Configure network access and proxy settings
+#
+# 3. Audit and compliance:
+#    - Enable comprehensive audit logging
+#    - Configure log rotation and retention
+#    - Integrate with SIEM systems for monitoring
+#
+# 4. Security considerations:
+#    - Restrict access to configuration files
+#    - Enable redaction for sensitive environments
+#    - Configure suppression rules centrally
+#
+# 5. Monitoring and alerting:
+#    - Monitor scan results for policy violations
+#    - Set up alerts for high-priority findings
+#    - Generate regular compliance reports
