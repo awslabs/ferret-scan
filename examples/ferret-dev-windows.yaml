@@ -1,0 +1,299 @@
+# Ferret Scanner Configuration for Windows Development Environments
+# Optimized for Windows developers using Visual Studio, VS Code, and other development tools
+
+# Developer-friendly default settings
+defaults:
+  format: text # Human-readable text output for developers
+  confidence_levels: all # Show all confidence levels for learning
+  checks: all # Comprehensive scanning for development awareness
+  verbose: true # Detailed output for understanding findings
+  debug: false # Disable debug by default (enable for troubleshooting)
+  no_color: false # Enable colors for better developer experience
+  recursive: true # Scan entire project directories
+  enable_preprocessors: true # Process documents in development projects
+  show_match: false # Avoid showing sensitive data in development output
+  quiet: false # Show progress for long-running scans
+  show_suppressed: false # Focus on active findings
+  generate_suppressions: false # Manual suppression management for developers
+
+# Windows development platform configuration
+platform:
+  windows:
+    use_appdata: true # Use user-specific configuration for developers
+    system_wide_install: false # User-specific installation
+    create_shortcuts: true # Create shortcuts for easy access
+    add_to_path: true # Add to PATH for command-line development
+    config_dir: "%APPDATA%\\ferret-scan" # User-specific config directory
+    temp_dir: "%TEMP%\\ferret-scan" # User-specific temp directory
+    long_path_support: true # Enable for deep node_modules and project structures
+
+# Development-focused preprocessor configuration
+preprocessors:
+  text_extraction:
+    enabled: true # Enable for processing documentation and requirements
+    types:
+      - pdf # Process PDF documentation and specifications
+      - office # Process Office documents (requirements, designs)
+
+# Development redaction configuration
+redaction:
+  enabled: false # Typically disabled in development for productivity
+  output_dir: "%USERPROFILE%\\Documents\\ferret-dev-redacted"
+  strategy: "format_preserving" # Preserve format for development analysis
+  audit_log_file: "%LOCALAPPDATA%\\ferret-scan\\dev-audit.log"
+  memory_scrub: true # Enable for security best practices
+  audit_trail: false # Simplified for development use
+
+  strategies:
+    simple:
+      replacement: "[DEV-REDACTED]" # Clear development redaction marker
+
+    format_preserving:
+      preserve_length: true # Maintain formatting for development analysis
+      preserve_format: true # Preserve patterns for understanding
+
+    synthetic:
+      secure: false # Simplified synthetic data for development
+
+# Development-specific validator configurations
+validators:
+  # Intellectual property validator for development environments
+  intellectual_property:
+    # Development environment URL patterns
+    internal_urls:
+      # Local development servers
+      - "http[s]?:\\/\\/localhost" # Local development server
+      - "http[s]?:\\/\\/127\\.0\\.0\\.1" # Loopback address
+      - "http[s]?:\\/\\/0\\.0\\.0\\.0" # All interfaces binding
+      - "http[s]?:\\/\\/.*\\.local" # Local domain development
+      
+      # Development environment patterns
+      - "http[s]?:\\/\\/.*-dev\\..*" # Development environments
+      - "http[s]?:\\/\\/.*-test\\..*" # Test environments
+      - "http[s]?:\\/\\/.*-staging\\..*" # Staging environments
+      - "http[s]?:\\/\\/.*-sandbox\\..*" # Sandbox environments
+      
+      # Common development ports
+      - "http[s]?:\\/\\/.*:3000" # React development server
+      - "http[s]?:\\/\\/.*:4200" # Angular development server
+      - "http[s]?:\\/\\/.*:5000" # Flask/ASP.NET development server
+      - "http[s]?:\\/\\/.*:8000" # Django development server
+      - "http[s]?:\\/\\/.*:8080" # Common development port
+      - "http[s]?:\\/\\/.*:9000" # Common development port
+      
+      # Development tools and services
+      - "http[s]?:\\/\\/.*\\.ngrok\\.io" # Ngrok tunnels
+      - "http[s]?:\\/\\/.*\\.localtunnel\\.me" # LocalTunnel
+      - "http[s]?:\\/\\/.*\\.github\\.dev" # GitHub Codespaces
+      - "http[s]?:\\/\\/.*\\.gitpod\\.io" # Gitpod workspaces
+      
+      # Corporate development infrastructure
+      - "http[s]?:\\/\\/gitlab\\..*" # Internal GitLab
+      - "http[s]?:\\/\\/jenkins\\..*" # Jenkins CI/CD
+      - "http[s]?:\\/\\/nexus\\..*" # Nexus repository
+      - "http[s]?:\\/\\/artifactory\\..*" # JFrog Artifactory
+      - "http[s]?:\\/\\/sonar\\..*" # SonarQube
+      - "http[s]?:\\/\\/jira\\..*" # Jira issue tracking
+      - "http[s]?:\\/\\/confluence\\..*" # Confluence documentation
+
+  # Social media validator with development context
+  social_media:
+    # Development-relevant platform patterns
+    platform_patterns:
+      github:
+        - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
+        - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
+        - "(?i)git@github\\.com:[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+\\.git"
+      
+      gitlab:
+        - "(?i)https?://(?:www\\.)?gitlab\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
+        - "(?i)git@gitlab\\.com:[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+\\.git"
+      
+      stackoverflow:
+        - "(?i)https?://(?:www\\.)?stackoverflow\\.com/users/\\d+"
+        - "(?i)https?://(?:www\\.)?stackoverflow\\.com/questions/\\d+"
+      
+      linkedin:
+        - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
+
+    # Development-specific context keywords
+    positive_keywords:
+      - "developer"
+      - "programmer"
+      - "engineer"
+      - "contributor"
+      - "maintainer"
+      - "author"
+      - "contact"
+      - "profile"
+
+    negative_keywords:
+      - "example"
+      - "test"
+      - "demo"
+      - "sample"
+      - "placeholder"
+      - "mock"
+      - "fake"
+
+# Development suppression configuration
+suppressions:
+  file: "%APPDATA%\\ferret-scan\\dev-suppressions.yaml"
+  generate_on_scan: false # Manual suppression for learning
+  show_suppressed: false # Focus on active findings
+
+# Development-specific profiles
+profiles:
+  # Interactive development profile
+  dev-interactive:
+    format: text
+    confidence_levels: all
+    checks: all
+    verbose: true # Detailed output for learning
+    debug: false
+    no_color: false # Colors for better experience
+    recursive: true
+    enable_preprocessors: true
+    quiet: false # Show progress
+    show_match: false # Avoid sensitive data
+    description: "Interactive development profile with detailed text output"
+    redaction:
+      enabled: false # Disabled for development productivity
+      output_dir: "%USERPROFILE%\\Documents\\ferret-dev-redacted"
+      strategy: "format_preserving"
+
+  # Pre-commit development profile
+  dev-precommit:
+    format: text
+    confidence_levels: high,medium # Focus on important findings
+    checks: CREDIT_CARD,SECRETS,SSN,EMAIL,INTELLECTUAL_PROPERTY # Key data types for commits
+    verbose: false # Concise output for pre-commit
+    debug: false
+    no_color: true # No colors in Git hooks
+    recursive: false # Current changes only
+    enable_preprocessors: false # Skip for speed in pre-commit
+    quiet: true # Minimal output for Git hooks
+    show_match: false # Avoid sensitive data in Git output
+    description: "Development pre-commit profile optimized for Git hooks"
+    redaction:
+      enabled: false
+      output_dir: "%TEMP%\\ferret-precommit-redacted"
+      strategy: "simple"
+
+  # Code review profile
+  dev-review:
+    format: json # JSON for tooling integration
+    confidence_levels: high,medium
+    checks: all
+    verbose: true
+    debug: false
+    no_color: true # Clean output for review tools
+    recursive: true
+    enable_preprocessors: true
+    quiet: false
+    show_match: false # Avoid sensitive data in reviews
+    description: "Development code review profile with JSON output for tooling"
+    redaction:
+      enabled: false
+      output_dir: "%TEMP%\\ferret-review-redacted"
+      strategy: "format_preserving"
+
+  # CI/CD development profile
+  dev-cicd:
+    format: junit # JUnit XML for CI/CD integration
+    confidence_levels: high,medium
+    checks: all
+    verbose: true
+    debug: false
+    no_color: true # No colors in CI/CD
+    recursive: true
+    enable_preprocessors: true
+    quiet: true # Suppress progress in CI/CD
+    show_match: false # Avoid sensitive data in CI/CD logs
+    show_suppressed: false
+    generate_suppressions: false
+    description: "Development CI/CD profile with JUnit XML output"
+    platform:
+      windows:
+        use_appdata: false # Use working directory in CI/CD
+        temp_dir: "%RUNNER_TEMP%\\ferret-scan" # GitHub Actions temp
+    redaction:
+      enabled: false # Typically disabled in CI/CD
+      output_dir: "%RUNNER_TEMP%\\ferret-redacted"
+      strategy: "simple"
+
+  # Security-focused development profile
+  dev-security:
+    format: yaml # YAML for detailed security analysis
+    confidence_levels: all
+    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT,INTELLECTUAL_PROPERTY # Security-focused checks
+    verbose: true
+    debug: true # Enable debug for security analysis
+    no_color: false
+    recursive: true
+    enable_preprocessors: true
+    quiet: false
+    show_match: true # Show matches for security analysis (development environment)
+    show_suppressed: false
+    description: "Development security analysis profile with detailed YAML output"
+    redaction:
+      enabled: true # Enable for security analysis
+      output_dir: "%USERPROFILE%\\Documents\\Security\\ferret-redacted"
+      strategy: "synthetic"
+      audit_log_file: "%LOCALAPPDATA%\\ferret-scan\\security-audit.log"
+
+  # Quick development check
+  dev-quick:
+    format: text
+    confidence_levels: high # Only high-confidence findings
+    checks: CREDIT_CARD,SECRETS,SSN # Critical data types
+    verbose: false
+    debug: false
+    no_color: false
+    recursive: false # Current directory only
+    enable_preprocessors: false # Skip for speed
+    quiet: true # Minimal output
+    description: "Quick development check for critical data types"
+    redaction:
+      enabled: false
+      output_dir: "%TEMP%\\ferret-quick-redacted"
+      strategy: "simple"
+
+  # Documentation scanning profile
+  dev-docs:
+    format: text
+    confidence_levels: all
+    checks: EMAIL,PERSON_NAME,INTELLECTUAL_PROPERTY,SOCIAL_MEDIA # Documentation-relevant checks
+    verbose: true
+    debug: false
+    no_color: false
+    recursive: true
+    enable_preprocessors: true # Important for processing documentation
+    quiet: false
+    show_match: false # Avoid sensitive data in documentation
+    description: "Development documentation scanning profile"
+    redaction:
+      enabled: false
+      output_dir: "%USERPROFILE%\\Documents\\ferret-docs-redacted"
+      strategy: "format_preserving"
+
+# Development workflow integration examples:
+#
+# Visual Studio Code integration:
+# 1. Add ferret-scan as a task in .vscode/tasks.json
+# 2. Create keyboard shortcuts for quick scans
+# 3. Integrate with VS Code terminal for interactive use
+#
+# Git integration:
+# 1. Pre-commit hook: ferret-scan --profile dev-precommit --format text .
+# 2. Pre-push hook: ferret-scan --profile dev-review --format json .
+# 3. CI/CD integration: ferret-scan --profile dev-cicd --format junit .
+#
+# PowerShell integration:
+# $results = ferret-scan --profile dev-interactive --format json . | ConvertFrom-Json
+# $highPriorityFindings = $results.findings | Where-Object { $_.confidence -eq "high" }
+#
+# Batch script integration:
+# @echo off
+# ferret-scan --profile dev-quick --format text . > scan-results.txt
+# if %ERRORLEVEL% neq 0 echo "Issues found, check scan-results.txt"

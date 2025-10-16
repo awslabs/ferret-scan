@@ -1,0 +1,216 @@
+# Ferret Scanner Configuration File - Windows Edition
+# This file demonstrates Windows-specific configuration options and path formats
+
+# Default settings applied when no profile is specified
+defaults:
+  format: text # Output format: text, json, csv, yaml, junit, gitlab-sast
+  confidence_levels: all # Confidence levels to display: high, medium, low, or combinations
+  checks: all # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, or combinations
+  verbose: false # Display detailed information for each finding
+  debug: false # Enable debug logging to show preprocessing and validation flow
+  no_color: false # Disable colored output
+  recursive: false # Recursively scan directories
+  enable_preprocessors: true # Enable text extraction from documents (PDF, Office files)
+  show_match: false # Display the actual matched text in findings
+  quiet: false # Suppress progress output (useful for scripts and CI/CD)
+  show_suppressed: false # Include suppressed findings in output with suppression details
+  generate_suppressions: false # Generate suppression rules for all findings
+
+# Platform-specific configuration for Windows
+platform:
+  windows:
+    use_appdata: true # Use %APPDATA% directory for configuration (recommended)
+    system_wide_install: false # Install for current user only (true for system-wide)
+    create_shortcuts: false # Create desktop and start menu shortcuts
+    add_to_path: false # Add ferret-scan to PATH environment variable
+    config_dir: "" # Override default config directory (leave empty for default)
+    temp_dir: "" # Override default temp directory (leave empty for default)
+    long_path_support: false # Enable long path support (>260 characters)
+
+# Preprocessor configurations
+preprocessors:
+  # Text extraction from documents
+  text_extraction:
+    enabled: true # Enable text extraction preprocessor
+    types: # Types of text extraction to perform
+      - pdf # Extract text from PDF documents
+      - office # Extract text from Office documents (DOCX, XLSX, PPTX, ODT, ODS, ODP)
+
+# Redaction configurations with Windows path examples
+redaction:
+  enabled: false # Enable redaction of sensitive data
+  output_dir: "C:\\Users\\%USERNAME%\\Documents\\ferret-redacted" # Windows path with environment variable
+  strategy: "format_preserving" # Default redaction strategy
+  audit_log_file: "C:\\Users\\%USERNAME%\\AppData\\Local\\ferret-scan\\audit.log" # Audit log location
+  memory_scrub: true # Enable secure memory scrubbing
+  audit_trail: true # Enable audit trail generation
+
+  # Strategy-specific configurations
+  strategies:
+    simple:
+      replacement: "[REDACTED]" # Text to replace sensitive data with
+
+    format_preserving:
+      preserve_length: true # Maintain original text length
+      preserve_format: true # Maintain original text format
+
+    synthetic:
+      secure: true # Use cryptographically secure synthetic data generation
+
+# Validator-specific configurations
+validators:
+  # Intellectual property validator with Windows-specific patterns
+  intellectual_property:
+    # Windows internal URL patterns
+    internal_urls:
+      # Windows Active Directory and domain patterns
+      - "http[s]?:\\/\\/.*\\.domain\\.local" # Local domain suffix
+      - "http[s]?:\\/\\/.*\\.corp\\..*" # Corporate domain patterns
+      - "http[s]?:\\/\\/.*\\.internal\\..*" # Internal domain patterns
+      
+      # Windows file share patterns (UNC paths in URLs)
+      - "file:\\/\\/\\/\\/[^\\s\\/]+\\/.*" # UNC file shares
+      - "http[s]?:\\/\\/sharepoint\\..*" # SharePoint sites
+      - "http[s]?:\\/\\/teams\\..*" # Microsoft Teams sites
+      
+      # Windows development environment patterns
+      - "http[s]?:\\/\\/.*-dev\\..*" # Development environments
+      - "http[s]?:\\/\\/.*-test\\..*" # Test environments
+      - "http[s]?:\\/\\/.*-staging\\..*" # Staging environments
+      - "http[s]?:\\/\\/localhost" # Local development
+      - "http[s]?:\\/\\/127\\.0\\.0\\.1" # Local loopback
+
+# Suppression configuration with Windows paths
+suppressions:
+  file: "C:\\Users\\%USERNAME%\\AppData\\Roaming\\ferret-scan\\suppressions.yaml" # Windows suppression file location
+  generate_on_scan: false # Generate suppression rules for all findings during scan
+  show_suppressed: false # Include suppressed findings in output
+
+# Windows-specific profiles for different scanning scenarios
+profiles:
+  # Windows development profile
+  windows-dev:
+    format: text
+    confidence_levels: all
+    checks: all
+    verbose: true
+    debug: false
+    no_color: false
+    recursive: true
+    enable_preprocessors: true
+    description: "Windows development environment scanning with full preprocessing"
+    platform:
+      windows:
+        use_appdata: true
+        long_path_support: true # Enable for deep directory structures
+    redaction:
+      enabled: false
+      output_dir: "C:\\temp\\ferret-redacted"
+      strategy: "format_preserving"
+
+  # Windows CI/CD profile for Azure DevOps, GitHub Actions, etc.
+  windows-ci:
+    format: junit # JUnit XML for CI/CD integration
+    confidence_levels: high,medium
+    checks: all
+    verbose: true
+    no_color: true # Disable colors for CI/CD logs
+    recursive: true
+    enable_preprocessors: true
+    quiet: true # Suppress progress output in CI/CD
+    description: "Windows CI/CD pipeline profile with JUnit output"
+    platform:
+      windows:
+        use_appdata: false # Use current directory in CI/CD
+        temp_dir: "%TEMP%\\ferret-scan" # Use system temp in CI/CD
+    redaction:
+      enabled: false
+      output_dir: "%TEMP%\\ferret-redacted"
+      strategy: "simple"
+
+  # Windows PowerShell profile for PowerShell scripts
+  windows-powershell:
+    format: json # JSON output for PowerShell processing
+    confidence_levels: all
+    checks: all
+    verbose: false
+    debug: false
+    no_color: true # PowerShell handles colors differently
+    recursive: true
+    enable_preprocessors: true
+    quiet: false
+    description: "Windows PowerShell integration profile with JSON output"
+    redaction:
+      enabled: false
+      output_dir: "$env:USERPROFILE\\Documents\\ferret-redacted"
+      strategy: "format_preserving"
+
+  # Windows enterprise profile for corporate environments
+  windows-enterprise:
+    format: csv # CSV for enterprise reporting
+    confidence_levels: all
+    checks: all
+    verbose: true
+    debug: false
+    no_color: false
+    recursive: true
+    enable_preprocessors: true
+    description: "Windows enterprise profile with comprehensive scanning and CSV reporting"
+    platform:
+      windows:
+        use_appdata: true
+        system_wide_install: true # System-wide for enterprise deployment
+        config_dir: "%PROGRAMDATA%\\ferret-scan" # System-wide config
+        temp_dir: "%PROGRAMDATA%\\ferret-scan\\temp" # System-wide temp
+    redaction:
+      enabled: true # Enable redaction for enterprise compliance
+      output_dir: "%PROGRAMDATA%\\ferret-scan\\redacted"
+      strategy: "synthetic"
+      audit_log_file: "%PROGRAMDATA%\\ferret-scan\\audit.log"
+    validators:
+      intellectual_property:
+        # Enterprise-specific internal URL patterns
+        internal_urls:
+          - "http[s]?:\\/\\/.*\\.company\\.com" # Replace with actual company domain
+          - "http[s]?:\\/\\/.*\\.company\\.local"
+          - "http[s]?:\\/\\/intranet\\..*"
+          - "http[s]?:\\/\\/sharepoint\\.company\\.com"
+          - "http[s]?:\\/\\/teams\\.company\\.com"
+
+  # Windows quick scan profile for fast checks
+  windows-quick:
+    format: text
+    confidence_levels: high
+    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT # Critical data types only
+    verbose: false
+    debug: false
+    no_color: false
+    recursive: false
+    enable_preprocessors: false # Disable for speed
+    quiet: true
+    description: "Quick Windows scan focusing on critical data types"
+    platform:
+      windows:
+        use_appdata: true
+        temp_dir: "%TEMP%\\ferret-quick"
+    redaction:
+      enabled: false
+      output_dir: "%TEMP%\\ferret-redacted"
+      strategy: "simple"
+
+# Windows-specific environment variable examples:
+# %APPDATA% - C:\Users\username\AppData\Roaming
+# %LOCALAPPDATA% - C:\Users\username\AppData\Local
+# %USERPROFILE% - C:\Users\username
+# %PROGRAMDATA% - C:\ProgramData
+# %TEMP% - C:\Users\username\AppData\Local\Temp
+# %USERNAME% - Current username
+# %COMPUTERNAME% - Computer name
+# %HOMEDRIVE% - C:
+# %HOMEPATH% - \Users\username
+
+# Windows path format examples:
+# Absolute paths: C:\path\to\file, D:\data\files
+# UNC paths: \\server\share\path\to\file
+# Environment variables: %USERPROFILE%\Documents\file.txt
+# Long paths: \\?\C:\very\long\path\that\exceeds\260\characters

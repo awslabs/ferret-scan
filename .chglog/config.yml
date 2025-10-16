@@ -1,0 +1,35 @@
+style: github
+template: CHANGELOG.tpl.md
+info:
+  title: CHANGELOG
+  repository_url: https://code.aws.dev/personal_projects/alias_a/adifabio/Ferret-Scan
+
+options:
+  commits:
+    filters:
+      Type:
+        - feat
+        - fix
+        - perf
+        - refactor
+        - docs
+        - build
+        - revert
+  commit_groups:
+    title_maps:
+      feat: 🚀 Features
+      fix: 🐛 Bug Fixes
+      perf: ⚡ Performance Improvements
+      refactor: 📦 Code Refactoring
+      docs: 📚 Documentation
+      build: 🛠 Build System
+      revert: ⏪ Reverts
+  header:
+    pattern: "^(\\w*)(?:\\(([\\w\\$\\.\\-\\*\\s]*)\\))?\\:\\s(.*)$"
+    pattern_maps:
+      - Type
+      - Scope
+      - Subject
+  notes:
+    keywords:
+      - BREAKING CHANGE

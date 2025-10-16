@@ -1,0 +1,107 @@
+# Ferret Scan Pre-commit Hooks - Direct Integration
+# Multiple hook configurations for different security requirements
+
+# =============================================================================
+# DEFAULT HOOK - Balanced security for most teams
+# =============================================================================
+- id: ferret-scan
+  name: Ferret Scan - Sensitive Data Detection
+  description: Scan files for sensitive data like credit cards, SSNs, API keys
+  entry: ferret-scan
+  language: python
+  files: '\.(txt|py|js|ts|go|java|json|yaml|yml|md|csv|log|conf|config|ini|env)$'
+  args: ['--pre-commit-mode', '--confidence', 'high,medium', '--checks', 'all', '--format', 'text']
+  require_serial: false
+  additional_dependencies: []
+
+# =============================================================================
+# STRICT SECURITY - Blocks on high confidence findings
+# =============================================================================
+- id: ferret-scan-strict
+  name: Ferret Scan - Strict Security
+  description: Strict security scanning - blocks commits on high confidence findings
+  entry: ferret-scan
+  language: python
+  files: '\.(txt|py|js|ts|go|java|cpp|c|h|json|xml|yaml|yml|csv|log|conf|config|ini|env)$'
+  args: ['--pre-commit-mode', '--confidence', 'high,medium,low', '--checks', 'all', '--format', 'text', '--verbose']
+  require_serial: false
+  additional_dependencies: []
+
+# =============================================================================
+# ADVISORY MODE - Shows findings but never blocks commits
+# =============================================================================
+- id: ferret-scan-advisory
+  name: Ferret Scan - Advisory Mode
+  description: Advisory scanning - shows findings but never blocks commits
+  entry: ferret-scan
+  language: python
+  files: '\.(py|js|ts|go|java|json|yaml|yml|env|conf)$'
+  args: ['--pre-commit-mode', '--confidence', 'high', '--checks', 'all', '--format', 'text', '--verbose']
+  require_serial: false
+  additional_dependencies: []
+
+# =============================================================================
+# SECRETS FOCUSED - Only scan for API keys and secrets
+# =============================================================================
+- id: ferret-scan-secrets
+  name: Ferret Scan - Secrets Only
+  description: Scan specifically for API keys, tokens, and secrets
+  entry: ferret-scan
+  language: python
+  files: '\.(py|js|ts|go|java|json|yaml|yml|env|conf|config)$'
+  args: ['--pre-commit-mode', '--confidence', 'high,medium', '--checks', 'SECRETS', '--format', 'text', '--show-match']
+  require_serial: false
+  additional_dependencies: []
+
+# =============================================================================
+# CREDIT CARD FOCUSED - Scan for financial data
+# =============================================================================
+- id: ferret-scan-financial
+  name: Ferret Scan - Financial Data
+  description: Scan for credit cards and financial information
+  entry: ferret-scan
+  language: python
+  files: '\.(txt|py|js|ts|go|java|json|yaml|yml|csv|log)$'
+  args: ['--pre-commit-mode', '--confidence', 'high,medium', '--checks', 'CREDIT_CARD', '--format', 'text', '--show-match']
+  require_serial: false
+  additional_dependencies: []
+
+# =============================================================================
+# PII FOCUSED - Scan for personally identifiable information
+# =============================================================================
+- id: ferret-scan-pii
+  name: Ferret Scan - PII Detection
+  description: Scan for personally identifiable information (SSN, passport, etc.)
+  entry: ferret-scan
+  language: python
+  files: '\.(txt|py|js|ts|go|java|json|yaml|yml|csv|log)$'
+  args: ['--pre-commit-mode', '--confidence', 'high,medium', '--checks', 'SSN,PASSPORT,EMAIL', '--format', 'text']
+  require_serial: false
+  additional_dependencies: []
+
+# =============================================================================
+# METADATA FOCUSED - Scan document metadata
+# =============================================================================
+- id: ferret-scan-metadata
+  name: Ferret Scan - Metadata Check
+  description: Scan document metadata for sensitive information
+  entry: ferret-scan
+  language: python
+  files: '\.(pdf|docx|xlsx|pptx|jpg|jpeg|png|tiff)$'
+  args: ['--pre-commit-mode', '--confidence', 'high,medium', '--checks', 'METADATA', '--format', 'text', '--enable-preprocessors']
+  require_serial: false
+  additional_dependencies: []
+
+# =============================================================================
+# CI/CD OPTIMIZED - For automated pipelines with structured output
+# =============================================================================
+- id: ferret-scan-ci
+  name: Ferret Scan - CI/CD Pipeline
+  description: Optimized for CI/CD with structured output
+  entry: ferret-scan
+  language: python
+  pass_filenames: false
+  always_run: true
+  args: ['--pre-commit-mode', '--file', '.', '--recursive', '--confidence', 'high,medium', '--format', 'json', '--checks', 'all']
+  require_serial: false
+  additional_dependencies: []

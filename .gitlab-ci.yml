@@ -1,0 +1,405 @@
+# Simple GitLab CI/CD Pipeline for Ferret Scan
+# Focused on Go build, formatting, and security scanning
+
+# Global variables for version consistency
+variables:
+  GO_VERSION: "1.25.1"
+  GO_DOCKER_IMAGE: "golang:1.25.1-alpine"
+  # Default resource limits for all jobs (increased for Docker builds)
+  KUBERNETES_CPU_REQUEST: "1000m"
+  KUBERNETES_CPU_LIMIT: "2000m"
+  KUBERNETES_MEMORY_REQUEST: "3Gi"
+  KUBERNETES_MEMORY_LIMIT: "5Gi"
+  KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "5Gi"
+  KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "10Gi"
+  # Set to "false" to disable automatic version tagging
+  AUTO_VERSION_ENABLED: "true"
+  # License scanning configuration - using GitLab's suggested variable
+  SECURE_LOG_LEVEL: "info"
+  # GitLab's recommended variable for license management
+  LICENSE_MANAGEMENT_APPROVED_LICENSES: 'Apache License 2.0, BSD 2-Clause "Simplified" License, BSD 3-Clause "New" or "Revised" License, MIT License, Mozilla Public License 2.0'
+  # Exclude directories that don't need SAST scanning to reduce memory usage
+  SAST_EXCLUDED_PATHS: "python-package,docs,examples,.cache,bin,dist,*.egg-info,tests/integration"
+  SECRET_DETECTION_EXCLUDED_PATHS: "python-package,docs,examples,.cache,bin,dist,*.egg-info,tests/integration"
+  # Set Python path for dependency scanning
+  DS_PYTHON_VERSION: "3.13"
+  # Force security jobs to run in security stage
+  SAST_STAGE: security
+  SECRET_DETECTION_STAGE: security
+  DEPENDENCY_SCANNING_STAGE: security
+  # Reduce noise from dependency scanning
+  DS_MAX_DEPTH: 1
+  # Focus dependency scanning on python-package directory
+  DS_INCLUDE_DEV_DEPENDENCIES: "false"
+  # Optimize SAST for memory usage
+  SAST_ANALYZER_IMAGE_TAG: "5"
+  SEMGREP_AGENT_SETTINGS_TIMEOUT: "300"
+  # Disable default SAST analyzers to prevent OOM
+  SAST_DISABLED: "true"
+
+stages:
+  - build
+  - security
+  - test
+  - docker
+  - release
+
+# Cache Go modules (optimized for storage limits)
+cache:
+  key: go-cache-v2-${CI_COMMIT_REF_SLUG}
+  paths:
+    - .cache/go-mod/
+  policy: pull-push
+  # Conservative cache policy for 1GB storage limit
+  when: on_success
+
+# Build and format check with integrated cache management
+build:
+  stage: build
+  image: $GO_DOCKER_IMAGE
+  # Higher resources for Go compilation
+  variables:
+    KUBERNETES_CPU_REQUEST: "1000m"
+    KUBERNETES_CPU_LIMIT: "2000m"
+    KUBERNETES_MEMORY_REQUEST: "2Gi"
+    KUBERNETES_MEMORY_LIMIT: "3Gi"
+  before_script:
+    - apk add --no-cache git make
+    - export GOMODCACHE=$CI_PROJECT_DIR/.cache/go-mod
+    # Use temp directory for build cache to avoid storage limits
+    - export GOCACHE=/tmp/go-build
+    # Aggressive cache management for 1GB storage limit
+    - echo "Performing aggressive cache management for storage constraints..."
+    - |
+      # Target: Keep cache under 300MB to leave room for build artifacts
+      MAX_CACHE_SIZE=300
+
+      if [ -d "$GOMODCACHE" ]; then
+        TOTAL_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
+        echo "Current cache size: ${TOTAL_SIZE}MB (target: <${MAX_CACHE_SIZE}MB)"
+        
+        if [ "$TOTAL_SIZE" -gt "$MAX_CACHE_SIZE" ]; then
+          echo "Cache exceeds ${MAX_CACHE_SIZE}MB, performing aggressive cleanup..."
+          
+          # Step 1: Remove modules older than 1 day
+          find "$GOMODCACHE" -type f -mtime +1 -delete 2>/dev/null || true
+          NEW_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
+          echo "After 1-day cleanup: ${TOTAL_SIZE}MB -> ${NEW_SIZE}MB"
+          
+          # Step 2: If still too large, remove modules accessed more than 12 hours ago
+          if [ "$NEW_SIZE" -gt "$MAX_CACHE_SIZE" ]; then
+            echo "Still too large, removing modules older than 12 hours..."
+            find "$GOMODCACHE" -type f -amin +720 -delete 2>/dev/null || true
+            NEW_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
+            echo "After 12-hour cleanup: -> ${NEW_SIZE}MB"
+          fi
+          
+          # Step 3: If STILL too large, keep only the most essential modules
+          if [ "$NEW_SIZE" -gt "$MAX_CACHE_SIZE" ]; then
+            echo "Emergency cleanup: keeping only current project dependencies..."
+            # Clear cache completely and let go mod download rebuild only what's needed
+            rm -rf "$GOMODCACHE"/* 2>/dev/null || true
+            NEW_SIZE=0
+            echo "Emergency cleanup complete: -> ${NEW_SIZE}MB"
+          fi
+          
+          # Clean up empty directories but preserve root
+          find "$GOMODCACHE" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+          
+        else
+          echo "Cache size OK (${TOTAL_SIZE}MB)"
+        fi
+      else
+        echo "No cache directory found, creating..."
+        mkdir -p "$GOMODCACHE"
+      fi
+    - echo "Cache management completed"
+    # Ensure cache directory exists
+    - mkdir -p "$GOMODCACHE"
+  script:
+    - echo "Checking code formatting..."
+    - make fmt
+    - echo "Running go vet..."
+    - make vet
+    - echo "Building ferret-scan (single executable with CLI and web modes)..."
+    - make build
+    - echo "Build successful!"
+    # Clean up temporary build cache only (keep module cache)
+    - go clean -cache -testcache || true
+    # Final cache size verification and emergency cleanup if needed
+    - |
+      if [ -d "$GOMODCACHE" ]; then
+        FINAL_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
+        echo "Final cache size: ${FINAL_SIZE}MB"
+        
+        # Emergency check: if cache is still over 400MB, disable caching for this run
+        if [ "$FINAL_SIZE" -gt 400 ]; then
+          echo "⚠️  Cache still too large (${FINAL_SIZE}MB), clearing for storage safety..."
+          rm -rf "$GOMODCACHE"/* 2>/dev/null || true
+          echo "Cache cleared to prevent storage limit issues"
+        fi
+      fi
+  artifacts:
+    paths:
+      - bin/ferret-scan # Single executable with both CLI and web modes
+    expire_in: 1 hour
+
+# Prepare Python environment for dependency scanning
+prepare-python:
+  stage: build
+  image: python:3.13-slim
+  before_script:
+    - cd python-package
+    - python -m venv .venv --system-site-packages
+    - source .venv/bin/activate
+    - pip install --upgrade pip --no-cache-dir
+  script:
+    - pip install -r requirements.txt --no-cache-dir
+    - pip install -e . --no-cache-dir
+    # Clean up pip cache to save space
+    - pip cache purge || true
+  artifacts:
+    paths:
+      - python-package/.venv/
+    expire_in: 1 hour
+
+# Security scanning
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  # Docker image build using Kaniko component
+  - component: code.aws.dev/proserve/components/kaniko/executor@~latest
+    inputs:
+      name: ferret-scan
+      destination: $CI_REGISTRY_IMAGE/ferret-scan:latest
+      dockerfile: Dockerfile
+
+# Comprehensive Go security scanning with Gosec
+gosec-sast:
+  stage: security
+  image: securecodewarrior/gosec:latest
+  script:
+    - echo "Running comprehensive Go security scan with Gosec..."
+    - gosec -fmt json -out gosec-report.json -stdout -verbose=text ./...
+    - echo "Gosec scan completed"
+  artifacts:
+    reports:
+      sast: gosec-report.json
+    paths:
+      - gosec-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+# Configure security scanning (variables moved to global section)
+
+# Override dependency scanning to use our prepared environment
+gemnasium-python-dependency_scanning:
+  stage: security
+  dependencies:
+    - prepare-python
+  variables:
+    DS_PYTHON_VERSION: "3.13"
+    DS_MAX_DEPTH: 3
+  before_script:
+    - cd python-package
+    - source .venv/bin/activate
+    - export PYTHONPATH="$PWD:$PYTHONPATH"
+    - pip list
+  allow_failure: true
+
+# Ferret Scan SAST integration for GitLab Security Dashboard
+ferret-sast:
+  stage: security
+  image: alpine:latest
+  dependencies:
+    - build
+  before_script:
+    - apk add --no-cache jq
+    - chmod +x bin/ferret-scan
+  script:
+    - echo "Running Ferret Scan security analysis..."
+    - ./bin/ferret-scan --file . --recursive --format gitlab-sast --output ferret-sast-report.json --confidence high,medium --no-color --quiet
+    - |
+      if [ -f "ferret-sast-report.json" ]; then
+        VULN_COUNT=$(jq '.vulnerabilities | length' ferret-sast-report.json)
+        echo "Ferret Scan completed: $VULN_COUNT findings detected"
+      else
+        echo "Error: Ferret SAST report not generated" && exit 1
+      fi
+  artifacts:
+    reports:
+      sast: ferret-sast-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+# Note: Mode testing removed - keeping CI pipeline minimal
+
+# GoReleaser - Go-native automated releases
+goreleaser-release:
+  stage: release
+  image: $GO_DOCKER_IMAGE
+  # Resource limits for this job
+  resource_group: release-builds
+  variables:
+    # Resource limits
+    KUBERNETES_CPU_REQUEST: "1000m"
+    KUBERNETES_CPU_LIMIT: "2000m"
+    KUBERNETES_MEMORY_REQUEST: "2Gi"
+    KUBERNETES_MEMORY_LIMIT: "4Gi"
+    KUBERNETES_EPHEMERAL_STORAGE_REQUEST: "5Gi"
+    KUBERNETES_EPHEMERAL_STORAGE_LIMIT: "10Gi"
+    # GitLab token for creating releases - use project access token with api scope
+    GITLAB_TOKEN: $GITLAB_RELEASE_TOKEN
+    # Git configuration
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
+    # GoReleaser configuration
+    GORELEASER_CURRENT_TAG: $CI_COMMIT_TAG
+  before_script:
+    - apk add --no-cache git curl make coreutils
+    # Install GoReleaser with proper checksum handling
+    - |
+      echo "Installing GoReleaser..."
+      GORELEASER_VERSION="2.11.2"
+      GORELEASER_URL="https://github.com/goreleaser/goreleaser/releases/download/v${GORELEASER_VERSION}/goreleaser_Linux_x86_64.tar.gz"
+      curl -sL "$GORELEASER_URL" | tar -xz -C /usr/local/bin goreleaser
+      chmod +x /usr/local/bin/goreleaser
+      goreleaser --version
+    # Install git-chglog for changelog generation
+    - go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+    # Configure Git
+    - git config --global user.email "ci@gitlab.com"
+    - git config --global user.name "GitLab CI"
+  script:
+    - echo "Starting GoReleaser build and release..."
+
+    # Generate changelog if it doesn't exist
+    - |
+      if [ ! -f "CHANGELOG.md" ]; then
+        echo "📝 Generating initial changelog..."
+        git-chglog --output CHANGELOG.md
+      else
+        echo "📝 Updating changelog..."
+        git-chglog --output CHANGELOG.md
+      fi
+
+    # Commit the changelog to avoid dirty state
+    - |
+      if [ -n "$(git status --porcelain CHANGELOG.md)" ]; then
+        echo "📝 Committing updated changelog..."
+        git add CHANGELOG.md
+        git commit -m "chore: update changelog for ${CI_COMMIT_TAG:-snapshot}"
+      fi
+
+    # Run GoReleaser
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        echo "Building release for tag: $CI_COMMIT_TAG"
+        
+        # Check if release already exists
+        if curl -s -H "PRIVATE-TOKEN: $GITLAB_RELEASE_TOKEN" \
+           "https://code.aws.dev/api/v4/projects/personal_projects%2Falias_a%2Fadifabio%2FFerret-Scan/releases/$CI_COMMIT_TAG" \
+           | grep -q "tag_name"; then
+          echo "Release $CI_COMMIT_TAG already exists, skipping..."
+          exit 0
+        fi
+        
+        goreleaser release --clean --skip=validate
+      else
+        echo "Building snapshot (no tag)"
+        goreleaser build --snapshot --clean
+      fi
+
+    - echo "GoReleaser completed successfully!"
+
+  artifacts:
+    paths:
+      - dist/
+      - CHANGELOG.md
+    expire_in: 1 week
+    when: always
+
+  rules:
+    # Run on tags (full release) - highest priority
+    - if: $CI_COMMIT_TAG
+      when: on_success
+    # Run on main/master branch (snapshot build) - but NOT if triggered by auto-version-tag
+    - if: ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master") && $CI_PIPELINE_SOURCE != "push"
+      when: on_success
+    # Don't run on other branches or when auto-version-tag pushes
+    - when: never
+
+  dependencies:
+    - build
+
+# Automatic version tagging based on conventional commits
+auto-version-tag:
+  stage: release
+  image: $GO_DOCKER_IMAGE
+  before_script:
+    - apk add --no-cache git
+    - git config --global user.email "ci@gitlab.com"
+    - git config --global user.name "GitLab CI"
+    - git fetch --unshallow || true
+    # Configure git to use the GitLab release token for authentication
+    - git remote set-url origin "https://gitlab-ci-token:${GITLAB_RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+  script:
+    - echo "Automatic version tagging..."
+    - LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0")
+    - echo "Last tag is $LAST_TAG"
+    - COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --no-merges || echo "")
+    - echo "Found commits since last tag"
+    - 'if [ -z "$COMMITS" ]; then echo "No commits found, skipping"; exit 0; fi'
+    - 'if echo "$COMMITS" | grep -q "feat:"; then BUMP="minor"; elif echo "$COMMITS" | grep -q "fix:\|perf:\|refactor:"; then BUMP="patch"; else echo "No significant changes"; exit 0; fi'
+    - echo "Bump type is $BUMP"
+    - CURRENT_VERSION=${LAST_TAG#v}
+    - CLEAN_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-.*$//')
+    - |
+      # Parse version using POSIX-compatible approach
+      if echo "$CLEAN_VERSION" | grep -q '^[0-9]\+\.[0-9]\+\.[0-9]\+$'; then
+        MAJOR=$(echo "$CLEAN_VERSION" | cut -d. -f1)
+        MINOR=$(echo "$CLEAN_VERSION" | cut -d. -f2)
+        PATCH=$(echo "$CLEAN_VERSION" | cut -d. -f3)
+      else
+        MAJOR=0
+        MINOR=1
+        PATCH=0
+      fi
+    - 'if [ "$BUMP" = "minor" ]; then NEW_VERSION="v${MAJOR}.$((MINOR+1)).0"; else NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH+1))"; fi'
+    - echo "New version will be $NEW_VERSION"
+    - git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
+    - git push origin $NEW_VERSION
+    - echo "Tag $NEW_VERSION created and pushed!"
+  rules:
+    # Only run on main/master branch pushes (not merge requests, not tag pushes)
+    - if: ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master") && $CI_COMMIT_TAG == null && $AUTO_VERSION_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push"
+      when: on_success
+  dependencies:
+    - build
+
+# Manual version tagging job (fallback option)
+manual-release-tag:
+  stage: release
+  image: $GO_DOCKER_IMAGE
+  before_script:
+    - apk add --no-cache git
+    - git config --global user.email "ci@gitlab.com"
+    - git config --global user.name "GitLab CI"
+    - git fetch --unshallow || true
+    # Configure git to use the GitLab release token for authentication
+    - git remote set-url origin "https://gitlab-ci-token:${GITLAB_RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+  script:
+    - echo "Manual release tag creation..."
+    - LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0")
+    - echo "Last tag is $LAST_TAG"
+    - 'if [ -n "$RELEASE_VERSION" ]; then NEW_VERSION="$RELEASE_VERSION"; else CURRENT_VERSION=${LAST_TAG#v}; CLEAN_VERSION=$(echo "$CURRENT_VERSION" | sed "s/-.*$//"); NEW_VERSION="v${CLEAN_VERSION%.*}.$((${CLEAN_VERSION##*.}+1))"; fi'
+    - echo "New version will be $NEW_VERSION"
+    - git tag -a $NEW_VERSION -m "Manual release $NEW_VERSION"
+    - git push origin $NEW_VERSION
+    - echo "Manual tag $NEW_VERSION created and pushed!"
+  rules:
+    # Disabled - using auto-version-tag instead
+    - when: never
+  dependencies:
+    - build

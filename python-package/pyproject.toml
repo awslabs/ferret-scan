@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ferret-scan"
+version = "1.0.0"
+description = "Sensitive data detection tool with pre-commit hook support"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "AWS", email = "ferret-scan@amazon.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+requires-python = ">=3.7"
+dependencies = [
+    "requests>=2.25.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "requests>=2.25.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/awslabs/ferret-scan"
+Repository = "https://github.com/awslabs/ferret-scan"
+Issues = "https://github.com/awslabs/ferret-scan/issues"
+
+[project.scripts]
+ferret-scan = "ferret_scan.cli:main"

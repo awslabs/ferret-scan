@@ -1,0 +1,2 @@
+# This is primarily a Go project
+# Python dependencies are in python-package/requirements.txt

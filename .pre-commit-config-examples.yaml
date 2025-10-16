@@ -1,0 +1,274 @@
+# Ferret Scan Pre-commit Configuration Examples
+# Choose the configuration that best fits your team's needs
+#
+# PREREQUISITE: Build the ferret-scan binary first
+# Run: make build
+# This creates bin/ferret-scan which is used in the examples below
+
+# =============================================================================
+# OPTION A: DIRECT BINARY INTEGRATION (Recommended)
+# =============================================================================
+# Uses the built ferret-scan binary for best performance
+# Automatically detects pre-commit environment and optimizes behavior
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan
+        name: Ferret Scan - Direct Binary
+        entry: ./bin/ferret-scan --pre-commit-mode
+        language: system
+        files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
+        exclude: '^(\.git/|bin/|dist/|node_modules/|\.cache/|test_|_test\.)'
+        pass_filenames: true
+
+# =============================================================================
+# OPTION B: PYTHON PACKAGE INTEGRATION
+# =============================================================================
+# Uses ferret-scan Python package (requires: pip install ferret-scan)
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-python
+        name: Ferret Scan - Python Package
+        entry: ferret-scan --pre-commit-mode
+        language: python
+        files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
+        exclude: '^(\.git/|bin/|dist/|node_modules/|\.cache/|test_|_test\.)'
+        pass_filenames: true
+
+# =============================================================================
+# OPTION C: HIGH SECURITY CONFIGURATION
+# =============================================================================
+# Blocks commits on medium and high confidence findings
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-strict
+        name: Ferret Scan - High Security
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium --verbose
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml|env|conf)$'
+        exclude: '^(test_|_test\.|spec_|_spec\.|docs/|examples/)'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "medium"
+
+# =============================================================================
+# OPTION D: ADVISORY MODE (Learning/Development)
+# =============================================================================
+# Shows findings but never blocks commits - good for learning
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-advisory
+        name: Ferret Scan - Advisory Mode
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium,low --verbose
+        language: system
+        files: '\.(go|js|py|java|txt|md|yaml|yml|json)$'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "none"
+
+# =============================================================================
+# OPTION E: PROFILE-BASED CONFIGURATION
+# =============================================================================
+# Uses pre-commit profile from ferret.yaml for team-wide settings
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-profile
+        name: Ferret Scan - Team Profile
+        entry: ./bin/ferret-scan --pre-commit-mode --profile precommit
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        pass_filenames: true
+
+# =============================================================================
+# OPTION F: MULTIPLE HOOKS STRATEGY
+# =============================================================================
+# Different configurations for different file types
+repos:
+  - repo: local
+    hooks:
+      # Strict scanning for configuration files
+      - id: ferret-scan-config
+        name: Ferret Scan - Config Files
+        entry: ./bin/ferret-scan --pre-commit-mode --checks SECRETS,EMAIL
+        language: system
+        files: '\.(env|conf|config|ini|yaml|yml)$'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "medium"
+      
+      # Standard scanning for source code
+      - id: ferret-scan-source
+        name: Ferret Scan - Source Code
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high
+        language: system
+        files: '\.(go|js|py|java)$'
+        exclude: '^(test_|_test\.|spec_|_spec\.)'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "high"
+
+# =============================================================================
+# OPTION G: PERFORMANCE OPTIMIZED
+# =============================================================================
+# Optimized for large repositories with many files
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-optimized
+        name: Ferret Scan - Performance Optimized
+        entry: ./bin/ferret-scan --pre-commit-mode --checks CREDIT_CARD,SECRETS,SSN
+        language: system
+        files: '\.(go|js|py|java)$'
+        exclude: '^(test_|_test\.|vendor/|node_modules/|\.git/)'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_BATCH_SIZE: "100"
+          FERRET_PRECOMMIT_EXIT_ON: "high"
+
+# =============================================================================
+# OPTION H: CI/CD INTEGRATION
+# =============================================================================
+# Optimized for CI/CD pipelines with structured output
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-ci
+        name: Ferret Scan - CI/CD
+        entry: ./bin/ferret-scan --pre-commit-mode --format junit --output ferret-results.xml
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "high"
+
+# =============================================================================
+# INTEGRATION WITH OTHER SECURITY TOOLS
+# =============================================================================
+repos:
+  # Ferret Scan for comprehensive sensitive data detection
+  - repo: local
+    hooks:
+      - id: ferret-scan
+        name: Ferret Scan
+        entry: ./bin/ferret-scan --pre-commit-mode
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        pass_filenames: true
+
+  # Additional security tools
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        exclude: '\.ferret-scan-suppressions\.yaml$'
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+
+# =============================================================================
+# TEAM CONFIGURATION EXAMPLES
+# =============================================================================
+
+# For Security-Critical Projects
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-security-critical
+        name: Ferret Scan - Security Critical
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium --verbose
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml|env|conf)$'
+        exclude: '^(test_|_test\.|docs/|examples/)'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "medium"
+
+# For Development Teams (Balanced)
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-balanced
+        name: Ferret Scan - Balanced
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        exclude: '^(test_|_test\.|docs/)'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "high"
+
+# For Open Source Projects (Conservative)
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-conservative
+        name: Ferret Scan - Conservative
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high --checks CREDIT_CARD,SECRETS,SSN
+        language: system
+        files: '\.(go|js|py|java)$'
+        exclude: '^(test_|_test\.|examples/|docs/)'
+        pass_filenames: true
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "high"
+# ====
+=========================================================================
+# FALLBACK: BUILD FROM SOURCE (If binary not available)
+# =============================================================================
+# Use this if you don't have the binary built or want to always use latest source
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-source
+        name: Ferret Scan - Build from Source
+        entry: go run cmd/main.go --pre-commit-mode
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        pass_filenames: true# =======
+======================================================================
+# DOCKER INTEGRATION OPTIONS
+# =============================================================================
+
+# Docker with volume mounting (requires Docker/Finch)
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-docker
+        name: Ferret Scan - Docker
+        entry: docker run --rm -v $(pwd):/data ferret-scan:latest --pre-commit-mode
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        pass_filenames: true
+        args: ["/data"]
+
+# Finch alternative (for environments using Finch instead of Docker)
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-finch
+        name: Ferret Scan - Finch
+        entry: finch run --rm -v $(pwd):/data ferret-scan:latest --pre-commit-mode
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        pass_filenames: true
+        args: ["/data"]
+
+# Docker with custom configuration
+repos:
+  - repo: local
+    hooks:
+      - id: ferret-scan-docker-config
+        name: Ferret Scan - Docker with Config
+        entry: docker run --rm -v $(pwd):/data -v $(pwd)/ferret.yaml:/ferret.yaml ferret-scan:latest --pre-commit-mode --config /ferret.yaml
+        language: system
+        files: '\.(go|js|py|java|json|yaml|yml)$'
+        pass_filenames: true
+        args: ["/data"]

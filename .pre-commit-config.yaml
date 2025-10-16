@@ -1,0 +1,73 @@
+# Pre-commit configuration for Ferret Scan
+# To test: make test-precommit
+# To customize: See .pre-commit-config-examples.yaml for different configurations
+#
+# Current config: Simple approach using script defaults
+# - Scans for: HIGH confidence findings only
+# - Fails on: HIGH confidence findings only
+# - Format: text output, no color, quiet mode
+repos:
+  # Go version consistency check
+  - repo: local
+    hooks:
+      - id: go-version-check
+        name: Check Go version consistency
+        entry: ./scripts/go-version.sh
+        args: [check]
+        language: script
+        files: '^(go\.mod|\.go-version|\.gitlab-ci\.yml|Dockerfile)$'
+        pass_filenames: false
+
+  # Go formatting
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: Go Format
+        entry: gofmt
+        args: [-w]
+        language: golang
+        files: '\.go$'
+
+  # Go vet
+  - repo: local
+    hooks:
+      - id: go-vet
+        name: Go Vet
+        entry: go
+        args: [vet, ./...]
+        language: golang
+        files: '\.go$'
+        pass_filenames: false
+
+  # Go mod tidy
+  - repo: local
+    hooks:
+      - id: go-mod-tidy
+        name: Go Mod Tidy
+        entry: go
+        args: [mod, tidy]
+        language: golang
+        files: '^go\.(mod|sum)$'
+        pass_filenames: false
+
+  # Gosec security scanner (high severity only)
+  - repo: local
+    hooks:
+      - id: gosec
+        name: Gosec Security Scanner
+        entry: gosec
+        args: [-severity, high, -quiet, ./...]
+        language: golang
+        files: '\.go$'
+        pass_filenames: false
+
+  # Ferret Scan security check
+  - repo: local
+    hooks:
+      - id: ferret-scan
+        name: Ferret Scan Security Check
+        entry: ./bin/ferret-scan --pre-commit-mode
+        language: system
+        files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
+        exclude: '^(\.git/|bin/|dist/|node_modules/|\.cache/|test_|_test\.)'
+        pass_filenames: true

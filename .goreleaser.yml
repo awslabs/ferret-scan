@@ -1,0 +1,194 @@
+# GoReleaser v2 configuration for ferret-scan
+version: 2
+
+project_name: ferret-scan
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: ferret-scan-cli
+    main: ./cmd/main.go
+    binary: ferret-scan
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X ferret-scan/internal/version.Version={{.Version}}
+      - -X ferret-scan/internal/version.GitCommit={{.Commit}}
+      - -X ferret-scan/internal/version.BuildDate={{.Date}}
+
+# Note: Web UI functionality is now integrated into the main ferret-scan binary
+# Use: ferret-scan --web to start web server mode
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    ids:
+      - ferret-scan-cli
+    files:
+      # Documentation
+      - README.md
+      - LICENSE*
+      - CHANGELOG.md
+      - docs/*
+      - docs/**/*
+
+      # Configuration files
+      - src: examples/ferret.yaml
+        dst: config.yaml
+      - examples/*
+
+      # Installation scripts
+      - scripts/install-system.sh
+      - scripts/setup-team-config.sh
+      - scripts/install-system-windows.ps1
+
+      # Pre-commit configuration examples
+      - .pre-commit-config.yaml
+      - .pre-commit-config-examples.yaml
+
+      # Web UI template
+      - src: web/template.html
+        dst: template.html
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^style:"
+  groups:
+    - title: 🚀 Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 🐛 Bug Fixes
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: ⚡ Performance Improvements
+      regexp: "^.*perf[(\\w)]*:+.*$"
+      order: 2
+    - title: 📦 Code Refactoring
+      regexp: "^.*refactor[(\\w)]*:+.*$"
+      order: 3
+    - title: 🛠 Build System
+      regexp: "^.*build[(\\w)]*:+.*$"
+      order: 4
+    - title: Others
+      order: 999
+
+# GitLab releases
+gitlab_urls:
+  api: https://code.aws.dev/api/v4/
+  download: https://code.aws.dev
+
+release:
+  gitlab:
+    owner: personal_projects/alias_a/adifabio
+    name: Ferret-Scan
+  # Ensure release is created even if some steps fail
+  draft: false
+  prerelease: auto
+  # Replace existing release if it exists
+  replace_existing_draft: true
+  # Archives and checksums are automatically included by GoReleaser
+  # No need to specify extra_files for standard artifacts
+
+  header: |
+    ## Ferret Scan {{ .Tag }}
+
+    Advanced sensitive data detection and redaction tool for securing your codebase.
+
+    ### What's Changed
+
+  footer: |
+
+    ### 🚀 Quick Installation
+
+    #### Linux/macOS System-wide Installation (Recommended)
+    ```bash
+    # Download and extract the archive for your platform
+    tar -xzf ferret-scan_{{ .Tag }}_linux_amd64.tar.gz
+    cd ferret-scan_{{ .Tag }}_linux_amd64
+
+    # macOS: Handle security for downloaded binary installation
+    chmod +x ferret-scan
+    xattr -d com.apple.quarantine ferret-scan
+
+    # Install system-wide (installs to /usr/local/bin/ferret-scan)
+    sudo scripts/install-system.sh
+
+    # Set up pre-commit integration (see docs/PRE_COMMIT_INTEGRATION.md)
+    pip install pre-commit
+    ```
+
+    **⚠️ macOS Security Note**: If macOS blocks execution with "cannot be opened because it is from an unidentified developer", run these commands on the downloaded binary BEFORE installation:
+    ```bash
+    chmod +x ferret-scan
+    xattr -d com.apple.quarantine ferret-scan
+    ```
+    Only use these commands for executables from trusted sources.
+
+    #### Windows Installation
+    ```powershell
+    # Download and extract the archive for Windows
+    # Extract ferret-scan_{{ .Tag }}_windows_amd64.zip
+    cd ferret-scan_{{ .Tag }}_windows_amd64
+
+    # Run PowerShell as Administrator and install system-wide
+    .\scripts\install-system-windows.ps1
+
+    # Test installation
+    ferret-scan --version
+    ```
+
+    #### Manual Installation
+    ```bash
+    # Linux/macOS: Download binary and handle security
+    chmod +x ferret-scan
+    xattr -d com.apple.quarantine ferret-scan  # macOS only
+    sudo mv ferret-scan /usr/local/bin/
+
+    # Windows: Download ferret-scan.exe and add to PATH
+    # Test installation
+    ferret-scan --version
+    ```
+
+    ### 📦 What's Included
+    - `ferret-scan` (Linux/macOS) or `ferret-scan.exe` (Windows) - Main binary with CLI and web UI modes
+    - `scripts/install-system.sh` - Automated system installation (Linux/macOS)
+    - `scripts/install-system-windows.ps1` - Automated system installation (Windows)
+    - `docs/PRE_COMMIT_INTEGRATION.md` - Pre-commit integration guide
+
+    - `config.yaml` - Ready-to-use configuration with profiles
+    - `examples/ferret-windows.yaml` - Windows-specific configuration examples
+    - `docs/` - Complete documentation
+    - `.pre-commit-config.yaml` - Pre-commit configuration example
+
+    ### 📖 Documentation
+    - [Installation Guide](docs/INSTALLATION.md) - Comprehensive installation options
+    - [Pre-commit Integration](docs/PRE_COMMIT_INTEGRATION.md) - Git workflow integration
+    - [Configuration Guide](docs/configuration.md) - Settings and profiles
+
+    **Full Changelog**: https://code.aws.dev/personal_projects/alias_a/adifabio/Ferret-Scan/-/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+# Docker builds disabled - focusing on binary releases only

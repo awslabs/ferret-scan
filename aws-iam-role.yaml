@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Role for Ferret Scan GenAI features - Textract, Transcribe, and Comprehend'
+
+Parameters:
+  ExternalId:
+    Type: String
+    Description: 'External ID required to assume the role (choose a unique secret value)'
+    MinLength: 8
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z0-9-_]+'
+    ConstraintDescription: 'Must be 8-64 characters, alphanumeric with hyphens and underscores only'
+
+  PrincipalArn:
+    Type: String
+    Description: 'ARN of the principal (user, role, or service) allowed to assume this role (leave empty to allow account root)'
+    AllowedPattern: '^$|^arn:aws:(iam|sts)::[0-9]{12}:(user|role|assumed-role)/.+$|^arn:aws:iam::[0-9]{12}:root$'
+    ConstraintDescription: 'Must be empty or a valid IAM user, role, assumed-role ARN, or account root ARN'
+    Default: ''
+
+Conditions:
+  HasPrincipalArn: !Not [!Equals [!Ref PrincipalArn, '']]
+
+Resources:
+  FerretScanRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'FerretScanGenAIRole-${AWS::StackName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !If
+                - HasPrincipalArn
+                - !Ref PrincipalArn
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref ExternalId
+      Policies:
+        - PolicyName: !Sub 'FerretScanGenAIPolicy-${AWS::StackName}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Textract permissions (no resource-level permissions supported)
+              - Effect: Allow
+                Action:
+                  - textract:DetectDocumentText
+                Resource: '*'
+
+              # Transcribe permissions (no resource-level permissions supported)
+              - Effect: Allow
+                Action:
+                  - transcribe:StartTranscriptionJob
+                  - transcribe:GetTranscriptionJob
+                  - transcribe:DeleteTranscriptionJob
+                Resource: '*'
+
+              # Comprehend permissions (no resource-level permissions supported)
+              - Effect: Allow
+                Action:
+                  - comprehend:DetectPiiEntities
+                Resource: '*'
+
+              # S3 permissions for Transcribe (temporary bucket creation and file upload)
+              - Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:PutBucketPolicy
+                  - s3:DeleteBucketPolicy
+                Resource:
+                  - 'arn:aws:s3:::ferret-scan-transcribe-*'
+                  - 'arn:aws:s3:::ferret-scan-transcribe-*/*'
+
+Outputs:
+  RoleArn:
+    Description: 'ARN of the Ferret Scan GenAI Role'
+    Value: !GetAtt FerretScanRole.Arn
+    Export:
+      Name: !Sub 'FerretScanGenAIRoleArn-${AWS::StackName}'
+
+  ExternalId:
+    Description: 'External ID required to assume the role'
+    Value: !Ref ExternalId
+    Export:
+      Name: !Sub 'FerretScanGenAIExternalId-${AWS::StackName}'

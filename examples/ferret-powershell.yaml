@@ -1,0 +1,204 @@
+# Ferret Scanner Configuration for PowerShell Integration
+# Optimized for use with PowerShell scripts and Windows automation
+
+# Default settings optimized for PowerShell processing
+defaults:
+  format: json # JSON output for easy PowerShell object processing
+  confidence_levels: all
+  checks: all
+  verbose: false # Reduce noise in PowerShell output
+  debug: false
+  no_color: true # PowerShell handles colors differently
+  recursive: true
+  enable_preprocessors: true
+  show_match: false # Avoid sensitive data in PowerShell output
+  quiet: false # Allow progress in interactive PowerShell sessions
+  show_suppressed: false
+  generate_suppressions: false
+
+# Windows platform configuration for PowerShell environments
+platform:
+  windows:
+    use_appdata: true # Use standard Windows app data location
+    system_wide_install: false # User-specific for PowerShell scripts
+    create_shortcuts: false
+    add_to_path: true # Add to PATH for PowerShell cmdlet access
+    config_dir: "$env:APPDATA\\ferret-scan" # PowerShell environment variable syntax
+    temp_dir: "$env:TEMP\\ferret-scan"
+    long_path_support: false # Conservative default for compatibility
+
+# Preprocessor configuration for PowerShell automation
+preprocessors:
+  text_extraction:
+    enabled: true
+    types:
+      - pdf
+      - office # Important for processing Office documents in PowerShell workflows
+
+# Redaction configuration with PowerShell-friendly paths
+redaction:
+  enabled: false # Disabled by default, enable per-script as needed
+  output_dir: "$env:USERPROFILE\\Documents\\ferret-redacted"
+  strategy: "format_preserving"
+  audit_log_file: "$env:LOCALAPPDATA\\ferret-scan\\powershell-audit.log"
+  memory_scrub: true
+  audit_trail: true
+
+  strategies:
+    simple:
+      replacement: "[REDACTED]"
+    format_preserving:
+      preserve_length: true
+      preserve_format: true
+    synthetic:
+      secure: true
+
+# Validator configurations for PowerShell environments
+validators:
+  intellectual_property:
+    # PowerShell and Windows-specific internal URL patterns
+    internal_urls:
+      # PowerShell Gallery and internal repositories
+      - "http[s]?:\\/\\/.*\\.powershellgallery\\.local"
+      - "http[s]?:\\/\\/.*\\.nuget\\.local"
+      - "http[s]?:\\/\\/.*\\.chocolatey\\.local"
+      
+      # Windows management and automation URLs
+      - "http[s]?:\\/\\/.*\\.wsus\\..*" # Windows Update Services
+      - "http[s]?:\\/\\/.*\\.sccm\\..*" # System Center Configuration Manager
+      - "http[s]?:\\/\\/.*\\.adfs\\..*" # Active Directory Federation Services
+      
+      # PowerShell DSC and automation
+      - "http[s]?:\\/\\/.*\\.dsc\\..*" # Desired State Configuration
+      - "http[s]?:\\/\\/.*\\.automation\\..*" # Automation endpoints
+      
+      # Development and testing environments
+      - "http[s]?:\\/\\/.*-dev\\..*"
+      - "http[s]?:\\/\\/.*-test\\..*"
+      - "http[s]?:\\/\\/.*-staging\\..*"
+      - "http[s]?:\\/\\/localhost"
+      - "http[s]?:\\/\\/127\\.0\\.0\\.1"
+
+# Suppression configuration for PowerShell workflows
+suppressions:
+  file: "$env:APPDATA\\ferret-scan\\powershell-suppressions.yaml"
+  generate_on_scan: false
+  show_suppressed: false
+
+# PowerShell-specific profiles
+profiles:
+  # Interactive PowerShell session profile
+  powershell-interactive:
+    format: json
+    confidence_levels: all
+    checks: all
+    verbose: true # More details in interactive sessions
+    debug: false
+    no_color: false # Allow colors in interactive PowerShell
+    recursive: true
+    enable_preprocessors: true
+    quiet: false # Show progress in interactive sessions
+    description: "Interactive PowerShell session with detailed JSON output"
+    redaction:
+      enabled: false
+      output_dir: "$env:USERPROFILE\\Documents\\ferret-redacted"
+      strategy: "format_preserving"
+
+  # PowerShell script automation profile
+  powershell-automation:
+    format: json
+    confidence_levels: high,medium # Focus on actionable findings
+    checks: all
+    verbose: false # Minimal output for automation
+    debug: false
+    no_color: true # No colors in automation
+    recursive: true
+    enable_preprocessors: true
+    quiet: true # Suppress progress in automation
+    show_match: false # Avoid sensitive data in logs
+    description: "PowerShell automation profile with minimal JSON output"
+    redaction:
+      enabled: false
+      output_dir: "$env:TEMP\\ferret-automation-redacted"
+      strategy: "simple"
+
+  # PowerShell CI/CD pipeline profile
+  powershell-cicd:
+    format: junit # JUnit XML for CI/CD systems
+    confidence_levels: high,medium
+    checks: all
+    verbose: true # Detailed output for CI/CD analysis
+    debug: false
+    no_color: true # No colors in CI/CD logs
+    recursive: true
+    enable_preprocessors: true
+    quiet: true # Suppress progress output
+    show_suppressed: false
+    generate_suppressions: false
+    description: "PowerShell CI/CD pipeline profile with JUnit XML output"
+    platform:
+      windows:
+        use_appdata: false # Use working directory in CI/CD
+        temp_dir: "$env:RUNNER_TEMP\\ferret-scan" # GitHub Actions temp directory
+    redaction:
+      enabled: false
+      output_dir: "$env:RUNNER_TEMP\\ferret-redacted"
+      strategy: "simple"
+
+  # PowerShell security audit profile
+  powershell-security:
+    format: csv # CSV for security reporting and analysis
+    confidence_levels: all
+    checks: all
+    verbose: true
+    debug: true # Enable debug for security analysis
+    no_color: true # Clean output for security reports
+    recursive: true
+    enable_preprocessors: true
+    quiet: false
+    show_match: true # Show matches for security analysis (use carefully)
+    show_suppressed: true # Include suppressed findings in security audit
+    description: "PowerShell security audit profile with comprehensive CSV reporting"
+    redaction:
+      enabled: true # Enable redaction for security compliance
+      output_dir: "$env:USERPROFILE\\Documents\\Security\\ferret-redacted"
+      strategy: "synthetic"
+      audit_log_file: "$env:USERPROFILE\\Documents\\Security\\ferret-audit.log"
+
+  # PowerShell quick check profile
+  powershell-quick:
+    format: json
+    confidence_levels: high # Only high-confidence findings
+    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT # Critical data types
+    verbose: false
+    debug: false
+    no_color: true
+    recursive: false # Current directory only
+    enable_preprocessors: false # Skip preprocessing for speed
+    quiet: true
+    description: "Quick PowerShell check for critical data types"
+    redaction:
+      enabled: false
+      output_dir: "$env:TEMP\\ferret-quick-redacted"
+      strategy: "simple"
+
+# PowerShell integration examples:
+#
+# Basic usage in PowerShell:
+# $results = ferret-scan --profile powershell-interactive --format json . | ConvertFrom-Json
+#
+# Process results in PowerShell:
+# $results.findings | Where-Object { $_.confidence -eq "high" } | Select-Object type, file, line
+#
+# Automation example:
+# $scanResults = ferret-scan --profile powershell-automation --format json $targetPath | ConvertFrom-Json
+# if ($scanResults.findings.Count -gt 0) {
+#     Write-Error "Sensitive data found: $($scanResults.findings.Count) findings"
+#     exit 1
+# }
+#
+# CI/CD integration:
+# ferret-scan --profile powershell-cicd --format junit $env:BUILD_SOURCESDIRECTORY > test-results.xml
+#
+# Security audit:
+# ferret-scan --profile powershell-security --format csv $auditPath > security-report.csv
