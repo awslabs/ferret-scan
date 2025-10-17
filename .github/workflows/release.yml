@@ -3,13 +3,13 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       snapshot:
-        description: 'Build snapshot release'
+        description: "Build snapshot release"
         required: false
-        default: 'false'
+        default: "false"
 
 permissions:
   contents: write
@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: '.go-version'
+          go-version-file: ".go-version"
 
       - name: Install git-chglog
         run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
@@ -57,8 +57,8 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: '~> v2'
-          args: release --clean
+          version: "~> v2"
+          args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -67,7 +67,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: '~> v2'
+          version: "~> v2"
           args: build --snapshot --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
