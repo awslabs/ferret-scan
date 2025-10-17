@@ -96,15 +96,11 @@ changelog:
     - title: Others
       order: 999
 
-# GitLab releases
-gitlab_urls:
-  api: https://code.aws.dev/api/v4/
-  download: https://code.aws.dev
-
+# GitHub releases
 release:
-  gitlab:
-    owner: personal_projects/alias_a/adifabio
-    name: Ferret-Scan
+  github:
+    owner: YOUR_GITHUB_USERNAME
+    name: ferret-scan
   # Ensure release is created even if some steps fail
   draft: false
   prerelease: auto
@@ -189,6 +185,6 @@ release:
     - [Pre-commit Integration](docs/PRE_COMMIT_INTEGRATION.md) - Git workflow integration
     - [Configuration Guide](docs/configuration.md) - Settings and profiles
 
-    **Full Changelog**: https://code.aws.dev/personal_projects/alias_a/adifabio/Ferret-Scan/-/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/YOUR_GITHUB_USERNAME/ferret-scan/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # Docker builds disabled - focusing on binary releases only

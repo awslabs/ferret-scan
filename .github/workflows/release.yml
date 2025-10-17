@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: 'Build snapshot release'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: '.go-version'
+
+      - name: Install git-chglog
+        run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+
+      - name: Generate/Update Changelog
+        run: |
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "📝 Generating initial changelog..."
+            git-chglog --output CHANGELOG.md
+          else
+            echo "📝 Updating changelog..."
+            git-chglog --output CHANGELOG.md
+          fi
+
+      - name: Commit Changelog
+        run: |
+          if [ -n "$(git status --porcelain CHANGELOG.md)" ]; then
+            echo "📝 Committing updated changelog..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add CHANGELOG.md
+            git commit -m "chore: update changelog for ${GITHUB_REF_NAME:-snapshot}"
+          fi
+
+      - name: Run GoReleaser (Release)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GoReleaser (Snapshot)
+        if: github.event.inputs.snapshot == 'true' || (github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: build --snapshot --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Snapshot Artifacts
+        if: github.event.inputs.snapshot == 'true' || (github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-binaries
+          path: dist/*
+          retention-days: 7
