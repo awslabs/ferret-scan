@@ -108,7 +108,7 @@ func (fps *FormatPreservingStrategy) ValidateRedaction(original, redacted, dataT
 			Severity:    SeverityError,
 			Type:        IssueTypeLength,
 			Description: "Length was not preserved in format-preserving redaction",
-			Suggestion:  "Ensure redacted text maintains original length",
+			Suggestion:  "Ensure hidden text maintains original length",
 		})
 	}
 
@@ -128,8 +128,8 @@ func (fps *FormatPreservingStrategy) ValidateRedaction(original, redacted, dataT
 		issues = append(issues, ValidationIssue{
 			Severity:    SeverityCritical,
 			Type:        IssueTypeSecurity,
-			Description: "Potential data leakage detected in redacted text",
-			Suggestion:  "Ensure no original sensitive data remains in redacted text",
+			Description: "Potential data leakage detected in hidden text",
+			Suggestion:  "Ensure no original sensitive data remains in hidden text",
 		})
 	}
 

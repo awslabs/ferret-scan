@@ -46,7 +46,7 @@ redaction:
 
   strategies:
     simple:
-      replacement: "[REDACTED]"
+      replacement: "[HIDDEN]"
     format_preserving:
       preserve_length: true
       preserve_format: true
