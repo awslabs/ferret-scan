@@ -259,7 +259,7 @@ go build -ldflags="-s -w" -o ferret-scan cmd/main.go
 - `--debug`: Enable debug logging to show preprocessing and validation flow
 - `--output`: Path to output file (if not specified, output to stdout)
 - `--no-color`: Disable colored output (useful for logging or non-terminal output)
-- `--show-match`: Display the actual matched text in findings
+- `--show-match`: Display the actual matched text in findings (otherwise shows [HIDDEN])
 - `--quiet`: Suppress progress output (useful for scripts and CI/CD)
 - `--help`: Show help information
 - `--version`: Show version information

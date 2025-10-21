@@ -27,7 +27,7 @@ This document summarizes the Amazon Comprehend PII detection integration impleme
   - Implements standard Validator interface
   - Enabled only with `--enable-genai` flag
   - Processes text content via `ValidateContent` method
-  - Context redaction for security (PII shown as [REDACTED])
+  - Context redaction for security (PII shown as [HIDDEN])
 
 ### 3. Integration with GenAI System
 - **Reuses existing `--enable-genai` flag** (no new flags needed)
@@ -77,7 +77,7 @@ This document summarizes the Amazon Comprehend PII detection integration impleme
 - **PHI Classification**: Identifies Protected Health Information
 
 ### 2. Security and Privacy
-- **Context Redaction**: PII values shown as [REDACTED] in context
+- **Context Redaction**: PII values shown as [HIDDEN] in context
 - **Secure Output**: Sensitive values masked in all output formats
 - **Debug Safety**: Debug output avoids exposing actual PII values
 

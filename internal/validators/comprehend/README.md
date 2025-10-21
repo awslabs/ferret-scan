@@ -172,15 +172,15 @@ File: document.txt
 Type: COMPREHEND_PII
 
 HIGH CONFIDENCE MATCHES:
-- SSN: [REDACTED] (95% confidence)
-  Context: "Please provide your ... [REDACTED] ... for verification"
+- SSN: [HIDDEN] (95% confidence)
+  Context: "Please provide your ... [HIDDEN] ... for verification"
 
-- EMAIL: [REDACTED] (92% confidence)
-  Context: "Contact us at ... [REDACTED] ... for support"
+- EMAIL: [HIDDEN] (92% confidence)
+  Context: "Contact us at ... [HIDDEN] ... for support"
 
 MEDIUM CONFIDENCE MATCHES:
-- PHONE: [REDACTED] (78% confidence)
-  Context: "Call ... [REDACTED] ... during business hours"
+- PHONE: [HIDDEN] (78% confidence)
+  Context: "Call ... [HIDDEN] ... during business hours"
 ```
 
 ### JSON Output
@@ -190,11 +190,11 @@ MEDIUM CONFIDENCE MATCHES:
     {
       "type": "PII",
       "subtype": "SSN",
-      "value": "[REDACTED]",
+      "value": "[HIDDEN]",
       "confidence": 95,
       "line": 1,
       "column": 45,
-      "context": "Please provide your ... [REDACTED] ... for verification",
+      "context": "Please provide your ... [HIDDEN] ... for verification",
       "file_path": "document.txt",
       "description": "Amazon Comprehend detected SSN with 95.2% confidence"
     }

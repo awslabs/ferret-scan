@@ -105,7 +105,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --debug\t\tEnable debug logging to show preprocessing, content routing, and validation flow")
 	fmt.Fprintln(w, "  --output\t<path>\tPath to output file (if not specified, output to stdout)")
 	fmt.Fprintln(w, "  --no-color\t\tDisable colored output")
-	fmt.Fprintln(w, "  --show-match\t\tDisplay the actual matched text in findings")
+	fmt.Fprintln(w, "  --show-match\t\tDisplay the actual matched text in findings (otherwise shows [HIDDEN])")
 	fmt.Fprintln(w, "  --enable-preprocessors\t\tEnable text extraction from documents (PDF, Office files) (default: true, use --enable-preprocessors=false to disable)")
 	fmt.Fprintln(w, "  --preprocess-only, -p\t\tOutput preprocessed text and exit (no validation or redaction)")
 	// GENAI_DISABLED: GenAI-related command line options

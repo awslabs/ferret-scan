@@ -46,7 +46,7 @@ redaction:
 
   strategies:
     simple:
-      replacement: "[DEV-REDACTED]" # Clear development redaction marker
+      replacement: "[DEV-HIDDEN]" # Clear development redaction marker
 
     format_preserving:
       preserve_length: true # Maintain formatting for development analysis

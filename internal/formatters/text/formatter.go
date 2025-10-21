@@ -169,7 +169,7 @@ func (f *Formatter) appendHeaders(builder *strings.Builder, matches []detector.M
 
 // calculateMatchColumnWidth calculates the optimal width for the match column
 func (f *Formatter) calculateMatchColumnWidth(matches []detector.Match, options formatters.FormatterOptions) int {
-	maxWidth := 10 // Minimum width for "[REDACTED]"
+	maxWidth := 10 // Minimum width for "[HIDDEN]"
 	for _, match := range matches {
 		if options.ShowMatch || options.Verbose {
 			matchText := strings.ReplaceAll(match.Text, "\n", " ")
@@ -280,7 +280,7 @@ func (f *Formatter) appendSummaryLine(builder *strings.Builder, match detector.M
 			matchText = string(runes[:targetWidth-3]) + "..."
 		}
 	} else {
-		matchText = "[REDACTED]"
+		matchText = "[HIDDEN]"
 	}
 	// Ensure exactly targetWidth visible characters by padding with spaces
 	runeCount := len([]rune(matchText))
@@ -774,7 +774,7 @@ func (f *Formatter) getPrecommitResolutionGuidance(matches []detector.Match) str
 	guidance.WriteString("Resolution options:\n")
 	guidance.WriteString("1. Remove or redact the sensitive data\n")
 	guidance.WriteString("2. Add suppression rules if data is intentional (see docs/suppression-system.md)\n")
-	guidance.WriteString("3. Use --show-match flag to see exact matches for review\n")
+	guidance.WriteString("3. Use --show-match flag to see exact matches for review (otherwise shows [HIDDEN])\n")
 
 	// Check if there are high confidence findings that should block
 	hasHighConfidence := false

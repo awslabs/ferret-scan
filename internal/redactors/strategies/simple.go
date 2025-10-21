@@ -37,9 +37,9 @@ func NewSimpleRedactionStrategy() *SimpleRedactionStrategy {
 			"DATE":        "[DATE-REDACTED]",
 			"IP_ADDRESS":  "[IP-ADDRESS-REDACTED]",
 			"URL":         "[URL-REDACTED]",
-			"PASSWORD":    "[PASSWORD-REDACTED]",
-			"API_KEY":     "[API-KEY-REDACTED]",
-			"DEFAULT":     "[REDACTED]",
+			"PASSWORD":    "[PASSWORD-HIDDEN]",
+			"API_KEY":     "[API-KEY-HIDDEN]",
+			"DEFAULT":     "[HIDDEN]",
 		},
 	}
 
@@ -106,7 +106,7 @@ func (srs *SimpleRedactionStrategy) ValidateRedaction(original, redacted, dataTy
 		issues = append(issues, ValidationIssue{
 			Severity:    SeverityCritical,
 			Type:        IssueTypeSecurity,
-			Description: "Original data found in redacted text",
+			Description: "Original data found in hidden text",
 			Suggestion:  "Ensure complete replacement of sensitive data",
 		})
 	}
@@ -117,7 +117,7 @@ func (srs *SimpleRedactionStrategy) ValidateRedaction(original, redacted, dataTy
 			Severity:    SeverityWarning,
 			Type:        IssueTypePattern,
 			Description: "Redacted text doesn't look like a standard redaction placeholder",
-			Suggestion:  "Use standard redaction placeholder format like [TYPE-REDACTED]",
+			Suggestion:  "Use standard redaction placeholder format like TYPE-HIDDEN",
 		})
 	}
 
@@ -190,8 +190,8 @@ func (srs *SimpleRedactionStrategy) applyBasicFormatPreservation(original, repla
 func (srs *SimpleRedactionStrategy) looksLikeRedactionPlaceholder(text string) bool {
 	// Check for common redaction patterns
 	redactionPatterns := []string{
-		"[REDACTED]",
-		"[.*-REDACTED]",
+		"[HIDDEN]",
+		"[.*-HIDDEN]",
 		"\\*\\*\\*+",
 		"XXX+",
 		"####+",

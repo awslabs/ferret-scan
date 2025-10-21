@@ -993,7 +993,7 @@ func (or *OfficeRedactor) generateVerificationHash(text string, startPos, endPos
 		return redactors.GenerateContextHash("invalid_context")
 	}
 
-	context := text[contextStart:startPos] + "[REDACTED]" + text[endPos:contextEnd]
+	context := text[contextStart:startPos] + "[HIDDEN]" + text[endPos:contextEnd]
 	return redactors.GenerateContextHash(context)
 }
 
