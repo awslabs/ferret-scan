@@ -25,7 +25,7 @@ func NewDataSanitizer() DataSanitizerInterface {
 func (s *DataSanitizer) SanitizeMessage(match detector.Match) string {
 	// Use secure defaults - never show actual sensitive data in GitLab reports
 	// This ensures GitLab Security Dashboard doesn't expose sensitive information
-	matchText := "[REDACTED]"
+	matchText := "[HIDDEN]"
 
 	// Create context-aware message based on check type
 	checkTypeDescription := s.GetCheckTypeDescription(match.Type)

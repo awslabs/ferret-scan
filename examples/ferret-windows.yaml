@@ -48,7 +48,7 @@ redaction:
   # Strategy-specific configurations
   strategies:
     simple:
-      replacement: "[REDACTED]" # Text to replace sensitive data with
+      replacement: "[HIDDEN]" # Text to replace sensitive data with
 
     format_preserving:
       preserve_length: true # Maintain original text length
