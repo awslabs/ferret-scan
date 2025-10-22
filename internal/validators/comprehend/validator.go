@@ -244,7 +244,7 @@ func (v *Validator) buildContextInfo(content string, beginOffset, endOffset int)
 	if beginOffset >= start && endOffset <= end {
 		relativeBegin := beginOffset - start
 		relativeEnd := endOffset - start
-		fullContext = fullContext[:relativeBegin] + "[REDACTED]" + fullContext[relativeEnd:]
+		fullContext = fullContext[:relativeBegin] + "[HIDDEN]" + fullContext[relativeEnd:]
 	}
 
 	// Clean up context (remove newlines, extra spaces)

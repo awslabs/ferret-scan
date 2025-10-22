@@ -518,7 +518,7 @@ jobs:
         wine ferret-scan-${{ matrix.name }}.exe --version || echo "Wine test completed"
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ferret-scan-${{ matrix.name }}
         path: |

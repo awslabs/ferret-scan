@@ -119,7 +119,7 @@ ferret-scan --file document.txt --format json
 
 # The output will include suppression info for each finding:
 {
-  "text": "[REDACTED]",
+  "text": "[HIDDEN]",
   "type": "SSN",
   "suppression_info": {
     "hash": "abc123...",
