@@ -560,7 +560,7 @@ jobs:
             --format json --output /data/results.json
       
       - name: Upload results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ferret-scan-results
           path: results.json
