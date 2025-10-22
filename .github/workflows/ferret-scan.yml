@@ -6,7 +6,7 @@ name: Ferret Scan Security Check
 on:
   # Run on pull requests
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [main, master, develop]
     paths:
       - '**.py'
       - '**.js'
@@ -19,11 +19,11 @@ on:
       - '**.env'
       - '**.conf'
       - '**.config'
-  
+
   # Run on pushes to main branch
   push:
-    branches: [ main, master ]
-  
+    branches: [main, master]
+
   # Allow manual triggering
   workflow_dispatch:
     inputs:
@@ -49,26 +49,26 @@ jobs:
   ferret-scan:
     name: Sensitive Data Detection
     runs-on: ubuntu-latest
-    
+
     # Set permissions for the job
     permissions:
       contents: read
       pull-requests: write
       checks: write
       security-events: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           # Fetch full history for better analysis
           fetch-depth: 0
-      
+
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.25.1'
-      
+
       - name: Cache Go modules
         uses: actions/cache@v3
         with:
@@ -78,12 +78,12 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-      
+
       - name: Build Ferret Scan
         run: |
           make build
           chmod +x bin/ferret-scan
-      
+
       - name: Determine scan scope
         id: scope
         run: |
@@ -97,7 +97,7 @@ jobs:
             echo "scope=full-repository" >> $GITHUB_OUTPUT
             echo "confidence=high,medium" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Get changed files (PR only)
         if: steps.scope.outputs.scope == 'changed-files'
         id: changed-files
@@ -117,7 +117,7 @@ jobs:
               | grep -v -E '(test_|_test\.|spec_|_spec\.|mock_|_mock\.)' \
               > changed_files.txt || true
           fi
-          
+
           if [ -s changed_files.txt ]; then
             echo "has_files=true" >> $GITHUB_OUTPUT
             echo "Changed files to scan:"
@@ -126,39 +126,39 @@ jobs:
             echo "has_files=false" >> $GITHUB_OUTPUT
             echo "No relevant files changed"
           fi
-      
+
       - name: Run Ferret Scan on changed files
         if: steps.scope.outputs.scope == 'changed-files' && steps.changed-files.outputs.has_files == 'true'
         run: |
           echo "🔍 Scanning changed files for sensitive data..."
-          
-          # Create results directory
-          mkdir -p results
-          
+
+          # Create results directories
+          mkdir -p results sarif
+
           # Scan each changed file
           exit_code=0
           high_findings=0
           medium_findings=0
-          
+
           while IFS= read -r file; do
             if [ -f "$file" ]; then
               echo "Scanning: $file"
-              
-              # Run scan and capture results
+
+              # Run scan and capture results in JSON (for PR comments)
               if ./bin/ferret-scan \
                 --file "$file" \
                 --confidence "${{ steps.scope.outputs.confidence }}" \
                 --format json \
                 --no-color \
                 --quiet > "results/${file//\//_}.json" 2>/dev/null; then
-                
+
                 # Count findings
                 file_high=$(jq -r '.findings[] | select(.confidence == "HIGH") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
                 file_medium=$(jq -r '.findings[] | select(.confidence == "MEDIUM") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
-                
+
                 high_findings=$((high_findings + file_high))
                 medium_findings=$((medium_findings + file_medium))
-                
+
                 if [ "$file_high" -gt 0 ] || [ "$file_medium" -gt 0 ]; then
                   echo "  ⚠️  Found $file_high high + $file_medium medium confidence findings"
                 fi
@@ -168,8 +168,8 @@ jobs:
               fi
             fi
           done < changed_files.txt
-          
-          # Combine all results
+
+          # Combine all results for JSON (backward compatibility)
           echo '{"findings": []}' > results/combined.json
           for result_file in results/*.json; do
             if [ "$result_file" != "results/combined.json" ] && [ -f "$result_file" ]; then
@@ -177,23 +177,47 @@ jobs:
               mv temp.json results/combined.json
             fi
           done
-          
+
+          # Generate native SARIF report for GitHub Security
+          echo "📄 Generating native SARIF report..."
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              ./bin/ferret-scan \
+                --file "$file" \
+                --confidence "${{ steps.scope.outputs.confidence }}" \
+                --format sarif \
+                --no-color \
+                --quiet >> sarif/ferret-scan-temp.sarif 2>/dev/null || true
+            fi
+          done < changed_files.txt
+
+          # Merge SARIF results if multiple files were scanned
+          if [ -f "sarif/ferret-scan-temp.sarif" ]; then
+            mv sarif/ferret-scan-temp.sarif sarif/ferret-scan.sarif
+          else
+            # Create empty SARIF if no results
+            ./bin/ferret-scan --file /dev/null --format sarif --no-color --quiet > sarif/ferret-scan.sarif 2>/dev/null || echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"Ferret Scan","version":"1.0.0"}},"results":[]}]}' > sarif/ferret-scan.sarif
+          fi
+
           # Generate summary
           echo "high_findings=$high_findings" >> $GITHUB_ENV
           echo "medium_findings=$medium_findings" >> $GITHUB_ENV
           echo "scan_exit_code=$exit_code" >> $GITHUB_ENV
-          
+
           echo "📊 Scan Summary:"
           echo "   High confidence findings: $high_findings"
           echo "   Medium confidence findings: $medium_findings"
-      
+
       - name: Run Ferret Scan on full repository
         if: steps.scope.outputs.scope == 'full-repository'
         run: |
           echo "🔍 Scanning full repository for sensitive data..."
-          
+
+          # Create results directories
+          mkdir -p results sarif
+
           # Use profile-based configuration if available
-          scan_args=(
+          scan_args_json=(
             "--file" "."
             "--recursive"
             "--confidence" "${{ steps.scope.outputs.confidence }}"
@@ -202,26 +226,38 @@ jobs:
             "--no-color"
             "--quiet"
           )
-          
+
+          scan_args_sarif=(
+            "--file" "."
+            "--recursive"
+            "--confidence" "${{ steps.scope.outputs.confidence }}"
+            "--format" "sarif"
+            "--output" "sarif/ferret-scan.sarif"
+            "--no-color"
+            "--quiet"
+          )
+
           # Add config file if it exists
           if [ -f ".ferret-scan.yaml" ]; then
-            scan_args+=("--config" ".ferret-scan.yaml")
-            scan_args+=("--profile" "ci")
+            scan_args_json+=("--config" ".ferret-scan.yaml")
+            scan_args_json+=("--profile" "ci")
+            scan_args_sarif+=("--config" ".ferret-scan.yaml")
+            scan_args_sarif+=("--profile" "ci")
           elif [ -f "ferret-config.yaml" ]; then
-            scan_args+=("--config" "ferret-config.yaml")
+            scan_args_json+=("--config" "ferret-config.yaml")
+            scan_args_sarif+=("--config" "ferret-config.yaml")
           fi
-          
-          # Run the scan
-          mkdir -p results
-          if ./bin/ferret-scan "${scan_args[@]}"; then
+
+          # Run the scan in JSON format (for PR comments - backward compatibility)
+          if ./bin/ferret-scan "${scan_args_json[@]}"; then
             # Count findings
             high_findings=$(jq -r '.findings[] | select(.confidence == "HIGH") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
             medium_findings=$(jq -r '.findings[] | select(.confidence == "MEDIUM") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
-            
+
             echo "high_findings=$high_findings" >> $GITHUB_ENV
             echo "medium_findings=$medium_findings" >> $GITHUB_ENV
             echo "scan_exit_code=0" >> $GITHUB_ENV
-            
+
             echo "📊 Full Repository Scan Summary:"
             echo "   High confidence findings: $high_findings"
             echo "   Medium confidence findings: $medium_findings"
@@ -229,47 +265,12 @@ jobs:
             echo "scan_exit_code=1" >> $GITHUB_ENV
             echo "❌ Full repository scan failed"
           fi
-      
-      - name: Generate SARIF report
-        if: always()
-        run: |
-          # Convert JSON results to SARIF format for GitHub Security tab
-          mkdir -p sarif
-          
-          # Find the results file
-          if [ -f "results/combined.json" ]; then
-            results_file="results/combined.json"
-          elif [ -f "results/full-scan.json" ]; then
-            results_file="results/full-scan.json"
-          else
-            echo '{"findings": []}' > results/empty.json
-            results_file="results/empty.json"
-          fi
-          
-          # Convert to SARIF (simplified version)
-          cat > sarif/ferret-scan.sarif << EOF
-          {
-            "\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-            "version": "2.1.0",
-            "runs": [
-              {
-                "tool": {
-                  "driver": {
-                    "name": "Ferret Scan",
-                    "version": "1.0.0",
-                    "informationUri": "https://github.com/awslabs/ferret-scan"
-                  }
-                },
-                "results": []
-              }
-            ]
-          }
-          EOF
-          
-          # Add findings to SARIF (this is a simplified conversion)
-          # In a real implementation, you'd want a proper JSON-to-SARIF converter
-          echo "📄 SARIF report generated at sarif/ferret-scan.sarif"
-      
+
+          # Generate native SARIF report for GitHub Security
+          echo "📄 Generating native SARIF report..."
+          ./bin/ferret-scan "${scan_args_sarif[@]}" || echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"Ferret Scan","version":"1.0.0"}},"results":[]}]}' > sarif/ferret-scan.sarif
+
+
       - name: Upload SARIF to GitHub Security
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -277,14 +278,14 @@ jobs:
           sarif_file: sarif/ferret-scan.sarif
           category: ferret-scan
         continue-on-error: true
-      
+
       - name: Create PR comment
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v6
         with:
           script: |
             const fs = require('fs');
-            
+
             // Read results
             let findings = [];
             try {
@@ -298,14 +299,14 @@ jobs:
             } catch (e) {
               console.log('No results file found or error reading results');
             }
-            
+
             const highFindings = process.env.high_findings || '0';
             const mediumFindings = process.env.medium_findings || '0';
             const scanExitCode = process.env.scan_exit_code || '0';
-            
+
             // Create comment body
             let commentBody = '## 🔍 Ferret Scan Results\n\n';
-            
+
             if (scanExitCode !== '0') {
               commentBody += '❌ **Scan failed** - Please check the workflow logs for details.\n\n';
             } else if (highFindings === '0' && mediumFindings === '0') {
@@ -314,12 +315,12 @@ jobs:
               commentBody += `⚠️ **Sensitive data detected:**\n`;
               commentBody += `- High confidence: ${highFindings} findings\n`;
               commentBody += `- Medium confidence: ${mediumFindings} findings\n\n`;
-              
+
               if (findings.length > 0) {
                 commentBody += '### Findings Summary:\n\n';
                 commentBody += '| File | Type | Confidence | Line |\n';
                 commentBody += '|------|------|------------|------|\n';
-                
+
                 findings.slice(0, 10).forEach(finding => {
                   const file = finding.filename || 'Unknown';
                   const type = finding.type || 'Unknown';
@@ -327,22 +328,22 @@ jobs:
                   const line = finding.line_number || 'N/A';
                   commentBody += `| ${file} | ${type} | ${confidence} | ${line} |\n`;
                 });
-                
+
                 if (findings.length > 10) {
                   commentBody += `\n*... and ${findings.length - 10} more findings*\n`;
                 }
               }
-              
+
               commentBody += '\n### Next Steps:\n';
               commentBody += '1. Review the findings above\n';
               commentBody += '2. Remove or redact any actual sensitive data\n';
               commentBody += '3. Add suppressions for false positives\n';
               commentBody += '4. Re-run the scan after making changes\n';
             }
-            
+
             commentBody += '\n---\n';
             commentBody += '*🤖 This comment was automatically generated by Ferret Scan*';
-            
+
             // Post comment
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -350,7 +351,7 @@ jobs:
               repo: context.repo.repo,
               body: commentBody
             });
-      
+
       - name: Upload scan results
         if: always()
         uses: actions/upload-artifact@v4
@@ -360,7 +361,7 @@ jobs:
             results/
             sarif/
           retention-days: 30
-      
+
       - name: Fail on high confidence findings
         if: env.high_findings != '0'
         run: |

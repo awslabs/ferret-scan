@@ -41,6 +41,7 @@ import (
 	_ "ferret-scan/internal/formatters/gitlab-sast"
 	_ "ferret-scan/internal/formatters/json"
 	_ "ferret-scan/internal/formatters/junit"
+	_ "ferret-scan/internal/formatters/sarif"
 	_ "ferret-scan/internal/formatters/text"
 	_ "ferret-scan/internal/formatters/yaml"
 	"ferret-scan/internal/parallel"
@@ -692,7 +693,7 @@ func main() {
 	configFile := flag.String("config", "", "Path to configuration file (YAML)")
 	profileName := flag.String("profile", "", "Profile name to use from config file")
 	listProfiles := flag.Bool("list-profiles", false, "List available profiles in config file")
-	outputFormat := flag.String("format", "", "Output format: text, json, csv, yaml, junit, gitlab-sast (default: text)")
+	outputFormat := flag.String("format", "", "Output format: text, json, csv, yaml, junit, gitlab-sast, sarif (default: text)")
 	confidenceLevels := flag.String("confidence", "", "Confidence levels to display: high, medium, low, or combinations like 'high,medium'")
 	checksToRun := flag.String("checks", "", "Specific checks to run: CREDIT_CARD, PASSPORT, METADATA, or combinations like 'CREDIT_CARD,METADATA'")
 	verbose := flag.Bool("verbose", false, "Display detailed information for each finding")
