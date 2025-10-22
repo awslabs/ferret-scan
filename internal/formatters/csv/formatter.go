@@ -95,7 +95,7 @@ func (f *Formatter) createCSVRow(match detector.Match, options formatters.Format
 	} else {
 		// Full format for normal mode
 		// Determine display text based on ShowMatch option
-		displayText := "[REDACTED]"
+		displayText := "[HIDDEN]"
 		if options.ShowMatch {
 			displayText = match.Text
 		}

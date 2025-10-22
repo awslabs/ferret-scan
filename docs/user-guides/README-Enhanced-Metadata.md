@@ -401,7 +401,7 @@ fi
 
 ### Security Considerations
 
-1. **Avoid Exposing Sensitive Data**: Use `--show-match false` in production environments
+1. **Avoid Exposing Sensitive Data**: Avoid using `--show-match` in production environments (data will show as [HIDDEN] by default)
 2. **Secure Result Storage**: Ensure scan results are stored securely
 3. **Regular Scanning**: Implement regular metadata scanning in your workflow
 4. **Access Control**: Limit access to metadata scanning results

@@ -671,7 +671,7 @@ func (pr *PDFRedactor) generateVerificationHash(text string, startPos, endPos in
 		return redactors.GenerateContextHash("invalid_context")
 	}
 
-	context := text[contextStart:startPos] + "[REDACTED]" + text[endPos:contextEnd]
+	context := text[contextStart:startPos] + "[HIDDEN]" + text[endPos:contextEnd]
 	return redactors.GenerateContextHash(context)
 }
 

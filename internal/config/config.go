@@ -158,7 +158,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	config.Redaction.IndexFile = ""
 	config.Redaction.MemoryScrub = true
 	config.Redaction.AuditTrail = true
-	config.Redaction.Strategies.Simple.Replacement = "[REDACTED]"
+	config.Redaction.Strategies.Simple.Replacement = "[HIDDEN]"
 	config.Redaction.Strategies.FormatPreserving.PreserveLength = true
 	config.Redaction.Strategies.FormatPreserving.PreserveFormat = true
 	config.Redaction.Strategies.Synthetic.Secure = true

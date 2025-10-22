@@ -46,7 +46,7 @@ redaction:
 
   strategies:
     simple:
-      replacement: "[ENTERPRISE-REDACTED]" # Clear enterprise redaction marker
+      replacement: "[ENTERPRISE-HIDDEN]" # Clear enterprise redaction marker
 
     format_preserving:
       preserve_length: true # Maintain document formatting
