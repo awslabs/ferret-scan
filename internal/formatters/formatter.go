@@ -154,6 +154,8 @@ func GetFormatInfo(name string) FormatInfo {
 		info.MimeType = "application/xml"
 	case "text":
 		info.MimeType = "text/plain"
+	case "sarif":
+		info.MimeType = "application/sarif+json"
 	default:
 		info.MimeType = "application/octet-stream"
 	}
