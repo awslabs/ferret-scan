@@ -30,6 +30,7 @@ import (
 	_ "ferret-scan/internal/formatters/gitlab-sast"
 	_ "ferret-scan/internal/formatters/json"
 	_ "ferret-scan/internal/formatters/junit"
+	_ "ferret-scan/internal/formatters/sarif"
 	_ "ferret-scan/internal/formatters/text"
 	_ "ferret-scan/internal/formatters/yaml"
 )
@@ -538,33 +539,10 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 		return
 	}
 
-	// Determine content type and filename
-	var contentType string
-	var fileExtension string
-
-	switch exportRequest.Format {
-	case "json":
-		contentType = "application/json"
-		fileExtension = ".json"
-	case "csv":
-		contentType = "text/csv"
-		fileExtension = ".csv"
-	case "yaml":
-		contentType = "application/x-yaml"
-		fileExtension = ".yaml"
-	case "junit":
-		contentType = "application/xml"
-		fileExtension = ".xml"
-	case "gitlab-sast":
-		contentType = "application/json"
-		fileExtension = ".json"
-	case "text":
-		contentType = "text/plain"
-		fileExtension = ".txt"
-	default:
-		contentType = "application/octet-stream"
-		fileExtension = ".txt"
-	}
+	// Get format info using the centralized GetFormatInfo function
+	formatInfo := formatters.GetFormatInfo(exportRequest.Format)
+	contentType := formatInfo.MimeType
+	fileExtension := formatInfo.Extension
 
 	// Generate filename with timestamp
 	timestamp := time.Now().Format("20060102-150405")

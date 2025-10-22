@@ -190,6 +190,7 @@ Provides context around a match:
 - **yaml** - YAML format output, 100% compatible with JSON structure
 - **junit** - JUnit XML format for CI/CD integration and test reporting
 - **gitlab-sast** - GitLab Security Report format for GitLab Security Dashboard integration
+- **sarif** - SARIF 2.1.0 format for GitHub Security, IDEs, and security platforms
 
 ## Integration
 
@@ -250,3 +251,90 @@ if err != nil {
 - Sanitizes sensitive data to prevent exposure in vulnerability descriptions
 - Generates deterministic vulnerability IDs for consistent tracking
 - Includes proper GitLab analyzer and scanner metadata
+
+### SARIF
+- SARIF (Static Analysis Results Interchange Format) 2.1.0 compliant output
+- Native integration with GitHub Security tab and code scanning alerts
+- Compatible with Azure DevOps, VS Code SARIF Viewer, IntelliJ SARIF plugin
+- MIME type: `application/sarif+json` for web integration
+- All sensitive data findings are reported at "error" level (since all detections are sensitive by nature)
+- Detection confidence is preserved in result properties (`confidence` and `confidenceLevel`)
+- Includes comprehensive rule definitions for each detection type with descriptions and remediation guidance
+- Supports suppressed findings with SARIF suppression metadata (level "none" with justification)
+- Includes contextual information (contextRegion) when available from detector matches
+- Result ranking combines data type sensitivity and detection confidence for prioritization
+- Respects `FormatterOptions.ShowMatch` for snippet inclusion to control sensitive data exposure
+
+#### GitHub Security Integration
+The SARIF formatter enables seamless integration with GitHub's code scanning features:
+
+```bash
+# Generate SARIF output for GitHub Actions
+ferret-scan --file . --recursive --format sarif --output ferret-scan.sarif
+
+# Upload to GitHub Security tab (in GitHub Actions workflow)
+- uses: github/codeql-action/upload-sarif@v2
+  with:
+    sarif_file: ferret-scan.sarif
+```
+
+Findings will appear in:
+- GitHub Security tab with full context and location information
+- Pull request checks with inline annotations
+- Security alerts with tracking across branches
+
+#### SARIF Usage Examples
+
+Basic SARIF output:
+```bash
+ferret-scan --file sensitive-data.txt --format sarif
+```
+
+SARIF output to file:
+```bash
+ferret-scan --file . --recursive --format sarif --output results.sarif
+```
+
+SARIF with confidence filtering:
+```bash
+ferret-scan --file . --recursive --confidence high,medium --format sarif
+```
+
+SARIF with verbose context:
+```bash
+ferret-scan --file . --recursive --format sarif --verbose
+```
+
+SARIF without showing matched text (for security):
+```bash
+ferret-scan --file . --recursive --format sarif --no-show-match
+```
+
+#### Confidence vs Sensitivity Distinction
+The SARIF formatter makes an important distinction between detection confidence and data sensitivity:
+
+- **Sensitivity (SARIF Level)**: All sensitive data findings are reported at `"error"` level because any detection of PII, credentials, or sensitive data is considered a security issue regardless of confidence
+- **Confidence (Result Properties)**: Detection confidence (HIGH/MEDIUM/LOW and percentage) is preserved in `result.properties.confidence` and `result.properties.confidenceLevel` for filtering and prioritization
+- **Ranking**: The `result.rank` field combines both data type sensitivity and detection confidence to help prioritize remediation efforts
+
+This approach ensures that:
+1. Security dashboards treat all findings as actionable security issues
+2. Teams can still filter by confidence level using the `--confidence` flag
+3. Prioritization considers both the sensitivity of the data type and the reliability of the detection
+
+Example SARIF result structure:
+```json
+{
+  "ruleId": "SSN",
+  "level": "error",
+  "message": {
+    "text": "Social Security Number detected"
+  },
+  "properties": {
+    "confidence": 95.5,
+    "confidenceLevel": "HIGH",
+    "validator": "ssn"
+  },
+  "rank": 85.5
+}
+```
