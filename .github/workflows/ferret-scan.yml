@@ -220,6 +220,8 @@ jobs:
           scan_args_json=(
             "--file" "."
             "--recursive"
+            "--exclude" "results/**"
+            "--exclude" "sarif/**"
             "--confidence" "${{ steps.scope.outputs.confidence }}"
             "--format" "json"
             "--output" "results/full-scan.json"
@@ -230,6 +232,8 @@ jobs:
           scan_args_sarif=(
             "--file" "."
             "--recursive"
+            "--exclude" "results/**"
+            "--exclude" "sarif/**"
             "--confidence" "${{ steps.scope.outputs.confidence }}"
             "--format" "sarif"
             "--output" "sarif/ferret-scan.sarif"
