@@ -427,7 +427,7 @@ func (dl *DebugLogger) shouldLogDetailed() bool {
 
 func (dl *DebugLogger) redactSensitiveContent(content string) string {
 	if !dl.config.LogSensitiveContent {
-		return "[REDACTED]"
+		return "[HIDDEN]"
 	}
 
 	// Limit content length

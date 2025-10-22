@@ -839,7 +839,7 @@
                                         </div>
                                         <div class="checkbox-item">
                                             <input type="checkbox" id="showMatchCheck" onchange="updateCliCommand()">
-                                            <label>Display actual matched text (otherwise shows [REDACTED])</label>
+                                            <label>Display actual matched text (otherwise shows [HIDDEN])</label>
                                         </div>
                                         <div class="checkbox-item">
                                             <input type="checkbox" id="recursiveCheck">
@@ -1511,7 +1511,7 @@
                                     <li><strong>Confidence Levels:</strong> Filter by HIGH, MEDIUM, LOW, or all</li>
                                     <li><strong>Detection Types:</strong> Select specific validators or run all</li>
                                     <li><strong>Verbose Output:</strong> Show detailed metadata for findings</li>
-                                    <li><strong>Show Match:</strong> Display actual text (otherwise shows [REDACTED])
+                                    <li><strong>Show Match:</strong> Display actual text (otherwise shows [HIDDEN])
                                     </li>
                                 </ul>
 
@@ -2108,7 +2108,7 @@
                     <td>${Math.round(result.confidence)}%</td>
                     <td>${result.line_number}</td>
                     <td>
-                        <div class="finding-text" style="max-width: 350px; word-break: break-word; overflow-wrap: break-word; white-space: normal;">${showMatch ? escapeHtml(extractMetadataValue(result.text, validator)) : `<span class="redacted-link" onclick="toggleRedactedText(this, ${index})" title="Click to reveal">🔒 [REDACTED]</span>`}</div>
+                        <div class="finding-text" style="max-width: 350px; word-break: break-word; overflow-wrap: break-word; white-space: normal;">${showMatch ? escapeHtml(extractMetadataValue(result.text, validator)) : `<span class="redacted-link" onclick="toggleRedactedText(this, ${index})" title="Click to reveal">🔒 [HIDDEN]</span>`}</div>
                         ${verbose && result.metadata ? formatMetadata(result.metadata) : ''}
                     </td>
                     <td title="${escapeHtml(result.filename)}">${escapeHtml(formatPathForDisplay(result.filename))}</td>
@@ -4048,7 +4048,7 @@
                     <td style="white-space: nowrap;"><span class="confidence-badge confidence-${confidenceLevel}">${confidenceLevel.toUpperCase()}</span> (${Math.round(confidence)}%)</td>
                     <td style="white-space: nowrap;" title="${escapeHtml(actualFinding.Filename || actualFinding.filename)}">${escapeHtml(formatPathForDisplay(actualFinding.Filename || actualFinding.filename))}</td>
                     <td style="white-space: nowrap; text-align: center;">${finding.line_number || 'N/A'}</td>
-                    <td><div class="finding-text">${document.getElementById('showMatchCheck').checked ? `<span style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal;">${escapeHtml(actualFinding.Text || actualFinding.text)}</span>` : `<span class="redacted-link" data-text="${(actualFinding.Text || actualFinding.text).replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" onclick="toggleSuppressedTextFromData(this)" title="Click to reveal">🔒 [REDACTED]</span>`}</div></td>
+                    <td><div class="finding-text">${document.getElementById('showMatchCheck').checked ? `<span style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal;">${escapeHtml(actualFinding.Text || actualFinding.text)}</span>` : `<span class="redacted-link" data-text="${(actualFinding.Text || actualFinding.text).replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" onclick="toggleSuppressedTextFromData(this)" title="Click to reveal">🔒 [HIDDEN]</span>`}</div></td>
                     <td style="font-family: monospace; font-size: 12px; white-space: nowrap;">${suppressed.suppressed_by}</td>
                     <td style="word-wrap: break-word; overflow-wrap: break-word;">${escapeHtml(suppressed.rule_reason)}</td>
                     <td style="white-space: nowrap;">${expirationStatus}</td>
@@ -4078,7 +4078,7 @@
         // Function to toggle redacted text visibility
         function toggleRedactedText(element, index) {
             if (element.classList.contains('revealed')) {
-                element.innerHTML = '🔒 [REDACTED]';
+                element.innerHTML = '🔒 [HIDDEN]';
                 element.classList.remove('revealed');
                 element.title = 'Click to reveal';
             } else {
@@ -4092,7 +4092,7 @@
         // Function for suppressed findings modal
         function toggleSuppressedText(element, actualText) {
             if (element.classList.contains('revealed')) {
-                element.innerHTML = '🔒 [REDACTED]';
+                element.innerHTML = '🔒 [HIDDEN]';
                 element.classList.remove('revealed');
                 element.title = 'Click to reveal';
             } else {
@@ -4109,7 +4109,7 @@
                 .replace(/&lt;/g, '<')
                 .replace(/&gt;/g, '>');
             if (element.classList.contains('revealed')) {
-                element.innerHTML = '🔒 [REDACTED]';
+                element.innerHTML = '🔒 [HIDDEN]';
                 element.classList.remove('revealed');
                 element.title = 'Click to reveal';
                 element.style.whiteSpace = 'nowrap';

@@ -433,7 +433,7 @@ func extractDirectField(data []byte, fieldName string) string {
 	if fieldName == "Producer" {
 		// Try different TCPDF patterns
 		tcpdfPatterns := []string{
-			`TCPDF\s+([\d\.]+)\s+\(http://www.tcpdf.org\)`,
+			`TCPDF\s+([\d\.]+)\s+\(http://www\.tcpdf\.org\)`,
 			`TCPDF\s*([\d\.]+)`,
 			`Producer.*?TCPDF`,
 			`tcpdf`,
