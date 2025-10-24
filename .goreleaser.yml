@@ -32,8 +32,8 @@ builds:
 
 archives:
   - id: binaries
-    format: binary
-    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}'
+    formats: [binary]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     ids:
       - ferret-scan-cli
 
