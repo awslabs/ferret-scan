@@ -75,16 +75,8 @@ COPY --from=builder /scratch-fs/home/ferret /home/ferret
 COPY --from=builder /scratch-fs/etc/passwd /etc/passwd
 COPY --from=builder /scratch-fs/etc/group /etc/group
 
-# Copy static binary (single executable)
+# Copy static binary (single executable with embedded web template)
 COPY --from=builder /app/ferret-scan /ferret-scan
-
-# Note: No entrypoint script needed - using direct binary execution
-
-# Copy web template (required for web UI)
-COPY --from=builder /app/web/template.html /web/template.html
-
-# Copy all documentation for web UI access
-COPY --from=builder /app/docs /docs
 
 # Minimal environment variables
 ENV FERRET_CONTAINER_MODE=true
