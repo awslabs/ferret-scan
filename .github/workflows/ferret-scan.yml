@@ -152,9 +152,9 @@ jobs:
                 --no-color \
                 --quiet > "results/${file//\//_}.json" 2>/dev/null; then
 
-                # Count findings (using .results[] for new JSON format)
-                file_high=$(jq -r '.results[]? | select(.confidence == "HIGH") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
-                file_medium=$(jq -r '.results[]? | select(.confidence == "MEDIUM") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
+                # Count findings (handle both array and object formats)
+                file_high=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "HIGH") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
+                file_medium=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "MEDIUM") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
 
                 high_findings=$((high_findings + file_high))
                 medium_findings=$((medium_findings + file_medium))
@@ -169,11 +169,16 @@ jobs:
             fi
           done < changed_files.txt
 
-          # Combine all results for JSON (using new .results format)
+          # Combine all results for JSON (handle both array and object formats)
           echo '{"results": []}' > results/combined.json
           for result_file in results/*.json; do
             if [ "$result_file" != "results/combined.json" ] && [ -f "$result_file" ]; then
-              jq -s '.[0].results + (.[1].results // []) | {results: .}' results/combined.json "$result_file" > temp.json
+              # Handle both array format [] and object format {results: []}
+              jq -s '
+                .[0].results + 
+                (if .[1] | type == "array" then .[1] else (.[1].results // []) end) | 
+                {results: .}
+              ' results/combined.json "$result_file" > temp.json
               mv temp.json results/combined.json
             fi
           done
@@ -254,9 +259,9 @@ jobs:
 
           # Run the scan in JSON format (for PR comments)
           if ./bin/ferret-scan "${scan_args_json[@]}"; then
-            # Count findings (using .results[] for new JSON format)
-            high_findings=$(jq -r '.results[]? | select(.confidence == "HIGH") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
-            medium_findings=$(jq -r '.results[]? | select(.confidence == "MEDIUM") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
+            # Count findings (handle both array and object formats)
+            high_findings=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "HIGH") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
+            medium_findings=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "MEDIUM") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
 
             echo "high_findings=$high_findings" >> $GITHUB_ENV
             echo "medium_findings=$medium_findings" >> $GITHUB_ENV
