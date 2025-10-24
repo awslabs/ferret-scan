@@ -2,6 +2,8 @@
 # Basic sensitive data detection for pull requests
 
 name: Security Scan
+permissions:
+  contents: read
 
 on:
   pull_request:
