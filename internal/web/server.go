@@ -4,6 +4,7 @@
 package web
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,6 +35,9 @@ import (
 	_ "ferret-scan/internal/formatters/text"
 	_ "ferret-scan/internal/formatters/yaml"
 )
+
+//go:embed assets/template.html
+var embeddedTemplate string
 
 // WebServer represents the web server instance
 type WebServer struct {
@@ -136,13 +140,13 @@ func (ws *WebServer) validateTemplate() error {
 	templateContent := ws.loadTemplate()
 	if len(templateContent) == 0 {
 		return fmt.Errorf("web template is empty or could not be loaded\n" +
-			"Troubleshooting: Ensure web/template.html exists in the current directory")
+			"Troubleshooting: Template should be embedded in the binary")
 	}
 
 	// Check if we're using the fallback template
 	if strings.Contains(templateContent, "Template not found") {
 		return fmt.Errorf("web template not found, using fallback\n" +
-			"Troubleshooting: Ensure web/template.html exists in the current directory")
+			"Troubleshooting: Template should be embedded in the binary at build time")
 	}
 
 	return nil
@@ -157,7 +161,6 @@ func (ws *WebServer) setupRoutes() {
 
 	// Static asset serving with security validation
 	http.HandleFunc("/logo", ws.serveLogo)
-	http.HandleFunc("/docs/", ws.serveDocs)
 
 	// Suppression management endpoints (delegate to CLI suppression system)
 	http.HandleFunc("/suppressions", ws.handleSuppressions)
@@ -204,30 +207,17 @@ func (ws *WebServer) serveHome(responseWriter http.ResponseWriter, request *http
 	responseWriter.Write([]byte(htmlContent))
 }
 
-// loadTemplate loads the HTML template from file with fallback to embedded template
+// loadTemplate loads the HTML template from embedded content
 func (ws *WebServer) loadTemplate() string {
-	// Try to load from web/template.html first (use platform-aware path joining)
-	templatePath := paths.JoinPath("web", "template.html")
-	cleanTemplatePath := filepath.Clean(templatePath)
-	if content, err := os.ReadFile(cleanTemplatePath); err == nil {
-		return string(content)
+	// Return embedded template (always available in production binary)
+	if embeddedTemplate != "" {
+		return embeddedTemplate
 	}
 
-	// Try to load from current directory
-	cleanCurrentPath := filepath.Clean("template.html")
-	if content, err := os.ReadFile(cleanCurrentPath); err == nil {
-		return string(content)
-	}
-
-	// Fallback to embedded template
-	return ws.getEmbeddedTemplate()
-}
-
-// getEmbeddedTemplate returns embedded fallback template
-func (ws *WebServer) getEmbeddedTemplate() string {
+	// Fallback if embed somehow failed (should never happen)
 	return `<!DOCTYPE html>
 <html><head><title>Ferret Scan</title></head>
-<body><h1>Ferret Scan</h1><p>Template not found. Please ensure template.html is in the same directory as the web server.</p></body></html>`
+<body><h1>Ferret Scan</h1><p>Template not found. Please ensure template.html is embedded in the binary.</p></body></html>`
 }
 
 // handleHealth provides a health check endpoint with CLI version information
@@ -1278,64 +1268,14 @@ func (ws *WebServer) serveLogo(responseWriter http.ResponseWriter, request *http
 	responseWriter.Write(logoData)
 }
 
-// serveDocs serves documentation files from docs/ directory with security validation
-func (ws *WebServer) serveDocs(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "GET" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Extract the requested path (remove /docs/ prefix)
-	docPath := strings.TrimPrefix(request.URL.Path, "/docs/")
-	if docPath == "" {
-		ws.sendErrorWithStatus(responseWriter, "Document path required", http.StatusBadRequest)
-		return
-	}
-
-	// Construct full path using platform-aware path joining
-	fullPath := paths.JoinPath("docs", docPath)
-
-	// Validate path to prevent traversal attacks
-	if !ws.isValidStaticPath(fullPath) {
-		ws.sendErrorWithStatus(responseWriter, "Invalid document path - path traversal not allowed", http.StatusBadRequest)
-		return
-	}
-
-	// Normalize path for current platform
-	normalizedPath := paths.NormalizePath(fullPath)
-
-	// Check if file exists
-	if _, err := os.Stat(normalizedPath); os.IsNotExist(err) {
-		// Sanitize docPath before including in error message
-		safeDocPath := sanitizeUserInput(docPath, 100)
-		ws.sendErrorWithStatus(responseWriter, fmt.Sprintf("Document not found: %s", safeDocPath), http.StatusNotFound)
-		return
-	}
-
-	// Read the documentation file
-	cleanDocPath := filepath.Clean(normalizedPath)
-	docData, err := os.ReadFile(cleanDocPath)
-	if err != nil {
-		ws.sendErrorWithStatus(responseWriter, "Failed to read document file", http.StatusInternalServerError)
-		return
-	}
-
-	// Set appropriate content type based on file extension
-	contentType := ws.getContentType(normalizedPath)
-	responseWriter.Header().Set("Content-Type", contentType)
-	responseWriter.Header().Set("Cache-Control", "public, max-age=300") // Cache for 5 minutes
-	responseWriter.WriteHeader(http.StatusOK)
-	responseWriter.Write(docData)
-}
-
 // isValidStaticPath validates static file paths to prevent path traversal attacks
 func (ws *WebServer) isValidStaticPath(path string) bool {
-	// Ensure the path doesn't contain any path traversal attempts in the original path
+	// Ensure the path doesn't contain any path traversal attempts
 	if strings.Contains(path, "..") {
 		return false
 	}
 
-	// Normalize path for current platform first
+	// Normalize path for current platform
 	normalizedPath := paths.NormalizePath(path)
 
 	// Clean the path to resolve any . components
@@ -1368,13 +1308,10 @@ func (ws *WebServer) isValidStaticPath(path string) bool {
 		return false
 	}
 
-	// Ensure the clean path starts with allowed directories
-	// Use platform-appropriate path separators for comparison
+	// Ensure the clean path starts with allowed directories (docs for logo)
 	allowedPrefixes := []string{
 		paths.JoinPath("docs") + string(filepath.Separator),
-		paths.JoinPath("web") + string(filepath.Separator),
 		"docs" + string(filepath.Separator), // Fallback for relative paths
-		"web" + string(filepath.Separator),  // Fallback for relative paths
 	}
 
 	for _, prefix := range allowedPrefixes {
@@ -1392,34 +1329,4 @@ func (ws *WebServer) isValidStaticPath(path string) bool {
 	}
 
 	return false
-}
-
-// getContentType returns the appropriate content type for a file based on its extension
-func (ws *WebServer) getContentType(filePath string) string {
-	ext := strings.ToLower(filepath.Ext(filePath))
-
-	switch ext {
-	case ".md":
-		return "text/markdown; charset=utf-8"
-	case ".txt":
-		return "text/plain; charset=utf-8"
-	case ".html", ".htm":
-		return "text/html; charset=utf-8"
-	case ".css":
-		return "text/css; charset=utf-8"
-	case ".js":
-		return "application/javascript; charset=utf-8"
-	case ".json":
-		return "application/json; charset=utf-8"
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".gif":
-		return "image/gif"
-	case ".svg":
-		return "image/svg+xml"
-	default:
-		return "application/octet-stream"
-	}
 }
