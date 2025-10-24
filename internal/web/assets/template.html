@@ -1458,7 +1458,7 @@
             </div>
 
             <!-- Help Navigation Tabs -->
-            <div style="display: flex; gap: 0; border-bottom: 2px solid #d5dbdb; margin-bottom: 16px;">
+            <div style="display: flex; gap: 0; border-bottom: 2px solid #d5dbdb; margin-bottom: 16px; align-items: center;">
                 <button class="help-tab-button active" onclick="switchHelpTab('webui')" id="webuiHelpTab"
                     style="background: transparent; border: none; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; color: #5f6b7a;">
                     🌐 Web Interface
@@ -1467,10 +1467,13 @@
                     style="background: transparent; border: none; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; color: #5f6b7a;">
                     🎯 Features
                 </button>
-                <button class="help-tab-button" onclick="switchHelpTab('docs')" id="docsHelpTab"
-                    style="background: transparent; border: none; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; color: #5f6b7a;">
-                    📚 Documentation
-                </button>
+                <a href="https://github.com/awslabs/ferret-scan/blob/main/docs/README.md" target="_blank"
+                    style="padding: 8px 16px; font-size: 14px; font-weight: 600; text-decoration: none; color: #0972d3; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 4px;">
+                    📚 Online Documentation
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="opacity: 0.7;">
+                        <path d="M10.5 10.5H1.5V1.5H6V0H1.5C0.675 0 0 0.675 0 1.5V10.5C0 11.325 0.675 12 1.5 12H10.5C11.325 12 12 11.325 12 10.5V6H10.5V10.5ZM7.5 0V1.5H9.879L3.2895 8.1895L4.3605 9.2605L11.05 2.571V5H12.5V0H7.5Z" fill="currentColor"/>
+                    </svg>
+                </a>
             </div>
 
             <div class="help-content" style="color: #16191f; line-height: 1.6; font-size: 14px;">
@@ -1660,60 +1663,7 @@
                     </div>
                 </div>
 
-                <!-- Documentation Help Tab -->
-                <div id="docsHelpContent" class="help-tab-content hidden">
-                    <div
-                        style="background: #eafaf1; border: 1px solid #037f0c; border-radius: 6px; padding: 16px; margin-bottom: 20px;">
-                        <h3 style="color: #037f0c; margin: 0 0 8px 0;">📚 Live Documentation</h3>
-                        <p style="margin: 0 0 8px 0; font-size: 13px;">This documentation is loaded directly from the
-                            markdown files and stays up-to-date with any changes.</p>
-                        <select id="docSelector" onchange="loadSelectedDoc()"
-                            style="width: 100%; padding: 8px; border: 1px solid #d5dbdb; border-radius: 4px; font-size: 13px;">
-                            <option value="README.md">📚 Main Documentation Index</option>
-                            <option value="configuration.md">⚙️ Configuration Guide</option>
-                            <option value="development/creating_validators.md">🛠 Creating Validators</option>
-                            <option value="user-guides/README-Docker.md">🐳 Docker Guide</option>
-                            <option value="GITLAB_INTEGRATION.md">🚀 GitLab Integration</option>
-                            <option value="user-guides/README-Suppressions.md">🚫 Suppression System</option>
-                            <option value="testing/TESTING.md">🧪 Testing Guide</option>
-                            <option value="user-guides/README-WebUI.md">🌐 Web UI Guide</option>
-                        </select>
-                    </div>
 
-                    <div id="docLoadingIndicator"
-                        style="text-align: center; padding: 20px; color: #5f6b7a; display: none;">
-                        <div
-                            style="display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #0972d3; border-radius: 50%; animation: spin 1s linear infinite;">
-                        </div>
-                        <p style="margin: 8px 0 0 0;">Loading documentation...</p>
-                    </div>
-
-                    <div id="docContent"
-                        style="background: white; border: 1px solid #d5dbdb; border-radius: 6px; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-height: 400px; overflow-y: auto;">
-                        <p style="color: #5f6b7a; text-align: center; margin: 40px 0;">Select a documentation file above
-                            to view its contents.</p>
-                    </div>
-
-                    <div
-                        style="background: #f0f8ff; border: 1px solid #0972d3; border-radius: 6px; padding: 16px; margin-top: 20px;">
-                        <h3 style="color: #0972d3; margin: 0 0 8px 0;">🔍 Quick Navigation by Use Case</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 13px;">
-                            <div>
-                                <p style="margin: 0 0 4px 0;"><strong>New Users:</strong> Main Documentation Index →
-                                    Configuration Guide</p>
-                                <p style="margin: 0 0 4px 0;"><strong>Developers:</strong> Creating Validators → Testing
-                                    Guide</p>
-                                <p style="margin: 0 0 4px 0;"><strong>DevOps/CI:</strong> GitLab Integration</p>
-                            </div>
-                            <div>
-                                <p style="margin: 0 0 4px 0;"><strong>Web Interface:</strong> Web UI Guide → Docker
-                                    Guide</p>
-                                <p style="margin: 0 0 4px 0;"><strong>Testing:</strong> Testing Guide</p>
-                                <p style="margin: 0 0 4px 0;"><strong>Suppressions:</strong> Suppression System</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div style="margin-top: 20px; text-align: right; border-top: 1px solid #d5dbdb; padding-top: 12px;">
@@ -2388,163 +2338,7 @@
                 selectedTab.style.background = '#f0f8ff';
             }
 
-            // If switching to docs tab, load the default document if none is loaded
-            if (tabName === 'docs' && !document.getElementById('docContent').hasAttribute('data-loaded')) {
-                loadSelectedDoc();
-            }
-        }
-
-        function loadSelectedDoc() {
-            const selector = document.getElementById('docSelector');
-            const docPath = selector.value;
-            const loadingIndicator = document.getElementById('docLoadingIndicator');
-            const docContent = document.getElementById('docContent');
-
-            // Show loading indicator
-            loadingIndicator.style.display = 'block';
-            docContent.style.display = 'none';
-
-            // Fetch the documentation
-            fetch('/docs/' + docPath)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.text();
-                })
-                .then(markdown => {
-                    // Convert markdown to HTML (basic conversion)
-                    const html = convertMarkdownToHTML(markdown);
-                    docContent.innerHTML = html;
-                    docContent.setAttribute('data-loaded', 'true');
-                })
-                .catch(error => {
-                    docContent.innerHTML = `
-                        <div style="color: #d13212; text-align: center; padding: 20px;">
-                            <h3>📄 Documentation Not Available</h3>
-                            <p>Could not load: <code>${docPath}</code></p>
-                            <p style="font-size: 12px; color: #5f6b7a;">Error: ${error.message}</p>
-                            <p style="font-size: 12px; color: #5f6b7a;">Make sure the web server is running from the correct directory.</p>
-                        </div>
-                    `;
-                })
-                .finally(() => {
-                    // Hide loading indicator and show content
-                    loadingIndicator.style.display = 'none';
-                    docContent.style.display = 'block';
-                });
-        }
-
-        function loadDocumentByPath(docPath) {
-            // Find the option in the selector that matches this path
-            const selector = document.getElementById('docSelector');
-            const options = selector.options;
-
-            for (let i = 0; i < options.length; i++) {
-                if (options[i].value === docPath || options[i].value.endsWith(docPath)) {
-                    selector.selectedIndex = i;
-                    loadSelectedDoc();
-                    return;
-                }
-            }
-
-            // If not found in dropdown, try to load it directly
-            const loadingIndicator = document.getElementById('docLoadingIndicator');
-            const docContent = document.getElementById('docContent');
-
-            loadingIndicator.style.display = 'block';
-            docContent.style.display = 'none';
-
-            fetch('/docs/' + docPath)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`Document not found: ${docPath}`);
-                    }
-                    return response.text();
-                })
-                .then(markdown => {
-                    const html = convertMarkdownToHTML(markdown);
-                    docContent.innerHTML = html;
-                    docContent.setAttribute('data-loaded', 'true');
-                })
-                .catch(error => {
-                    docContent.innerHTML = `
-                        <div style="color: #d13212; text-align: center; padding: 20px;">
-                            <h3>📄 Document Not Available</h3>
-                            <p>Could not load: <code>${docPath}</code></p>
-                            <p style="font-size: 12px; color: #5f6b7a;">This document may not be included in the web interface.</p>
-                            <button onclick="loadSelectedDoc()" style="margin-top: 12px; padding: 6px 12px; background: #0972d3; color: white; border: none; border-radius: 4px; cursor: pointer;">← Back to Document List</button>
-                        </div>
-                    `;
-                })
-                .finally(() => {
-                    loadingIndicator.style.display = 'none';
-                    docContent.style.display = 'block';
-                });
-        }
-
-        function convertMarkdownToHTML(markdown) {
-            // Basic markdown to HTML conversion
-            let html = markdown
-                // Headers
-                .replace(/^### (.*$)/gim, '<h3 style="color: #0972d3; margin: 16px 0 8px 0; font-size: 16px;">$1</h3>')
-                .replace(/^## (.*$)/gim, '<h2 style="color: #232f3e; margin: 20px 0 12px 0; font-size: 18px;">$1</h2>')
-                .replace(/^# (.*$)/gim, '<h1 style="color: #232f3e; margin: 24px 0 16px 0; font-size: 22px;">$1</h1>')
-                // Bold and italic
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                // Code blocks
-                .replace(/```[\s\S]*?```/g, function (match) {
-                    return '<pre style="background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 16px; overflow-x: auto; font-family: monospace; font-size: 13px; margin: 12px 0;">' +
-                        match.replace(/```(\w+)?\n?/, '').replace(/```$/, '') +
-                        '</pre>';
-                })
-                // Inline code
-                .replace(/`([^`]+)`/g, '<code style="background: #f6f8fa; padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 13px;">$1</code>')
-                // Links - handle relative documentation links specially
-                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (match, linkText, linkUrl) {
-                    // Check if it's a relative link to a .md file
-                    if (linkUrl.endsWith('.md') && !linkUrl.startsWith('http') && !linkUrl.startsWith('#')) {
-                        // Convert relative path to work with our doc selector
-                        let docPath = linkUrl;
-
-                        // Handle relative paths like ../README.md or ./config.md
-                        if (docPath.startsWith('../')) {
-                            docPath = docPath.substring(3);
-                        } else if (docPath.startsWith('./')) {
-                            docPath = docPath.substring(2);
-                        }
-
-                        // Create a clickable link that loads the document in the same interface
-                        return `<a href="#" onclick="loadDocumentByPath('${docPath}'); return false;" style="color: #0972d3; text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="Click to load: ${docPath}">${linkText} 📄</a>`;
-                    } else if (linkUrl.startsWith('#')) {
-                        // Handle anchor links within the same document
-                        return `<a href="${linkUrl}" style="color: #0972d3; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${linkText}</a>`;
-                    } else if (linkUrl.startsWith('http')) {
-                        // External links - open in new tab
-                        return `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" style="color: #0972d3; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${linkText} 🔗</a>`;
-                    } else {
-                        // Other relative links - show as disabled with explanation
-                        return `<span style="color: #5f6b7a; text-decoration: line-through;" title="Relative link not available in web interface: ${linkUrl}">${linkText}</span>`;
-                    }
-                })
-                // Lists
-                .replace(/^\- (.*$)/gim, '<li style="margin: 4px 0;">$1</li>')
-                .replace(/^\* (.*$)/gim, '<li style="margin: 4px 0;">$1</li>')
-                // Wrap consecutive list items in ul tags
-                .replace(/(<li.*<\/li>\s*)+/g, function (match) {
-                    return '<ul style="margin: 8px 0; padding-left: 20px;">' + match + '</ul>';
-                })
-                // Line breaks
-                .replace(/\n\n/g, '</p><p style="margin: 12px 0;">')
-                .replace(/\n/g, '<br>');
-
-            // Wrap in paragraph tags if not already wrapped
-            if (!html.startsWith('<h1') && !html.startsWith('<h2') && !html.startsWith('<h3') && !html.startsWith('<ul') && !html.startsWith('<pre')) {
-                html = '<p style="margin: 12px 0;">' + html + '</p>';
-            }
-
-            return html;
+            // Documentation is now accessed via external GitHub link - no tab switching needed
         }
 
         function getSelectedChecks() {

@@ -60,7 +60,7 @@ help:
 
 
 # Build the application
-build:
+build: sync-web-template
 	@echo "Building..."
 	@go env -w GOPROXY=direct
 	@VERSION=$$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "0.0.0-development"); \
@@ -673,6 +673,15 @@ check-commits-range:
 version:
 	@echo "Current version information:"
 	@./bin/ferret-scan --version 2>/dev/null || echo "Binary not built. Run 'make build' first."
+
+# Sync web template from source to embed location
+sync-web-template:
+	@if [ "web/template.html" -nt "internal/web/assets/template.html" ] || [ ! -f "internal/web/assets/template.html" ]; then \
+		echo "📋 Syncing web template..."; \
+		mkdir -p internal/web/assets; \
+		cp web/template.html internal/web/assets/template.html; \
+		echo "✓ Web template synced"; \
+	fi
 
 # Check Go version consistency across project
 check-go-version:

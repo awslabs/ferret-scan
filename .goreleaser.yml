@@ -31,35 +31,11 @@ builds:
 # Use: ferret-scan --web to start web server mode
 
 archives:
-  - id: default
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: binaries
+    format: binary
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}'
     ids:
       - ferret-scan-cli
-    files:
-      # Documentation
-      - README.md
-      - LICENSE*
-      - CHANGELOG.md
-      - docs/*
-      - docs/**/*
-
-      # Configuration files
-      - src: examples/ferret.yaml
-        dst: config.yaml
-      - examples/*
-
-      # Installation scripts
-      - scripts/install-system.sh
-      - scripts/setup-team-config.sh
-      - scripts/install-system-windows.ps1
-
-      # Pre-commit configuration examples
-      - .pre-commit-config.yaml
-      - .pre-commit-config-examples.yaml
-
-      # Web UI template
-      - src: web/template.html
-        dst: template.html
 
 checksum:
   name_template: "checksums.txt"
@@ -120,70 +96,60 @@ release:
 
     ### 🚀 Quick Installation
 
-    #### Linux/macOS System-wide Installation (Recommended)
+    Download the binary for your platform from the assets below, then follow the installation steps.
+
+    #### Linux/macOS Installation
     ```bash
-    # Download and extract the archive for your platform
-    tar -xzf ferret-scan_{{ .Tag }}_linux_amd64.tar.gz
-    cd ferret-scan_{{ .Tag }}_linux_amd64
+    # Download the binary for your platform (example for Linux amd64)
+    # From GitHub releases, download: ferret-scan_{{ .Tag }}_linux_amd64
 
-    # macOS: Handle security for downloaded binary installation
-    chmod +x ferret-scan
-    xattr -d com.apple.quarantine ferret-scan
+    # Make it executable and handle macOS security if needed
+    chmod +x ferret-scan_{{ .Tag }}_linux_amd64
 
-    # Install system-wide (installs to /usr/local/bin/ferret-scan)
-    sudo scripts/install-system.sh
+    # macOS only: Remove quarantine attribute
+    xattr -d com.apple.quarantine ferret-scan_{{ .Tag }}_linux_amd64
 
-    # Set up pre-commit integration (see docs/PRE_COMMIT_INTEGRATION.md)
-    pip install pre-commit
+    # Rename and install system-wide
+    sudo mv ferret-scan_{{ .Tag }}_linux_amd64 /usr/local/bin/ferret-scan
+
+    # Verify installation
+    ferret-scan --version
     ```
 
-    **⚠️ macOS Security Note**: If macOS blocks execution with "cannot be opened because it is from an unidentified developer", run these commands on the downloaded binary BEFORE installation:
+    **⚠️ macOS Security Note**: If macOS blocks execution with "cannot be opened because it is from an unidentified developer", run:
     ```bash
-    chmod +x ferret-scan
-    xattr -d com.apple.quarantine ferret-scan
+    xattr -d com.apple.quarantine ferret-scan_{{ .Tag }}_darwin_amd64
     ```
-    Only use these commands for executables from trusted sources.
+    Only use this command for executables from trusted sources.
 
     #### Windows Installation
     ```powershell
-    # Download and extract the archive for Windows
-    # Extract ferret-scan_{{ .Tag }}_windows_amd64.zip
-    cd ferret-scan_{{ .Tag }}_windows_amd64
+    # Download the binary: ferret-scan_{{ .Tag }}_windows_amd64.exe
 
-    # Run PowerShell as Administrator and install system-wide
-    .\scripts\install-system-windows.ps1
+    # Rename to ferret-scan.exe
+    Rename-Item ferret-scan_{{ .Tag }}_windows_amd64.exe ferret-scan.exe
 
-    # Test installation
+    # Move to a directory in your PATH (example: C:\Program Files\ferret-scan\)
+    # Or add the current directory to your PATH
+
+    # Verify installation
     ferret-scan --version
     ```
 
-    #### Manual Installation
-    ```bash
-    # Linux/macOS: Download binary and handle security
-    chmod +x ferret-scan
-    xattr -d com.apple.quarantine ferret-scan  # macOS only
-    sudo mv ferret-scan /usr/local/bin/
-
-    # Windows: Download ferret-scan.exe and add to PATH
-    # Test installation
-    ferret-scan --version
-    ```
-
-    ### 📦 What's Included
-    - `ferret-scan` (Linux/macOS) or `ferret-scan.exe` (Windows) - Main binary with CLI and web UI modes
-    - `scripts/install-system.sh` - Automated system installation (Linux/macOS)
-    - `scripts/install-system-windows.ps1` - Automated system installation (Windows)
-    - `docs/PRE_COMMIT_INTEGRATION.md` - Pre-commit integration guide
-
-    - `config.yaml` - Ready-to-use configuration with profiles
-    - `examples/ferret-windows.yaml` - Windows-specific configuration examples
-    - `docs/` - Complete documentation
-    - `.pre-commit-config.yaml` - Pre-commit configuration example
+    ### 📦 Available Binaries
+    Choose the binary that matches your system:
+    - **Linux AMD64**: `ferret-scan_{{ .Tag }}_linux_amd64`
+    - **Linux ARM64**: `ferret-scan_{{ .Tag }}_linux_arm64`
+    - **macOS AMD64 (Intel)**: `ferret-scan_{{ .Tag }}_darwin_amd64`
+    - **macOS ARM64 (Apple Silicon)**: `ferret-scan_{{ .Tag }}_darwin_arm64`
+    - **Windows AMD64**: `ferret-scan_{{ .Tag }}_windows_amd64.exe`
+    - **Windows ARM64**: `ferret-scan_{{ .Tag }}_windows_arm64.exe`
+    - **Checksums**: `checksums.txt` - Verify your download integrity
 
     ### 📖 Documentation
-    - [Installation Guide](docs/INSTALLATION.md) - Comprehensive installation options
-    - [Pre-commit Integration](docs/PRE_COMMIT_INTEGRATION.md) - Git workflow integration
-    - [Configuration Guide](docs/configuration.md) - Settings and profiles
+    - [Installation Guide](https://github.com/awslabs/ferret-scan/blob/main/docs/INSTALLATION.md)
+    - [Pre-commit Integration](https://github.com/awslabs/ferret-scan/blob/main/docs/PRE_COMMIT_INTEGRATION.md)
+    - [Configuration Guide](https://github.com/awslabs/ferret-scan/blob/main/docs/configuration.md)
 
     **Full Changelog**: https://github.com/awslabs/ferret-scan/compare/{{ .PreviousTag }}...{{ .Tag }}
 
