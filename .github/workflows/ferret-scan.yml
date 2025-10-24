@@ -152,9 +152,9 @@ jobs:
                 --no-color \
                 --quiet > "results/${file//\//_}.json" 2>/dev/null; then
 
-                # Count findings
-                file_high=$(jq -r '.findings[] | select(.confidence == "HIGH") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
-                file_medium=$(jq -r '.findings[] | select(.confidence == "MEDIUM") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
+                # Count findings (using .results[] for new JSON format)
+                file_high=$(jq -r '.results[]? | select(.confidence == "HIGH") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
+                file_medium=$(jq -r '.results[]? | select(.confidence == "MEDIUM") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
 
                 high_findings=$((high_findings + file_high))
                 medium_findings=$((medium_findings + file_medium))
@@ -169,11 +169,11 @@ jobs:
             fi
           done < changed_files.txt
 
-          # Combine all results for JSON (backward compatibility)
-          echo '{"findings": []}' > results/combined.json
+          # Combine all results for JSON (using new .results format)
+          echo '{"results": []}' > results/combined.json
           for result_file in results/*.json; do
             if [ "$result_file" != "results/combined.json" ] && [ -f "$result_file" ]; then
-              jq -s '.[0].findings + .[1].findings | {findings: .}' results/combined.json "$result_file" > temp.json
+              jq -s '.[0].results + (.[1].results // []) | {results: .}' results/combined.json "$result_file" > temp.json
               mv temp.json results/combined.json
             fi
           done
@@ -252,11 +252,11 @@ jobs:
             scan_args_sarif+=("--config" "ferret-config.yaml")
           fi
 
-          # Run the scan in JSON format (for PR comments - backward compatibility)
+          # Run the scan in JSON format (for PR comments)
           if ./bin/ferret-scan "${scan_args_json[@]}"; then
-            # Count findings
-            high_findings=$(jq -r '.findings[] | select(.confidence == "HIGH") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
-            medium_findings=$(jq -r '.findings[] | select(.confidence == "MEDIUM") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
+            # Count findings (using .results[] for new JSON format)
+            high_findings=$(jq -r '.results[]? | select(.confidence == "HIGH") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
+            medium_findings=$(jq -r '.results[]? | select(.confidence == "MEDIUM") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
 
             echo "high_findings=$high_findings" >> $GITHUB_ENV
             echo "medium_findings=$medium_findings" >> $GITHUB_ENV
@@ -290,15 +290,15 @@ jobs:
           script: |
             const fs = require('fs');
 
-            // Read results
+            // Read results (using new .results format)
             let findings = [];
             try {
               if (fs.existsSync('results/combined.json')) {
                 const data = JSON.parse(fs.readFileSync('results/combined.json', 'utf8'));
-                findings = data.findings || [];
+                findings = data.results || [];
               } else if (fs.existsSync('results/full-scan.json')) {
                 const data = JSON.parse(fs.readFileSync('results/full-scan.json', 'utf8'));
-                findings = data.findings || [];
+                findings = data.results || [];
               }
             } catch (e) {
               console.log('No results file found or error reading results');
