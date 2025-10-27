@@ -730,7 +730,7 @@ make setup-developer
 
 ```bash
 # Install via pip
-pip install ferret-scan
+# PyPi Package Coming Soon!!
 ```
 
 ```yaml
