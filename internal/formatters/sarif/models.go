@@ -20,10 +20,10 @@ type SARIFRun struct {
 
 // SARIFVersionControl represents version control information
 type SARIFVersionControl struct {
-	RepositoryURI string          `json:"repositoryUri"`
-	RevisionID    string          `json:"revisionId,omitempty"`
-	Branch        string          `json:"branch,omitempty"`
-	MappedTo      *SARIFMappedTo  `json:"mappedTo,omitempty"`
+	RepositoryURI string         `json:"repositoryUri"`
+	RevisionID    string         `json:"revisionId,omitempty"`
+	Branch        string         `json:"branch,omitempty"`
+	MappedTo      *SARIFMappedTo `json:"mappedTo,omitempty"`
 }
 
 // SARIFMappedTo represents the mapping of repository root to a URI base ID

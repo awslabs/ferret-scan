@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  ferret-scan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "dev"
+        GIT_COMMIT: "local"
+        BUILD_DATE: "2024-01-01T00:00:00Z"
+    image: ferret-scan:local
+    container_name: ferret-scan
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/data:ro
+      - ~/.ferret-scan:/home/ferret/.ferret-scan
+    environment:
+      - FERRET_CONTAINER_MODE=true
+      - FERRET_QUIET_MODE=false
+    command: ["--web", "--port", "8080"]
+    restart: unless-stopped
+
+  # CLI mode example
+  ferret-scan-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ferret-scan:local
+    volumes:
+      - .:/data:ro
+    command: ["--file", "/data", "--recursive", "--format", "json"]
+    profiles:
+      - cli
