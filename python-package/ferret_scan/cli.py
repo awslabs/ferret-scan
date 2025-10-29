@@ -6,8 +6,6 @@
 CLI wrapper for ferret-scan binary
 """
 
-import hashlib
-import os
 import platform
 import stat
 import subprocess
