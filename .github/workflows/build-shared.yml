@@ -1,0 +1,84 @@
+name: Shared Build
+
+on:
+  workflow_call:
+    inputs:
+      build-type:
+        description: 'Type of build: binary, python, or both'
+        required: false
+        default: 'binary'
+        type: string
+      go-version:
+        description: 'Go version to use'
+        required: false
+        default: ''
+        type: string
+    outputs:
+      binary-path:
+        description: "Path to built binary"
+        value: ${{ jobs.build.outputs.binary-path }}
+      python-path:
+        description: "Path to built Python package"
+        value: ${{ jobs.build.outputs.python-path }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      binary-path: bin/ferret-scan
+      python-path: python-package/dist/
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: ${{ inputs.go-version != '' && inputs.go-version || '.go-version' }}
+    
+    - name: Set up Python
+      if: inputs.build-type == 'python' || inputs.build-type == 'both'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Build binary
+      if: inputs.build-type == 'binary' || inputs.build-type == 'both'
+      run: |
+        make build
+        chmod +x bin/ferret-scan
+    
+    - name: Build Python package
+      if: inputs.build-type == 'python' || inputs.build-type == 'both'
+      run: |
+        python -m pip install --upgrade pip build
+        cd python-package
+        ./build-package.sh
+    
+    - name: Upload binary artifact
+      if: inputs.build-type == 'binary' || inputs.build-type == 'both'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ferret-scan-binary-${{ github.sha }}
+        path: bin/ferret-scan
+        retention-days: 1
+    
+    - name: Upload Python package artifact
+      if: inputs.build-type == 'python' || inputs.build-type == 'both'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ferret-scan-python-${{ github.sha }}
+        path: python-package/dist/
+        retention-days: 1
