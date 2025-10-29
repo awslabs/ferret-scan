@@ -184,6 +184,7 @@ config.dev*
 examples/**/*-example
 python-package/ferret_scan/binaries/
 python-package/dist/
+python-package/ferret_scan/_version.py
 *.egg-info/
 
 # Generated and analysis files

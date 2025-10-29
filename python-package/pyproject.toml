@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ferret-scan"
-version = "1.2.6"
+dynamic = ["version"]
 description = "Sensitive data detection tool with pre-commit hook support"
 readme = "README.md"
 license = "Apache-2.0"
@@ -41,3 +41,6 @@ Issues = "https://github.com/awslabs/ferret-scan/issues"
 
 [project.scripts]
 ferret-scan = "ferret_scan.cli:main"
+
+[tool.setuptools_scm]
+root = ".."
