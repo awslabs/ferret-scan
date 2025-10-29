@@ -24,6 +24,11 @@ on:
         default: true
         type: boolean
 
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -138,6 +143,7 @@ jobs:
         with:
           sarif_file: "trivy-results.sarif"
           category: "trivy-container-scan"
+        continue-on-error: true # Don't fail the workflow if SARIF upload fails
 
       - name: Test multi-arch images
         if: github.event_name != 'pull_request'
@@ -203,3 +209,4 @@ jobs:
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
           category: "grype-container-scan"
+        continue-on-error: true # Don't fail the workflow if SARIF upload fails
