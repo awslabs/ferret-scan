@@ -8,5 +8,5 @@ A Python wrapper for the Ferret Scan Go binary that provides
 easy installation and pre-commit hook integration.
 """
 
-__version__ = "1.2.5"
+__version__ = "1.2.6"
 __author__ = "AWS"
