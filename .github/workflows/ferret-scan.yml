@@ -46,9 +46,15 @@ on:
           - 'all'
 
 jobs:
+  build:
+    uses: ./.github/workflows/build-shared.yml
+    with:
+      build-type: 'binary'
+
   ferret-scan:
     name: Sensitive Data Detection
     runs-on: ubuntu-latest
+    needs: build
 
     # Set permissions for the job
     permissions:
@@ -64,25 +70,14 @@ jobs:
           # Fetch full history for better analysis
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Download binary
+        uses: actions/download-artifact@v4
         with:
-          go-version: '1.25.1'
+          name: ferret-scan-binary-${{ github.sha }}
+          path: bin/
 
-      - name: Cache Go modules
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Build Ferret Scan
-        run: |
-          make build
-          chmod +x bin/ferret-scan
+      - name: Make binary executable
+        run: chmod +x bin/ferret-scan
 
       - name: Determine scan scope
         id: scope
