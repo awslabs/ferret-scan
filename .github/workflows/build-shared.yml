@@ -21,9 +21,14 @@ on:
         description: "Path to built Python package"
         value: ${{ jobs.build.outputs.python-path }}
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       binary-path: bin/ferret-scan
       python-path: python-package/dist/
