@@ -13,7 +13,11 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="ferret-scan",
-    version="1.2.6",
+    use_scm_version={
+        "root": "..",
+        "relative_to": __file__,
+    },
+    setup_requires=["setuptools_scm"],
     author="AWS",
     author_email="ferret-scan@amazon.com",
     description="Sensitive data detection tool with pre-commit hook support",
