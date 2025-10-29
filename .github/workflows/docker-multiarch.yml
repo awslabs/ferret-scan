@@ -37,7 +37,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # Needed for SBOM action to attach to releases
       packages: write
       id-token: write
       security-events: write
@@ -120,6 +120,7 @@ jobs:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           format: spdx-json
           output-file: sbom.spdx.json
+        continue-on-error: true # Don't fail workflow if SBOM generation fails
 
       - name: Upload SBOM
         if: github.event_name != 'pull_request'
