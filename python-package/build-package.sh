@@ -9,7 +9,7 @@ set -e
 echo "Building ferret-scan Python package..."
 
 # Clean previous builds
-rm -rf build/ dist/ *.egg-info/
+rm -rf build/ dist/ -- *.egg-info/
 
 # Create binaries directory
 mkdir -p ferret_scan/binaries
