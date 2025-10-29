@@ -13,7 +13,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="ferret-scan",
-    version="1.2.1",
+    version="1.2.5",
     author="AWS",
     author_email="ferret-scan@amazon.com",
     description="Sensitive data detection tool with pre-commit hook support",
