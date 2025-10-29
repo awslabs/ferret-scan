@@ -45,11 +45,19 @@ on:
           - 'high,medium'
           - 'all'
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  security-events: write
+
 jobs:
   build:
     uses: ./.github/workflows/build-shared.yml
     with:
       build-type: 'binary'
+    permissions:
+      contents: read
 
   ferret-scan:
     name: Sensitive Data Detection

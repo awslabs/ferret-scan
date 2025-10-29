@@ -10,17 +10,24 @@ on:
     outputs:
       package-path:
         description: "Path to built Python package"
-        value: ${{ jobs.build-python-package.outputs.package-path }}
+        value: ${{ jobs.test-and-release.outputs.package-path }}
+
+permissions:
+  contents: write  # Needed for creating releases
 
 jobs:
   build:
     uses: ./.github/workflows/build-shared.yml
     with:
       build-type: 'python'
+    permissions:
+      contents: read
 
   test-and-release:
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: write  # Needed for creating releases
     outputs:
       package-path: python-package/dist/
     
