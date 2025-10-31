@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed for SBOM action to attach to releases
-      id-token: write
+      id-token: write # Required for AWS OIDC
       security-events: write
 
     steps:
@@ -55,6 +55,16 @@ jobs:
         with:
           platforms: all
 
+      - name: Debug OIDC Claims and Secrets
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Expected sub claim: repo:${{ github.repository }}:ref:${{ github.ref }}"
+          echo "AWS Role ARN set: ${{ secrets.AWS_ROLE_ARN != '' }}"
+          echo "AWS Role ARN length: ${{ length(secrets.AWS_ROLE_ARN) }}"
+
       - name: Configure AWS credentials
         if: github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
@@ -62,6 +72,13 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
           role-session-name: GitHubActions-ECR-Push
+
+      - name: Test AWS credentials
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Testing AWS credentials..."
+          aws sts get-caller-identity
+          echo "AWS credentials working!"
 
       - name: Log in to Amazon ECR Public
         if: github.event_name != 'pull_request'
