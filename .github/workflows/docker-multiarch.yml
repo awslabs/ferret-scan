@@ -28,10 +28,13 @@ permissions:
   contents: read
   packages: write
   security-events: write
+  id-token: write # Required for AWS OIDC
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  ECR_REGISTRY: public.ecr.aws/g4m5x5s3
+  ECR_REPOSITORY: awslabs/ferret-scan
 
 jobs:
   docker:
@@ -56,7 +59,15 @@ jobs:
         with:
           platforms: all
 
-      - name: Log in to Container Registry
+      - name: Configure AWS credentials
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: GitHubActions-ECR-Push
+
+      - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
@@ -64,11 +75,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      - name: Log in to Amazon ECR Public
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Extract metadata for GitHub Registry
+        id: meta-github
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=Ferret Scan
+            org.opencontainers.image.description=Multi-architecture sensitive data detection tool
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
+
+      - name: Extract metadata for ECR
+        id: meta-ecr
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -102,12 +137,14 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ steps.platforms.outputs.platforms }}
           push: ${{ github.event_name != 'pull_request' && (github.event.inputs.push_image != 'false') }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ steps.meta-github.outputs.tags }}
+            ${{ steps.meta-ecr.outputs.tags }}
+          labels: ${{ steps.meta-github.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ steps.meta-github.outputs.version }}
             GIT_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            BUILD_DATE=${{ fromJSON(steps.meta-github.outputs.json).labels['org.opencontainers.image.created'] }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
@@ -117,7 +154,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta-github.outputs.version }}
           format: spdx-json
           output-file: sbom.spdx.json
         continue-on-error: true # Don't fail workflow if SBOM generation fails
@@ -134,7 +171,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta-github.outputs.version }}
           format: "sarif"
           output: "trivy-results.sarif"
 
@@ -151,18 +188,21 @@ jobs:
         run: |
           echo "🧪 Testing built images..."
 
-          # Test each platform
+          # Test each platform for both registries
           for platform in $(echo "${{ steps.platforms.outputs.platforms }}" | tr ',' ' '); do
             echo "Testing $platform..."
             
-            # Pull and test the image for this platform
+            # Test GitHub Registry image
+            echo "Testing GitHub Registry image..."
             docker run --rm --platform=$platform \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} \
-              --version || echo "⚠️ Version check failed for $platform"
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta-github.outputs.version }} \
+              --version || echo "⚠️ GitHub Registry version check failed for $platform"
               
+            # Test ECR image
+            echo "Testing ECR image..."
             docker run --rm --platform=$platform \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} \
-              --help | head -5 || echo "⚠️ Help check failed for $platform"
+              ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta-ecr.outputs.version }} \
+              --version || echo "⚠️ ECR version check failed for $platform"
           done
 
       - name: Create release summary
@@ -170,21 +210,29 @@ jobs:
         run: |
           echo "## 🐳 Multi-Architecture Docker Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### GitHub Container Registry" >> $GITHUB_STEP_SUMMARY
           echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:** ${{ steps.meta.outputs.tags }}" | tr ',' '\n' | sed 's/^/- `/' | sed 's/$/`/' >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** ${{ steps.meta-github.outputs.tags }}" | tr ',' '\n' | sed 's/^/- `/' | sed 's/$/`/' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Amazon ECR Public" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** ${{ steps.meta-ecr.outputs.tags }}" | tr ',' '\n' | sed 's/^/- `/' | sed 's/$/`/' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** ${{ steps.platforms.outputs.platforms }}" | tr ',' '\n' | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Usage Examples:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "# Pull the image" >> $GITHUB_STEP_SUMMARY
+          echo "# Pull from GitHub Container Registry" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Pull from Amazon ECR Public" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Run CLI mode" >> $GITHUB_STEP_SUMMARY
-          echo "docker run --rm -v \$(pwd):/data ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --file /data/sample.txt" >> $GITHUB_STEP_SUMMARY
+          echo "docker run --rm -v \$(pwd):/data ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest --file /data/sample.txt" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Run web mode" >> $GITHUB_STEP_SUMMARY
-          echo "docker run --rm -p 8080:8080 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --web --port 8080" >> $GITHUB_STEP_SUMMARY
+          echo "docker run --rm -p 8080:8080 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest --web --port 8080" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
   security-scan:
@@ -197,9 +245,9 @@ jobs:
       security-events: write
 
     steps:
-      - name: Run Grype vulnerability scanner
+      - name: Run Grype vulnerability scanner on GitHub Registry
         uses: anchore/scan-action@v3
-        id: scan
+        id: scan-github
         with:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           fail-build: false
@@ -208,6 +256,6 @@ jobs:
       - name: Upload Grype scan results
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ steps.scan.outputs.sarif }}
+          sarif_file: ${{ steps.scan-github.outputs.sarif }}
           category: "grype-container-scan"
         continue-on-error: true # Don't fail the workflow if SARIF upload fails
