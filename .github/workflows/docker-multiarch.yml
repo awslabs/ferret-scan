@@ -31,7 +31,7 @@ permissions:
 
 env:
   ECR_REGISTRY: public.ecr.aws/g4m5x5s3
-  ECR_REPOSITORY: awslabs/ferret-scan
+  ECR_REPOSITORY: ferret-scan
 
 jobs:
   docker:
@@ -177,7 +177,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Amazon ECR Public" >> $GITHUB_STEP_SUMMARY
           echo "**Image:** \`${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Gallery:** https://gallery.ecr.aws/g4m5x5s3/awslabs/ferret-scan" >> $GITHUB_STEP_SUMMARY
+          echo "**Gallery:** https://gallery.ecr.aws/g4m5x5s3/ferret-scan" >> $GITHUB_STEP_SUMMARY
           echo "**Tags:** ${{ steps.meta.outputs.tags }}" | tr ',' '\n' | sed 's/^/- `/' | sed 's/$/`/' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** ${{ steps.platforms.outputs.platforms }}" | tr ',' '\n' | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
