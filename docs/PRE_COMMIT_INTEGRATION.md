@@ -49,9 +49,14 @@ repos:
         pass_filenames: true
 ```
 
-### 3. Python Package Integration
+### 3. Python Package Integration (Recommended)
 
-If you prefer using the Python package:
+Using the PyPI package:
+
+```bash
+# Install ferret-scan from PyPI
+pip install ferret-scan
+```
 
 ```yaml
 repos:
@@ -612,7 +617,7 @@ Many CI/CD systems can run pre-commit hooks directly:
 # GitLab CI example
 pre-commit-scan:
   stage: test
-  image: python:3.11
+  image: python:3.13
   before_script:
     - pip install pre-commit
     - docker pull ferret-scan:latest
