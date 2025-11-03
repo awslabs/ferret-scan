@@ -20,54 +20,17 @@ Ferret Scan is a sensitive data detection tool that scans files for potential se
 
 ## Installation
 
-### Quick Start (Recommended)
+### Recommended: Install from PyPI
 
-#### Linux/macOS
 ```bash
-# macOS: Handle security for downloaded binary installation
-chmod +x ferret-scan
-xattr -d com.apple.quarantine ferret-scan
-
-# System-wide installation (installs to /usr/local/bin/ferret-scan)
-sudo scripts/install-system.sh
-
-# Verify installation
-ferret-scan --version
-
-# Set up pre-commit integration (see docs/PRE_COMMIT_INTEGRATION.md)
-pip install pre-commit
-# Create .pre-commit-config.yaml with ferret-scan hook
-```
-
-**⚠️ macOS Security Note**: If macOS blocks execution with "cannot be opened because it is from an unidentified developer", run these commands on the downloaded binary BEFORE installation:
-```bash
-chmod +x ferret-scan
-xattr -d com.apple.quarantine ferret-scan
-```
-Only use these commands for executables from trusted sources.
-
-#### Windows
-```powershell
-# Run PowerShell as Administrator and install system-wide
-.\scripts\install-system-windows.ps1
-
-# Or install for current user only (no admin required)
-.\scripts\install-system-windows.ps1 -UserInstall
-
-# Verify installation
-ferret-scan --version
-
-# Set up pre-commit integration (see docs/PRE_COMMIT_INTEGRATION.md)
-pip install pre-commit
-# Create .pre-commit-config.yaml with ferret-scan hook
+pip install ferret-scan
 ```
 
 ### Alternative Installation Methods
 
-- **📦 [Release Installation](docs/INSTALL.md)** - Quick guide for release downloads
+- **📦 [Release Installation](docs/INSTALL.md)** - Binary downloads from GitHub releases
 - **📖 [Complete Installation Guide](docs/INSTALLATION.md)** - Comprehensive installation options
 - **🗑️ [Uninstallation Guide](docs/UNINSTALL.md)** - Complete removal instructions
-- **🔧 Manual Installation**: Download from [GitLab Releases](https://code.aws.dev/personal_projects/alias_a/adifabio/Ferret-Scan/-/releases)
 - **🏗️ Build from Source**: `make build` (see [Building the Application](#building-the-application))
 
 ## 📚 Documentation

@@ -65,46 +65,24 @@ This installs:
 
 ## Installation Methods
 
-### 1. Python Package Installation (Recommended for Pre-commit)
+### 1. Python Package Installation (Recommended)
 
-The Python package provides the easiest way to use ferret-scan in pre-commit workflows:
+Install ferret-scan from PyPI for the easiest setup:
 
 ```bash
-# Install the Python package
+# Install from PyPI
 pip install ferret-scan
 
 # Verify installation
 ferret-scan --version
-
-# Use in pre-commit
-cat > .pre-commit-config.yaml << 'EOF'
-repos:
-  - repo: local
-    hooks:
-      - id: ferret-scan
-        name: Ferret Scan
-        entry: ferret-scan --pre-commit-mode
-        language: python
-        files: \.(py|js|ts|go|java|json|yaml|yml)$
-        pass_filenames: true
-EOF
-
-# Install pre-commit hooks
-pre-commit install
-
-# Copy configuration file for IP detection
-cp examples/ferret.yaml ferret.yaml
-git add ferret.yaml
 ```
 
 **Features:**
-- ✅ Automatic binary management
+- ✅ Simple installation with pip
 - ✅ Cross-platform compatibility  
-- ✅ No manual binary downloads
+- ✅ Automatic updates with pip
 - ✅ Perfect for pre-commit integration
 - ✅ Supports all ferret-scan features
-
-**Important:** The Python package requires a `ferret.yaml` configuration file in your project root for IP detection and full functionality.
 
 ### 2. Automated System Installation (Recommended for Teams)
 
