@@ -5,6 +5,19 @@ on:
   release:
     types: [published]
   
+  # Called by python-package workflow after building
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to publish'
+        required: true
+        type: string
+      package-path:
+        description: 'Path to built package'
+        required: false
+        default: 'python-package/dist/'
+        type: string
+  
   # Manual publishing for testing and pre-releases
   workflow_dispatch:
     inputs:
@@ -89,7 +102,21 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
+          echo "🔍 Git repository state:"
+          echo "Current HEAD: $(git rev-parse HEAD)"
+          echo "Current branch/tag: ${{ github.ref_name }}"
+          echo "Git describe: $(git describe --tags 2>/dev/null || echo 'no tags found')"
+          echo "Available tags: $(git tag --sort=-version:refname | head -5 | tr '\n' ' ')"
+          echo ""
+          
+          if [[ "${{ github.event_name }}" == "workflow_call" && -n "${{ inputs.version }}" ]]; then
+            # Use version passed from calling workflow
+            VERSION="${{ inputs.version }}"
+            echo "✅ Using workflow_call version: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "source=workflow-call" >> $GITHUB_OUTPUT
+            
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
             # Use GitHub release tag, remove 'v' prefix if present
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#v}"
@@ -101,22 +128,39 @@ jobs:
               exit 1
             fi
             
-            echo "Using release version: $VERSION"
+            echo "✅ Using GitHub release version: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "source=release" >> $GITHUB_OUTPUT
+            echo "source=github-release" >> $GITHUB_OUTPUT
+            
+            # Verify Git tag exists and matches
+            ACTUAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || echo "no-exact-match")
+            if [[ "$ACTUAL_VERSION" != "${{ github.ref_name }}" ]]; then
+              echo "⚠️ Warning: Git tag mismatch"
+              echo "Expected: ${{ github.ref_name }}"
+              echo "Actual: $ACTUAL_VERSION"
+              echo "This may indicate a workflow trigger issue"
+            else
+              echo "✅ Git tag matches release: $ACTUAL_VERSION"
+            fi
+            
           elif [[ -n "${{ github.event.inputs.version }}" ]]; then
             # Use manually specified version
             VERSION="${{ github.event.inputs.version }}"
-            echo "Using manual version: $VERSION"
+            echo "✅ Using manual version: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "source=manual" >> $GITHUB_OUTPUT
+            echo "source=manual-input" >> $GITHUB_OUTPUT
           else
             # Use setuptools_scm for development versions
             cd python-package
+            echo "🔍 Setuptools_scm analysis:"
+            echo "Working directory: $(pwd)"
+            echo "Git root: $(git rev-parse --show-toplevel)"
+            
             VERSION=$(python -m setuptools_scm)
-            echo "Using setuptools_scm version: $VERSION"
+            echo "✅ Setuptools_scm result: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "source=setuptools_scm" >> $GITHUB_OUTPUT
+            cd ..
           fi
           
           # Additional validation for production PyPI
@@ -125,39 +169,70 @@ jobs:
             if [[ "$VERSION" == *"+"* ]]; then
               echo "❌ Error: Production versions cannot contain local identifiers (+)"
               echo "Version: $VERSION"
+              echo "This indicates the build is not from a clean tagged commit"
               exit 1
             fi
+            echo "✅ Version is PyPI-compatible: $VERSION"
           fi
 
-      - name: Build Python package
+      - name: Download or Build Python package
         run: |
-          cd python-package
-          
-          # Set the version explicitly if we have one
-          if [[ "${{ steps.version.outputs.source }}" != "setuptools_scm" ]]; then
-            export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
-            echo "Building with explicit version: ${{ steps.version.outputs.version }}"
+          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            echo "📦 Using pre-built package from calling workflow"
+            # Package should already be available from the calling workflow
+            if [ ! -d "python-package/dist" ] || [ -z "$(ls -A python-package/dist 2>/dev/null)" ]; then
+              echo "❌ No pre-built package found, building from source"
+              cd python-package
+              export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
+              python -m build
+              cd ..
+            fi
           else
-            echo "Building with setuptools_scm auto-detection"
+            echo "🔨 Building Python package from source"
+            cd python-package
+            
+            # Set the version explicitly if we have one
+            if [[ "${{ steps.version.outputs.source }}" != "setuptools_scm" ]]; then
+              export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
+              echo "Building with explicit version: ${{ steps.version.outputs.version }}"
+            else
+              echo "Building with setuptools_scm auto-detection"
+            fi
+            
+            python -m build
+            cd ..
           fi
           
-          python -m build
-          
-          # Show what was built
-          echo "Built packages:"
-          ls -la dist/
+          # Show what we have
+          echo "📦 Available packages:"
+          ls -la python-package/dist/
 
       - name: Test package installation
         run: |
           cd python-package
-          echo "Testing package installation..."
+          echo "🧪 Testing package installation..."
           pip install dist/*.whl
           
+          # Test version matches expected
+          INSTALLED_VERSION=$(ferret-scan --version | head -1)
+          EXPECTED_VERSION="${{ steps.version.outputs.version }}"
+          
+          echo "Expected version: $EXPECTED_VERSION"
+          echo "Installed version: $INSTALLED_VERSION"
+          
+          # Check if version is in the output (allowing for different formats)
+          if echo "$INSTALLED_VERSION" | grep -q "$EXPECTED_VERSION"; then
+            echo "✅ Version match confirmed"
+          else
+            echo "❌ Version mismatch detected!"
+            echo "This indicates a build/packaging issue"
+            exit 1
+          fi
+          
           # Test basic functionality
-          ferret-scan --version
           ferret-scan --help | head -5
           
-          echo "✅ Package installation test passed"
+          echo "✅ Package installation and version test passed"
 
       - name: Validate package
         run: |
