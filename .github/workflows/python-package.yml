@@ -28,10 +28,6 @@ jobs:
     needs: build
     permissions:
       contents: write # Needed for creating releases
-      id-token: write # Required for trusted publishing to PyPI
-    environment: 
-      name: ${{ startsWith(github.ref, 'refs/tags/') && 'pypi' || '' }}
-      url: ${{ startsWith(github.ref, 'refs/tags/') && 'https://pypi.org/p/ferret-scan' || '' }}
     outputs:
       package-path: python-package/dist/
 
@@ -102,22 +98,17 @@ jobs:
             
             **Note**: The PyPI package will be available shortly after this release is published.
 
-      - name: Publish to PyPI
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: python-package/dist/
-          verbose: true
-
-      - name: Summary
+      - name: Trigger PyPI Publishing
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           echo "## 🚀 Release Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ GitHub release created" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Published to PyPI" >> $GITHUB_STEP_SUMMARY
+          echo "🔄 PyPI publishing triggered automatically by release event" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Installation" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo 'pip install ferret-scan' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 Monitor PyPI publishing: https://github.com/${{ github.repository }}/actions/workflows/pypi-publish.yml" >> $GITHUB_STEP_SUMMARY
