@@ -44,3 +44,5 @@ ferret-scan = "ferret_scan.cli:main"
 
 [tool.setuptools_scm]
 root = ".."
+# Generate PyPI-compatible versions (no local version identifiers)
+local_scheme = "no-local-version"
