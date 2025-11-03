@@ -7,10 +7,28 @@ on:
       - master
     tags:
       - "v*"
+    paths:
+      - '**.go'
+      - 'internal/web/assets/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'Makefile'
   pull_request:
     branches:
       - main
       - master
+    paths:
+      - '**.go'
+      - 'internal/web/assets/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'Makefile'
   workflow_dispatch:
     inputs:
       platforms:
