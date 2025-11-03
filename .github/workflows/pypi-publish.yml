@@ -50,7 +50,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install build dependencies
         run: |
@@ -214,20 +214,19 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Installation" >> $GITHUB_STEP_SUMMARY
             echo '```bash' >> $GITHUB_STEP_SUMMARY
-            echo 'pip install ferret-scan==${{ steps.version.outputs.version }}' >> $GITHUB_STEP_SUMMARY
+            echo 'pip install ferret-scan' >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ github.event.inputs.action }}" == "publish-testpypi" ]]; then
             echo "✅ **Published to Test PyPI**: https://test.pypi.org/p/ferret-scan" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Installation" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Installation" >> $GITHUB_STEP_SUMMARY
             echo '```bash' >> $GITHUB_STEP_SUMMARY
-            echo 'pip install --index-url https://test.pypi.org/simple/ ferret-scan==${{ steps.version.outputs.version }}' >> $GITHUB_STEP_SUMMARY
+            echo 'pip install --index-url https://test.pypi.org/simple/ ferret-scan' >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           else
             echo "📦 **Test build completed** (not published)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Package is ready for publishing. Use workflow dispatch with:" >> $GITHUB_STEP_SUMMARY
-            echo "- \`publish-testpypi\` for Test PyPI" >> $GITHUB_STEP_SUMMARY
-            echo "- \`publish-pypi\` for production PyPI" >> $GITHUB_STEP_SUMMARY
-            echo "- Or create a GitHub release for automatic PyPI publishing" >> $GITHUB_STEP_SUMMARY
+            echo "Ready for publishing:" >> $GITHUB_STEP_SUMMARY
+            echo "- Create a GitHub release for automatic PyPI publishing" >> $GITHUB_STEP_SUMMARY
+            echo "- Or use workflow dispatch for manual publishing" >> $GITHUB_STEP_SUMMARY
           fi
