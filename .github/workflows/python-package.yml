@@ -39,7 +39,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Download Python package
         uses: actions/download-artifact@v4
@@ -79,20 +79,16 @@ jobs:
           files: python-package/dist/*
           generate_release_notes: true
           body: |
-            ## Python Package Installation
+            ## 🐍 Python Package Installation
 
-            ### From GitHub Release:
             ```bash
-            # Download the .whl file from this release
-            pip install ferret_scan-*.whl
+            pip install ferret-scan
             ```
 
-            ### Direct from Git Repository:
+            ### Quick Start:
             ```bash
-            pip install git+https://github.com/${{ github.repository }}.git#subdirectory=python-package
+            ferret-scan --version
+            ferret-scan --help
             ```
 
-            ### Using pip with GitHub:
-            ```bash
-            pip install https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/ferret_scan-*.whl
-            ```
+            **Requirements**: Python 3.7 or higher

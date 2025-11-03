@@ -96,45 +96,13 @@ release:
 
     ### 🚀 Quick Installation
 
-    Download the binary for your platform from the assets below, then follow the installation steps.
-
-    #### Linux/macOS Installation
+    #### Recommended: Install from PyPI
     ```bash
-    # Download the binary for your platform (example for Linux amd64)
-    # From GitHub releases, download: ferret-scan_{{ .Tag }}_linux_amd64
-
-    # Make it executable and handle macOS security if needed
-    chmod +x ferret-scan_{{ .Tag }}_linux_amd64
-
-    # macOS only: Remove quarantine attribute
-    xattr -d com.apple.quarantine ferret-scan_{{ .Tag }}_linux_amd64
-
-    # Rename and install system-wide
-    sudo mv ferret-scan_{{ .Tag }}_linux_amd64 /usr/local/bin/ferret-scan
-
-    # Verify installation
-    ferret-scan --version
+    pip install ferret-scan
     ```
 
-    **⚠️ macOS Security Note**: If macOS blocks execution with "cannot be opened because it is from an unidentified developer", run:
-    ```bash
-    xattr -d com.apple.quarantine ferret-scan_{{ .Tag }}_darwin_amd64
-    ```
-    Only use this command for executables from trusted sources.
-
-    #### Windows Installation
-    ```powershell
-    # Download the binary: ferret-scan_{{ .Tag }}_windows_amd64.exe
-
-    # Rename to ferret-scan.exe
-    Rename-Item ferret-scan_{{ .Tag }}_windows_amd64.exe ferret-scan.exe
-
-    # Move to a directory in your PATH (example: C:\Program Files\ferret-scan\)
-    # Or add the current directory to your PATH
-
-    # Verify installation
-    ferret-scan --version
-    ```
+    #### Alternative: Download Binary
+    Download the binary for your platform from the assets below if you prefer not to use pip.
 
     ### 📦 Available Binaries
     Choose the binary that matches your system:
