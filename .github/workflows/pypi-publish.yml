@@ -286,8 +286,31 @@ jobs:
           echo ""
           echo "FINAL RESULT: ${{ github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') || github.event.inputs.action == 'publish-pypi' }}"
 
+      - name: Check if should publish to PyPI
+        id: should_publish
+        run: |
+          SHOULD_PUBLISH="false"
+          
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "✅ Should publish: GitHub release event"
+            SHOULD_PUBLISH="true"
+          elif [[ "${{ github.event_name }}" == "workflow_call" && "${{ inputs.is_tag_push }}" == "true" ]]; then
+            echo "✅ Should publish: Workflow call with tag push"
+            SHOULD_PUBLISH="true"
+          elif [[ "${{ github.event.inputs.action }}" == "publish-pypi" ]]; then
+            echo "✅ Should publish: Manual publish action"
+            SHOULD_PUBLISH="true"
+          else
+            echo "❌ Should NOT publish: Conditions not met"
+            echo "  - Event: ${{ github.event_name }}"
+            echo "  - is_tag_push: ${{ inputs.is_tag_push }}"
+            echo "  - Manual action: ${{ github.event.inputs.action }}"
+          fi
+          
+          echo "should_publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
+
       - name: Publish to PyPI
-        if: github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') || github.event.inputs.action == 'publish-pypi'
+        if: steps.should_publish.outputs.should_publish == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: python-package/dist/
