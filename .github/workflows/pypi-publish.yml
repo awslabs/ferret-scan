@@ -17,6 +17,11 @@ on:
         required: false
         default: 'python-package/dist/'
         type: string
+      is_tag_push:
+        description: 'Whether this is a tag push (for publishing to PyPI)'
+        required: false
+        default: false
+        type: boolean
   
   # Manual publishing for testing and pre-releases
   workflow_dispatch:
@@ -47,13 +52,13 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     environment: 
-      name: ${{ github.event_name == 'workflow_call' && 'pypi' || (github.event.inputs.action == 'publish-pypi' && 'pypi' || (github.event.inputs.action == 'publish-testpypi' && 'testpypi' || '')) }}
-      url: ${{ (github.event_name == 'release' || github.event_name == 'workflow_call') && 'https://pypi.org/p/ferret-scan' || (github.event.inputs.action == 'publish-pypi' && 'https://pypi.org/p/ferret-scan' || 'https://test.pypi.org/p/ferret-scan') }}
+      name: ${{ (github.event_name == 'workflow_call' && inputs.is_tag_push == true) && 'pypi' || (github.event.inputs.action == 'publish-pypi' && 'pypi' || (github.event.inputs.action == 'publish-testpypi' && 'testpypi' || '')) }}
+      url: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == true)) && 'https://pypi.org/p/ferret-scan' || (github.event.inputs.action == 'publish-pypi' && 'https://pypi.org/p/ferret-scan' || 'https://test.pypi.org/p/ferret-scan') }}
     
     # Add some safety checks
     if: >
       github.event_name == 'release' || 
-      github.event_name == 'workflow_call' ||
+      (github.event_name == 'workflow_call' && inputs.is_tag_push == true) ||
       (github.event_name == 'workflow_dispatch' && github.actor != 'dependabot[bot]')
     
     steps:
@@ -262,7 +267,7 @@ jobs:
           verbose: true
 
       - name: Publish to PyPI
-        if: github.event_name == 'release' || github.event.inputs.action == 'publish-pypi'
+        if: github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == true) || github.event.inputs.action == 'publish-pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: python-package/dist/
