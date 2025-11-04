@@ -106,6 +106,3 @@ jobs:
     with:
       version: ${{ github.ref_name }}
     secrets: inherit
-    permissions:
-      contents: read
-      id-token: write
