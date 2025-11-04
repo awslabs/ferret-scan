@@ -106,3 +106,7 @@ jobs:
     with:
       version: ${{ github.ref_name }}
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # Required for trusted publishing to PyPI
+      id-token: write # Required for trusted publishing to PyPI
