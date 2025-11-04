@@ -270,6 +270,22 @@ jobs:
 
 
 
+      - name: Debug PyPI publish condition
+        run: |
+          echo "=== PyPI PUBLISH CONDITION DEBUG ==="
+          echo "github.event_name: '${{ github.event_name }}'"
+          echo "inputs.is_tag_push: '${{ inputs.is_tag_push }}'"
+          echo "github.event.inputs.action: '${{ github.event.inputs.action }}'"
+          echo ""
+          echo "Condition parts:"
+          echo "1. github.event_name == 'release': ${{ github.event_name == 'release' }}"
+          echo "2. github.event_name == 'workflow_call': ${{ github.event_name == 'workflow_call' }}"
+          echo "3. inputs.is_tag_push == 'true': ${{ inputs.is_tag_push == 'true' }}"
+          echo "4. Combined part 2: ${{ github.event_name == 'workflow_call' && inputs.is_tag_push == 'true' }}"
+          echo "5. github.event.inputs.action == 'publish-pypi': ${{ github.event.inputs.action == 'publish-pypi' }}"
+          echo ""
+          echo "FINAL RESULT: ${{ github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') || github.event.inputs.action == 'publish-pypi' }}"
+
       - name: Publish to PyPI
         if: github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') || github.event.inputs.action == 'publish-pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
