@@ -1,5 +1,9 @@
 # Ferret Scan Python Package
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/awslabs/ferret-scan/main/docs/images/ferret-scan-logo.png" alt="Ferret Scan Logo" width="200"/>
+</div>
+
 A Python wrapper for [Ferret Scan](https://github.com/awslabs/ferret-scan), a sensitive data detection tool. This package provides easy installation and seamless pre-commit hook integration.
 
 ## Installation
