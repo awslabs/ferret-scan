@@ -266,6 +266,14 @@ jobs:
           packages-dir: python-package/dist/
           verbose: true
 
+      - name: Debug PyPI publishing condition
+        run: |
+          echo "=== PyPI PUBLISHING DEBUG ==="
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "inputs.is_tag_push: ${{ inputs.is_tag_push }}"
+          echo "github.event.inputs.action: ${{ github.event.inputs.action }}"
+          echo "Condition result: ${{ github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == true) || github.event.inputs.action == 'publish-pypi' }}"
+
       - name: Publish to PyPI
         if: github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == true) || github.event.inputs.action == 'publish-pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
