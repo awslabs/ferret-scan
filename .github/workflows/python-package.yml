@@ -98,21 +98,9 @@ jobs:
             
             **Note**: The PyPI package will be available shortly after this release is published.
 
-  # Debug job to check GitHub context
-  debug-context:
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Debug GitHub context
-        run: |
-          echo "github.ref: ${{ github.ref }}"
-          echo "github.ref_name: ${{ github.ref_name }}"
-          echo "github.event_name: ${{ github.event_name }}"
-          echo "startsWith result: ${{ startsWith(github.ref, 'refs/tags/') }}"
-
   # Call PyPI publishing workflow directly since release events don't trigger workflows
   publish-to-pypi:
-    if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/')
     needs: test-and-release
     uses: ./.github/workflows/pypi-publish.yml
     with:

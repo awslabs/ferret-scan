@@ -53,6 +53,7 @@ jobs:
     # Add some safety checks
     if: >
       github.event_name == 'release' || 
+      github.event_name == 'workflow_call' ||
       (github.event_name == 'workflow_dispatch' && github.actor != 'dependabot[bot]')
     
     steps:
