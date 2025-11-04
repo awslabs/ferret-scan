@@ -41,6 +41,13 @@ Homepage = "https://github.com/awslabs/ferret-scan"
 Repository = "https://github.com/awslabs/ferret-scan"
 Issues = "https://github.com/awslabs/ferret-scan/issues"
 
+# PyPI logo configuration
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+ferret_scan = ["*.png"]
+
 [project.scripts]
 ferret-scan = "ferret_scan.cli:main"
 
