@@ -100,11 +100,12 @@ jobs:
 
   # Call PyPI publishing workflow - trusted publisher should be configured for pypi-publish.yml
   publish-to-pypi:
-    if: startsWith(github.ref, 'refs/tags/')
+    # Remove the condition here - let the called workflow handle it
     needs: test-and-release
     uses: ./.github/workflows/pypi-publish.yml
     with:
       version: ${{ github.ref_name }}
+      is_tag_push: ${{ startsWith(github.ref, 'refs/tags/') }}
     secrets: inherit
     permissions:
       contents: read
