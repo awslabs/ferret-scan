@@ -61,14 +61,14 @@ repos:
         files: '\.go$'
         pass_filenames: false
 
-  # Ferret Scan security check
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.3.19
+  # Ferret Scan security check (local)
+  - repo: local
     hooks:
       - id: ferret-scan
         name: Ferret Scan Security Check
+        entry: ./bin/ferret-scan
         args: [--pre-commit-mode]
-        language: golang
+        language: script
         files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
         exclude: '^(\.git/|bin/|dist/|node_modules/|\.cache/|test_|_test\.)'
         pass_filenames: true
