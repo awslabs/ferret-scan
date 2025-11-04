@@ -276,8 +276,8 @@ jobs:
           if [[ "${{ github.event_name }}" == "release" ]]; then
             echo "✅ Should publish: GitHub release event"
             SHOULD_PUBLISH="true"
-          elif [[ "${{ github.event_name }}" == "workflow_call" && "${{ inputs.is_tag_push }}" == "true" ]]; then
-            echo "✅ Should publish: Workflow call with tag push"
+          elif [[ "${{ inputs.is_tag_push }}" == "true" ]]; then
+            echo "✅ Should publish: Tag push detected (is_tag_push=true)"
             SHOULD_PUBLISH="true"
           elif [[ "${{ github.event.inputs.action }}" == "publish-pypi" ]]; then
             echo "✅ Should publish: Manual publish action"
