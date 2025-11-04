@@ -55,14 +55,25 @@ jobs:
       name: ${{ (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') && 'pypi' || (github.event.inputs.action == 'publish-pypi' && 'pypi' || (github.event.inputs.action == 'publish-testpypi' && 'testpypi' || '')) }}
       url: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true')) && 'https://pypi.org/p/ferret-scan' || (github.event.inputs.action == 'publish-pypi' && 'https://pypi.org/p/ferret-scan' || 'https://test.pypi.org/p/ferret-scan') }}
     
-    # Add some safety checks
-    if: >
-      github.event_name == 'release' || 
-      (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') ||
-      (github.event_name == 'workflow_dispatch' && github.actor != 'dependabot[bot]')
+    # Temporarily removed job-level condition for debugging
     
     steps:
-
+      - name: Debug workflow inputs and conditions
+        run: |
+          echo "=== WORKFLOW DEBUG ==="
+          echo "github.event_name: '${{ github.event_name }}'"
+          echo "inputs.is_tag_push: '${{ inputs.is_tag_push }}'"
+          echo "inputs.version: '${{ inputs.version }}'"
+          echo "github.ref: '${{ github.ref }}'"
+          echo "github.ref_name: '${{ github.ref_name }}'"
+          echo ""
+          echo "Job condition evaluation:"
+          echo "- github.event_name == 'release': ${{ github.event_name == 'release' }}"
+          echo "- github.event_name == 'workflow_call': ${{ github.event_name == 'workflow_call' }}"
+          echo "- inputs.is_tag_push == 'true': ${{ inputs.is_tag_push == 'true' }}"
+          echo "- Combined workflow_call condition: ${{ github.event_name == 'workflow_call' && inputs.is_tag_push == 'true' }}"
+          echo ""
+          echo "FINAL JOB CONDITION: ${{ github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') || (github.event_name == 'workflow_dispatch' && github.actor != 'dependabot[bot]') }}"
 
       - uses: actions/checkout@v4
         with:
