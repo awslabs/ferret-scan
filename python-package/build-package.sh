@@ -28,8 +28,15 @@ echo "Binary dir: $BINARY_DIR"
 # Build from project root
 cd "$PROJECT_ROOT"
 
-# Get version information like the main Makefile does
-VERSION=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "1.1.0-development")
+# Get version information - respect SETUPTOOLS_SCM_PRETEND_VERSION if set
+if [[ -n "$SETUPTOOLS_SCM_PRETEND_VERSION" ]]; then
+    VERSION="$SETUPTOOLS_SCM_PRETEND_VERSION"
+    echo "Using explicit version from SETUPTOOLS_SCM_PRETEND_VERSION: $VERSION"
+else
+    VERSION=$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "1.1.0-development")
+    echo "Using Git-derived version: $VERSION"
+fi
+
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 

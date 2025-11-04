@@ -60,6 +60,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: '.go-version'
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -175,37 +180,29 @@ jobs:
             echo "✅ Version is PyPI-compatible: $VERSION"
           fi
 
-      - name: Download or Build Python package
+      - name: Build Python package with Go binaries
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
-            echo "📦 Using pre-built package from calling workflow"
-            # Package should already be available from the calling workflow
-            if [ ! -d "python-package/dist" ] || [ -z "$(ls -A python-package/dist 2>/dev/null)" ]; then
-              echo "❌ No pre-built package found, building from source"
-              cd python-package
-              export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
-              python -m build
-              cd ..
-            fi
+          echo "🔨 Building Python package with embedded Go binaries"
+          cd python-package
+          
+          # Set the version explicitly if we have one
+          if [[ "${{ steps.version.outputs.source }}" != "setuptools_scm" ]]; then
+            export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
+            echo "Building with explicit version: ${{ steps.version.outputs.version }}"
           else
-            echo "🔨 Building Python package from source"
-            cd python-package
-            
-            # Set the version explicitly if we have one
-            if [[ "${{ steps.version.outputs.source }}" != "setuptools_scm" ]]; then
-              export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
-              echo "Building with explicit version: ${{ steps.version.outputs.version }}"
-            else
-              echo "Building with setuptools_scm auto-detection"
-            fi
-            
-            python -m build
-            cd ..
+            echo "Building with setuptools_scm auto-detection"
           fi
           
-          # Show what we have
-          echo "📦 Available packages:"
+          # Use build-package.sh to build Go binaries and Python package
+          ./build-package.sh
+          cd ..
+          
+          # Show what we built
+          echo "📦 Built packages:"
           ls -la python-package/dist/
+          
+          echo "🔍 Checking for Go binaries in package:"
+          ls -la python-package/ferret_scan/binaries/ || echo "No binaries directory found"
 
       - name: Test package installation
         run: |
