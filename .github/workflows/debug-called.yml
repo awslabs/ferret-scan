@@ -1,0 +1,21 @@
+name: Debug Called Workflow
+
+on:
+  workflow_call:
+    inputs:
+      test_input:
+        required: true
+        type: string
+
+jobs:
+  debug-called:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug called workflow context
+        run: |
+          echo "=== CALLED WORKFLOW CONTEXT ==="
+          echo "github.ref: ${{ github.ref }}"
+          echo "github.ref_name: ${{ github.ref_name }}"
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "startsWith result: ${{ startsWith(github.ref, 'refs/tags/') }}"
+          echo "input: ${{ inputs.test_input }}"
