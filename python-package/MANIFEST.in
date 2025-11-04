@@ -1,2 +1,4 @@
 include README.md
+include LICENSE
+include ferret-scan-logo.png
 recursive-include ferret_scan/binaries *
