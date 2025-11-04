@@ -98,17 +98,14 @@ jobs:
             
             **Note**: The PyPI package will be available shortly after this release is published.
 
-      - name: Trigger PyPI Publishing
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          echo "## 🚀 Release Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ GitHub release created" >> $GITHUB_STEP_SUMMARY
-          echo "🔄 PyPI publishing triggered automatically by release event" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Installation" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo 'pip install ferret-scan' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📋 Monitor PyPI publishing: https://github.com/${{ github.repository }}/actions/workflows/pypi-publish.yml" >> $GITHUB_STEP_SUMMARY
+  # Call PyPI publishing workflow directly since release events don't trigger workflows
+  publish-to-pypi:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: test-and-release
+    uses: ./.github/workflows/pypi-publish.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
