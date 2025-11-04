@@ -47,7 +47,7 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     environment: 
-      name: ${{ github.event_name == 'release' && 'pypi' || (github.event.inputs.action == 'publish-pypi' && 'pypi' || (github.event.inputs.action == 'publish-testpypi' && 'testpypi' || '')) }}
+      name: ${{ github.event.inputs.action == 'publish-pypi' && 'pypi' || (github.event.inputs.action == 'publish-testpypi' && 'testpypi' || '') }}
       url: ${{ github.event_name == 'release' && 'https://pypi.org/p/ferret-scan' || (github.event.inputs.action == 'publish-pypi' && 'https://pypi.org/p/ferret-scan' || 'https://test.pypi.org/p/ferret-scan') }}
     
     # Add some safety checks
