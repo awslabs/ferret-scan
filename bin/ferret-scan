@@ -1,0 +1,17 @@
+#!/bin/bash
+DIR="$(dirname "$0")"
+case "$(uname -s)" in
+    Linux*)     
+        case "$(uname -m)" in
+            x86_64)  exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
+            aarch64) exec "$DIR/ferret-scan-linux-arm64" "$@" ;;
+            *)       exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
+        esac ;;
+    Darwin*)    
+        case "$(uname -m)" in
+            arm64)  exec "$DIR/ferret-scan-darwin-arm64" "$@" ;;
+            *)      exec "$DIR/ferret-scan-darwin-amd64" "$@" ;;
+        esac ;;
+    CYGWIN*|MINGW*) exec "$DIR/ferret-scan-windows-amd64.exe" "$@" ;;
+    *)          echo "Unsupported platform: $(uname -s)" >&2; exit 1 ;;
+esac
