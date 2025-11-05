@@ -68,13 +68,18 @@ jobs:
           # Create bin directory
           mkdir -p bin
           
+          # List what GoReleaser actually created (for debugging)
+          echo "GoReleaser output:"
+          find dist/ -type f -name "*ferret-scan*" | head -10
+          
           # Copy built binaries to bin/ with pre-commit friendly names
-          cp dist/ferret-scan_linux_amd64/ferret-scan bin/ferret-scan-linux-amd64
-          cp dist/ferret-scan_linux_arm64/ferret-scan bin/ferret-scan-linux-arm64
-          cp dist/ferret-scan_darwin_amd64/ferret-scan bin/ferret-scan-darwin-amd64
-          cp dist/ferret-scan_darwin_arm64/ferret-scan bin/ferret-scan-darwin-arm64
-          cp dist/ferret-scan_windows_amd64/ferret-scan.exe bin/ferret-scan-windows-amd64.exe
-          cp dist/ferret-scan_windows_arm64/ferret-scan.exe bin/ferret-scan-windows-arm64.exe
+          # GoReleaser with formats: [binary] creates files directly in dist/
+          cp dist/ferret-scan_*_linux_amd64 bin/ferret-scan-linux-amd64 2>/dev/null || echo "Linux AMD64 binary not found"
+          cp dist/ferret-scan_*_linux_arm64 bin/ferret-scan-linux-arm64 2>/dev/null || echo "Linux ARM64 binary not found"
+          cp dist/ferret-scan_*_darwin_amd64 bin/ferret-scan-darwin-amd64 2>/dev/null || echo "Darwin AMD64 binary not found"
+          cp dist/ferret-scan_*_darwin_arm64 bin/ferret-scan-darwin-arm64 2>/dev/null || echo "Darwin ARM64 binary not found"
+          cp dist/ferret-scan_*_windows_amd64.exe bin/ferret-scan-windows-amd64.exe 2>/dev/null || echo "Windows AMD64 binary not found"
+          cp dist/ferret-scan_*_windows_arm64.exe bin/ferret-scan-windows-arm64.exe 2>/dev/null || echo "Windows ARM64 binary not found"
           
           # Create platform detection script
           cat > bin/ferret-scan << 'EOF'
