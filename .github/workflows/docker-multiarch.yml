@@ -44,6 +44,7 @@ on:
 
 permissions:
   contents: read
+  packages: write # Required for GHCR push
   security-events: write
   id-token: write # Required for AWS OIDC
 
@@ -58,6 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed for SBOM action to attach to releases
+      packages: write # Required for GHCR push
       id-token: write # Required for AWS OIDC
       security-events: write
 
@@ -96,6 +98,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify GHCR access
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        run: |
+          echo "🔍 Verifying GHCR access..."
+          echo "Actor: ${{ github.actor }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository owner: ${{ github.repository_owner }}"
+          
+          # Test if we can access the repository
+          if docker manifest inspect ghcr.io/${{ env.GHCR_REPOSITORY }}:latest >/dev/null 2>&1; then
+            echo "✅ Can access existing images"
+          else
+            echo "ℹ️ No existing images found (this is normal for first push)"
+          fi
 
       - name: Extract metadata for multi-registry
         id: meta
@@ -243,6 +260,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
     permissions:
       contents: read
+      packages: read # Required to pull from GHCR for scanning
       security-events: write
 
     steps:
