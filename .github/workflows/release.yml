@@ -77,48 +77,36 @@ jobs:
           find dist/ -name "*ferret-scan*" -type f || echo "No ferret-scan files found"
           
           # Copy built binaries to bin/ with pre-commit friendly names
-          # Use more flexible pattern matching
-          for file in dist/ferret-scan_*_linux_amd64*; do
-            if [[ -f "$file" ]]; then
-              cp "$file" bin/ferret-scan-linux-amd64
-              echo "✅ Copied Linux AMD64: $file"
-            fi
-          done
+          # GoReleaser creates directories, so we need to look inside them
+          if [[ -f "dist/ferret-scan-cli_linux_amd64_v1/ferret-scan" ]]; then
+            cp "dist/ferret-scan-cli_linux_amd64_v1/ferret-scan" bin/ferret-scan-linux-amd64
+            echo "✅ Copied Linux AMD64"
+          fi
           
-          for file in dist/ferret-scan_*_linux_arm64*; do
-            if [[ -f "$file" ]]; then
-              cp "$file" bin/ferret-scan-linux-arm64
-              echo "✅ Copied Linux ARM64: $file"
-            fi
-          done
+          if [[ -f "dist/ferret-scan-cli_linux_arm64_v8.0/ferret-scan" ]]; then
+            cp "dist/ferret-scan-cli_linux_arm64_v8.0/ferret-scan" bin/ferret-scan-linux-arm64
+            echo "✅ Copied Linux ARM64"
+          fi
           
-          for file in dist/ferret-scan_*_darwin_amd64*; do
-            if [[ -f "$file" ]]; then
-              cp "$file" bin/ferret-scan-darwin-amd64
-              echo "✅ Copied Darwin AMD64: $file"
-            fi
-          done
+          if [[ -f "dist/ferret-scan-cli_darwin_amd64_v1/ferret-scan" ]]; then
+            cp "dist/ferret-scan-cli_darwin_amd64_v1/ferret-scan" bin/ferret-scan-darwin-amd64
+            echo "✅ Copied Darwin AMD64"
+          fi
           
-          for file in dist/ferret-scan_*_darwin_arm64*; do
-            if [[ -f "$file" ]]; then
-              cp "$file" bin/ferret-scan-darwin-arm64
-              echo "✅ Copied Darwin ARM64: $file"
-            fi
-          done
+          if [[ -f "dist/ferret-scan-cli_darwin_arm64_v8.0/ferret-scan" ]]; then
+            cp "dist/ferret-scan-cli_darwin_arm64_v8.0/ferret-scan" bin/ferret-scan-darwin-arm64
+            echo "✅ Copied Darwin ARM64"
+          fi
           
-          for file in dist/ferret-scan_*_windows_amd64*.exe; do
-            if [[ -f "$file" ]]; then
-              cp "$file" bin/ferret-scan-windows-amd64.exe
-              echo "✅ Copied Windows AMD64: $file"
-            fi
-          done
+          if [[ -f "dist/ferret-scan-cli_windows_amd64_v1/ferret-scan.exe" ]]; then
+            cp "dist/ferret-scan-cli_windows_amd64_v1/ferret-scan.exe" bin/ferret-scan-windows-amd64.exe
+            echo "✅ Copied Windows AMD64"
+          fi
           
-          for file in dist/ferret-scan_*_windows_arm64*.exe; do
-            if [[ -f "$file" ]]; then
-              cp "$file" bin/ferret-scan-windows-arm64.exe
-              echo "✅ Copied Windows ARM64: $file"
-            fi
-          done
+          if [[ -f "dist/ferret-scan-cli_windows_arm64_v8.0/ferret-scan.exe" ]]; then
+            cp "dist/ferret-scan-cli_windows_arm64_v8.0/ferret-scan.exe" bin/ferret-scan-windows-arm64.exe
+            echo "✅ Copied Windows ARM64"
+          fi
           
           # Create platform detection script
           cat > bin/ferret-scan << 'EOF'
@@ -151,10 +139,13 @@ jobs:
             # Commit binaries
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            # Ensure we're on the main branch
+            git checkout main
             git add bin/
             if git commit -m "chore: add pre-built binaries for pre-commit [skip ci]"; then
               echo "✅ Committed binaries"
-              if git push; then
+              if git push origin main; then
                 echo "✅ Pushed binaries to repository"
               else
                 echo "❌ Failed to push binaries"
