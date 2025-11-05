@@ -62,6 +62,49 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Commit binaries for pre-commit
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # Create bin directory
+          mkdir -p bin
+          
+          # Copy built binaries to bin/ with pre-commit friendly names
+          cp dist/ferret-scan_linux_amd64/ferret-scan bin/ferret-scan-linux-amd64
+          cp dist/ferret-scan_linux_arm64/ferret-scan bin/ferret-scan-linux-arm64
+          cp dist/ferret-scan_darwin_amd64/ferret-scan bin/ferret-scan-darwin-amd64
+          cp dist/ferret-scan_darwin_arm64/ferret-scan bin/ferret-scan-darwin-arm64
+          cp dist/ferret-scan_windows_amd64/ferret-scan.exe bin/ferret-scan-windows-amd64.exe
+          cp dist/ferret-scan_windows_arm64/ferret-scan.exe bin/ferret-scan-windows-arm64.exe
+          
+          # Create platform detection script
+          cat > bin/ferret-scan << 'EOF'
+          #!/bin/bash
+          DIR="$(dirname "$0")"
+          case "$(uname -s)" in
+              Linux*)     
+                  case "$(uname -m)" in
+                      x86_64)  exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
+                      aarch64) exec "$DIR/ferret-scan-linux-arm64" "$@" ;;
+                      *)       exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
+                  esac ;;
+              Darwin*)    
+                  case "$(uname -m)" in
+                      arm64)  exec "$DIR/ferret-scan-darwin-arm64" "$@" ;;
+                      *)      exec "$DIR/ferret-scan-darwin-amd64" "$@" ;;
+                  esac ;;
+              CYGWIN*|MINGW*) exec "$DIR/ferret-scan-windows-amd64.exe" "$@" ;;
+              *)          echo "Unsupported platform: $(uname -s)" >&2; exit 1 ;;
+          esac
+          EOF
+          chmod +x bin/ferret-scan
+          
+          # Commit binaries
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bin/
+          git commit -m "chore: add pre-built binaries for pre-commit [skip ci]" || true
+          git push || true
+
       - name: Run GoReleaser (Snapshot)
         if: github.event.inputs.snapshot == 'true' || (github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
         uses: goreleaser/goreleaser-action@v6

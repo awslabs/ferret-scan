@@ -9,7 +9,8 @@
 go.work
 
 # Build artifacts
-bin/
+bin/ferret-scan
+!bin/ferret-scan*
 dist/
 
 # IDE and Editor files
