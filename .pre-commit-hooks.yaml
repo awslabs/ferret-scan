@@ -3,7 +3,7 @@
   description: Run Ferret Scan to detect secrets and sensitive data
   entry: bin/ferret-scan
   language: system
-  files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
+  files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)'
   exclude: '^(\.git/|bin/|dist/|node_modules/|\.cache/|test_|_test\.)'
   pass_filenames: true
   args: [--pre-commit-mode]
