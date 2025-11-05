@@ -68,6 +68,6 @@ repos:
 
   # Ferret Scan security check (from GitHub)
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.3.20
+    rev: v1.3.23
     hooks:
       - id: ferret-scan
