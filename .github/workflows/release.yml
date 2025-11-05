@@ -65,21 +65,60 @@ jobs:
       - name: Commit binaries for pre-commit
         if: startsWith(github.ref, 'refs/tags/')
         run: |
+          set -e
+          
           # Create bin directory
           mkdir -p bin
           
           # List what GoReleaser actually created (for debugging)
-          echo "GoReleaser output:"
-          find dist/ -type f -name "*ferret-scan*" | head -10
+          echo "=== GoReleaser output ==="
+          ls -la dist/
+          echo "=== Files matching ferret-scan ==="
+          find dist/ -name "*ferret-scan*" -type f || echo "No ferret-scan files found"
           
           # Copy built binaries to bin/ with pre-commit friendly names
-          # GoReleaser with formats: [binary] creates files directly in dist/
-          cp dist/ferret-scan_*_linux_amd64 bin/ferret-scan-linux-amd64 2>/dev/null || echo "Linux AMD64 binary not found"
-          cp dist/ferret-scan_*_linux_arm64 bin/ferret-scan-linux-arm64 2>/dev/null || echo "Linux ARM64 binary not found"
-          cp dist/ferret-scan_*_darwin_amd64 bin/ferret-scan-darwin-amd64 2>/dev/null || echo "Darwin AMD64 binary not found"
-          cp dist/ferret-scan_*_darwin_arm64 bin/ferret-scan-darwin-arm64 2>/dev/null || echo "Darwin ARM64 binary not found"
-          cp dist/ferret-scan_*_windows_amd64.exe bin/ferret-scan-windows-amd64.exe 2>/dev/null || echo "Windows AMD64 binary not found"
-          cp dist/ferret-scan_*_windows_arm64.exe bin/ferret-scan-windows-arm64.exe 2>/dev/null || echo "Windows ARM64 binary not found"
+          # Use more flexible pattern matching
+          for file in dist/ferret-scan_*_linux_amd64*; do
+            if [[ -f "$file" ]]; then
+              cp "$file" bin/ferret-scan-linux-amd64
+              echo "✅ Copied Linux AMD64: $file"
+            fi
+          done
+          
+          for file in dist/ferret-scan_*_linux_arm64*; do
+            if [[ -f "$file" ]]; then
+              cp "$file" bin/ferret-scan-linux-arm64
+              echo "✅ Copied Linux ARM64: $file"
+            fi
+          done
+          
+          for file in dist/ferret-scan_*_darwin_amd64*; do
+            if [[ -f "$file" ]]; then
+              cp "$file" bin/ferret-scan-darwin-amd64
+              echo "✅ Copied Darwin AMD64: $file"
+            fi
+          done
+          
+          for file in dist/ferret-scan_*_darwin_arm64*; do
+            if [[ -f "$file" ]]; then
+              cp "$file" bin/ferret-scan-darwin-arm64
+              echo "✅ Copied Darwin ARM64: $file"
+            fi
+          done
+          
+          for file in dist/ferret-scan_*_windows_amd64*.exe; do
+            if [[ -f "$file" ]]; then
+              cp "$file" bin/ferret-scan-windows-amd64.exe
+              echo "✅ Copied Windows AMD64: $file"
+            fi
+          done
+          
+          for file in dist/ferret-scan_*_windows_arm64*.exe; do
+            if [[ -f "$file" ]]; then
+              cp "$file" bin/ferret-scan-windows-arm64.exe
+              echo "✅ Copied Windows ARM64: $file"
+            fi
+          done
           
           # Create platform detection script
           cat > bin/ferret-scan << 'EOF'
@@ -103,12 +142,31 @@ jobs:
           EOF
           chmod +x bin/ferret-scan
           
-          # Commit binaries
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bin/
-          git commit -m "chore: add pre-built binaries for pre-commit [skip ci]" || true
-          git push || true
+          # Show what we created
+          echo "=== Created binaries ==="
+          ls -la bin/
+          
+          # Check if we have any binaries to commit
+          if [[ -n "$(ls -A bin/ 2>/dev/null)" ]]; then
+            # Commit binaries
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add bin/
+            if git commit -m "chore: add pre-built binaries for pre-commit [skip ci]"; then
+              echo "✅ Committed binaries"
+              if git push; then
+                echo "✅ Pushed binaries to repository"
+              else
+                echo "❌ Failed to push binaries"
+                exit 1
+              fi
+            else
+              echo "ℹ️ No changes to commit"
+            fi
+          else
+            echo "❌ No binaries found to commit"
+            exit 1
+          fi
 
       - name: Run GoReleaser (Snapshot)
         if: github.event.inputs.snapshot == 'true' || (github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
