@@ -1,17 +1,44 @@
 #!/bin/bash
-DIR="$(dirname "$0")"
-case "$(uname -s)" in
-    Linux*)     
-        case "$(uname -m)" in
-            x86_64)  exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
-            aarch64) exec "$DIR/ferret-scan-linux-arm64" "$@" ;;
-            *)       exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
-        esac ;;
-    Darwin*)    
-        case "$(uname -m)" in
-            arm64)  exec "$DIR/ferret-scan-darwin-arm64" "$@" ;;
-            *)      exec "$DIR/ferret-scan-darwin-amd64" "$@" ;;
-        esac ;;
-    CYGWIN*|MINGW*) exec "$DIR/ferret-scan-windows-amd64.exe" "$@" ;;
-    *)          echo "Unsupported platform: $(uname -s)" >&2; exit 1 ;;
+
+# Ferret Scan wrapper script to detect platform and use appropriate binary
+
+# Detect OS and architecture
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+# Map architecture names
+case $ARCH in
+    x86_64)
+        ARCH="amd64"
+        ;;
+    arm64|aarch64)
+        ARCH="arm64"
+        ;;
+    *)
+        echo "Unsupported architecture: $ARCH"
+        exit 1
+        ;;
 esac
+
+# Map OS names and set binary name
+case $OS in
+    darwin)
+        BINARY="ferret-scan-darwin-$ARCH"
+        ;;
+    linux)
+        BINARY="ferret-scan-linux-$ARCH"
+        ;;
+    mingw*|msys*|cygwin*)
+        BINARY="ferret-scan-windows-$ARCH.exe"
+        ;;
+    *)
+        echo "Unsupported operating system: $OS"
+        exit 1
+        ;;
+esac
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Execute the appropriate binary
+exec "$SCRIPT_DIR/$BINARY" "$@"
