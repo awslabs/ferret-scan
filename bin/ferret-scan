@@ -1,65 +1,17 @@
 #!/bin/bash
-
-# Ferret Scan wrapper script to detect platform and use appropriate binary
-# This script works both when run directly and when executed by pre-commit
-
-set -euo pipefail
-
-# Detect OS and architecture
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
-
-# Map architecture names
-case $ARCH in
-    x86_64)
-        ARCH="amd64"
-        ;;
-    arm64|aarch64)
-        ARCH="arm64"
-        ;;
-    *)
-        echo "Error: Unsupported architecture: $ARCH" >&2
-        echo "Supported architectures: x86_64 (amd64), arm64, aarch64" >&2
-        exit 1
-        ;;
+DIR="$(dirname "$0")"
+case "$(uname -s)" in
+    Linux*)     
+        case "$(uname -m)" in
+            x86_64)  exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
+            aarch64) exec "$DIR/ferret-scan-linux-arm64" "$@" ;;
+            *)       exec "$DIR/ferret-scan-linux-amd64" "$@" ;;
+        esac ;;
+    Darwin*)    
+        case "$(uname -m)" in
+            arm64)  exec "$DIR/ferret-scan-darwin-arm64" "$@" ;;
+            *)      exec "$DIR/ferret-scan-darwin-amd64" "$@" ;;
+        esac ;;
+    CYGWIN*|MINGW*) exec "$DIR/ferret-scan-windows-amd64.exe" "$@" ;;
+    *)          echo "Unsupported platform: $(uname -s)" >&2; exit 1 ;;
 esac
-
-# Map OS names and set binary name
-case $OS in
-    darwin)
-        BINARY="ferret-scan-darwin-$ARCH"
-        ;;
-    linux)
-        BINARY="ferret-scan-linux-$ARCH"
-        ;;
-    mingw*|msys*|cygwin*)
-        BINARY="ferret-scan-windows-$ARCH.exe"
-        ;;
-    *)
-        echo "Error: Unsupported operating system: $OS" >&2
-        echo "Supported systems: Darwin (macOS), Linux, Windows" >&2
-        exit 1
-        ;;
-esac
-
-# Get the directory where this script is located (works in pre-commit cache too)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARY_PATH="$SCRIPT_DIR/$BINARY"
-
-# Check if the binary exists
-if [[ ! -f "$BINARY_PATH" ]]; then
-    echo "Error: Binary not found: $BINARY_PATH" >&2
-    echo "Script directory: $SCRIPT_DIR" >&2
-    echo "Available binaries:" >&2
-    ls -1 "$SCRIPT_DIR"/ferret-scan-* 2>/dev/null || echo "  No platform-specific binaries found" >&2
-    exit 1
-fi
-
-# Check if the binary is executable
-if [[ ! -x "$BINARY_PATH" ]]; then
-    echo "Error: Binary is not executable: $BINARY_PATH" >&2
-    exit 1
-fi
-
-# Execute the appropriate binary
-exec "$BINARY_PATH" "$@"
