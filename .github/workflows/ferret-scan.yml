@@ -178,8 +178,8 @@ jobs:
             if [ "$result_file" != "results/combined.json" ] && [ -f "$result_file" ]; then
               # Handle both array format [] and object format {results: []}
               jq -s '
-                .[0].results + 
-                (if .[1] | type == "array" then .[1] else (.[1].results // []) end) | 
+                .[0].results +
+                (if .[1] | type == "array" then .[1] else (.[1].results // []) end) |
                 {results: .}
               ' results/combined.json "$result_file" > temp.json
               mv temp.json results/combined.json

@@ -50,20 +50,20 @@ ImageMetadataSensitiveFields = []string{
     "gpslatitude", "gpslongitude", "gpsaltitude", "gpsdatestamp",
     "gpslatituderef", "gpslongituderef", "gpsaltituderef",
     "gpstimestamp", "gpsprocessingmethod", "gpsareainformation",
-    
+
     // Device Information
     "camera_make", "camera_model", "camera_serial", "device_id",
     "lens_make", "lens_model", "lens_serial",
     "unique_camera_model", "camera_owner_name",
-    
+
     // Creator and Copyright Information
     "artist", "creator", "copyright", "copyrightnotice",
     "imagedescription", "usercomment", "xp_author", "xp_comment",
-    
+
     // Software and System Information
     "software", "processing_software", "host_computer",
     "camera_software_version", "firmware_version",
-    
+
     // Personal Information in EXIF
     "owner_name", "camera_owner", "photographer",
     "contact_info", "email", "website",
@@ -106,23 +106,23 @@ DocumentMetadataSensitiveFields = []string{
     // Author and Creator Information
     "author", "creator", "lastmodifiedby", "manager", "company",
     "dc:creator", "dc:publisher", "cp:lastmodifiedby",
-    
+
     // Personal Comments and Descriptions
     "comments", "description", "keywords", "subject",
     "dc:description", "dc:subject", "cp:keywords",
-    
+
     // Copyright and Ownership
     "copyright", "rights", "copyrightnotice",
     "dc:rights", "dc:rightsHolder",
-    
+
     // Revision and History Information
     "revision_history", "change_tracking", "document_history",
     "last_saved_by", "created_by", "modified_by",
-    
+
     // Template and Path Information
     "template", "template_path", "document_path",
     "hyperlink_base", "shared_doc_path",
-    
+
     // Personal Information
     "personal_info", "contact_info", "email_address",
     "phone_number", "address", "organization",
@@ -155,26 +155,26 @@ AudioMetadataSensitiveFields = []string{
     // Artist and Performer Identity
     "artist", "performer", "composer", "conductor", "albumartist",
     "band", "ensemble", "orchestra", "choir",
-    
+
     // ID3 Tag Fields (Personal Information)
     "tpe1", "tpe2", "tpe3", "tpe4",  // Performer fields
     "tcom", "tcon", "tcop",          // Composer, content, copyright
     "tpub", "town", "trsn",          // Publisher, owner, station
-    
+
     // Recording and Production Information
     "publisher", "label", "record_label", "production_company",
     "studio", "recorded_at", "recording_location",
     "producer", "engineer", "mixer", "mastered_by",
-    
+
     // Contact and Business Information
     "management", "booking", "agent", "contact",
     "website", "email", "phone", "address",
     "social_media", "facebook", "twitter", "instagram",
-    
+
     // Copyright and Legal Information
     "copyright", "copyrightnotice", "rights", "license",
     "isrc", "publishing_rights", "mechanical_rights",
-    
+
     // Personal Comments and Notes
     "comment", "description", "notes", "lyrics",
     "personal_notes", "session_notes",
@@ -208,25 +208,25 @@ VideoMetadataSensitiveFields = []string{
     "gpslatitude", "gpslongitude", "gpsaltitude", "xyz",
     "location", "recording_location", "gps_coordinates",
     "place", "venue", "address", "city", "country",
-    
+
     // Device and Camera Information
     "camera_make", "camera_model", "recording_device", "device_serial",
     "camera_serial", "lens_make", "lens_model", "equipment_id",
     "camera_identifier", "device_manufacturer",
-    
+
     // Creator and Production Information
     "recorded_by", "director", "producer", "cinematographer",
     "camera_operator", "sound_recordist", "editor",
     "production_company", "studio", "distributor",
-    
+
     // Copyright and Legal Information
     "copyright", "copyrightnotice", "rights", "license",
     "production_copyright", "distribution_rights",
-    
+
     // Personal Information and Comments
     "comment", "description", "notes", "keywords",
     "personal_notes", "production_notes", "scene_notes",
-    
+
     // Technical and System Information
     "software", "encoding_software", "creation_tool",
     "host_computer", "operating_system", "user_account",
@@ -264,19 +264,19 @@ func (v *EnhancedMetadataValidator) calculateEnhancedConfidence(
 ) float64 {
     // Start with base pattern match confidence
     confidence := baseConfidence
-    
+
     // Apply preprocessor-specific boost
     confidence += v.getPreprocessorBoost(preprocessorType, fieldType)
-    
+
     // Apply field-specific weighting
     confidence *= v.getFieldWeight(preprocessorType, fieldType)
-    
+
     // Apply context analysis adjustments
     confidence = v.applyContextAdjustments(confidence, contextAnalysis)
-    
+
     // Apply value-specific adjustments
     confidence = v.applyValueAdjustments(confidence, fieldValue, fieldType)
-    
+
     // Ensure confidence stays within valid range [0, 100]
     return math.Min(100.0, math.Max(0.0, confidence))
 }
@@ -293,13 +293,13 @@ func (v *EnhancedMetadataValidator) getPreprocessorBoost(
     if rules == nil {
         return 0.0
     }
-    
+
     // Get base boost for field type
     boost := rules.ConfidenceBoosts[fieldType]
-    
+
     // Apply preprocessor-specific multiplier
     multiplier := v.getPreprocessorMultiplier(preprocessorType)
-    
+
     return boost * multiplier * 100 // Convert to percentage points
 }
 ```
@@ -323,11 +323,11 @@ func (v *EnhancedMetadataValidator) applyDomainAdjustments(
         "corporate":    1.1,  // 10% increase for corporate documents
         "government":   1.2,  // 20% increase for government documents
     }
-    
+
     if adjustment, exists := domainAdjustments[domain]; exists {
         return confidence * adjustment
     }
-    
+
     return confidence
 }
 ```
@@ -347,11 +347,11 @@ func (v *EnhancedMetadataValidator) applyDocumentTypeAdjustments(
         "presentation": 1.1,  // 10% increase for presentations
         "spreadsheet":  1.2,  // 20% increase for spreadsheets
     }
-    
+
     if adjustment, exists := typeAdjustments[docType]; exists {
         return confidence * adjustment
     }
-    
+
     return confidence
 }
 ```
@@ -391,9 +391,9 @@ func (v *EnhancedMetadataValidator) analyzeGPSPrecision(coordinate string) float
     if len(parts) != 2 {
         return 0.8 // Lower confidence for malformed coordinates
     }
-    
+
     decimalPlaces := len(parts[1])
-    
+
     // More decimal places = higher precision = higher confidence
     switch {
     case decimalPlaces >= 6:
@@ -432,7 +432,7 @@ func (v *EnhancedMetadataValidator) applyHistoricalCalibration(
     if metrics == nil {
         return confidence
     }
-    
+
     // Adjust confidence based on historical accuracy
     calibrationFactor := metrics.Precision
     return confidence * calibrationFactor
@@ -452,24 +452,24 @@ func (v *EnhancedMetadataValidator) UpdateValidationRules(
 ) error {
     v.mutex.Lock()
     defer v.mutex.Unlock()
-    
+
     // Validate rule structure
     if err := v.validateRuleStructure(rules); err != nil {
         return fmt.Errorf("invalid rule structure: %w", err)
     }
-    
+
     // Update rules
     v.validationRules[preprocessorType] = rules
-    
+
     // Log rule update
-    v.observer.LogInfo("validation_rules_updated", 
-        "Updated validation rules for preprocessor", 
+    v.observer.LogInfo("validation_rules_updated",
+        "Updated validation rules for preprocessor",
         map[string]interface{}{
             "preprocessor_type": preprocessorType,
             "sensitive_fields":  len(rules.SensitiveFields),
             "confidence_boosts": len(rules.ConfidenceBoosts),
         })
-    
+
     return nil
 }
 ```
@@ -538,7 +538,7 @@ func (rc *RuleCache) GetCompiledPattern(
 ) *regexp.Regexp {
     rc.mutex.RLock()
     defer rc.mutex.RUnlock()
-    
+
     key := fmt.Sprintf("%s:%s", preprocessorType, fieldType)
     return rc.compiledPatterns[key]
 }
@@ -553,19 +553,19 @@ func (v *EnhancedMetadataValidator) validateFieldsParallel(
     metadataContent MetadataContent,
 ) ([]detector.Match, error) {
     fields := v.extractFields(metadataContent.Content)
-    
+
     // Create worker pool for parallel validation
     numWorkers := min(len(fields), runtime.NumCPU())
     fieldChan := make(chan FieldValidationJob, len(fields))
     resultChan := make(chan detector.Match, len(fields))
-    
+
     // Start workers
     var wg sync.WaitGroup
     for i := 0; i < numWorkers; i++ {
         wg.Add(1)
         go v.fieldValidationWorker(&wg, fieldChan, resultChan, metadataContent)
     }
-    
+
     // Send jobs
     for fieldName, fieldValue := range fields {
         fieldChan <- FieldValidationJob{
@@ -574,18 +574,18 @@ func (v *EnhancedMetadataValidator) validateFieldsParallel(
         }
     }
     close(fieldChan)
-    
+
     // Collect results
     go func() {
         wg.Wait()
         close(resultChan)
     }()
-    
+
     var matches []detector.Match
     for match := range resultChan {
         matches = append(matches, match)
     }
-    
+
     return matches, nil
 }
 ```
@@ -599,7 +599,7 @@ The validation rules are thoroughly tested using a comprehensive unit testing fr
 ```go
 func TestImageMetadataValidation(t *testing.T) {
     validator := NewEnhancedMetadataValidator()
-    
+
     testCases := []struct {
         name               string
         metadataContent    MetadataContent
@@ -620,14 +620,14 @@ func TestImageMetadataValidation(t *testing.T) {
         },
         // Additional test cases...
     }
-    
+
     for _, tc := range testCases {
         t.Run(tc.name, func(t *testing.T) {
             matches, err := validator.ValidateMetadataContent(tc.metadataContent)
-            
+
             assert.NoError(t, err)
             assert.Len(t, matches, tc.expectedMatches)
-            
+
             for i, match := range matches {
                 assert.Equal(t, tc.expectedTypes[i], match.Type)
                 assert.GreaterOrEqual(t, match.Confidence, tc.minConfidence)
@@ -662,19 +662,19 @@ func TestEndToEndMetadataValidation(t *testing.T) {
         },
         // Additional test cases...
     }
-    
+
     for _, tc := range testFiles {
         t.Run(tc.filePath, func(t *testing.T) {
             // Process file through complete pipeline
             results := processFileEndToEnd(tc.filePath)
-            
+
             // Verify metadata-specific matches
             metadataMatches := filterMetadataMatches(results)
-            
+
             for preprocessorType, expectedCount := range tc.expectedMetadata {
                 actualMatches := filterByPreprocessor(metadataMatches, preprocessorType)
                 assert.Len(t, actualMatches, expectedCount)
-                
+
                 for _, match := range actualMatches {
                     expectedConf := tc.expectedConfidence[match.Type]
                     assert.GreaterOrEqual(t, match.Confidence, expectedConf)
@@ -712,10 +712,10 @@ func (v *EnhancedMetadataValidator) collectMetrics(
     v.metrics.ProcessingTime += processingTime
     v.metrics.PreprocessorCounts[preprocessorType]++
     v.metrics.FieldTypeCounts[fieldType]++
-    
+
     // Update average confidence
     v.updateAverageConfidence(confidence)
-    
+
     // Log metrics periodically
     if v.metrics.ProcessedFields%1000 == 0 {
         v.logMetrics()
@@ -741,19 +741,19 @@ The system provides alerting for validation issues:
 func (v *EnhancedMetadataValidator) checkAlertConditions() {
     // Check accuracy degradation
     if v.getCurrentAccuracy() < v.minAccuracyThreshold {
-        v.sendAlert("ACCURACY_DEGRADATION", 
+        v.sendAlert("ACCURACY_DEGRADATION",
             "Validation accuracy below threshold")
     }
-    
+
     // Check processing time increase
     if v.getAverageProcessingTime() > v.maxProcessingTime {
-        v.sendAlert("PERFORMANCE_DEGRADATION", 
+        v.sendAlert("PERFORMANCE_DEGRADATION",
             "Validation processing time exceeded threshold")
     }
-    
+
     // Check error rate increase
     if v.getErrorRate() > v.maxErrorRate {
-        v.sendAlert("HIGH_ERROR_RATE", 
+        v.sendAlert("HIGH_ERROR_RATE",
             "Validation error rate exceeded threshold")
     }
 }

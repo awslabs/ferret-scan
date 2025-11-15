@@ -79,7 +79,7 @@ ferret-scan --version
 
 **Features:**
 - ✅ Simple installation with pip
-- ✅ Cross-platform compatibility  
+- ✅ Cross-platform compatibility
 - ✅ Automatic updates with pip
 - ✅ Perfect for pre-commit integration
 - ✅ Supports all ferret-scan features
@@ -346,7 +346,7 @@ profiles:
 **Automatic Pre-commit Detection:**
 Ferret Scan automatically detects pre-commit environments by checking for:
 - `PRE_COMMIT` environment variable
-- `_PRE_COMMIT_RUNNING` environment variable  
+- `_PRE_COMMIT_RUNNING` environment variable
 - `PRE_COMMIT_HOME` environment variable
 
 When detected, it automatically enables:

@@ -22,7 +22,7 @@ ENTROPY ANALYSIS:
 
 SUPPORTED SECRET TYPES:
 • SSH_PRIVATE_KEY - SSH private keys and certificates
-• CERTIFICATE - X.509 certificates and encrypted private keys  
+• CERTIFICATE - X.509 certificates and encrypted private keys
 • JWT_TOKEN - JSON Web Tokens (eyJ...)
 • AWS_ACCESS_KEY - Amazon Web Services access keys (AKIA...)
 • GITHUB_TOKEN - GitHub personal access tokens (ghp_, gho_, etc.)

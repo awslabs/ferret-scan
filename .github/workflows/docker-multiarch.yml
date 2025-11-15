@@ -106,7 +106,7 @@ jobs:
           echo "Actor: ${{ github.actor }}"
           echo "Repository: ${{ github.repository }}"
           echo "Repository owner: ${{ github.repository_owner }}"
-          
+
           # Test if we can access the repository
           if docker manifest inspect ghcr.io/${{ env.GHCR_REPOSITORY }}:latest >/dev/null 2>&1; then
             echo "✅ Can access existing images"
@@ -210,12 +210,12 @@ jobs:
           # Test each platform
           for platform in $(echo "${{ steps.platforms.outputs.platforms }}" | tr ',' ' '); do
             echo "Testing $platform..."
-            
+
             # Test GHCR image
             docker run --rm --platform=$platform \
               ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:${{ steps.meta.outputs.version }} \
               --version || echo "⚠️ GHCR version check failed for $platform"
-              
+
             docker run --rm --platform=$platform \
               ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:${{ steps.meta.outputs.version }} \
               --help | head -5 || echo "⚠️ GHCR help check failed for $platform"
