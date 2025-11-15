@@ -18,7 +18,7 @@ The metadata validator automatically determines which files can contain meaningf
 
 ### Files Processed for Metadata
 - **Images**: .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp, .heic, .heif, .raw, .cr2, .nef, .arw
-- **Documents**: .pdf, .docx, .doc, .xlsx, .xls, .pptx, .ppt, .odt, .ods, .odp  
+- **Documents**: .pdf, .docx, .doc, .xlsx, .xls, .pptx, .ppt, .odt, .ods, .odp
 - **Audio**: .mp3, .flac, .wav, .ogg, .m4a, .aac, .wma, .opus
 - **Video**: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv
 
@@ -87,7 +87,7 @@ The validator uses a sophisticated multi-factor confidence scoring system:
 
 ### Confidence Levels
 - **HIGH (90-100%)**: Very likely sensitive data with strong patterns and context
-- **MEDIUM (60-89%)**: Possibly sensitive data with moderate confidence  
+- **MEDIUM (60-89%)**: Possibly sensitive data with moderate confidence
 - **LOW (0-59%)**: Likely false positive or low-confidence match
 
 ## Usage
@@ -112,7 +112,7 @@ if err != nil {
 
 // Process matches with enhanced information
 for _, match := range matches {
-    fmt.Printf("Found %s with confidence %.2f from %s\n", 
+    fmt.Printf("Found %s with confidence %.2f from %s\n",
         match.Type, match.Confidence, match.Metadata["source"])
 }
 ```

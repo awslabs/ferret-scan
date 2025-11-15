@@ -221,7 +221,7 @@ if ($AddToPath) {
     try {
         $pathType = if ($UserInstall) { "User" } else { "Machine" }
         $currentPath = [Environment]::GetEnvironmentVariable("PATH", $pathType)
-        
+
         if ($currentPath -notlike "*$InstallPath*") {
             $newPath = "$currentPath;$InstallPath"
             [Environment]::SetEnvironmentVariable("PATH", $newPath, $pathType)
@@ -238,7 +238,7 @@ if ($AddToPath) {
 if ($CreateShortcuts) {
     try {
         $WshShell = New-Object -comObject WScript.Shell
-        
+
         # Desktop shortcut
         $desktopPath = [Environment]::GetFolderPath("Desktop")
         $shortcut = $WshShell.CreateShortcut("$desktopPath\Ferret Scan.lnk")
@@ -246,7 +246,7 @@ if ($CreateShortcuts) {
         $shortcut.WorkingDirectory = $InstallPath
         $shortcut.Description = "Ferret Scan Security Scanner"
         $shortcut.Save()
-        
+
         Write-Host "Created desktop shortcut" -ForegroundColor Green
     } catch {
         Write-Host "Failed to create shortcuts: $_" -ForegroundColor Red
@@ -292,7 +292,7 @@ Write-Host "Uninstalling from: $InstallPath" -ForegroundColor Cyan
 try {
     $pathType = if ($UserInstall) { "User" } else { "Machine" }
     $currentPath = [Environment]::GetEnvironmentVariable("PATH", $pathType)
-    
+
     if ($currentPath -like "*$InstallPath*") {
         $newPath = $currentPath -replace [regex]::Escape(";$InstallPath"), ""
         $newPath = $newPath -replace [regex]::Escape("$InstallPath;"), ""
@@ -358,7 +358,7 @@ profiles:
     checks: "CREDIT_CARD,SSN,SECRETS"
     confidence_levels: "high"
     description: "Quick scan for common sensitive data"
-  
+
   comprehensive:
     checks: "all"
     confidence_levels: "all"
@@ -596,7 +596,7 @@ if ($LASTEXITCODE -eq 0) {
 Extract this ZIP file to a directory of your choice.
 Add the directory to your PATH environment variable to use ferret-scan from anywhere.
 
-Usage: 
+Usage:
   ferret-scan --help
   ferret-scan scan C:\path\to\scan
 

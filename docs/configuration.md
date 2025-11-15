@@ -123,13 +123,13 @@ validators:
       - "http[s]?:\\/\\/s3\\.amazonaws\\.com"
       - "http[s]?:\\/\\/.*\\.s3\\.amazonaws\\.com"
       - "http[s]?:\\/\\/s3-.*\\.amazonaws\\.com"
-      
+
       # AWS CloudFront distributions
       - "http[s]?:\\/\\/.*\\.cloudfront\\.net"
-      
+
       # AWS API Gateway
       - "http[s]?:\\/\\/.*\\.execute-api\\..*\\.amazonaws\\.com"
-      
+
       # AWS Load Balancers
       - "http[s]?:\\/\\/.*\\.elb\\.amazonaws\\.com"
       - "http[s]?:\\/\\/.*\\.elb\\..*\\.amazonaws\\.com"
@@ -143,13 +143,13 @@ validators:
       # Azure Storage
       - "http[s]?:\\/\\/.*\\.blob\\.core\\.windows\\.net"
       - "http[s]?:\\/\\/.*\\.file\\.core\\.windows\\.net"
-      
+
       # Azure Web Apps
       - "http[s]?:\\/\\/.*\\.azurewebsites\\.net"
-      
+
       # Azure API Management
       - "http[s]?:\\/\\/.*\\.azure-api\\.net"
-      
+
       # Azure CDN
       - "http[s]?:\\/\\/.*\\.azureedge\\.net"
 ```
@@ -162,13 +162,13 @@ validators:
       # Google Cloud Storage
       - "http[s]?:\\/\\/storage\\.googleapis\\.com"
       - "http[s]?:\\/\\/.*\\.storage\\.googleapis\\.com"
-      
+
       # Google App Engine
       - "http[s]?:\\/\\/.*\\.appspot\\.com"
-      
+
       # Google Cloud Run
       - "http[s]?:\\/\\/.*\\.run\\.app"
-      
+
       # Google Cloud Functions
       - "http[s]?:\\/\\/.*\\.cloudfunctions\\.net"
 ```
@@ -183,13 +183,13 @@ validators:
       - "http[s]?:\\/\\/.*\\.corp\\..*"
       - "http[s]?:\\/\\/.*\\.company\\..*"
       - "http[s]?:\\/\\/.*\\.local"
-      
+
       # Internal naming conventions
       - "http[s]?:\\/\\/.*-internal\\..*"
       - "http[s]?:\\/\\/.*internal-.*"
       - "http[s]?:\\/\\/internal-.*"
       - "http[s]?:\\/\\/intranet\\..*"
-      
+
       # Development and staging environments
       - "http[s]?:\\/\\/.*-dev\\..*"
       - "http[s]?:\\/\\/.*-staging\\..*"
@@ -208,11 +208,11 @@ validators:
       - "http[s]?:\\/\\/10\\..*"
       - "http[s]?:\\/\\/172\\.(1[6-9]|2[0-9]|3[0-1])\\..*"
       - "http[s]?:\\/\\/192\\.168\\..*"
-      
+
       # Localhost and loopback
       - "http[s]?:\\/\\/localhost"
       - "http[s]?:\\/\\/127\\..*"
-      
+
       # Link-local addresses
       - "http[s]?:\\/\\/169\\.254\\..*"
 ```

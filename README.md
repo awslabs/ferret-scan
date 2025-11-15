@@ -669,7 +669,7 @@ make setup-team
 
 # This configures:
 # • Team security policies (.ferret-scan.yaml)
-# • Pre-commit hooks (.pre-commit-config.yaml)  
+# • Pre-commit hooks (.pre-commit-config.yaml)
 # • GitHub Actions workflow (.github/workflows/ferret-scan.yml)
 
 # Commit the configuration to share with your team

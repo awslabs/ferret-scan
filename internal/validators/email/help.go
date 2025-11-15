@@ -18,7 +18,7 @@ The validator automatically identifies specific email providers and displays the
 
 SUPPORTED EMAIL PROVIDER TYPES:
 • GMAIL - Gmail and Google Mail addresses
-• GOOGLE_WORKSPACE - Google Workspace/G Suite business emails  
+• GOOGLE_WORKSPACE - Google Workspace/G Suite business emails
 • OUTLOOK - Outlook, Hotmail, Live, MSN addresses
 • MICROSOFT_365 - Microsoft 365 business emails
 • YAHOO - Yahoo Mail addresses (all international variants)

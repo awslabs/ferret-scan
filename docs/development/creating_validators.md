@@ -506,7 +506,7 @@ func TestWindowsSpecificBehavior(t *testing.T) {
     if runtime.GOOS != "windows" {
         t.Skip("Skipping Windows-specific test")
     }
-    
+
     // Test Windows-specific functionality
     testCases := []struct {
         name     string
@@ -517,7 +517,7 @@ func TestWindowsSpecificBehavior(t *testing.T) {
         {"UNC path", `\\server\share\document.txt`, true},
         {"Long path", `\\?\C:\very\long\path\document.txt`, true},
     }
-    
+
     for _, tc := range testCases {
         t.Run(tc.name, func(t *testing.T) {
             // Test your validator with Windows paths
@@ -534,7 +534,7 @@ validators:
     # Use Windows environment variables
     config_dir: "%APPDATA%\\ferret-scan"
     temp_dir: "%TEMP%\\ferret-scan"
-    
+
     # Windows-specific patterns
     patterns:
       - "C:\\\\.*\\.sensitive"  # Windows drive paths

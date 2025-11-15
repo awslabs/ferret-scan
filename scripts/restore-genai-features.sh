@@ -35,41 +35,41 @@ TOTAL_CHANGES=0
 restore_genai_in_file() {
     local file="$1"
     local description="$2"
-    
+
     if [ ! -f "$file" ]; then
         echo "⚠️  SKIP: $file (file not found)"
         return
     fi
-    
+
     echo -n "Restoring $description ($file)... "
-    
+
     # Count changes before restoration
     local changes_before=$(grep -c "GENAI_DISABLED" "$file" 2>/dev/null || echo "0")
-    
+
     if [ "$changes_before" -eq 0 ]; then
         echo "✅ SKIP (no GenAI code to restore)"
         return
     fi
-    
+
     # Create backup
     cp "$file" "$file.backup.$(date +%Y%m%d_%H%M%S)"
-    
+
     # Restore Go code comments
     sed -i.tmp 's|// GENAI_DISABLED: ||g' "$file"
-    
+
     # Restore HTML/XML comments
     sed -i.tmp 's|<!-- GENAI_DISABLED: \(.*\) -->|\1|g' "$file"
-    
+
     # Restore YAML/Shell comments
     sed -i.tmp 's|# GENAI_DISABLED: ||g' "$file"
-    
+
     # Remove temporary file
     rm -f "$file.tmp"
-    
+
     # Count changes after restoration
     local changes_after=$(grep -c "GENAI_DISABLED" "$file" 2>/dev/null || echo "0")
     local restored_count=$((changes_before - changes_after))
-    
+
     if [ "$restored_count" -gt 0 ]; then
         echo "✅ RESTORED ($restored_count changes)"
         RESTORED_FILES=$((RESTORED_FILES + 1))

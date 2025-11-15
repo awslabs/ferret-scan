@@ -20,7 +20,7 @@ echo "----------------------------------------"
 # Get commit messages in the range
 git log --pretty=format:"%h %s" "$COMMIT_RANGE" | while read -r commit_hash commit_message; do
     echo "Checking: $commit_hash $commit_message"
-    
+
     # Check if commit message follows conventional commits format
     if echo "$commit_message" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?(!)?: .+'; then
         echo "  ✅ Valid conventional commit format"

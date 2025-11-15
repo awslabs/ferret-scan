@@ -29,7 +29,7 @@ update_go_mod() {
         # Extract major.minor version for go.mod (e.g., 1.24.1 -> 1.24)
         GO_MOD_VERSION=$(echo "$GO_VERSION" | cut -d. -f1,2)
         echo "Updating go.mod to use Go $GO_MOD_VERSION"
-        
+
         # Update go.mod file
         if command -v go >/dev/null 2>&1; then
             go mod edit -go="$GO_MOD_VERSION"
@@ -45,7 +45,7 @@ check_go_version() {
     if command -v go >/dev/null 2>&1; then
         CURRENT_VERSION=$(go version | grep -o 'go[0-9]\+\.[0-9]\+\.[0-9]\+' | sed 's/go//')
         echo "Current Go version: $CURRENT_VERSION"
-        
+
         if [[ "$CURRENT_VERSION" != "$GO_VERSION" ]]; then
             echo "⚠️  Version mismatch!"
             echo "   Expected: $GO_VERSION"
@@ -69,10 +69,10 @@ check_go_version() {
 update_dockerfile() {
     if [[ -f "Dockerfile" ]]; then
         echo "Updating Dockerfile to use Go $GO_VERSION"
-        
+
         # Update golang base image
         sed -i.bak "s|FROM golang:[0-9]\+\.[0-9]\+\.[0-9]\+-alpine|FROM golang:${GO_VERSION}-alpine|g" Dockerfile
-        
+
         if [[ $? -eq 0 ]]; then
             echo "✅ Updated Dockerfile"
             rm -f Dockerfile.bak
@@ -86,13 +86,13 @@ update_dockerfile() {
 update_gitlab_ci() {
     if [[ -f ".gitlab-ci.yml" ]]; then
         echo "Updating .gitlab-ci.yml to use Go $GO_VERSION"
-        
+
         # Update GO_VERSION variable
         sed -i.bak "s|GO_VERSION: \"[0-9]\+\.[0-9]\+\.[0-9]\+\"|GO_VERSION: \"${GO_VERSION}\"|g" .gitlab-ci.yml
-        
+
         # Update GO_DOCKER_IMAGE variable
         sed -i.bak "s|GO_DOCKER_IMAGE: \"golang:[0-9]\+\.[0-9]\+\.[0-9]\+-alpine\"|GO_DOCKER_IMAGE: \"golang:${GO_VERSION}-alpine\"|g" .gitlab-ci.yml
-        
+
         if [[ $? -eq 0 ]]; then
             echo "✅ Updated .gitlab-ci.yml"
             rm -f .gitlab-ci.yml.bak
@@ -106,12 +106,12 @@ update_gitlab_ci() {
 update_github_workflows() {
     if [[ -d ".github/workflows" ]]; then
         echo "Updating GitHub workflows to use Go $GO_VERSION"
-        
+
         for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
             if [[ -f "$workflow" ]]; then
                 # Update go-version in setup-go actions
                 sed -i.bak "s|go-version: '[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?'|go-version: '${GO_VERSION}'|g" "$workflow"
-                
+
                 if [[ $? -eq 0 ]]; then
                     echo "✅ Updated $(basename "$workflow")"
                     rm -f "${workflow}.bak"

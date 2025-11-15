@@ -15,7 +15,7 @@ FINCH_AVAILABLE=false
 if command -v docker >/dev/null 2>&1; then
     DOCKER_AVAILABLE=true
     echo "✓ Docker found: $(docker --version)"
-    
+
     # Test if Docker daemon is running
     if docker info >/dev/null 2>&1; then
         echo "  ✓ Docker daemon is running"
@@ -29,7 +29,7 @@ fi
 if command -v finch >/dev/null 2>&1; then
     FINCH_AVAILABLE=true
     echo "✓ Finch found: $(finch --version)"
-    
+
     # Test if Finch is working
     if finch info >/dev/null 2>&1; then
         echo "  ✓ Finch is working"

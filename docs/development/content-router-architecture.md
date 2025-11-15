@@ -221,7 +221,7 @@ if fileRouter.CanContainMetadata("document.pdf") {
     // Get specific metadata type for validation routing
     metadataType := fileRouter.GetMetadataType("document.pdf")
     // metadataType will be "document_metadata"
-    
+
     // Route to appropriate metadata validator with type information
     processMetadata(content, metadataType)
 }
@@ -392,15 +392,15 @@ func (v *EnhancedMetadataValidator) calculateConfidence(
     // Apply preprocessor-specific boost
     rules := v.validationRules[preprocessorType]
     boost := rules.ConfidenceBoosts[fieldType]
-    
+
     // Calculate enhanced confidence
     enhancedConfidence := baseConfidence + (boost * 100)
-    
+
     // Apply context analysis adjustments
     if contextAnalysis != nil {
         enhancedConfidence = v.applyContextAdjustments(enhancedConfidence, contextAnalysis)
     }
-    
+
     // Ensure confidence stays within valid range
     return math.Min(100.0, math.Max(0.0, enhancedConfidence))
 }
@@ -420,7 +420,7 @@ The enhanced metadata validator integrates with the Context Analysis Engine to:
 ### Enhanced Processing Flow
 
 1. **Preprocessor Execution**: All preprocessors run in parallel as before
-2. **Content Router Processing**: 
+2. **Content Router Processing**:
    - Receives combined preprocessor output
    - Identifies metadata sections using pattern matching
    - Separates document body from metadata content
@@ -464,7 +464,7 @@ flowchart LR
     Context --> DocBridge[Document Validator Bridge]
     Context --> MetaBridge[Metadata Validator Bridge]
     Context --> Results[Context-Enhanced Results]
-    
+
     Router --> DocBridge
     Router --> MetaBridge
     DocBridge --> Results

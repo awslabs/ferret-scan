@@ -151,7 +151,7 @@ If you encounter issues:
 1. Check [docs/INSTALLATION.md](INSTALLATION.md) troubleshooting section
 2. **Windows users:** Check [docs/troubleshooting/WINDOWS_TROUBLESHOOTING.md](troubleshooting/WINDOWS_TROUBLESHOOTING.md)
 3. Check [docs/UNINSTALL.md](UNINSTALL.md) for removal issues
-4. Verify permissions: 
+4. Verify permissions:
    - Linux/macOS: `ls -la /usr/local/bin/ferret-scan`
    - Windows: `Test-Path "C:\Program Files\FerretScan\ferret-scan.exe"`
 5. Test configuration: `ferret-scan --list-profiles`
