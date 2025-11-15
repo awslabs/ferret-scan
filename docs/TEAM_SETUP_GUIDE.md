@@ -15,7 +15,7 @@ cd your-repository
 # Choose: 1=Startup, 2=Enterprise, 3=Financial, 4=Custom
 
 # Set up pre-commit hooks
-./scripts/setup-pre-commit.sh  
+./scripts/setup-pre-commit.sh
 # Choose: 1=Strict, 2=Balanced, 3=Advisory, 4=Secrets, 5=Custom
 
 # Set up GitHub Actions
@@ -188,8 +188,8 @@ suppressions:
     reason: "Test credit card number in documentation"
     enabled: true
     created_at: "2024-01-15T10:30:00Z"
-    
-  - id: "example-email-suppression"  
+
+  - id: "example-email-suppression"
     pattern: "user@example.com"
     reason: "Example email in code comments"
     enabled: true
@@ -333,7 +333,7 @@ validators:
     internal_urls:
       - "http[s]?:\\/\\/.*\\.yourcompany\\.com"
       - "http[s]?:\\/\\/intranet\\.yourcompany\\.com"
-  
+
   social_media:
     platform_patterns:
       linkedin:
@@ -348,11 +348,11 @@ profiles:
   development:
     confidence_levels: high
     checks: CREDIT_CARD,SECRETS
-    
+
   staging:
     confidence_levels: high,medium
     checks: CREDIT_CARD,SECRETS,SSN,EMAIL
-    
+
   production:
     confidence_levels: all
     checks: all

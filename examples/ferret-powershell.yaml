@@ -62,16 +62,16 @@ validators:
       - "http[s]?:\\/\\/.*\\.powershellgallery\\.local"
       - "http[s]?:\\/\\/.*\\.nuget\\.local"
       - "http[s]?:\\/\\/.*\\.chocolatey\\.local"
-      
+
       # Windows management and automation URLs
       - "http[s]?:\\/\\/.*\\.wsus\\..*" # Windows Update Services
       - "http[s]?:\\/\\/.*\\.sccm\\..*" # System Center Configuration Manager
       - "http[s]?:\\/\\/.*\\.adfs\\..*" # Active Directory Federation Services
-      
+
       # PowerShell DSC and automation
       - "http[s]?:\\/\\/.*\\.dsc\\..*" # Desired State Configuration
       - "http[s]?:\\/\\/.*\\.automation\\..*" # Automation endpoints
-      
+
       # Development and testing environments
       - "http[s]?:\\/\\/.*-dev\\..*"
       - "http[s]?:\\/\\/.*-test\\..*"

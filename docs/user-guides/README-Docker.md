@@ -190,7 +190,7 @@ If suppressed findings aren't working in the container:
    ```bash
    # Correct mapping (host:container)
    docker run -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
-   
+
    # NOT this (wrong container path)
    # docker run -p 8080:8080 -v ~/.ferret-scan:/root/.ferret-scan ferret-scan
    ```
@@ -199,7 +199,7 @@ If suppressed findings aren't working in the container:
    ```bash
    # Check if your local suppression file exists
    ls -la ~/.ferret-scan/suppressions.yaml
-   
+
    # If it doesn't exist, create the directory and file
    mkdir -p ~/.ferret-scan
    echo 'version: "1.0"' > ~/.ferret-scan/suppressions.yaml
@@ -243,10 +243,10 @@ If you encounter permission issues:
    ```bash
    # Check your user ID
    id -u
-   
+
    # If your UID is not 1000, you may need to adjust permissions
    sudo chown -R 1000:1000 ~/.ferret-scan
-   
+
    # Or run container as your user (less secure)
    docker run --user $(id -u):$(id -g) -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
    ```

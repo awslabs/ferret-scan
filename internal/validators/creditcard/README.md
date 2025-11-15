@@ -62,7 +62,7 @@ The validator uses an optimized multi-step process:
 
 5. **Test Pattern Detection**: Identifies common test patterns and assigns very low confidence scores
 
-6. **Performance Optimizations**: 
+6. **Performance Optimizations**:
    - Early filtering by length and format
    - Pre-compiled regex patterns
    - Efficient BIN range lookup (600x faster validator creation)
@@ -108,7 +108,7 @@ if err != nil {
 for _, match := range matches {
     fmt.Printf("Found credit card: %s (Type: %s, Confidence: %.2f)\n",
         match.Text, match.Type, match.Confidence)
-    
+
     // Access additional metadata
     if cardType, ok := match.Metadata["card_type"].(string); ok {
         fmt.Printf("  Card Type: %s\n", cardType)

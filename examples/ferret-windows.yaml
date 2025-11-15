@@ -67,12 +67,12 @@ validators:
       - "http[s]?:\\/\\/.*\\.domain\\.local" # Local domain suffix
       - "http[s]?:\\/\\/.*\\.corp\\..*" # Corporate domain patterns
       - "http[s]?:\\/\\/.*\\.internal\\..*" # Internal domain patterns
-      
+
       # Windows file share patterns (UNC paths in URLs)
       - "file:\\/\\/\\/\\/[^\\s\\/]+\\/.*" # UNC file shares
       - "http[s]?:\\/\\/sharepoint\\..*" # SharePoint sites
       - "http[s]?:\\/\\/teams\\..*" # Microsoft Teams sites
-      
+
       # Windows development environment patterns
       - "http[s]?:\\/\\/.*-dev\\..*" # Development environments
       - "http[s]?:\\/\\/.*-test\\..*" # Test environments

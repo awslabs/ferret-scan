@@ -36,7 +36,7 @@ Use conventional commit messages for automatic version bumping:
 # Patch version (v1.2.3 -> v1.2.4)
 git commit -m "fix: resolve memory leak in scanner"
 
-# Minor version (v1.2.3 -> v1.3.0)  
+# Minor version (v1.2.3 -> v1.3.0)
 git commit -m "feat: add new validator for API keys"
 
 # Major version (v1.2.3 -> v2.0.0)
@@ -78,7 +78,7 @@ make release-snapshot
 # Install GoReleaser
 go install github.com/goreleaser/goreleaser@latest
 
-# Install git-chglog  
+# Install git-chglog
 go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
 ```
 
@@ -155,7 +155,7 @@ make check-go-version
    # Option A: Manual tag
    git tag v1.2.3
    git push origin v1.2.3
-   
+
    # Option B: Use GitLab CI manual job
    # Go to GitLab → Pipelines → Manual "create-release-tag"
    ```
@@ -218,7 +218,7 @@ This project has migrated from semantic-release to GoReleaser:
 
 ### Benefits
 - ✅ **No NPM dependencies** - Pure Go ecosystem
-- ✅ **Faster builds** - No Node.js setup overhead  
+- ✅ **Faster builds** - No Node.js setup overhead
 - ✅ **Better Go integration** - Native cross-compilation
 - ✅ **Smaller cache footprint** - Only Go modules
 - ✅ **Industry standard** - GoReleaser is the Go standard

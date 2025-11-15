@@ -111,14 +111,14 @@ LDFLAGS="$LDFLAGS -X ferret-scan/internal/version.BuildDate=$BUILD_DATE"
 build_windows() {
     local arch=$1
     local output="ferret-scan-windows-${arch}.exe"
-    
+
     echo "Building for windows/$arch..."
-    
+
     GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build \
         -ldflags "$LDFLAGS" \
         -o "$output" \
         ./cmd/main.go
-    
+
     if [ $? -eq 0 ]; then
         echo "✓ Built $output ($(du -h "$output" | cut -f1))"
     else
@@ -164,32 +164,32 @@ build_target() {
     local description=$2
     local goos=$(echo $target | cut -d'/' -f1)
     local goarch=$(echo $target | cut -d'/' -f2)
-    
+
     echo "Building $description ($target)..."
-    
+
     # Output filename
     local output="$OUTPUT_DIR/${PROJECT_NAME}-${goos}-${goarch}"
     if [ "$goos" = "windows" ]; then
         output="${output}.exe"
     fi
-    
+
     # Build flags
     local ldflags="-s -w"
     ldflags="$ldflags -X ferret-scan/internal/version.Version=$VERSION"
     ldflags="$ldflags -X ferret-scan/internal/version.GitCommit=$(git rev-parse HEAD)"
     ldflags="$ldflags -X ferret-scan/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    
+
     # Build command
     GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 go build \
         -ldflags "$ldflags" \
         -trimpath \
         -o "$output" \
         ./cmd/main.go
-    
+
     if [ $? -eq 0 ]; then
         local size=$(du -h "$output" | cut -f1)
         echo "✓ $description: $output ($size)"
-        
+
         # Generate checksum
         if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$output" > "${output}.sha256"
@@ -232,7 +232,7 @@ fi
 # Check if Wine is available
 if ! command -v wine >/dev/null 2>&1; then
     echo "Wine not installed. Installing..."
-    
+
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         sudo apt-get update
         sudo apt-get install -y wine
@@ -313,11 +313,11 @@ func GetConfigDir() string {
     if dir := os.Getenv("FERRET_CONFIG_DIR"); dir != "" {
         return dir
     }
-    
+
     if appData := os.Getenv("APPDATA"); appData != "" {
         return filepath.Join(appData, "ferret-scan")
     }
-    
+
     return ".ferret-scan"
 }
 ```
@@ -359,7 +359,7 @@ const (
     PathSeparator    = "\\"
 )
 
-// config_unix.go  
+// config_unix.go
 //go:build !windows
 
 package config
@@ -445,7 +445,7 @@ on:
 jobs:
   cross-compile:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         include:
@@ -464,22 +464,22 @@ jobs:
           - goos: darwin
             goarch: amd64
             name: darwin-amd64
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
-    
+
     - name: Set up Go
       uses: actions/setup-go@v3
       with:
         go-version: 1.21
-    
+
     - name: Get version
       id: version
       run: echo "version=$(git describe --tags --always --dirty)" >> $GITHUB_OUTPUT
-    
+
     - name: Build binary
       env:
         GOOS: ${{ matrix.goos }}
@@ -492,31 +492,31 @@ jobs:
         else
           OUTPUT="ferret-scan-${{ matrix.name }}"
         fi
-        
+
         # Build flags
         LDFLAGS="-s -w"
         LDFLAGS="$LDFLAGS -X ferret-scan/internal/version.Version=${{ steps.version.outputs.version }}"
         LDFLAGS="$LDFLAGS -X ferret-scan/internal/version.GitCommit=${{ github.sha }}"
         LDFLAGS="$LDFLAGS -X ferret-scan/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        
+
         # Build
         go build -ldflags "$LDFLAGS" -trimpath -o "$OUTPUT" ./cmd/main.go
-        
+
         # Generate checksum
         sha256sum "$OUTPUT" > "${OUTPUT}.sha256"
-        
+
         echo "Built $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
-    
+
     - name: Test Windows binary (Wine)
       if: matrix.goos == 'windows' && matrix.goarch == 'amd64'
       run: |
         # Install Wine
         sudo apt-get update
         sudo apt-get install -y wine
-        
+
         # Test binary
         wine ferret-scan-${{ matrix.name }}.exe --version || echo "Wine test completed"
-    
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -613,31 +613,31 @@ declare -A BINARIES=(
 test_binary() {
     local binary=$1
     local description=$2
-    
+
     echo "Testing $description ($binary)..."
-    
+
     if [ ! -f "$binary" ]; then
         echo "  ✗ Binary not found: $binary"
         return 1
     fi
-    
+
     # Check file type
     file "$binary" | grep -q "PE32" || {
         echo "  ✗ Not a valid Windows PE executable"
         return 1
     }
-    
+
     # Test with Wine (if available)
     if command -v wine >/dev/null 2>&1; then
         echo "  Testing with Wine..."
-        
+
         # Test version command
         if wine "$binary" --version >/dev/null 2>&1; then
             echo "  ✓ Version command works"
         else
             echo "  ⚠ Version command failed (Wine compatibility issue)"
         fi
-        
+
         # Test help command
         if wine "$binary" --help >/dev/null 2>&1; then
             echo "  ✓ Help command works"
@@ -647,11 +647,11 @@ test_binary() {
     else
         echo "  ⚠ Wine not available, skipping runtime tests"
     fi
-    
+
     # Check binary size (should be reasonable)
     local size=$(stat -c%s "$binary" 2>/dev/null || stat -f%z "$binary" 2>/dev/null)
     local size_mb=$((size / 1024 / 1024))
-    
+
     if [ $size_mb -lt 1 ]; then
         echo "  ✗ Binary too small ($size_mb MB) - likely build error"
         return 1
@@ -660,7 +660,7 @@ test_binary() {
     else
         echo "  ✓ Binary size reasonable ($size_mb MB)"
     fi
-    
+
     echo "  ✓ $description testing completed"
     return 0
 }
@@ -698,18 +698,18 @@ TEST_DIR="windows-integration-test"
 # Setup test environment
 setup_test_env() {
     echo "Setting up test environment..."
-    
+
     mkdir -p "$TEST_DIR"
     cd "$TEST_DIR"
-    
+
     # Create test files
     echo "Test file with credit card: 4111-1111-1111-1111" > test-data.txt
     echo "Another file with SSN: 123-45-6789" > test-ssn.txt
-    
+
     # Create subdirectory
     mkdir -p subdir
     echo "Nested file with email: test@example.com" > subdir/nested.txt
-    
+
     echo "Test environment created"
 }
 
@@ -723,32 +723,32 @@ cleanup_test_env() {
 # Test basic functionality
 test_basic_functionality() {
     echo "Testing basic functionality..."
-    
+
     # Test version
     wine "../$BINARY" --version || return 1
-    
+
     # Test help
     wine "../$BINARY" --help >/dev/null || return 1
-    
+
     # Test single file scan
     wine "../$BINARY" scan test-data.txt --format json >/dev/null || return 1
-    
+
     # Test directory scan
     wine "../$BINARY" scan . --recursive --format text >/dev/null || return 1
-    
+
     echo "Basic functionality tests passed"
 }
 
 # Test Windows-specific features
 test_windows_features() {
     echo "Testing Windows-specific features..."
-    
+
     # Test Windows path handling (simulated)
     # Note: Wine translates paths, so this is limited
-    
+
     # Test configuration directory detection
     # This would use Wine's Windows environment simulation
-    
+
     echo "Windows-specific feature tests completed"
 }
 
@@ -759,19 +759,19 @@ main() {
         echo "Please build the Windows binary first"
         exit 1
     fi
-    
+
     if ! command -v wine >/dev/null 2>&1; then
         echo "Error: Wine not installed"
         echo "Please install Wine to test Windows binaries"
         exit 1
     fi
-    
+
     trap cleanup_test_env EXIT
-    
+
     setup_test_env
     test_basic_functionality
     test_windows_features
-    
+
     echo "All integration tests passed! ✓"
 }
 
