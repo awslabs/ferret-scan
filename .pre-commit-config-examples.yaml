@@ -99,7 +99,7 @@ repos:
         pass_filenames: true
         env:
           FERRET_PRECOMMIT_EXIT_ON: "medium"
-      
+
       # Standard scanning for source code
       - id: ferret-scan-source
         name: Ferret Scan - Source Code

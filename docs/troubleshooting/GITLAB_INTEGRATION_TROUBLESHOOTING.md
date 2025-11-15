@@ -357,17 +357,17 @@ test:ferret-integration:
   script:
     # Test basic functionality
     - ./bin/ferret-scan --version
-    
+
     # Test GitLab format generation
     - echo "Test data: 4111-1111-1111-1111" > test-file.txt
     - ./bin/ferret-scan --file test-file.txt --format gitlab-sast --output test-report.json
-    
+
     # Validate report structure
     - jq '.version, .scan.type, (.vulnerabilities | length)' test-report.json
-    
+
     # Test with different options
     - ./bin/ferret-scan --file test-file.txt --confidence high --format gitlab-sast --output high-conf-report.json
-    
+
     # Cleanup
     - rm test-file.txt
   artifacts:

@@ -193,7 +193,7 @@ profiles:
     confidence_levels: "high"
     recursive: true
     description: "Windows development scanning profile"
-    
+
   windows-enterprise:
     format: "gitlab-sast"
     checks: "all"
@@ -235,12 +235,12 @@ function Scan-Directory {
         [string]$Format = "text",
         [string]$Output = $null
     )
-    
+
     $args = @("scan", $Path, "--format", $Format)
     if ($Output) {
         $args += @("--output", $Output)
     }
-    
+
     & ferret-scan @args
 }
 
@@ -250,7 +250,7 @@ function Scan-Files {
         [string[]]$Files,
         [string]$Format = "json"
     )
-    
+
     process {
         foreach ($file in $Files) {
             ferret-scan scan $file --format $Format
@@ -270,7 +270,7 @@ Enable tab completion for Ferret Scan commands:
 # Add to PowerShell profile
 Register-ArgumentCompleter -Native -CommandName ferret-scan -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
-    
+
     $commands = @('scan', 'web', '--help', '--version', '--config', '--format', '--checks')
     $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)

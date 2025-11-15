@@ -14,7 +14,7 @@ echo "🏢 Setting up team-wide Ferret Scan configuration..."
 create_team_config() {
     local config_type=$1
     local config_file=".ferret-scan.yaml"
-    
+
     case $config_type in
         "startup")
             cat > "$config_file" << 'EOF'
@@ -43,7 +43,7 @@ profiles:
     verbose: false
     quiet: true
     description: "Fast pre-commit scan focusing on critical data"
-  
+
   # CI/CD profile - comprehensive scanning
   ci:
     format: junit
@@ -54,7 +54,7 @@ profiles:
     recursive: true
     quiet: true
     description: "Comprehensive CI/CD pipeline scan"
-  
+
   # Security audit profile - thorough analysis
   security:
     format: json
@@ -103,7 +103,7 @@ profiles:
     verbose: true
     quiet: true
     description: "Strict pre-commit security scan"
-  
+
   # Enterprise CI/CD - comprehensive with audit trail
   ci:
     format: junit
@@ -115,7 +115,7 @@ profiles:
     quiet: true
     show_suppressed: true
     description: "Enterprise CI/CD scan with full audit trail"
-  
+
   # Compliance audit - maximum detection
   compliance:
     format: json
@@ -156,7 +156,7 @@ profiles:
     recursive: true
     show_match: false  # Don't show actual card numbers in logs
     description: "PCI DSS compliance scan for credit card data"
-  
+
   # SOX compliance focused
   sox-compliance:
     format: json
@@ -165,7 +165,7 @@ profiles:
     verbose: true
     recursive: true
     description: "SOX compliance comprehensive scan"
-  
+
   # Pre-commit for financial code
   precommit:
     format: text
@@ -177,7 +177,7 @@ profiles:
 EOF
             ;;
     esac
-    
+
     echo "✅ Created $config_file for $config_type team"
 }
 

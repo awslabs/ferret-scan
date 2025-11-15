@@ -287,7 +287,7 @@ Write-Host "Running: go $($BuildArgs -join ' ')" -ForegroundColor Cyan
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Build successful: $Output" -ForegroundColor Green
-    
+
     # Display file info
     $FileInfo = Get-Item $Output
     Write-Host "Size: $([math]::Round($FileInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
@@ -439,27 +439,27 @@ func (w *WindowsPlatform) GetConfigDir() string {
     if dir := os.Getenv("FERRET_CONFIG_DIR"); dir != "" {
         return dir
     }
-    
+
     if appData := os.Getenv("APPDATA"); appData != "" {
         return filepath.Join(appData, "ferret-scan")
     }
-    
+
     if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
         return filepath.Join(userProfile, ".ferret-scan")
     }
-    
+
     return ".ferret-scan"
 }
 
 func (w *WindowsPlatform) NormalizePath(path string) string {
     // Convert forward slashes to backslashes
     normalized := filepath.Clean(path)
-    
+
     // Handle UNC paths
     if strings.HasPrefix(path, "\\\\") && !strings.HasPrefix(normalized, "\\\\") {
         normalized = "\\\\" + strings.TrimPrefix(normalized, "\\")
     }
-    
+
     return normalized
 }
 ```
@@ -489,16 +489,16 @@ func ToLongPathFormat(path string) string {
     if len(path) <= 260 {
         return path
     }
-    
+
     if strings.HasPrefix(path, "\\\\?\\") {
         return path
     }
-    
+
     absPath, err := filepath.Abs(path)
     if err != nil {
         return path
     }
-    
+
     return "\\\\?\\" + absPath
 }
 ```
@@ -539,13 +539,13 @@ func IsPermissionError(err error) bool {
     if err == nil {
         return false
     }
-    
+
     // Check for Windows-specific permission errors
     if errno, ok := err.(syscall.Errno); ok {
         return errno == syscall.ERROR_ACCESS_DENIED ||
                errno == syscall.ERROR_SHARING_VIOLATION
     }
-    
+
     return false
 }
 
@@ -554,7 +554,7 @@ func IsLongPathError(err error) bool {
     if err == nil {
         return false
     }
-    
+
     errStr := err.Error()
     return strings.Contains(errStr, "path too long") ||
            strings.Contains(errStr, "name too long") ||
@@ -580,36 +580,36 @@ import (
 
 func TestWindowsPlatform_GetConfigDir(t *testing.T) {
     platform := &WindowsPlatform{}
-    
+
     // Save original environment
     originalAppData := os.Getenv("APPDATA")
     originalUserProfile := os.Getenv("USERPROFILE")
-    
+
     defer func() {
         os.Setenv("APPDATA", originalAppData)
         os.Setenv("USERPROFILE", originalUserProfile)
     }()
-    
+
     t.Run("uses APPDATA when available", func(t *testing.T) {
         testAppData := "C:\\Users\\test\\AppData\\Roaming"
         os.Setenv("APPDATA", testAppData)
-        
+
         expected := filepath.Join(testAppData, "ferret-scan")
         actual := platform.GetConfigDir()
-        
+
         if actual != expected {
             t.Errorf("Expected %s, got %s", expected, actual)
         }
     })
-    
+
     t.Run("falls back to USERPROFILE", func(t *testing.T) {
         os.Setenv("APPDATA", "")
         testUserProfile := "C:\\Users\\test"
         os.Setenv("USERPROFILE", testUserProfile)
-        
+
         expected := filepath.Join(testUserProfile, ".ferret-scan")
         actual := platform.GetConfigDir()
-        
+
         if actual != expected {
             t.Errorf("Expected %s, got %s", expected, actual)
         }
@@ -618,7 +618,7 @@ func TestWindowsPlatform_GetConfigDir(t *testing.T) {
 
 func TestWindowsPlatform_NormalizePath(t *testing.T) {
     platform := &WindowsPlatform{}
-    
+
     tests := []struct {
         input    string
         expected string
@@ -627,7 +627,7 @@ func TestWindowsPlatform_NormalizePath(t *testing.T) {
         {"\\\\server\\share", "\\\\server\\share"},
         {"C:\\Users\\test\\..\\other", "C:\\Users\\other"},
     }
-    
+
     for _, test := range tests {
         t.Run(test.input, func(t *testing.T) {
             actual := platform.NormalizePath(test.input)
@@ -651,7 +651,7 @@ import (
     "os"
     "path/filepath"
     "testing"
-    
+
     "ferret-scan/internal/platform"
 )
 
@@ -659,7 +659,7 @@ func TestWindowsIntegration(t *testing.T) {
     if !platform.IsWindows() {
         t.Skip("Skipping Windows-specific tests on non-Windows platform")
     }
-    
+
     t.Run("Windows path handling", func(t *testing.T) {
         // Test Windows-specific path scenarios
         testPaths := []string{
@@ -667,7 +667,7 @@ func TestWindowsIntegration(t *testing.T) {
             "\\\\server\\share\\file.txt",
             "D:\\Data\\documents\\report.pdf",
         }
-        
+
         for _, testPath := range testPaths {
             // Test path operations
             normalized := platform.NormalizePath(testPath)
@@ -732,15 +732,15 @@ on:
 jobs:
   test-windows:
     runs-on: windows-latest
-    
+
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Set up Go
       uses: actions/setup-go@v3
       with:
         go-version: 1.21
-    
+
     - name: Cache Go modules
       uses: actions/cache@v3
       with:
@@ -748,19 +748,19 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
-    
+
     - name: Install dependencies
       run: go mod download
-    
+
     - name: Run tests
       run: go test -v -race ./...
-    
+
     - name: Run Windows-specific tests
       run: go test -v -tags windows ./tests/integration/
-    
+
     - name: Build Windows binary
       run: go build -o ferret-scan.exe ./cmd/main.go
-    
+
     - name: Test Windows binary
       run: |
         .\ferret-scan.exe --version
@@ -773,30 +773,30 @@ jobs:
 # Simulate CI environment locally
 function Invoke-LocalCI {
     Write-Host "Running local CI simulation..." -ForegroundColor Green
-    
+
     # Clean environment
     go clean -cache
     go clean -testcache
-    
+
     # Download dependencies
     go mod download
     go mod tidy
-    
+
     # Run linting
     golangci-lint run
-    
+
     # Run tests
     go test -v -race ./...
-    
+
     # Run Windows-specific tests
     go test -v -tags windows ./tests/integration/
-    
+
     # Build binary
     go build -o ferret-scan.exe ./cmd/main.go
-    
+
     # Test binary
     .\ferret-scan.exe --version
-    
+
     Write-Host "Local CI simulation completed" -ForegroundColor Green
 }
 
@@ -814,18 +814,18 @@ Invoke-LocalCI
 $WixConfig = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="Ferret Scan" Language="1033" Version="1.0.0" 
+  <Product Id="*" Name="Ferret Scan" Language="1033" Version="1.0.0"
            Manufacturer="Your Company" UpgradeCode="PUT-GUID-HERE">
     <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
-    
+
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
     <MediaTemplate EmbedCab="yes" />
-    
+
     <Feature Id="ProductFeature" Title="Ferret Scan" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
     </Feature>
   </Product>
-  
+
   <Fragment>
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFilesFolder">
@@ -833,7 +833,7 @@ $WixConfig = @"
       </Directory>
     </Directory>
   </Fragment>
-  
+
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="MainExecutable">
@@ -884,13 +884,13 @@ function Invoke-FerretScan {
         [string]`$Path,
         [string]`$Format = "text"
     )
-    
+
     & `$BinaryPath scan `$Path --format `$Format
 }
 
 function Start-FerretWeb {
     param([int]`$Port = 8080)
-    
+
     & `$BinaryPath web --port `$Port
 }
 

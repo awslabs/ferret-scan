@@ -4,7 +4,7 @@ on:
   # Automatic production release when a GitHub release is published
   release:
     types: [published]
-  
+
   # Called by python-package workflow after building
   workflow_call:
     inputs:
@@ -22,7 +22,7 @@ on:
         required: false
         default: 'false'
         type: string
-  
+
   # Manual publishing for testing and pre-releases
   workflow_dispatch:
     inputs:
@@ -51,12 +51,12 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    environment: 
+    environment:
       name: ${{ (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true') && 'pypi' || (github.event.inputs.action == 'publish-pypi' && 'pypi' || (github.event.inputs.action == 'publish-testpypi' && 'testpypi' || '')) }}
       url: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_call' && inputs.is_tag_push == 'true')) && 'https://pypi.org/p/ferret-scan' || (github.event.inputs.action == 'publish-pypi' && 'https://pypi.org/p/ferret-scan' || 'https://test.pypi.org/p/ferret-scan') }}
-    
+
     # Let individual steps handle their own conditions
-    
+
     steps:
 
 
@@ -84,7 +84,7 @@ jobs:
           echo "## Build & Publish Context" >> $GITHUB_STEP_SUMMARY
           echo "- **Event**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Actor**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          
+
           if [[ "${{ github.event_name }}" == "release" ]]; then
             echo "- **Action**: Automatic production release" >> $GITHUB_STEP_SUMMARY
             echo "- **Target**: Production PyPI" >> $GITHUB_STEP_SUMMARY
@@ -92,7 +92,7 @@ jobs:
           else
             echo "- **Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
             echo "- **Reason**: ${{ github.event.inputs.reason || 'Manual action' }}" >> $GITHUB_STEP_SUMMARY
-            
+
             case "${{ github.event.inputs.action }}" in
               "test-only")
                 echo "- **Target**: Build and test only (no publishing)" >> $GITHUB_STEP_SUMMARY
@@ -117,30 +117,30 @@ jobs:
           echo "Git describe: $(git describe --tags 2>/dev/null || echo 'no tags found')"
           echo "Available tags: $(git tag --sort=-version:refname | head -5 | tr '\n' ' ')"
           echo ""
-          
+
           if [[ "${{ github.event_name }}" == "workflow_call" && -n "${{ inputs.version }}" ]]; then
             # Use version passed from calling workflow
             VERSION="${{ inputs.version }}"
             echo "✅ Using workflow_call version: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "source=workflow-call" >> $GITHUB_OUTPUT
-            
+
           elif [[ "${{ github.event_name }}" == "release" ]]; then
             # Use GitHub release tag, remove 'v' prefix if present
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#v}"
-            
+
             # Validate it's a proper release version (no dev/alpha/beta for production)
             if [[ "$VERSION" =~ (dev|alpha|beta|rc) ]]; then
               echo "❌ Error: Release versions should not contain dev/alpha/beta/rc"
               echo "Release version: $VERSION"
               exit 1
             fi
-            
+
             echo "✅ Using GitHub release version: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "source=github-release" >> $GITHUB_OUTPUT
-            
+
             # Verify Git tag exists and matches
             ACTUAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || echo "no-exact-match")
             if [[ "$ACTUAL_VERSION" != "${{ github.ref_name }}" ]]; then
@@ -151,7 +151,7 @@ jobs:
             else
               echo "✅ Git tag matches release: $ACTUAL_VERSION"
             fi
-            
+
           elif [[ -n "${{ github.event.inputs.version }}" ]]; then
             # Use manually specified version
             VERSION="${{ github.event.inputs.version }}"
@@ -164,14 +164,14 @@ jobs:
             echo "🔍 Setuptools_scm analysis:"
             echo "Working directory: $(pwd)"
             echo "Git root: $(git rev-parse --show-toplevel)"
-            
+
             VERSION=$(python -m setuptools_scm)
             echo "✅ Setuptools_scm result: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "source=setuptools_scm" >> $GITHUB_OUTPUT
             cd ..
           fi
-          
+
           # Additional validation for production PyPI
           if [[ "${{ github.event_name }}" == "release" || "${{ github.event.inputs.action }}" == "publish-pypi" ]]; then
             # Ensure version doesn't contain local identifiers
@@ -188,7 +188,7 @@ jobs:
         run: |
           echo "🔨 Building Python package with embedded Go binaries"
           cd python-package
-          
+
           # Set the version explicitly if we have one
           if [[ "${{ steps.version.outputs.source }}" != "setuptools_scm" ]]; then
             export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
@@ -196,15 +196,15 @@ jobs:
           else
             echo "Building with setuptools_scm auto-detection"
           fi
-          
+
           # Use build-package.sh to build Go binaries and Python package
           ./build-package.sh
           cd ..
-          
+
           # Show what we built
           echo "📦 Built packages:"
           ls -la python-package/dist/
-          
+
           echo "🔍 Checking for Go binaries in package:"
           ls -la python-package/ferret_scan/binaries/ || echo "No binaries directory found"
 
@@ -213,14 +213,14 @@ jobs:
           cd python-package
           echo "🧪 Testing package installation..."
           pip install dist/*.whl
-          
+
           # Test version matches expected
           INSTALLED_VERSION=$(ferret-scan --version | head -1)
           EXPECTED_VERSION="${{ steps.version.outputs.version }}"
-          
+
           echo "Expected version: $EXPECTED_VERSION"
           echo "Installed version: $INSTALLED_VERSION"
-          
+
           # Check if version is in the output (allowing for different formats)
           if echo "$INSTALLED_VERSION" | grep -q "$EXPECTED_VERSION"; then
             echo "✅ Version match confirmed"
@@ -229,17 +229,17 @@ jobs:
             echo "This indicates a build/packaging issue"
             exit 1
           fi
-          
+
           # Test basic functionality
           ferret-scan --help | head -5
-          
+
           echo "✅ Package installation and version test passed"
 
       - name: Validate package
         run: |
           cd python-package
           python -m twine check dist/*
-          
+
           # Verify no local version identifiers (+ symbols) in filenames
           if ls dist/*+* 2>/dev/null; then
             echo "❌ Error: Package contains local version identifiers (+ symbols)"
@@ -272,7 +272,7 @@ jobs:
         id: should_publish
         run: |
           SHOULD_PUBLISH="false"
-          
+
           if [[ "${{ github.event_name }}" == "release" ]]; then
             echo "✅ Should publish: GitHub release event"
             SHOULD_PUBLISH="true"
@@ -288,7 +288,7 @@ jobs:
             echo "  - is_tag_push: ${{ inputs.is_tag_push }}"
             echo "  - Manual action: ${{ github.event.inputs.action }}"
           fi
-          
+
           echo "should_publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
 
       - name: Publish to PyPI
@@ -310,7 +310,7 @@ jobs:
           echo "✅ Package validation passed" >> $GITHUB_STEP_SUMMARY
           echo "✅ Build artifacts uploaded" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           # Publishing results
           if [[ "${{ github.event_name }}" == "release" || "${{ github.event.inputs.action }}" == "publish-pypi" || ("${{ github.event_name }}" == "workflow_call" && "${{ inputs.is_tag_push }}" == "true") ]]; then
             echo "✅ **Published to PyPI**: https://pypi.org/p/ferret-scan" >> $GITHUB_STEP_SUMMARY

@@ -50,7 +50,7 @@ if processor.CanProcess("document.pdf") {
     if err != nil {
         // Handle error
     }
-    
+
     // Use the extracted metadata
     fmt.Printf("Extracted text: %s\n", result.Text)
     fmt.Printf("Processor type: %s\n", result.ProcessorType) // "pdf_metadata"
