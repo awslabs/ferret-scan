@@ -27,45 +27,45 @@ validators:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/pub/[a-zA-Z0-9_/-]+"
-      
+
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
         - "(?i)@[a-zA-Z0-9_]{1,15}\\b"
-      
+
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
-      
+
       facebook:
         - "(?i)https?://(?:www\\.)?(facebook|fb)\\.com/[a-zA-Z0-9._-]+"
         - "(?i)https?://(?:www\\.)?facebook\\.com/profile\\.php\\?id=\\d+"
-      
+
       instagram:
         - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+/"
         - "(?i)https?://(?:www\\.)?instagr\\.am/[a-zA-Z0-9_.]+/"
-      
+
       youtube:
         - "(?i)https?://(?:www\\.)?youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?youtube\\.com/@[a-zA-Z0-9_-]+"
-      
+
       tiktok:
         - "(?i)https?://(?:www\\.)?tiktok\\.com/@[a-zA-Z0-9_.]+/"
         - "(?i)https?://(?:www\\.)?tiktok\\.com/t/[a-zA-Z0-9]+"
-    
+
     positive_keywords:
       - "profile"
       - "social media"
       - "follow me"
       - "connect with me"
       - "find me on"
-    
+
     negative_keywords:
       - "example"
       - "test"
       - "placeholder"
       - "demo"
       - "sample"
-    
+
     platform_keywords:
       linkedin:
         - "professional"
@@ -93,25 +93,25 @@ validators:
       linkedin:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
-      
+
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
-    
+
     positive_keywords:
       - "professional"
       - "business"
       - "work"
       - "career"
       - "portfolio"
-    
+
     negative_keywords:
       - "example"
       - "test"
       - "demo"
       - "sample"
       - "placeholder"
-    
+
     platform_keywords:
       linkedin:
         - "professional"
@@ -137,19 +137,19 @@ validators:
       linkedin:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
-      
+
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
-      
+
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
         - "(?i)@[a-zA-Z0-9_]{1,15}\\b"
-      
+
       youtube:
         - "(?i)https?://(?:www\\.)?youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?youtube\\.com/@[a-zA-Z0-9_-]+"
-    
+
     positive_keywords:
       - "research"
       - "academic"
@@ -157,14 +157,14 @@ validators:
       - "student"
       - "university"
       - "education"
-    
+
     negative_keywords:
       - "example"
       - "test"
       - "demo"
       - "sample"
       - "placeholder"
-    
+
     platform_keywords:
       linkedin:
         - "academic"
@@ -195,35 +195,35 @@ validators:
       linkedin:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
-      
+
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
         - "(?i)@[a-zA-Z0-9_]{1,15}\\b"
-      
+
       facebook:
         - "(?i)https?://(?:www\\.)?(facebook|fb)\\.com/[a-zA-Z0-9._-]+"
         - "(?i)https?://(?:www\\.)?facebook\\.com/profile\\.php\\?id=\\d+"
-      
+
       instagram:
         - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+/"
         - "(?i)https?://(?:www\\.)?instagr\\.am/[a-zA-Z0-9_.]+/"
-      
+
       youtube:
         - "(?i)https?://(?:www\\.)?youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?youtube\\.com/@[a-zA-Z0-9_-]+"
-      
+
       tiktok:
         - "(?i)https?://(?:www\\.)?tiktok\\.com/@[a-zA-Z0-9_.]+/"
         - "(?i)https?://(?:www\\.)?tiktok\\.com/t/[a-zA-Z0-9]+"
-      
+
       discord:
         - "(?i)https?://(?:www\\.)?discord\\.gg/[a-zA-Z0-9]+"
         - "(?i)discord\\.com/users/\\d+"
-      
+
       reddit:
         - "(?i)https?://(?:www\\.)?reddit\\.com/u(?:ser)?/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?reddit\\.com/r/[a-zA-Z0-9_]+"
-    
+
     positive_keywords:
       - "social media"
       - "marketing"
@@ -231,14 +231,14 @@ validators:
       - "brand"
       - "influencer"
       - "content"
-    
+
     negative_keywords:
       - "example"
       - "test"
       - "demo"
       - "sample"
       - "placeholder"
-    
+
     platform_keywords:
       linkedin:
         - "professional"
@@ -280,20 +280,20 @@ validators:
       linkedin:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]{3,30}"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]{2,50}"
-      
+
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]{1,39}(?:/[a-zA-Z0-9_.-]{1,100})?"
         - "(?i)https?://[a-zA-Z0-9_-]{1,39}\\.github\\.io"
-      
+
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]{1,15}"
-    
+
     positive_keywords:
       - "profile"
       - "account"
       - "handle"
       - "username"
-    
+
     negative_keywords:
       - "example"
       - "test"
@@ -304,7 +304,7 @@ validators:
       - "mock"
       - "template"
       - "dummy"
-    
+
     # Stricter platform keywords for higher confidence
     platform_keywords:
       linkedin:
@@ -432,7 +432,7 @@ ferret-scan --config ferret.yaml --profile marketing-agency \
    ```yaml
    # ❌ Wrong - unescaped dots
    - "https://linkedin.com/in/[a-zA-Z0-9_-]+"
-   
+
    # ✅ Correct - escaped dots
    - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
    ```
@@ -443,7 +443,7 @@ ferret-scan --config ferret.yaml --profile marketing-agency \
    validators:
      social_media:
        platform_patterns: {}
-   
+
    # ✅ Correct - at least one platform configured
    validators:
      social_media:
@@ -456,7 +456,7 @@ ferret-scan --config ferret.yaml --profile marketing-agency \
    ```yaml
    # ❌ Wrong - too broad, will match everything
    - ".*linkedin.*"
-   
+
    # ✅ Correct - specific pattern
    - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
    ```

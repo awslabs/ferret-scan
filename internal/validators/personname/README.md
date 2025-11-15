@@ -172,7 +172,7 @@ The validator is available in the web interface:
 ```
 internal/validators/personname/
 ├── validator.go          # Main validator implementation
-├── help.go              # Help provider implementation  
+├── help.go              # Help provider implementation
 ├── README.md            # This documentation
 ├── data.go              # Embedded database handling
 ├── patterns.go          # Pattern definitions and matching
@@ -213,7 +213,7 @@ type HelpProvider interface {
 The validator works with other validators to improve accuracy:
 
 - **Email Validator**: Names near email addresses get confidence boost
-- **Phone Validator**: Names near phone numbers increase likelihood  
+- **Phone Validator**: Names near phone numbers increase likelihood
 - **Metadata Validator**: Author/creator fields provide strong signals
 - **Enhanced Manager**: Participates in confidence calibration
 
@@ -244,7 +244,7 @@ PERSON_NAME: John Smith (Confidence: 95%)
   - Context: employee (+8%)
 
 PERSON_NAME: Dr. Sarah Johnson (Confidence: 98%)
-  - Line 2: Dr. Sarah Johnson, Chief Medical Officer, sarah.johnson@company.com  
+  - Line 2: Dr. Sarah Johnson, Chief Medical Officer, sarah.johnson@company.com
   - Known first name: Sarah (+25%)
   - Known last name: Johnson (+20%)
   - Title present: Dr. (+5%)

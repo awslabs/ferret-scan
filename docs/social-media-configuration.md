@@ -25,11 +25,11 @@ validators:
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
         - "(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])"  # Avoids email false positives
-      
+
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
-      
+
       linkedin:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
         - "(?i)linkedin\\.com/in/[a-zA-Z0-9_-]+"
@@ -43,7 +43,7 @@ The validator supports detection for these platforms:
 - **LinkedIn**: Personal profiles, company pages, public profiles
 - **Stack Overflow**: Developer profiles
 
-### Social Networks  
+### Social Networks
 - **Twitter/X**: Profile URLs, @handles (with email protection)
 - **Facebook**: Profile and page URLs
 - **Instagram**: Profile URLs
@@ -81,55 +81,55 @@ validators:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
         - "(?i)linkedin\\.com/in/[a-zA-Z0-9_-]+"
-      
+
       # Twitter/X - Microblogging (email-safe patterns)
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
         - "(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])"  # Avoids @gmail from emails
         - "(?i)(twitter|x)\\.com/[a-zA-Z0-9_]+"
-      
+
       # GitHub - Code repositories
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
         - "(?i)github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
-      
+
       # Facebook - Social networking
       facebook:
         - "(?i)https?://(?:www\\.)?(facebook|fb)\\.com/[a-zA-Z0-9._-]+"
         - "(?i)https?://(?:www\\.)?facebook\\.com/profile\\.php\\?id=\\d+"
         - "(?i)(facebook|fb)\\.com/[a-zA-Z0-9._-]+"
-      
+
       # Instagram - Photo sharing
       instagram:
         - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+/"
         - "(?i)https?://(?:www\\.)?instagr\\.am/[a-zA-Z0-9_.]+/"
         - "(?i)instagram\\.com/[a-zA-Z0-9_.]+/"
-      
+
       # YouTube - Video sharing
       youtube:
         - "(?i)https?://(?:www\\.)?youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?youtube\\.com/@[a-zA-Z0-9_-]+"
         - "(?i)youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+"
-      
+
       # TikTok - Short videos
       tiktok:
         - "(?i)https?://(?:www\\.)?tiktok\\.com/@[a-zA-Z0-9_.]+/"
         - "(?i)https?://(?:www\\.)?tiktok\\.com/t/[a-zA-Z0-9]+"
         - "(?i)tiktok\\.com/@[a-zA-Z0-9_.]+/"
-      
+
       # Discord - Gaming/community chat
       discord:
         - "(?i)https?://(?:www\\.)?discord\\.gg/[a-zA-Z0-9]+"
         - "(?i)https?://(?:www\\.)?discord\\.com/users/\\d+"
         - "(?i)discord\\.gg/[a-zA-Z0-9]+"
-      
+
       # Reddit - Social news
       reddit:
         - "(?i)https?://(?:www\\.)?reddit\\.com/u(?:ser)?/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?reddit\\.com/r/[a-zA-Z0-9_]+"
         - "(?i)reddit\\.com/u(?:ser)?/[a-zA-Z0-9_-]+"
-    
+
     # Context analysis keywords
     positive_keywords:
       - "profile"
@@ -143,7 +143,7 @@ validators:
       - "handle"
       - "username"
       - "account"
-    
+
     negative_keywords:
       - "example"
       - "test"
@@ -155,7 +155,7 @@ validators:
       - "mock"
       - "fake"
       - "dummy"
-    
+
     # Platform-specific context keywords
     platform_keywords:
       linkedin:
@@ -175,7 +175,7 @@ validators:
         - "project"
         - "developer"
         - "open source"
-    
+
     # False positive prevention
     whitelist_patterns:
       - "(?i)example\\.com"

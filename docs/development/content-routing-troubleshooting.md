@@ -160,13 +160,13 @@ func (cr *ContentRouter) identifyPreprocessorType(section ContentSection) string
         "audio_metadata":    `(?i)---\s*audio_metadata\s*---`,
         "video_metadata":    `(?i)---\s*video_metadata\s*---`,
     }
-    
+
     for preprocessorType, pattern := range patterns {
         if matched, _ := regexp.MatchString(pattern, section.Header); matched {
             return preprocessorType
         }
     }
-    
+
     return "unknown"
 }
 ```
@@ -207,7 +207,7 @@ time ferret-scan --file large_document.pdf
 func (cr *ContentRouter) routeContentStreaming(content *ProcessedContent) (*RoutedContent, error) {
     // Process content in chunks to reduce memory usage
     const chunkSize = 1024 * 1024 // 1MB chunks
-    
+
     // Implementation details...
 }
 ```
@@ -271,16 +271,16 @@ func (evb *EnhancedValidatorBridge) ProcessContent(content *ProcessedContent) ([
         })
         return evb.processContentLegacy(content)
     }
-    
+
     // Verify metadata content exists
     if len(routedContent.Metadata) == 0 {
-        evb.observer.LogWarning("no_metadata_content", 
-            "No metadata content found for routing", 
+        evb.observer.LogWarning("no_metadata_content",
+            "No metadata content found for routing",
             map[string]interface{}{
                 "file_path": content.OriginalPath,
             })
     }
-    
+
     // Continue with processing...
 }
 ```
@@ -351,36 +351,36 @@ func (mv *EnhancedMetadataValidator) calculateEnhancedConfidence(
     contextAnalysis *context.Analysis,
 ) float64 {
     // Debug logging
-    mv.observer.LogDebug("confidence_calculation", 
-        "Calculating enhanced confidence", 
+    mv.observer.LogDebug("confidence_calculation",
+        "Calculating enhanced confidence",
         map[string]interface{}{
             "base_confidence":   baseConfidence,
             "preprocessor_type": preprocessorType,
             "field_type":       fieldType,
         })
-    
+
     // Apply preprocessor-specific boost
     rules := mv.validationRules[preprocessorType]
     if rules == nil {
-        mv.observer.LogWarning("missing_validation_rules", 
-            "No validation rules found for preprocessor type", 
+        mv.observer.LogWarning("missing_validation_rules",
+            "No validation rules found for preprocessor type",
             map[string]interface{}{
                 "preprocessor_type": preprocessorType,
             })
         return baseConfidence
     }
-    
+
     boost := rules.ConfidenceBoosts[fieldType]
     enhancedConfidence := baseConfidence + (boost * 100)
-    
+
     // Debug logging
-    mv.observer.LogDebug("confidence_boost_applied", 
-        "Applied confidence boost", 
+    mv.observer.LogDebug("confidence_boost_applied",
+        "Applied confidence boost",
         map[string]interface{}{
             "boost":               boost,
             "enhanced_confidence": enhancedConfidence,
         })
-    
+
     return enhancedConfidence
 }
 ```
@@ -417,7 +417,7 @@ func (cr *ContentRouter) identifyPreprocessorType(section ContentSection) string
             return pType.(string)
         }
     }
-    
+
     // Check section headers
     headerLower := strings.ToLower(section.Header)
     switch {
@@ -430,7 +430,7 @@ func (cr *ContentRouter) identifyPreprocessorType(section ContentSection) string
     case strings.Contains(headerLower, "video") && strings.Contains(headerLower, "metadata"):
         return PreprocessorTypeVideoMetadata
     }
-    
+
     // Fallback to content analysis
     return cr.analyzeContentForType(section.Content)
 }
@@ -497,26 +497,26 @@ func (evb *EnhancedValidatorBridge) processWithContext(
         content.OriginalPath,
     )
     if err != nil {
-        evb.observer.LogWarning("context_analysis_failed", 
-            "Context analysis failed, continuing without context", 
+        evb.observer.LogWarning("context_analysis_failed",
+            "Context analysis failed, continuing without context",
             map[string]interface{}{
                 "file_path": content.OriginalPath,
                 "error":     err.Error(),
             })
         contextAnalysis = nil // Continue without context
     }
-    
+
     // Apply context to validators
     for _, validator := range evb.documentValidators {
         if contextAware, ok := validator.(ContextAwareValidator); ok {
             contextAware.SetContextAnalysis(contextAnalysis)
         }
     }
-    
+
     if contextAware, ok := evb.metadataValidator.(ContextAwareValidator); ok {
         contextAware.SetContextAnalysis(contextAnalysis)
     }
-    
+
     // Continue with validation...
 }
 ```
@@ -583,11 +583,11 @@ func (pc *PerformanceCache) GetContextAnalysis(contentHash string) *ContextAnaly
 func (cr *ContentRouter) routeContentStreaming(content *ProcessedContent) (*RoutedContent, error) {
     // Process content in chunks to reduce memory usage
     const maxChunkSize = 1024 * 1024 // 1MB chunks
-    
+
     if len(content.CombinedContent) > maxChunkSize {
         return cr.routeContentInChunks(content, maxChunkSize)
     }
-    
+
     return cr.routeContentStandard(content)
 }
 ```
@@ -613,15 +613,15 @@ func (evb *EnhancedValidatorBridge) ProcessContentWithRecovery(
     if err == nil {
         return matches, nil
     }
-    
+
     // Log fallback
-    evb.observer.LogWarning("enhanced_processing_fallback", 
-        "Enhanced processing failed, falling back to legacy mode", 
+    evb.observer.LogWarning("enhanced_processing_fallback",
+        "Enhanced processing failed, falling back to legacy mode",
         map[string]interface{}{
             "file_path": content.OriginalPath,
             "error":     err.Error(),
         })
-    
+
     // Fallback to legacy processing
     return evb.processContentLegacy(content)
 }
@@ -642,7 +642,7 @@ func (cb *CircuitBreaker) Execute(operation func() error) error {
     if cb.shouldSkip() {
         return errors.New("circuit breaker is open")
     }
-    
+
     err := operation()
     cb.recordResult(err)
     return err

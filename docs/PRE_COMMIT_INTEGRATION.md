@@ -91,7 +91,7 @@ pre-commit run --files sensitive-file.py
 When `--pre-commit-mode` is enabled, Ferret Scan automatically:
 
 - **Enables quiet mode** - Reduces verbose output for cleaner pre-commit logs
-- **Disables colors** - Ensures compatibility with all terminal environments  
+- **Disables colors** - Ensures compatibility with all terminal environments
 - **Uses appropriate exit codes** - Returns 1 to block commits when high confidence findings are detected
 - **Optimizes performance** - Uses efficient batch processing for multiple files
 - **Respects file filtering** - Only processes files passed by pre-commit's file filtering
@@ -101,7 +101,7 @@ When `--pre-commit-mode` is enabled, Ferret Scan automatically:
 Ferret Scan automatically detects pre-commit environments by checking for:
 
 - `PRE_COMMIT` environment variable
-- `_PRE_COMMIT_RUNNING` environment variable  
+- `_PRE_COMMIT_RUNNING` environment variable
 - `PRE_COMMIT_HOME` environment variable
 
 When detected, it automatically enables pre-commit optimizations even without the `--pre-commit-mode` flag.
@@ -283,7 +283,7 @@ repos:
         pass_filenames: true
         env:
           FERRET_PRECOMMIT_EXIT_ON: "medium"
-      
+
       # Standard scanning for source code
       - id: ferret-scan-source
         name: Ferret Scan - Source Code
@@ -557,13 +557,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Run Ferret Scan
         run: |
           docker run --rm -v ${{ github.workspace }}:/data \
             ferret-scan:latest --config /data/ferret.yaml --file /data --recursive \
             --format json --output /data/results.json
-      
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
@@ -576,7 +576,7 @@ jobs:
 ```groovy
 pipeline {
     agent any
-    
+
     stages {
         stage('Security Scan') {
             steps {

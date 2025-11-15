@@ -42,10 +42,10 @@ log() {
 run_test() {
     local test_name="$1"
     local test_command="$2"
-    
+
     echo -e "${BLUE}Running: ${test_name}${NC}"
     log "Starting test: ${test_name}"
-    
+
     if eval "${test_command}" >> "${LOG_FILE}" 2>&1; then
         echo -e "${GREEN}✓ PASSED: ${test_name}${NC}"
         log "PASSED: ${test_name}"
@@ -126,16 +126,16 @@ echo ""
 if [ -f "${TEMP_DIR}/ferret-scan-test" ]; then
     # Create test file
     echo "Test document with credit card 4532-1234-5678-9012 and email test@example.com" > "${TEMP_DIR}/test-input.txt"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     if run_test "Basic Functionality Test" "'${TEMP_DIR}/ferret-scan-test' --file '${TEMP_DIR}/test-input.txt' --format json --confidence high"; then
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
-    
+
     echo ""
-    
+
     # Test 8: Preprocess-Only Mode
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     if run_test "Preprocess-Only Mode Test" "'${TEMP_DIR}/ferret-scan-test' --file '${TEMP_DIR}/test-input.txt' --preprocess-only"; then
@@ -143,9 +143,9 @@ if [ -f "${TEMP_DIR}/ferret-scan-test" ]; then
     else
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
-    
+
     echo ""
-    
+
     # Test 9: Configuration Compatibility
     # Create test config
     cat > "${TEMP_DIR}/test-config.yaml" << EOF
@@ -154,14 +154,14 @@ defaults:
   confidence_levels: "high"
   verbose: true
 EOF
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     if run_test "Configuration Compatibility Test" "'${TEMP_DIR}/ferret-scan-test' --config '${TEMP_DIR}/test-config.yaml' --file '${TEMP_DIR}/test-input.txt'"; then
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
-    
+
     echo ""
 fi
 
@@ -171,16 +171,16 @@ if [ -f "${TEMP_DIR}/ferret-scan-test" ]; then
     for i in {1..100}; do
         echo "Line $i: Credit card 4532-1234-5678-9012 and email test$i@example.com"
     done > "${TEMP_DIR}/large-test-input.txt"
-    
+
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
     echo -e "${BLUE}Running: Performance Test${NC}"
     log "Starting performance test"
-    
+
     start_time=$(date +%s)
     if "${TEMP_DIR}/ferret-scan-test" --file "${TEMP_DIR}/large-test-input.txt" --format json --confidence high >> "${LOG_FILE}" 2>&1; then
         end_time=$(date +%s)
         duration=$((end_time - start_time))
-        
+
         if [ $duration -le 10 ]; then
             echo -e "${GREEN}✓ PASSED: Performance Test (${duration}s)${NC}"
             log "PASSED: Performance Test (${duration}s)"
@@ -195,7 +195,7 @@ if [ -f "${TEMP_DIR}/ferret-scan-test" ]; then
         log "FAILED: Performance Test"
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
-    
+
     echo ""
 fi
 

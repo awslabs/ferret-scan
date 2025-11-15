@@ -47,58 +47,58 @@ check_permissions() {
 
 install_from_source() {
     print_info "Installing from source..."
-    
+
     # Check if we're in the ferret-scan directory
     if [ ! -f "Makefile" ] || [ ! -f "go.mod" ]; then
         print_error "Not in ferret-scan source directory"
         print_info "Please run this script from the ferret-scan project root"
         exit 1
     fi
-    
+
     # Build the binary
     print_info "Building ferret-scan..."
     if ! make build; then
         print_error "Build failed"
         exit 1
     fi
-    
+
     # Install binary
     print_info "Installing binary to $INSTALL_DIR..."
     cp bin/ferret-scan "$INSTALL_DIR/$BINARY_NAME"
     chmod +x "$INSTALL_DIR/$BINARY_NAME"
-    
+
     print_success "Binary installed to $INSTALL_DIR/$BINARY_NAME"
 }
 
 install_from_binary() {
     local binary_path="$1"
-    
+
     if [ ! -f "$binary_path" ]; then
         print_error "Binary not found: $binary_path"
         exit 1
     fi
-    
+
     print_info "Installing binary from $binary_path..."
     cp "$binary_path" "$INSTALL_DIR/$BINARY_NAME"
     chmod +x "$INSTALL_DIR/$BINARY_NAME"
-    
+
     print_success "Binary installed to $INSTALL_DIR/$BINARY_NAME"
 }
 
 install_config_files() {
     print_info "Installing configuration files..."
-    
+
     # Expand tilde to actual home directory
     local expanded_config_dir="${CONFIG_DIR/#\~/$HOME}"
-    
+
     # Create config directory
     mkdir -p "$expanded_config_dir"
-    
+
     # Install the example config as the default config (ready to use)
     if [ -f "examples/ferret.yaml" ]; then
         cp examples/ferret.yaml "$expanded_config_dir/config.yaml"
         print_success "Default config installed to $expanded_config_dir/config.yaml (from examples/ferret.yaml)"
-        
+
         # Also keep a copy as example for reference
         cp examples/ferret.yaml "$expanded_config_dir/ferret.example.yaml"
         print_success "Example config installed to $expanded_config_dir/ferret.example.yaml"
@@ -113,17 +113,17 @@ install_config_files() {
 
 setup_pre_commit_integration() {
     print_info "Setting up pre-commit integration..."
-    
+
     # Make scripts executable
     if [ -d "scripts" ]; then
         chmod +x scripts/*.sh
         print_success "Pre-commit scripts made executable"
     fi
-    
+
     # Note: Pre-commit wrapper scripts have been removed in favor of direct integration
     # Users should now use ferret-scan directly in their pre-commit configuration
     print_info "Pre-commit wrapper scripts have been deprecated - use direct integration instead"
-    
+
     # Provide guidance for direct integration
     echo ""
     print_info "For direct pre-commit integration, add to your .pre-commit-config.yaml:"
@@ -146,7 +146,7 @@ setup_pre_commit_integration() {
 
 verify_installation() {
     print_info "Verifying installation..."
-    
+
     if command -v ferret-scan >/dev/null 2>&1; then
         local version
         version=$(ferret-scan --version 2>/dev/null || echo "unknown")
@@ -182,7 +182,7 @@ show_usage() {
 
 uninstall() {
     print_info "Uninstalling ferret-scan..."
-    
+
     # Remove binary
     if [ -f "$INSTALL_DIR/$BINARY_NAME" ]; then
         rm "$INSTALL_DIR/$BINARY_NAME"
@@ -190,7 +190,7 @@ uninstall() {
     else
         print_warning "Binary not found: $INSTALL_DIR/$BINARY_NAME"
     fi
-    
+
     # Remove pre-commit wrapper
     if [ -f "$INSTALL_DIR/ferret-scan-precommit" ]; then
         rm "$INSTALL_DIR/ferret-scan-precommit"
@@ -198,7 +198,7 @@ uninstall() {
     else
         print_warning "Pre-commit wrapper not found: $INSTALL_DIR/ferret-scan-precommit"
     fi
-    
+
     # Ask about config directory
     local expanded_config_dir="${CONFIG_DIR/#\~/$HOME}"
     if [ -d "$expanded_config_dir" ]; then
@@ -218,7 +218,7 @@ uninstall() {
     else
         print_info "No configuration directory found at $expanded_config_dir"
     fi
-    
+
     # Check for project-level pre-commit hooks
     if [ -f ".git/hooks/pre-commit" ]; then
         echo ""
@@ -230,7 +230,7 @@ uninstall() {
             print_success "Removed .git/hooks/pre-commit"
         fi
     fi
-    
+
     # Provide cleanup instructions
     echo ""
     print_info "Manual cleanup (if needed):"
@@ -238,7 +238,7 @@ uninstall() {
     echo "• Run 'pre-commit uninstall' in projects using pre-commit framework"
     echo "• Remove project-specific .ferret-scan.yaml files"
     echo "• Remove project-specific .ferret-scan-suppressions.yaml files"
-    
+
     print_success "Uninstallation complete"
 }
 

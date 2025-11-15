@@ -9,7 +9,7 @@ The architecture is organized into six major subsystems that work together to pr
 **Key Architectural Principles:**
 
 - **Parallel Processing**: Multi-worker architecture for high throughput
-- **Context-Aware Validation**: Enhanced detection accuracy through domain and structure analysis  
+- **Context-Aware Validation**: Enhanced detection accuracy through domain and structure analysis
 - **Modular Design**: Pluggable preprocessors, validators, and output formatters
 - **Inline Processing**: Integrated redaction during validation for efficiency
 - **Configuration-Driven**: Flexible rule-based suppression and confidence filtering
@@ -21,7 +21,7 @@ This document provides an accurate architectural overview of the ferret-scan app
 
 **Purpose**: Handles all input sources and resolves final configuration values.
 
-**Input**: Command line arguments, configuration files, profiles, suppression rules  
+**Input**: Command line arguments, configuration files, profiles, suppression rules
 **Output**: Resolved configuration and file paths for processing
 
 ```mermaid
@@ -32,32 +32,32 @@ flowchart TD
     ConfigFile["📋 Configuration File<br/>YAML Config with defaults"]
     Profiles["👤 Configuration Profiles<br/>Named configuration sets"]
     SuppressionRules["🚫 Suppression Rules<br/>.ferret-scan-suppressions.yaml"]
-    
+
     %% Processing
     ConfigResolver["🔧 Configuration Resolver<br/>resolveConfiguration()"]
-    
+
     %% Outputs
     FinalConfig["⚙️ Final Configuration<br/>Merged CLI + Config + Profile"]
     FileList["📋 File List<br/>Resolved file paths"]
-    
+
     %% Flow
     CLIArgs --> ConfigResolver
     ConfigFile --> ConfigResolver
     Profiles --> ConfigResolver
-    
+
     ConfigResolver --> FinalConfig
     InputFiles --> FileList
-    
+
     %% Outputs to next stage
     FinalConfig -.-> FileDiscovery("📤 To File Discovery<br/>& Filtering")
     FileList -.-> FileDiscovery
     SuppressionRules -.-> ResultsProcessing("📤 To Results<br/>Processing")
-    
+
     %% Styling
     classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef processing fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef output fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
-    
+
     class InputFiles,CLIArgs,ConfigFile,Profiles,SuppressionRules input
     class ConfigResolver processing
     class FinalConfig,FileList output
@@ -67,41 +67,41 @@ flowchart TD
 
 **Purpose**: Discovers, validates, and filters files for processing.
 
-**Input**: File paths and patterns, configuration  
+**Input**: File paths and patterns, configuration
 **Output**: List of processable files for parallel processing
 
 ```mermaid
 flowchart TD
     %% Input from previous stage
     ConfigInput("📥 From Configuration<br/>Resolution")
-    
+
     %% Processing
     FileDiscovery["🔍 File Discovery<br/>getFilesToProcess()<br/>• Glob expansion<br/>• Directory traversal<br/>• Recursive scanning"]
-    
+
     FileFilter["🚫 File Filter<br/>Size limits ≤100MB<br/>Type support validation<br/>Permission checks"]
-    
+
     CanProcessCheck["✅ CanProcessFile()<br/>• Text file detection<br/>• Binary document check<br/>• Preprocessor availability"]
-    
+
     %% Output
     ProcessableFiles["📋 Processable Files<br/>Validated file list"]
     SkippedFiles["⚠️ Skipped Files<br/>Large, unsupported, or<br/>permission-denied files"]
-    
+
     %% Flow
     ConfigInput --> FileDiscovery
     FileDiscovery --> FileFilter
     FileFilter --> CanProcessCheck
     CanProcessCheck --> ProcessableFiles
     CanProcessCheck --> SkippedFiles
-    
+
     %% Output to next stage
     ProcessableFiles -.-> ParallelProcessing("📤 To Parallel<br/>Processing")
-    
+
     %% Styling
     classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef processing fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef output fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef warning fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    
+
     class ConfigInput input
     class FileDiscovery,FileFilter,CanProcessCheck processing
     class ProcessableFiles output
@@ -112,27 +112,27 @@ flowchart TD
 
 **Purpose**: Processes files in parallel using worker pool with integrated content combination.
 
-**Input**: List of processable files  
+**Input**: List of processable files
 **Output**: Combined content ready for validation
 
 ```mermaid
 flowchart TD
     %% Input from previous stage
     FilesInput("📥 From File Discovery<br/>& Filtering")
-    
+
     %% Parallel Processing
     ParallelProcessor["⚡ Parallel Processor<br/>Max 8 Workers"]
-    
+
     subgraph WorkerPool["👥 Worker Pool"]
         Worker1["👤 Worker 1<br/>processJob()"]
         Worker2["👤 Worker 2<br/>processJob()"]
         Worker3["👤 Worker N<br/>processJob()"]
     end
-    
+
     %% Per-Worker File Processing
     subgraph FileProcessing["📄 File Processing (Per Worker)"]
         FileRouter["🗂️ File Router<br/>processFileInternal()<br/>• Finds capable preprocessors<br/>• Coordinates parallel execution<br/>• **COMBINES CONTENT INLINE**<br/>• **FILE TYPE FILTERING**<br/>CanContainMetadata(), GetMetadataType()"]
-        
+
         subgraph Preprocessors["🔄 Preprocessors (All Capable Run in Parallel)"]
             PlainTextPrep["📝 Plain Text<br/>Direct text reading"]
             PDFPrep["📄 PDF Extractor<br/>Text from PDFs"]
@@ -142,22 +142,22 @@ flowchart TD
             AudioPrep["🎵 Audio Metadata<br/>DISABLED"]
             TextractPrep["🤖 AWS Textract<br/>GENAI_DISABLED"]
         end
-        
+
         CombinedContent["🔗 Combined Content<br/>**Built within FileRouter**<br/>Separators: \\n\\n--- ProcessorName ---\\n"]
     end
-    
+
     ContentRouter["🗂️ Content Router<br/>RouteContent()<br/>• **FILE TYPE AWARE ROUTING**<br/>• Separates metadata from body<br/>• Routes to appropriate validators<br/>• Skips metadata for plain text files"]
-    
+
     %% Flow
     FilesInput --> ParallelProcessor
     ParallelProcessor --> Worker1
     ParallelProcessor --> Worker2
     ParallelProcessor --> Worker3
-    
+
     Worker1 --> FileRouter
     Worker2 --> FileRouter
     Worker3 --> FileRouter
-    
+
     %% FileRouter coordinates all preprocessors
     FileRouter --> PlainTextPrep
     FileRouter --> PDFPrep
@@ -166,27 +166,27 @@ flowchart TD
     FileRouter --> MetadataPrep
     FileRouter --> AudioPrep
     FileRouter --> TextractPrep
-    
+
     %% Content combination happens WITHIN FileRouter
     PlainTextPrep -.-> CombinedContent
     PDFPrep -.-> CombinedContent
     OfficePrep -.-> CombinedContent
     ImagePrep -.-> CombinedContent
     MetadataPrep -.-> CombinedContent
-    
+
     FileRouter --> CombinedContent
     CombinedContent --> ContentRouter
-    
+
     %% Output to next stage
     ContentRouter -.-> ValidationPipeline("📤 To Validation<br/>Pipeline")
-    
+
     %% Styling
     classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef processing fill:#e8f5e8,stroke:#388e3c,stroke-width:3px
     classDef router fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef output fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef disabled fill:#ffebee,stroke:#d32f2f,stroke-width:2px,stroke-dasharray: 5 5
-    
+
     class FilesInput input
     class ParallelProcessor,Worker1,Worker2,Worker3,PlainTextPrep,PDFPrep,OfficePrep,ImagePrep,MetadataPrep processing
     class FileRouter,ContentRouter router
@@ -198,7 +198,7 @@ flowchart TD
 
 **Purpose**: Validates content using enhanced validator system with context analysis.
 
-**Input**: Combined and routed content  
+**Input**: Combined and routed content
 **Output**: Validation matches with confidence scores and context metadata
 
 ### 4a. Simplified Overview
@@ -207,58 +207,58 @@ flowchart TD
 flowchart TD
     %% Input from previous stage
     ContentInput("📥 From Parallel Processing<br/>& File Routing")
-    
+
     %% Validation Pipeline
     EnhancedWrapper["🎯 Enhanced Manager Wrapper<br/>ValidateContent()<br/>Interface compatibility bridge"]
-    
+
     subgraph EnhancedManager["🚀 Enhanced Validator Manager"]
         ValidateMethod["🔧 ValidateWithAdvancedFeatures()<br/>**Main orchestration method**"]
-        
+
         %% PRE-VALIDATION: Context Analysis
         subgraph PreValidation["🔍 PRE-VALIDATION ANALYSIS"]
             LanguageDetector["🌐 Language Detector<br/>DetectLanguage() - Returns default 'en'<br/>Placeholder for multi-language support"]
             ContextAnalyzer["🧠 Context Analyzer<br/>AnalyzeContext() - Single integrated method<br/>• Domain classification (Financial, HR, etc.)<br/>• Structure detection (CSV, JSON, etc.)<br/>• Semantic analysis (test vs prod)<br/>• Cross-validator pattern detection"]
         end
-        
+
         %% VALIDATION: Enhanced Validators
         ValidatorBridges["🌉 All Validator Bridges<br/>11 Context-Enhanced Validators:<br/>💳 Credit Card • 📧 Email • ⚖️ Intellectual Property<br/>🌐 IP Address • 📋 Metadata • 🛂 Passport<br/>👤 Person Name • 📞 Phone • 🔐 Secrets<br/>📱 Social Media • 🆔 SSN<br/>🤖 Comprehend PII (GENAI_DISABLED)"]
-        
+
         %% POST-VALIDATION: Result Enhancement
         subgraph PostValidation["📈 POST-VALIDATION ENHANCEMENT"]
             CrossValidatorProcessor["🔄 Cross-Validator Signals<br/>Session-only correlation tracking<br/>• Multi-PII pattern detection<br/>• Validator result correlation"]
             ConfidenceCalibrator["📊 Confidence Calibrator<br/>Statistical smoothing adjustments<br/>• Range-based calibration<br/>• Session learning"]
         end
     end
-    
+
     %% Inline Redaction (happens during worker processing)
     RedactionManager["🔒 Redaction Manager<br/>performInlineRedaction()<br/>4 Redactors: Text, PDF, Office, Image"]
-    
+
     %% Output
     ValidationMatches["🎯 Validation Matches<br/>With context metadata<br/>and calibrated confidence"]
     RedactionResults["🔒 Redaction Results<br/>Redacted files + audit data"]
-    
+
     %% Flow - Sequential Processing
     ContentInput --> EnhancedWrapper
     EnhancedWrapper --> ValidateMethod
-    
+
     %% SEQUENTIAL FLOW: Pre → Validation → Post
     ValidateMethod --> LanguageDetector
     ValidateMethod --> ContextAnalyzer
     ContextAnalyzer --> ValidatorBridges
     ValidatorBridges --> CrossValidatorProcessor
     CrossValidatorProcessor --> ConfidenceCalibrator
-    
+
     %% Inline redaction using same extracted content
     ValidateMethod --> RedactionManager
-    
+
     %% Outputs
     ConfidenceCalibrator --> ValidationMatches
     RedactionManager --> RedactionResults
-    
+
     %% Output to next stage
     ValidationMatches -.-> ResultsProcessing("📤 To Results<br/>Processing")
     RedactionResults -.-> ResultsProcessing
-    
+
     %% Styling
     classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef validation fill:#fff3e0,stroke:#f57c00,stroke-width:2px
@@ -267,7 +267,7 @@ flowchart TD
     classDef aggregated fill:#e1f5fe,stroke:#0277bd,stroke-width:3px
     classDef redaction fill:#f1f8e9,stroke:#689f38,stroke-width:2px
     classDef output fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
-    
+
     class ContentInput input
     class EnhancedWrapper,ValidateMethod validation
     class LanguageDetector,ContextAnalyzer prevalidation
@@ -283,19 +283,19 @@ flowchart TD
 flowchart TD
     %% Input from previous stage
     ContentInput("📥 From Parallel Processing<br/>& File Routing")
-    
+
     %% Validation Pipeline
     EnhancedWrapper["🎯 Enhanced Manager Wrapper<br/>ValidateContent()<br/>Interface compatibility bridge"]
-    
+
     subgraph EnhancedManager["🚀 Enhanced Validator Manager"]
         ValidateMethod["🔧 ValidateWithAdvancedFeatures()<br/>**Main orchestration method**"]
-        
+
         %% PRE-VALIDATION: Context Analysis
         subgraph PreValidation["🔍 PRE-VALIDATION ANALYSIS"]
             LanguageDetector["🌐 Language Detector<br/>DetectLanguage() - Returns default 'en'<br/>Placeholder for multi-language support"]
             ContextAnalyzer["🧠 Context Analyzer<br/>AnalyzeContext() - Single integrated method:<br/>• Domain classification (Financial, HR, etc.)<br/>• Structure detection (CSV, JSON, etc.)<br/>• Semantic analysis (test vs prod)<br/>• Cross-validator pattern detection"]
         end
-        
+
         %% VALIDATION: Individual Validator Bridges
         subgraph ValidatorBridges["🌉 Validator Bridges (Context-Enhanced)"]
             CreditCardBridge["💳 Credit Card<br/>ValidateWithContext()"]
@@ -311,18 +311,18 @@ flowchart TD
             SSNBridge["🆔 SSN<br/>ValidateWithContext()"]
             ComprehendBridge["🤖 Comprehend PII<br/>GENAI_DISABLED"]
         end
-        
+
         %% POST-VALIDATION: Result Enhancement
         subgraph PostValidation["📈 POST-VALIDATION ENHANCEMENT"]
             CrossValidatorProcessor["🔄 Cross-Validator Signals<br/>Session-only correlation tracking<br/>• Multi-PII pattern detection<br/>• Validator result correlation<br/>• Signal history analysis"]
             ConfidenceCalibrator["📊 Confidence Calibrator<br/>Statistical smoothing adjustments<br/>• Range-based calibration (90%+, 70%+, 50%+)<br/>• Session learning patterns<br/>• Metadata tracking"]
         end
     end
-    
+
     %% Inline Redaction (happens during worker processing)
     subgraph InlineRedaction["🔒 Inline Redaction (Optional)"]
         RedactionManager["🔒 Redaction Manager<br/>performInlineRedaction()"]
-        
+
         subgraph Redactors["🔒 Redactors"]
             PlainTextRedactor["📝 Plain Text Redactor"]
             PDFRedactor["📄 PDF Redactor"]
@@ -330,19 +330,19 @@ flowchart TD
             ImageRedactor["🖼️ Image Redactor"]
         end
     end
-    
+
     %% Output
     ValidationMatches["🎯 Validation Matches<br/>With context metadata<br/>and calibrated confidence"]
     RedactionResults["🔒 Redaction Results<br/>Redacted files + audit data"]
-    
+
     %% Flow - Sequential Processing
     ContentInput --> EnhancedWrapper
     EnhancedWrapper --> ValidateMethod
-    
+
     %% STEP 1: PRE-VALIDATION ANALYSIS
     ValidateMethod --> LanguageDetector
     ValidateMethod --> ContextAnalyzer
-    
+
     %% STEP 2: VALIDATION (Context passed as parameters to bridges)
     ContextAnalyzer --> CreditCardBridge
     ContextAnalyzer --> EmailBridge
@@ -356,7 +356,7 @@ flowchart TD
     ContextAnalyzer --> SocialMediaBridge
     ContextAnalyzer --> SSNBridge
     ContextAnalyzer --> ComprehendBridge
-    
+
     %% STEP 3: POST-VALIDATION ENHANCEMENT
     CreditCardBridge --> CrossValidatorProcessor
     EmailBridge --> CrossValidatorProcessor
@@ -369,24 +369,24 @@ flowchart TD
     SecretsBridge --> CrossValidatorProcessor
     SocialMediaBridge --> CrossValidatorProcessor
     SSNBridge --> CrossValidatorProcessor
-    
+
     CrossValidatorProcessor --> ConfidenceCalibrator
-    
+
     %% Inline redaction using same extracted content
     ValidateMethod --> RedactionManager
     RedactionManager --> PlainTextRedactor
     RedactionManager --> PDFRedactor
     RedactionManager --> OfficeRedactor
     RedactionManager --> ImageRedactor
-    
+
     %% Outputs
     ConfidenceCalibrator --> ValidationMatches
     RedactionManager --> RedactionResults
-    
+
     %% Output to next stage
     ValidationMatches -.-> ResultsProcessing("📤 To Results<br/>Processing")
     RedactionResults -.-> ResultsProcessing
-    
+
     %% Styling
     classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef validation fill:#fff3e0,stroke:#f57c00,stroke-width:2px
@@ -396,7 +396,7 @@ flowchart TD
     classDef redaction fill:#f1f8e9,stroke:#689f38,stroke-width:2px
     classDef output fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef disabled fill:#ffebee,stroke:#d32f2f,stroke-width:2px,stroke-dasharray: 5 5
-    
+
     class ContentInput input
     class EnhancedWrapper,ValidateMethod validation
     class LanguageDetector,ContextAnalyzer prevalidation
@@ -411,7 +411,7 @@ flowchart TD
 
 **Purpose**: Aggregates results, applies suppressions, filters by confidence, and generates output.
 
-**Input**: Validation matches and redaction results  
+**Input**: Validation matches and redaction results
 **Output**: Formatted results to terminal or files
 
 ```mermaid
@@ -419,14 +419,14 @@ flowchart TD
     %% Input from previous stage
     ResultsInput("📥 From Validation<br/>Pipeline")
     SuppressionInput("📥 Suppression Rules<br/>From Configuration")
-    
+
     %% Results Processing
     ResultsAggregator["📋 Results Aggregator<br/>Collects all worker results<br/>from parallel processing"]
-    
+
     SuppressionManager["🚫 Suppression Manager<br/>IsSuppressed() rule matching<br/>• Rule-based filtering<br/>• Expiration tracking"]
-    
+
     ConfidenceFilter["📊 Confidence Filter<br/>parseConfidenceLevels()<br/>• High/Medium/Low filtering<br/>• User-specified thresholds"]
-    
+
     %% Output Formatting
     subgraph OutputFormatting["📤 Output Formatting"]
         TextFormatter["📝 Text Formatter<br/>Human-readable output"]
@@ -436,7 +436,7 @@ flowchart TD
         JUnitFormatter["🧪 JUnit Formatter<br/>CI/CD integration"]
         GitLabSASTFormatter["🔒 GitLab SAST Formatter<br/>GitLab Security Report format"]
     end
-    
+
     %% Output Destinations
     subgraph OutputDestinations["📤 Output Destinations"]
         Terminal["💻 Terminal/Console<br/>Default stdout output"]
@@ -444,14 +444,14 @@ flowchart TD
         RedactedFiles["🔒 Redacted Files<br/>Mirror directory structure<br/>in --redaction-output-dir"]
         AuditLog["📋 Audit Log<br/>Redaction tracking JSON<br/>--redaction-audit-log"]
     end
-    
+
     %% Flow
     ResultsInput --> ResultsAggregator
     SuppressionInput --> SuppressionManager
-    
+
     ResultsAggregator --> SuppressionManager
     SuppressionManager --> ConfidenceFilter
-    
+
     %% Format selection based on --format flag
     ConfidenceFilter --> TextFormatter
     ConfidenceFilter --> JSONFormatter
@@ -459,7 +459,7 @@ flowchart TD
     ConfidenceFilter --> YAMLFormatter
     ConfidenceFilter --> JUnitFormatter
     ConfidenceFilter --> GitLabSASTFormatter
-    
+
     %% Output routing
     TextFormatter --> Terminal
     JSONFormatter --> Terminal
@@ -467,25 +467,25 @@ flowchart TD
     YAMLFormatter --> Terminal
     JUnitFormatter --> Terminal
     GitLabSASTFormatter --> Terminal
-    
+
     TextFormatter --> OutputFile
     JSONFormatter --> OutputFile
     CSVFormatter --> OutputFile
     YAMLFormatter --> OutputFile
     JUnitFormatter --> OutputFile
     GitLabSASTFormatter --> OutputFile
-    
+
     %% Redaction outputs (from validation pipeline)
     ResultsInput --> RedactedFiles
     ResultsInput --> AuditLog
-    
+
     %% Styling
     classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef processing fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef formatting fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef output fill:#e0f2f1,stroke:#00695c,stroke-width:2px
     classDef redaction fill:#f1f8e9,stroke:#689f38,stroke-width:2px
-    
+
     class ResultsInput,SuppressionInput input
     class ResultsAggregator,SuppressionManager,ConfidenceFilter processing
     class TextFormatter,JSONFormatter,CSVFormatter,YAMLFormatter,JUnitFormatter,GitLabSASTFormatter formatting
@@ -504,15 +504,15 @@ flowchart LR
     Processing("🔹 Parallel Processing<br/>& File Routing")
     Validation("🔹 Enhanced Validation<br/>Pipeline")
     Results("🔹 Results Processing<br/>& Output")
-    
+
     Input --> Discovery
     Discovery --> Processing
     Processing --> Validation
     Validation --> Results
-    
+
     %% Styling
     classDef stage fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
-    
+
     class Input,Discovery,Processing,Validation,Results stage
 ```
 
@@ -585,7 +585,7 @@ The modular design enables easy extension through pluggable preprocessors, valid
 Several architectural decisions reflect deep consideration of real-world usage patterns:
 
 - **GenAI services are currently disabled** (Audio, Textract, Comprehend), indicated by dashed borders in the diagrams, allowing for future activation without architectural changes
-- **File size limits (100MB) and worker caps (8)** provide predictable resource usage in enterprise environments  
+- **File size limits (100MB) and worker caps (8)** provide predictable resource usage in enterprise environments
 - **Session-only cross-validator correlation** provides immediate insights without persistent storage requirements
 <!-- GENAI_DISABLED: - **Statistical confidence calibration** improves accuracy without complex machine learning infrastructure -->
 

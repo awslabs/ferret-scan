@@ -16,7 +16,7 @@ This preprocessor focuses exclusively on image file metadata extraction, providi
 The ImageMetadataPreprocessor supports the following image formats:
 
 - **JPEG** (`.jpg`, `.jpeg`) - Full EXIF metadata extraction
-- **TIFF** (`.tiff`, `.tif`) - Full EXIF metadata extraction  
+- **TIFF** (`.tiff`, `.tif`) - Full EXIF metadata extraction
 - **PNG** (`.png`) - Basic metadata extraction
 - **GIF** (`.gif`) - Basic metadata extraction
 - **BMP** (`.bmp`) - Basic metadata extraction
@@ -54,7 +54,7 @@ if processor.CanProcess("image.jpg") {
     if err != nil {
         // Handle error
     }
-    
+
     // Use the extracted metadata
     fmt.Printf("Extracted text: %s\n", result.Text)
     fmt.Printf("Processor type: %s\n", result.ProcessorType) // "image_metadata"

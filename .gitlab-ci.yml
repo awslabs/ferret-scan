@@ -77,15 +77,15 @@ build:
       if [ -d "$GOMODCACHE" ]; then
         TOTAL_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
         echo "Current cache size: ${TOTAL_SIZE}MB (target: <${MAX_CACHE_SIZE}MB)"
-        
+
         if [ "$TOTAL_SIZE" -gt "$MAX_CACHE_SIZE" ]; then
           echo "Cache exceeds ${MAX_CACHE_SIZE}MB, performing aggressive cleanup..."
-          
+
           # Step 1: Remove modules older than 1 day
           find "$GOMODCACHE" -type f -mtime +1 -delete 2>/dev/null || true
           NEW_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
           echo "After 1-day cleanup: ${TOTAL_SIZE}MB -> ${NEW_SIZE}MB"
-          
+
           # Step 2: If still too large, remove modules accessed more than 12 hours ago
           if [ "$NEW_SIZE" -gt "$MAX_CACHE_SIZE" ]; then
             echo "Still too large, removing modules older than 12 hours..."
@@ -93,7 +93,7 @@ build:
             NEW_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
             echo "After 12-hour cleanup: -> ${NEW_SIZE}MB"
           fi
-          
+
           # Step 3: If STILL too large, keep only the most essential modules
           if [ "$NEW_SIZE" -gt "$MAX_CACHE_SIZE" ]; then
             echo "Emergency cleanup: keeping only current project dependencies..."
@@ -102,10 +102,10 @@ build:
             NEW_SIZE=0
             echo "Emergency cleanup complete: -> ${NEW_SIZE}MB"
           fi
-          
+
           # Clean up empty directories but preserve root
           find "$GOMODCACHE" -mindepth 1 -type d -empty -delete 2>/dev/null || true
-          
+
         else
           echo "Cache size OK (${TOTAL_SIZE}MB)"
         fi
@@ -131,7 +131,7 @@ build:
       if [ -d "$GOMODCACHE" ]; then
         FINAL_SIZE=$(du -sm "$GOMODCACHE" | cut -f1 2>/dev/null || echo "0")
         echo "Final cache size: ${FINAL_SIZE}MB"
-        
+
         # Emergency check: if cache is still over 400MB, disable caching for this run
         if [ "$FINAL_SIZE" -gt 400 ]; then
           echo "⚠️  Cache still too large (${FINAL_SIZE}MB), clearing for storage safety..."
@@ -296,7 +296,7 @@ goreleaser-release:
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
         echo "Building release for tag: $CI_COMMIT_TAG"
-        
+
         # Check if release already exists
         if curl -s -H "PRIVATE-TOKEN: $GITLAB_RELEASE_TOKEN" \
            "https://code.aws.dev/api/v4/projects/personal_projects%2Falias_a%2Fadifabio%2FFerret-Scan/releases/$CI_COMMIT_TAG" \
@@ -304,7 +304,7 @@ goreleaser-release:
           echo "Release $CI_COMMIT_TAG already exists, skipping..."
           exit 0
         fi
-        
+
         goreleaser release --clean --skip=validate
       else
         echo "Building snapshot (no tag)"
