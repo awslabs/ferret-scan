@@ -65,7 +65,7 @@ validators:
       - "http[s]?:\\/\\/.*\\.corp\\.company\\.com" # Replace 'company' with actual domain
       - "http[s]?:\\/\\/.*\\.internal\\.company\\.com"
       - "http[s]?:\\/\\/.*\\.company\\.local"
-      
+
       # Enterprise services and applications
       - "http[s]?:\\/\\/intranet\\.company\\.com"
       - "http[s]?:\\/\\/sharepoint\\.company\\.com"
@@ -73,19 +73,19 @@ validators:
       - "http[s]?:\\/\\/confluence\\.company\\.com"
       - "http[s]?:\\/\\/jira\\.company\\.com"
       - "http[s]?:\\/\\/wiki\\.company\\.com"
-      
+
       # Development and testing environments
       - "http[s]?:\\/\\/.*-dev\\.company\\.com"
       - "http[s]?:\\/\\/.*-test\\.company\\.com"
       - "http[s]?:\\/\\/.*-staging\\.company\\.com"
       - "http[s]?:\\/\\/.*-uat\\.company\\.com"
-      
+
       # Enterprise infrastructure
       - "http[s]?:\\/\\/.*\\.ad\\.company\\.com" # Active Directory
       - "http[s]?:\\/\\/.*\\.exchange\\.company\\.com" # Exchange Server
       - "http[s]?:\\/\\/.*\\.sccm\\.company\\.com" # System Center
       - "http[s]?:\\/\\/.*\\.wsus\\.company\\.com" # Windows Update Services
-      
+
       # Cloud infrastructure (customize as needed)
       - "http[s]?:\\/\\/.*\\.azurewebsites\\.net" # Azure Web Apps
       - "http[s]?:\\/\\/.*\\.blob\\.core\\.windows\\.net" # Azure Blob Storage
@@ -98,11 +98,11 @@ validators:
       linkedin:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
-      
+
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
         - "(?i)@[a-zA-Z0-9_]{1,15}\\b"
-      
+
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"

@@ -26,7 +26,7 @@ This runbook provides step-by-step procedures for troubleshooting common issues 
    ```bash
    # Basic functionality test
    ferret-scan --version
-   
+
    # Test with a simple file
    echo "test content" > test.txt
    ferret-scan test.txt
@@ -41,7 +41,7 @@ This runbook provides step-by-step procedures for troubleshooting common issues 
    ```bash
    # Check if ferret-scan processes are running
    ps aux | grep ferret-scan
-   
+
    # Check system resources
    top -p $(pgrep ferret-scan)
    ```
@@ -136,8 +136,8 @@ ferret-scan --debug --preprocessor-only your-file.pdf
    ```bash
    # Force document path only
    ferret-scan --document-path-only your-file.txt
-   
-   # Force metadata path only  
+
+   # Force metadata path only
    ferret-scan --metadata-path-only your-file.pdf
    ```
 
@@ -188,7 +188,7 @@ ferret-scan --debug --preprocessor-only your-file.pdf
    ```bash
    # Monitor during processing
    top -p $(pgrep ferret-scan)
-   
+
    # Check memory usage
    ps -o pid,vsz,rss,comm -p $(pgrep ferret-scan)
    ```
@@ -366,7 +366,7 @@ ferret-scan --debug --preprocessor-only your-file.pdf
    ```bash
    # Test content routing
    ferret-scan --test-routing your-file.pdf
-   
+
    # Test dual-path validation
    ferret-scan --test-validation your-file.pdf
    ```

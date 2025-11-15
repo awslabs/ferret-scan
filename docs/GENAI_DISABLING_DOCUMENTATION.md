@@ -269,7 +269,7 @@ grep -r "<!-- GENAI_DISABLED.*-->" .
    ```bash
    # Test GenAI flags are recognized
    ./ferret-scan --enable-genai --help
-   
+
    # Test COMPREHEND_PII validator
    ./ferret-scan --checks COMPREHEND_PII --help
    ```
@@ -357,7 +357,7 @@ echo "GenAI restoration complete. Please test functionality."
 ### Common Issues During Restoration
 
 #### Issue: GenAI flags not recognized after uncommenting
-**Solution**: 
+**Solution**:
 - Verify all flag definitions in `cmd/main.go` are uncommented
 - Check flag processing logic is also uncommented
 - Rebuild the application

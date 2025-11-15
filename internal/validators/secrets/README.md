@@ -51,7 +51,7 @@ The validator now identifies specific secret types and displays them in the TYPE
 
 The validator detects various cryptographic key formats:
 - **SSH_PRIVATE_KEY** - SSH private key detection
-- **CERTIFICATE** - Certificate and private key detection  
+- **CERTIFICATE** - Certificate and private key detection
 - **PGP_PRIVATE_KEY** - PGP private key detection
 
 ### **Cloud Provider API Keys (High Confidence: 94-95%)**

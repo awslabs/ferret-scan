@@ -184,7 +184,7 @@ fileRouter := router.NewFileRouter(true)
 // Check if file can contain metadata
 if fileRouter.CanContainMetadata("photo.jpg") {
     fmt.Println("File can contain metadata")
-    
+
     // Get specific metadata type
     metadataType := fileRouter.GetMetadataType("photo.jpg")
     fmt.Printf("Metadata type: %s\n", metadataType) // Output: image_metadata
@@ -218,7 +218,7 @@ if len(routedContent.Metadata) == 0 {
 func processFiles(filePaths []string, fileRouter *router.FileRouter) {
     metadataFiles := 0
     textFiles := 0
-    
+
     for _, filePath := range filePaths {
         if fileRouter.CanContainMetadata(filePath) {
             metadataFiles++
@@ -229,7 +229,7 @@ func processFiles(filePaths []string, fileRouter *router.FileRouter) {
             fmt.Printf("Skipping metadata for %s\n", filePath)
         }
     }
-    
+
     fmt.Printf("Summary: %d metadata files, %d text files\n", metadataFiles, textFiles)
 }
 ```
@@ -278,7 +278,7 @@ The architecture supports future extensions:
 #### File Type Not Detected Correctly
 
 **Symptoms**: File should contain metadata but is being skipped
-**Causes**: 
+**Causes**:
 - Unsupported file extension
 - Case sensitivity issues
 - File extension not in metadata-capable list

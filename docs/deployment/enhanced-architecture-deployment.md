@@ -251,7 +251,7 @@ top -p $(pgrep ferret-scan)
 
 #### Content Routing Failures
 **Symptoms**: Warnings about content routing failures in logs
-**Solution**: 
+**Solution**:
 ```bash
 # Check for malformed content
 ./ferret-scan --file problematic.pdf --debug

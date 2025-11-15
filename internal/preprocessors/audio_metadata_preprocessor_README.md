@@ -53,7 +53,7 @@ if processor.CanProcess("song.mp3") {
     if err != nil {
         // Handle error
     }
-    
+
     // Use the extracted metadata
     fmt.Printf("Extracted text: %s\n", result.Text)
     fmt.Printf("Processor type: %s\n", result.ProcessorType) // "audio_metadata"
