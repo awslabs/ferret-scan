@@ -113,19 +113,19 @@ class FerretScanCLI:
 
             for asset in release_data.get("assets", []):
                 asset_name = asset["name"]
-                
+
                 # Check if this asset matches our platform
                 # Support both formats: ferret-scan-darwin-arm64 and ferret-scan_1.2.2_darwin_arm64
-                if (system in asset_name and arch in asset_name and 
+                if (system in asset_name and arch in asset_name and
                     asset_name.startswith("ferret-scan") and
                     not asset_name.endswith((".whl", ".tar.gz", ".txt", ".md"))):
-                    
+
                     # Additional validation for Windows executables
                     if system == "windows" and not asset_name.endswith(".exe"):
                         continue
                     elif system != "windows" and asset_name.endswith(".exe"):
                         continue
-                        
+
                     download_url = asset["browser_download_url"]
                     break
 

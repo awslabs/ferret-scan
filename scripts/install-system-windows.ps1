@@ -5,10 +5,10 @@ param(
     [Parameter(Position=0)]
     [ValidateSet("source", "binary", "uninstall")]
     [string]$Command = "source",
-    
+
     [Parameter(Position=1)]
     [string]$BinaryPath = "",
-    
+
     [string]$InstallDir = "",
     [string]$ConfigDir = "",
     [switch]$NoConfig = $false,
@@ -76,7 +76,7 @@ function Test-Permissions {
         Write-Info "Example: .\install-system-windows.ps1 -UserInstall"
         exit 1
     }
-    
+
     # Test write access to installation directory
     $testPath = Join-Path $InstallDir "test-write-access.tmp"
     try {
@@ -94,19 +94,19 @@ function Test-Permissions {
 
 function Install-FromSource {
     Write-Info "Installing from source..."
-    
+
     # Check if we're in the ferret-scan directory
     if (-not (Test-Path "Makefile") -or -not (Test-Path "go.mod")) {
         Write-Error "Not in ferret-scan source directory"
         Write-Info "Please run this script from the ferret-scan project root"
         exit 1
     }
-    
+
     # Build the binary
     Write-Info "Building ferret-scan..."
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
-    
+
     try {
         & make build-windows
         if ($LASTEXITCODE -ne 0) {
@@ -116,7 +116,7 @@ function Install-FromSource {
         Write-Error "Build failed: $_"
         exit 1
     }
-    
+
     # Install binary
     Write-Info "Installing binary to $InstallDir..."
     $sourceBinary = "bin\ferret-scan.exe"
@@ -124,19 +124,19 @@ function Install-FromSource {
         Write-Error "Built binary not found: $sourceBinary"
         exit 1
     }
-    
+
     Copy-Item $sourceBinary (Join-Path $InstallDir $BinaryName) -Force
     Write-Success "Binary installed to $(Join-Path $InstallDir $BinaryName)"
 }
 
 function Install-FromBinary {
     param([string]$BinaryPath)
-    
+
     if (-not (Test-Path $BinaryPath)) {
         Write-Error "Binary not found: $BinaryPath"
         exit 1
     }
-    
+
     Write-Info "Installing binary from $BinaryPath..."
     Copy-Item $BinaryPath (Join-Path $InstallDir $BinaryName) -Force
     Write-Success "Binary installed to $(Join-Path $InstallDir $BinaryName)"
@@ -144,21 +144,21 @@ function Install-FromBinary {
 
 function Install-ConfigFiles {
     Write-Info "Installing configuration files..."
-    
+
     # Create config directory
     if (-not (Test-Path $ConfigDir)) {
         New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
     }
-    
+
     # Install the example config as the default config
     $exampleConfig = "examples\ferret.yaml"
     $defaultConfig = Join-Path $ConfigDir "config.yaml"
     $exampleConfigCopy = Join-Path $ConfigDir "ferret.example.yaml"
-    
+
     if (Test-Path $exampleConfig) {
         Copy-Item $exampleConfig $defaultConfig -Force
         Write-Success "Default config installed to $defaultConfig (from $exampleConfig)"
-        
+
         # Also keep a copy as example for reference
         Copy-Item $exampleConfig $exampleConfigCopy -Force
         Write-Success "Example config installed to $exampleConfigCopy"
@@ -173,7 +173,7 @@ function Install-ConfigFiles {
 
 function Set-PathEnvironment {
     Write-Info "Setting up PATH environment variable..."
-    
+
     try {
         if ($UserInstall) {
             # User-level PATH
@@ -196,10 +196,10 @@ function Set-PathEnvironment {
                 Write-Info "$InstallDir already in system PATH"
             }
         }
-        
+
         # Update current session PATH
         $env:PATH = "$InstallDir;$env:PATH"
-        
+
     } catch {
         Write-Warning "Failed to update PATH environment variable: $_"
         Write-Info "You may need to manually add $InstallDir to your PATH"
@@ -208,10 +208,10 @@ function Set-PathEnvironment {
 
 function Setup-PrecommitIntegration {
     Write-Info "Setting up pre-commit integration..."
-    
+
     # Note: Pre-commit wrapper scripts have been removed in favor of direct integration
     Write-Info "Pre-commit wrapper scripts have been deprecated - use direct integration instead"
-    
+
     # Provide guidance for direct integration
     Write-Host ""
     Write-Info "For direct pre-commit integration, add to your .pre-commit-config.yaml:"
@@ -234,7 +234,7 @@ function Setup-PrecommitIntegration {
 
 function Test-Installation {
     Write-Info "Verifying installation..."
-    
+
     $ferretScanPath = Join-Path $InstallDir $BinaryName
     if (Test-Path $ferretScanPath) {
         try {
@@ -250,7 +250,7 @@ function Test-Installation {
     } else {
         Write-Error "ferret-scan binary not found at $ferretScanPath"
     }
-    
+
     # Test if it's in PATH
     try {
         $pathVersion = & ferret-scan --version 2>$null
@@ -265,7 +265,7 @@ function Test-Installation {
 
 function Remove-PathEnvironment {
     Write-Info "Removing from PATH environment variable..."
-    
+
     try {
         if ($UserInstall) {
             # User-level PATH
@@ -288,7 +288,7 @@ function Remove-PathEnvironment {
 
 function Uninstall-FerretScan {
     Write-Info "Uninstalling ferret-scan..."
-    
+
     # Remove binary
     $binaryPath = Join-Path $InstallDir $BinaryName
     if (Test-Path $binaryPath) {
@@ -297,7 +297,7 @@ function Uninstall-FerretScan {
     } else {
         Write-Warning "Binary not found: $binaryPath"
     }
-    
+
     # Remove installation directory if empty
     try {
         if (Test-Path $InstallDir) {
@@ -312,10 +312,10 @@ function Uninstall-FerretScan {
     } catch {
         Write-Warning "Could not remove installation directory: $_"
     }
-    
+
     # Remove from PATH
     Remove-PathEnvironment
-    
+
     # Ask about config directory
     if (Test-Path $ConfigDir) {
         Write-Host ""
@@ -337,7 +337,7 @@ function Uninstall-FerretScan {
     } else {
         Write-Info "No configuration directory found at $ConfigDir"
     }
-    
+
     # Check for project-level pre-commit hooks
     if (Test-Path ".git\hooks\pre-commit") {
         Write-Host ""
@@ -348,7 +348,7 @@ function Uninstall-FerretScan {
             Write-Success "Removed .git\hooks\pre-commit"
         }
     }
-    
+
     # Provide cleanup instructions
     Write-Host ""
     Write-Info "Manual cleanup (if needed):"
@@ -356,7 +356,7 @@ function Uninstall-FerretScan {
     Write-Host "• Run 'pre-commit uninstall' in projects using pre-commit framework"
     Write-Host "• Remove project-specific .ferret-scan.yaml files"
     Write-Host "• Remove project-specific .ferret-scan-suppressions.yaml files"
-    
+
     Write-Success "Uninstallation complete"
 }
 

@@ -172,7 +172,7 @@ ferret-sast:
   script:
     # Scan only source code files
     - ./bin/ferret-scan --file "src/" --recursive --format gitlab-sast --output gl-sast-report.json
-    
+
     # Or scan specific file patterns
     - find . -name "*.py" -o -name "*.js" -o -name "*.java" | xargs ./bin/ferret-scan --format gitlab-sast --output gl-sast-report.json
 ```

@@ -21,7 +21,7 @@ flowchart TD
     ContentRouter -->|Metadata Content<br/>metadata-capable files only| MetadataValidator[Enhanced Metadata Validator]
     ContentRouter -->|Document Body<br/>all files| OtherValidators[Other Validators]
     ContentRouter -->|Skip Metadata<br/>plain text files| OtherValidators
-    
+
     MetadataValidator --> PreprocessorAware[Preprocessor-Aware Validation]
     PreprocessorAware --> TypeSpecific[Type-Specific Patterns]
     PreprocessorAware --> ConfidenceBoosts[Confidence Boosts]

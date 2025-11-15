@@ -162,12 +162,12 @@ function Invoke-FerretScan {
         [switch]$Recursive,
         [string]$Output
     )
-    
+
     $args = @("scan", $Path, "--format", $Format, "--checks", $Checks, "--confidence", $Confidence)
-    
+
     if ($Recursive) { $args += "--recursive" }
     if ($Output) { $args += @("--output", $Output) }
-    
+
     & ferret-scan @args
 }
 
@@ -179,15 +179,15 @@ function Invoke-BatchScan {
         [string]$Format = "json",
         [string]$OutputDir = ".\scan-results"
     )
-    
+
     if (!(Test-Path $OutputDir)) {
         New-Item -ItemType Directory -Path $OutputDir -Force
     }
-    
+
     foreach ($path in $Paths) {
         $safeName = ($path -replace '[\\/:*?"<>|]', '-').Trim('-')
         $outputFile = Join-Path $OutputDir "scan-$safeName.json"
-        
+
         Write-Host "Scanning: $path" -ForegroundColor Green
         ferret-scan scan $path --format $Format --output $outputFile
     }
@@ -200,7 +200,7 @@ function Scan-Files {
         [string[]]$Files,
         [string]$Format = "json"
     )
-    
+
     process {
         foreach ($file in $Files) {
             if (Test-Path $file) {
@@ -220,13 +220,13 @@ Set-Alias -Name bscan -Value Invoke-BatchScan
 
 ```powershell
 # Scan files from pipeline
-Get-ChildItem "C:\Documents" -Recurse -File | 
+Get-ChildItem "C:\Documents" -Recurse -File |
     Where-Object { $_.Extension -in @('.txt', '.doc', '.docx', '.pdf') } |
     ForEach-Object { ferret-scan scan $_.FullName --format json }
 
 # Process scan results
-ferret-scan scan "C:\Data" --format json | 
-    ConvertFrom-Json | 
+ferret-scan scan "C:\Data" --format json |
+    ConvertFrom-Json |
     Where-Object { $_.confidence_level -eq "HIGH" } |
     Group-Object type |
     Sort-Object Count -Descending
@@ -289,7 +289,7 @@ profiles:
     confidence_levels: "high"
     recursive: false
     description: "Quick Windows scan for common sensitive data"
-    
+
   windows-comprehensive:
     format: "json"
     checks: "all"
@@ -297,7 +297,7 @@ profiles:
     recursive: true
     enable_preprocessors: true
     description: "Comprehensive Windows scan with all features"
-    
+
   windows-enterprise:
     format: "gitlab-sast"
     checks: "all"
@@ -416,7 +416,7 @@ ferret-scan web --port 8080 --config "$env:APPDATA\ferret-scan\config.yaml"
 # Define directories to scan
 $ScanDirs = @(
     "$env:USERPROFILE\Documents",
-    "$env:USERPROFILE\Downloads", 
+    "$env:USERPROFILE\Downloads",
     "$env:USERPROFILE\Desktop",
     "C:\Projects",
     "D:\Data"
@@ -431,10 +431,10 @@ foreach ($dir in $ScanDirs) {
     if (Test-Path $dir) {
         $dirName = Split-Path $dir -Leaf
         $outputFile = Join-Path $OutputDir "$dirName-scan.json"
-        
+
         Write-Host "Scanning: $dir" -ForegroundColor Green
         ferret-scan scan $dir --recursive --format json --output $outputFile
-        
+
         Write-Host "Results saved to: $outputFile" -ForegroundColor Cyan
     } else {
         Write-Warning "Directory not found: $dir"
@@ -451,10 +451,10 @@ function New-SecurityReport {
         [string]$ReportDate = (Get-Date -Format 'yyyy-MM-dd'),
         [string]$OutputPath = "C:\Reports"
     )
-    
+
     $ReportDir = Join-Path $OutputPath $ReportDate
     New-Item -ItemType Directory -Path $ReportDir -Force
-    
+
     # Scan critical directories
     $CriticalDirs = @{
         "UserDocuments" = "$env:USERPROFILE\Documents"
@@ -462,25 +462,25 @@ function New-SecurityReport {
         "ProjectFiles" = "C:\Projects"
         "TempFiles" = "$env:TEMP"
     }
-    
+
     $Summary = @()
-    
+
     foreach ($name in $CriticalDirs.Keys) {
         $path = $CriticalDirs[$name]
         $outputFile = Join-Path $ReportDir "$name-scan.json"
-        
+
         if (Test-Path $path) {
             Write-Host "Scanning $name`: $path" -ForegroundColor Green
-            
+
             # Run scan
             ferret-scan scan $path --recursive --format json --output $outputFile
-            
+
             # Parse results for summary
             if (Test-Path $outputFile) {
                 $results = Get-Content $outputFile | ConvertFrom-Json
                 $highConfidence = ($results | Where-Object { $_.confidence_level -eq "HIGH" }).Count
                 $mediumConfidence = ($results | Where-Object { $_.confidence_level -eq "MEDIUM" }).Count
-                
+
                 $Summary += [PSCustomObject]@{
                     Location = $name
                     Path = $path
@@ -494,11 +494,11 @@ function New-SecurityReport {
             Write-Warning "Path not accessible: $path"
         }
     }
-    
+
     # Generate summary report
     $summaryFile = Join-Path $ReportDir "summary.csv"
     $Summary | Export-Csv -Path $summaryFile -NoTypeInformation
-    
+
     # Generate HTML report
     $htmlReport = @"
 <!DOCTYPE html>
@@ -526,11 +526,11 @@ function New-SecurityReport {
             <th>Total Findings</th>
         </tr>
 "@
-    
+
     foreach ($item in $Summary) {
         $highClass = if ($item.HighRisk -gt 0) { "high-risk" } else { "" }
         $mediumClass = if ($item.MediumRisk -gt 0) { "medium-risk" } else { "" }
-        
+
         $htmlReport += @"
         <tr>
             <td>$($item.Location)</td>
@@ -541,16 +541,16 @@ function New-SecurityReport {
         </tr>
 "@
     }
-    
+
     $htmlReport += @"
     </table>
 </body>
 </html>
 "@
-    
+
     $htmlFile = Join-Path $ReportDir "report.html"
     $htmlReport | Out-File $htmlFile -Encoding UTF8
-    
+
     Write-Host "Report generated: $ReportDir" -ForegroundColor Green
     return $ReportDir
 }
@@ -570,9 +570,9 @@ $TaskDescription = "Daily Ferret Scan security check"
 
 # Define the action
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument @"
--WindowStyle Hidden -Command "& { 
+-WindowStyle Hidden -Command "& {
     ferret-scan scan 'C:\Data' --recursive --format json --output 'C:\Reports\daily-scan-$(Get-Date -Format yyyy-MM-dd).json'
-    if ($LASTEXITCODE -ne 0) { 
+    if ($LASTEXITCODE -ne 0) {
         Write-EventLog -LogName Application -Source 'Ferret Scan' -EventId 1001 -EntryType Error -Message 'Daily scan failed'
     }
 }"
@@ -601,7 +601,7 @@ function Write-ScanEvent {
         [string]$EntryType = "Information",
         [int]$EventId = 1000
     )
-    
+
     Write-EventLog -LogName Application -Source "Ferret Scan" -EventId $EventId -EntryType $EntryType -Message $Message
 }
 
@@ -644,7 +644,7 @@ ferret-scan scan "C:\Data" --enable-preprocessors=false --format text
 # Parallel scanning of multiple directories
 $Directories = @("C:\Dir1", "C:\Dir2", "C:\Dir3")
 $Jobs = foreach ($dir in $Directories) {
-    Start-Job -ScriptBlock { 
+    Start-Job -ScriptBlock {
         param($path)
         ferret-scan scan $path --format json
     } -ArgumentList $dir
@@ -669,23 +669,23 @@ function Invoke-BatchScan {
         [string]$RootPath,
         [int]$BatchSize = 100
     )
-    
+
     $AllFiles = Get-ChildItem $RootPath -File -Recurse
     $Batches = [System.Collections.ArrayList]::new()
-    
+
     for ($i = 0; $i -lt $AllFiles.Count; $i += $BatchSize) {
         $Batch = $AllFiles[$i..([Math]::Min($i + $BatchSize - 1, $AllFiles.Count - 1))]
         $Batches.Add($Batch) | Out-Null
     }
-    
+
     foreach ($batch in $Batches) {
         $TempList = $batch | ForEach-Object { $_.FullName }
         $TempFile = [System.IO.Path]::GetTempFileName()
         $TempList | Out-File $TempFile
-        
+
         ferret-scan scan --file-list $TempFile --format json
         Remove-Item $TempFile
-        
+
         # Brief pause between batches
         Start-Sleep 1
     }
@@ -735,7 +735,7 @@ try {
 # Test network connectivity before scanning
 function Test-NetworkPath {
     param([string]$UNCPath)
-    
+
     try {
         $TestPath = Split-Path $UNCPath -Parent
         Test-Path $TestPath -ErrorAction Stop
@@ -779,17 +779,17 @@ function Invoke-FerretMaintenance {
     # Clean up old scan results
     $OldResults = Get-ChildItem "C:\ScanResults" -File | Where-Object { $_.CreationTime -lt (Get-Date).AddDays(-30) }
     $OldResults | Remove-Item -Force
-    
+
     # Update configuration if needed
     $ConfigFile = "$env:APPDATA\ferret-scan\config.yaml"
     if (Test-Path $ConfigFile) {
         $Config = Get-Content $ConfigFile -Raw
         # Perform any necessary config updates
     }
-    
+
     # Check for updates (if update mechanism exists)
     ferret-scan --version
-    
+
     Write-Host "Maintenance completed" -ForegroundColor Green
 }
 
@@ -810,10 +810,10 @@ function Send-ToSIEM {
         [string]$ScanResultsPath,
         [string]$SIEMEndpoint
     )
-    
+
     $Results = Get-Content $ScanResultsPath | ConvertFrom-Json
     $HighRiskFindings = $Results | Where-Object { $_.confidence_level -eq "HIGH" }
-    
+
     foreach ($finding in $HighRiskFindings) {
         $SIEMEvent = @{
             timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
@@ -823,7 +823,7 @@ function Send-ToSIEM {
             filename = $finding.filename
             confidence = $finding.confidence
         }
-        
+
         # Send to SIEM (example with REST API)
         Invoke-RestMethod -Uri $SIEMEndpoint -Method POST -Body ($SIEMEvent | ConvertTo-Json) -ContentType "application/json"
     }
@@ -839,16 +839,16 @@ function New-ComplianceReport {
         [string[]]$ScanPaths,
         [string]$ComplianceStandard = "PCI-DSS"
     )
-    
+
     $ComplianceResults = @()
-    
+
     foreach ($path in $ScanPaths) {
         $ScanResults = ferret-scan scan $path --format json | ConvertFrom-Json
-        
+
         # Analyze results for compliance violations
         $CreditCardFindings = $ScanResults | Where-Object { $_.type -eq "CREDIT_CARD" -and $_.confidence_level -eq "HIGH" }
         $SSNFindings = $ScanResults | Where-Object { $_.type -eq "SSN" -and $_.confidence_level -eq "HIGH" }
-        
+
         $ComplianceResults += [PSCustomObject]@{
             Path = $path
             Standard = $ComplianceStandard
@@ -859,7 +859,7 @@ function New-ComplianceReport {
             ScanDate = Get-Date
         }
     }
-    
+
     return $ComplianceResults
 }
 

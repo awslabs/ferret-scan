@@ -66,13 +66,13 @@ validators:
       - "http[s]?:\\/\\/127\\.0\\.0\\.1" # Loopback address
       - "http[s]?:\\/\\/0\\.0\\.0\\.0" # All interfaces binding
       - "http[s]?:\\/\\/.*\\.local" # Local domain development
-      
+
       # Development environment patterns
       - "http[s]?:\\/\\/.*-dev\\..*" # Development environments
       - "http[s]?:\\/\\/.*-test\\..*" # Test environments
       - "http[s]?:\\/\\/.*-staging\\..*" # Staging environments
       - "http[s]?:\\/\\/.*-sandbox\\..*" # Sandbox environments
-      
+
       # Common development ports
       - "http[s]?:\\/\\/.*:3000" # React development server
       - "http[s]?:\\/\\/.*:4200" # Angular development server
@@ -80,13 +80,13 @@ validators:
       - "http[s]?:\\/\\/.*:8000" # Django development server
       - "http[s]?:\\/\\/.*:8080" # Common development port
       - "http[s]?:\\/\\/.*:9000" # Common development port
-      
+
       # Development tools and services
       - "http[s]?:\\/\\/.*\\.ngrok\\.io" # Ngrok tunnels
       - "http[s]?:\\/\\/.*\\.localtunnel\\.me" # LocalTunnel
       - "http[s]?:\\/\\/.*\\.github\\.dev" # GitHub Codespaces
       - "http[s]?:\\/\\/.*\\.gitpod\\.io" # Gitpod workspaces
-      
+
       # Corporate development infrastructure
       - "http[s]?:\\/\\/gitlab\\..*" # Internal GitLab
       - "http[s]?:\\/\\/jenkins\\..*" # Jenkins CI/CD
@@ -104,15 +104,15 @@ validators:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
         - "(?i)git@github\\.com:[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+\\.git"
-      
+
       gitlab:
         - "(?i)https?://(?:www\\.)?gitlab\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
         - "(?i)git@gitlab\\.com:[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+\\.git"
-      
+
       stackoverflow:
         - "(?i)https?://(?:www\\.)?stackoverflow\\.com/users/\\d+"
         - "(?i)https?://(?:www\\.)?stackoverflow\\.com/questions/\\d+"
-      
+
       linkedin:
         - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
 
