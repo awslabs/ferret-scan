@@ -101,7 +101,7 @@ Performs comprehensive validation:
 ```
 Contact us at:
 - Support: support@company.com
-- Sales: sales@gmail.com  
+- Sales: sales@gmail.com
 - Admin: admin@university.edu
 - Government: contact@agency.gov
 - Temp: user@10minutemail.com
@@ -110,7 +110,7 @@ Contact us at:
 ### Output:
 ```
 [HIGH  ] email        GOVERNMENT     100.00% line 4 contact@agency.gov
-[HIGH  ] email        BUSINESS        95.00% line 2 support@company.com  
+[HIGH  ] email        BUSINESS        95.00% line 2 support@company.com
 [MEDIUM] email        GMAIL           85.00% line 3 sales@gmail.com
 [MEDIUM] email        EDUCATIONAL     75.00% line 4 admin@university.edu
 [MEDIUM] email        DISPOSABLE      65.00% line 5 user@10minutemail.com

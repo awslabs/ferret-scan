@@ -28,13 +28,13 @@ sequenceDiagram
     User->>CLI: ferret-scan --file document.pdf
     CLI->>Config: Load configuration
     Config-->>CLI: Configuration loaded
-    
+
     CLI->>ParallelProcessor: Initialize parallel processing
     ParallelProcessor->>FileRouter: Process file batch
-    
+
     Note over FileRouter: File Processing Pipeline
     FileRouter->>Preprocessors: Execute preprocessors in parallel
-    
+
     par Plain Text Processing
         Preprocessors->>Preprocessors: Plain Text Preprocessor
     and Document Text Extraction
@@ -45,20 +45,20 @@ sequenceDiagram
         Preprocessors->>Preprocessors: Audio Metadata Extractor
         Preprocessors->>Preprocessors: Video Metadata Extractor
     end
-    
+
     Preprocessors-->>ContentRouter: Combined preprocessor output
-    
+
     Note over ContentRouter: NEW: Intelligent Content Separation
     ContentRouter->>ContentRouter: Identify metadata sections
     ContentRouter->>ContentRouter: Separate document body from metadata
     ContentRouter->>ContentRouter: Preserve preprocessor context
-    
+
     par Document Body Validation Path
         ContentRouter->>DocumentBridge: Document body content + context
         DocumentBridge->>ContextEngine: Request context analysis
         ContextEngine-->>DocumentBridge: Domain & document type context
         DocumentBridge->>Validators: Route to all non-metadata validators
-        
+
         par Parallel Document Validation
             Validators->>Validators: Credit Card Validator
         and
@@ -76,32 +76,32 @@ sequenceDiagram
         and
             Validators->>Validators: Passport Validator
         end
-        
+
         Validators-->>DocumentBridge: Document validation results
     and Metadata Validation Path
         ContentRouter->>MetadataBridge: Metadata content + preprocessor context
         MetadataBridge->>ContextEngine: Request context analysis
         ContextEngine-->>MetadataBridge: Domain & document type context
         MetadataBridge->>MetadataValidator: Route metadata with context
-        
+
         Note over MetadataValidator: NEW: Preprocessor-Aware Validation
         MetadataValidator->>MetadataValidator: Identify preprocessor type
         MetadataValidator->>MetadataValidator: Apply type-specific rules
         MetadataValidator->>MetadataValidator: Calculate enhanced confidence
         MetadataValidator->>MetadataValidator: Include source traceability
-        
+
         MetadataValidator-->>MetadataBridge: Metadata validation results
     end
-    
+
     DocumentBridge-->>ResultsProcessor: Document matches
     MetadataBridge-->>ResultsProcessor: Metadata matches
-    
+
     Note over ResultsProcessor: Results Processing
     ResultsProcessor->>ResultsProcessor: Combine all matches
     ResultsProcessor->>ResultsProcessor: Apply suppression rules
     ResultsProcessor->>ResultsProcessor: Filter by confidence
     ResultsProcessor->>ResultsProcessor: Sort results
-    
+
     ResultsProcessor->>OutputFormatter: Processed results
     OutputFormatter->>OutputFormatter: Format output (JSON/CSV/Text/etc.)
     OutputFormatter-->>User: Final results
@@ -162,7 +162,7 @@ fileRouter.ConfigurePreprocessorSelection()
 func (fr *FileRouter) ProcessFile(filePath string) (*ProcessedContent, error) {
     var wg sync.WaitGroup
     results := make(chan PreprocessorResult, len(fr.preprocessors))
-    
+
     // Start preprocessors in parallel
     for _, preprocessor := range fr.preprocessors {
         wg.Add(1)
@@ -172,19 +172,19 @@ func (fr *FileRouter) ProcessFile(filePath string) (*ProcessedContent, error) {
             results <- result
         }(preprocessor)
     }
-    
+
     // Wait for all preprocessors to complete
     go func() {
         wg.Wait()
         close(results)
     }()
-    
+
     // Collect results
     var processedContent ProcessedContent
     for result := range results {
         processedContent.AddResult(result)
     }
-    
+
     return &processedContent, nil
 }
 ```
@@ -212,7 +212,7 @@ func (cr *ContentRouter) RouteContent(content *ProcessedContent) (*RoutedContent
         OriginalPath: content.OriginalPath,
         Metadata:     []MetadataContent{},
     }
-    
+
     // Separate content by type
     for _, section := range content.Sections {
         if cr.isMetadataSection(section) {
@@ -230,7 +230,7 @@ func (cr *ContentRouter) RouteContent(content *ProcessedContent) (*RoutedContent
             routedContent.DocumentBody += section.Content + "\n"
         }
     }
-    
+
     return routedContent, nil
 }
 ```
@@ -251,7 +251,7 @@ func (cr *ContentRouter) identifyPreprocessorType(section ContentSection) string
     if strings.Contains(section.Header, "video_metadata") {
         return PreprocessorTypeVideoMetadata
     }
-    
+
     // Fallback to content analysis
     return cr.analyzeContentType(section.Content)
 }
@@ -281,18 +281,18 @@ func (evb *EnhancedValidatorBridge) processDocumentBody(
     var allMatches []detector.Match
     var wg sync.WaitGroup
     matchChan := make(chan []detector.Match, len(evb.documentValidators))
-    
+
     // Process with all document validators in parallel
     for _, validator := range evb.documentValidators {
         wg.Add(1)
         go func(v detector.Validator) {
             defer wg.Done()
-            
+
             // Apply context analysis to validator
             if contextAware, ok := v.(ContextAwareValidator); ok {
                 contextAware.SetContextAnalysis(contextAnalysis)
             }
-            
+
             matches, err := v.ValidateContent(documentBody, originalPath)
             if err == nil {
                 matchChan <- matches
@@ -305,17 +305,17 @@ func (evb *EnhancedValidatorBridge) processDocumentBody(
             }
         }(validator)
     }
-    
+
     // Collect results
     go func() {
         wg.Wait()
         close(matchChan)
     }()
-    
+
     for matches := range matchChan {
         allMatches = append(allMatches, matches...)
     }
-    
+
     return allMatches, nil
 }
 ```
@@ -327,12 +327,12 @@ func (evb *EnhancedValidatorBridge) processMetadata(
     contextAnalysis *context.Analysis,
 ) ([]detector.Match, error) {
     var allMatches []detector.Match
-    
+
     // Set context analysis on metadata validator
     if contextAware, ok := evb.metadataValidator.(ContextAwareValidator); ok {
         contextAware.SetContextAnalysis(contextAnalysis)
     }
-    
+
     // Process each metadata section
     for _, metadata := range metadataContent {
         matches, err := evb.metadataValidator.ValidateMetadataContent(metadata)
@@ -343,16 +343,16 @@ func (evb *EnhancedValidatorBridge) processMetadata(
             })
             continue
         }
-        
+
         // Add source traceability to matches
         for i := range matches {
             matches[i].Metadata["source"] = metadata.PreprocessorType
             matches[i].Metadata["preprocessor"] = metadata.PreprocessorName
         }
-        
+
         allMatches = append(allMatches, matches...)
     }
-    
+
     return allMatches, nil
 }
 ```
@@ -368,40 +368,40 @@ func (ce *ContextEngine) AnalyzeContent(
     analysis := &ContextAnalysis{
         FilePath: filePath,
     }
-    
+
     // Parallel context analysis
     var wg sync.WaitGroup
-    
+
     // Document type detection
     wg.Add(1)
     go func() {
         defer wg.Done()
         analysis.DocumentType = ce.detectDocumentType(content, filePath)
     }()
-    
+
     // Domain analysis
     wg.Add(1)
     go func() {
         defer wg.Done()
         analysis.Domain = ce.analyzeDomain(content)
     }()
-    
+
     // Environment detection
     wg.Add(1)
     go func() {
         defer wg.Done()
         analysis.Environment = ce.detectEnvironment(content)
     }()
-    
+
     // Language detection
     wg.Add(1)
     go func() {
         defer wg.Done()
         analysis.Language = ce.detectLanguage(content)
     }()
-    
+
     wg.Wait()
-    
+
     return analysis, nil
 }
 ```
@@ -415,19 +415,19 @@ func (mv *EnhancedMetadataValidator) applyContextAdjustments(
     if contextAnalysis == nil {
         return confidence
     }
-    
+
     // Apply domain-specific adjustments
     confidence = mv.applyDomainAdjustments(confidence, contextAnalysis.Domain)
-    
+
     // Apply document type adjustments
     confidence = mv.applyDocumentTypeAdjustments(confidence, contextAnalysis.DocumentType)
-    
+
     // Apply environment adjustments
     confidence = mv.applyEnvironmentAdjustments(confidence, contextAnalysis.Environment)
-    
+
     // Apply language-specific adjustments
     confidence = mv.applyLanguageAdjustments(confidence, contextAnalysis.Language)
-    
+
     return confidence
 }
 ```
@@ -445,23 +445,23 @@ func (evb *EnhancedValidatorBridge) ProcessContent(
         // Fallback to legacy processing
         return evb.processContentLegacy(content)
     }
-    
+
     // Get context analysis
     contextAnalysis, err := evb.contextEngine.AnalyzeContent(
         routedContent.DocumentBody,
         routedContent.OriginalPath,
     )
     if err != nil {
-        evb.observer.LogWarning("context_analysis_failed", 
-            "Context analysis failed, continuing without context", 
+        evb.observer.LogWarning("context_analysis_failed",
+            "Context analysis failed, continuing without context",
             map[string]interface{}{
                 "file_path": routedContent.OriginalPath,
                 "error":     err.Error(),
             })
     }
-    
+
     var allMatches []detector.Match
-    
+
     // Process document body
     if routedContent.DocumentBody != "" {
         docMatches, err := evb.processDocumentBody(
@@ -473,7 +473,7 @@ func (evb *EnhancedValidatorBridge) ProcessContent(
             allMatches = append(allMatches, docMatches...)
         }
     }
-    
+
     // Process metadata
     if len(routedContent.Metadata) > 0 {
         metaMatches, err := evb.processMetadata(
@@ -484,7 +484,7 @@ func (evb *EnhancedValidatorBridge) ProcessContent(
             allMatches = append(allMatches, metaMatches...)
         }
     }
-    
+
     return allMatches, nil
 }
 ```
@@ -497,7 +497,7 @@ func (sp *SuppressionProcessor) ProcessMatches(
 ) ([]detector.Match, []detector.Match, error) {
     var activeMatches []detector.Match
     var suppressedMatches []detector.Match
-    
+
     for _, match := range matches {
         if sp.shouldSuppress(match, filePath) {
             suppressedMatches = append(suppressedMatches, match)
@@ -505,7 +505,7 @@ func (sp *SuppressionProcessor) ProcessMatches(
             activeMatches = append(activeMatches, match)
         }
     }
-    
+
     return activeMatches, suppressedMatches, nil
 }
 ```
@@ -560,17 +560,17 @@ func (evb *EnhancedValidatorBridge) processContentWithRecovery(
     routedContent, err := evb.contentRouter.RouteContent(content)
     if err != nil {
         // Log fallback
-        evb.observer.LogWarning("content_router_fallback", 
-            "Falling back to legacy content aggregation", 
+        evb.observer.LogWarning("content_router_fallback",
+            "Falling back to legacy content aggregation",
             map[string]interface{}{
                 "file_path": content.OriginalPath,
                 "error":     err.Error(),
             })
-        
+
         // Use legacy processing
         return evb.processContentLegacy(content)
     }
-    
+
     return evb.processRoutedContent(routedContent)
 }
 ```
@@ -583,7 +583,7 @@ func (evb *EnhancedValidatorBridge) processWithValidatorRecovery(
     filePath string,
 ) []detector.Match {
     var allMatches []detector.Match
-    
+
     for _, validator := range validators {
         matches, err := validator.ValidateContent(content, filePath)
         if err != nil {
@@ -593,10 +593,10 @@ func (evb *EnhancedValidatorBridge) processWithValidatorRecovery(
             })
             continue // Continue with other validators
         }
-        
+
         allMatches = append(allMatches, matches...)
     }
-    
+
     return allMatches
 }
 ```
@@ -616,7 +616,7 @@ func (evb *EnhancedValidatorBridge) ProcessContentWithMetrics(
             "file_size": len(content.CombinedContent),
         })
     }()
-    
+
     return evb.ProcessContent(content)
 }
 ```
@@ -626,16 +626,16 @@ func (evb *EnhancedValidatorBridge) ProcessContentWithMetrics(
 func (pp *ParallelProcessor) monitorMemoryUsage() {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
-    
+
     for range ticker.C {
         var m runtime.MemStats
         runtime.ReadMemStats(&m)
-        
+
         pp.observer.RecordMetric("memory_usage", int64(m.Alloc), map[string]interface{}{
             "heap_objects": m.HeapObjects,
             "gc_cycles":    m.NumGC,
         })
-        
+
         // Trigger GC if memory usage is high
         if m.Alloc > pp.maxMemoryUsage {
             runtime.GC()

@@ -72,10 +72,10 @@ check_local_go() {
 update_go_mod() {
     if [[ -f "$GO_MOD_FILE" ]]; then
         print_info "Updating $GO_MOD_FILE..."
-        
+
         # Read current version from go.mod
         CURRENT_GO_MOD=$(grep "^go " "$GO_MOD_FILE" | awk '{print $2}')
-        
+
         if [[ "$CURRENT_GO_MOD" == "$GO_MAJOR_MINOR" ]]; then
             print_status "$GO_MOD_FILE already up to date ($CURRENT_GO_MOD)"
         else
@@ -99,7 +99,7 @@ update_go_mod() {
 update_gitlab_ci() {
     if [[ -f "$GITLAB_CI_FILE" ]]; then
         print_info "Updating $GITLAB_CI_FILE..."
-        
+
         # Check if variables section exists
         if grep -q "GO_VERSION:" "$GITLAB_CI_FILE"; then
             # Update existing GO_VERSION
@@ -108,7 +108,7 @@ update_gitlab_ci() {
         else
             print_warning "GO_VERSION variable not found in $GITLAB_CI_FILE"
         fi
-        
+
         if grep -q "GO_DOCKER_IMAGE:" "$GITLAB_CI_FILE"; then
             # Update existing GO_DOCKER_IMAGE
             sed -i.bak "s/GO_DOCKER_IMAGE: .*/GO_DOCKER_IMAGE: \"golang:$GO_VERSION-alpine\"/" "$GITLAB_CI_FILE"
@@ -116,7 +116,7 @@ update_gitlab_ci() {
         else
             print_warning "GO_DOCKER_IMAGE variable not found in $GITLAB_CI_FILE"
         fi
-        
+
         # Clean up backup file
         rm -f "$GITLAB_CI_FILE.bak"
     else
@@ -128,7 +128,7 @@ update_gitlab_ci() {
 update_dockerfile() {
     if [[ -f "$DOCKERFILE" ]]; then
         print_info "Updating $DOCKERFILE..."
-        
+
         # Update FROM golang:x.x.x-alpine lines
         if grep -q "FROM golang:" "$DOCKERFILE"; then
             sed -i.bak "s/FROM golang:[0-9]\+\.[0-9]\+\.[0-9]\+-alpine/FROM golang:$GO_VERSION-alpine/g" "$DOCKERFILE"
@@ -147,7 +147,7 @@ update_dockerfile() {
 update_readme() {
     if [[ -f "$README_FILE" ]]; then
         print_info "Checking $README_FILE for Go version references..."
-        
+
         # Look for common Go version patterns in README
         if grep -q "Go [0-9]\+\.[0-9]\+\.[0-9]\+" "$README_FILE" || \
            grep -q "golang:[0-9]\+\.[0-9]\+\.[0-9]\+" "$README_FILE"; then
@@ -168,27 +168,27 @@ generate_report() {
     echo "=================================="
     echo "Target Go Version: $GO_VERSION"
     echo ""
-    
+
     # Check each file
     if [[ -f "$GO_MOD_FILE" ]]; then
         GO_MOD_VERSION=$(grep "^go " "$GO_MOD_FILE" | awk '{print $2}')
         echo "go.mod: $GO_MOD_VERSION"
     fi
-    
+
     if [[ -f "$GITLAB_CI_FILE" ]]; then
         if grep -q "GO_VERSION:" "$GITLAB_CI_FILE"; then
             CI_VERSION=$(grep "GO_VERSION:" "$GITLAB_CI_FILE" | sed 's/.*GO_VERSION: *"\([^"]*\)".*/\1/')
             echo "GitLab CI: $CI_VERSION"
         fi
     fi
-    
+
     if [[ -f "$DOCKERFILE" ]]; then
         if grep -q "FROM golang:" "$DOCKERFILE"; then
             DOCKER_VERSION=$(grep "FROM golang:" "$DOCKERFILE" | head -1 | sed 's/.*golang:\([0-9.]*\).*/\1/')
             echo "Dockerfile: $DOCKER_VERSION"
         fi
     fi
-    
+
     echo ""
     print_info "Next steps:"
     echo "1. Review changes: git diff"
@@ -201,15 +201,15 @@ main() {
     echo "🔄 Go Version Synchronization"
     echo "============================="
     echo ""
-    
+
     check_local_go
     echo ""
-    
+
     update_go_mod
     update_gitlab_ci
     update_dockerfile
     update_readme
-    
+
     generate_report
 }
 

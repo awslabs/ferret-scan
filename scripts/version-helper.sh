@@ -48,7 +48,7 @@ get_commits_since_tag() {
 # Determine version bump type
 determine_bump_type() {
     local commits=$(get_commits_since_tag)
-    
+
     if echo "$commits" | grep -q "BREAKING CHANGE\|feat!\|fix!\|perf!"; then
         echo "major"
     elif echo "$commits" | grep -q "feat:"; then
@@ -65,7 +65,7 @@ calculate_next_version() {
     local current_version=$(get_current_version)
     local bump_type=$(determine_bump_type)
     local version_number=${current_version#v}
-    
+
     # Handle version parsing more robustly
     if [[ "$version_number" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
         local MAJOR=${BASH_REMATCH[1]}
@@ -77,7 +77,7 @@ calculate_next_version() {
         local MINOR=1
         local PATCH=0
     fi
-    
+
     case $bump_type in
         major) echo "v$((MAJOR+1)).0.0" ;;
         minor) echo "v${MAJOR}.$((MINOR+1)).0" ;;
@@ -90,19 +90,19 @@ calculate_next_version() {
 show_status() {
     echo "📊 Version Status"
     echo "================="
-    
+
     local current_version=$(get_current_version)
     local next_version=$(calculate_next_version)
     local bump_type=$(determine_bump_type)
-    
+
     print_info "Current version: $current_version"
     print_info "Next version: $next_version"
     print_info "Bump type: $bump_type"
-    
+
     echo ""
     echo "📝 Commits since last tag:"
     get_commits_since_tag | head -10
-    
+
     if [ "$bump_type" = "none" ]; then
         print_warning "No significant changes found - no release needed"
     else
@@ -114,21 +114,21 @@ show_status() {
 create_tag() {
     local version="$1"
     local current_version=$(get_current_version)
-    
+
     if [ "$version" = "$current_version" ]; then
         print_warning "Version $version already exists"
         return 1
     fi
-    
+
     print_info "Creating tag: $version"
-    
+
     # Create annotated tag with changelog
     local commits=$(get_commits_since_tag | head -10)
     git tag -a "$version" -m "Release $version
 
 Changes in this release:
 $commits"
-    
+
     print_status "Tag $version created locally"
     print_info "Push with: git push origin $version"
 }
@@ -136,15 +136,15 @@ $commits"
 # Push tag and trigger release
 push_and_release() {
     local version="$1"
-    
+
     if ! git tag -l | grep -q "^$version$"; then
         print_error "Tag $version does not exist locally"
         return 1
     fi
-    
+
     print_info "Pushing tag: $version"
     git push origin "$version"
-    
+
     print_status "Tag pushed! GitLab CI will now build and release automatically"
     print_info "Monitor progress at: $CI_PIPELINE_URL"
 }
@@ -160,23 +160,23 @@ case "${1:-status}" in
     "bump")
         local next_version=$(calculate_next_version)
         local bump_type=$(determine_bump_type)
-        
+
         if [ "$bump_type" = "none" ]; then
             print_warning "No significant changes found - no release needed"
             exit 0
         fi
-        
+
         create_tag "$next_version"
         ;;
     "release")
         local next_version=$(calculate_next_version)
         local bump_type=$(determine_bump_type)
-        
+
         if [ "$bump_type" = "none" ]; then
             print_warning "No significant changes found - no release needed"
             exit 0
         fi
-        
+
         create_tag "$next_version"
         push_and_release "$next_version"
         ;;

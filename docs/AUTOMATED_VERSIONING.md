@@ -12,7 +12,7 @@ The project uses **GoReleaser** with **GitLab CI** for automated versioning and 
 
 The system automatically creates new version tags based on conventional commit messages:
 
-- **Major version bump** (`1.0.0` → `2.0.0`): 
+- **Major version bump** (`1.0.0` → `2.0.0`):
   - `BREAKING CHANGE:` in commit message
   - `feat!:`, `fix!:`, `perf!:` (with exclamation mark)
 

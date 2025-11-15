@@ -31,13 +31,13 @@ sequenceDiagram
         CLI->>FileRouter: CanProcessFile(filePath, enablePreprocessors, false)
         Note over FileRouter: File type filtering with CanContainMetadata()
         FileRouter-->>CLI: Supported files list
-        
+
         loop For each supported file
             CLI->>FileRouter: ProcessFileWithContext(filePath, context)
             alt PDF file
                 FileRouter->>FileRouter: PDF text extraction
             else Office file
-                FileRouter->>FileRouter: Office text extraction  
+                FileRouter->>FileRouter: Office text extraction
             else Image file
                 FileRouter->>FileRouter: EXIF metadata extraction
             else Text file
@@ -97,17 +97,17 @@ sequenceDiagram
 
     Note over CLI: 9. Process all files using parallel processing with enhanced manager
     CLI->>ParallelProc: ProcessFilesWithProgress(files, [enhancedWrapper], router, config, redactionMgr, progressCallback)
-    
+
     Note over ParallelProc: Start worker pool and submit jobs
     ParallelProc->>WorkerPool: Start()
-    
+
     loop For each file
         ParallelProc->>WorkerPool: Submit(Job{filePath, validators, config})
-        
+
         Note over WorkerPool: Worker processes job
         WorkerPool->>FileRouter: ProcessFileWithContext(filePath, context)
         Note over FileRouter: File type detection with CanContainMetadata() and GetMetadataType()
-        
+
         alt File needs preprocessing
             FileRouter->>FileRouter: Route to appropriate preprocessor
             alt PDF file
@@ -133,14 +133,14 @@ sequenceDiagram
             ContentRouter->>ContentRouter: Create metadata content with GetMetadataType()
             ContentRouter-->>WorkerPool: RoutedContent{DocumentBody, Metadata=[...]}
         end
-        
+
         WorkerPool->>EnhancedMgr: ValidateWithAdvancedFeatures(routedContent, filePath)
-        
+
         Note over EnhancedMgr: Integrated context analysis and validation
         EnhancedMgr->>EnhancedMgr: AnalyzeContext(content, filePath)
         Note over EnhancedMgr: Context analysis active: Domain=Financial, DocType=PDF, DomainConf=1.00
         EnhancedMgr->>EnhancedMgr: PrepareValidationItems(routedContent, filePath, contextInsights)
-        
+
         par Credit Card Validation with Context
             EnhancedMgr->>EnhancedMgr: ValidateWithContext(content, filePath, contextInsights)
             EnhancedMgr->>EnhancedMgr: Apply Luhn algorithm + Financial domain context
@@ -185,7 +185,7 @@ sequenceDiagram
     Note over CLI: 11. Format and output results
     CLI->>Formatter: Get(format) // text, json, csv, yaml, junit, gitlab-sast
     CLI->>Formatter: Format(matches, suppressedMatches, options)
-    
+
     alt Text format
         Formatter->>Formatter: Create human-readable table with colors
     else JSON format
@@ -197,7 +197,7 @@ sequenceDiagram
     else JUnit format
         Formatter->>Formatter: Create JUnit XML for CI/CD integration
     end
-    
+
     Formatter-->>CLI: Formatted results
 
     Note over CLI: 12. Memory security and cleanup

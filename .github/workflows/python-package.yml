@@ -93,9 +93,9 @@ jobs:
             ```
 
             **Requirements**: Python 3.7 or higher
-            
+
             ---
-            
+
             **Note**: The PyPI package will be available shortly after this release is published.
 
   # Publish to PyPI for tag pushes (trusted publisher should be configured for this workflow)
@@ -107,7 +107,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # Required for trusted publishing to PyPI
-    
+
     steps:
       - uses: actions/checkout@v4
         with:

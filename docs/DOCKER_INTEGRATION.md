@@ -120,7 +120,7 @@ repos:
         files: '\.(py|js|ts|go|java|json|yaml|yml|env|conf)$'
         exclude: '^(test_|_test\.|docs/|examples/)'
         pass_filenames: true
-        args: 
+        args:
           - --pre-commit-mode
           - --config
           - /ferret.yaml
@@ -172,17 +172,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Pull Ferret Scan image
         run: docker pull ferret-scan:latest
-      
+
       - name: Run Ferret Scan
         run: |
           docker run --rm -v ${{ github.workspace }}:/data \
             ferret-scan:latest --file /data --recursive \
             --format json --output /data/results.json \
             --confidence high,medium --no-color --quiet
-      
+
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
@@ -196,14 +196,14 @@ jobs:
 ```groovy
 pipeline {
     agent any
-    
+
     stages {
         stage('Security Scan') {
             steps {
                 script {
                     // Pull the latest image
                     sh 'docker pull ferret-scan:latest'
-                    
+
                     // Run scan
                     sh '''
                         docker run --rm -v ${WORKSPACE}:/data \
@@ -212,10 +212,10 @@ pipeline {
                           --confidence high,medium --no-color --quiet
                     '''
                 }
-                
+
                 // Archive results
                 archiveArtifacts artifacts: 'results.json', fingerprint: true
-                
+
                 // Publish results (if Jenkins security plugin is available)
                 publishHTML([
                     allowMissing: false,
@@ -228,7 +228,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             // Clean up
@@ -261,9 +261,9 @@ steps:
   inputs:
     command: 'run'
     arguments: >
-      --rm -v $(Build.SourcesDirectory):/data 
-      ferret-scan:latest --file /data --recursive 
-      --format json --output /data/results.json 
+      --rm -v $(Build.SourcesDirectory):/data
+      ferret-scan:latest --file /data --recursive
+      --format json --output /data/results.json
       --confidence high,medium --no-color --quiet
 
 - task: PublishBuildArtifacts@1
@@ -509,8 +509,8 @@ services:
       - ./:/data:ro
       - ./results:/results
     command: >
-      --file /data --recursive 
-      --format json --output /results/scan.json 
+      --file /data --recursive
+      --format json --output /results/scan.json
       --confidence high,medium
     mem_limit: 512m
     cpus: 1.0

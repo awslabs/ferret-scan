@@ -17,7 +17,7 @@ This validator follows the established Ferret Scan validator architecture patter
 
 ### Primary Platforms
 - **LinkedIn**: Profile URLs, company pages, public profile URLs
-- **Twitter/X**: Handles (@username), profile URLs, mobile variants  
+- **Twitter/X**: Handles (@username), profile URLs, mobile variants
 - **Facebook**: Profile URLs, numeric IDs, page formats
 - **GitHub**: Username URLs, repository URLs, GitHub Pages domains
 - **Instagram**: Profile URLs, handle references
@@ -78,7 +78,7 @@ validators:
     # Enable/disable specific platforms
     enabled_platforms:
       - "linkedin"
-      - "twitter" 
+      - "twitter"
       - "github"
       - "facebook"
       - "instagram"
@@ -95,11 +95,11 @@ validators:
       - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
       - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+"
       - "(?i)https?://(?:www\\.)?linkedin\\.com/pub/[a-zA-Z0-9_/-]+"
-    
+
     twitter_patterns:
       - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
       - "(?i)@[a-zA-Z0-9_]{1,15}\\b"
-    
+
     github_patterns:
       - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
       - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"
@@ -116,14 +116,14 @@ validators:
       - "follow me"
       - "connect with me"
       - "find me on"
-    
+
     negative_keywords:
       - "example"
       - "test"
       - "placeholder"
       - "demo"
       - "sample"
-    
+
     # Platform-specific context keywords
     platform_keywords:
       linkedin:

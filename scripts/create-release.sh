@@ -84,12 +84,12 @@ else
         BUMP="patch"
         print_warning "No conventional commits found, defaulting to patch bump"
     fi
-    
+
     # Calculate new version
     CURRENT_VERSION=${LAST_TAG#v}
     # Remove any pre-release suffixes
     CLEAN_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-.*$//')
-    
+
     if [[ "$CLEAN_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
         MAJOR=${BASH_REMATCH[1]}
         MINOR=${BASH_REMATCH[2]}
@@ -100,7 +100,7 @@ else
         MINOR=1
         PATCH=0
     fi
-    
+
     case $BUMP in
         major) NEW_VERSION="v$((MAJOR+1)).0.0" ;;
         minor) NEW_VERSION="v${MAJOR}.$((MINOR+1)).0" ;;
