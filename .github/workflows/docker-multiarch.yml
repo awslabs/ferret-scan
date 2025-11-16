@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security tab
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-results.sarif"
           category: "trivy-container-scan"
@@ -273,7 +273,7 @@ jobs:
           severity-cutoff: high
 
       - name: Upload Grype scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.scan-ghcr.outputs.sarif }}
           category: "grype-container-scan"
