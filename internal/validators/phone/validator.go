@@ -360,6 +360,13 @@ func (v *Validator) isDuplicateMatch(existing []detector.Match, newMatch string,
 
 // AnalyzeContext analyzes the context around a match and returns a confidence adjustment
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
+	// CRITICAL: Check for structural indicators first (highest priority)
+	// This uses what comes BEFORE/AFTER the match rather than keywords
+	if !v.hasPhoneStructure(match, context.FullLine) {
+		// This is NOT a phone number (resource ID, timestamp, etc.)
+		return -100 // Zero out confidence completely
+	}
+
 	// Combine all context text for analysis
 	var sb strings.Builder
 	sb.WriteString(context.BeforeText)
@@ -385,10 +392,10 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		}
 	}
 
-	// CRITICAL: Apply severe penalty if NO positive phone context keywords are found
-	// This is key to avoiding false positives in structured data like SSN lists
+	// Apply moderate penalty if NO positive phone context keywords are found
+	// Structural analysis handles most false positives, so this is less critical
 	if !hasPositiveKeywords {
-		confidenceImpact -= 70 // -70% penalty for no phone context - makes it very unlikely to be a phone
+		confidenceImpact -= 20 // -20% penalty for no phone context (reduced from -70%)
 	}
 
 	// Check for negative keywords (decrease confidence)
@@ -981,6 +988,151 @@ func (v *Validator) isEmbeddedInIdentifier(match, line string) bool {
 	}
 
 	return false
+}
+
+// hasPhoneStructure checks if the match is actually a phone number, not something else
+// This uses structural analysis (what comes BEFORE/AFTER the match) rather than
+// keyword matching, making it future-proof and context-agnostic.
+func (v *Validator) hasPhoneStructure(match string, line string) bool {
+	matchIndex := strings.Index(line, match)
+	if matchIndex < 0 {
+		return false
+	}
+
+	// Get characters before and after the match
+	var beforeMatch string
+	if matchIndex >= 10 {
+		beforeMatch = line[matchIndex-10 : matchIndex]
+	} else if matchIndex > 0 {
+		beforeMatch = line[0:matchIndex]
+	}
+
+	var afterMatch string
+	matchEnd := matchIndex + len(match)
+	if matchEnd+10 <= len(line) {
+		afterMatch = line[matchEnd : matchEnd+10]
+	} else if matchEnd < len(line) {
+		afterMatch = line[matchEnd:]
+	}
+
+	// Check for NEGATIVE indicators (NOT a phone number)
+	// These should be checked FIRST and return false immediately
+
+	// 1. Resource ID patterns: prefix-digits or digits-suffix
+	//    Examples: i-1234567890, ami-1234567890, vpc-1234567890
+	if matchIndex > 0 {
+		charBefore := line[matchIndex-1]
+
+		// Check for resource ID patterns (letter-hyphen-digits)
+		// But allow phone patterns like +1-555 or (555)
+		if charBefore == '-' {
+			// Check if there's a letter before the hyphen (resource ID pattern)
+			if matchIndex >= 2 {
+				charBeforeHyphen := line[matchIndex-2]
+				if (charBeforeHyphen >= 'a' && charBeforeHyphen <= 'z') ||
+					(charBeforeHyphen >= 'A' && charBeforeHyphen <= 'Z') {
+					// This is likely a resource ID like ami-123456
+					return false
+				}
+			}
+			// If hyphen is preceded by digit or +, it's likely a phone number
+			// Examples: +1-555, 1-800
+		}
+
+		// Underscore before digits indicates resource ID
+		if charBefore == '_' {
+			return false
+		}
+
+		// Letter immediately before (no space) indicates identifier
+		// But allow closing parenthesis for phone formats like (555)
+		if charBefore != ')' && charBefore != '+' {
+			if (charBefore >= 'a' && charBefore <= 'z') || (charBefore >= 'A' && charBefore <= 'Z') {
+				return false
+			}
+		}
+	}
+
+	// 2. Check what comes after the match
+	if len(afterMatch) > 0 {
+		firstChar := afterMatch[0]
+
+		// Hyphen, underscore, or letter after indicates identifier/resource ID
+		if firstChar == '-' || firstChar == '_' {
+			return false
+		}
+		if (firstChar >= 'a' && firstChar <= 'z') || (firstChar >= 'A' && firstChar <= 'Z') {
+			return false
+		}
+
+		// Colon after digits indicates ARN or timestamp
+		//    Examples: arn:aws:iam::123456789012:role, timestamp:1234567890
+		if firstChar == ':' {
+			return false
+		}
+	}
+
+	// 3. Check for ARN patterns in before context
+	//    Examples: arn:aws:iam::, ::123456789012:
+	if strings.Contains(beforeMatch, "::") || strings.Contains(beforeMatch, "arn:") {
+		return false
+	}
+
+	// 4. Check for timestamp/build patterns in before context
+	timestampIndicators := []string{"timestamp", "build", "created", "updated", "modified", "version"}
+	beforeLower := strings.ToLower(beforeMatch)
+	for _, indicator := range timestampIndicators {
+		if strings.Contains(beforeLower, indicator) {
+			// Check if this is a plain number (no separators) - likely timestamp
+			cleanMatch := v.cleanPhoneNumber(match)
+			if len(cleanMatch) == len(match) { // No separators removed = plain digits
+				return false
+			}
+		}
+	}
+
+	// Check for POSITIVE indicators (IS a phone number)
+
+	// 1. Phone terminators: space, comma, semicolon, period, closing punctuation
+	if len(afterMatch) > 0 {
+		firstChar := afterMatch[0]
+		phoneTerminators := []byte{' ', '\t', ',', ';', '.', '!', '?', ')', ']', '}', '\n', '\r'}
+		for _, terminator := range phoneTerminators {
+			if firstChar == terminator {
+				return true // Looks like a phone
+			}
+		}
+
+		// Extension indicators
+		if strings.HasPrefix(strings.ToLower(afterMatch), "ext") ||
+			strings.HasPrefix(strings.ToLower(afterMatch), "x") {
+			return true
+		}
+	}
+
+	// 2. End of line
+	if len(afterMatch) == 0 {
+		return true
+	}
+
+	// 3. Phone has separators (dashes, spaces, parentheses)
+	//    Plain digit sequences are more likely to be timestamps/IDs
+	if strings.Contains(match, "-") || strings.Contains(match, " ") ||
+		strings.Contains(match, "(") || strings.Contains(match, ")") {
+		return true
+	}
+
+	// 4. Starts with + (international format)
+	if strings.HasPrefix(match, "+") {
+		return true
+	}
+
+	// Default: if ambiguous, assume it's a phone (favor false negatives over false positives)
+	// But only if it has proper phone formatting
+	cleanMatch := v.cleanPhoneNumber(match)
+	hasFormatting := len(cleanMatch) < len(match) // Has separators
+
+	return hasFormatting
 }
 
 // isDebugEnabled checks if debug mode is enabled

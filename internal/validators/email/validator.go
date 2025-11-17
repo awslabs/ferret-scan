@@ -55,6 +55,9 @@ func NewValidator() *Validator {
 			"demo", "template", "tutorial", "documentation", "readme",
 			"lorem", "ipsum", "foo", "bar", "baz", "temp", "temporary",
 			"invalid", "nonexistent", "blackhole", "devnull",
+			// Git and version control keywords
+			"git clone", "git@", "ssh://", "https://", "http://",
+			"repository", "repo", "clone", "checkout", "fetch", "pull", "push",
 		},
 		knownTestPatterns: []string{
 			"test@", "example@", "user@", "admin@", "noreply@",
@@ -228,6 +231,13 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	fullContext := strings.ToLower(sb.String())
 
 	var confidenceImpact float64 = 0
+
+	// CRITICAL: Check for URL/URI structure first (highest priority)
+	// Any user@host pattern followed by :, /, or :// is a URL/URI, not an email
+	if v.hasURLStructure(match, context.FullLine) {
+		// This is a URL/URI (git@host:path, user@host/path, etc.), not an email
+		return -100 // Zero out confidence completely
+	}
 
 	// Check for positive keywords (increase confidence)
 	for _, keyword := range v.positiveKeywords {
@@ -719,4 +729,62 @@ func (v *Validator) isTabularData(line, match string) bool {
 // isDebugEnabled checks if debug mode is enabled
 func (v *Validator) isDebugEnabled() bool {
 	return os.Getenv("FERRET_DEBUG") != ""
+}
+
+// hasURLStructure checks if the match is actually a URL/URI, not an email
+// This uses structural analysis (what comes AFTER the match) rather than
+// keyword matching, making it future-proof and protocol-agnostic.
+func (v *Validator) hasURLStructure(match string, line string) bool {
+	matchIndex := strings.Index(line, match)
+	if matchIndex < 0 || matchIndex+len(match) >= len(line) {
+		return false // Can't analyze structure at end of line
+	}
+
+	// Get the characters immediately after the match
+	afterMatch := line[matchIndex+len(match):]
+	if len(afterMatch) == 0 {
+		return false
+	}
+
+	// URL/URI structural indicators (protocol-agnostic)
+	// These patterns indicate a URL/URI, not an email:
+
+	// 1. Colon after domain: user@host:anything
+	//    Examples: git@github.com:user/repo, user@host:22, postgres://user@host:5432
+	//    Emails NEVER have colons immediately after the domain
+	if afterMatch[0] == ':' {
+		return true
+	}
+
+	// 2. Protocol separator: user@host://
+	//    Examples: sftp://user@host://path
+	if strings.HasPrefix(afterMatch, "://") {
+		return true
+	}
+
+	// 3. Path separator immediately after: user@host/path
+	//    Examples: user@server/share, registry.io/user@image
+	if afterMatch[0] == '/' || afterMatch[0] == '\\' {
+		return true
+	}
+
+	// 4. Double-at pattern: user@@host (some protocols)
+	if afterMatch[0] == '@' {
+		return true
+	}
+
+	// Email structural indicators (what we expect for real emails)
+	// If none of the URL patterns match, check for email-like structure
+
+	// Emails typically followed by: whitespace, punctuation, or end of line
+	emailTerminators := []byte{' ', '\t', '\n', '\r', ',', ';', ')', ']', '}', '>', '.', '!', '?'}
+	for _, terminator := range emailTerminators {
+		if afterMatch[0] == terminator {
+			return false // Looks like an email
+		}
+	}
+
+	// If we get here, the structure is ambiguous
+	// Default to false (assume email) to avoid false negatives
+	return false
 }
