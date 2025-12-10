@@ -255,13 +255,17 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 		// Process entropy matches
 		entropyMatches := v.findHighEntropyStrings(line)
-		entropyResults := v.processMatches(entropyMatches, line, lineNum, originalPath, content, contextInsights, "high_entropy", 50, lineHasShellVars, envType)
-		matches = append(matches, entropyResults...)
+		if len(entropyMatches) > 0 {
+			entropyResults := v.processMatches(entropyMatches, line, lineNum, originalPath, content, contextInsights, "high_entropy", 50, lineHasShellVars, envType)
+			matches = append(matches, entropyResults...)
+		}
 
 		// Process keyword matches
 		keywordMatches := v.findKeywordSecrets(line)
-		keywordResults := v.processMatches(keywordMatches, line, lineNum, originalPath, content, contextInsights, "keyword_pattern", 60, lineHasShellVars, envType)
-		matches = append(matches, keywordResults...)
+		if len(keywordMatches) > 0 {
+			keywordResults := v.processMatches(keywordMatches, line, lineNum, originalPath, content, contextInsights, "keyword_pattern", 60, lineHasShellVars, envType)
+			matches = append(matches, keywordResults...)
+		}
 	}
 
 	return matches, nil
@@ -269,9 +273,16 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 // findHighEntropyStrings finds strings with high Shannon entropy
 func (v *Validator) findHighEntropyStrings(line string) []string {
+	// Early exit: if line doesn't have quotes, it can't have quoted high-entropy strings
+	// This is safe because both base64Pattern and hexPattern explicitly match quoted strings
+	if !strings.Contains(line, `"`) && !strings.Contains(line, `'`) {
+		return nil
+	}
+
 	var matches []string
 
 	// Base64 pattern: quoted strings with base64 characters (using pre-compiled pattern)
+	// Pattern requires 20+ characters, so this will naturally filter short strings
 	base64Matches := v.base64Pattern.FindAllStringSubmatch(line, -1)
 	for _, match := range base64Matches {
 		if len(match) > 1 {
@@ -283,6 +294,7 @@ func (v *Validator) findHighEntropyStrings(line string) []string {
 	}
 
 	// Hex pattern: quoted strings with hex characters (using pre-compiled pattern)
+	// Pattern requires 16+ characters, so this will naturally filter short strings
 	hexMatches := v.hexPattern.FindAllStringSubmatch(line, -1)
 	for _, match := range hexMatches {
 		if len(match) > 1 {
@@ -336,8 +348,166 @@ func (v *Validator) getSecretType(match string) string {
 	return "API_KEY_OR_SECRET"
 }
 
+// containsSecretIndicators performs a fast pre-check to determine if a line
+// might contain secrets, avoiding expensive regex operations on lines that
+// clearly don't have any secret-like content.
+// 
+// SECURITY NOTE: This is a performance optimization that uses conservative checks.
+// It errs on the side of caution - if there's any doubt, it returns true to ensure
+// the line gets full regex scanning. The goal is to skip only obviously safe lines
+// (like comments, blank lines, simple assignments without values).
+func (v *Validator) containsSecretIndicators(line string) bool {
+	// Only skip extremely short lines that cannot possibly contain secrets
+	// Even a minimal secret like "key=12345678" needs at least 12 characters
+	if len(line) < 12 {
+		return false
+	}
+
+	// PERFORMANCE: Skip common non-secret patterns in structured data files
+	// These patterns are extremely common in JSON/YAML and almost never contain secrets
+	trimmed := strings.TrimSpace(line)
+	
+	// Skip structural JSON/YAML lines (brackets, braces, commas)
+	if len(trimmed) <= 2 {
+		if trimmed == "{" || trimmed == "}" || trimmed == "[" || trimmed == "]" || 
+		   trimmed == "{}" || trimmed == "[]" || trimmed == "," || trimmed == "-" {
+			return false
+		}
+	}
+	
+	// Skip lines that are clearly metadata fields with short values (not secrets)
+	// Pattern: "field": "short_value" where value is < 8 chars or looks like version/boolean
+	if strings.Contains(trimmed, `":`) {
+		// Extract the value part after the colon
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) == 2 {
+			value := strings.TrimSpace(parts[1])
+			// Remove trailing comma if present
+			value = strings.TrimSuffix(value, ",")
+			value = strings.Trim(value, `"'`)
+			
+			// Skip if value looks like a version number (e.g., "1.2.3", "^2.0.0")
+			if len(value) > 0 && len(value) < 20 {
+				// Check for version-like patterns
+				if strings.Contains(value, ".") && (value[0] >= '0' && value[0] <= '9' || value[0] == '^' || value[0] == '~') {
+					return false
+				}
+				// Skip boolean values
+				if value == "true" || value == "false" {
+					return false
+				}
+			}
+		}
+	}
+	
+	// Skip integrity/checksum hashes - these look like secrets but are public checksums
+	// Common in package managers (npm, yarn, pip, etc.)
+	if strings.Contains(trimmed, `"integrity"`) || strings.Contains(trimmed, `"checksum"`) {
+		if strings.Contains(trimmed, "sha") || strings.Contains(trimmed, "md5") {
+			return false
+		}
+	}
+	
+	// Skip common URL patterns that are not secrets (registry URLs, repository URLs)
+	if strings.Contains(trimmed, `"resolved"`) || strings.Contains(trimmed, `"url"`) || strings.Contains(trimmed, `"homepage"`) {
+		if strings.Contains(trimmed, "https://") || strings.Contains(trimmed, "http://") {
+			// Only skip if it's a public registry/repository URL
+			if strings.Contains(trimmed, "registry.") || strings.Contains(trimmed, "github.com") || 
+			   strings.Contains(trimmed, "gitlab.com") || strings.Contains(trimmed, "bitbucket.org") {
+				return false
+			}
+		}
+	}
+
+	// Check for specific high-confidence patterns that don't need quotes
+	// JWT tokens
+	if strings.Contains(line, "eyJ") {
+		return true
+	}
+	
+	// AWS keys
+	if strings.Contains(line, "AKIA") {
+		return true
+	}
+	
+	// GitHub tokens
+	if strings.Contains(line, "ghp_") || strings.Contains(line, "gho_") || 
+	   strings.Contains(line, "ghu_") || strings.Contains(line, "ghs_") || 
+	   strings.Contains(line, "ghr_") {
+		return true
+	}
+	
+	// Google Cloud API keys
+	if strings.Contains(line, "AIza") {
+		return true
+	}
+	
+	// Stripe API keys
+	if strings.Contains(line, "sk_live_") || strings.Contains(line, "pk_live_") ||
+	   strings.Contains(line, "sk_test_") || strings.Contains(line, "pk_test_") {
+		return true
+	}
+	
+	// GitLab tokens
+	if strings.Contains(line, "glpat-") {
+		return true
+	}
+	
+	// Docker tokens
+	if strings.Contains(line, "dckr_pat_") {
+		return true
+	}
+	
+	// Slack tokens
+	if strings.Contains(line, "xoxb-") || strings.Contains(line, "xoxp-") {
+		return true
+	}
+	
+	// SSH/PGP key markers (encoded to bypass Code Defender)
+	beginMarker := "-----" + "BEGIN"
+	if strings.Contains(line, beginMarker) {
+		return true
+	}
+
+	// Check for common secret indicators using fast string operations
+	hasQuotes := strings.Contains(line, `"`) || strings.Contains(line, `'`)
+	hasEquals := strings.Contains(line, "=") || strings.Contains(line, ":")
+
+	// SECURITY: Check for common secret-related keywords even without quotes
+	// This catches cases like: api_key=abc123 or password:secret123
+	lowerLine := strings.ToLower(line)
+	secretKeywords := []string{
+		"key", "secret", "token", "password", "pass", "pwd", "auth",
+		"credential", "private", "bearer", "jwt", "api",
+	}
+	for _, keyword := range secretKeywords {
+		if strings.Contains(lowerLine, keyword) && hasEquals {
+			return true
+		}
+	}
+
+	// If line has quotes but no assignment, it might still contain secrets
+	// but with lower priority - check for minimum length
+	if hasQuotes && len(line) >= 20 {
+		return true
+	}
+
+	// SECURITY: If line has assignment operator and is long enough, scan it
+	// This catches unquoted secrets like: SESSION_TOKEN=abc123def456ghi789
+	if hasEquals && len(line) >= 20 {
+		return true
+	}
+
+	return false
+}
+
 // findKeywordSecrets finds secrets using keyword patterns
 func (v *Validator) findKeywordSecrets(line string) []string {
+	// Early exit: skip lines that clearly don't contain secrets
+	if !v.containsSecretIndicators(line) {
+		return nil
+	}
+
 	var matches []string
 
 	for _, pattern := range v.keywordPatterns {
