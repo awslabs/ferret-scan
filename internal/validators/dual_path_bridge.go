@@ -698,6 +698,12 @@ func (dvb *DocumentValidatorBridge) SetObserver(observer *observability.Standard
 	dvb.observer = observer
 }
 
+// validatorResult holds the result from a single validator execution
+type validatorResult struct {
+	matches []detector.Match
+	err     error
+}
+
 // ProcessDocumentContent processes document body content with non-metadata validators
 func (dvb *DocumentValidatorBridge) ProcessDocumentContent(content, filePath string, contextInsights context.ContextInsights) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
@@ -720,71 +726,96 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContent(content, filePath str
 		return allMatches, nil
 	}
 
-	// Process content with each validator
+	// Create channel for results and WaitGroup for synchronization
+	resultsChan := make(chan validatorResult, len(validators))
+	var wg sync.WaitGroup
+	var errorsMu sync.Mutex
 	validationErrors := make([]error, 0)
+
+	// Launch goroutines for each validator
 	for _, validator := range validators {
-		matches, err := validator.ValidateContent(content, filePath)
-		if err != nil {
-			validationErrors = append(validationErrors, err)
-			if dvb.observer != nil {
-				dvb.observer.LogOperation(observability.StandardObservabilityData{
-					Component: "document_validator_bridge",
-					Operation: "validator_error",
-					FilePath:  filePath,
-					Success:   false,
-					Error:     err.Error(),
-				})
+		wg.Add(1)
+		go func(v detector.Validator) {
+			defer wg.Done()
+
+			matches, err := v.ValidateContent(content, filePath)
+			if err != nil {
+				errorsMu.Lock()
+				validationErrors = append(validationErrors, err)
+				errorsMu.Unlock()
+
+				if dvb.observer != nil {
+					dvb.observer.LogOperation(observability.StandardObservabilityData{
+						Component: "document_validator_bridge",
+						Operation: "validator_error",
+						FilePath:  filePath,
+						Success:   false,
+						Error:     err.Error(),
+					})
+				}
+				resultsChan <- validatorResult{matches: nil, err: err}
+				return
 			}
-			continue
+
+			// Apply context-based confidence adjustments if context integration is enabled
+			if contextInsights.Domain != "" {
+				for i := range matches {
+					// Get validator name for context adjustment
+					validatorName := matches[i].Validator
+					if validatorName == "" {
+						validatorName = "unknown"
+					}
+
+					adjustment := dvb.contextAnalyzer.GetConfidenceAdjustment(contextInsights, validatorName)
+					originalConfidence := matches[i].Confidence
+					matches[i].Confidence += adjustment
+
+					// Ensure confidence stays within bounds
+					if matches[i].Confidence > 100 {
+						matches[i].Confidence = 100
+					} else if matches[i].Confidence < 0 {
+						matches[i].Confidence = 0
+					}
+
+					// Add context information to metadata
+					if matches[i].Metadata == nil {
+						matches[i].Metadata = make(map[string]interface{})
+					}
+					matches[i].Metadata["context_domain"] = contextInsights.Domain
+					matches[i].Metadata["context_doctype"] = contextInsights.DocumentType
+					matches[i].Metadata["context_confidence"] = contextInsights.DomainConfidence
+					matches[i].Metadata["confidence_adjustment"] = adjustment
+					matches[i].Metadata["original_confidence"] = originalConfidence
+					matches[i].Metadata["validation_path"] = "document"
+
+					// Add semantic context information
+					if len(contextInsights.SemanticContext) > 0 {
+						matches[i].Metadata["semantic_context"] = contextInsights.SemanticContext
+					}
+				}
+			} else {
+				// Even without context, mark as document path
+				for i := range matches {
+					if matches[i].Metadata == nil {
+						matches[i].Metadata = make(map[string]interface{})
+					}
+					matches[i].Metadata["validation_path"] = "document"
+				}
+			}
+
+			resultsChan <- validatorResult{matches: matches, err: nil}
+		}(validator)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(resultsChan)
+
+	// Collect results from channel
+	for result := range resultsChan {
+		if result.err == nil && result.matches != nil {
+			allMatches = append(allMatches, result.matches...)
 		}
-
-		// Apply context-based confidence adjustments if context integration is enabled
-		if contextInsights.Domain != "" {
-			for i := range matches {
-				// Get validator name for context adjustment
-				validatorName := matches[i].Validator
-				if validatorName == "" {
-					validatorName = "unknown"
-				}
-
-				adjustment := dvb.contextAnalyzer.GetConfidenceAdjustment(contextInsights, validatorName)
-				originalConfidence := matches[i].Confidence
-				matches[i].Confidence += adjustment
-
-				// Ensure confidence stays within bounds
-				if matches[i].Confidence > 100 {
-					matches[i].Confidence = 100
-				} else if matches[i].Confidence < 0 {
-					matches[i].Confidence = 0
-				}
-
-				// Add context information to metadata
-				if matches[i].Metadata == nil {
-					matches[i].Metadata = make(map[string]interface{})
-				}
-				matches[i].Metadata["context_domain"] = contextInsights.Domain
-				matches[i].Metadata["context_doctype"] = contextInsights.DocumentType
-				matches[i].Metadata["context_confidence"] = contextInsights.DomainConfidence
-				matches[i].Metadata["confidence_adjustment"] = adjustment
-				matches[i].Metadata["original_confidence"] = originalConfidence
-				matches[i].Metadata["validation_path"] = "document"
-
-				// Add semantic context information
-				if len(contextInsights.SemanticContext) > 0 {
-					matches[i].Metadata["semantic_context"] = contextInsights.SemanticContext
-				}
-			}
-		} else {
-			// Even without context, mark as document path
-			for i := range matches {
-				if matches[i].Metadata == nil {
-					matches[i].Metadata = make(map[string]interface{})
-				}
-				matches[i].Metadata["validation_path"] = "document"
-			}
-		}
-
-		allMatches = append(allMatches, matches...)
 	}
 
 	// Log validation errors but don't fail completely if some validators succeeded
