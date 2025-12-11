@@ -12,6 +12,7 @@ go.work
 bin/ferret-scan
 !bin/ferret-scan*
 dist/
+bin/
 
 # IDE and Editor files
 .vscode/
