@@ -351,7 +351,7 @@ func (v *Validator) getSecretType(match string) string {
 // containsSecretIndicators performs a fast pre-check to determine if a line
 // might contain secrets, avoiding expensive regex operations on lines that
 // clearly don't have any secret-like content.
-// 
+//
 // SECURITY NOTE: This is a performance optimization that uses conservative checks.
 // It errs on the side of caution - if there's any doubt, it returns true to ensure
 // the line gets full regex scanning. The goal is to skip only obviously safe lines
@@ -366,15 +366,15 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 	// PERFORMANCE: Skip common non-secret patterns in structured data files
 	// These patterns are extremely common in JSON/YAML and almost never contain secrets
 	trimmed := strings.TrimSpace(line)
-	
+
 	// Skip structural JSON/YAML lines (brackets, braces, commas)
 	if len(trimmed) <= 2 {
-		if trimmed == "{" || trimmed == "}" || trimmed == "[" || trimmed == "]" || 
-		   trimmed == "{}" || trimmed == "[]" || trimmed == "," || trimmed == "-" {
+		if trimmed == "{" || trimmed == "}" || trimmed == "[" || trimmed == "]" ||
+			trimmed == "{}" || trimmed == "[]" || trimmed == "," || trimmed == "-" {
 			return false
 		}
 	}
-	
+
 	// Skip lines that are clearly metadata fields with short values (not secrets)
 	// Pattern: "field": "short_value" where value is < 8 chars or looks like version/boolean
 	if strings.Contains(trimmed, `":`) {
@@ -385,7 +385,7 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 			// Remove trailing comma if present
 			value = strings.TrimSuffix(value, ",")
 			value = strings.Trim(value, `"'`)
-			
+
 			// Skip if value looks like a version number (e.g., "1.2.3", "^2.0.0")
 			if len(value) > 0 && len(value) < 20 {
 				// Check for version-like patterns
@@ -399,7 +399,7 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 			}
 		}
 	}
-	
+
 	// Skip integrity/checksum hashes - these look like secrets but are public checksums
 	// Common in package managers (npm, yarn, pip, etc.)
 	if strings.Contains(trimmed, `"integrity"`) || strings.Contains(trimmed, `"checksum"`) {
@@ -407,13 +407,13 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 			return false
 		}
 	}
-	
+
 	// Skip common URL patterns that are not secrets (registry URLs, repository URLs)
 	if strings.Contains(trimmed, `"resolved"`) || strings.Contains(trimmed, `"url"`) || strings.Contains(trimmed, `"homepage"`) {
 		if strings.Contains(trimmed, "https://") || strings.Contains(trimmed, "http://") {
 			// Only skip if it's a public registry/repository URL
-			if strings.Contains(trimmed, "registry.") || strings.Contains(trimmed, "github.com") || 
-			   strings.Contains(trimmed, "gitlab.com") || strings.Contains(trimmed, "bitbucket.org") {
+			if strings.Contains(trimmed, "registry.") || strings.Contains(trimmed, "github.com") ||
+				strings.Contains(trimmed, "gitlab.com") || strings.Contains(trimmed, "bitbucket.org") {
 				return false
 			}
 		}
@@ -424,45 +424,45 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 	if strings.Contains(line, "eyJ") {
 		return true
 	}
-	
+
 	// AWS keys
 	if strings.Contains(line, "AKIA") {
 		return true
 	}
-	
+
 	// GitHub tokens
-	if strings.Contains(line, "ghp_") || strings.Contains(line, "gho_") || 
-	   strings.Contains(line, "ghu_") || strings.Contains(line, "ghs_") || 
-	   strings.Contains(line, "ghr_") {
+	if strings.Contains(line, "ghp_") || strings.Contains(line, "gho_") ||
+		strings.Contains(line, "ghu_") || strings.Contains(line, "ghs_") ||
+		strings.Contains(line, "ghr_") {
 		return true
 	}
-	
+
 	// Google Cloud API keys
 	if strings.Contains(line, "AIza") {
 		return true
 	}
-	
+
 	// Stripe API keys
 	if strings.Contains(line, "sk_live_") || strings.Contains(line, "pk_live_") ||
-	   strings.Contains(line, "sk_test_") || strings.Contains(line, "pk_test_") {
+		strings.Contains(line, "sk_test_") || strings.Contains(line, "pk_test_") {
 		return true
 	}
-	
+
 	// GitLab tokens
 	if strings.Contains(line, "glpat-") {
 		return true
 	}
-	
+
 	// Docker tokens
 	if strings.Contains(line, "dckr_pat_") {
 		return true
 	}
-	
+
 	// Slack tokens
 	if strings.Contains(line, "xoxb-") || strings.Contains(line, "xoxp-") {
 		return true
 	}
-	
+
 	// SSH/PGP key markers (encoded to bypass Code Defender)
 	beginMarker := "-----" + "BEGIN"
 	if strings.Contains(line, beginMarker) {
