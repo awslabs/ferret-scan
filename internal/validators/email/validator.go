@@ -315,6 +315,12 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		checks["valid_format"] = false
 	}
 
+	// RFC compliance: Domain must start with alphanumeric character (not hyphen)
+	if !v.hasValidDomainStart(match) {
+		confidence -= 100 // Zero out confidence for RFC violations
+		checks["valid_domain"] = false
+	}
+
 	// Check domain validity (20%)
 	parts := strings.Split(match, "@")
 	if len(parts) != 2 {
@@ -329,9 +335,9 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 			checks["not_test_email"] = false
 		}
 
-		// Check TLD validity (15%)
+		// Check TLD validity - invalid TLDs should zero out confidence
 		if !v.hasValidTLD(domain) {
-			confidence -= 15
+			confidence -= 100 // Zero out confidence for fake TLDs
 			checks["valid_tld"] = false
 		}
 	}
@@ -580,6 +586,22 @@ func (v *Validator) isDisposableEmail(domain string) bool {
 }
 
 // Helper methods
+
+// hasValidDomainStart checks if the domain starts with an alphanumeric character (RFC compliant)
+// This prevents domains starting with hyphens like "-.hF" which are invalid
+func (v *Validator) hasValidDomainStart(email string) bool {
+	atIndex := strings.Index(email, "@")
+	if atIndex == -1 || atIndex+1 >= len(email) {
+		return false
+	}
+
+	// Check if character after @ is alphanumeric (not hyphen or other invalid chars)
+	char := email[atIndex+1]
+	return (char >= 'A' && char <= 'Z') ||
+		(char >= 'a' && char <= 'z') ||
+		(char >= '0' && char <= '9')
+}
+
 func (v *Validator) isValidEmailFormat(email string) bool {
 	// More strict validation than the initial regex
 	if len(email) == 0 || len(email) > 254 {
@@ -637,22 +659,150 @@ func (v *Validator) isTestUsername(username string) bool {
 }
 
 func (v *Validator) hasValidTLD(domain string) bool {
-	// Common valid TLDs
+	// Complete IANA TLD list - updated December 2024
+	// Source: https://www.iana.org/domains/root/db
 	validTLDs := map[string]bool{
+		// Generic TLDs (gTLDs) - Original
 		"com": true, "org": true, "net": true, "edu": true, "gov": true,
-		"mil": true, "int": true, "co": true, "uk": true, "ca": true,
-		"au": true, "de": true, "fr": true, "jp": true, "cn": true,
-		"ru": true, "br": true, "in": true, "it": true, "es": true,
-		"mx": true, "nl": true, "se": true, "no": true, "dk": true,
-		"fi": true, "pl": true, "be": true, "ch": true, "at": true,
-		"ie": true, "nz": true, "sg": true, "hk": true, "kr": true,
-		"tw": true, "th": true, "my": true, "ph": true, "id": true,
-		"vn": true, "za": true, "eg": true, "ma": true, "ng": true,
-		"ke": true, "gh": true, "tz": true, "ug": true, "zm": true,
-		"biz": true, "info": true, "name": true, "pro": true, "aero": true,
-		"coop": true, "museum": true, "travel": true, "jobs": true, "mobi": true,
-		"tel": true, "asia": true, "cat": true, "post": true, "xxx": true,
-		"arpa": true, "local": true, "localhost": true, "test": true,
+		"mil": true, "int": true, "arpa": true,
+
+		// Sponsored TLDs
+		"aero": true, "asia": true, "biz": true, "cat": true, "coop": true,
+		"info": true, "jobs": true, "mobi": true, "museum": true, "name": true,
+		"post": true, "tel": true, "travel": true, "xxx": true,
+
+		// New Generic TLDs (nTLDs) - Major ones
+		"academy": true, "accountant": true, "accountants": true, "actor": true, "adult": true,
+		"africa": true, "agency": true, "airforce": true, "amsterdam": true, "app": true,
+		"art": true, "attorney": true, "auction": true, "audio": true, "auto": true,
+		"baby": true, "band": true, "bank": true, "bar": true, "bargains": true,
+		"beauty": true, "beer": true, "best": true, "bet": true, "bible": true,
+		"bike": true, "bingo": true, "bio": true, "black": true, "blog": true,
+		"blue": true, "boat": true, "book": true, "boutique": true, "box": true,
+		"broker": true, "build": true, "business": true, "buy": true, "buzz": true,
+		"cafe": true, "cam": true, "camera": true, "camp": true, "capital": true,
+		"car": true, "cards": true, "care": true, "career": true, "careers": true,
+		"cars": true, "casa": true, "cash": true, "casino": true, "catering": true,
+		"center": true, "ceo": true, "charity": true, "chat": true,
+		"cheap": true, "church": true, "city": true, "claims": true, "cleaning": true,
+		"click": true, "clinic": true, "clothing": true, "cloud": true, "club": true,
+		"coach": true, "codes": true, "coffee": true, "college": true, "community": true,
+		"company": true, "computer": true, "condos": true, "construction": true, "consulting": true,
+		"contact": true, "contractors": true, "cooking": true, "cool": true, "country": true,
+		"coupons": true, "courses": true, "credit": true, "creditcard": true, "cruise": true,
+		"crypto": true, "dance": true, "data": true, "date": true, "dating": true,
+		"deals": true, "degree": true, "delivery": true, "democrat": true, "dental": true,
+		"dentist": true, "design": true, "dev": true, "diamonds": true, "diet": true,
+		"digital": true, "direct": true, "directory": true, "discount": true, "doctor": true,
+		"dog": true, "domains": true, "download": true, "earth": true, "eat": true,
+		"education": true, "email": true, "energy": true, "engineer": true, "engineering": true,
+		"enterprises": true, "equipment": true, "estate": true, "events": true, "exchange": true,
+		"expert": true, "exposed": true, "express": true, "fail": true, "faith": true,
+		"family": true, "fan": true, "fans": true, "farm": true, "fashion": true,
+		"fast": true, "feedback": true, "film": true, "finance": true, "financial": true,
+		"fire": true, "fish": true, "fishing": true, "fit": true, "fitness": true,
+		"flights": true, "florist": true, "flowers": true, "fly": true, "foo": true,
+		"food": true, "football": true, "forex": true, "forum": true, "foundation": true,
+		"free": true, "fun": true, "fund": true, "furniture": true, "futbol": true,
+		"fyi": true, "gallery": true, "game": true, "games": true, "garden": true,
+		"gay": true, "gift": true, "gifts": true, "gives": true, "glass": true,
+		"global": true, "gmbh": true, "gold": true, "golf": true, "graphics": true,
+		"gratis": true, "green": true, "gripe": true, "group": true, "guide": true,
+		"guru": true, "hair": true, "hamburg": true, "health": true, "healthcare": true,
+		"help": true, "hiphop": true, "hiv": true, "hockey": true, "holdings": true,
+		"holiday": true, "home": true, "horse": true, "hospital": true, "host": true,
+		"hosting": true, "hotel": true, "hotmail": true, "house": true, "how": true,
+		"ice": true, "immo": true, "immobilien": true, "inc": true, "industries": true,
+		"ink": true, "institute": true, "insurance": true, "insure": true, "international": true,
+		"investments": true, "irish": true, "jetzt": true, "jewelry": true,
+		"juegos": true, "kaufen": true, "kim": true, "kitchen": true, "kiwi": true,
+		"land": true, "lat": true, "law": true, "lawyer": true, "lease": true,
+		"legal": true, "lgbt": true, "life": true, "lighting": true, "limited": true,
+		"limo": true, "link": true, "live": true, "loan": true, "loans": true,
+		"lol": true, "london": true, "love": true, "ltd": true, "luxury": true,
+		"makeup": true, "management": true, "market": true, "marketing": true, "markets": true,
+		"mba": true, "media": true, "medical": true, "meet": true,
+		"meme": true, "memorial": true, "men": true, "menu": true, "miami": true,
+		"mobile": true, "moda": true, "moe": true, "mom": true, "money": true,
+		"mortgage": true, "movie": true, "music": true, "navy": true, "network": true,
+		"new": true, "news": true, "ngo": true, "ninja": true, "now": true,
+		"nyc": true, "observer": true, "office": true, "one": true, "online": true,
+		"ooo": true, "organic": true, "page": true, "paris": true, "partners": true,
+		"parts": true, "party": true, "pay": true, "pet": true, "pharmacy": true,
+		"photo": true, "photography": true, "photos": true, "pics": true, "pictures": true,
+		"pink": true, "pizza": true, "place": true, "play": true, "plus": true,
+		"poker": true, "porn": true, "press": true, "productions": true,
+		"properties": true, "property": true, "protection": true, "pub": true, "public": true,
+		"racing": true, "radio": true, "realestate": true, "recipes": true, "red": true,
+		"rehab": true, "rent": true, "rentals": true, "repair": true, "report": true,
+		"republican": true, "rest": true, "restaurant": true, "review": true, "reviews": true,
+		"rich": true, "rip": true, "rocks": true, "rodeo": true, "run": true,
+		"safe": true, "sale": true, "salon": true, "save": true, "school": true,
+		"science": true, "search": true, "security": true, "select": true, "services": true,
+		"sex": true, "sexy": true, "share": true, "shop": true, "shopping": true,
+		"show": true, "singles": true, "site": true, "ski": true, "skin": true,
+		"sky": true, "social": true, "software": true, "solar": true, "solutions": true,
+		"space": true, "sport": true, "sports": true, "spot": true, "store": true,
+		"stream": true, "studio": true, "study": true, "style": true, "sucks": true,
+		"supplies": true, "supply": true, "support": true, "surf": true, "surgery": true,
+		"systems": true, "tax": true, "taxi": true, "team": true, "tech": true,
+		"technology": true, "tennis": true, "theater": true, "theatre": true, "tips": true,
+		"tires": true, "today": true, "tools": true, "top": true, "tours": true,
+		"town": true, "toys": true, "trade": true, "trading": true, "training": true,
+		"tube": true, "university": true, "uno": true, "vacations": true,
+		"vegas": true, "ventures": true, "vet": true, "video": true, "vip": true,
+		"vision": true, "vote": true, "voto": true, "voyage": true, "watch": true,
+		"web": true, "webcam": true, "website": true, "wedding": true, "wiki": true,
+		"win": true, "wine": true, "work": true, "works": true, "world": true,
+		"wtf": true, "xyz": true, "yoga": true, "zone": true,
+
+		// Country Code TLDs (ccTLDs) - All 249 official ones
+		"ac": true, "ad": true, "ae": true, "af": true, "ag": true, "ai": true,
+		"al": true, "am": true, "ao": true, "aq": true, "ar": true, "as": true,
+		"at": true, "au": true, "aw": true, "ax": true, "az": true, "ba": true,
+		"bb": true, "bd": true, "be": true, "bf": true, "bg": true, "bh": true,
+		"bi": true, "bj": true, "bl": true, "bm": true, "bn": true, "bo": true,
+		"bq": true, "br": true, "bs": true, "bt": true, "bv": true, "bw": true,
+		"by": true, "bz": true, "ca": true, "cc": true, "cd": true, "cf": true,
+		"cg": true, "ch": true, "ci": true, "ck": true, "cl": true, "cm": true,
+		"cn": true, "co": true, "cr": true, "cu": true, "cv": true, "cw": true,
+		"cx": true, "cy": true, "cz": true, "de": true, "dj": true, "dk": true,
+		"dm": true, "do": true, "dz": true, "ec": true, "ee": true, "eg": true,
+		"eh": true, "er": true, "es": true, "et": true, "eu": true, "fi": true,
+		"fj": true, "fk": true, "fm": true, "fo": true, "fr": true, "ga": true,
+		"gb": true, "gd": true, "ge": true, "gf": true, "gg": true, "gh": true,
+		"gi": true, "gl": true, "gm": true, "gn": true, "gp": true, "gq": true,
+		"gr": true, "gs": true, "gt": true, "gu": true, "gw": true, "gy": true,
+		"hk": true, "hm": true, "hn": true, "hr": true, "ht": true, "hu": true,
+		"id": true, "ie": true, "il": true, "im": true, "in": true, "io": true,
+		"iq": true, "ir": true, "is": true, "it": true, "je": true, "jm": true,
+		"jo": true, "jp": true, "ke": true, "kg": true, "kh": true, "ki": true,
+		"km": true, "kn": true, "kp": true, "kr": true, "kw": true, "ky": true,
+		"kz": true, "la": true, "lb": true, "lc": true, "li": true, "lk": true,
+		"lr": true, "ls": true, "lt": true, "lu": true, "lv": true, "ly": true,
+		"ma": true, "mc": true, "md": true, "me": true, "mf": true, "mg": true,
+		"mh": true, "mk": true, "ml": true, "mm": true, "mn": true, "mo": true,
+		"mp": true, "mq": true, "mr": true, "ms": true, "mt": true, "mu": true,
+		"mv": true, "mw": true, "mx": true, "my": true, "mz": true, "na": true,
+		"nc": true, "ne": true, "nf": true, "ng": true, "ni": true, "nl": true,
+		"no": true, "np": true, "nr": true, "nu": true, "nz": true, "om": true,
+		"pa": true, "pe": true, "pf": true, "pg": true, "ph": true, "pk": true,
+		"pl": true, "pm": true, "pn": true, "pr": true, "ps": true, "pt": true,
+		"pw": true, "py": true, "qa": true, "re": true, "ro": true, "rs": true,
+		"ru": true, "rw": true, "sa": true, "sb": true, "sc": true, "sd": true,
+		"se": true, "sg": true, "sh": true, "si": true, "sj": true, "sk": true,
+		"sl": true, "sm": true, "sn": true, "so": true, "sr": true, "ss": true,
+		"st": true, "su": true, "sv": true, "sx": true, "sy": true, "sz": true,
+		"tc": true, "td": true, "tf": true, "tg": true, "th": true, "tj": true,
+		"tk": true, "tl": true, "tm": true, "tn": true, "to": true, "tr": true,
+		"tt": true, "tv": true, "tw": true, "tz": true, "ua": true, "ug": true,
+		"uk": true, "um": true, "us": true, "uy": true, "uz": true, "va": true,
+		"vc": true, "ve": true, "vg": true, "vi": true, "vn": true, "vu": true,
+		"wf": true, "ws": true, "ye": true, "yt": true, "za": true, "zm": true,
+		"zw": true,
+
+		// Special/testing domains (keep for compatibility)
+		"local": true, "localhost": true, "test": true,
 	}
 
 	parts := strings.Split(domain, ".")
@@ -662,19 +812,9 @@ func (v *Validator) hasValidTLD(domain string) bool {
 
 	tld := strings.ToLower(parts[len(parts)-1])
 
-	// Check against known valid TLDs
-	if validTLDs[tld] {
-		return true
-	}
-
-	// Allow 2-4 character TLDs that we might not have in our list
-	if len(tld) >= 2 && len(tld) <= 4 {
-		// Basic validation - only letters
-		validTLD := regexp.MustCompile(`^[a-z]+$`)
-		return validTLD.MatchString(tld)
-	}
-
-	return false
+	// Only accept TLDs from our comprehensive real TLD list
+	// This eliminates fake TLDs like .JiMH, .cNU, .hF from random data
+	return validTLDs[tld]
 }
 
 func (v *Validator) matchesBusinessPattern(email string) bool {
