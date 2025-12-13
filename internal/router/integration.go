@@ -11,7 +11,11 @@ import (
 func RegisterDefaultPreprocessors(router *FileRouter) {
 	// Plain text preprocessor factory (highest priority for actual text files)
 	router.RegisterPreprocessor("plaintext", func(config map[string]interface{}) preprocessors.Preprocessor {
-		return preprocessors.NewPlainTextPreprocessor()
+		enableRedaction := true // Default to enabled for backward compatibility
+		if val, ok := config["enable_redaction"].(bool); ok {
+			enableRedaction = val
+		}
+		return preprocessors.NewPlainTextPreprocessorWithConfig(enableRedaction)
 	})
 
 	// Document text extractor factory (for binary documents like PDF, DOCX)
@@ -126,10 +130,11 @@ func RegisterDefaultPreprocessors(router *FileRouter) {
 }
 
 // GENAI_DISABLED: CreateRouterConfig creates configuration map for preprocessors
-func CreateRouterConfig(enableGenAI bool, genaiServices map[string]bool, genaiRegion string) map[string]interface{} {
+func CreateRouterConfig(enableGenAI bool, genaiServices map[string]bool, genaiRegion string, enableRedaction bool) map[string]interface{} {
 	return map[string]interface{}{
 		// GENAI_DISABLED: "enable_genai":   enableGenAI,
 		// GENAI_DISABLED: "genai_services": genaiServices,
 		// GENAI_DISABLED: "genai_region":   genaiRegion,
+		"enable_redaction": enableRedaction,
 	}
 }
