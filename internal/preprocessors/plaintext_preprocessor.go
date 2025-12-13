@@ -301,11 +301,6 @@ func (ptp *PlainTextPreprocessor) createOptimizedPositionMappings(result *Proces
 			continue
 		}
 
-		// Skip lines that are clearly non-sensitive (comments, headers, etc.)
-		if ptp.isLikelyNonSensitive(trimmed) {
-			continue
-		}
-
 		// Create a mapping using pre-calculated offset (O(1) operation)
 		extractedPos := TextPosition{
 			Line:           lineNum + 1, // 1-based line numbering
@@ -351,32 +346,6 @@ func (ptp *PlainTextPreprocessor) preCalculateLineOffsets(lines []string) []int 
 	}
 
 	return lineOffsets
-}
-
-// isLikelyNonSensitive identifies lines unlikely to contain sensitive data
-func (ptp *PlainTextPreprocessor) isLikelyNonSensitive(line string) bool {
-	// Skip HTML/XML tags, comments, headers, etc.
-	if strings.HasPrefix(line, "<!--") ||
-		strings.HasPrefix(line, "//") ||
-		strings.HasPrefix(line, "#") ||
-		strings.HasPrefix(line, "<") ||
-		strings.HasPrefix(line, "/*") ||
-		strings.HasPrefix(line, "*") ||
-		strings.HasPrefix(line, "---") ||
-		strings.HasPrefix(line, "===") {
-		return true
-	}
-
-	// Skip lines that are mostly punctuation or whitespace
-	alphanumCount := 0
-	for _, r := range line {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			alphanumCount++
-		}
-	}
-
-	// If less than 30% alphanumeric, likely not sensitive data
-	return float64(alphanumCount)/float64(len(line)) < 0.3
 }
 
 // getLineContext returns context around a line for position verification
