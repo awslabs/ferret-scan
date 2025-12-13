@@ -16,12 +16,20 @@ import (
 // PlainTextPreprocessor handles plain text files by passing their content through
 // This ensures text files are processed through the same pipeline as other file types
 type PlainTextPreprocessor struct {
-	observer *observability.StandardObserver
+	observer        *observability.StandardObserver
+	enableRedaction bool
 }
 
 // NewPlainTextPreprocessor creates a new plain text preprocessor
 func NewPlainTextPreprocessor() *PlainTextPreprocessor {
-	return &PlainTextPreprocessor{}
+	return NewPlainTextPreprocessorWithConfig(true) // Default to enabled for backward compatibility
+}
+
+// NewPlainTextPreprocessorWithConfig creates a new plain text preprocessor with redaction configuration
+func NewPlainTextPreprocessorWithConfig(enableRedaction bool) *PlainTextPreprocessor {
+	return &PlainTextPreprocessor{
+		enableRedaction: enableRedaction,
+	}
 }
 
 // SetObserver sets the observability component
@@ -134,12 +142,18 @@ func (ptp *PlainTextPreprocessor) Process(filePath string) (*ProcessedContent, e
 		Metadata:      make(map[string]interface{}),
 	}
 
-	// Enable position tracking for plain text files
-	result.EnablePositionTracking()
-	result.SetPositionConfidence(1.0) // Perfect confidence for plain text
+	// Only enable position tracking if redaction is enabled
+	if ptp.enableRedaction {
+		result.EnablePositionTracking()
+		result.SetPositionConfidence(1.0) // Perfect confidence for plain text
 
-	// Create position mappings for plain text (1:1 mapping)
-	ptp.createPositionMappings(result, content)
+		// Create optimized position mappings for plain text (1:1 mapping)
+		ptp.createOptimizedPositionMappings(result, content)
+
+		// Add position tracking metadata
+		result.AddPositionMetadata("mapping_method", "direct")
+		result.AddPositionMetadata("confidence_reason", "plain_text_1to1_mapping")
+	}
 
 	// Add file extension info to metadata
 	ext := strings.ToLower(filepath.Ext(filePath))
@@ -147,10 +161,6 @@ func (ptp *PlainTextPreprocessor) Process(filePath string) (*ProcessedContent, e
 		result.Metadata["file_extension"] = ext
 		result.Metadata["file_type"] = ptp.getFileTypeDescription(ext)
 	}
-
-	// Add position tracking metadata
-	result.AddPositionMetadata("mapping_method", "direct")
-	result.AddPositionMetadata("confidence_reason", "plain_text_1to1_mapping")
 
 	if finishTiming != nil {
 		finishTiming(true, map[string]interface{}{
@@ -270,26 +280,38 @@ func (ptp *PlainTextPreprocessor) countParagraphs(text string) int {
 	return count
 }
 
-// createPositionMappings creates 1:1 position mappings for plain text content
+// createPositionMappings creates 1:1 position mappings for plain text content (legacy method)
 func (ptp *PlainTextPreprocessor) createPositionMappings(result *ProcessedContent, content string) {
+	ptp.createOptimizedPositionMappings(result, content)
+}
+
+// createOptimizedPositionMappings creates optimized position mappings for plain text content
+func (ptp *PlainTextPreprocessor) createOptimizedPositionMappings(result *ProcessedContent, content string) {
 	lines := splitLines(content)
 
+	// Pre-calculate line offsets once to avoid O(n²) complexity
+	lineOffsets := ptp.preCalculateLineOffsets(lines)
+
+	mappingCount := 0
 	for lineNum, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue // Skip empty lines
+		trimmed := strings.TrimSpace(line)
+
+		// Skip empty lines and very short lines (unlikely to contain sensitive data)
+		if len(trimmed) < 3 {
+			continue
 		}
 
-		// Create a mapping for each non-empty line
+		// Create a mapping using pre-calculated offset (O(1) operation)
 		extractedPos := TextPosition{
 			Line:           lineNum + 1, // 1-based line numbering
 			StartChar:      0,
 			EndChar:        len(line),
-			AbsoluteOffset: CalculateAbsoluteOffset(content, lineNum+1, 0),
+			AbsoluteOffset: lineOffsets[lineNum], // Use pre-calculated offset
 		}
 
 		originalPos := DocumentPosition{
 			Page:       1, // Plain text is single "page"
-			CharOffset: CalculateAbsoluteOffset(content, lineNum+1, 0),
+			CharOffset: lineOffsets[lineNum],
 			LineNumber: lineNum + 1,
 		}
 
@@ -298,16 +320,32 @@ func (ptp *PlainTextPreprocessor) createPositionMappings(result *ProcessedConten
 			OriginalPosition:  originalPos,
 			ConfidenceScore:   1.0, // Perfect confidence for plain text
 			Context:           ptp.getLineContext(lines, lineNum),
-			Method:            "direct_mapping",
+			Method:            "direct_mapping_optimized",
 		}
 
 		result.AddPositionMapping(mapping)
+		mappingCount++
 	}
 
 	if ptp.observer != nil && ptp.observer.DebugObserver != nil {
 		ptp.observer.DebugObserver.LogDetail("plaintext_preprocessor",
-			fmt.Sprintf("Created %d position mappings for %d lines", len(result.PositionMappings), len(lines)))
+			fmt.Sprintf("Created %d optimized position mappings for %d lines (%.1f%% reduction)",
+				mappingCount, len(lines),
+				100.0*(1.0-float64(mappingCount)/float64(len(lines)))))
 	}
+}
+
+// preCalculateLineOffsets calculates absolute offsets for all lines once
+func (ptp *PlainTextPreprocessor) preCalculateLineOffsets(lines []string) []int {
+	lineOffsets := make([]int, len(lines))
+	offset := 0
+
+	for i, line := range lines {
+		lineOffsets[i] = offset
+		offset += len(line) + 1 // +1 for newline character
+	}
+
+	return lineOffsets
 }
 
 // getLineContext returns context around a line for position verification

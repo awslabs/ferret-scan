@@ -1319,9 +1319,10 @@ func main() {
 
 	// GENAI_DISABLED: Router configuration with GenAI settings
 	routerConfig := router.CreateRouterConfig(
-		false, // enableGenAI disabled
-		nil,   // genaiServices disabled
-		"",    // textractRegion disabled
+		false,                       // enableGenAI disabled
+		nil,                         // genaiServices disabled
+		"",                          // textractRegion disabled
+		finalConfig.enableRedaction, // Pass redaction setting to preprocessors
 	)
 	// GENAI_DISABLED: Transcribe bucket configuration
 	// if *transcribeBucket != "" {
