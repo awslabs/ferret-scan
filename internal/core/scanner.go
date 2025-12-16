@@ -156,9 +156,10 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 
 	// Configure router with same settings as CLI
 	routerConfig := router.CreateRouterConfig(
-		false, // enableGenAI disabled
-		nil,   // genAI services
-		"",    // textract region
+		false,                      // enableGenAI disabled
+		nil,                        // genAI services
+		"",                         // textract region
+		scanConfig.EnableRedaction, // Pass redaction setting to preprocessors
 	)
 	fileRouter.InitializePreprocessors(routerConfig)
 
