@@ -3,8 +3,8 @@
 
 # Global variables for version consistency
 variables:
-  GO_VERSION: "1.25.1"
-  GO_DOCKER_IMAGE: "golang:1.25.1-alpine"
+  GO_VERSION: "1.25.5"
+  GO_DOCKER_IMAGE: "golang:1.25.5-alpine"
   # Default resource limits for all jobs (increased for Docker builds)
   KUBERNETES_CPU_REQUEST: "1000m"
   KUBERNETES_CPU_LIMIT: "2000m"
