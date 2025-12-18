@@ -735,7 +735,20 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 			foundMatches := regex.FindAllString(line, -1)
 
 			for _, match := range foundMatches {
-				confidence, checks := v.CalculateConfidence(match)
+				// Debug logging to verify this code path is reached
+				if v.observer != nil && v.observer.DebugObserver != nil {
+					v.observer.DebugObserver.LogDetail("intellectualproperty",
+						fmt.Sprintf("INTERNAL URL MATCH FOUND: '%s' - setting HIGH confidence", match))
+				}
+				// Configured internal URLs always start at HIGH confidence
+				// If someone configured a pattern, they want it treated as high priority
+				confidence := 95.0
+				checks := map[string]bool{
+					"format":             true,
+					"context_relevant":   true,
+					"not_common_pattern": true,
+					"not_example":        true,
+				}
 
 				// Create context info for the line
 				contextInfo := detector.ContextInfo{
@@ -754,21 +767,21 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 
 				// Analyze context and adjust confidence
 				contextImpact := v.AnalyzeContext(match, contextInfo)
-				confidence += contextImpact
 
-				// Ensure confidence stays within bounds
+				// For configured internal URLs, only apply positive context impact
+				// Skip negative context since the user explicitly configured this pattern
+				if contextImpact > 0 {
+					confidence += contextImpact
+				}
+
+				// Ensure confidence stays within bounds (no need to check < 0 since we start at 95)
 				if confidence > 100 {
 					confidence = 100
-				} else if confidence < 0 {
-					confidence = 0
 				}
 
 				contextInfo.ConfidenceImpact = contextImpact
 
-				// Skip matches with 0% confidence - they are false positives
-				if confidence <= 0 {
-					continue
-				}
+				// Configured patterns are never skipped (no confidence <= 0 check needed)
 
 				lineMatches[lineNum] = append(lineMatches[lineNum], detector.Match{
 					Text:       match,
