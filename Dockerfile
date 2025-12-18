@@ -5,7 +5,7 @@
 # Target: Absolute smallest possible image (~5-10MB)
 
 # Builder stage
-FROM public.ecr.aws/docker/library/golang:1.25.3-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.25.5-alpine AS builder
 
 # Install minimal build dependencies
 # Add ca-certificates back if you uncomment the COPY line below
