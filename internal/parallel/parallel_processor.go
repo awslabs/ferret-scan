@@ -56,7 +56,7 @@ func NewAdaptiveParallelProcessor(config AdaptiveConfig, observer *observability
 }
 
 // ProgressCallback is called when a file is completed
-type ProgressCallback func(completed, total int)
+type ProgressCallback func(completed, total int, currentFile string)
 
 // ProcessFiles processes multiple files in parallel
 func (pp *ParallelProcessor) ProcessFiles(filePaths []string, validators []detector.Validator, fileRouter *router.FileRouter, config *JobConfig, redactionManager *redactors.RedactionManager) ([]detector.Match, *ProcessingStats, error) {
@@ -111,7 +111,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 
 		// Call progress callback if provided
 		if progressCallback != nil {
-			progressCallback(i+1, jobCount)
+			progressCallback(i+1, jobCount, result.FilePath)
 		}
 		mu.Unlock()
 	}

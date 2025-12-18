@@ -1470,7 +1470,7 @@ func main() {
 
 	// Progress bar function with ETA
 	progressStart := time.Now()
-	updateProgress := func(current, total, skipped int) {
+	updateProgress := func(current, total, skipped int, currentFile string) {
 		if shouldSuppressProgressOutput(finalConfig, flags.quiet, precommitConfig, isInteractive) {
 			return // Don't show progress bar in debug mode, quiet mode, pre-commit mode, or non-interactive environments
 		}
@@ -1488,8 +1488,21 @@ func main() {
 			etaStr = fmt.Sprintf(" ETA: %s", remaining.Round(time.Second))
 		}
 
-		fmt.Fprintf(os.Stderr, "\r[%s] %d/%d files (%.1f%%) - %d skipped%s",
-			bar, current, total, percent, skipped, etaStr)
+		// Prepare filename display
+		filenameDisplay := ""
+		if currentFile != "" && current < total {
+			// Extract just the filename from the full path
+			filename := filepath.Base(currentFile)
+			if len(filename) > 30 {
+				filename = "..." + filename[len(filename)-27:]
+			}
+			filenameDisplay = fmt.Sprintf(" | %s", filename)
+		}
+
+		// Display progress bar with filename and clear to end of line
+		fmt.Fprintf(os.Stderr, "\r[%s] %d/%d files (%.1f%%) - %d skipped%s%s\033[K",
+			bar, current, total, percent, skipped, etaStr, filenameDisplay)
+
 		if current == total {
 			fmt.Fprintf(os.Stderr, "\n")
 		}
@@ -1544,15 +1557,15 @@ func main() {
 
 		// Show initial progress
 		if !finalConfig.debug {
-			updateProgress(0, totalFilesForProgress, 0)
+			updateProgress(0, totalFilesForProgress, 0, "")
 		}
 
 		// Create progress callback that updates the progress bar
-		var progressCallback func(completed, total int)
+		var progressCallback func(completed, total int, currentFile string)
 		if !shouldSuppressProgressOutput(finalConfig, flags.quiet, precommitConfig, isInteractive) {
-			progressCallback = func(completed, total int) {
+			progressCallback = func(completed, total int, currentFile string) {
 				// Update progress based on completed supported files
-				updateProgress(completed, totalFilesForProgress, 0)
+				updateProgress(completed, totalFilesForProgress, 0, currentFile)
 			}
 		}
 
