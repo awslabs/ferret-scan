@@ -46,8 +46,149 @@ The configuration file has six main sections:
 - `preprocessors`: Configuration for text extraction <!-- GENAI_DISABLED: and GenAI services -->
 - `validators`: Global validator-specific configurations
 - `suppressions`: Suppression system configuration
+- `profiles`: Named configuration profiles for different scanning scenarios
 <!-- GENAI_DISABLED: - `cost_control`: Cost management settings for GenAI services -->
 <!-- GENAI_DISABLED: - `genai`: GenAI service configuration -->
+
+## File Exclusion Patterns
+
+Ferret Scan supports excluding files and directories from scanning using glob patterns. Exclusion patterns can be configured in three ways:
+
+### Command Line Flag
+```bash
+# Single exclusion
+ferret-scan --file . --recursive --exclude ".git"
+
+# Multiple exclusions (comma-separated)
+ferret-scan --file . --recursive --exclude ".git,*.log,node_modules"
+```
+
+### Configuration File (Defaults)
+```yaml
+defaults:
+  exclude_patterns:
+    - ".git"          # Exclude .git directory
+    - "*.log"         # Exclude all .log files  
+    - "node_modules"  # Exclude node_modules directory
+    - "target"        # Exclude target directory
+    - "*.tmp"         # Exclude temporary files
+```
+
+### Configuration File (Profiles)
+```yaml
+profiles:
+  development:
+    exclude_patterns:
+      - ".git"
+      - "node_modules"
+      - "target"
+      - "build"
+      - "dist"
+      - "*.log"
+      - "*.tmp"
+```
+
+### Pattern Matching Rules
+
+Exclusion patterns use **glob pattern matching** (not regular expressions), which means:
+
+- **Dots are literal characters** - use `.git` not `\.git`
+- **Asterisks are wildcards** - `*.log` matches all files ending with ".log"
+- **Question marks match single characters** - `test?.txt` matches "test1.txt", "testa.txt", etc.
+- **Square brackets match character ranges** - `[abc]*.txt` matches files starting with "a", "b", or "c"
+
+**Important**: Since these are glob patterns, not regex patterns, special characters like `.`, `(`, `)`, `+`, etc. are treated as literal characters and do not need escaping.
+
+Exclusion patterns support the following matching strategies:
+
+1. **Filename Matching**: Patterns are matched against the base filename
+   - `README.md` matches files named exactly "README.md"
+   - `*.log` matches all files ending with ".log"
+
+2. **Directory Matching**: Patterns are matched against directory names in the path
+   - `.git` matches any directory named ".git" 
+   - `node_modules` matches any directory named "node_modules"
+
+3. **Path Substring Matching**: Patterns are matched as substrings within the full path
+   - `test` matches any path containing "test"
+
+4. **Directory Exclusion with Trailing Slash**: Patterns ending with "/" are treated as directory exclusions
+   - `build/` matches directories named "build"
+
+### Pattern Precedence
+
+When multiple exclusion sources are configured, they are applied in this order:
+1. Configuration file defaults
+2. Profile-specific patterns (override defaults)
+3. Command line flags (override both defaults and profiles)
+
+### Pattern Examples
+
+```yaml
+exclude_patterns:
+  # Literal matching (no escaping needed)
+  - ".git"              # Matches .git directory exactly
+  - ".DS_Store"         # Matches .DS_Store files exactly
+  - "config.json"       # Matches config.json files exactly
+  
+  # Glob wildcards
+  - "*.log"             # Matches all .log files
+  - "test_*"            # Matches files starting with "test_"
+  - "*.tmp"             # Matches all .tmp files
+  
+  # Directory patterns
+  - "node_modules"      # Matches node_modules directories
+  - "target"            # Matches target directories
+  - "build/"            # Matches build directories (trailing slash optional)
+  
+  # Character ranges
+  - "[Tt]est*"          # Matches files starting with "Test" or "test"
+  - "file[0-9].txt"     # Matches file0.txt, file1.txt, etc.
+```
+
+**Remember**: These are glob patterns, not regular expressions. Characters like `.`, `(`, `)`, `+`, `{`, `}` are treated literally and don't need escaping.
+
+### Common Exclusion Patterns
+
+```yaml
+# Version control
+exclude_patterns:
+  - ".git"
+  - ".svn"
+  - ".hg"
+
+# Build artifacts
+exclude_patterns:
+  - "target"        # Maven/Gradle
+  - "build"         # Gradle/CMake
+  - "dist"          # Distribution folders
+  - "out"           # IntelliJ IDEA
+  - "bin"           # Binary folders
+
+# Dependencies
+exclude_patterns:
+  - "node_modules"  # Node.js
+  - "vendor"        # PHP Composer, Go modules
+  - ".venv"         # Python virtual environments
+  - "venv"          # Python virtual environments
+
+# Temporary files
+exclude_patterns:
+  - "*.tmp"
+  - "*.temp"
+  - "*.log"
+  - "*.cache"
+  - ".DS_Store"     # macOS
+  - "Thumbs.db"     # Windows
+
+# IDE files
+exclude_patterns:
+  - ".vscode"
+  - ".idea"
+  - "*.swp"         # Vim
+  - "*.swo"         # Vim
+  - "*~"            # Backup files
+```
 - `profiles`: Named profiles for different scanning scenarios
 
 ## New Profile Features (2025)
@@ -487,6 +628,12 @@ defaults:
   quiet: false                # Suppress progress output (useful for scripts and CI/CD)
   show_suppressed: false      # Include suppressed findings in output with suppression details
   generate_suppressions: false # Generate suppression rules for all findings
+  exclude_patterns:           # Patterns to exclude from scanning (supports glob patterns)
+    - ".git"                  # Exclude .git directory
+    - "*.log"                 # Exclude all .log files
+    - "node_modules"          # Exclude node_modules directory
+    - "target"                # Exclude target directory (common in Java projects)
+    - "*.tmp"                 # Exclude temporary files
   <!-- GENAI_DISABLED: max_cost: 0                 # Maximum cost limit for GenAI services (0 = no limit) -->
   <!-- GENAI_DISABLED: estimate_only: false        # Show cost estimate and exit without processing -->
 
@@ -573,6 +720,9 @@ profiles:
     quiet: true
     show_match: false
     enable_preprocessors: false  # Skip document processing for speed
+    exclude_patterns:
+      - ".git"
+      - "*.log"
     description: "Quick scan focusing on critical data types with minimal processing"
 
   # CI/CD pipeline profile - JUnit XML output for integration with CI/CD systems
@@ -587,6 +737,14 @@ profiles:
     quiet: true
     show_suppressed: false
     generate_suppressions: false
+    exclude_patterns:
+      - ".git"
+      - "node_modules"
+      - "target"
+      - "build"
+      - "dist"
+      - "*.log"
+      - "*.tmp"
     description: "CI/CD pipeline profile with JUnit XML output for test result integration"
 
   # Security audit profile - focused on security-sensitive data types

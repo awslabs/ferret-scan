@@ -18,14 +18,15 @@ import (
 type Config struct {
 	// Default settings
 	Defaults struct {
-		Format              string `yaml:"format"`
-		ConfidenceLevels    string `yaml:"confidence_levels"`
-		Checks              string `yaml:"checks"`
-		Verbose             bool   `yaml:"verbose"`
-		Debug               bool   `yaml:"debug"`
-		NoColor             bool   `yaml:"no_color"`
-		Recursive           bool   `yaml:"recursive"`
-		EnablePreprocessors bool   `yaml:"enable_preprocessors"`
+		Format              string   `yaml:"format"`
+		ConfidenceLevels    string   `yaml:"confidence_levels"`
+		Checks              string   `yaml:"checks"`
+		Verbose             bool     `yaml:"verbose"`
+		Debug               bool     `yaml:"debug"`
+		NoColor             bool     `yaml:"no_color"`
+		Recursive           bool     `yaml:"recursive"`
+		EnablePreprocessors bool     `yaml:"enable_preprocessors"`
+		ExcludePatterns     []string `yaml:"exclude_patterns"`
 	} `yaml:"defaults"`
 
 	// Global validator configurations
@@ -101,14 +102,15 @@ type UnixConfig struct {
 
 // Profile represents a scanning profile with specific settings
 type Profile struct {
-	Format              string `yaml:"format"`
-	ConfidenceLevels    string `yaml:"confidence_levels"`
-	Checks              string `yaml:"checks"`
-	Verbose             bool   `yaml:"verbose"`
-	Debug               bool   `yaml:"debug"`
-	NoColor             bool   `yaml:"no_color"`
-	Recursive           bool   `yaml:"recursive"`
-	EnablePreprocessors bool   `yaml:"enable_preprocessors"`
+	Format              string   `yaml:"format"`
+	ConfidenceLevels    string   `yaml:"confidence_levels"`
+	Checks              string   `yaml:"checks"`
+	Verbose             bool     `yaml:"verbose"`
+	Debug               bool     `yaml:"debug"`
+	NoColor             bool     `yaml:"no_color"`
+	Recursive           bool     `yaml:"recursive"`
+	EnablePreprocessors bool     `yaml:"enable_preprocessors"`
+	ExcludePatterns     []string `yaml:"exclude_patterns"`
 	// GENAI_DISABLED: GenAI enablement flag for profiles
 	// EnableGenAI         bool                              `yaml:"enable_genai"`
 	// GENAI_DISABLED: Cost estimation only mode flag

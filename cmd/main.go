@@ -95,6 +95,7 @@ type configFlags struct {
 	enablePreprocessors bool
 	preprocessOnly      bool
 	precommitMode       bool
+	excludePatterns     []string
 	// GENAI_DISABLED: GenAI-related configuration flags
 	// enableGenAI         bool
 	// genaiServices       string
@@ -129,6 +130,7 @@ type finalConfiguration struct {
 	redactionOutputDir string
 	redactionStrategy  string
 	redactionAuditLog  string
+	excludePatterns    []string
 }
 
 // resolveConfiguration resolves final configuration values from config file, profile, and command line flags
@@ -319,6 +321,18 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 	}
 	if isFlagSet("redaction-audit-log") && flags.redactionAuditLog != "" {
 		final.redactionAuditLog = flags.redactionAuditLog
+	}
+
+	// Exclude patterns
+	final.excludePatterns = []string{} // default fallback (no exclusions)
+	if cfg != nil && len(cfg.Defaults.ExcludePatterns) > 0 {
+		final.excludePatterns = cfg.Defaults.ExcludePatterns
+	}
+	if activeProfile != nil && len(activeProfile.ExcludePatterns) > 0 {
+		final.excludePatterns = activeProfile.ExcludePatterns
+	}
+	if isFlagSet("exclude") && len(flags.excludePatterns) > 0 {
+		final.excludePatterns = flags.excludePatterns
 	}
 
 	return final
@@ -619,6 +633,7 @@ type extractedFlags struct {
 	redactionStrategy    string
 	redactionAuditLog    string
 	suppressionFile      string
+	excludePatterns      []string
 }
 
 // flagPointers groups all flag pointers for easier management
@@ -653,6 +668,7 @@ type flagPointers struct {
 	redactionAuditLog  *string
 	outputFile         *string
 	suppressionFile    *string
+	excludePatterns    *string
 }
 
 // extractAllFlags safely extracts all flag values once to avoid repeated nil checks
@@ -684,7 +700,25 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 		redactionAuditLog:    getStringFlag(flags.redactionAuditLog),
 		outputFile:           getStringFlag(flags.outputFile),
 		suppressionFile:      getStringFlag(flags.suppressionFile),
+		excludePatterns:      parseExcludePatterns(getStringFlag(flags.excludePatterns)),
 	}
+}
+
+// parseExcludePatterns parses comma-separated exclude patterns
+func parseExcludePatterns(excludeStr string) []string {
+	if excludeStr == "" {
+		return []string{}
+	}
+
+	patterns := strings.Split(excludeStr, ",")
+	var result []string
+	for _, pattern := range patterns {
+		trimmed := strings.TrimSpace(pattern)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func main() {
@@ -728,6 +762,9 @@ func main() {
 	redactionStrategy := flag.String("redaction-strategy", "format_preserving", "Default redaction strategy: simple, format_preserving, or synthetic")
 	redactionAuditLog := flag.String("redaction-audit-log", "", "Path to save redaction audit log file (JSON format for compliance)")
 
+	// Exclusion flag
+	excludePatterns := flag.String("exclude", "", "Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')")
+
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
 	webPort := flag.String("port", "8080", "Port for web server (default: 8080)")
@@ -766,6 +803,7 @@ func main() {
 		redactionAuditLog:  redactionAuditLog,
 		outputFile:         outputFile,
 		suppressionFile:    suppressionFile,
+		excludePatterns:    excludePatterns,
 	})
 
 	// Handle web mode early - validate flags and start web server if requested
@@ -840,6 +878,7 @@ func main() {
 		redactionOutputDir: flags.redactionOutputDir,
 		redactionStrategy:  flags.redactionStrategy,
 		redactionAuditLog:  flags.redactionAuditLog,
+		excludePatterns:    flags.excludePatterns,
 	})
 
 	// Use the pre-commit detector initialized earlier (no need to reinitialize)
@@ -1192,7 +1231,7 @@ func main() {
 			continue
 		}
 		cleanPath = abs
-		result, err := getFilesToProcess(cleanPath, finalConfig.recursive)
+		result, err := getFilesToProcess(cleanPath, finalConfig.recursive, finalConfig.excludePatterns)
 		if err != nil {
 			fmt.Printf("Error processing %s: %v\n", inputPath, err)
 			continue
@@ -1816,9 +1855,50 @@ func isUnsupportedType(ext string) bool {
 	return unsupportedTypes[ext]
 }
 
+// isExcluded checks if a file path matches any of the exclusion patterns
+func isExcluded(filePath string, excludePatterns []string) bool {
+	if len(excludePatterns) == 0 {
+		return false
+	}
+
+	// Clean the file path for consistent matching
+	cleanPath := filepath.Clean(filePath)
+	fileName := filepath.Base(cleanPath)
+
+	for _, pattern := range excludePatterns {
+		// Try matching against the full path
+		if matched, _ := filepath.Match(pattern, cleanPath); matched {
+			return true
+		}
+
+		// Try matching against just the filename
+		if matched, _ := filepath.Match(pattern, fileName); matched {
+			return true
+		}
+
+		// Try matching against directory names in the path
+		if strings.Contains(cleanPath, pattern) {
+			return true
+		}
+
+		// Handle patterns that end with / as directory exclusions
+		if strings.HasSuffix(pattern, "/") {
+			dirPattern := strings.TrimSuffix(pattern, "/")
+			pathParts := strings.Split(cleanPath, string(filepath.Separator))
+			for _, part := range pathParts {
+				if matched, _ := filepath.Match(dirPattern, part); matched {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 // getFilesToProcess returns a list of files to process based on the input path
 // Supports glob patterns like *.pdf, files, and directories
-func getFilesToProcess(inputPath string, recursive bool) (*ProcessingResult, error) {
+func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string) (*ProcessingResult, error) {
 	result := &ProcessingResult{
 		FilesToProcess: []string{},
 		SkippedFiles:   []SkippedFile{},
@@ -1847,6 +1927,15 @@ func getFilesToProcess(inputPath string, recursive bool) (*ProcessingResult, err
 			}
 
 			if info.Size() <= sizeLimit {
+				// Check if file is excluded
+				if isExcluded(inputPath, excludePatterns) {
+					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+						Path:   inputPath,
+						Reason: "excluded by --exclude pattern",
+						Silent: false,
+					})
+					return result, nil
+				}
 				result.FilesToProcess = append(result.FilesToProcess, inputPath)
 				return result, nil
 			}
@@ -1903,6 +1992,11 @@ func getFilesToProcess(inputPath string, recursive bool) (*ProcessingResult, err
 				continue
 			}
 			if info.Mode().IsRegular() {
+				// Check if file is excluded
+				if isExcluded(cleanMatch, excludePatterns) {
+					continue // Skip excluded files
+				}
+
 				if info.Size() <= 100*1024*1024 {
 					filesToProcess = append(filesToProcess, cleanMatch)
 				} else {
@@ -1960,6 +2054,15 @@ func getFilesToProcess(inputPath string, recursive bool) (*ProcessingResult, err
 			})
 			return result, nil
 		}
+		// Check if file is excluded
+		if isExcluded(cleanPath, excludePatterns) {
+			result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+				Path:   cleanPath,
+				Reason: "excluded by --exclude pattern",
+				Silent: false,
+			})
+			return result, nil
+		}
 		result.FilesToProcess = append(result.FilesToProcess, cleanPath)
 		return result, nil
 	}
@@ -1983,6 +2086,14 @@ func getFilesToProcess(inputPath string, recursive bool) (*ProcessingResult, err
 			// Skip directories if not recursive
 			if !recursive && info.IsDir() && path != cleanPath {
 				return filepath.SkipDir
+			}
+
+			// Check if path is excluded (for both files and directories)
+			if isExcluded(cleanWalkPath, excludePatterns) {
+				if info.IsDir() {
+					return filepath.SkipDir // Skip entire directory
+				}
+				return nil // Skip file
 			}
 
 			// Only add regular files
