@@ -232,6 +232,8 @@ go build -ldflags="-s -w" -o ferret-scan cmd/main.go
 - `--preprocess-only`: Output preprocessed text and exit (no validation or redaction)
 - `-p`: Short form of `--preprocess-only`
 - `--recursive`: Recursively scan directories (default: false)
+- `--exclude`: Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')
+  - **Note**: Uses glob patterns, not regex - dots and other characters are literal (use '.git', not '\\.git')
 
 #### Redaction Options
 - `--enable-redaction`: Enable redaction of sensitive data found in documents
@@ -308,6 +310,24 @@ Use a specific profile from the configuration file:
 
 ```bash
 ./ferret-scan --file sample.txt --config ferret.yaml --profile thorough
+```
+
+### File Exclusion Examples
+
+Exclude specific files or directories from scanning:
+
+```bash
+# Exclude .git directory and log files
+./ferret-scan --file . --recursive --exclude '.git,*.log'
+
+# Exclude multiple patterns
+./ferret-scan --file /path/to/project --recursive --exclude 'node_modules,target,*.tmp'
+
+# Exclude specific files when using glob patterns
+./ferret-scan --file '*.txt' --exclude 'test_*,temp.txt'
+
+# Exclude directories with trailing slash
+./ferret-scan --file . --recursive --exclude 'build/,dist/'
 ```
 
 Scan for intellectual property (requires configuration):
