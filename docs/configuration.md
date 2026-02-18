@@ -787,3 +787,47 @@ profiles:
     generate_suppressions: false
     description: "Comprehensive scan with all features and suppression support"
 ```
+
+## Redaction Configuration
+
+Redaction is enabled with `--enable-redaction` and configured under the `redaction` key.
+
+```yaml
+redaction:
+  enabled: false                    # Overridden by --enable-redaction flag
+  output_dir: "./redacted"          # Where redacted copies are written
+  strategy: "format_preserving"     # simple | format_preserving | synthetic
+  audit_log_file: ""                # Optional path for JSON compliance log
+  memory_scrub: true                # Scrub sensitive data from memory after processing
+  audit_trail: true                 # Write audit trail alongside redacted files
+
+  strategies:
+    simple:
+      replacement: "[REDACTED]"     # Placeholder text for simple strategy
+
+    format_preserving:
+      preserve_length: true         # Keep original character count
+      preserve_format: true         # Keep separators (dashes, dots, @, etc.)
+
+    synthetic:
+      secure: true                  # Use crypto/rand for generation
+```
+
+### Strategy Behaviour
+
+| Strategy | What it produces | Best for |
+|----------|-----------------|----------|
+| `simple` | `[CREDIT-CARD-REDACTED]` | External sharing, maximum security |
+| `format_preserving` | `4916****2832`, `j***@acme.com` | Downstream format validation |
+| `synthetic` | `4111356762812018`, `Regan Dubois` | Test data generation, realistic output |
+
+### Supported File Types
+
+| Type | Redaction method |
+|------|-----------------|
+| `.txt` `.csv` `.json` `.yaml` `.md` `.log` | Direct string replacement |
+| `.docx` `.xlsx` `.pptx` | XML element replacement inside ZIP |
+| `.jpg` `.png` `.tiff` `.gif` `.bmp` `.webp` | EXIF metadata removal only |
+| `.pdf` | ⚠️ Not yet implemented |
+
+See the [Redaction Guide](user-guides/README-Redaction.md) for full details including per-validator behaviour and synthetic token formats.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ferret-scan/internal/redactors"
+	"ferret-scan/internal/validators/personname"
 )
 
 // SyntheticDataStrategy implements synthetic data generation for redaction
@@ -26,6 +27,11 @@ type SyntheticDataStrategy struct {
 
 	// validators maps data types to their validation functions
 	validators map[string]DataValidator
+
+	// firstNames and lastNames are pre-built slices from the embedded name databases,
+	// loaded once at construction time for O(1) random access.
+	firstNames []string
+	lastNames  []string
 }
 
 // DataGenerator is a function that generates synthetic data
@@ -51,6 +57,28 @@ func NewSyntheticDataStrategy() *SyntheticDataStrategy {
 		},
 		generators: make(map[string]DataGenerator),
 		validators: make(map[string]DataValidator),
+	}
+
+	// Pre-build name slices from the embedded databases (~5200 first, ~2100 last names).
+	if db, err := personname.LoadNameDatabases(); err == nil && db != nil {
+		strategy.firstNames = make([]string, 0, len(db.FirstNames))
+		for name := range db.FirstNames {
+			if len(name) > 0 {
+				strategy.firstNames = append(strategy.firstNames, strings.ToUpper(name[:1])+name[1:])
+			}
+		}
+		strategy.lastNames = make([]string, 0, len(db.LastNames))
+		for name := range db.LastNames {
+			if len(name) > 0 {
+				strategy.lastNames = append(strategy.lastNames, strings.ToUpper(name[:1])+name[1:])
+			}
+		}
+	}
+	if len(strategy.firstNames) == 0 {
+		strategy.firstNames = []string{"James", "Mary", "Robert", "Patricia", "Michael", "Jennifer"}
+	}
+	if len(strategy.lastNames) == 0 {
+		strategy.lastNames = []string{"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia"}
 	}
 
 	// Register generators
@@ -323,61 +351,39 @@ func (sds *SyntheticDataStrategy) generatePhone(original string, context Redacti
 
 // generatePersonName generates a synthetic person name
 func (sds *SyntheticDataStrategy) generatePersonName(original string, context RedactionContext) (string, error) {
-	firstNames := []string{
-		"John", "Jane", "Michael", "Sarah", "David", "Lisa", "Robert", "Mary",
-		"James", "Patricia", "William", "Jennifer", "Richard", "Linda", "Joseph", "Elizabeth",
-		"Thomas", "Barbara", "Christopher", "Susan", "Charles", "Jessica", "Daniel", "Karen",
+	firstIdx, err := generateSecureRandom(0, int64(len(sds.firstNames)))
+	if err != nil {
+		return "", fmt.Errorf("failed to pick first name: %w", err)
+	}
+	lastIdx, err := generateSecureRandom(0, int64(len(sds.lastNames)))
+	if err != nil {
+		return "", fmt.Errorf("failed to pick last name: %w", err)
 	}
 
-	lastNames := []string{
-		"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis",
-		"Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas",
-		"Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White",
-	}
-
-	// Determine if original is first name only, last name only, or full name
 	parts := strings.Fields(original)
-
-	var syntheticName string
-
-	if len(parts) == 1 {
-		// Single name - could be first or last
-		if strings.Title(parts[0]) == parts[0] {
-			// Likely a first name
-			firstIndex, err := generateSecureRandom(0, int64(len(firstNames)))
-			if err != nil {
-				return "", fmt.Errorf("failed to generate first name index: %w", err)
-			}
-			syntheticName = firstNames[firstIndex]
-		} else {
-			// Likely a last name
-			lastIndex, err := generateSecureRandom(0, int64(len(lastNames)))
-			if err != nil {
-				return "", fmt.Errorf("failed to generate last name index: %w", err)
-			}
-			syntheticName = lastNames[lastIndex]
-		}
-	} else {
-		// Multiple parts - generate full name
-		firstIndex, err := generateSecureRandom(0, int64(len(firstNames)))
-		if err != nil {
-			return "", fmt.Errorf("failed to generate first name index: %w", err)
-		}
-
-		lastIndex, err := generateSecureRandom(0, int64(len(lastNames)))
-		if err != nil {
-			return "", fmt.Errorf("failed to generate last name index: %w", err)
-		}
-
-		if len(parts) == 2 {
-			syntheticName = fmt.Sprintf("%s %s", firstNames[firstIndex], lastNames[lastIndex])
-		} else {
-			// Handle middle names/initials
-			syntheticName = fmt.Sprintf("%s %s %s", firstNames[firstIndex], "M.", lastNames[lastIndex])
-		}
+	title := ""
+	nameParts := parts
+	if len(parts) > 0 && strings.HasSuffix(parts[0], ".") && len(parts[0]) <= 5 {
+		title = parts[0] + " "
+		nameParts = parts[1:]
 	}
 
-	return syntheticName, nil
+	first := sds.firstNames[firstIdx]
+	last := sds.lastNames[lastIdx]
+
+	switch len(nameParts) {
+	case 0, 1:
+		return title + first, nil
+	case 2:
+		return title + first + " " + last, nil
+	default:
+		midIdx, err := generateSecureRandom(0, int64(len(sds.firstNames)))
+		if err != nil {
+			midIdx = firstIdx
+		}
+		middle := strings.ToUpper(sds.firstNames[midIdx][:1]) + "."
+		return title + first + " " + middle + " " + last, nil
+	}
 }
 
 // generateAddress generates a synthetic address
