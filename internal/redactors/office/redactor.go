@@ -6,18 +6,16 @@ package office
 import (
 	"archive/zip"
 	"bytes"
-	"crypto/rand"
 	"encoding/xml"
 	"ferret-scan/internal/detector"
 	"ferret-scan/internal/observability"
 	"ferret-scan/internal/redactors"
 	"ferret-scan/internal/redactors/position"
+	"ferret-scan/internal/redactors/replacement"
 	"fmt"
 	"io"
-	"math/big"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -593,406 +591,27 @@ func (or *OfficeRedactor) repackageOfficeDocument(contents *OfficeZipContents, o
 }
 
 // generateReplacement generates a replacement string based on the redaction strategy
+// generateReplacement delegates to the shared replacement package.
 func (or *OfficeRedactor) generateReplacement(originalText, dataType string, strategy redactors.RedactionStrategy) (string, error) {
-	switch strategy {
-	case redactors.RedactionSimple:
-		return or.generateSimpleReplacement(dataType), nil
-
-	case redactors.RedactionFormatPreserving:
-		return or.generateFormatPreservingReplacement(originalText, dataType), nil
-
-	case redactors.RedactionSynthetic:
-		return or.generateSyntheticReplacement(originalText, dataType)
-
-	default:
-		return or.generateSimpleReplacement(dataType), nil
-	}
-}
-
-// generateSimpleReplacement creates a simple placeholder replacement
-func (or *OfficeRedactor) generateSimpleReplacement(dataType string) string {
-	switch dataType {
-	case "CREDIT_CARD":
-		return "[CREDIT-CARD-REDACTED]"
-	case "SSN":
-		return "[SSN-REDACTED]"
-	case "EMAIL":
-		return "[EMAIL-REDACTED]"
-	case "PHONE":
-		return "[PHONE-REDACTED]"
-	case "SECRETS":
-		return "[SECRET-REDACTED]"
-	case "IP_ADDRESS":
-		return "[IP-ADDRESS-REDACTED]"
-	case "PASSPORT":
-		return "[PASSPORT-REDACTED]"
-	default:
-		return "[" + dataType + "-REDACTED]"
-	}
-}
-
-// generateFormatPreservingReplacement creates a replacement that preserves the original format
-func (or *OfficeRedactor) generateFormatPreservingReplacement(originalText, dataType string) string {
-	// Use similar logic as other redactors for consistency
-	switch dataType {
-	case "CREDIT_CARD":
-		return or.preserveCreditCardFormat(originalText)
-	case "SSN":
-		return or.preserveSSNFormat(originalText)
-	case "EMAIL":
-		return or.preserveEmailFormat(originalText)
-	case "PHONE":
-		return or.preservePhoneFormat(originalText)
-	case "IP_ADDRESS":
-		return or.preserveIPFormat(originalText)
-	default:
-		// For unknown types, replace with asterisks of same length
-		return strings.Repeat("*", len(originalText))
-	}
-}
-
-// generateSyntheticReplacement creates realistic but fake data
-func (or *OfficeRedactor) generateSyntheticReplacement(originalText, dataType string) (string, error) {
-	// Use similar logic as other redactors for consistency
-	switch dataType {
-	case "CREDIT_CARD":
-		return or.generateSyntheticCreditCard(originalText)
-	case "SSN":
-		return or.generateSyntheticSSN(originalText)
-	case "EMAIL":
-		return or.generateSyntheticEmail(originalText)
-	case "PHONE":
-		return or.generateSyntheticPhone(originalText)
-	case "IP_ADDRESS":
-		return or.generateSyntheticIP(originalText)
-	default:
-		// For unknown types, generate random alphanumeric string of same length
-		return or.generateRandomString(len(originalText))
-	}
-}
-
-// Helper methods for format preservation and synthetic data generation
-// (Proper implementations matching PlainText redactor behavior)
-
-func (or *OfficeRedactor) preserveCreditCardFormat(original string) string {
-	// Preserve first 4 and last 4 digits, mask the middle
-	cleaned := regexp.MustCompile(`\D`).ReplaceAllString(original, "")
-	if len(cleaned) < 8 {
-		return strings.Repeat("*", len(original))
-	}
-
-	first4 := cleaned[:4]
-	last4 := cleaned[len(cleaned)-4:]
-	middle := strings.Repeat("*", len(cleaned)-8)
-
-	// Preserve original formatting
-	result := original
-	digitPattern := regexp.MustCompile(`\d`)
-	digits := first4 + middle + last4
-	digitIndex := 0
-
-	result = digitPattern.ReplaceAllStringFunc(result, func(match string) string {
-		if digitIndex < len(digits) {
-			replacement := string(digits[digitIndex])
-			digitIndex++
-			return replacement
-		}
-		return "*"
-	})
-
-	return result
-}
-
-func (or *OfficeRedactor) preserveSSNFormat(original string) string {
-	// Pattern: ***-**-1234 (preserve last 4 digits)
-	cleaned := regexp.MustCompile(`\D`).ReplaceAllString(original, "")
-	if len(cleaned) < 4 {
-		return strings.Repeat("*", len(original))
-	}
-
-	last4 := cleaned[len(cleaned)-4:]
-
-	// Replace digits with pattern, preserving last 4
-	result := original
-	digitPattern := regexp.MustCompile(`\d`)
-	digitIndex := 0
-
-	result = digitPattern.ReplaceAllStringFunc(result, func(match string) string {
-		if digitIndex < len(cleaned)-4 {
-			digitIndex++
-			return "*"
-		}
-		if digitIndex < len(cleaned) {
-			replacement := string(last4[digitIndex-(len(cleaned)-4)])
-			digitIndex++
-			return replacement
-		}
-		return "*"
-	})
-
-	return result
-}
-
-func (or *OfficeRedactor) preserveEmailFormat(original string) string {
-	// Pattern: u***@example.com (preserve first char and domain)
-	parts := strings.Split(original, "@")
-	if len(parts) != 2 {
-		return strings.Repeat("*", len(original))
-	}
-
-	username := parts[0]
-	domain := parts[1]
-
-	if len(username) == 0 {
-		return "*@" + domain
-	}
-
-	if len(username) == 1 {
-		return username + "@" + domain
-	}
-
-	maskedUsername := string(username[0]) + strings.Repeat("*", len(username)-1)
-	return maskedUsername + "@" + domain
-}
-
-func (or *OfficeRedactor) preservePhoneFormat(original string) string {
-	// Preserve format but mask middle digits
-	cleaned := regexp.MustCompile(`\D`).ReplaceAllString(original, "")
-	if len(cleaned) < 6 {
-		return strings.Repeat("*", len(original))
-	}
-
-	// Keep first 3 and last 4, mask middle
-	first3 := cleaned[:3]
-	last4 := cleaned[len(cleaned)-4:]
-	middle := strings.Repeat("*", len(cleaned)-7)
-
-	maskedDigits := first3 + middle + last4
-
-	// Apply to original format
-	result := original
-	digitPattern := regexp.MustCompile(`\d`)
-	digitIndex := 0
-
-	result = digitPattern.ReplaceAllStringFunc(result, func(match string) string {
-		if digitIndex < len(maskedDigits) {
-			replacement := string(maskedDigits[digitIndex])
-			digitIndex++
-			return replacement
-		}
-		return "*"
-	})
-
-	return result
-}
-
-func (or *OfficeRedactor) preserveIPFormat(original string) string {
-	// Pattern: 192.168.*.*
-	parts := strings.Split(original, ".")
-	if len(parts) != 4 {
-		return strings.Repeat("*", len(original))
-	}
-
-	// Keep first two octets, mask last two
-	return parts[0] + "." + parts[1] + ".*.*"
-}
-
-func (or *OfficeRedactor) generateSyntheticCreditCard(original string) (string, error) {
-	// Generate a valid Luhn number that looks real but isn't
-	// Use test card prefixes that are known to be invalid
-	testPrefixes := []string{"4000", "4111", "5555", "3782"}
-
-	prefix := testPrefixes[or.secureRandom(len(testPrefixes))]
-
-	// Generate remaining digits
-	var digits []int
-	for _, char := range prefix {
-		if char >= '0' && char <= '9' {
-			digits = append(digits, int(char-'0'))
-		}
-	}
-
-	// Add random digits to make 15 digits total (16th will be check digit)
-	for len(digits) < 15 {
-		digits = append(digits, or.secureRandom(10))
-	}
-
-	// Calculate Luhn check digit
-	checkDigit := or.calculateLuhnCheckDigit(digits)
-	digits = append(digits, checkDigit)
-
-	// Convert to string with original formatting
-	result := ""
-	digitIndex := 0
-	for _, char := range original {
-		if char >= '0' && char <= '9' {
-			if digitIndex < len(digits) {
-				result += fmt.Sprintf("%d", digits[digitIndex])
-				digitIndex++
-			} else {
-				result += "0"
-			}
-		} else {
-			result += string(char)
-		}
-	}
-
-	return result, nil
-}
-
-func (or *OfficeRedactor) generateSyntheticSSN(original string) (string, error) {
-	// Generate a synthetic SSN that follows format but is invalid
-	// Use area numbers that are known to be invalid (000, 666, 900-999)
-	invalidAreas := []string{"000", "666", "900", "999"}
-	area := invalidAreas[or.secureRandom(len(invalidAreas))]
-
-	group := fmt.Sprintf("%02d", or.secureRandom(100))
-	serial := fmt.Sprintf("%04d", or.secureRandom(10000))
-
-	syntheticSSN := area + group + serial
-
-	// Apply original formatting
-	result := original
-	digitPattern := regexp.MustCompile(`\d`)
-	digitIndex := 0
-
-	result = digitPattern.ReplaceAllStringFunc(result, func(match string) string {
-		if digitIndex < len(syntheticSSN) {
-			replacement := string(syntheticSSN[digitIndex])
-			digitIndex++
-			return replacement
-		}
-		return "0"
-	})
-
-	return result, nil
-}
-
-func (or *OfficeRedactor) generateSyntheticEmail(original string) (string, error) {
-	// Generate a synthetic email with example.com domain
-	parts := strings.Split(original, "@")
-	if len(parts) != 2 {
-		return "user@example.com", nil
-	}
-
-	// Generate random username
-	username, err := or.generateRandomString(len(parts[0]))
-	if err != nil {
-		return "", err
-	}
-
-	return strings.ToLower(username) + "@example.com", nil
-}
-
-func (or *OfficeRedactor) generateSyntheticPhone(original string) (string, error) {
-	// Generate synthetic phone with 555 area code (reserved for fiction)
-	cleaned := regexp.MustCompile(`\D`).ReplaceAllString(original, "")
-
-	syntheticDigits := "555"
-	for len(syntheticDigits) < len(cleaned) {
-		syntheticDigits += fmt.Sprintf("%d", or.secureRandom(10))
-	}
-
-	// Apply to original format
-	result := original
-	digitPattern := regexp.MustCompile(`\d`)
-	digitIndex := 0
-
-	result = digitPattern.ReplaceAllStringFunc(result, func(match string) string {
-		if digitIndex < len(syntheticDigits) {
-			replacement := string(syntheticDigits[digitIndex])
-			digitIndex++
-			return replacement
-		}
-		return "0"
-	})
-
-	return result, nil
-}
-
-func (or *OfficeRedactor) generateSyntheticIP(original string) (string, error) {
-	// Generate IP in private range (192.168.x.x)
-	return fmt.Sprintf("192.168.%d.%d",
-		or.secureRandom(256),
-		or.secureRandom(256)), nil
-}
-
-func (or *OfficeRedactor) generateRandomString(length int) (string, error) {
-	if length <= 0 {
-		return "", nil
-	}
-
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, length)
-
-	for i := range result {
-		result[i] = charset[or.secureRandom(len(charset))]
-	}
-
-	return string(result), nil
-}
-
-// secureRandom generates a cryptographically secure random number
-func (or *OfficeRedactor) secureRandom(max int) int {
-	if max <= 0 {
-		return 0
-	}
-
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
-	if err != nil {
-		// Fallback to a simple approach if crypto/rand fails
-		return int(time.Now().UnixNano()) % max
-	}
-
-	return int(n.Int64())
-}
-
-// calculateLuhnCheckDigit calculates the Luhn check digit for a credit card number
-func (or *OfficeRedactor) calculateLuhnCheckDigit(digits []int) int {
-	sum := 0
-	alternate := true
-
-	// Process digits from right to left
-	for i := len(digits) - 1; i >= 0; i-- {
-		digit := digits[i]
-
-		if alternate {
-			digit *= 2
-			if digit > 9 {
-				digit = digit/10 + digit%10
-			}
-		}
-
-		sum += digit
-		alternate = !alternate
-	}
-
-	return (10 - (sum % 10)) % 10
+	return replacement.Generate(originalText, dataType, strategy), nil
 }
 
 // generateVerificationHash creates a hash of surrounding context for verification
 func (or *OfficeRedactor) generateVerificationHash(text string, startPos, endPos int) string {
-	// Validate input parameters
 	if startPos < 0 || endPos > len(text) || startPos >= endPos {
 		return redactors.GenerateContextHash("invalid_position")
 	}
-
-	// Extract context around the match
 	contextStart := startPos - 20
 	if contextStart < 0 {
 		contextStart = 0
 	}
-
 	contextEnd := endPos + 20
 	if contextEnd > len(text) {
 		contextEnd = len(text)
 	}
-
-	// Additional safety check
-	if contextStart > len(text) || contextEnd < 0 || contextStart >= contextEnd {
+	if contextStart >= contextEnd {
 		return redactors.GenerateContextHash("invalid_context")
 	}
-
 	context := text[contextStart:startPos] + "[HIDDEN]" + text[endPos:contextEnd]
 	return redactors.GenerateContextHash(context)
 }
@@ -1002,13 +621,11 @@ func (or *OfficeRedactor) calculateOverallConfidence(redactionMap []redactors.Re
 	if len(redactionMap) == 0 {
 		return 1.0
 	}
-
-	totalConfidence := 0.0
-	for _, mapping := range redactionMap {
-		totalConfidence += mapping.Confidence
+	total := 0.0
+	for _, m := range redactionMap {
+		total += m.Confidence
 	}
-
-	return totalConfidence / float64(len(redactionMap))
+	return total / float64(len(redactionMap))
 }
 
 // logEvent logs an event if observer is available
