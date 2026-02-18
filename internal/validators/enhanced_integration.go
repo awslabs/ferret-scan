@@ -357,8 +357,9 @@ type ValidationRecommendation struct {
 	ExpectedGain float64
 }
 
-// getDefaultConfig returns default configuration (caching disabled)
-func getDefaultConfig() *EnhancedValidatorConfig {
+// DefaultEnhancedValidatorConfig returns the default configuration for the enhanced validator manager.
+// Use this instead of inlining magic numbers at call sites.
+func DefaultEnhancedValidatorConfig() *EnhancedValidatorConfig {
 	return &EnhancedValidatorConfig{
 		EnableBatchProcessing:        true,
 		BatchSize:                    100,
@@ -371,9 +372,14 @@ func getDefaultConfig() *EnhancedValidatorConfig {
 		DefaultLanguage:              "en",
 		SupportedLanguages:           []string{"en", "es", "fr", "de", "it", "pt", "ja", "zh", "ko"},
 		EnableAdvancedAnalytics:      true,
-		EnableRealTimeMetrics:        true,
+		EnableRealTimeMetrics:        false,
 		EnableConfidenceCalibration:  true,
 	}
+}
+
+// getDefaultConfig is the internal alias used by NewEnhancedValidatorManager.
+func getDefaultConfig() *EnhancedValidatorConfig {
+	return DefaultEnhancedValidatorConfig()
 }
 
 // Initialize supporting components (simplified, no caching)

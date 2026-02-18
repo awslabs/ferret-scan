@@ -377,37 +377,30 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 
 // runFullCLIScan executes the full CLI scanning logic with configuration and suppression support
 func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, checks string, verbose, recursive bool) ([]detector.Match, []detector.SuppressedMatch, int, error) {
-	// Load configuration (same as CLI)
 	cfg := ws.loadConfiguration("")
 
-	// Parse checks parameter (same as CLI)
 	var checksSlice []string
 	if checks != "" && checks != "all" {
 		checksSlice = strings.Split(checks, ",")
 	}
 
-	// Resolve final configuration (same logic as CLI)
-	_ = ws.resolveWebConfiguration(cfg, confidence, checks, verbose, recursive)
-
-	// Initialize suppression manager (same as CLI)
 	suppressionManager, err := ws.initializeSuppressionManager("")
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to initialize suppression manager: %v", err)
 	}
 
-	// Use the core scanning function that CLI uses
+	// Set original filename on matches before suppression matching
 	scanConfig := core.ScanConfig{
 		FilePath:            filePath,
 		Checks:              checksSlice,
-		Debug:               false, // Web doesn't use debug mode
+		Debug:               false,
 		Verbose:             verbose,
 		Recursive:           recursive,
 		EnablePreprocessors: true,
-		EnableRedaction:     false, // Web doesn't support redaction
-		RedactionStrategy:   "",
-		RedactionOutputDir:  "",
+		EnableRedaction:     false,
 		Config:              cfg,
-		Profile:             nil, // Web doesn't use profiles
+		Profile:             nil,
+		SuppressionManager:  suppressionManager,
 	}
 
 	result, err := core.ScanFile(scanConfig)
@@ -415,43 +408,16 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 		return nil, nil, 0, fmt.Errorf("scanning failed: %v", err)
 	}
 
-	// Update filenames to use original filename (critical for suppression matching)
-	// Keep original filename for suppression matching first
-	for i := range result.Matches {
-		result.Matches[i].Filename = originalFilename
-	}
-
-	// Apply suppressions (same logic as CLI) - MUST happen before filename sanitization
-	var unsuppressedMatches []detector.Match
-	var suppressedMatches []detector.SuppressedMatch
-	suppressedCount := 0
-
-	for _, match := range result.Matches {
-		if suppressed, rule := suppressionManager.IsSuppressed(match); suppressed {
-			suppressedCount++
-			// Collect suppressed findings
-			suppressedMatches = append(suppressedMatches, detector.SuppressedMatch{
-				Match:        match,
-				SuppressedBy: rule.ID,
-				RuleReason:   rule.Reason,
-				ExpiresAt:    rule.ExpiresAt,
-				Expired:      rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt),
-			})
-		} else {
-			unsuppressedMatches = append(unsuppressedMatches, match)
-		}
-	}
-
-	// NOW sanitize filenames for safe web display (after suppression matching)
+	// Update filenames to original name for suppression matching, then sanitize for display
 	safeFilename := ws.sanitizeFilenameForDisplay(originalFilename)
-	for i := range unsuppressedMatches {
-		unsuppressedMatches[i].Filename = safeFilename
+	for i := range result.Matches {
+		result.Matches[i].Filename = safeFilename
 	}
-	for i := range suppressedMatches {
-		suppressedMatches[i].Match.Filename = safeFilename
+	for i := range result.SuppressedMatches {
+		result.SuppressedMatches[i].Match.Filename = safeFilename
 	}
 
-	return unsuppressedMatches, suppressedMatches, suppressedCount, nil
+	return result.Matches, result.SuppressedMatches, result.SuppressedCount, nil
 }
 
 // handleExport exports scan results in the requested format
@@ -687,19 +653,7 @@ func (ws *WebServer) normalizePathForWeb(path string) string {
 
 // loadConfiguration loads the configuration file or returns default config (same as CLI)
 func (ws *WebServer) loadConfiguration(configFile string) *config.Config {
-	// If config file is not specified, try to find one in standard locations
-	configPath := configFile
-	if configPath == "" {
-		configPath = config.FindConfigFile()
-	}
-
-	// Load configuration (will use defaults if file not found)
-	cfg, err := config.LoadConfig(configPath)
-	if err != nil {
-		// Use default configuration for web mode
-		cfg, _ = config.LoadConfig("")
-	}
-	return cfg
+	return config.LoadConfigOrDefault(configFile)
 }
 
 // webConfiguration holds resolved configuration values for web mode
