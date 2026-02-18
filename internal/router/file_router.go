@@ -24,6 +24,9 @@ type FileRouter struct {
 	observer      *observability.StandardObserver
 }
 
+// MaxFileSize is the default maximum file size the router will process (100 MB).
+const MaxFileSize = int64(100 * 1024 * 1024)
+
 // NewFileRouter creates a new file router
 func NewFileRouter(debug bool) *FileRouter {
 	level := observability.ObservabilityMetrics
@@ -56,7 +59,7 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors, enabl
 	// Check file size
 	cleanPath := filepath.Clean(filePath)
 	if info, err := os.Stat(cleanPath); err == nil {
-		maxSize := int64(100 * 1024 * 1024) // 100MB default
+		maxSize := MaxFileSize
 		// GENAI_DISABLED: if isAudioFile(ext) {
 		//	maxSize = 500 * 1024 * 1024 // 500MB for audio
 		// }
@@ -222,7 +225,7 @@ func (fr *FileRouter) CreateProcessingContext(filePath string, enableGenAI bool,
 		// GENAI_DISABLED: EnableGenAI:   enableGenAI,
 		// GENAI_DISABLED: GenAIServices: genaiServices,
 		// GENAI_DISABLED: GenAIRegion:   genaiRegion,
-		MaxFileSize: 100 * 1024 * 1024, // 100MB default
+		MaxFileSize: MaxFileSize,
 		RequestID:   requestID,
 		StartTime:   time.Now(),
 		Debug:       debug,

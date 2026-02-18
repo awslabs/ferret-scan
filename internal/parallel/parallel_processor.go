@@ -103,7 +103,17 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 		result := <-pp.workerPool.Results()
 
 		mu.Lock()
-		if result.Error == nil {
+		if result.Error != nil {
+			if pp.observer != nil {
+				pp.observer.LogOperation(observability.StandardObservabilityData{
+					Component: "parallel_processor",
+					Operation: "file_processing",
+					FilePath:  result.FilePath,
+					Success:   false,
+					Error:     result.Error.Error(),
+				})
+			}
+		} else {
 			allMatches = append(allMatches, result.Matches...)
 			processedCount++
 		}
@@ -138,11 +148,4 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 	}
 
 	return allMatches, stats, nil
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

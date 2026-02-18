@@ -3,28 +3,25 @@
 
 package resilience
 
-// GENAI_DISABLED: This file provides minimal stub implementations for resilience features
-// The backoff/v4 dependency has been removed, so retry functionality is simplified
-// to basic error handling without exponential backoff.
-
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"time"
 )
 
-// RetryConfig holds retry configuration (simplified version)
+// RetryConfig holds retry configuration.
 type RetryConfig struct {
 	MaxRetries      int                          // Maximum number of retry attempts
 	InitialInterval time.Duration                // Initial retry interval
 	MaxInterval     time.Duration                // Maximum retry interval
-	Multiplier      float64                      // Backoff multiplier
+	Multiplier      float64                      // Exponential backoff multiplier (e.g. 2.0 doubles each attempt)
 	MaxElapsedTime  time.Duration                // Maximum total time for all retries
-	Jitter          bool                         // Add randomization to intervals
-	OnRetry         func(attempt int, err error) // Callback on retry
+	Jitter          bool                         // Add up to 25% random jitter to spread retries
+	OnRetry         func(attempt int, err error) // Optional callback invoked before each retry
 }
 
-// DefaultRetryConfig returns sensible defaults for retry behavior
+// DefaultRetryConfig returns sensible defaults for retry behavior.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxRetries:      3,
@@ -33,13 +30,11 @@ func DefaultRetryConfig() RetryConfig {
 		Multiplier:      2.0,
 		MaxElapsedTime:  2 * time.Minute,
 		Jitter:          true,
-		OnRetry: func(attempt int, err error) {
-			// Default: no-op, can be overridden for logging
-		},
+		OnRetry:         func(attempt int, err error) {},
 	}
 }
 
-// AWSRetryConfig returns retry configuration optimized for AWS services
+// AWSRetryConfig returns retry configuration optimized for AWS services.
 func AWSRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxRetries:      5,
@@ -48,32 +43,35 @@ func AWSRetryConfig() RetryConfig {
 		Multiplier:      2.0,
 		MaxElapsedTime:  5 * time.Minute,
 		Jitter:          true,
-		OnRetry: func(attempt int, err error) {
-			// Default: no-op, can be overridden for logging
-		},
+		OnRetry:         func(attempt int, err error) {},
 	}
 }
 
-// RetryableOperation represents an operation that can be retried
+// RetryableOperation represents an operation that can be retried.
 type RetryableOperation func(ctx context.Context) error
 
-// RetryWithBackoff executes an operation with simple retry logic (no exponential backoff)
-// GENAI_DISABLED: Simplified implementation without backoff library
+// RetryWithBackoff executes an operation with exponential backoff and optional jitter.
+// The delay before attempt n is: InitialInterval * Multiplier^(n-1), capped at MaxInterval.
+// When Jitter is true, up to 25% random noise is added to spread concurrent retries.
 func RetryWithBackoff(ctx context.Context, config RetryConfig, operation RetryableOperation) error {
 	var lastErr error
 
 	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
 		if attempt > 0 {
-			// Simple linear backoff instead of exponential
-			delay := config.InitialInterval * time.Duration(attempt)
-			if delay > config.MaxInterval {
-				delay = config.MaxInterval
+			// Exponential backoff: InitialInterval * Multiplier^(attempt-1)
+			delay := float64(config.InitialInterval)
+			for i := 1; i < attempt; i++ {
+				delay *= config.Multiplier
 			}
+			if config.Jitter {
+				delay += delay * 0.25 * rand.Float64()
+			}
+			capped := min(time.Duration(delay), config.MaxInterval)
 
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(delay):
+			case <-time.After(capped):
 			}
 
 			if config.OnRetry != nil {
@@ -88,7 +86,6 @@ func RetryWithBackoff(ctx context.Context, config RetryConfig, operation Retryab
 
 		lastErr = err
 
-		// Check if error is retryable
 		classified := ClassifyError(err)
 		if !classified.IsRetryable() {
 			return err
@@ -98,7 +95,7 @@ func RetryWithBackoff(ctx context.Context, config RetryConfig, operation Retryab
 	return lastErr
 }
 
-// RetryStats holds statistics about retry operations
+// RetryStats holds statistics about retry operations.
 type RetryStats struct {
 	TotalAttempts   int           `json:"total_attempts"`
 	SuccessfulAfter int           `json:"successful_after"` // 0 if failed, attempt number if succeeded
@@ -107,7 +104,7 @@ type RetryStats struct {
 	ErrorTypes      []string      `json:"error_types,omitempty"`
 }
 
-// RetryWithStats executes an operation with retry and collects statistics
+// RetryWithStats executes an operation with retry and collects statistics.
 func RetryWithStats(ctx context.Context, config RetryConfig, operation RetryableOperation) (*RetryStats, error) {
 	stats := &RetryStats{
 		ErrorTypes: make([]string, 0),
@@ -115,21 +112,17 @@ func RetryWithStats(ctx context.Context, config RetryConfig, operation Retryable
 
 	start := time.Now()
 
-	// Wrap operation to collect stats
 	wrappedOperation := func(ctx context.Context) error {
 		stats.TotalAttempts++
 		err := operation(ctx)
-
 		if err != nil {
 			classified := ClassifyError(err)
 			stats.LastError = err.Error()
 			stats.ErrorTypes = append(stats.ErrorTypes, classified.Type.String())
 		}
-
 		return err
 	}
 
-	// Wrap config callback to collect stats
 	originalOnRetry := config.OnRetry
 	config.OnRetry = func(attempt int, err error) {
 		if originalOnRetry != nil {
@@ -147,16 +140,14 @@ func RetryWithStats(ctx context.Context, config RetryConfig, operation Retryable
 	return stats, err
 }
 
-// RetryWithCircuitBreaker combines retry logic with circuit breaker protection
+// RetryWithCircuitBreaker combines retry logic with circuit breaker protection.
 func RetryWithCircuitBreaker(ctx context.Context, retryConfig RetryConfig, cb *CircuitBreaker, operation RetryableOperation) error {
-	wrappedOperation := func(ctx context.Context) error {
+	return RetryWithBackoff(ctx, retryConfig, func(ctx context.Context) error {
 		return cb.Execute(ctx, operation)
-	}
-
-	return RetryWithBackoff(ctx, retryConfig, wrappedOperation)
+	})
 }
 
-// ErrorType extensions for retry logic
+// ErrorType extensions for retry logic.
 func (et ErrorType) String() string {
 	switch et {
 	case ErrorTypeUnknown:
@@ -182,47 +173,34 @@ func (et ErrorType) String() string {
 	}
 }
 
-// RetryableFunc is a convenience type for retryable functions
+// RetryableFunc is a convenience type for retryable functions that return a value.
 type RetryableFunc[T any] func(ctx context.Context) (T, error)
 
-// RetryWithResult executes a function that returns a result and error with retry logic
+// RetryWithResult executes a function that returns a result and error with retry logic.
 func RetryWithResult[T any](ctx context.Context, config RetryConfig, fn RetryableFunc[T]) (T, error) {
 	var result T
-
-	operation := func(ctx context.Context) error {
-		var err error
-		result, err = fn(ctx)
-		return err
-	}
-
-	err := RetryWithBackoff(ctx, config, operation)
-	if err != nil {
-		return result, err
-	}
-
-	return result, nil
+	err := RetryWithBackoff(ctx, config, func(ctx context.Context) error {
+		var e error
+		result, e = fn(ctx)
+		return e
+	})
+	return result, err
 }
 
-// IsRetryable is a helper function to check if an error should be retried
+// IsRetryable reports whether an error should be retried.
 func IsRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	classified := ClassifyError(err)
-	return classified.IsRetryable()
+	return ClassifyError(err).IsRetryable()
 }
 
-// ShouldRetryAfter extracts retry-after information from errors (e.g., rate limit responses)
+// ShouldRetryAfter returns a suggested wait duration for rate-limit style errors.
 func ShouldRetryAfter(err error) (time.Duration, bool) {
 	if err == nil {
 		return 0, false
 	}
-
-	// This could be extended to parse retry-after headers from HTTP responses
-	// For now, return default backoff behavior
 	classified := ClassifyError(err)
-
 	switch classified.Type {
 	case ErrorTypeRateLimit:
 		return 30 * time.Second, true
@@ -235,24 +213,22 @@ func ShouldRetryAfter(err error) (time.Duration, bool) {
 	}
 }
 
-// RetryManager manages retry configurations for different services
+// RetryManager manages retry configurations for different services.
 type RetryManager struct {
 	configs map[string]RetryConfig
 }
 
-// NewRetryManager creates a new retry manager
+// NewRetryManager creates a new retry manager.
 func NewRetryManager() *RetryManager {
-	return &RetryManager{
-		configs: make(map[string]RetryConfig),
-	}
+	return &RetryManager{configs: make(map[string]RetryConfig)}
 }
 
-// SetConfig sets retry configuration for a service
+// SetConfig sets retry configuration for a named service.
 func (rm *RetryManager) SetConfig(serviceName string, config RetryConfig) {
 	rm.configs[serviceName] = config
 }
 
-// GetConfig gets retry configuration for a service, returns default if not found
+// GetConfig returns retry configuration for a service, falling back to defaults.
 func (rm *RetryManager) GetConfig(serviceName string) RetryConfig {
 	if config, exists := rm.configs[serviceName]; exists {
 		return config
@@ -260,8 +236,7 @@ func (rm *RetryManager) GetConfig(serviceName string) RetryConfig {
 	return DefaultRetryConfig()
 }
 
-// Retry executes an operation with service-specific retry configuration
+// Retry executes an operation with service-specific retry configuration.
 func (rm *RetryManager) Retry(ctx context.Context, serviceName string, operation RetryableOperation) error {
-	config := rm.GetConfig(serviceName)
-	return RetryWithBackoff(ctx, config, operation)
+	return RetryWithBackoff(ctx, rm.GetConfig(serviceName), operation)
 }
