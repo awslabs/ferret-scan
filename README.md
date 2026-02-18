@@ -238,8 +238,10 @@ go build -ldflags="-s -w" -o ferret-scan cmd/main.go
 #### Redaction Options
 - `--enable-redaction`: Enable redaction of sensitive data found in documents
 - `--redaction-output-dir`: Directory where redacted files will be stored (default: "./redacted")
-- `--redaction-strategy`: Default redaction strategy: "simple", "format_preserving", or "synthetic" (default: "format_preserving")
+- `--redaction-strategy`: Redaction strategy — `simple` (placeholder), `format_preserving` (masks value, keeps structure), or `synthetic` (realistic fake data) (default: `format_preserving`)
 - `--redaction-audit-log`: Path to save redaction audit log file (JSON format for compliance)
+
+See the [Redaction Guide](docs/user-guides/README-Redaction.md) for strategy details, supported file types, and per-validator behaviour.
 
 #### Suppression Management
 - `--generate-suppressions`: Generate suppression rules for all findings (disabled by default, updates last_seen_at for existing rules)

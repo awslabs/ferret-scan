@@ -17,6 +17,7 @@ import (
 	"ferret-scan/internal/preprocessors"
 	"ferret-scan/internal/redactors"
 	"ferret-scan/internal/redactors/position"
+	"ferret-scan/internal/redactors/replacement"
 )
 
 // PDFRedactor implements redaction for PDF files using pdfcpu
@@ -487,141 +488,9 @@ func (pr *PDFRedactor) addRedactionWatermarkToPage(ctx *model.Context, pageNum i
 	return nil
 }
 
-// generateReplacement generates a replacement string based on the redaction strategy
+// generateReplacement delegates to the shared replacement package.
 func (pr *PDFRedactor) generateReplacement(originalText, dataType string, strategy redactors.RedactionStrategy) (string, error) {
-	switch strategy {
-	case redactors.RedactionSimple:
-		return pr.generateSimpleReplacement(dataType), nil
-
-	case redactors.RedactionFormatPreserving:
-		return pr.generateFormatPreservingReplacement(originalText, dataType), nil
-
-	case redactors.RedactionSynthetic:
-		return pr.generateSyntheticReplacement(originalText, dataType)
-
-	default:
-		return pr.generateSimpleReplacement(dataType), nil
-	}
-}
-
-// generateSimpleReplacement creates a simple placeholder replacement
-func (pr *PDFRedactor) generateSimpleReplacement(dataType string) string {
-	switch dataType {
-	case "CREDIT_CARD":
-		return "[CREDIT-CARD-REDACTED]"
-	case "SSN":
-		return "[SSN-REDACTED]"
-	case "EMAIL":
-		return "[EMAIL-REDACTED]"
-	case "PHONE":
-		return "[PHONE-REDACTED]"
-	case "SECRETS":
-		return "[SECRET-REDACTED]"
-	case "IP_ADDRESS":
-		return "[IP-ADDRESS-REDACTED]"
-	case "PASSPORT":
-		return "[PASSPORT-REDACTED]"
-	default:
-		return "[" + dataType + "-REDACTED]"
-	}
-}
-
-// generateFormatPreservingReplacement creates a replacement that preserves the original format
-func (pr *PDFRedactor) generateFormatPreservingReplacement(originalText, dataType string) string {
-	// Use the same logic as PlainTextRedactor for consistency
-	switch dataType {
-	case "CREDIT_CARD":
-		return pr.preserveCreditCardFormat(originalText)
-	case "SSN":
-		return pr.preserveSSNFormat(originalText)
-	case "EMAIL":
-		return pr.preserveEmailFormat(originalText)
-	case "PHONE":
-		return pr.preservePhoneFormat(originalText)
-	case "IP_ADDRESS":
-		return pr.preserveIPFormat(originalText)
-	default:
-		// For unknown types, replace with asterisks of same length
-		return strings.Repeat("*", len(originalText))
-	}
-}
-
-// generateSyntheticReplacement creates realistic but fake data
-func (pr *PDFRedactor) generateSyntheticReplacement(originalText, dataType string) (string, error) {
-	// Use similar logic as PlainTextRedactor for consistency
-	switch dataType {
-	case "CREDIT_CARD":
-		return pr.generateSyntheticCreditCard(originalText)
-	case "SSN":
-		return pr.generateSyntheticSSN(originalText)
-	case "EMAIL":
-		return pr.generateSyntheticEmail(originalText)
-	case "PHONE":
-		return pr.generateSyntheticPhone(originalText)
-	case "IP_ADDRESS":
-		return pr.generateSyntheticIP(originalText)
-	default:
-		// For unknown types, generate random alphanumeric string of same length
-		return pr.generateRandomString(len(originalText))
-	}
-}
-
-// Helper methods for format preservation and synthetic data generation
-// (These would be similar to the PlainTextRedactor implementations)
-
-func (pr *PDFRedactor) preserveCreditCardFormat(original string) string {
-	// Implementation similar to PlainTextRedactor
-	return strings.Repeat("*", len(original)) // Simplified for now
-}
-
-func (pr *PDFRedactor) preserveSSNFormat(original string) string {
-	// Implementation similar to PlainTextRedactor
-	return strings.Repeat("*", len(original)) // Simplified for now
-}
-
-func (pr *PDFRedactor) preserveEmailFormat(original string) string {
-	// Implementation similar to PlainTextRedactor
-	return strings.Repeat("*", len(original)) // Simplified for now
-}
-
-func (pr *PDFRedactor) preservePhoneFormat(original string) string {
-	// Implementation similar to PlainTextRedactor
-	return strings.Repeat("*", len(original)) // Simplified for now
-}
-
-func (pr *PDFRedactor) preserveIPFormat(original string) string {
-	// Implementation similar to PlainTextRedactor
-	return strings.Repeat("*", len(original)) // Simplified for now
-}
-
-func (pr *PDFRedactor) generateSyntheticCreditCard(original string) (string, error) {
-	// Implementation similar to PlainTextRedactor
-	return "4000-0000-0000-0000", nil // Simplified for now
-}
-
-func (pr *PDFRedactor) generateSyntheticSSN(original string) (string, error) {
-	// Implementation similar to PlainTextRedactor
-	return "000-00-0000", nil // Simplified for now
-}
-
-func (pr *PDFRedactor) generateSyntheticEmail(original string) (string, error) {
-	// Implementation similar to PlainTextRedactor
-	return "user@example.com", nil // Simplified for now
-}
-
-func (pr *PDFRedactor) generateSyntheticPhone(original string) (string, error) {
-	// Implementation similar to PlainTextRedactor
-	return "(555) 000-0000", nil // Simplified for now
-}
-
-func (pr *PDFRedactor) generateSyntheticIP(original string) (string, error) {
-	// Implementation similar to PlainTextRedactor
-	return "192.168.1.1", nil // Simplified for now
-}
-
-func (pr *PDFRedactor) generateRandomString(length int) (string, error) {
-	// Implementation similar to PlainTextRedactor
-	return strings.Repeat("X", length), nil // Simplified for now
+	return replacement.Generate(originalText, dataType, strategy), nil
 }
 
 // copyFile copies a file from src to dst
