@@ -594,13 +594,6 @@ func (sm *SuppressionManager) GenerateFindingHashFromData(findingData map[string
 	return sm.generateFindingHash(mockMatch), nil
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // CreateSuppressionFromFindingWithState creates a suppression rule with specific enabled state
 func (sm *SuppressionManager) CreateSuppressionFromFindingWithState(hash, reason string, findingData map[string]interface{}, enabled bool) error {
 	if sm.config == nil {

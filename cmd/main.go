@@ -50,35 +50,17 @@ import (
 
 	"ferret-scan/internal/router"
 	"ferret-scan/internal/suppressions"
-	"ferret-scan/internal/validators/creditcard"
-	"ferret-scan/internal/validators/email"
-	"ferret-scan/internal/validators/intellectualproperty"
-	"ferret-scan/internal/validators/ipaddress"
-	"ferret-scan/internal/validators/metadata"
-	"ferret-scan/internal/validators/passport"
-	"ferret-scan/internal/validators/personname"
-	"ferret-scan/internal/validators/phone"
-	"ferret-scan/internal/validators/secrets"
-	"ferret-scan/internal/validators/socialmedia"
-	"ferret-scan/internal/validators/ssn"
 	// GENAI_DISABLED: Comprehend validator import
 	// "ferret-scan/internal/validators/comprehend"
 )
 
-// loadConfiguration loads the configuration file or returns default config
+// loadConfiguration loads the configuration file or returns default config.
+// Delegates to config.LoadConfigOrDefault which is shared with the web server.
 func loadConfiguration(configFile string) *config.Config {
-	// If config file is not specified, try to find one in standard locations
-	configPath := configFile
-	if configPath == "" {
-		configPath = config.FindConfigFile()
-	}
-
-	// Load configuration (will use defaults if file not found)
-	cfg, err := config.LoadConfig(configPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Error loading config file: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Using default configuration\n")
-		cfg, _ = config.LoadConfig("") // Load default config
+	cfg := config.LoadConfigOrDefault(configFile)
+	if cfg == nil {
+		fmt.Fprintf(os.Stderr, "Warning: Error loading config file, using defaults\n")
+		cfg, _ = config.LoadConfig("")
 	}
 	return cfg
 }
@@ -980,21 +962,9 @@ func main() {
 	// Context analyzer is now integrated into the enhanced validator pipeline
 
 	// STREAMLINED IMPLEMENTATION: Context-aware validation optimized for CLI
-	enhancedManager := validators.NewEnhancedValidatorManager(&validators.EnhancedValidatorConfig{
-		EnableBatchProcessing:        true,
-		BatchSize:                    100,
-		EnableParallelProcessing:     true,
-		MaxWorkers:                   8,
-		EnableContextAnalysis:        true,
-		ContextWindowSize:            500,
-		EnableCrossValidatorAnalysis: true, // Session-only cross-validator intelligence
-		EnableConfidenceCalibration:  true, // Statistical confidence calibration
-		EnableLanguageDetection:      true,
-		DefaultLanguage:              "en",
-		SupportedLanguages:           []string{"en"},
-		EnableAdvancedAnalytics:      true,
-		EnableRealTimeMetrics:        finalConfig.debug,
-	})
+	enhancedManagerCfg := validators.DefaultEnhancedValidatorConfig()
+	enhancedManagerCfg.EnableRealTimeMetrics = finalConfig.debug
+	enhancedManager := validators.NewEnhancedValidatorManager(enhancedManagerCfg)
 
 	if mainDebugObs != nil {
 		mainDebugObs.LogDetail("enhanced", "Enhanced Validator Manager configured with:")
@@ -1013,47 +983,8 @@ func main() {
 		mainDebugObs.LogDetail("config", fmt.Sprintf("Enabled checks: %v", enabledChecks))
 	}
 
-	// Initialize standard validators and wrap them with enhanced capabilities
-	// Only create validators that are enabled
-	standardValidators := make(map[string]detector.Validator)
-
-	if enabledChecks["CREDIT_CARD"] {
-		standardValidators["CREDIT_CARD"] = creditcard.NewValidator()
-	}
-	if enabledChecks["EMAIL"] {
-		standardValidators["EMAIL"] = email.NewValidator()
-	}
-	if enabledChecks["PHONE"] {
-		standardValidators["PHONE"] = phone.NewValidator()
-	}
-	if enabledChecks["IP_ADDRESS"] {
-		standardValidators["IP_ADDRESS"] = ipaddress.NewValidator()
-	}
-	if enabledChecks["PASSPORT"] {
-		standardValidators["PASSPORT"] = passport.NewValidator()
-	}
-	if enabledChecks["PERSON_NAME"] {
-		standardValidators["PERSON_NAME"] = personname.NewValidator()
-	}
-	if enabledChecks["METADATA"] {
-		standardValidators["METADATA"] = metadata.NewValidator()
-	}
-	if enabledChecks["INTELLECTUAL_PROPERTY"] {
-		standardValidators["INTELLECTUAL_PROPERTY"] = intellectualproperty.NewValidator()
-	}
-	if enabledChecks["SOCIAL_MEDIA"] {
-		standardValidators["SOCIAL_MEDIA"] = socialmedia.NewValidator()
-	}
-	if enabledChecks["SSN"] {
-		standardValidators["SSN"] = ssn.NewValidator()
-	}
-	if enabledChecks["SECRETS"] {
-		standardValidators["SECRETS"] = secrets.NewValidator()
-	}
-	// GENAI_DISABLED: COMPREHEND_PII validator removed from available validators
-	// if enabledChecks["COMPREHEND_PII"] {
-	//     standardValidators["COMPREHEND_PII"] = comprehend.NewValidator()
-	// }
+	// Build the filtered validator set via the shared factory
+	standardValidators := core.BuildValidatorSet(enabledChecks, cfg, activeProfile)
 
 	// Set up dual path validation integration
 	var dualPathObserver *observability.StandardObserver
@@ -1077,64 +1008,24 @@ func main() {
 
 	// Register enhanced validators with the manager (excluding metadata validator)
 	for name, validator := range standardValidators {
-		// Skip metadata validator - it's handled by dual path system
 		if name == "METADATA" {
 			if mainDebugObs != nil {
 				mainDebugObs.LogDetail("enhanced", "Metadata validator handled by dual path system")
 			}
 			continue
 		}
-
 		bridge := validators.NewValidatorBridge(name, validator)
-		err := enhancedManager.RegisterValidator(name, bridge)
-		if err != nil {
+		if err := enhancedManager.RegisterValidator(name, bridge); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to register enhanced validator %s: %v\n", name, err)
 		} else if mainDebugObs != nil {
 			mainDebugObs.LogDetail("enhanced", fmt.Sprintf("Registered enhanced validator: %s", name))
 		}
 	}
 
-	// Keep reference to standard validators for backward compatibility
+	// Keep reference to standard validators for backward compatibility (e.g. help system)
 	allValidators := standardValidators
 
-	// Observability will be set up after router initialization
-
-	// Configure validators with settings from config file
-	// First apply global validator configurations
-	if ipValidator, ok := allValidators["INTELLECTUAL_PROPERTY"].(*intellectualproperty.Validator); ok && cfg != nil {
-		ipValidator.Configure(cfg)
-	}
-	if smValidator, ok := allValidators["SOCIAL_MEDIA"].(*socialmedia.Validator); ok && cfg != nil {
-		smValidator.Configure(cfg)
-	}
-
-	// GENAI_DISABLED: Configure Comprehend validator with GenAI settings
-	// if comprehendValidator, ok := allValidators["COMPREHEND_PII"].(*comprehend.Validator); ok {
-	// 	comprehendValidator.SetEnabled(finalConfig.enableGenAI && finalConfig.genaiServices["comprehend"])
-	// 	comprehendValidator.SetRegion(finalConfig.textractRegion)
-	// 	if mainDebugObs != nil {
-	// 		mainDebugObs.LogDetail("config", fmt.Sprintf("Comprehend validator enabled: %v (GenAI: %v, Service: %v)",
-	// 			finalConfig.enableGenAI && finalConfig.genaiServices["comprehend"],
-	// 			finalConfig.enableGenAI, finalConfig.genaiServices["comprehend"]))
-	// 	}
-	// }
-
-	// Then apply profile-specific configurations if a profile is active
-	if activeProfile != nil && activeProfile.Validators != nil {
-		// Create a temporary config with just the profile's validator settings
-		profileConfig := &config.Config{
-			Validators: activeProfile.Validators,
-		}
-
-		// Configure validators with profile-specific settings
-		if ipValidator, ok := allValidators["INTELLECTUAL_PROPERTY"].(*intellectualproperty.Validator); ok {
-			ipValidator.Configure(profileConfig)
-		}
-		// Note: Comprehend validator settings are controlled by GenAI flag, not profiles
-	}
-
 	// Use enhanced manager wrapper instead of individual validators
-	// This enables context analysis and other advanced features
 	enhancedWrapper := validators.NewEnhancedManagerWrapper(enhancedManager)
 	validatorsList := []detector.Validator{enhancedWrapper}
 

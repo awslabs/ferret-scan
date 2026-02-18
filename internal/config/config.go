@@ -657,3 +657,20 @@ func ApplyPlatformDefaults(config *Config) {
 		config.Profiles[profileName] = profile
 	}
 }
+
+// LoadConfigOrDefault loads configuration from configFile (or searches standard locations
+// when configFile is empty). If loading fails, it returns a default configuration.
+// This is the shared helper used by both the CLI and the web server.
+func LoadConfigOrDefault(configFile string) *Config {
+	configPath := configFile
+	if configPath == "" {
+		configPath = FindConfigFile()
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		// Fall back to defaults — callers should not crash on a missing/bad config file.
+		cfg, _ = LoadConfig("")
+	}
+	return cfg
+}
