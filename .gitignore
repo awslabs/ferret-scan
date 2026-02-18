@@ -10,8 +10,7 @@ go.work
 
 # Build artifacts
 dist/
-bin/*
-!bin/ferret-scan
+bin/
 
 # IDE and Editor files
 .vscode/
