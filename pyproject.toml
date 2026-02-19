@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ferret-scan-hooks"
+version = "0.0.1"
+description = "Pre-commit hook stub for ferret-scan (Go binary installed via additional_dependencies)"
+
+[tool.setuptools]
+packages = []
