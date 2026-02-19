@@ -1,8 +1,8 @@
 - id: ferret-scan
   name: Ferret Scan Security Check
   description: Run Ferret Scan to detect secrets and sensitive data
-  entry: ferret-scan
-  language: golang
+  entry: bin/ferret-scan
+  language: script
   files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh|ts|jsx|tsx|php|rb|c|cpp|h|hpp|cs|kt|swift|rs|scala|clj|pl|r|m|mm)'
   exclude: '^(\.git/|bin/|dist/|node_modules/|\.cache/|test_|_test\.|vendor/|\.venv/|__pycache__/)'
   pass_filenames: true
