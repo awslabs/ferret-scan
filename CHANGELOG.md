@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<a name="v1.5.1"></a>
+## [v1.5.1] - 2026-02-18
+
+### 🐛 Bug Fixes
+
+- **pre-commit:** fix hook failing with "Executable not found" after pre-built binaries
+  were removed from the repository. Switched from `language:script` to `language:python`
+  so pre-commit automatically installs ferret-scan from PyPI into an isolated virtualenv.
+  Also bumped hook rev from v1.3.29 to v1.5.0 and added `pyproject.toml` stub.
+
 <a name="v1.5.0"></a>
 ## [v1.5.0] - 2026-02-18
 
