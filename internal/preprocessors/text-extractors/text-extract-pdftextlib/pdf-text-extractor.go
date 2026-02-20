@@ -24,11 +24,18 @@ type TextContent struct {
 }
 
 // ExtractText extracts text from a PDF document using ledongthuc/pdf
-func ExtractText(filePath string) (*TextContent, error) {
+func ExtractText(filePath string) (content *TextContent, err error) {
 	// Initialize content with basic file info
-	content := &TextContent{
+	content = &TextContent{
 		Filename: filepath.Base(filePath),
 	}
+
+	// Recover from panics in the PDF library (e.g. corrupted zlib streams)
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("PDF library panic on %s: %v", filepath.Base(filePath), r)
+		}
+	}()
 
 	// Open the PDF file
 	f, r, err := pdf.Open(filePath)

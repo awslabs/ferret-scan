@@ -144,7 +144,19 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	for _, p := range capable {
 		go func(processor preprocessors.Preprocessor) {
 			processStart := time.Now()
-			result, err := processor.Process(filePath)
+
+			// Recover from any panics in preprocessors to prevent crashing the whole scan
+			var result *preprocessors.ProcessedContent
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = fmt.Errorf("preprocessor panic in %s: %v", processor.GetName(), r)
+					}
+				}()
+				result, err = processor.Process(filePath)
+			}()
+
 			processingTime := time.Since(processStart)
 
 			resultChan <- preprocessorResult{
