@@ -123,6 +123,7 @@ func (h *System) ShowGeneralHelp() {
 	// fmt.Fprintln(w, "  --estimate-only\t\tShow cost estimate and exit without processing")
 	fmt.Fprintln(w, "  --quiet\t\tSuppress progress output (useful for scripts and CI/CD)")
 	fmt.Fprintln(w, "  --pre-commit-mode\t\tEnable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
+	fmt.Fprintln(w, "  --disable-ip-types\t<types>\tComma-separated list of IP sub-types to skip: copyright,patent,trademark,trade_secret,internal_url")
 	fmt.Fprintln(w, "  --enable-redaction\t\tEnable redaction of sensitive data found in documents")
 	fmt.Fprintln(w, "  --redaction-output-dir\t<path>\tDirectory where redacted files will be stored (default: ./redacted)")
 	fmt.Fprintln(w, "  --redaction-strategy\t<strategy>\tDefault redaction strategy: simple, format_preserving, or synthetic (default: format_preserving)")

@@ -108,6 +108,16 @@ redaction:
 validators:
   # Intellectual property validator configuration
   intellectual_property:
+    # Disabled IP sub-types
+    # Use this to skip detection of specific intellectual property categories.
+    # This is useful when your codebase legitimately contains certain IP markers
+    # (e.g., copyright notices on all source files) that would generate excessive findings.
+    #
+    # Valid values: copyright, patent, trademark, trade_secret, internal_url
+    # Example: Disable copyright detection for codebases with standard copyright headers
+    # disabled_types:
+    #   - copyright
+    #
     # Internal company URL patterns to detect
     # IMPORTANT: Internal URL detection requires explicit configuration
     # Configure patterns specific to your organization's infrastructure

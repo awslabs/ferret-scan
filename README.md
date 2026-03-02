@@ -1222,6 +1222,11 @@ defaults:
 validators:
   # Intellectual property validator configuration
   intellectual_property:
+    # Disable specific IP sub-types to reduce noise
+    # Valid values: copyright, patent, trademark, trade_secret, internal_url
+    # disabled_types:
+    #   - copyright          # Skip copyright notice detection
+
     # Internal company URL patterns to detect
     internal_urls:
       - "http[s]?:\\/\\/s3\\.amazonaws\\.com"
