@@ -95,9 +95,59 @@ for _, match := range matches {
 
 ## Configuration
 
-**IMPORTANT: Custom internal URL patterns and intellectual property patterns can ONLY be configured through the ferret.yaml configuration file. There are no command-line options to specify these patterns.**
+**IMPORTANT: Custom internal URL patterns and intellectual property patterns can be configured through the ferret.yaml configuration file or via the `--disable-ip-types` CLI flag.**
 
 The validator can be configured through the ferret.yaml configuration file:
+
+### Disabling Specific IP Sub-Types
+
+You can selectively disable specific IP detection categories using the `disabled_types` config option or the `--disable-ip-types` CLI flag. This is useful when your codebase legitimately contains certain IP markers (e.g., copyright notices on all source files) that would generate excessive findings.
+
+Valid values: `copyright`, `patent`, `trademark`, `trade_secret`, `internal_url`
+
+#### CLI Flag
+
+```bash
+# Disable copyright detection from the command line
+ferret-scan --file . --recursive --disable-ip-types copyright
+
+# Disable multiple types
+ferret-scan --file . --recursive --disable-ip-types copyright,trade_secret
+
+# Works with pre-commit mode and CI pipelines
+ferret-scan --pre-commit-mode --disable-ip-types copyright --file myfile.go
+```
+
+#### Configuration File
+
+```yaml
+validators:
+  intellectual_property:
+    # Disable copyright detection (e.g., for codebases with standard copyright headers)
+    disabled_types:
+      - copyright
+
+    # You can disable multiple types at once
+    # disabled_types:
+    #   - copyright
+    #   - trade_secret
+```
+
+This setting works globally and also within profiles, so you can disable types for specific scanning scenarios:
+
+```yaml
+profiles:
+  proserve-delivery:
+    checks: all
+    recursive: true
+    description: "Scan for ProServe code delivery (skip copyright notices)"
+    validators:
+      intellectual_property:
+        disabled_types:
+          - copyright
+```
+
+Note: The `--disable-ip-types` CLI flag takes precedence over the config file setting.
 
 ### Basic Profile Configuration
 

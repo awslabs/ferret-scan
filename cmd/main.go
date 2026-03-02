@@ -88,6 +88,7 @@ type configFlags struct {
 	redactionOutputDir string
 	redactionStrategy  string
 	redactionAuditLog  string
+	disableIPTypes     string
 }
 
 // finalConfiguration holds resolved configuration values
@@ -113,6 +114,7 @@ type finalConfiguration struct {
 	redactionStrategy  string
 	redactionAuditLog  string
 	excludePatterns    []string
+	disableIPTypes     string
 }
 
 // resolveConfiguration resolves final configuration values from config file, profile, and command line flags
@@ -315,6 +317,11 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 	}
 	if isFlagSet("exclude") && len(flags.excludePatterns) > 0 {
 		final.excludePatterns = flags.excludePatterns
+	}
+
+	// Disable IP types
+	if isFlagSet("disable-ip-types") && flags.disableIPTypes != "" {
+		final.disableIPTypes = flags.disableIPTypes
 	}
 
 	return final
@@ -616,6 +623,7 @@ type extractedFlags struct {
 	redactionAuditLog    string
 	suppressionFile      string
 	excludePatterns      []string
+	disableIPTypes       string
 }
 
 // flagPointers groups all flag pointers for easier management
@@ -651,6 +659,7 @@ type flagPointers struct {
 	outputFile         *string
 	suppressionFile    *string
 	excludePatterns    *string
+	disableIPTypes     *string
 }
 
 // extractAllFlags safely extracts all flag values once to avoid repeated nil checks
@@ -683,6 +692,7 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 		outputFile:           getStringFlag(flags.outputFile),
 		suppressionFile:      getStringFlag(flags.suppressionFile),
 		excludePatterns:      parseExcludePatterns(getStringFlag(flags.excludePatterns)),
+		disableIPTypes:       getStringFlag(flags.disableIPTypes),
 	}
 }
 
@@ -747,6 +757,9 @@ func main() {
 	// Exclusion flag
 	excludePatterns := flag.String("exclude", "", "Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')")
 
+	// IP sub-type control flag
+	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
+
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
 	webPort := flag.String("port", "8080", "Port for web server (default: 8080)")
@@ -786,6 +799,7 @@ func main() {
 		outputFile:         outputFile,
 		suppressionFile:    suppressionFile,
 		excludePatterns:    excludePatterns,
+		disableIPTypes:     disableIPTypes,
 	})
 
 	// Handle web mode early - validate flags and start web server if requested
@@ -861,6 +875,7 @@ func main() {
 		redactionStrategy:  flags.redactionStrategy,
 		redactionAuditLog:  flags.redactionAuditLog,
 		excludePatterns:    flags.excludePatterns,
+		disableIPTypes:     flags.disableIPTypes,
 	})
 
 	// Use the pre-commit detector initialized earlier (no need to reinitialize)
@@ -984,6 +999,32 @@ func main() {
 	}
 
 	// Build the filtered validator set via the shared factory
+	// Inject --disable-ip-types CLI flag into config so Configure() picks it up
+	if finalConfig.disableIPTypes != "" {
+		if cfg == nil {
+			cfg = &config.Config{}
+		}
+		if cfg.Validators == nil {
+			cfg.Validators = make(map[string]map[string]interface{})
+		}
+		if cfg.Validators["intellectual_property"] == nil {
+			cfg.Validators["intellectual_property"] = make(map[string]interface{})
+		}
+		// Parse comma-separated types into a []any for YAML-compatible config
+		var types []any
+		for _, t := range strings.Split(finalConfig.disableIPTypes, ",") {
+			trimmed := strings.TrimSpace(t)
+			if trimmed != "" {
+				types = append(types, trimmed)
+			}
+		}
+		cfg.Validators["intellectual_property"]["disabled_types"] = types
+
+		if mainDebugObs != nil {
+			mainDebugObs.LogDetail("config", fmt.Sprintf("CLI --disable-ip-types: %v", types))
+		}
+	}
+
 	standardValidators := core.BuildValidatorSet(enabledChecks, cfg, activeProfile)
 
 	// Set up dual path validation integration
