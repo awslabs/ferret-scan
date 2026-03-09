@@ -221,13 +221,19 @@ func (f *Formatter) appendSummaryLine(builder *strings.Builder, match detector.M
 
 	// Format type (fixed width, with smart truncation)
 	typeDisplay := match.Type
-	if len(typeDisplay) > 20 {
-		// Smart truncation for common long types
-		if typeDisplay == "INTELLECTUAL_PROPERTY" {
-			typeDisplay = "INTELLECTUAL_PROP"
-		} else {
-			typeDisplay = typeDisplay[:17] + "..."
+	// For INTELLECTUAL_PROPERTY, show the specific sub-type (copyright, patent, etc.)
+	if match.Type == "INTELLECTUAL_PROPERTY" && match.Metadata != nil {
+		if ipType, ok := match.Metadata["ip_type"].(string); ok && ipType != "" {
+			typeDisplay = strings.ToUpper(ipType)
+		} else if ipTypes, ok := match.Metadata["ip_types"].([]string); ok && len(ipTypes) > 0 {
+			typeDisplay = strings.ToUpper(ipTypes[0])
+			if len(ipTypes) > 1 {
+				typeDisplay += fmt.Sprintf("+%d", len(ipTypes)-1)
+			}
 		}
+	}
+	if len(typeDisplay) > 20 {
+		typeDisplay = typeDisplay[:17] + "..."
 	}
 	typeStr := fmt.Sprintf("%-20s", typeDisplay)
 	if !options.NoColor {
