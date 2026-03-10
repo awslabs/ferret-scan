@@ -59,6 +59,11 @@ redaction:
 validators:
   # Intellectual property validator for development environments
   intellectual_property:
+    # Disable specific IP sub-types to reduce noise
+    # Valid values: copyright, patent, trademark, trade_secret, internal_url
+    # disabled_types:
+    #   - copyright          # Skip copyright notice detection
+
     # Development environment URL patterns
     internal_urls:
       # Local development servers

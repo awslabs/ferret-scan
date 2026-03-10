@@ -228,6 +228,7 @@ git commit -m "Add ferret-scan configuration"
 
 The configuration file includes:
 - **IP detection patterns** - Internal URLs, cloud infrastructure, corporate networks
+- **IP sub-type control** - Disable specific IP types (e.g., `disabled_types: [copyright]`) to avoid noise from standard copyright headers
 - **Validation rules** - Confidence scoring and pattern matching
 - **Check types** - CREDIT_CARD, SECRETS, SSN, EMAIL, PHONE, IP_ADDRESS, INTELLECTUAL_PROPERTY
 - **Preprocessor settings** - Document text extraction and metadata analysis
@@ -403,6 +404,9 @@ entry: go run cmd/main.go --pre-commit-mode
 
 # Or adjust confidence levels
 entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --confidence high
+
+# Disable noisy IP sub-types (e.g., copyright notices on all source files)
+entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --disable-ip-types copyright
 ```
 
 **3. "Scans are too slow"**

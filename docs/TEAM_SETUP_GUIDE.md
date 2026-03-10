@@ -330,6 +330,11 @@ Monitor in GitHub:
 # .ferret-scan.yaml
 validators:
   intellectual_property:
+    # Disable specific IP sub-types (e.g., copyright notices on all source files)
+    # Valid values: copyright, patent, trademark, trade_secret, internal_url
+    # disabled_types:
+    #   - copyright
+
     internal_urls:
       - "http[s]?:\\/\\/.*\\.yourcompany\\.com"
       - "http[s]?:\\/\\/intranet\\.yourcompany\\.com"

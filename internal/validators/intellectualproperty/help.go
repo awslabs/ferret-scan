@@ -26,6 +26,12 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 IMPORTANT: Internal URL detection requires explicit configuration in ferret.yaml.
 Without configuration, only patents, trademarks, copyrights, and trade secrets will be detected.
 
+Individual IP sub-types can be selectively disabled using the 'disabled_types' configuration
+option. This is useful when your codebase legitimately contains certain IP markers (e.g.,
+copyright notices on all source files) that would generate excessive findings.
+
+Valid disabled_types values: copyright, patent, trademark, trade_secret, internal_url
+
 The validator analyzes both the format of potential matches and their surrounding context
 to determine the likelihood that they represent actual intellectual property references.`
 
@@ -83,10 +89,20 @@ to determine the likelihood that they represent actual intellectual property ref
 	// Set configuration information
 	info.ConfigurationInfo = "IMPORTANT: Internal URL detection requires explicit configuration. The validator no longer includes hardcoded patterns.\n\n" +
 		"Custom internal URL patterns and intellectual property patterns can ONLY be configured through the ferret.yaml configuration file.\n\n" +
+		"DISABLING SPECIFIC IP SUB-TYPES:\n" +
+		"You can selectively disable specific IP detection categories using the 'disabled_types' option.\n" +
+		"This is useful when your codebase legitimately contains certain IP markers (e.g., copyright\n" +
+		"notices on all source files delivered by AWS Professional Services) that generate excessive findings.\n\n" +
+		"Valid disabled_types values: copyright, patent, trademark, trade_secret, internal_url\n\n" +
 		"Configuration file example:\n" +
 		"```\n" +
 		"validators:\n" +
 		"  intellectual_property:\n" +
+		"    # Disable specific IP sub-types to reduce noise\n" +
+		"    # Valid values: copyright, patent, trademark, trade_secret, internal_url\n" +
+		"    disabled_types:\n" +
+		"      - copyright          # Skip copyright notice detection\n" +
+		"    \n" +
 		"    # Internal URL patterns to detect (REQUIRED for internal URL detection)\n" +
 		"    internal_urls:\n" +
 		"      - \"http[s]?:\\/\\/.*\\.internal\\.example\\.com\"\n" +
@@ -111,12 +127,14 @@ to determine the likelihood that they represent actual intellectual property ref
 		"- Run ferret-scan with the --config flag: ferret-scan --config ferret.yaml --file document.txt\n" +
 		"- Or use a specific profile: ferret-scan --config ferret.yaml --profile company-specific --file document.txt\n\n" +
 		"Without configuration, internal URL detection will be disabled. Other IP types (patents, trademarks, copyrights, trade secrets) will still work.\n\n" +
-		"See the documentation in docs/configuration.md and docs/INTERNAL_URL_MIGRATION_GUIDE.md for more details."
+		"See the documentation in docs/configuration.md for more details."
 
 	// Set examples
 	info.Examples = []string{
 		"ferret-scan --file document.txt --checks INTELLECTUAL_PROPERTY",
 		"ferret-scan --file document.txt --checks INTELLECTUAL_PROPERTY --confidence high",
+		"ferret-scan --file document.txt --checks INTELLECTUAL_PROPERTY --disable-ip-types copyright",
+		"ferret-scan --file document.txt --disable-ip-types copyright,trade_secret",
 		"ferret-scan --config ferret.yaml --file document.txt --checks INTELLECTUAL_PROPERTY",
 		"ferret-scan --config ferret.yaml --profile company-specific --file document.txt",
 		"ferret-scan --file contract.pdf --verbose --checks INTELLECTUAL_PROPERTY",
