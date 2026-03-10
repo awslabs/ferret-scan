@@ -220,6 +220,54 @@ Each validator can have its own configuration options that control its behavior.
 
 The intellectual property validator can be configured with custom patterns for detecting internal URLs and intellectual property references.
 
+#### Disabling Specific IP Sub-Types
+
+You can selectively disable specific IP detection categories using the `disabled_types` config option or the `--disable-ip-types` CLI flag. This is useful when your codebase legitimately contains certain IP markers (e.g., copyright notices on all source files delivered by AWS Professional Services) that would generate excessive findings without disabling the entire INTELLECTUAL_PROPERTY check.
+
+Valid values: `copyright`, `patent`, `trademark`, `trade_secret`, `internal_url`
+
+##### CLI Flag
+
+```bash
+# Disable copyright detection from the command line
+ferret-scan --file . --recursive --disable-ip-types copyright
+
+# Disable multiple types
+ferret-scan --file . --recursive --disable-ip-types copyright,trade_secret
+
+# Works with pre-commit mode and CI pipelines
+ferret-scan --pre-commit-mode --disable-ip-types copyright --file myfile.go
+```
+
+##### Configuration File
+
+```yaml
+validators:
+  intellectual_property:
+    disabled_types:
+      - copyright          # Skip copyright notice detection
+      # - patent           # Skip patent number detection
+      # - trademark        # Skip trademark symbol detection
+      # - trade_secret     # Skip trade secret/confidentiality marking detection
+      # - internal_url     # Skip internal URL detection
+```
+
+This setting works globally (under `validators:`) and also within profile-specific overrides:
+
+```yaml
+profiles:
+  proserve-delivery:
+    checks: all
+    recursive: true
+    description: "Scan for ProServe code delivery (skip copyright notices)"
+    validators:
+      intellectual_property:
+        disabled_types:
+          - copyright
+```
+
+When a type is disabled, the validator will skip all pattern matching for that category. Debug logging (`--debug`) will show which types have been disabled. The `--disable-ip-types` CLI flag takes precedence over the config file setting.
+
 #### Internal URL Pattern Configuration
 
 **IMPORTANT**: Internal URL detection requires explicit configuration. The validator no longer includes hardcoded patterns and will only detect internal URLs that match your configured patterns.

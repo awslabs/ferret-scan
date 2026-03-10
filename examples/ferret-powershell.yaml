@@ -56,6 +56,11 @@ redaction:
 # Validator configurations for PowerShell environments
 validators:
   intellectual_property:
+    # Disable specific IP sub-types to reduce noise
+    # Valid values: copyright, patent, trademark, trade_secret, internal_url
+    # disabled_types:
+    #   - copyright          # Skip copyright notice detection
+
     # PowerShell and Windows-specific internal URL patterns
     internal_urls:
       # PowerShell Gallery and internal repositories

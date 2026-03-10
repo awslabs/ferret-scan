@@ -260,9 +260,10 @@ This will provide detailed logging of path resolution, configuration loading, an
 ### Organization-Specific Templates
 1. Copy a base template (e.g., `ferret-enterprise-windows.yaml`)
 2. Update domain patterns in `intellectual_property.internal_urls`
-3. Modify paths to match organizational standards
-4. Add organization-specific profiles and validation rules
-5. Configure audit logging and compliance requirements
+3. Configure `intellectual_property.disabled_types` to skip IP categories that generate noise (e.g., `copyright` for codebases with standard copyright headers)
+4. Modify paths to match organizational standards
+5. Add organization-specific profiles and validation rules
+6. Configure audit logging and compliance requirements
 
 ### Development Team Templates
 1. Start with `ferret-dev-windows.yaml`

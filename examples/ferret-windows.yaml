@@ -61,6 +61,11 @@ redaction:
 validators:
   # Intellectual property validator with Windows-specific patterns
   intellectual_property:
+    # Disable specific IP sub-types to reduce noise
+    # Valid values: copyright, patent, trademark, trade_secret, internal_url
+    # disabled_types:
+    #   - copyright          # Skip copyright notice detection
+
     # Windows internal URL patterns
     internal_urls:
       # Windows Active Directory and domain patterns

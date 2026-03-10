@@ -44,6 +44,9 @@ type Validator struct {
 	// Track if internal URL patterns were configured
 	internalURLPatternsConfigured bool
 
+	// Disabled IP sub-types (e.g., "copyright", "patent", "trademark", "trade_secret", "internal_url")
+	disabledTypes map[string]bool
+
 	// Legal notice reconstruction configuration
 	legalNoticeConfig LegalNoticeConfig
 
@@ -195,6 +198,9 @@ func NewValidator() *Validator {
 		// Initialize internal URL patterns as empty - will be configured later
 		internalURLPatterns:           []string{},
 		internalURLPatternsConfigured: false,
+
+		// Initialize disabled types as empty - all types enabled by default
+		disabledTypes: map[string]bool{},
 
 		// Initialize legal notice reconstruction with sensible defaults using internal constants
 		legalNoticeConfig: LegalNoticeConfig{
@@ -382,6 +388,27 @@ func (v *Validator) Configure(cfg *config.Config) {
 			v.patternTradeSecret = v.ensureCaseInsensitive(pattern)
 			//  pragma: allowlist nextline secret
 			v.regexTradeSecret = regexp.MustCompile(v.patternTradeSecret)
+		}
+	}
+
+	// Parse disabled_types to skip specific IP sub-type detections
+	// Valid values: "copyright", "patent", "trademark", "trade_secret", "internal_url"
+	if disabledTypes, ok := ipConfig["disabled_types"].([]any); ok {
+		v.disabledTypes = make(map[string]bool)
+		for _, dt := range disabledTypes {
+			if dtStr, ok := dt.(string); ok {
+				normalized := strings.ToLower(strings.TrimSpace(dtStr))
+				v.disabledTypes[normalized] = true
+
+				if v.observer != nil && v.observer.DebugObserver != nil {
+					v.observer.DebugObserver.LogDetail("intellectualproperty",
+						fmt.Sprintf("Disabled IP sub-type: %s", normalized))
+				}
+			}
+		}
+
+		if os.Getenv("FERRET_DEBUG") == "1" && len(v.disabledTypes) > 0 {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Intellectual Property Validator: Disabled types: %v\n", v.disabledTypes)
 		}
 	}
 }
@@ -731,76 +758,78 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 
 	for lineNum, line := range lines {
 		// Check for internal URLs using pre-compiled regex patterns
-		for _, regex := range v.regexInternalURLs {
-			foundMatches := regex.FindAllString(line, -1)
+		if !v.disabledTypes["internal_url"] {
+			for _, regex := range v.regexInternalURLs {
+				foundMatches := regex.FindAllString(line, -1)
 
-			for _, match := range foundMatches {
-				// Debug logging to verify this code path is reached
-				if v.observer != nil && v.observer.DebugObserver != nil {
-					v.observer.DebugObserver.LogDetail("intellectualproperty",
-						fmt.Sprintf("INTERNAL URL MATCH FOUND: '%s' - setting HIGH confidence", match))
+				for _, match := range foundMatches {
+					// Debug logging to verify this code path is reached
+					if v.observer != nil && v.observer.DebugObserver != nil {
+						v.observer.DebugObserver.LogDetail("intellectualproperty",
+							fmt.Sprintf("INTERNAL URL MATCH FOUND: '%s' - setting HIGH confidence", match))
+					}
+					// Configured internal URLs always start at HIGH confidence
+					// If someone configured a pattern, they want it treated as high priority
+					confidence := 95.0
+					checks := map[string]bool{
+						"format":             true,
+						"context_relevant":   true,
+						"not_common_pattern": true,
+						"not_example":        true,
+					}
+
+					// Create context info for the line
+					contextInfo := detector.ContextInfo{
+						FullLine: line,
+					}
+
+					// Extract some context around the match in the line
+					matchIndex := strings.Index(line, match)
+					if matchIndex >= 0 {
+						start := max(0, matchIndex-50)
+						end := min(len(line), matchIndex+len(match)+50)
+
+						contextInfo.BeforeText = line[start:matchIndex]
+						contextInfo.AfterText = line[matchIndex+len(match) : end]
+					}
+
+					// Analyze context and adjust confidence
+					contextImpact := v.AnalyzeContext(match, contextInfo)
+
+					// For configured internal URLs, only apply positive context impact
+					// Skip negative context since the user explicitly configured this pattern
+					if contextImpact > 0 {
+						confidence += contextImpact
+					}
+
+					// Ensure confidence stays within bounds (no need to check < 0 since we start at 95)
+					if confidence > 100 {
+						confidence = 100
+					}
+
+					contextInfo.ConfidenceImpact = contextImpact
+
+					// Configured patterns are never skipped (no confidence <= 0 check needed)
+
+					lineMatches[lineNum] = append(lineMatches[lineNum], detector.Match{
+						Text:       match,
+						LineNumber: lineNum + 1, // 1-based line numbering
+						Type:       "INTELLECTUAL_PROPERTY",
+						Confidence: confidence,
+						Filename:   originalPath,
+						Validator:  "INTELLECTUAL_PROPERTY",
+						Context:    contextInfo,
+						Metadata: map[string]any{
+							"ip_type":           "internal_url",
+							"validation_checks": checks,
+							"context_impact":    contextImpact,
+							"source":            "preprocessed_content",
+							"original_file":     originalPath,
+						},
+					})
 				}
-				// Configured internal URLs always start at HIGH confidence
-				// If someone configured a pattern, they want it treated as high priority
-				confidence := 95.0
-				checks := map[string]bool{
-					"format":             true,
-					"context_relevant":   true,
-					"not_common_pattern": true,
-					"not_example":        true,
-				}
-
-				// Create context info for the line
-				contextInfo := detector.ContextInfo{
-					FullLine: line,
-				}
-
-				// Extract some context around the match in the line
-				matchIndex := strings.Index(line, match)
-				if matchIndex >= 0 {
-					start := max(0, matchIndex-50)
-					end := min(len(line), matchIndex+len(match)+50)
-
-					contextInfo.BeforeText = line[start:matchIndex]
-					contextInfo.AfterText = line[matchIndex+len(match) : end]
-				}
-
-				// Analyze context and adjust confidence
-				contextImpact := v.AnalyzeContext(match, contextInfo)
-
-				// For configured internal URLs, only apply positive context impact
-				// Skip negative context since the user explicitly configured this pattern
-				if contextImpact > 0 {
-					confidence += contextImpact
-				}
-
-				// Ensure confidence stays within bounds (no need to check < 0 since we start at 95)
-				if confidence > 100 {
-					confidence = 100
-				}
-
-				contextInfo.ConfidenceImpact = contextImpact
-
-				// Configured patterns are never skipped (no confidence <= 0 check needed)
-
-				lineMatches[lineNum] = append(lineMatches[lineNum], detector.Match{
-					Text:       match,
-					LineNumber: lineNum + 1, // 1-based line numbering
-					Type:       "INTELLECTUAL_PROPERTY",
-					Confidence: confidence,
-					Filename:   originalPath,
-					Validator:  "INTELLECTUAL_PROPERTY",
-					Context:    contextInfo,
-					Metadata: map[string]any{
-						"ip_type":           "internal_url",
-						"validation_checks": checks,
-						"context_impact":    contextImpact,
-						"source":            "preprocessed_content",
-						"original_file":     originalPath,
-					},
-				})
 			}
-		}
+		} // end of internal_url disabled check
 
 		// Check for IP patterns using individual regex patterns
 		ipPatterns := map[string]*regexp.Regexp{
@@ -811,6 +840,10 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 		}
 
 		for ipType, regex := range ipPatterns {
+			// Skip disabled IP sub-types
+			if v.disabledTypes[ipType] {
+				continue
+			}
 			if regex == nil {
 				continue
 			}
