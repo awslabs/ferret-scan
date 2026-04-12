@@ -574,13 +574,24 @@ Use this checklist to ensure you've completed all necessary steps when creating 
 - [ ] Implement the `validator.go` file with the `detector.Validator` interface
 - [ ] Implement the `help.go` file with the `help.Provider` interface
 - [ ] Create a comprehensive `README.md` file in your validator's directory
-- [ ] Register your validator in `cmd/main.go`:
+- [ ] Register your validator in `internal/core/factory.go`:
   - [ ] Import your validator package
-  - [ ] Add it to the `allValidators` map
-  - [ ] Add it to the `parseChecksToRun` function
-- [ ] Add a link to your validator's README in the main README.md
-- [ ] Update `examples/ferret.yaml` to include a profile for your validator
-- [ ] Add any specific patterns to configuration files if needed
+  - [ ] Add it to `BuildValidatorSet()`
+- [ ] Add your check type to `cmd/main.go`:
+  - [ ] Add to `availableChecks` in `parseChecksToRun()`
+  - [ ] Add to the error message listing available checks
+- [ ] Add to `internal/help/help.go` checks list
+- [ ] Add to all formatter type maps:
+  - [ ] `internal/formatters/text/formatter.go` (pre-commit description)
+  - [ ] `internal/formatters/csv/formatter.go` (pre-commit description)
+  - [ ] `internal/formatters/gitlab-sast/mapper.go` (category, name, message)
+  - [ ] `internal/formatters/gitlab-sast/sanitizer.go` (description, remediation, sanitization)
+  - [ ] `internal/formatters/sarif/constants.go` (rule description)
+  - [ ] `internal/formatters/sarif/mapper.go` (sensitivity weight)
+- [ ] Add a link to your validator's README in the main README.md "Supported Data Types" section
+- [ ] Update config files: `config.yaml`, `examples/ferret.yaml`, `examples/ferret-windows.yaml`
+- [ ] Update `scripts/create-config.sh` checks list
+- [ ] Update `docs/ferret-application-flow.md` Available Validators list
 - [ ] Test your validator with various inputs
 - [ ] Ensure your validator appears in the `--help checks` list
 

@@ -258,7 +258,7 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	}
 
 	// Parse multipart form
-	err := request.ParseMultipartForm(32 << 20) // 32MB max
+	err := request.ParseMultipartForm(100 << 20) // 100MB max, consistent with maxFileSize in processUploadedFile
 	if err != nil {
 		ws.sendError(responseWriter, "Failed to parse form data")
 		return

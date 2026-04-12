@@ -14,6 +14,12 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// Pre-compiled regex patterns to avoid repeated compilation in hot paths.
+var (
+	ccMultiSpacePattern = regexp.MustCompile(`\s{2,}`)
+	financialPattern    = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\d{4}[\s-]?\d{4}`)
+)
+
 // Validator implements the detector.Validator interface for detecting
 // credit card numbers using optimized regex patterns, contextual analysis, and validation algorithms.
 // This is the main validator with improved boundary detection, performance, and reduced false positives.
@@ -597,13 +603,11 @@ func (v *Validator) isTabularData(line, match string) bool {
 	}
 
 	// Check for multiple consecutive spaces (common in fixed-width tabular data)
-	multiSpacePattern := regexp.MustCompile(`\s{2,}`)
-	if len(multiSpacePattern.FindAllString(line, -1)) >= 2 {
+	if len(ccMultiSpacePattern.FindAllString(line, -1)) >= 2 {
 		return true
 	}
 
 	// Check for common financial data patterns (names/accounts followed by credit cards)
-	financialPattern := regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\d{4}[\s-]?\d{4}`)
 	if financialPattern.MatchString(line) {
 		return true
 	}

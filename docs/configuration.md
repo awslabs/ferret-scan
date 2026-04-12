@@ -666,7 +666,7 @@ Here's a complete example configuration file with the new features:
 defaults:
   format: text                # Output format: text, json, csv, yaml, junit, gitlab-sast
   confidence_levels: all      # Confidence levels to display: high, medium, low, or combinations
-  checks: all                 # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN<!-- GENAI_DISABLED: , COMPREHEND_PII -->, or combinations
+  checks: all                 # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN<!-- GENAI_DISABLED: , COMPREHEND_PII -->, or combinations
   verbose: false              # Display detailed information for each finding
   debug: false                # Enable debug logging to show preprocessing and validation flow
   no_color: false             # Disable colored output
