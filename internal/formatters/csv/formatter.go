@@ -144,6 +144,8 @@ func (f *Formatter) getPrecommitIssueDescription(match detector.Match) string {
 		return "IP notice"
 	case "SOCIAL_MEDIA":
 		return "Social media handle"
+	case "VIN":
+		return "Vehicle Identification Number"
 	default:
 		return strings.ReplaceAll(match.Type, "_", " ")
 	}

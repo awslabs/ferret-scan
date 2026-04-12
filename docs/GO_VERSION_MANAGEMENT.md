@@ -14,7 +14,7 @@ Maintaining consistent Go versions across development, CI/CD, and deployment env
 
 ### Primary Source: `.go-version`
 ```
-1.24.1
+1.26.2
 ```
 This file contains the **exact** Go version used across the project.
 
@@ -22,10 +22,10 @@ This file contains the **exact** Go version used across the project.
 
 | File | Version Format | Purpose |
 |------|----------------|---------|
-| `go.mod` | `1.24` | Go module compatibility (major.minor) |
-| `.gitlab-ci.yml` | `1.24.1` | CI/CD Docker images |
-| `Dockerfile` | `1.24.1-alpine` | Container builds |
-| Local development | `1.24.1` | Developer environments |
+| `go.mod` | `1.26` | Go module compatibility (major.minor) |
+| `.gitlab-ci.yml` | `1.26.2` | CI/CD Docker images |
+| `Dockerfile` | `1.26.2-alpine` | Container builds |
+| Local development | `1.26.2` | Developer environments |
 
 ## Synchronization Tools
 
@@ -58,7 +58,7 @@ pre-commit run go-version-check --all-files
 
 ### Step 1: Update Primary Source
 ```bash
-echo "1.25.1" > .go-version
+echo "1.26.2" > .go-version
 ```
 
 ### Step 2: Sync All Files
@@ -81,7 +81,7 @@ make test
 ### Step 5: Commit Changes
 ```bash
 git add .go-version go.mod .gitlab-ci.yml
-git commit -m "chore: update Go version to 1.25.1"
+git commit -m "chore: update Go version to 1.26.2"
 ```
 
 ## CI/CD Integration
@@ -89,8 +89,8 @@ git commit -m "chore: update Go version to 1.25.1"
 ### GitLab CI Variables
 ```yaml
 variables:
-  GO_VERSION: "1.24.1"
-  GO_DOCKER_IMAGE: "golang:1.24.1-alpine"
+  GO_VERSION: "1.26.2"
+  GO_DOCKER_IMAGE: "golang:1.26.2-alpine"
 ```
 
 ### Usage in Jobs
@@ -98,7 +98,7 @@ variables:
 build:
   image: $GO_DOCKER_IMAGE
   script:
-    - go version  # Outputs: go version go1.24.1 linux/amd64
+    - go version  # Outputs: go version go1.26.2 linux/amd64
 ```
 
 ## Local Development

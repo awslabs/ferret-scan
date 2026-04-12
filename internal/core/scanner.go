@@ -160,6 +160,7 @@ func ParseChecksToRun(checks []string) map[string]bool {
 		"SSN":                   false,
 		"SECRETS":               false,
 		"PERSON_NAME":           false,
+		"VIN":                   false,
 	}
 
 	if len(checks) == 0 || (len(checks) == 1 && checks[0] == "all") {

@@ -95,7 +95,7 @@ cache:
 - Allowed to fail (warning only)
 
 #### Multi-version Testing
-- `test:go-1.21`, `test:go-1.22`, `test:go-1.23`
+- `test:go-1.24`, `test:go-1.25`, `test:go-1.26`
 - Ensures compatibility across Go versions
 
 ### Security Jobs

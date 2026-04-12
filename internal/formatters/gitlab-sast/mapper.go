@@ -32,6 +32,7 @@ func NewVulnerabilityMapper() *VulnerabilityMapper {
 			"SECRETS":               "sast",
 			"INTELLECTUAL_PROPERTY": "sast",
 			"SOCIAL_MEDIA":          "sast",
+			"VIN":                   "sast",
 			"METADATA":              "sast",
 			"COMPREHEND":            "sast",
 			// Default fallback
@@ -161,6 +162,7 @@ func (m *VulnerabilityMapper) generateVulnerabilityName(checkType string) string
 		"SECRETS":               "Secret/API Key Detected",
 		"INTELLECTUAL_PROPERTY": "Intellectual Property Detected",
 		"SOCIAL_MEDIA":          "Social Media Handle Detected",
+		"VIN":                   "Vehicle Identification Number Detected",
 		"METADATA":              "Sensitive Metadata Detected",
 		"COMPREHEND":            "AWS Comprehend PII Detected",
 	}
@@ -188,6 +190,7 @@ func (m *VulnerabilityMapper) generateSanitizedMessage(match detector.Match) str
 		"SECRETS":               "Potential secret or API key found in source code",
 		"INTELLECTUAL_PROPERTY": "Potential intellectual property content found",
 		"SOCIAL_MEDIA":          "Social media handle found in source code",
+		"VIN":                   "Potential vehicle identification number found in source code",
 		"METADATA":              "Sensitive metadata found in file",
 		"COMPREHEND":            "AWS Comprehend detected potential PII",
 	}

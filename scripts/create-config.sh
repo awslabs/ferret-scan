@@ -29,7 +29,7 @@ cat > "$CONFIG_FILE" << 'EOF'
 defaults:
   format: text                # Output format: text or json
   confidence_levels: all      # Confidence levels to display: high, medium, low, or combinations
-  checks: all                 # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, or combinations
+  checks: all                 # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
   verbose: false              # Display detailed information for each finding
   no_color: false             # Disable colored output
   recursive: false            # Recursively scan directories
