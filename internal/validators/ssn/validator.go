@@ -619,8 +619,8 @@ func (v *Validator) isSequential(ssn string) bool {
 	// Check for ascending sequence
 	ascending := true
 	for i := 0; i < len(ssn)-1; i++ {
-		curr, _ := strconv.Atoi(string(ssn[i]))
-		next, _ := strconv.Atoi(string(ssn[i+1]))
+		curr := int(ssn[i] - '0')
+		next := int(ssn[i+1] - '0')
 		if next != (curr+1)%10 {
 			ascending = false
 			break
@@ -630,8 +630,8 @@ func (v *Validator) isSequential(ssn string) bool {
 	// Check for descending sequence
 	descending := true
 	for i := 0; i < len(ssn)-1; i++ {
-		curr, _ := strconv.Atoi(string(ssn[i]))
-		next, _ := strconv.Atoi(string(ssn[i+1]))
+		curr := int(ssn[i] - '0')
+		next := int(ssn[i+1] - '0')
 		if next != (curr+9)%10 {
 			descending = false
 			break
