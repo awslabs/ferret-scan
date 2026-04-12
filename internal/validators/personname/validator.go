@@ -25,6 +25,10 @@ var (
 		"zip code", "postal code", "state province", "country region",
 		"number first", "number last", "card first", "card last", "security number",
 	}
+
+	// Pre-compiled regex patterns to avoid repeated compilation in hot paths.
+	pnEmailPattern = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+	pnPhonePattern = regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
 )
 
 // Validator implements the detector.Validator interface for detecting
@@ -925,14 +929,12 @@ func (v *Validator) analyzeSpecificPatterns(contextLine, match string) float64 {
 	// Keep only essential context detection
 
 	// Look for email addresses in the same line (strong positive signal)
-	emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	if emailPattern.MatchString(contextLine) {
+	if pnEmailPattern.MatchString(contextLine) {
 		adjustment += 8.0
 	}
 
 	// Look for phone numbers in the same line (positive signal)
-	phonePattern := regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
-	if phonePattern.MatchString(contextLine) {
+	if pnPhonePattern.MatchString(contextLine) {
 		adjustment += 5.0
 	}
 
@@ -947,14 +949,12 @@ func (v *Validator) analyzeSurroundingContext(surroundingText, match string) flo
 	adjustment := 0.0
 
 	// Look for email addresses near names (strong positive signal)
-	emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	if emailPattern.MatchString(surroundingText) {
+	if pnEmailPattern.MatchString(surroundingText) {
 		adjustment += 8.0
 	}
 
 	// Look for phone numbers near names (positive signal)
-	phonePattern := regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
-	if phonePattern.MatchString(surroundingText) {
+	if pnPhonePattern.MatchString(surroundingText) {
 		adjustment += 5.0
 	}
 

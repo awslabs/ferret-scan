@@ -12,6 +12,25 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// Pre-compiled regex patterns used across validator methods.
+var (
+	reEmail          = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+	rePhoneEnhanced  = regexp.MustCompile(`\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}`)
+	reDate           = regexp.MustCompile(`\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}`)
+	reSSNEnhanced    = regexp.MustCompile(`\d{3}[-\s]?\d{2}[-\s]?\d{4}`)
+	reNameEnhanced   = regexp.MustCompile(`\b[A-Z][a-z]+\s+[A-Z][a-z]+\b`)
+	reMultiSpace3    = regexp.MustCompile(`\s{3,}`)
+	reAllDigits      = regexp.MustCompile(`^\d+$`)
+	reNumber         = regexp.MustCompile(`\d+`)
+	reSSNStrict      = regexp.MustCompile(`\d{3}-\d{2}-\d{4}`)
+	reCreditCard     = regexp.MustCompile(`\d{4}-\d{4}-\d{4}-\d{4}`)
+	rePhoneStrict    = regexp.MustCompile(`\d{3}-\d{3}-\d{4}`)
+	reMultiSpace2    = regexp.MustCompile(`\s{2,}`)
+	reNameSSN        = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\d{3}-\d{2}-\d{4}`)
+	reCSV            = regexp.MustCompile(`"[^"]*",\s*"[^"]*"`)
+	reDigitSequences = regexp.MustCompile(`\b\d{18}\b`)
+)
+
 // Validator implements the detector.Validator interface for detecting
 // Social Security Numbers using regex patterns and contextual analysis.
 type Validator struct {
@@ -339,24 +358,19 @@ func (v *Validator) isEnhancedTabularData(line, value string) bool {
 	structuredCount := 0
 
 	// Email patterns
-	emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	structuredCount += len(emailPattern.FindAllString(line, -1))
+	structuredCount += len(reEmail.FindAllString(line, -1))
 
 	// Phone patterns
-	phonePattern := regexp.MustCompile(`\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}`)
-	structuredCount += len(phonePattern.FindAllString(line, -1))
+	structuredCount += len(rePhoneEnhanced.FindAllString(line, -1))
 
 	// Date patterns
-	datePattern := regexp.MustCompile(`\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}`)
-	structuredCount += len(datePattern.FindAllString(line, -1))
+	structuredCount += len(reDate.FindAllString(line, -1))
 
 	// SSN patterns
-	ssnPattern := regexp.MustCompile(`\d{3}[-\s]?\d{2}[-\s]?\d{4}`)
-	structuredCount += len(ssnPattern.FindAllString(line, -1))
+	structuredCount += len(reSSNEnhanced.FindAllString(line, -1))
 
 	// Name patterns (Title Case words)
-	namePattern := regexp.MustCompile(`\b[A-Z][a-z]+\s+[A-Z][a-z]+\b`)
-	structuredCount += len(namePattern.FindAllString(line, -1))
+	structuredCount += len(reNameEnhanced.FindAllString(line, -1))
 
 	// If we have 3+ structured elements, it's likely tabular
 	if structuredCount >= 3 {
@@ -373,8 +387,7 @@ func (v *Validator) isEnhancedTabularData(line, value string) bool {
 	}
 
 	// Check for multiple consecutive spaces (fixed-width tables)
-	multiSpacePattern := regexp.MustCompile(`\s{3,}`)
-	if len(multiSpacePattern.FindAllString(line, -1)) >= 2 {
+	if len(reMultiSpace3.FindAllString(line, -1)) >= 2 {
 		return true
 	}
 
@@ -477,7 +490,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	}
 
 	// Check if all digits
-	if !regexp.MustCompile(`^\d+$`).MatchString(cleanMatch) {
+	if !reAllDigits.MatchString(cleanMatch) {
 		confidence -= 20
 		checks["digits"] = false
 		return confidence, checks
@@ -678,8 +691,7 @@ func (v *Validator) isEncodedData(line, match string) bool {
 	}
 
 	// Count total numbers in the line
-	numberPattern := regexp.MustCompile(`\d+`)
-	numbers := numberPattern.FindAllString(line, -1)
+	numbers := reNumber.FindAllString(line, -1)
 
 	// For non-tabular data, if line has many numbers (>15), it's likely encoded data
 	if len(numbers) > 15 {
@@ -687,16 +699,13 @@ func (v *Validator) isEncodedData(line, match string) bool {
 		structuredNumbers := 0
 
 		// Count SSN patterns
-		ssnPattern := regexp.MustCompile(`\d{3}-\d{2}-\d{4}`)
-		structuredNumbers += len(ssnPattern.FindAllString(line, -1))
+		structuredNumbers += len(reSSNStrict.FindAllString(line, -1))
 
 		// Count credit card patterns
-		ccPattern := regexp.MustCompile(`\d{4}-\d{4}-\d{4}-\d{4}`)
-		structuredNumbers += len(ccPattern.FindAllString(line, -1))
+		structuredNumbers += len(reCreditCard.FindAllString(line, -1))
 
 		// Count phone patterns
-		phonePattern := regexp.MustCompile(`\d{3}-\d{3}-\d{4}`)
-		structuredNumbers += len(phonePattern.FindAllString(line, -1))
+		structuredNumbers += len(rePhoneStrict.FindAllString(line, -1))
 
 		// If we have structured numbers, it's likely legitimate data
 		if structuredNumbers >= 2 {
@@ -749,21 +758,18 @@ func (v *Validator) isTabularData(line, match string) bool {
 	}
 
 	// Check for multiple consecutive spaces (common in fixed-width tabular data)
-	multiSpacePattern := regexp.MustCompile(`\s{2,}`)
-	multiSpaceMatches := multiSpacePattern.FindAllString(line, -1)
+	multiSpaceMatches := reMultiSpace2.FindAllString(line, -1)
 	if len(multiSpaceMatches) >= 2 {
 		return true
 	}
 
 	// Check for common tabular patterns (names followed by SSNs)
-	namePattern := regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\d{3}-\d{2}-\d{4}`)
-	if namePattern.MatchString(line) {
+	if reNameSSN.MatchString(line) {
 		return true
 	}
 
 	// Check for CSV-style patterns (comma-separated values with quotes)
-	csvPattern := regexp.MustCompile(`"[^"]*",\s*"[^"]*"`)
-	if csvPattern.MatchString(line) {
+	if reCSV.MatchString(line) {
 		return true
 	}
 
@@ -771,24 +777,19 @@ func (v *Validator) isTabularData(line, match string) bool {
 	structuredElements := 0
 
 	// Count SSN-like patterns
-	ssnPattern := regexp.MustCompile(`\d{3}-\d{2}-\d{4}`)
-	structuredElements += len(ssnPattern.FindAllString(line, -1))
+	structuredElements += len(reSSNStrict.FindAllString(line, -1))
 
 	// Count credit card-like patterns
-	ccPattern := regexp.MustCompile(`\d{4}-\d{4}-\d{4}-\d{4}`)
-	structuredElements += len(ccPattern.FindAllString(line, -1))
+	structuredElements += len(reCreditCard.FindAllString(line, -1))
 
 	// Count phone-like patterns
-	phonePattern := regexp.MustCompile(`\d{3}-\d{3}-\d{4}`)
-	structuredElements += len(phonePattern.FindAllString(line, -1))
+	structuredElements += len(rePhoneStrict.FindAllString(line, -1))
 
 	// Count email-like patterns
-	emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	structuredElements += len(emailPattern.FindAllString(line, -1))
+	structuredElements += len(reEmail.FindAllString(line, -1))
 
 	// Count date-like patterns (MM/DD/YYYY, YYYY-MM-DD, etc.)
-	datePattern := regexp.MustCompile(`\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}`)
-	structuredElements += len(datePattern.FindAllString(line, -1))
+	structuredElements += len(reDate.FindAllString(line, -1))
 
 	// If multiple structured elements, likely tabular data
 	return structuredElements >= 2
@@ -801,7 +802,7 @@ func (v *Validator) findSSNsInConcatenatedNumbers(line string) []string {
 
 	// Look for sequences of exactly 18 digits (two 9-digit numbers concatenated)
 	// This is much more restrictive than looking for any 9+ digit sequence
-	digitSequences := regexp.MustCompile(`\b\d{18}\b`).FindAllString(line, -1)
+	digitSequences := reDigitSequences.FindAllString(line, -1)
 
 	for _, seq := range digitSequences {
 		// Split into two 9-digit candidates
