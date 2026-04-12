@@ -14,6 +14,15 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// Pre-compiled regex patterns to avoid repeated compilation in hot paths.
+var (
+	phoneValidCharsPattern = regexp.MustCompile(`^[\d+\-.\s()]+$`)
+	phoneCleanPattern      = regexp.MustCompile(`[^\d+]`)
+	ssnPattern             = regexp.MustCompile(`^\d{3}[-.\s]\d{2}[-.\s]\d{4}$`)
+	phoneMultiSpacePattern = regexp.MustCompile(`\s{2,}`)
+	namePhonePattern       = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\(?\d{3}\)?`)
+)
+
 // Validator implements the detector.Validator interface for detecting
 // phone numbers using regex patterns and contextual analysis.
 type Validator struct {
@@ -522,7 +531,7 @@ func (v *Validator) calculateConfidenceWithPattern(match string, pattern phonePa
 	}
 
 	// Check for valid digits only (10%)
-	if !regexp.MustCompile(`^[\d+\-.\s()]+$`).MatchString(match) {
+	if !phoneValidCharsPattern.MatchString(match) {
 		confidence -= 10
 		checks["valid_digits"] = false
 	}
@@ -588,7 +597,7 @@ func (v *Validator) AnalyzePhoneStructure(phone string, pattern phonePattern) ma
 // Helper methods
 func (v *Validator) cleanPhoneNumber(phone string) string {
 	// Remove all non-digit characters except +
-	cleaned := regexp.MustCompile(`[^\d+]`).ReplaceAllString(phone, "")
+	cleaned := phoneCleanPattern.ReplaceAllString(phone, "")
 	return cleaned
 }
 
@@ -764,7 +773,6 @@ func initCountryCodeMap() map[string]string {
 // looksLikeSSN checks if the pattern matches SSN format (XXX-XX-XXXX) instead of phone
 func (v *Validator) looksLikeSSN(match string) bool {
 	// SSN pattern: exactly 9 digits in XXX-XX-XXXX format
-	ssnPattern := regexp.MustCompile(`^\d{3}[-.\s]\d{2}[-.\s]\d{4}$`)
 	return ssnPattern.MatchString(match)
 }
 
@@ -874,13 +882,11 @@ func (v *Validator) isTabularData(line, match string) bool {
 	}
 
 	// Check for multiple consecutive spaces (common in fixed-width tabular data)
-	multiSpacePattern := regexp.MustCompile(`\s{2,}`)
-	if len(multiSpacePattern.FindAllString(line, -1)) >= 2 {
+	if len(phoneMultiSpacePattern.FindAllString(line, -1)) >= 2 {
 		return true
 	}
 
 	// Check for common contact list patterns (names followed by phones)
-	namePhonePattern := regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\(?\d{3}\)?`)
 	if namePhonePattern.MatchString(line) {
 		return true
 	}
