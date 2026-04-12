@@ -106,11 +106,13 @@ func NewValidator() *Validator {
 	v.sortedCountryCodes = initSortedCountryCodes(v.countryCodeMap)
 
 	// Initialize phone patterns
+	// NOTE: Patterns starting with non-word chars like ( or + use (?:^|\s|[,;|"'<>])
+	// instead of \b because \b doesn't match between two non-word characters.
 	v.patterns = []phonePattern{
 		// US/Canada formats
 		{
 			name:    "US_Standard",
-			regex:   regexp.MustCompile(`\b\(\d{3}\)\s?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\(\d{3}\)\s?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "(XXX) XXX-XXXX",
 		},
@@ -128,14 +130,14 @@ func NewValidator() *Validator {
 		},
 		{
 			name:    "US_International",
-			regex:   regexp.MustCompile(`\b\+1[-.\s]?\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+1[-.\s]?\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "+1 (XXX) XXX-XXXX",
 		},
 		// International formats
 		{
 			name:    "International_Plus",
-			regex:   regexp.MustCompile(`\b\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b`),
 			country: "International",
 			format:  "+XX XXXX XXXX XXXX",
 		},
@@ -154,34 +156,34 @@ func NewValidator() *Validator {
 		},
 		{
 			name:    "UK_International",
-			regex:   regexp.MustCompile(`\b\+44[-.\s]?\d{1,4}[-.\s]?\d{3,8}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+44[-.\s]?\d{1,4}[-.\s]?\d{3,8}\b`),
 			country: "UK",
 			format:  "+44 XXXX XXXXXXXX",
 		},
 		// European formats
 		{
 			name:    "European",
-			regex:   regexp.MustCompile(`\b\+\d{2}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{2}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}\b`),
 			country: "Europe",
 			format:  "+XX XXXX XXXX XXXX",
 		},
 		// Mobile-specific patterns
 		{
 			name:    "Mobile_International",
-			regex:   regexp.MustCompile(`\b\+\d{1,3}[-.\s]?\d{2,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,3}[-.\s]?\d{2,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b`),
 			country: "Mobile",
 			format:  "+XXX XXXX XXXX XXXX",
 		},
 		// Extension patterns
 		{
 			name:    "US_With_Extension",
-			regex:   regexp.MustCompile(`\b\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
 			country: "US/CA",
 			format:  "(XXX) XXX-XXXX ext XXXX",
 		},
 		{
 			name:    "International_With_Extension",
-			regex:   regexp.MustCompile(`\b\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
 			country: "International",
 			format:  "+XX XXXX XXXX ext XXXX",
 		},
@@ -194,13 +196,13 @@ func NewValidator() *Validator {
 		},
 		{
 			name:    "US_TollFree_Parentheses",
-			regex:   regexp.MustCompile(`\b(?:1[-.\s]?)?\((?:800|833|844|855|866|877|888)\)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])(?:1[-.\s]?)?\((?:800|833|844|855|866|877|888)\)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "1-(800) XXX-XXXX",
 		},
 		{
 			name:    "US_TollFree_International",
-			regex:   regexp.MustCompile(`\b\+1[-.\s]?(?:800|833|844|855|866|877|888)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+1[-.\s]?(?:800|833|844|855|866|877|888)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "+1-800-XXX-XXXX",
 		},
@@ -253,7 +255,10 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 		for _, pattern := range v.patterns {
 			foundMatches := pattern.regex.FindAllString(line, -1)
 
-			for _, match := range foundMatches {
+			for _, rawMatch := range foundMatches {
+				// Trim leading delimiter captured by boundary group (?:^|[\s,;|"'<>])
+				match := strings.TrimLeft(rawMatch, " \t,;|\"'<>\r\n")
+
 				// Skip if this match was already found by another pattern
 				if v.isDuplicateMatch(matches, match, lineNum+1) {
 					continue
