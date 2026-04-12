@@ -761,6 +761,8 @@ func (f *Formatter) getPrecommitIssueDescription(match detector.Match) string {
 		return "Intellectual property notice detected"
 	case "SOCIAL_MEDIA":
 		return "Social media handle detected"
+	case "VIN":
+		return "Vehicle Identification Number detected"
 	default:
 		// For metadata and other types, try to extract meaningful info
 		if match.Validator == "metadata" && strings.Contains(match.Text, ":") {

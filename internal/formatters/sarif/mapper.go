@@ -295,6 +295,7 @@ func (m *VulnerabilityMapper) calculateRank(match detector.Match) float64 {
 		"IP_ADDRESS":            4.0,
 		"METADATA":              3.0,
 		"SOCIAL_MEDIA":          3.0,
+		"VIN":                   6.0,
 	}
 
 	// Get sensitivity weight for this type, default to 5.0 for unknown types

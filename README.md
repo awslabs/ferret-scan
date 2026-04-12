@@ -214,7 +214,7 @@ go build -ldflags="-s -w" -o ferret-scan cmd/main.go
 - `--format`: Output format: "text", "json", "csv", "yaml", "junit", "gitlab-sast" (default: "text")
   - **gitlab-sast**: GitLab Security Report format for integration with GitLab Security Dashboard and merge request widgets
 - `--confidence`: Confidence levels to display, comma-separated: "high", "medium", "low", or "all" (default: "all")
-- `--checks`: Specific checks to run, comma-separated: "CREDIT_CARD", "EMAIL", "INTELLECTUAL_PROPERTY", "IP_ADDRESS", "METADATA", "PASSPORT", "PERSON_NAME", "PHONE", "SECRETS", "SOCIAL_MEDIA", "SSN"<!-- GENAI_DISABLED: , "COMPREHEND_PII" -->, or "all" (default: "all")
+- `--checks`: Specific checks to run, comma-separated: "CREDIT_CARD", "EMAIL", "INTELLECTUAL_PROPERTY", "IP_ADDRESS", "METADATA", "PASSPORT", "PERSON_NAME", "PHONE", "SECRETS", "SOCIAL_MEDIA", "SSN", "VIN"<!-- GENAI_DISABLED: , "COMPREHEND_PII" -->, or "all" (default: "all")
   - **SOCIAL_MEDIA**: Requires configuration - see [Social Media Configuration Guide](docs/social-media-configuration.md)
 
 #### Output and Display Options
@@ -1213,7 +1213,7 @@ Example configuration file:
 defaults:
   format: text                # Output format: text or json
   confidence_levels: all      # Confidence levels to display: high, medium, low, or combinations
-  checks: all                 # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, or combinations
+  checks: all                 # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
   verbose: false              # Display detailed information for each finding
   no_color: false             # Disable colored output
   recursive: false            # Recursively scan directories
@@ -1308,6 +1308,7 @@ Ferret Scan includes multiple validators for different types of sensitive data:
 - [Secrets Validator](internal/validators/secrets/README.md) - Detects API keys, tokens, passwords, and other secrets using entropy analysis
 - [Social Media Validator](internal/validators/socialmedia/README.md) - Detects social media profiles, usernames, and handles across major platforms (LinkedIn, Twitter/X, Facebook, GitHub, Instagram, YouTube, TikTok, etc.)
 - [Intellectual Property Validator](internal/validators/intellectualproperty/README.md) - Detects patents, trademarks, copyrights, and trade secrets
+- [VIN Validator](internal/validators/vin/README.md) - Detects Vehicle Identification Numbers with check digit validation and manufacturer identification
 - [🆕 Enhanced Metadata Validator](internal/validators/metadata/README.md) - Preprocessor-aware metadata validation with intelligent file type filtering and type-specific patterns
 <!-- GENAI_DISABLED: - [Comprehend PII Validator](internal/validators/comprehend/README.md) - AI-powered PII detection using Amazon Comprehend (GenAI mode) -->
 

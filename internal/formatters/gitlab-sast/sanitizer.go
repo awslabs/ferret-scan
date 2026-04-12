@@ -130,6 +130,9 @@ func (s *DataSanitizer) EnsureNoSensitiveData(text string) string {
 	// IP address patterns
 	sanitized = s.replacePattern(sanitized, `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`, "[IP-ADDRESS]")
 
+	// VIN patterns (17 alphanumeric, no I/O/Q)
+	sanitized = s.replacePattern(sanitized, `\b[A-HJ-NPR-Z0-9]{17}\b`, "[VIN]")
+
 	return sanitized
 }
 
@@ -159,6 +162,7 @@ func (s *DataSanitizer) GetCheckTypeDescription(checkType string) string {
 		"PII_LOCATION":          "Location information",
 		"PII_ORGANIZATION":      "Organization information",
 		"METADATA":              "Sensitive metadata",
+		"VIN":                   "Vehicle Identification Number",
 		"DOCUMENT_COMMENTS":     "Document comments",
 		"AUTHOR_INFO":           "Author information",
 		"COMPANY_INFO":          "Company information",
@@ -203,6 +207,7 @@ func (s *DataSanitizer) IsSafeMetadataKey(key string) bool {
 		"consolidated_count":  true,
 		"cluster_type":        true,
 		"analysis_confidence": true,
+		"manufacturer":        true,
 	}
 
 	// Exclude keys that might contain sensitive data
@@ -243,6 +248,7 @@ func (s *DataSanitizer) getRemediationGuidance(checkType string) string {
 		"INTELLECTUAL_PROPERTY": "Review and remove proprietary information. Ensure compliance with intellectual property policies.",
 		"PII_PERSON":            "Remove personal information or replace with anonymized test data.",
 		"METADATA":              "Review and remove sensitive metadata from files before committing to version control.",
+		"VIN":                   "Remove Vehicle Identification Numbers from code and documentation. VINs can be used to identify vehicle owners and their personal information.",
 	}
 
 	if remediation, exists := guidance[checkType]; exists {
