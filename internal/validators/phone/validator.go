@@ -14,6 +14,15 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// Pre-compiled regex patterns to avoid repeated compilation in hot paths.
+var (
+	phoneValidCharsPattern = regexp.MustCompile(`^[\d+\-.\s()]+$`)
+	phoneCleanPattern      = regexp.MustCompile(`[^\d+]`)
+	ssnPattern             = regexp.MustCompile(`^\d{3}[-.\s]\d{2}[-.\s]\d{4}$`)
+	phoneMultiSpacePattern = regexp.MustCompile(`\s{2,}`)
+	namePhonePattern       = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\(?\d{3}\)?`)
+)
+
 // Validator implements the detector.Validator interface for detecting
 // phone numbers using regex patterns and contextual analysis.
 type Validator struct {
@@ -97,11 +106,13 @@ func NewValidator() *Validator {
 	v.sortedCountryCodes = initSortedCountryCodes(v.countryCodeMap)
 
 	// Initialize phone patterns
+	// NOTE: Patterns starting with non-word chars like ( or + use (?:^|\s|[,;|"'<>])
+	// instead of \b because \b doesn't match between two non-word characters.
 	v.patterns = []phonePattern{
 		// US/Canada formats
 		{
 			name:    "US_Standard",
-			regex:   regexp.MustCompile(`\b\(\d{3}\)\s?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\(\d{3}\)\s?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "(XXX) XXX-XXXX",
 		},
@@ -119,14 +130,14 @@ func NewValidator() *Validator {
 		},
 		{
 			name:    "US_International",
-			regex:   regexp.MustCompile(`\b\+1[-.\s]?\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+1[-.\s]?\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "+1 (XXX) XXX-XXXX",
 		},
 		// International formats
 		{
 			name:    "International_Plus",
-			regex:   regexp.MustCompile(`\b\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b`),
 			country: "International",
 			format:  "+XX XXXX XXXX XXXX",
 		},
@@ -145,34 +156,34 @@ func NewValidator() *Validator {
 		},
 		{
 			name:    "UK_International",
-			regex:   regexp.MustCompile(`\b\+44[-.\s]?\d{1,4}[-.\s]?\d{3,8}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+44[-.\s]?\d{1,4}[-.\s]?\d{3,8}\b`),
 			country: "UK",
 			format:  "+44 XXXX XXXXXXXX",
 		},
 		// European formats
 		{
 			name:    "European",
-			regex:   regexp.MustCompile(`\b\+\d{2}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{2}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}\b`),
 			country: "Europe",
 			format:  "+XX XXXX XXXX XXXX",
 		},
 		// Mobile-specific patterns
 		{
 			name:    "Mobile_International",
-			regex:   regexp.MustCompile(`\b\+\d{1,3}[-.\s]?\d{2,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,3}[-.\s]?\d{2,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b`),
 			country: "Mobile",
 			format:  "+XXX XXXX XXXX XXXX",
 		},
 		// Extension patterns
 		{
 			name:    "US_With_Extension",
-			regex:   regexp.MustCompile(`\b\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\(?(\d{3})\)?[-.\s]?\d{3}[-.\s]?\d{4}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
 			country: "US/CA",
 			format:  "(XXX) XXX-XXXX ext XXXX",
 		},
 		{
 			name:    "International_With_Extension",
-			regex:   regexp.MustCompile(`\b\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\b`),
 			country: "International",
 			format:  "+XX XXXX XXXX ext XXXX",
 		},
@@ -185,13 +196,13 @@ func NewValidator() *Validator {
 		},
 		{
 			name:    "US_TollFree_Parentheses",
-			regex:   regexp.MustCompile(`\b(?:1[-.\s]?)?\((?:800|833|844|855|866|877|888)\)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])(?:1[-.\s]?)?\((?:800|833|844|855|866|877|888)\)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "1-(800) XXX-XXXX",
 		},
 		{
 			name:    "US_TollFree_International",
-			regex:   regexp.MustCompile(`\b\+1[-.\s]?(?:800|833|844|855|866|877|888)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+1[-.\s]?(?:800|833|844|855|866|877|888)[-.\s]?\d{3}[-.\s]?\d{4}\b`),
 			country: "US/CA",
 			format:  "+1-800-XXX-XXXX",
 		},
@@ -244,7 +255,10 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 		for _, pattern := range v.patterns {
 			foundMatches := pattern.regex.FindAllString(line, -1)
 
-			for _, match := range foundMatches {
+			for _, rawMatch := range foundMatches {
+				// Trim leading delimiter captured by boundary group (?:^|[\s,;|"'<>])
+				match := strings.TrimLeft(rawMatch, " \t,;|\"'<>\r\n")
+
 				// Skip if this match was already found by another pattern
 				if v.isDuplicateMatch(matches, match, lineNum+1) {
 					continue
@@ -522,7 +536,7 @@ func (v *Validator) calculateConfidenceWithPattern(match string, pattern phonePa
 	}
 
 	// Check for valid digits only (10%)
-	if !regexp.MustCompile(`^[\d+\-.\s()]+$`).MatchString(match) {
+	if !phoneValidCharsPattern.MatchString(match) {
 		confidence -= 10
 		checks["valid_digits"] = false
 	}
@@ -588,7 +602,7 @@ func (v *Validator) AnalyzePhoneStructure(phone string, pattern phonePattern) ma
 // Helper methods
 func (v *Validator) cleanPhoneNumber(phone string) string {
 	// Remove all non-digit characters except +
-	cleaned := regexp.MustCompile(`[^\d+]`).ReplaceAllString(phone, "")
+	cleaned := phoneCleanPattern.ReplaceAllString(phone, "")
 	return cleaned
 }
 
@@ -764,7 +778,6 @@ func initCountryCodeMap() map[string]string {
 // looksLikeSSN checks if the pattern matches SSN format (XXX-XX-XXXX) instead of phone
 func (v *Validator) looksLikeSSN(match string) bool {
 	// SSN pattern: exactly 9 digits in XXX-XX-XXXX format
-	ssnPattern := regexp.MustCompile(`^\d{3}[-.\s]\d{2}[-.\s]\d{4}$`)
 	return ssnPattern.MatchString(match)
 }
 
@@ -874,13 +887,11 @@ func (v *Validator) isTabularData(line, match string) bool {
 	}
 
 	// Check for multiple consecutive spaces (common in fixed-width tabular data)
-	multiSpacePattern := regexp.MustCompile(`\s{2,}`)
-	if len(multiSpacePattern.FindAllString(line, -1)) >= 2 {
+	if len(phoneMultiSpacePattern.FindAllString(line, -1)) >= 2 {
 		return true
 	}
 
 	// Check for common contact list patterns (names followed by phones)
-	namePhonePattern := regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\(?\d{3}\)?`)
 	if namePhonePattern.MatchString(line) {
 		return true
 	}

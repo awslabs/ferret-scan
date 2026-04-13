@@ -13,10 +13,51 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// Package-level pre-compiled regexps for static patterns
+var (
+	// Country-specific format patterns
+	reUSPassport     = regexp.MustCompile(`^[A-Z]\d{8}$`)
+	reUKPassport     = regexp.MustCompile(`^\d{9}$`)
+	reCanadaPassport = regexp.MustCompile(`^[A-Z]{2}\d{6}$`)
+	reEUPassport     = regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{7}$`)
+
+	// MRZ and generic character validation
+	reMRZChars     = regexp.MustCompile(`^[A-Z0-9<]+$`)
+	reGenericChars = regexp.MustCompile(`^[A-Z0-9]+$`)
+
+	// Utility patterns
+	reMultiSpace    = regexp.MustCompile(`\s{3,}`)
+	reMultiSpace2   = regexp.MustCompile(`\s{2,}`)
+	reTravelPattern = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+[A-Z0-9]{6,10}`)
+	reDigitsOnly    = regexp.MustCompile(`^[0-9]+$`)
+
+	// False positive patterns
+	reFalsePositivePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`^[A-Z]{2}\d{4}$`),
+		regexp.MustCompile(`^(SKU|UPC|EAN)\d+$`),
+		regexp.MustCompile(`^[A-Z]{3}-\d{4}$`),
+	}
+
+	// Form context patterns
+	reFormPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`passport.*:`),
+		regexp.MustCompile(`passport.*=`),
+		regexp.MustCompile(`passport.*number.*:`),
+		regexp.MustCompile(`passport.*no.*:`),
+		regexp.MustCompile(`document.*:`),
+		regexp.MustCompile(`document.*number.*:`),
+		regexp.MustCompile(`travel.*document.*:`),
+		regexp.MustCompile(`number.*:`),
+		regexp.MustCompile(`no.*:`),
+		regexp.MustCompile(`#.*:`),
+	}
+)
+
 // Validator implements the detector.Validator interface for detecting
 // passport numbers from various countries using regex patterns and contextual analysis.
 type Validator struct {
-	patterns map[string]string
+	patterns         map[string]string
+	compiledPatterns map[string]*regexp.Regexp
 
 	// Keywords that suggest a passport context
 	positiveKeywords []string
@@ -51,17 +92,25 @@ type Validator struct {
 // NewValidator creates and returns a new Validator instance
 // with predefined patterns and keywords for detecting passport numbers from various countries.
 func NewValidator() *Validator {
+	patterns := map[string]string{
+		// Common passport formats by country - made more restrictive
+		"US":     `\b[A-Z]\d{8}\b`,          // US: 1 letter followed by 8 digits
+		"UK":     `\b\d{9}\b`,               // UK: 9 digits
+		"Canada": `\b[A-Z]{2}\d{6}\b`,       // Canada: 2 letters followed by 6 digits
+		"EU":     `\b[A-Z]{2}[A-Z0-9]{7}\b`, // EU: 2 letters followed by 7 alphanumeric chars
+		// Removed overly broad Generic pattern - it was causing too many false positives
+		"MRZ":     `\bP[A-Z]{1}[A-Z0-9<]{42,44}\b`,        // Machine Readable Zone format
+		"MRZ_TD3": `\bP[A-Z]{3}[A-Z0-9<]{39}[0-9][0-9]\b`, // MRZ TD3 format
+	}
+
+	compiledPatterns := make(map[string]*regexp.Regexp, len(patterns))
+	for country, pattern := range patterns {
+		compiledPatterns[country] = regexp.MustCompile(pattern)
+	}
+
 	return &Validator{
-		patterns: map[string]string{
-			// Common passport formats by country - made more restrictive
-			"US":     `\b[A-Z]\d{8}\b`,          // US: 1 letter followed by 8 digits
-			"UK":     `\b\d{9}\b`,               // UK: 9 digits
-			"Canada": `\b[A-Z]{2}\d{6}\b`,       // Canada: 2 letters followed by 6 digits
-			"EU":     `\b[A-Z]{2}[A-Z0-9]{7}\b`, // EU: 2 letters followed by 7 alphanumeric chars
-			// Removed overly broad Generic pattern - it was causing too many false positives
-			"MRZ":     `\bP[A-Z]{1}[A-Z0-9<]{42,44}\b`,        // Machine Readable Zone format
-			"MRZ_TD3": `\bP[A-Z]{3}[A-Z0-9<]{39}[0-9][0-9]\b`, // MRZ TD3 format
-		},
+		patterns:         patterns,
+		compiledPatterns: compiledPatterns,
 		positiveKeywords: []string{
 			// High-confidence passport-specific keywords
 			"passport", "passport number", "passport no", "travel document",
@@ -213,8 +262,8 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 	for lineNum, line := range lines {
 		// Check each pattern against the line
-		for country, pattern := range v.patterns {
-			re := regexp.MustCompile(pattern)
+		for country := range v.patterns {
+			re := v.compiledPatterns[country]
 			foundMatches := re.FindAllString(line, -1)
 
 			for _, match := range foundMatches {
@@ -491,20 +540,14 @@ func (v *Validator) isInFormContext(match string, context detector.ContextInfo) 
 	line := strings.ToLower(context.FullLine)
 
 	// Look for form-like patterns: "label: value" or "label = value" or "label value"
-	formPatterns := []string{
-		"passport.*:", "passport.*=", "passport.*number.*:", "passport.*no.*:",
-		"document.*:", "document.*number.*:", "travel.*document.*:",
-		"number.*:", "no.*:", "#.*:",
-	}
-
-	for _, pattern := range formPatterns {
-		if matched, _ := regexp.MatchString(pattern, line); matched {
+	for _, re := range reFormPatterns {
+		if re.MatchString(line) {
 			return true
 		}
 	}
 
 	// Check for table-like structure (multiple values separated by tabs or multiple spaces)
-	if strings.Count(line, "\t") >= 2 || regexp.MustCompile(`\s{3,}`).MatchString(line) {
+	if strings.Count(line, "\t") >= 2 || reMultiSpace.MatchString(line) {
 		return true
 	}
 
@@ -621,7 +664,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	switch country {
 	case "US":
 		// US passport: 1 letter followed by 8 digits
-		if !regexp.MustCompile(`^[A-Z]\d{8}$`).MatchString(cleanMatch) {
+		if !reUSPassport.MatchString(cleanMatch) {
 			confidence -= 30
 			checks["format"] = false
 		}
@@ -640,7 +683,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 
 	case "UK":
 		// UK passport: 9 digits
-		if !regexp.MustCompile(`^\d{9}$`).MatchString(cleanMatch) {
+		if !reUKPassport.MatchString(cleanMatch) {
 			confidence -= 30
 			checks["format"] = false
 		}
@@ -659,7 +702,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 
 	case "Canada":
 		// Canadian passport: 2 letters followed by 6 digits
-		if !regexp.MustCompile(`^[A-Z]{2}\d{6}$`).MatchString(cleanMatch) {
+		if !reCanadaPassport.MatchString(cleanMatch) {
 			confidence -= 30
 			checks["format"] = false
 		}
@@ -685,7 +728,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 
 	case "EU":
 		// EU passport: 2 letters followed by 7 alphanumeric chars
-		if !regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{7}$`).MatchString(cleanMatch) {
+		if !reEUPassport.MatchString(cleanMatch) {
 			confidence -= 30
 			checks["format"] = false
 		}
@@ -719,7 +762,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		}
 
 		// Check for valid characters in MRZ (letters, numbers, and <)
-		if !regexp.MustCompile(`^[A-Z0-9<]+$`).MatchString(cleanMatch) {
+		if !reMRZChars.MatchString(cleanMatch) {
 			confidence -= 15
 			checks["valid_characters"] = false
 		}
@@ -730,7 +773,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		confidence -= 30 // Start with lower confidence for generic matches
 
 		// Check for valid characters
-		if !regexp.MustCompile(`^[A-Z0-9]+$`).MatchString(cleanMatch) {
+		if !reGenericChars.MatchString(cleanMatch) {
 			confidence -= 15
 			checks["valid_characters"] = false
 		}
@@ -797,13 +840,13 @@ func (v *Validator) determineCountry(match string) string {
 	cleanMatch := strings.ReplaceAll(match, " ", "")
 
 	// Try to match against each country pattern
-	if regexp.MustCompile(`^[A-Z]\d{8}$`).MatchString(cleanMatch) {
+	if reUSPassport.MatchString(cleanMatch) {
 		return "US"
-	} else if regexp.MustCompile(`^\d{9}$`).MatchString(cleanMatch) {
+	} else if reUKPassport.MatchString(cleanMatch) {
 		return "UK"
-	} else if regexp.MustCompile(`^[A-Z]{2}\d{6}$`).MatchString(cleanMatch) {
+	} else if reCanadaPassport.MatchString(cleanMatch) {
 		return "Canada"
-	} else if regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{7}$`).MatchString(cleanMatch) {
+	} else if reEUPassport.MatchString(cleanMatch) {
 		return "EU"
 	} else if strings.HasPrefix(cleanMatch, "P") && len(cleanMatch) > 40 {
 		if len(cleanMatch) == 44 {
@@ -861,14 +904,8 @@ func (v *Validator) isSequentialOrRepeated(text string) bool {
 
 func (v *Validator) isPossibleFalsePositive(text string) bool {
 	// Check for common false positives like product codes, serial numbers, etc.
-	falsePositivePatterns := []string{
-		`^[A-Z]{2}\d{4}$`,    // Common product code format
-		`^(SKU|UPC|EAN)\d+$`, // Product identifiers
-		`^[A-Z]{3}-\d{4}$`,   // Part numbers
-	}
-
-	for _, pattern := range falsePositivePatterns {
-		if regexp.MustCompile(pattern).MatchString(text) {
+	for _, re := range reFalsePositivePatterns {
+		if re.MatchString(text) {
 			return true
 		}
 	}
@@ -933,14 +970,12 @@ func (v *Validator) isTabularData(line, match string) bool {
 	}
 
 	// Check for multiple consecutive spaces (common in fixed-width tabular data)
-	multiSpacePattern := regexp.MustCompile(`\s{2,}`)
-	if len(multiSpacePattern.FindAllString(line, -1)) >= 2 {
+	if len(reMultiSpace2.FindAllString(line, -1)) >= 2 {
 		return true
 	}
 
 	// Check for common travel document patterns (names followed by passport numbers)
-	travelPattern := regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+[A-Z0-9]{6,10}`)
-	if travelPattern.MatchString(line) {
+	if reTravelPattern.MatchString(line) {
 		return true
 	}
 
@@ -977,7 +1012,7 @@ func (v *Validator) isTestPattern(match string) bool {
 		}
 
 		// Sequential numbers
-		if regexp.MustCompile(`^[0-9]+$`).MatchString(match) {
+		if reDigitsOnly.MatchString(match) {
 			sequential := true
 			for i := 1; i < len(match); i++ {
 				if match[i] != match[i-1]+1 {

@@ -12,6 +12,14 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// Pre-compiled regex patterns to avoid repeated compilation in hot paths.
+var (
+	validCharsPattern      = regexp.MustCompile(`^[A-Za-z0-9._%+-]+$`)
+	validDomainPattern     = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
+	emailMultiSpacePattern = regexp.MustCompile(`\s{2,}`)
+	nameEmailPattern       = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+[A-Za-z0-9._%+-]+@`)
+)
+
 // Validator implements the detector.Validator interface for detecting
 // email addresses using regex patterns and contextual analysis.
 type Validator struct {
@@ -627,13 +635,11 @@ func (v *Validator) isValidEmailFormat(email string) bool {
 	}
 
 	// Check for valid characters
-	validChars := regexp.MustCompile(`^[A-Za-z0-9._%+-]+$`)
-	if !validChars.MatchString(username) {
+	if !validCharsPattern.MatchString(username) {
 		return false
 	}
 
-	validDomainChars := regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
-	if !validDomainChars.MatchString(domain) {
+	if !validDomainPattern.MatchString(domain) {
 		return false
 	}
 
@@ -852,13 +858,11 @@ func (v *Validator) isTabularData(line, match string) bool {
 	}
 
 	// Check for multiple consecutive spaces (common in fixed-width tabular data)
-	multiSpacePattern := regexp.MustCompile(`\s{2,}`)
-	if len(multiSpacePattern.FindAllString(line, -1)) >= 2 {
+	if len(emailMultiSpacePattern.FindAllString(line, -1)) >= 2 {
 		return true
 	}
 
 	// Check for common email list patterns (names followed by emails)
-	nameEmailPattern := regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+[A-Za-z0-9._%+-]+@`)
 	if nameEmailPattern.MatchString(line) {
 		return true
 	}

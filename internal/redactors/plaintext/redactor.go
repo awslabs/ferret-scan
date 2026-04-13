@@ -6,6 +6,7 @@ package plaintext
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -362,20 +363,23 @@ func (ptr *PlainTextRedactor) generateReplacement(originalText, dataType string,
 
 // Helper methods
 
-// sortMatchesByPosition sorts matches by their position in descending order
+// sortMatchesByPosition sorts matches in descending order by line number,
+// then by position within the line (later positions first). This ensures
+// that when replacing text, earlier positions are not shifted by later replacements.
 func (ptr *PlainTextRedactor) sortMatchesByPosition(matches []detector.Match) []detector.Match {
-	// Create a copy to avoid modifying the original slice
 	sorted := make([]detector.Match, len(matches))
 	copy(sorted, matches)
 
-	// Simple bubble sort by line number and position (descending)
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := 0; j < len(sorted)-i-1; j++ {
-			if sorted[j].LineNumber < sorted[j+1].LineNumber {
-				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
-			}
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].LineNumber != sorted[j].LineNumber {
+			return sorted[i].LineNumber > sorted[j].LineNumber
 		}
-	}
+		// Same line: sort by position in context (later positions first)
+		// Use the match text position within FullLine as a proxy for column offset
+		posI := strings.LastIndex(sorted[i].Context.FullLine, sorted[i].Text)
+		posJ := strings.LastIndex(sorted[j].Context.FullLine, sorted[j].Text)
+		return posI > posJ
+	})
 
 	return sorted
 }

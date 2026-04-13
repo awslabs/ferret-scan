@@ -34,7 +34,7 @@ Returns health status with complete build information:
     "version": "1.2.3",
     "commit": "abc123def456",
     "build_date": "abc123def456",
-    "go_version": "go1.25.1",
+    "go_version": "go1.26.2",
     "platform": "darwin/arm64"
   }
 }

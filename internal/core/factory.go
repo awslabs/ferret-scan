@@ -17,6 +17,7 @@ import (
 	"ferret-scan/internal/validators/secrets"
 	"ferret-scan/internal/validators/socialmedia"
 	"ferret-scan/internal/validators/ssn"
+	"ferret-scan/internal/validators/vin"
 )
 
 // BuildValidatorSet constructs the standard set of validators filtered by the
@@ -57,6 +58,9 @@ func BuildValidatorSet(enabledChecks map[string]bool, cfg *config.Config, profil
 	}
 	if enabledChecks["SECRETS"] {
 		result["SECRETS"] = secrets.NewValidator()
+	}
+	if enabledChecks["VIN"] {
+		result["VIN"] = vin.NewValidator()
 	}
 
 	// Apply global config-level validator settings

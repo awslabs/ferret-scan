@@ -282,7 +282,9 @@ sequenceDiagram
 - **Person Name**: Pattern matching with embedded name databases, context-aware confidence scoring
 - **Phone**: International format support + cross-validator analysis
 - **Secrets**: 40+ API key patterns + entropy analysis + environment detection
+- **Social Media**: Profile detection across major platforms (LinkedIn, Twitter/X, GitHub, etc.)
 - **SSN**: Domain-aware validation + HR/Tax/Healthcare context
+- **VIN**: Check digit validation + manufacturer identification (ISO 3779)
 
 ## Current Data Flow (2025):
 
