@@ -7,7 +7,7 @@ This document provides deployment procedures and monitoring guidelines for the e
 ## Pre-Deployment Checklist
 
 ### System Requirements
-- [ ] Go 1.19 or later
+- [ ] Go 1.26 or later
 - [ ] Sufficient memory for enhanced processing (recommended: 2GB+ available)
 - [ ] Disk space for temporary processing files
 - [ ] Network access for any external dependencies

@@ -109,6 +109,11 @@ var RuleDescriptions = map[string]RuleDescription{
 		Full:  "A social media handle or username was detected in the scanned content. Social media identifiers can be used to link to personal profiles and may be considered PII in some contexts.",
 		Help:  "Social media handles can be used to identify individuals and may be considered personal information. Evaluate whether these handles should be present in the code. If they're for testing, use clearly fake handles. For production use, consider whether this information should be stored in a configuration system with appropriate access controls.",
 	},
+	"VIN": {
+		Short: "Vehicle Identification Number Detected",
+		Full:  "A Vehicle Identification Number (VIN) was detected in the scanned content. VINs can be used to identify vehicle owners and access personal information such as registration, insurance, and accident history.",
+		Help:  "VINs are linked to vehicle owner identity and can reveal personal information through public databases. They should not be stored in source code or logs. Remove VINs and use anonymized identifiers for testing. For production systems, store VINs in encrypted databases with appropriate access controls.",
+	},
 }
 
 // GetRuleDescription returns the rule description for a given detection type

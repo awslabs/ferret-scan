@@ -98,7 +98,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --format\t<format>\tOutput format: text, json, csv, yaml, junit, gitlab-sast, sarif (default: text)")
 	fmt.Fprintln(w, "\t\t\tNote: gitlab-sast generates GitLab Security Report format for integration with GitLab Security Dashboard")
 	fmt.Fprintln(w, "\t\t\tNote: sarif generates SARIF 2.1.0 format for integration with GitHub Security and other SARIF-compatible tools")
-	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: CREDIT_CARD,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,METADATA,PASSPORT,PERSON_NAME,PHONE,SECRETS,SOCIAL_MEDIA,SSN,all (default: all)")
+	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: CREDIT_CARD,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,METADATA,PASSPORT,PERSON_NAME,PHONE,SECRETS,SOCIAL_MEDIA,SSN,VIN,all (default: all)")
 	fmt.Fprintln(w, "\t\t\tNote: INTELLECTUAL_PROPERTY requires configuration for internal URL detection")
 	fmt.Fprintln(w, "\t\t\tNote: METADATA validator now includes enhanced preprocessor-aware validation for images, documents, audio, and video")
 	// GENAI_DISABLED: COMPREHEND_PII reference removed from help

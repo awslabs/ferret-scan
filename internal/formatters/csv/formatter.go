@@ -144,6 +144,8 @@ func (f *Formatter) getPrecommitIssueDescription(match detector.Match) string {
 		return "IP notice"
 	case "SOCIAL_MEDIA":
 		return "Social media handle"
+	case "VIN":
+		return "Vehicle Identification Number"
 	default:
 		return strings.ReplaceAll(match.Type, "_", " ")
 	}
@@ -184,13 +186,21 @@ func (f *Formatter) sanitizeFormulaInjection(field string) string {
 		return field
 	}
 
-	// Check if field starts with formula characters that could be dangerous in spreadsheets
-	// Using direct byte comparisons for optimal performance
+	// Check if field starts with formula characters that could be dangerous in spreadsheets.
+	// Covers: standard formula triggers (=, +, -, @), tab-prefixed formulas (\t),
+	// and Unicode direction overrides that can hide malicious content.
 	firstChar := field[0]
-	if firstChar == '=' || firstChar == '+' || firstChar == '-' || firstChar == '@' {
-		// Prefix with single quote to prevent formula execution
-		// This is a standard technique to neutralize CSV injection
+	if firstChar == '=' || firstChar == '+' || firstChar == '-' || firstChar == '@' || firstChar == '\t' || firstChar == '\r' || firstChar == '\n' {
 		return "'" + field
+	}
+
+	// Block Unicode direction override characters (U+202A-U+202E, U+2066-U+2069)
+	// that can be used to visually hide formula injection
+	for _, r := range field {
+		if (r >= 0x202A && r <= 0x202E) || (r >= 0x2066 && r <= 0x2069) {
+			return "'" + field
+		}
+		break // only check first rune
 	}
 
 	return field

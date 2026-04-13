@@ -1,15 +1,9 @@
 # Ferret Scanner Configuration File
 # This file defines default settings and profiles for different scanning scenarios
-#
-# Platform-specific configuration examples:
-# - ferret-windows.yaml: Windows-specific configuration with platform optimizations
-# - ferret-powershell.yaml: PowerShell integration configuration
-# - ferret-enterprise-windows.yaml: Enterprise Windows deployment configuration
-# - ferret-dev-windows.yaml: Windows development environment configuration
 
 # Default settings applied when no profile is specified
 defaults:
-  format: text # Output format: text, json, csv, yaml, junit, gitlab-sast
+  format: text # Output format: text, json, csv, yaml, junit
   confidence_levels: all # Confidence levels to display: high, medium, low, or combinations
   checks:
     all # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
@@ -18,7 +12,7 @@ defaults:
   debug: false # Enable debug logging to show preprocessing and validation flow
   no_color: false # Disable colored output
   recursive: false # Recursively scan directories
-  enable_preprocessors: true # Enable text extraction from documents (PDF, Office files) (default: true)
+  enable_preprocessors: true # Enable text extraction from documents (PDF, Office files)
   show_match: false # Display the actual matched text in findings
   quiet: false # Suppress progress output (useful for scripts and CI/CD)
   show_suppressed: false # Include suppressed findings in output with suppression details
@@ -54,34 +48,16 @@ preprocessors:
   # GENAI_DISABLED:   enabled: false            # Disabled by default, enabled with --enable-genai flag
   # GENAI_DISABLED:   region: us-east-1         # AWS region for Comprehend service
 
-  # Enhanced Metadata extraction with preprocessor-aware validation and intelligent file type filtering
-  # Automatically enabled when preprocessors are enabled
-  # Features intelligent content routing, file type filtering, and type-specific validation patterns
-  #
-  # File Type Filtering (Performance Optimization):
-  # - Automatically processes files that can contain metadata: images, documents, audio, video
-  # - Automatically skips plain text files: .txt, .py, .js, .json, .md, .log, .csv, .xml, .html, .yaml, etc.
-  # - Results in 20-30% performance improvement for workloads with many plain text files
-  # - Eliminates false positives from analyzing text content as metadata
-  #
-  # Supports multiple file types with specialized validation:
+  # Metadata extraction (automatically enabled when preprocessors are enabled)
+  # Supports multiple file types:
   # - Images: JPG, JPEG, TIFF, TIF, PNG, GIF, BMP, WEBP
   #   Extracts EXIF data, camera information, GPS coordinates, timestamps, etc.
-  #   Enhanced validation: GPS data (+60% confidence), device info (+40%), creator info (+30%)
   # GENAI_DISABLED:   With --enable-genai: Also extracts text using Amazon Textract OCR
   # - Office Documents: DOCX, XLSX, PPTX, ODT, ODS, ODP
   #   Extracts author, creator, company, modification history, document properties, etc.
-  #   Enhanced validation: Manager info (+40% confidence), comments (+50%), author info (+30%)
   # - PDF Documents: PDF
   #   Extracts author, creator, producer, creation dates, document properties, etc.
-  #   Enhanced validation: Same as office documents with document-specific patterns
   # GENAI_DISABLED:   With --enable-genai: Also extracts text from scanned/image-based PDFs using Amazon Textract OCR
-  # - Audio Files: MP3, FLAC, WAV, M4A
-  #   Extracts artist, performer, composer, album info, ID3 tags, etc.
-  #   Enhanced validation: Contact info (+50% confidence), management (+40%), artist info (+30%)
-  # - Video Files: MP4, MOV, M4V
-  #   Extracts GPS coordinates, device info, creator details, production info, etc.
-  #   Enhanced validation: GPS data (+60% confidence), location info (+50%), device info (+40%)
 
 # Redaction configurations
 redaction:
@@ -95,7 +71,7 @@ redaction:
   # Strategy-specific configurations
   strategies:
     simple:
-      replacement: "[HIDDEN]" # Text to replace sensitive data with
+      replacement: "[REDACTED]" # Text to replace sensitive data with
 
     format_preserving:
       preserve_length: true # Maintain original text length
@@ -151,7 +127,27 @@ validators:
       # - "http[s]?:\\/\\/.*\\.lambda\\..*\\.amazonaws\\.com"   # Lambda function URLs
       # - "http[s]?:\\/\\/.*\\.rds\\.amazonaws\\.com"           # RDS database endpoints
       # - "http[s]?:\\/\\/.*\\.elasticache\\..*\\.amazonaws\\.com" # ElastiCache endpoints
-      # - "http[s]?:\\/\\/.*\\.es\\.amazonaws\\.com"            # Elasticsearch Servicefe
+      # - "http[s]?:\\/\\/.*\\.es\\.amazonaws\\.com"            # Elasticsearch Service
+
+      # Amazon/AWS Internal Infrastructure Patterns
+      # Internal Amazon/AWS tools and systems (using optional host patterns for efficiency)
+      - "w\\.amazon\\.com" # Internal Wiki (exact match)
+      - "(.*\\.)?aws\\.dev" # AWS development tools (aws.dev + *.aws.dev)
+      - "(.*\\.)?amazon\\.dev" # Amazon development tools (amazon.dev + *.amazon.dev)
+      - "(.*\\.)?a2z\\.com" # Amazon A2Z systems (a2z.com + *.a2z.com)
+      - "isengard\\.amazon\\.com" # Internal tool (Isengard - exact match)
+      - "(.*\\.)?corp\\.amazon\\.com" # Corporate tools (corp.amazon.com + *.corp.amazon.com)
+      - "river\\.amazon\\.com" # Internal workflows (exact match)
+      - "issues\\.amazon\\.com" # Internal ticketing system (exact match)
+      - "hack\\.amazon\\.com" # Amazon hack events (exact match)
+      - "(.*\\.)?pulse\\.aws" # AWS Pulse (pulse.aws + *.pulse.aws)
+      - "admin\\.jam\\.awsevents\\.com" # AWS Events admin (exact match)
+      - "proservecrm\\.my\\.salesforce\\.com" # ProServe CRM Salesforce (exact match)
+      - "(.*\\.)?aws-border\\.cn" # AWS China border (aws-border.cn + *.aws-border.cn)
+      - "(.*\\.)?aws-border\\.com" # AWS border service (aws-border.com + *.aws-border.com)
+      - "(.*\\.)?awsc-integ\\.aws\\.amazon\\.com" # AWS integration tools (awsc-integ.aws.amazon.com + *.awsc-integ.aws.amazon.com)
+      - "(.*\\.)?a2z\\.org\\.cn" # Amazon China A2Z (a2z.org.cn + *.a2z.org.cn)
+      - "(.*\\.)?amazon\\.enterprise\\..*" # Amazon Enterprise systems (amazon.enterprise.* + *.amazon.enterprise.*)
 
       # Microsoft Azure Patterns
       # Uncomment and customize if you use Microsoft Azure
@@ -334,80 +330,157 @@ validators:
       # Trade secret and confidentiality patterns
       trade_secret: "\\b(Confidential|Trade\\s+Secret|Proprietary|Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted|Classified)\\b"
 
-  # Social media validator configuration
-  # Detects social media profiles, usernames, and handles across major platforms
   social_media:
-    # Platform-specific pattern groups
-    # Each platform has its own pattern group for targeted detection
+    # Platform-specific regex patterns for detecting social media profiles and handles
     platform_patterns:
-      # LinkedIn patterns - professional networking platform
+      # LinkedIn - Professional networking platform
       linkedin:
-        - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+" # Profile URLs
+        - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+" # Personal profiles
         - "(?i)https?://(?:www\\.)?linkedin\\.com/company/[a-zA-Z0-9_-]+" # Company pages
-        - "(?i)https?://(?:www\\.)?linkedin\\.com/pub/[a-zA-Z0-9_/-]+" # Public profile URLs
+        - "(?i)https?://(?:www\\.)?linkedin\\.com/pub/[a-zA-Z0-9_/-]+" # Public profiles
+        - "(?i)linkedin\\.com/in/[a-zA-Z0-9_-]+" # Without protocol
 
-      # Twitter/X patterns - microblogging platform
+      # Twitter/X - Microblogging platform
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+" # Profile URLs
-        - "(?i)@[a-zA-Z0-9_]{1,15}\\b" # Handle references (@username)
+        - "(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])" # @mentions and handles
+        - "(?i)(twitter|x)\\.com/[a-zA-Z0-9_]+"
 
-      # GitHub patterns - code repository platform
-      github:
-        - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?" # User/repo URLs
-        - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io" # GitHub Pages domains
+      # GitHub - Code repository platform
+      # github:
+      #   - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?" # User/repo URLs
+      #   - "(?i)https?://[a-zA-Z0-9_-]+\\.github\\.io"                         # GitHub Pages
+      #   - "(?i)github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"             # Without protocol
 
-      # Facebook patterns - social networking platform
+      # Facebook - Social networking platform
       facebook:
-        - "(?i)https?://(?:www\\.)?(facebook|fb)\\.com/[a-zA-Z0-9._-]+" # Profile URLs
-        - "(?i)https?://(?:www\\.)?facebook\\.com/profile\\.php\\?id=\\d+" # Numeric ID profiles
+        - "(?i)https?://(?:www\\.)?(facebook|fb)\\.com/[a-zA-Z0-9._-]+" # Profile/page URLs
+        - "(?i)https?://(?:www\\.)?facebook\\.com/profile\\.php\\?id=\\d+" # Numeric profile IDs
+        - "(?i)(facebook|fb)\\.com/[a-zA-Z0-9._-]+" # Without protocol
 
-      # Instagram patterns - photo sharing platform
+      # Instagram - Photo/video sharing platform
       instagram:
         - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+/" # Profile URLs
         - "(?i)https?://(?:www\\.)?instagr\\.am/[a-zA-Z0-9_.]+/" # Short domain
+        - "(?i)instagram\\.com/[a-zA-Z0-9_.]+/" # Without protocol
 
-      # YouTube patterns - video sharing platform
+      # YouTube - Video sharing platform
       youtube:
         - "(?i)https?://(?:www\\.)?youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+" # Channel URLs
-        - "(?i)https?://(?:www\\.)?youtube\\.com/@[a-zA-Z0-9_-]+" # Handle format
+        - "(?i)https?://(?:www\\.)?youtube\\.com/@[a-zA-Z0-9_-]+" # New handle format
+        - "(?i)https?://(?:www\\.)?youtu\\.be/[a-zA-Z0-9_-]+" # Short URLs
+        - "(?i)youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+" # Without protocol
 
-      # TikTok patterns - short video platform
+      # TikTok - Short video platform
       tiktok:
         - "(?i)https?://(?:www\\.)?tiktok\\.com/@[a-zA-Z0-9_.]+/" # Profile URLs
         - "(?i)https?://(?:www\\.)?tiktok\\.com/t/[a-zA-Z0-9]+" # Short URLs
+        - "(?i)tiktok\\.com/@[a-zA-Z0-9_.]+/" # Without protocol
 
-      # Additional platforms
+      # Discord - Gaming/community chat platform
       discord:
         - "(?i)https?://(?:www\\.)?discord\\.gg/[a-zA-Z0-9]+" # Server invites
-        - "(?i)discord\\.com/users/\\d+" # User references
+        - "(?i)https?://(?:www\\.)?discord\\.com/users/\\d+" # User profiles
+        - "(?i)discord\\.gg/[a-zA-Z0-9]+" # Without protocol
 
+      # Reddit - Social news aggregation platform
       reddit:
         - "(?i)https?://(?:www\\.)?reddit\\.com/u(?:ser)?/[a-zA-Z0-9_-]+" # User profiles
-        - "(?i)https?://(?:www\\.)?reddit\\.com/r/[a-zA-Z0-9_]+" # Subreddit references
+        - "(?i)https?://(?:www\\.)?reddit\\.com/r/[a-zA-Z0-9_]+" # Subreddits
+        - "(?i)reddit\\.com/u(?:ser)?/[a-zA-Z0-9_-]+" # Without protocol
 
-    # Contextual analysis keywords
-    # These keywords help improve confidence scoring based on surrounding text
+      # Snapchat - Multimedia messaging platform
+      snapchat:
+        - "(?i)https?://(?:www\\.)?snapchat\\.com/add/[a-zA-Z0-9_.]+/" # Add friend URLs
+        - "(?i)snapchat\\.com/add/[a-zA-Z0-9_.]+/" # Without protocol
+
+      # Pinterest - Visual discovery platform
+      pinterest:
+        - "(?i)https?://(?:www\\.)?pinterest\\.com/[a-zA-Z0-9_]+/" # Profile URLs
+        - "(?i)pinterest\\.com/[a-zA-Z0-9_]+/" # Without protocol
+
+      # Twitch - Live streaming platform
+      twitch:
+        - "(?i)https?://(?:www\\.)?twitch\\.tv/[a-zA-Z0-9_]+" # Channel URLs
+        - "(?i)twitch\\.tv/[a-zA-Z0-9_]+" # Without protocol
+
+      # Medium - Publishing platform
+      medium:
+        - "(?i)https?://(?:www\\.)?medium\\.com/@[a-zA-Z0-9_.-]+" # Profile URLs
+        - "(?i)https?://[a-zA-Z0-9_.-]+\\.medium\\.com" # Custom domains
+        - "(?i)medium\\.com/@[a-zA-Z0-9_.-]+" # Without protocol
+
+      # Stack Overflow - Q&A platform for developers
+      stackoverflow:
+        - "(?i)https?://(?:www\\.)?stackoverflow\\.com/users/\\d+/[a-zA-Z0-9_-]*" # User profiles
+        - "(?i)stackoverflow\\.com/users/\\d+/[a-zA-Z0-9_-]*" # Without protocol
+
+      # Telegram - Messaging platform
+      telegram:
+        - "(?i)https?://(?:www\\.)?t\\.me/[a-zA-Z0-9_]+" # Channel/user URLs
+        - "(?i)t\\.me/[a-zA-Z0-9_]+" # Without protocol
+
+      # WhatsApp - Messaging platform
+      whatsapp:
+        - "(?i)https?://(?:www\\.)?wa\\.me/[0-9]+" # WhatsApp links
+        - "(?i)wa\\.me/[0-9]+" # Without protocol
+
+      # Skype - Video calling platform
+      skype:
+        - "(?i)skype:[a-zA-Z0-9._-]+" # Skype protocol links
+        - "(?i)https?://(?:www\\.)?skype\\.com/[a-zA-Z0-9._-]+" # Skype profile URLs
+
+      # Clubhouse - Audio social networking
+      clubhouse:
+        - "(?i)https?://(?:www\\.)?clubhouse\\.com/@[a-zA-Z0-9_]+" # Profile URLs
+        - "(?i)clubhouse\\.com/@[a-zA-Z0-9_]+" # Without protocol
+
+    # Keywords that increase confidence when found near social media patterns
     positive_keywords:
       - "profile"
       - "social media"
       - "follow me"
       - "connect with me"
       - "find me on"
-      - "social"
+      - "professional"
       - "networking"
+      - "collaboration"
+      - "social"
+      - "handle"
+      - "username"
+      - "account"
+      - "page"
+      - "channel"
+      - "follow"
+      - "connect"
+      - "link"
       - "contact"
+      - "reach me"
+      - "social network"
+      - "online presence"
+      - "digital footprint"
 
+    # Keywords that decrease confidence when found near social media patterns
     negative_keywords:
       - "example"
       - "test"
       - "placeholder"
       - "demo"
       - "sample"
-      - "fake"
+      - "documentation"
+      - "tutorial"
       - "mock"
+      - "fake"
+      - "dummy"
+      - "not real"
+      - "fictional"
+      - "made up"
+      - "for testing"
       - "template"
+      - "guide"
+      - "instruction"
 
-    # Platform-specific context keywords for enhanced accuracy
+    # Platform-specific keywords for enhanced context analysis
     platform_keywords:
       linkedin:
         - "professional"
@@ -415,38 +488,144 @@ validators:
         - "network"
         - "business"
         - "work"
+        - "employment"
         - "job"
+        - "resume"
+        - "cv"
+        - "experience"
+        - "connect"
+        - "endorsement"
+        - "recommendation"
+
       twitter:
         - "tweet"
         - "follow"
         - "retweet"
         - "hashtag"
         - "mention"
-      github:
-        - "repository"
-        - "code"
-        - "project"
-        - "commit"
-        - "pull request"
-        - "open source"
+        - "timeline"
+        - "trending"
+        - "viral"
+        - "thread"
+        - "updates"
+        - "microblog"
+
+      # github:
+      #   - "repository"
+      #   - "code"
+      #   - "project"
+      #   - "commit"
+      #   - "pull request"
+      #   - "fork"
+      #   - "star"
+      #   - "issue"
+      #   - "developer"
+      #   - "programming"
+      #   - "open source"
+      #   - "version control"
+
       facebook:
-        - "friend"
-        - "like"
-        - "share"
         - "post"
+        - "share"
+        - "like"
+        - "comment"
+        - "friend"
         - "page"
+        - "group"
+        - "event"
+        - "photo"
+        - "status"
+        - "community"
+
       instagram:
         - "photo"
-        - "picture"
         - "image"
         - "story"
         - "reel"
+        - "hashtag"
+        - "filter"
+        - "post"
+        - "share"
+        - "follow"
+        - "like"
+        - "visual"
+        - "photography"
+
       youtube:
         - "video"
         - "channel"
         - "subscribe"
-        - "watch"
         - "playlist"
+        - "watch"
+        - "upload"
+        - "stream"
+        - "content"
+        - "creator"
+        - "vlog"
+        - "tutorial"
+
+      tiktok:
+        - "video"
+        - "viral"
+        - "trend"
+        - "dance"
+        - "challenge"
+        - "creator"
+        - "content"
+        - "short"
+        - "clip"
+        - "sound"
+        - "duet"
+
+      discord:
+        - "server"
+        - "channel"
+        - "voice"
+        - "chat"
+        - "gaming"
+        - "community"
+        - "bot"
+        - "role"
+        - "guild"
+
+      reddit:
+        - "subreddit"
+        - "post"
+        - "comment"
+        - "upvote"
+        - "karma"
+        - "thread"
+        - "discussion"
+        - "community"
+        - "moderator"
+
+      twitch:
+        - "stream"
+        - "streaming"
+        - "live"
+        - "gaming"
+        - "chat"
+        - "follower"
+        - "subscriber"
+        - "emote"
+
+      medium:
+        - "article"
+        - "blog"
+        - "writing"
+        - "publish"
+        - "story"
+        - "author"
+        - "publication"
+        - "clap"
+
+    # Patterns to whitelist (reduce false positives)
+    whitelist_patterns:
+      - "(?i)example\\.com"
+      - "(?i)test\\.com"
+      - "(?i)placeholder"
+      - "(?i)demo"
+      - "(?i)sample"
 
 # Suppression configuration
 suppressions:
@@ -472,13 +651,13 @@ profiles:
   quick:
     format: text
     confidence_levels: high
-    checks: CREDIT_CARD,SECRETS,SSN,EMAIL,PERSON_NAME # Focus on most critical data types
+    checks: CREDIT_CARD,SECRETS,SSN,EMAIL # Focus on most critical data types
     verbose: false
     no_color: false
     recursive: false
     quiet: true
     show_match: false
-    enable_preprocessors: false # Skip document processing for speed (use false to disable, true is default)
+    enable_preprocessors: false # Skip document processing for speed
     description: "Quick scan focusing on critical data types with minimal processing"
 
   # Thorough scan profile - all confidence levels, verbose output, recursive scanning
@@ -520,20 +699,6 @@ profiles:
     generate_suppressions: false
     description: "CI/CD pipeline profile with JUnit XML output for test result integration"
 
-  # GitLab Security Scanner profile - GitLab SAST report format for Security Dashboard integration
-  gitlab-security:
-    format: gitlab-sast
-    confidence_levels: all
-    checks: all
-    verbose: false
-    no_color: true
-    recursive: true
-    enable_preprocessors: true
-    quiet: true
-    show_suppressed: false
-    generate_suppressions: false
-    description: "GitLab Security Scanner profile with SAST report format for GitLab Security Dashboard and merge request widgets"
-
   # Credit card scan profile - only scan for credit card numbers
   credit-card:
     format: text
@@ -542,7 +707,7 @@ profiles:
     verbose: true
     no_color: false
     recursive: true
-    description: "Enhanced credit card detection supporting multiple formats: dash-separated (4532-0151-1283-0366), space-separated (4532 0151 1283 0366), no separators (4532015112830366), XML/HTML contexts, and quoted strings"
+    description: "Scan only for credit card numbers"
 
   # Passport scan profile - only scan for passport numbers
   passport:
@@ -553,29 +718,6 @@ profiles:
     no_color: false
     recursive: true
     description: "Scan only for passport numbers"
-
-  # Person name scan profile - only scan for person names
-  person-name:
-    format: text
-    confidence_levels: all
-    checks: PERSON_NAME
-    verbose: true
-    no_color: false
-    recursive: true
-    show_match: true # Show actual names found for analysis
-    description: "Scan only for person names using optimized database-first processing with embedded name databases (98% performance improvement)"
-
-  # Enhanced metadata scan profile - focus on metadata validation with preprocessor awareness
-  enhanced-metadata:
-    format: yaml # YAML format shows detailed metadata including preprocessor context
-    confidence_levels: all
-    checks: METADATA
-    verbose: true
-    debug: true # Enable debug output to show content routing and validation decisions
-    no_color: false
-    recursive: true
-    show_match: true # Show actual metadata content for analysis
-    description: "Enhanced metadata validation with intelligent file type filtering, preprocessor-aware patterns, and detailed debugging"
 
   # Intellectual property scan profile - only scan for IP references
   intellectual-property:
@@ -590,34 +732,20 @@ profiles:
     validators:
       intellectual_property:
         # Example: Technology company internal URL patterns
-        # This profile demonstrates how to
-
-  # Pre-commit profile - optimized for pre-commit hooks
-  precommit:
-    format: text
-    confidence_levels: high,medium
-    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT,EMAIL,PERSON_NAME # Focus on critical data types
-    verbose: false
-    debug: false
-    no_color: true
-    recursive: false
-    quiet: true
-    show_match: false
-    enable_preprocessors: true
-    show_suppressed: false
-    generate_suppressions: false
-    description: "Optimized for pre-commit hooks with concise output and critical data type focus"
-
-  # Social media scan profile - focus on social media detection
-  social-media:
-    format: text
-    confidence_levels: all
-    checks: SOCIAL_MEDIA
-    verbose: true
-    no_color: false
-    recursive: true
-    show_match: true # Show actual social media handles/URLs found
-    description: "Scan only for social media profiles, usernames, and handles across major platforms"
+        # This profile demonstrates how to customize patterns for a specific organization
+        internal_urls:
+          # Core company infrastructure
+          - "http[s]?:\\/\\/internal\\.example\\.com" # Main internal portal
+          - "http[s]?:\\/\\/wiki\\.example\\.com" # Company wiki
+          - "http[s]?:\\/\\/docs\\.example\\.com" # Documentation site
+          - "http[s]?:\\/\\/api\\.example\\.com" # Internal APIs
+          - "http[s]?:\\/\\/.*\\.internal\\.example\\.com" # All internal subdomains
+          - "http[s]?:\\/\\/.*-api\\.example\\.com" # API services
+          # Development and engineering tools
+          - "http[s]?:\\/\\/gitlab\\.example\\.com" # Source control
+          - "http[s]?:\\/\\/jenkins\\.example\\.com" # CI/CD pipeline
+          - "http[s]?:\\/\\/monitoring\\.example\\.com" # System monitoring
+          - "http[s]?:\\/\\/logs\\.example\\.com" # Log aggregation
 
   # GENAI_DISABLED: GenAI profile - enables all AWS AI services for advanced analysis
   # GENAI_DISABLED: WARNING: This profile will send files to AWS and incur costs

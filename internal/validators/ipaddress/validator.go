@@ -33,6 +33,11 @@ type Validator struct {
 	// Reserved IP ranges
 	reservedRanges []string
 
+	// Pre-parsed CIDR networks (cached at init to avoid repeated parsing)
+	privateNetworks  []*net.IPNet
+	reservedNetworks []*net.IPNet
+	multicastNetwork *net.IPNet
+
 	// Observability
 	observer *observability.StandardObserver
 }
@@ -123,6 +128,21 @@ func NewValidator() *Validator {
 			description: "IPv6 address with CIDR notation",
 		},
 	}
+
+	// Pre-parse CIDR ranges once at init to avoid repeated parsing per-match
+	for _, cidr := range v.privateRanges {
+		_, network, err := net.ParseCIDR(cidr)
+		if err == nil {
+			v.privateNetworks = append(v.privateNetworks, network)
+		}
+	}
+	for _, cidr := range v.reservedRanges {
+		_, network, err := net.ParseCIDR(cidr)
+		if err == nil {
+			v.reservedNetworks = append(v.reservedNetworks, network)
+		}
+	}
+	_, v.multicastNetwork, _ = net.ParseCIDR("224.0.0.0/4")
 
 	return v
 }
@@ -520,11 +540,7 @@ func (v *Validator) isPrivateIP(ip string) bool {
 		return false
 	}
 
-	for _, cidr := range v.privateRanges {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
+	for _, network := range v.privateNetworks {
 		if network.Contains(parsedIP) {
 			return true
 		}
@@ -540,16 +556,14 @@ func (v *Validator) isReservedIP(ip string) bool {
 	}
 
 	// Check private ranges first
-	if v.isPrivateIP(ip) {
-		return true
+	for _, network := range v.privateNetworks {
+		if network.Contains(parsedIP) {
+			return true
+		}
 	}
 
 	// Check other reserved ranges
-	for _, cidr := range v.reservedRanges {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
+	for _, network := range v.reservedNetworks {
 		if network.Contains(parsedIP) {
 			return true
 		}
@@ -564,9 +578,7 @@ func (v *Validator) isMulticastIP(ip string) bool {
 		return false
 	}
 
-	// IPv4 multicast: 224.0.0.0/4
-	_, multicastNet, _ := net.ParseCIDR("224.0.0.0/4")
-	return multicastNet.Contains(parsedIP)
+	return v.multicastNetwork != nil && v.multicastNetwork.Contains(parsedIP)
 }
 
 func (v *Validator) isCommonPublicDNS(ip string) bool {

@@ -136,7 +136,7 @@ func (wp *WorkerPool) worker(id int) {
 	defer wp.wg.Done()
 
 	for job := range wp.jobs {
-		result := wp.processJob(job, id)
+		result := wp.safeProcessJob(job, id)
 
 		select {
 		case wp.results <- result:
@@ -144,6 +144,20 @@ func (wp *WorkerPool) worker(id int) {
 			return
 		}
 	}
+}
+
+// safeProcessJob wraps processJob with panic recovery to prevent worker goroutine
+// death from deadlocking the result collection loop.
+func (wp *WorkerPool) safeProcessJob(job *Job, workerID int) (result *Result) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = &Result{
+				FilePath: job.FilePath,
+				Error:    fmt.Errorf("worker %d panic processing %s: %v", workerID, job.FilePath, r),
+			}
+		}
+	}()
+	return wp.processJob(job, workerID)
 }
 
 // processJob executes a single job with resilience features

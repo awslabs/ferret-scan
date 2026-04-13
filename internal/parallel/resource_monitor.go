@@ -224,24 +224,18 @@ func (rm *ResourceMonitor) notifyCallbacks() {
 	}
 }
 
-// getSystemMemory returns total system memory in MB
-// This is a simplified implementation - in production you might use
-// platform-specific APIs or libraries like gopsutil
+// getSystemMemory returns an estimate of total system memory in MB.
+// Uses Go runtime stats with a conservative 2x multiplier on Sys (total
+// memory obtained from the OS). Defaults to 2GB minimum to prevent
+// under-provisioning workers on systems where the heap is still small.
 func getSystemMemory() uint64 {
-	// This is an approximation - Go doesn't provide direct access to total system memory
-	// In production, you would use a library like gopsutil or platform-specific calls
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
+	estimatedTotal := (memStats.Sys * 2) / 1024 / 1024
 
-	// Estimate system memory as roughly 4x the current heap size
-	// This is very approximate and would be better replaced with actual system calls
-	estimatedTotal := (memStats.Sys * 4) / 1024 / 1024
-
-	// Ensure we return at least 1GB to avoid division by zero
-	if estimatedTotal < 1024 {
-		estimatedTotal = 1024
+	if estimatedTotal < 2048 {
+		estimatedTotal = 2048
 	}
-
 	return estimatedTotal
 }
 
