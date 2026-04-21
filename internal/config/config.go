@@ -18,15 +18,20 @@ import (
 type Config struct {
 	// Default settings
 	Defaults struct {
-		Format              string   `yaml:"format"`
-		ConfidenceLevels    string   `yaml:"confidence_levels"`
-		Checks              string   `yaml:"checks"`
-		Verbose             bool     `yaml:"verbose"`
-		Debug               bool     `yaml:"debug"`
-		NoColor             bool     `yaml:"no_color"`
-		Recursive           bool     `yaml:"recursive"`
-		EnablePreprocessors bool     `yaml:"enable_preprocessors"`
-		ExcludePatterns     []string `yaml:"exclude_patterns"`
+		Format               string   `yaml:"format"`
+		ConfidenceLevels     string   `yaml:"confidence_levels"`
+		Checks               string   `yaml:"checks"`
+		Verbose              bool     `yaml:"verbose"`
+		Debug                bool     `yaml:"debug"`
+		NoColor              bool     `yaml:"no_color"`
+		Recursive            bool     `yaml:"recursive"`
+		EnablePreprocessors  bool     `yaml:"enable_preprocessors"`
+		ExcludePatterns      []string `yaml:"exclude_patterns"`
+		RespectGitignore     bool     `yaml:"respect_gitignore"`
+		ShowMatch            bool     `yaml:"show_match"`
+		Quiet                bool     `yaml:"quiet"`
+		ShowSuppressed       bool     `yaml:"show_suppressed"`
+		GenerateSuppressions bool     `yaml:"generate_suppressions"`
 	} `yaml:"defaults"`
 
 	// Global validator configurations
@@ -102,15 +107,20 @@ type UnixConfig struct {
 
 // Profile represents a scanning profile with specific settings
 type Profile struct {
-	Format              string   `yaml:"format"`
-	ConfidenceLevels    string   `yaml:"confidence_levels"`
-	Checks              string   `yaml:"checks"`
-	Verbose             bool     `yaml:"verbose"`
-	Debug               bool     `yaml:"debug"`
-	NoColor             bool     `yaml:"no_color"`
-	Recursive           bool     `yaml:"recursive"`
-	EnablePreprocessors bool     `yaml:"enable_preprocessors"`
-	ExcludePatterns     []string `yaml:"exclude_patterns"`
+	Format               string   `yaml:"format"`
+	ConfidenceLevels     string   `yaml:"confidence_levels"`
+	Checks               string   `yaml:"checks"`
+	Verbose              bool     `yaml:"verbose"`
+	Debug                bool     `yaml:"debug"`
+	NoColor              bool     `yaml:"no_color"`
+	Recursive            bool     `yaml:"recursive"`
+	EnablePreprocessors  bool     `yaml:"enable_preprocessors"`
+	ExcludePatterns      []string `yaml:"exclude_patterns"`
+	RespectGitignore     bool     `yaml:"respect_gitignore"`
+	ShowMatch            bool     `yaml:"show_match"`
+	Quiet                bool     `yaml:"quiet"`
+	ShowSuppressed       bool     `yaml:"show_suppressed"`
+	GenerateSuppressions bool     `yaml:"generate_suppressions"`
 	// GENAI_DISABLED: GenAI enablement flag for profiles
 	// EnableGenAI         bool                              `yaml:"enable_genai"`
 	// GENAI_DISABLED: Cost estimation only mode flag

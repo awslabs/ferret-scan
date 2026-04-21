@@ -189,6 +189,42 @@ exclude_patterns:
   - "*.swo"         # Vim
   - "*~"            # Backup files
 ```
+
+### Honoring `.gitignore` (opt-in)
+
+Ferret Scan can optionally honor `.gitignore` files, `.git/info/exclude`, and your global git excludes file (`~/.config/git/ignore`). This is **off by default** and must be explicitly enabled.
+
+Enable via config:
+
+```yaml
+defaults:
+  respect_gitignore: true
+```
+
+Or per profile:
+
+```yaml
+profiles:
+  development:
+    respect_gitignore: true
+```
+
+Or on the command line:
+
+```bash
+ferret-scan --file . --recursive --respect-gitignore
+```
+
+**Behavior:**
+
+- Walks up from the scan target collecting every `.gitignore` on the way to the filesystem root.
+- Also loads `.git/info/exclude` from the nearest repo root and the global git excludes file if present.
+- Full `.gitignore` syntax is supported, including `**`, negation (`!keep.log`), and directory-only patterns.
+- The `.git` directory is always skipped when this is enabled.
+- `--exclude` patterns still apply on top of `.gitignore` rules.
+
+> **⚠️ Security consideration:** `.gitignore` is written for source control, not for security scanning. It commonly hides exactly the files Ferret most wants to see — `.env`, `*.pem`, `credentials/`, local config files. Enabling `respect_gitignore` may silently suppress high-value findings. Use it when scanning is meant to mirror your commit set (e.g., pre-commit hooks on tracked files); leave it off for deep audits.
+
 - `profiles`: Named profiles for different scanning scenarios
 
 ## New Profile Features (2025)
@@ -202,6 +238,7 @@ Profiles now support all command-line options and include specialized configurat
 - `show_match`: Display actual matched text in findings
 - `quiet`: Suppress progress output for automation
 - `show_suppressed`: Include suppressed findings in output
+- `respect_gitignore`: Honor `.gitignore` files when scanning (opt-in; see [File Exclusion Patterns](#file-exclusion-patterns))
 - `generate_suppressions`: Auto-generate suppression rules
 
 ### Output Format Support
@@ -682,6 +719,7 @@ defaults:
     - "node_modules"          # Exclude node_modules directory
     - "target"                # Exclude target directory (common in Java projects)
     - "*.tmp"                 # Exclude temporary files
+  respect_gitignore: false    # Honor .gitignore, .git/info/exclude, and global git excludes (opt-in; .git always skipped when enabled)
   <!-- GENAI_DISABLED: max_cost: 0                 # Maximum cost limit for GenAI services (0 = no limit) -->
   <!-- GENAI_DISABLED: estimate_only: false        # Show cost estimate and exit without processing -->
 
