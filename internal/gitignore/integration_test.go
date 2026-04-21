@@ -338,3 +338,33 @@ func TestIntegration_GlobalExcludesOption(t *testing.T) {
 		"notes.bak":   true,
 	})
 }
+
+// TestIntegration_CrossFileNegationNotSupported documents a known limitation:
+// negation rules in a child .gitignore cannot un-ignore files matched by a
+// parent .gitignore. Each .gitignore is compiled independently, so the parent
+// rule wins. This test locks in the current behavior so it's explicit.
+func TestIntegration_CrossFileNegationNotSupported(t *testing.T) {
+	dir := t.TempDir()
+	buildTree(t, dir, map[string]string{
+		".gitignore":        "*.log\n",          // parent ignores all .log
+		"sub/.gitignore":    "!important.log\n", // child tries to un-ignore
+		"sub/important.log": "x",
+		"sub/other.log":     "x",
+	})
+
+	m, err := New(dir)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Both files are ignored because the parent rule wins and the child's
+	// negation only applies within its own compiled rule set (which has no
+	// positive *.log rule to negate). This is a known limitation.
+	if !m.Match(filepath.Join(dir, "sub", "important.log")) {
+		t.Error("known limitation: cross-file negation is not supported; " +
+			"parent *.log still ignores sub/important.log despite child !important.log")
+	}
+	if !m.Match(filepath.Join(dir, "sub", "other.log")) {
+		t.Error("sub/other.log should be ignored by parent *.log")
+	}
+}

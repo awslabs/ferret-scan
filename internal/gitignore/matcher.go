@@ -207,12 +207,14 @@ func (m *Matcher) Match(path string) bool {
 
 		rel = filepath.ToSlash(rel)
 		if s.ignore.MatchesPath(rel) {
-			// sabhiram/go-gitignore handles negation within a single file, but
-			// not across files. We approximate cross-file negation by treating
-			// any subsequent ignorer's negation as "un-ignore". Since the
-			// library doesn't expose negation status per match, we simply let
-			// the last matching ignorer decide. This is a best-effort
-			// approximation that matches common usage.
+			// Negation (e.g. !keep.log) works correctly within a single
+			// .gitignore file — the sabhiram library handles it internally.
+			// Cross-file negation is NOT supported: if parent/.gitignore
+			// ignores *.log and child/.gitignore has !keep.log, the parent
+			// rule still wins because each ignorer is evaluated independently.
+			// This matches the most common usage; true cross-file negation
+			// would require a single merged rule set which the library
+			// doesn't support.
 			ignored = true
 		}
 	}
