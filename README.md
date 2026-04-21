@@ -234,6 +234,7 @@ go build -ldflags="-s -w" -o ferret-scan cmd/main.go
 - `--recursive`: Recursively scan directories (default: false)
 - `--exclude`: Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')
   - **Note**: Uses glob patterns, not regex - dots and other characters are literal (use '.git', not '\\.git')
+- `--respect-gitignore`: Honor `.gitignore`, `.git/info/exclude`, and the global git excludes file when scanning (opt-in; `.git` is always skipped when enabled). See [File Exclusion Patterns](docs/configuration.md#file-exclusion-patterns) for the security trade-offs — `.gitignore` often hides `.env`, `*.pem`, and other high-value files.
 
 #### Redaction Options
 - `--enable-redaction`: Enable redaction of sensitive data found in documents
@@ -330,6 +331,9 @@ Exclude specific files or directories from scanning:
 
 # Exclude directories with trailing slash
 ./ferret-scan --file . --recursive --exclude 'build/,dist/'
+
+# Respect .gitignore (opt-in) — skips anything git would ignore
+./ferret-scan --file . --recursive --respect-gitignore
 ```
 
 Scan for intellectual property (requires configuration):
