@@ -455,12 +455,10 @@ func containsField(data []byte, path ...string) bool {
 
 // profileBoolField describes one bool field on a Profile that needs backfilling
 // from defaults when the profile YAML omits it. The yamlPath is relative to a
-// profile block (e.g. "verbose" or "redaction.enabled"). The get/set functions
-// read and write the corresponding Go field on a *Profile.
+// profile block (e.g. "verbose" or "redaction.enabled").
 type profileBoolField struct {
 	yamlPath     []string
 	defaultValue func(*Config) bool
-	getProfile   func(*Profile) bool
 	setProfile   func(*Profile, bool)
 }
 
@@ -471,37 +469,31 @@ var profileBoolFields = []profileBoolField{
 	{
 		yamlPath:     []string{"verbose"},
 		defaultValue: func(c *Config) bool { return c.Defaults.Verbose },
-		getProfile:   func(p *Profile) bool { return p.Verbose },
 		setProfile:   func(p *Profile, v bool) { p.Verbose = v },
 	},
 	{
 		yamlPath:     []string{"debug"},
 		defaultValue: func(c *Config) bool { return c.Defaults.Debug },
-		getProfile:   func(p *Profile) bool { return p.Debug },
 		setProfile:   func(p *Profile, v bool) { p.Debug = v },
 	},
 	{
 		yamlPath:     []string{"no_color"},
 		defaultValue: func(c *Config) bool { return c.Defaults.NoColor },
-		getProfile:   func(p *Profile) bool { return p.NoColor },
 		setProfile:   func(p *Profile, v bool) { p.NoColor = v },
 	},
 	{
 		yamlPath:     []string{"recursive"},
 		defaultValue: func(c *Config) bool { return c.Defaults.Recursive },
-		getProfile:   func(p *Profile) bool { return p.Recursive },
 		setProfile:   func(p *Profile, v bool) { p.Recursive = v },
 	},
 	{
 		yamlPath:     []string{"enable_preprocessors"},
 		defaultValue: func(c *Config) bool { return c.Defaults.EnablePreprocessors },
-		getProfile:   func(p *Profile) bool { return p.EnablePreprocessors },
 		setProfile:   func(p *Profile, v bool) { p.EnablePreprocessors = v },
 	},
 	{
 		yamlPath:     []string{"redaction", "enabled"},
 		defaultValue: func(c *Config) bool { return c.Redaction.Enabled },
-		getProfile:   func(p *Profile) bool { return p.Redaction.Enabled },
 		setProfile:   func(p *Profile, v bool) { p.Redaction.Enabled = v },
 	},
 }
