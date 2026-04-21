@@ -225,6 +225,12 @@ func LoadConfig(configPath string) (*Config, error) {
 		config.Preprocessors.TextExtraction.Enabled = defaultTextExtractionEnabled
 	}
 
+	// Backfill profile bool fields from defaults when the profile YAML omits
+	// them. Without this, a profile that doesn't mention `verbose` would
+	// unmarshal with Verbose=false and silently override defaults.verbose=true.
+	// See backfillProfileBools for the list of fields this handles.
+	backfillProfileBools(data, config)
+
 	// Apply platform-specific defaults and path normalization
 	ApplyPlatformDefaults(config)
 
@@ -445,6 +451,85 @@ func containsField(data []byte, path ...string) bool {
 		}
 	}
 	return false
+}
+
+// profileBoolField describes one bool field on a Profile that needs backfilling
+// from defaults when the profile YAML omits it. The yamlPath is relative to a
+// profile block (e.g. "verbose" or "redaction.enabled"). The get/set functions
+// read and write the corresponding Go field on a *Profile.
+type profileBoolField struct {
+	yamlPath     []string
+	defaultValue func(*Config) bool
+	getProfile   func(*Profile) bool
+	setProfile   func(*Profile, bool)
+}
+
+// profileBoolFields is the registry of Profile bool fields whose "missing in
+// YAML" must be distinguished from "explicit false". Adding a new profile
+// bool? Register it here and backfillProfileBools picks it up automatically.
+var profileBoolFields = []profileBoolField{
+	{
+		yamlPath:     []string{"verbose"},
+		defaultValue: func(c *Config) bool { return c.Defaults.Verbose },
+		getProfile:   func(p *Profile) bool { return p.Verbose },
+		setProfile:   func(p *Profile, v bool) { p.Verbose = v },
+	},
+	{
+		yamlPath:     []string{"debug"},
+		defaultValue: func(c *Config) bool { return c.Defaults.Debug },
+		getProfile:   func(p *Profile) bool { return p.Debug },
+		setProfile:   func(p *Profile, v bool) { p.Debug = v },
+	},
+	{
+		yamlPath:     []string{"no_color"},
+		defaultValue: func(c *Config) bool { return c.Defaults.NoColor },
+		getProfile:   func(p *Profile) bool { return p.NoColor },
+		setProfile:   func(p *Profile, v bool) { p.NoColor = v },
+	},
+	{
+		yamlPath:     []string{"recursive"},
+		defaultValue: func(c *Config) bool { return c.Defaults.Recursive },
+		getProfile:   func(p *Profile) bool { return p.Recursive },
+		setProfile:   func(p *Profile, v bool) { p.Recursive = v },
+	},
+	{
+		yamlPath:     []string{"enable_preprocessors"},
+		defaultValue: func(c *Config) bool { return c.Defaults.EnablePreprocessors },
+		getProfile:   func(p *Profile) bool { return p.EnablePreprocessors },
+		setProfile:   func(p *Profile, v bool) { p.EnablePreprocessors = v },
+	},
+	{
+		yamlPath:     []string{"redaction", "enabled"},
+		defaultValue: func(c *Config) bool { return c.Redaction.Enabled },
+		getProfile:   func(p *Profile) bool { return p.Redaction.Enabled },
+		setProfile:   func(p *Profile, v bool) { p.Redaction.Enabled = v },
+	},
+}
+
+// backfillProfileBools walks every profile in the parsed config and, for each
+// registered bool field that is NOT present in the raw YAML, copies the value
+// from the corresponding Defaults field. This fixes the Go YAML unmarshaling
+// gotcha where a missing bool unmarshals as false, silently overriding a
+// truthy default when a profile is applied.
+//
+// Profiles that DO explicitly set a field (to either true or false) are left
+// alone — their explicit value wins.
+func backfillProfileBools(data []byte, config *Config) {
+	if config == nil || len(config.Profiles) == 0 {
+		return
+	}
+	for name, profile := range config.Profiles {
+		for _, f := range profileBoolFields {
+			path := append([]string{"profiles", name}, f.yamlPath...)
+			if containsField(data, path...) {
+				// Profile explicitly set this field; keep its value.
+				continue
+			}
+			// Profile omitted this field; fall back to defaults.
+			f.setProfile(&profile, f.defaultValue(config))
+		}
+		config.Profiles[name] = profile
+	}
 }
 
 // resolveWindowsEnvVar resolves Windows environment variables with proper expansion
