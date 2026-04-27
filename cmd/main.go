@@ -20,6 +20,7 @@ import (
 
 	"ferret-scan/internal/config"
 	"ferret-scan/internal/core"
+	"ferret-scan/internal/gitignore"
 	"ferret-scan/internal/precommit"
 	"ferret-scan/internal/version"
 	"ferret-scan/internal/web"
@@ -67,17 +68,22 @@ func loadConfiguration(configFile string) *config.Config {
 
 // configFlags holds command line flag values
 type configFlags struct {
-	outputFormat        string
-	confidenceLevels    string
-	checksToRun         string
-	verbose             bool
-	debug               bool
-	noColor             bool
-	recursive           bool
-	enablePreprocessors bool
-	preprocessOnly      bool
-	precommitMode       bool
-	excludePatterns     []string
+	outputFormat         string
+	confidenceLevels     string
+	checksToRun          string
+	verbose              bool
+	debug                bool
+	noColor              bool
+	recursive            bool
+	enablePreprocessors  bool
+	preprocessOnly       bool
+	precommitMode        bool
+	excludePatterns      []string
+	respectGitignore     bool
+	showMatch            bool
+	quiet                bool
+	showSuppressed       bool
+	generateSuppressions bool
 	// GENAI_DISABLED: GenAI-related configuration flags
 	// enableGenAI         bool
 	// genaiServices       string
@@ -109,12 +115,17 @@ type finalConfiguration struct {
 	// textractRegion      string
 	// estimateOnly        bool
 	// Redaction configuration
-	enableRedaction    bool
-	redactionOutputDir string
-	redactionStrategy  string
-	redactionAuditLog  string
-	excludePatterns    []string
-	disableIPTypes     string
+	enableRedaction      bool
+	redactionOutputDir   string
+	redactionStrategy    string
+	redactionAuditLog    string
+	excludePatterns      []string
+	respectGitignore     bool
+	showMatch            bool
+	quiet                bool
+	showSuppressed       bool
+	generateSuppressions bool
+	disableIPTypes       string
 }
 
 // resolveConfiguration resolves final configuration values from config file, profile, and command line flags
@@ -317,6 +328,66 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 	}
 	if isFlagSet("exclude") && len(flags.excludePatterns) > 0 {
 		final.excludePatterns = flags.excludePatterns
+	}
+
+	// Respect .gitignore (opt-in)
+	final.respectGitignore = false // default fallback
+	if cfg != nil {
+		final.respectGitignore = cfg.Defaults.RespectGitignore
+	}
+	if activeProfile != nil {
+		final.respectGitignore = activeProfile.RespectGitignore
+	}
+	if isFlagSet("respect-gitignore") {
+		final.respectGitignore = flags.respectGitignore
+	}
+
+	// Show actual matched text in findings
+	final.showMatch = false // default fallback
+	if cfg != nil {
+		final.showMatch = cfg.Defaults.ShowMatch
+	}
+	if activeProfile != nil {
+		final.showMatch = activeProfile.ShowMatch
+	}
+	if isFlagSet("show-match") {
+		final.showMatch = flags.showMatch
+	}
+
+	// Suppress progress output
+	final.quiet = false // default fallback
+	if cfg != nil {
+		final.quiet = cfg.Defaults.Quiet
+	}
+	if activeProfile != nil {
+		final.quiet = activeProfile.Quiet
+	}
+	if isFlagSet("quiet") {
+		final.quiet = flags.quiet
+	}
+
+	// Include suppressed findings in output
+	final.showSuppressed = false // default fallback
+	if cfg != nil {
+		final.showSuppressed = cfg.Defaults.ShowSuppressed
+	}
+	if activeProfile != nil {
+		final.showSuppressed = activeProfile.ShowSuppressed
+	}
+	if isFlagSet("show-suppressed") {
+		final.showSuppressed = flags.showSuppressed
+	}
+
+	// Auto-generate suppression rules for all findings
+	final.generateSuppressions = false // default fallback
+	if cfg != nil {
+		final.generateSuppressions = cfg.Defaults.GenerateSuppressions
+	}
+	if activeProfile != nil {
+		final.generateSuppressions = activeProfile.GenerateSuppressions
+	}
+	if isFlagSet("generate-suppressions") {
+		final.generateSuppressions = flags.generateSuppressions
 	}
 
 	// Disable IP types
@@ -586,8 +657,8 @@ func setBoolFlag(flag *bool, value bool) {
 }
 
 // shouldSuppressProgressOutput determines if progress output should be suppressed
-func shouldSuppressProgressOutput(finalConfig *finalConfiguration, quiet bool, precommitConfig *precommit.PrecommitConfig, isInteractive bool) bool {
-	suppress := finalConfig.debug || quiet || !isInteractive
+func shouldSuppressProgressOutput(finalConfig *finalConfiguration, precommitConfig *precommit.PrecommitConfig, isInteractive bool) bool {
+	suppress := finalConfig.debug || finalConfig.quiet || !isInteractive
 	if precommitConfig != nil && precommitConfig.QuietMode {
 		suppress = true
 	}
@@ -623,6 +694,7 @@ type extractedFlags struct {
 	redactionAuditLog    string
 	suppressionFile      string
 	excludePatterns      []string
+	respectGitignore     bool
 	disableIPTypes       string
 }
 
@@ -644,6 +716,7 @@ type flagPointers struct {
 	generateSuppressions *bool
 	enableRedaction      *bool
 	listProfiles         *bool
+	respectGitignore     *bool
 
 	// String flags
 	webPort            *string
@@ -692,6 +765,7 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 		outputFile:           getStringFlag(flags.outputFile),
 		suppressionFile:      getStringFlag(flags.suppressionFile),
 		excludePatterns:      parseExcludePatterns(getStringFlag(flags.excludePatterns)),
+		respectGitignore:     getBoolFlag(flags.respectGitignore),
 		disableIPTypes:       getStringFlag(flags.disableIPTypes),
 	}
 }
@@ -757,6 +831,10 @@ func main() {
 	// Exclusion flag
 	excludePatterns := flag.String("exclude", "", "Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')")
 
+	// Gitignore flag — opt-in. Off by default because .gitignore commonly hides
+	// files with high secret-scanning value (.env, *.pem, credentials/).
+	respectGitignore := flag.Bool("respect-gitignore", false, "Honor .gitignore files, .git/info/exclude, and global git excludes when scanning (opt-in; .git directory is always skipped when enabled)")
+
 	// IP sub-type control flag
 	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
 
@@ -784,6 +862,7 @@ func main() {
 		generateSuppressions: generateSuppressions,
 		enableRedaction:      enableRedaction,
 		listProfiles:         listProfiles,
+		respectGitignore:     respectGitignore,
 
 		// String flags
 		webPort:            webPort,
@@ -870,12 +949,17 @@ func main() {
 		// textractRegion:      *textractRegion,
 		// estimateOnly:        *estimateOnly,
 		// Redaction flags
-		enableRedaction:    flags.enableRedaction,
-		redactionOutputDir: flags.redactionOutputDir,
-		redactionStrategy:  flags.redactionStrategy,
-		redactionAuditLog:  flags.redactionAuditLog,
-		excludePatterns:    flags.excludePatterns,
-		disableIPTypes:     flags.disableIPTypes,
+		enableRedaction:      flags.enableRedaction,
+		redactionOutputDir:   flags.redactionOutputDir,
+		redactionStrategy:    flags.redactionStrategy,
+		redactionAuditLog:    flags.redactionAuditLog,
+		excludePatterns:      flags.excludePatterns,
+		respectGitignore:     flags.respectGitignore,
+		showMatch:            flags.showMatch,
+		quiet:                flags.quiet,
+		showSuppressed:       flags.showSuppressed,
+		generateSuppressions: flags.generateSuppressions,
+		disableIPTypes:       flags.disableIPTypes,
 	})
 
 	// Use the pre-commit detector initialized earlier (no need to reinitialize)
@@ -929,13 +1013,13 @@ func main() {
 		}
 
 		// Check if validation-specific flags are used
-		if flags.showMatch {
+		if finalConfig.showMatch {
 			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --show-match\n")
 			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not perform validation.\n")
 			os.Exit(1)
 		}
 
-		if flags.generateSuppressions {
+		if finalConfig.generateSuppressions {
 			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --generate-suppressions\n")
 			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not perform validation or generate findings.\n")
 			os.Exit(1)
@@ -947,7 +1031,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if flags.showSuppressed {
+		if finalConfig.showSuppressed {
 			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --show-suppressed\n")
 			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not perform validation.\n")
 			os.Exit(1)
@@ -1163,7 +1247,21 @@ func main() {
 			continue
 		}
 		cleanPath = abs
-		result, err := getFilesToProcess(cleanPath, finalConfig.recursive, finalConfig.excludePatterns)
+
+		// Build a gitignore matcher rooted at this input path, if enabled.
+		// Matcher is per-input-path so each scan target picks up its own
+		// .gitignore hierarchy.
+		var ignoreMatcher *gitignore.Matcher
+		if finalConfig.respectGitignore {
+			m, err := gitignore.New(cleanPath, gitignore.WithGlobalExcludes())
+			if err == nil {
+				ignoreMatcher = m
+			} else if mainDebugObs != nil {
+				mainDebugObs.LogDetail("main", fmt.Sprintf("  gitignore matcher init failed: %v", err))
+			}
+		}
+
+		result, err := getFilesToProcess(cleanPath, finalConfig.recursive, finalConfig.excludePatterns, ignoreMatcher)
 		if err != nil {
 			fmt.Printf("Error processing %s: %v\n", inputPath, err)
 			continue
@@ -1420,7 +1518,7 @@ func main() {
 		ConfidenceLevel: confidenceFilter,
 		Verbose:         finalConfig.verbose,
 		NoColor:         finalConfig.noColor,
-		ShowMatch:       flags.showMatch,
+		ShowMatch:       finalConfig.showMatch,
 		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
 	}
 
@@ -1430,7 +1528,7 @@ func main() {
 	skippedFiles := 0
 
 	// Suppress progress messages in pre-commit mode or quiet mode
-	if !shouldSuppressProgressOutput(finalConfig, flags.quiet, precommitConfig, isInteractive) {
+	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
 		fmt.Fprintf(os.Stderr, "Starting scan of %d files...\n", len(filesToProcess))
 
 		// Show filtering info if files were filtered out
@@ -1442,7 +1540,7 @@ func main() {
 	// Progress bar function with ETA
 	progressStart := time.Now()
 	updateProgress := func(current, total, skipped int, currentFile string) {
-		if shouldSuppressProgressOutput(finalConfig, flags.quiet, precommitConfig, isInteractive) {
+		if shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
 			return // Don't show progress bar in debug mode, quiet mode, pre-commit mode, or non-interactive environments
 		}
 		percent := float64(current) / float64(total) * 100
@@ -1508,7 +1606,7 @@ func main() {
 	totalFilesForProgress := len(supportedFiles)
 
 	// Show additional filtering info if more files were filtered out
-	if skippedFiles > 0 && !shouldSuppressProgressOutput(finalConfig, flags.quiet, precommitConfig, isInteractive) {
+	if skippedFiles > 0 && !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
 		fmt.Fprintf(os.Stderr, "Filtered out %d unsupported file types\n", skippedFiles)
 	}
 
@@ -1533,7 +1631,7 @@ func main() {
 
 		// Create progress callback that updates the progress bar
 		var progressCallback func(completed, total int, currentFile string)
-		if !shouldSuppressProgressOutput(finalConfig, flags.quiet, precommitConfig, isInteractive) {
+		if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
 			progressCallback = func(completed, total int, currentFile string) {
 				// Update progress based on completed supported files
 				updateProgress(completed, totalFilesForProgress, 0, currentFile)
@@ -1560,7 +1658,7 @@ func main() {
 				if finalConfig.redactionAuditLog != "" {
 					if err := redactionManager.ExportAuditLog(finalConfig.redactionAuditLog); err != nil {
 						fmt.Fprintf(os.Stderr, "Warning: Failed to export redaction audit log: %v\n", err)
-					} else if !flags.quiet {
+					} else if !finalConfig.quiet {
 						fmt.Fprintf(os.Stderr, "Redaction audit log exported to: %s\n", finalConfig.redactionAuditLog)
 					}
 				}
@@ -1584,7 +1682,7 @@ func main() {
 	totalAttempted := len(supportedFiles)
 	failedFiles := totalAttempted - processedFiles
 
-	if !shouldSuppressProgressOutput(finalConfig, flags.quiet, precommitConfig, isInteractive) {
+	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
 		if finalSkippedCount > 0 || failedFiles > 0 {
 			fmt.Fprintf(os.Stderr, "Scan complete: %d files processed successfully", processedFiles)
 			if failedFiles > 0 {
@@ -1612,7 +1710,7 @@ func main() {
 					match.Type, rule.ID, rule.Reason)
 			}
 			// Collect suppressed findings if requested
-			if flags.showSuppressed {
+			if finalConfig.showSuppressed {
 				// Check if rule is expired
 				expired := rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt)
 
@@ -1631,13 +1729,13 @@ func main() {
 
 	if suppressedCount > 0 {
 		if flags.noColor {
-			if flags.showSuppressed {
+			if finalConfig.showSuppressed {
 				fmt.Fprintf(os.Stderr, "Suppressed %d findings based on suppression rules (shown below with [SUPP] label)\n", suppressedCount)
 			} else {
 				fmt.Fprintf(os.Stderr, "Suppressed %d findings based on suppression rules (use --show-suppressed to see them)\n", suppressedCount)
 			}
 		} else {
-			if flags.showSuppressed {
+			if finalConfig.showSuppressed {
 				fmt.Fprintf(os.Stderr, "\033[33mSuppressed\033[0m \033[31m%d\033[0m \033[33mfindings\033[0m based on suppression rules (shown below with \033[37m[SUPP]\033[0m label)\n", suppressedCount)
 			} else {
 				fmt.Fprintf(os.Stderr, "\033[33mSuppressed\033[0m \033[31m%d\033[0m \033[33mfindings\033[0m based on suppression rules (use \033[36m--show-suppressed\033[0m to see them)\n", suppressedCount)
@@ -1646,7 +1744,7 @@ func main() {
 	}
 
 	// Generate suppression rules if requested
-	if flags.generateSuppressions {
+	if finalConfig.generateSuppressions {
 		if len(allMatches) > 0 {
 			reason := "Auto-generated suppression rule (disabled by default)"
 			err := suppressionManager.GenerateSuppressionRules(allMatches, reason, false)
@@ -1663,7 +1761,7 @@ func main() {
 
 	// Format and display results
 	var result string
-	if flags.showSuppressed {
+	if finalConfig.showSuppressed {
 		result, err = formatter.Format(unsuppressedMatches, suppressedMatches, formatterOptions)
 	} else {
 		result, err = formatter.Format(unsuppressedMatches, nil, formatterOptions)
@@ -1830,7 +1928,7 @@ func isExcluded(filePath string, excludePatterns []string) bool {
 
 // getFilesToProcess returns a list of files to process based on the input path
 // Supports glob patterns like *.pdf, files, and directories
-func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string) (*ProcessingResult, error) {
+func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string, ignoreMatcher *gitignore.Matcher) (*ProcessingResult, error) {
 	result := &ProcessingResult{
 		FilesToProcess: []string{},
 		SkippedFiles:   []SkippedFile{},
@@ -1864,6 +1962,14 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
 						Path:   inputPath,
 						Reason: "excluded by --exclude pattern",
+						Silent: false,
+					})
+					return result, nil
+				}
+				if ignoreMatcher.Match(inputPath) {
+					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+						Path:   inputPath,
+						Reason: "excluded by .gitignore",
 						Silent: false,
 					})
 					return result, nil
@@ -1927,6 +2033,9 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				// Check if file is excluded
 				if isExcluded(cleanMatch, excludePatterns) {
 					continue // Skip excluded files
+				}
+				if ignoreMatcher.Match(cleanMatch) {
+					continue // Skip gitignored files
 				}
 
 				if info.Size() <= 100*1024*1024 {
@@ -1995,6 +2104,14 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			})
 			return result, nil
 		}
+		if ignoreMatcher.Match(cleanPath) {
+			result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+				Path:   cleanPath,
+				Reason: "excluded by .gitignore",
+				Silent: false,
+			})
+			return result, nil
+		}
 		result.FilesToProcess = append(result.FilesToProcess, cleanPath)
 		return result, nil
 	}
@@ -2026,6 +2143,12 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					return filepath.SkipDir // Skip entire directory
 				}
 				return nil // Skip file
+			}
+			if ignoreMatcher.Match(cleanWalkPath) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 
 			// Only add regular files

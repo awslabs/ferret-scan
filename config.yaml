@@ -2,8 +2,11 @@
 # This file defines default settings and profiles for different scanning scenarios
 
 # Default settings applied when no profile is specified
+# NOTE: Some CLI flags are not parseable from config — they must be passed on
+# the command line: --disable-ip-types, --enable-redaction, --redaction-*,
+# --suppression-file, --preprocess-only, --pre-commit-mode, --generate-suppressions=<specific>.
 defaults:
-  format: text # Output format: text, json, csv, yaml, junit
+  format: text # Output format: text, json, csv, yaml, junit, gitlab-sast, sarif
   confidence_levels: all # Confidence levels to display: high, medium, low, or combinations
   checks:
     all # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
@@ -13,10 +16,28 @@ defaults:
   no_color: false # Disable colored output
   recursive: false # Recursively scan directories
   enable_preprocessors: true # Enable text extraction from documents (PDF, Office files)
-  show_match: false # Display the actual matched text in findings
+  show_match: false # Display the actual matched text in findings (otherwise [HIDDEN])
   quiet: false # Suppress progress output (useful for scripts and CI/CD)
-  show_suppressed: false # Include suppressed findings in output with suppression details
+  show_suppressed: false # Include suppressed findings in output with [SUPP] marker
   generate_suppressions: false # Generate suppression rules for all findings
+
+  # File exclusion patterns — glob syntax, applied in addition to --exclude on CLI
+  # Uncomment and customize for your repo. Paths are matched against both the
+  # full path and each path segment; trailing / marks a directory-only pattern.
+  # exclude_patterns:
+  #   - ".git"
+  #   - "node_modules"
+  #   - "vendor"
+  #   - "dist/"
+  #   - "build/"
+  #   - "*.log"
+  #   - "*.tmp"
+
+  # Honor .gitignore, .git/info/exclude, and the user's global git excludes file.
+  # Opt-in because .gitignore routinely hides the files most valuable for secret
+  # scanning (.env, *.pem, credentials/). When enabled, .git is always skipped.
+  respect_gitignore: false
+
   # GENAI_DISABLED: max_cost: 0                 # Maximum cost limit for GenAI services (0 = no limit)
   # GENAI_DISABLED: estimate_only: false        # Show cost estimate and exit without processing
 
@@ -658,6 +679,14 @@ profiles:
     quiet: true
     show_match: false
     enable_preprocessors: false # Skip document processing for speed
+    # Pre-commit-style scan: honor .gitignore so we only look at tracked/stageable files,
+    # plus exclude the usual noisy directories.
+    respect_gitignore: true
+    exclude_patterns:
+      - ".git"
+      - "node_modules"
+      - "dist/"
+      - "build/"
     description: "Quick scan focusing on critical data types with minimal processing"
 
   # Thorough scan profile - all confidence levels, verbose output, recursive scanning
@@ -669,6 +698,9 @@ profiles:
     no_color: false
     recursive: true
     enable_preprocessors: true
+    # Deep audits should NOT honor .gitignore — .env files, *.pem, and credentials/
+    # are routinely gitignored but are exactly what we want to find.
+    respect_gitignore: false
     description: "Thorough scan with all confidence levels, recursive scanning, and text extraction"
 
   # Debug profile - enables debug logging to show preprocessing and validation flow
