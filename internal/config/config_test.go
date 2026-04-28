@@ -99,6 +99,158 @@ func TestLoadConfig_ProfilesInitialized(t *testing.T) {
 	}
 }
 
+// --- New defaults/profile field parsing tests --------------------------------
+
+func TestLoadConfig_NewDefaultsFields(t *testing.T) {
+	// Verify that the newly-added defaults fields are parsed from YAML.
+	// These were previously documented but silently ignored.
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+defaults:
+  format: text
+  respect_gitignore: true
+  show_match: true
+  quiet: true
+  show_suppressed: true
+  generate_suppressions: true
+  exclude_patterns:
+    - ".git"
+    - "node_modules"
+    - "*.log"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg := LoadConfigOrDefault(configPath)
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if !cfg.Defaults.RespectGitignore {
+		t.Error("expected respect_gitignore=true")
+	}
+	if !cfg.Defaults.ShowMatch {
+		t.Error("expected show_match=true")
+	}
+	if !cfg.Defaults.Quiet {
+		t.Error("expected quiet=true")
+	}
+	if !cfg.Defaults.ShowSuppressed {
+		t.Error("expected show_suppressed=true")
+	}
+	if !cfg.Defaults.GenerateSuppressions {
+		t.Error("expected generate_suppressions=true")
+	}
+	if len(cfg.Defaults.ExcludePatterns) != 3 {
+		t.Errorf("expected 3 exclude_patterns, got %d: %v", len(cfg.Defaults.ExcludePatterns), cfg.Defaults.ExcludePatterns)
+	}
+}
+
+func TestLoadConfig_NewProfileFields(t *testing.T) {
+	// Same fields should be parsed at profile level too.
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+defaults:
+  format: text
+
+profiles:
+  strict:
+    format: json
+    respect_gitignore: true
+    show_match: true
+    quiet: true
+    show_suppressed: true
+    generate_suppressions: true
+    exclude_patterns:
+      - "vendor/"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg := LoadConfigOrDefault(configPath)
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	p, ok := cfg.Profiles["strict"]
+	if !ok {
+		t.Fatal("expected 'strict' profile")
+	}
+	if !p.RespectGitignore {
+		t.Error("profile: expected respect_gitignore=true")
+	}
+	if !p.ShowMatch {
+		t.Error("profile: expected show_match=true")
+	}
+	if !p.Quiet {
+		t.Error("profile: expected quiet=true")
+	}
+	if !p.ShowSuppressed {
+		t.Error("profile: expected show_suppressed=true")
+	}
+	if !p.GenerateSuppressions {
+		t.Error("profile: expected generate_suppressions=true")
+	}
+	if len(p.ExcludePatterns) != 1 || p.ExcludePatterns[0] != "vendor/" {
+		t.Errorf("profile: expected exclude_patterns=[vendor/], got %v", p.ExcludePatterns)
+	}
+}
+
+func TestLoadConfig_ProfileCanDisableDefault(t *testing.T) {
+	// Regression: a profile setting a bool to false must be preserved in the
+	// parsed Profile struct so the resolver can override an inherited default
+	// of true. (Previously the resolver had "if activeProfile.Quiet" guards
+	// that silently ignored false profile values.)
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+defaults:
+  quiet: true
+  show_match: true
+  respect_gitignore: true
+  show_suppressed: true
+  generate_suppressions: true
+
+profiles:
+  loud:
+    quiet: false
+    show_match: false
+    respect_gitignore: false
+    show_suppressed: false
+    generate_suppressions: false
+`
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cfg := LoadConfigOrDefault(configPath)
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	// Defaults preserved
+	if !cfg.Defaults.Quiet || !cfg.Defaults.ShowMatch || !cfg.Defaults.RespectGitignore ||
+		!cfg.Defaults.ShowSuppressed || !cfg.Defaults.GenerateSuppressions {
+		t.Errorf("defaults not parsed: %+v", cfg.Defaults)
+	}
+
+	// Profile values are false — parse must NOT collapse them into zero-value
+	// ambiguity. (Go's YAML unmarshaling reads explicit false as false, so
+	// this verifies the struct tag layout is correct.)
+	p, ok := cfg.Profiles["loud"]
+	if !ok {
+		t.Fatal("expected 'loud' profile")
+	}
+	if p.Quiet || p.ShowMatch || p.RespectGitignore || p.ShowSuppressed || p.GenerateSuppressions {
+		t.Errorf("profile 'loud' should have all five fields false, got %+v", p)
+	}
+}
+
 // --- Profile bool inheritance tests ------------------------------------------
 
 // TestProfile_InheritsDefaultBoolsWhenOmitted: the core fix. A profile that
@@ -116,6 +268,11 @@ defaults:
   no_color: true
   recursive: true
   enable_preprocessors: false
+  respect_gitignore: true
+  show_match: true
+  quiet: true
+  show_suppressed: true
+  generate_suppressions: true
 
 redaction:
   enabled: true
@@ -157,6 +314,21 @@ profiles:
 	if !p.Redaction.Enabled {
 		t.Error("expected profile.redaction.enabled to inherit redaction.enabled=true")
 	}
+	if !p.RespectGitignore {
+		t.Error("expected profile.respect_gitignore to inherit defaults.respect_gitignore=true")
+	}
+	if !p.ShowMatch {
+		t.Error("expected profile.show_match to inherit defaults.show_match=true")
+	}
+	if !p.Quiet {
+		t.Error("expected profile.quiet to inherit defaults.quiet=true")
+	}
+	if !p.ShowSuppressed {
+		t.Error("expected profile.show_suppressed to inherit defaults.show_suppressed=true")
+	}
+	if !p.GenerateSuppressions {
+		t.Error("expected profile.generate_suppressions to inherit defaults.generate_suppressions=true")
+	}
 }
 
 // TestProfile_ExplicitFalseWins: a profile that explicitly writes `false`
@@ -173,6 +345,11 @@ defaults:
   no_color: true
   recursive: true
   enable_preprocessors: true
+  respect_gitignore: true
+  show_match: true
+  quiet: true
+  show_suppressed: true
+  generate_suppressions: true
 
 redaction:
   enabled: true
@@ -184,6 +361,11 @@ profiles:
     no_color: false
     recursive: false
     enable_preprocessors: false
+    respect_gitignore: false
+    show_match: false
+    quiet: false
+    show_suppressed: false
+    generate_suppressions: false
     redaction:
       enabled: false
 `
@@ -200,7 +382,9 @@ profiles:
 		t.Fatal("expected 'loud' profile")
 	}
 
-	if p.Verbose || p.Debug || p.NoColor || p.Recursive || p.EnablePreprocessors || p.Redaction.Enabled {
+	if p.Verbose || p.Debug || p.NoColor || p.Recursive || p.EnablePreprocessors ||
+		p.Redaction.Enabled || p.RespectGitignore || p.ShowMatch || p.Quiet ||
+		p.ShowSuppressed || p.GenerateSuppressions {
 		t.Errorf("explicit profile false must win over default true; got %+v (redaction.enabled=%v)",
 			p, p.Redaction.Enabled)
 	}

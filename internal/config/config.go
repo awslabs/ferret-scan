@@ -18,15 +18,20 @@ import (
 type Config struct {
 	// Default settings
 	Defaults struct {
-		Format              string   `yaml:"format"`
-		ConfidenceLevels    string   `yaml:"confidence_levels"`
-		Checks              string   `yaml:"checks"`
-		Verbose             bool     `yaml:"verbose"`
-		Debug               bool     `yaml:"debug"`
-		NoColor             bool     `yaml:"no_color"`
-		Recursive           bool     `yaml:"recursive"`
-		EnablePreprocessors bool     `yaml:"enable_preprocessors"`
-		ExcludePatterns     []string `yaml:"exclude_patterns"`
+		Format               string   `yaml:"format"`
+		ConfidenceLevels     string   `yaml:"confidence_levels"`
+		Checks               string   `yaml:"checks"`
+		Verbose              bool     `yaml:"verbose"`
+		Debug                bool     `yaml:"debug"`
+		NoColor              bool     `yaml:"no_color"`
+		Recursive            bool     `yaml:"recursive"`
+		EnablePreprocessors  bool     `yaml:"enable_preprocessors"`
+		ExcludePatterns      []string `yaml:"exclude_patterns"`
+		RespectGitignore     bool     `yaml:"respect_gitignore"`
+		ShowMatch            bool     `yaml:"show_match"`
+		Quiet                bool     `yaml:"quiet"`
+		ShowSuppressed       bool     `yaml:"show_suppressed"`
+		GenerateSuppressions bool     `yaml:"generate_suppressions"`
 	} `yaml:"defaults"`
 
 	// Global validator configurations
@@ -102,15 +107,20 @@ type UnixConfig struct {
 
 // Profile represents a scanning profile with specific settings
 type Profile struct {
-	Format              string   `yaml:"format"`
-	ConfidenceLevels    string   `yaml:"confidence_levels"`
-	Checks              string   `yaml:"checks"`
-	Verbose             bool     `yaml:"verbose"`
-	Debug               bool     `yaml:"debug"`
-	NoColor             bool     `yaml:"no_color"`
-	Recursive           bool     `yaml:"recursive"`
-	EnablePreprocessors bool     `yaml:"enable_preprocessors"`
-	ExcludePatterns     []string `yaml:"exclude_patterns"`
+	Format               string   `yaml:"format"`
+	ConfidenceLevels     string   `yaml:"confidence_levels"`
+	Checks               string   `yaml:"checks"`
+	Verbose              bool     `yaml:"verbose"`
+	Debug                bool     `yaml:"debug"`
+	NoColor              bool     `yaml:"no_color"`
+	Recursive            bool     `yaml:"recursive"`
+	EnablePreprocessors  bool     `yaml:"enable_preprocessors"`
+	ExcludePatterns      []string `yaml:"exclude_patterns"`
+	RespectGitignore     bool     `yaml:"respect_gitignore"`
+	ShowMatch            bool     `yaml:"show_match"`
+	Quiet                bool     `yaml:"quiet"`
+	ShowSuppressed       bool     `yaml:"show_suppressed"`
+	GenerateSuppressions bool     `yaml:"generate_suppressions"`
 	// GENAI_DISABLED: GenAI enablement flag for profiles
 	// EnableGenAI         bool                              `yaml:"enable_genai"`
 	// GENAI_DISABLED: Cost estimation only mode flag
@@ -495,6 +505,31 @@ var profileBoolFields = []profileBoolField{
 		yamlPath:     []string{"redaction", "enabled"},
 		defaultValue: func(c *Config) bool { return c.Redaction.Enabled },
 		setProfile:   func(p *Profile, v bool) { p.Redaction.Enabled = v },
+	},
+	{
+		yamlPath:     []string{"respect_gitignore"},
+		defaultValue: func(c *Config) bool { return c.Defaults.RespectGitignore },
+		setProfile:   func(p *Profile, v bool) { p.RespectGitignore = v },
+	},
+	{
+		yamlPath:     []string{"show_match"},
+		defaultValue: func(c *Config) bool { return c.Defaults.ShowMatch },
+		setProfile:   func(p *Profile, v bool) { p.ShowMatch = v },
+	},
+	{
+		yamlPath:     []string{"quiet"},
+		defaultValue: func(c *Config) bool { return c.Defaults.Quiet },
+		setProfile:   func(p *Profile, v bool) { p.Quiet = v },
+	},
+	{
+		yamlPath:     []string{"show_suppressed"},
+		defaultValue: func(c *Config) bool { return c.Defaults.ShowSuppressed },
+		setProfile:   func(p *Profile, v bool) { p.ShowSuppressed = v },
+	},
+	{
+		yamlPath:     []string{"generate_suppressions"},
+		defaultValue: func(c *Config) bool { return c.Defaults.GenerateSuppressions },
+		setProfile:   func(p *Profile, v bool) { p.GenerateSuppressions = v },
 	},
 }
 
