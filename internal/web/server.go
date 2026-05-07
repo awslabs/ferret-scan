@@ -715,24 +715,6 @@ func (ws *WebServer) sanitizeFilenameForDisplay(filename string) string {
 	return sanitizeUserInput(normalized, 500)
 }
 
-// normalizePathForWeb converts platform-specific paths to web-friendly format
-func (ws *WebServer) normalizePathForWeb(path string) string {
-	// Always convert backslashes to forward slashes for consistent web display
-	webPath := strings.ReplaceAll(path, "\\", "/")
-
-	// Handle drive letters for web display (works on any platform for Windows-style paths)
-	if len(webPath) >= 2 && webPath[1] == ':' {
-		// Ensure drive letter format is consistent (C:/ not C:\)
-		if len(webPath) == 2 {
-			webPath += "/"
-		} else if webPath[2] != '/' {
-			webPath = webPath[:2] + "/" + webPath[2:]
-		}
-	}
-
-	return webPath
-}
-
 // loadConfiguration loads the configuration file or returns default config (same as CLI)
 func (ws *WebServer) loadConfiguration(configFile string) *config.Config {
 	return config.LoadConfigOrDefault(configFile)
