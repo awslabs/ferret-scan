@@ -86,12 +86,10 @@ test*.txt
 test*.log
 test*.config
 .test*
-# Test directories and temp files
+# Test temp files (NOT *_test.go — those are real Go tests we ship)
 testing/
-tests/
 tmp/
 temp/
-*_test.go
 *_mock.go
 mock_*.go
 *_stub.go
