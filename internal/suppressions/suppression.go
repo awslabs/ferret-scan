@@ -94,7 +94,12 @@ func findDefaultSuppressionFile() string {
 	return paths.GetSuppressionsFile()
 }
 
-// loadConfig loads the suppression configuration
+// loadConfig loads the suppression configuration. A missing file is treated
+// as "no rules yet" silently — that's the legitimate first-run case. A file
+// that exists but fails to parse is logged loudly to stderr so the user
+// notices their rules aren't being applied; previously parse errors silently
+// produced an empty rule set, which made suppressions look configured but
+// silently inactive.
 func (sm *SuppressionManager) loadConfig() {
 	if sm.configPath == "" {
 		sm.config = &SuppressionConfig{
@@ -107,6 +112,13 @@ func (sm *SuppressionManager) loadConfig() {
 	cleanPath := filepath.Clean(sm.configPath)
 	data, err := os.ReadFile(cleanPath)
 	if err != nil {
+		// Distinguish "file does not exist" (silent) from any other error
+		// (which is real and worth surfacing).
+		if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr,
+				"warning: cannot read suppression file %q: %v — treating as empty\n",
+				sm.configPath, err)
+		}
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
 			Rules:   []SuppressionRule{},
@@ -116,6 +128,9 @@ func (sm *SuppressionManager) loadConfig() {
 
 	var config SuppressionConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"warning: suppression file %q is malformed (%v) — treating as empty; existing rules will NOT be applied\n",
+			sm.configPath, err)
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
 			Rules:   []SuppressionRule{},

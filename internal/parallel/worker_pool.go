@@ -111,18 +111,15 @@ func (wp *WorkerPool) Stop() {
 	wp.cancel()
 }
 
-// Submit adds a job to the queue
+// Submit adds a job to the queue, blocking until either the job is accepted
+// or the pool's context is cancelled. The previous implementation had a
+// `default` branch that fell into an identical inner select, which had no
+// behavioral effect — both forms block until the channel has room or the
+// context cancels — but obscured the intent.
 func (wp *WorkerPool) Submit(job *Job) {
 	select {
 	case wp.jobs <- job:
 	case <-wp.ctx.Done():
-		return
-	default:
-		// Channel is full, wait and retry
-		select {
-		case wp.jobs <- job:
-		case <-wp.ctx.Done():
-		}
 	}
 }
 

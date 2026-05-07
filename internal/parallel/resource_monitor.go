@@ -211,7 +211,14 @@ func (rm *ResourceMonitor) updateMetrics() {
 	rm.mu.Unlock()
 }
 
-// notifyCallbacks calls all registered callbacks with current metrics
+// notifyCallbacks calls all registered callbacks with current metrics.
+// Callbacks run synchronously on the monitor's tick goroutine — previously
+// each callback was launched in its own fresh goroutine, with no upper
+// bound. Under any sustained tick rate combined with a slow callback that
+// pattern leaks goroutines unbounded. Today's only callback
+// (AdaptiveProcessor.handleResourceMetrics) just updates a counter under a
+// mutex, so synchronous invocation is fine. Callers that need deferred
+// work should spawn their own goroutine inside the callback.
 func (rm *ResourceMonitor) notifyCallbacks() {
 	rm.mu.RLock()
 	callbacks := make([]func(ResourceMetrics), len(rm.callbacks))
@@ -220,7 +227,7 @@ func (rm *ResourceMonitor) notifyCallbacks() {
 	rm.mu.RUnlock()
 
 	for _, callback := range callbacks {
-		go callback(metrics)
+		callback(metrics)
 	}
 }
 
