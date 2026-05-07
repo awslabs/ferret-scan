@@ -18,6 +18,30 @@ import (
 // Import MetadataContent from router package to avoid duplication
 // This ensures compatibility with the dual-path bridge system
 
+// Pre-compiled regex patterns. Previously these were compiled inside the
+// per-call helpers below; for a metadata-heavy scan that runs into the
+// hundreds-of-thousands of allocations on the hot path.
+var (
+	// `phoneBasic` is the loose three-three-four digit pattern used by
+	// containsEnhancedPhoneNumber's first slot AND by an unrelated fallback
+	// path in calculateMatchConfidence — same literal in two places.
+	phoneBasic        = regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
+	phoneParenAreaCode = regexp.MustCompile(`\b\(\d{3}\)\s?\d{3}[-.]?\d{4}\b`)
+	phoneInternational = regexp.MustCompile(`\b\+\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b`)
+	phoneSpaceSep      = regexp.MustCompile(`\b\d{3}\s\d{3}\s\d{4}\b`)
+
+	enhancedPhonePatterns = []*regexp.Regexp{
+		phoneBasic,
+		phoneParenAreaCode,
+		phoneInternational,
+		phoneSpaceSep,
+	}
+
+	emailExtractPattern = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+	gpsCoordPattern     = regexp.MustCompile(`[+-]?\d+\.\d+`)
+	versionNumberPattern = regexp.MustCompile(`^\d+(\.\d+)*$`)
+)
+
 // ValidationRule defines validation rules for specific preprocessor types
 type ValidationRule struct {
 	SensitiveFields  []string                  // Fields to focus validation on
@@ -368,8 +392,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		flags["contains_enhanced_phone"] = true
 	} else {
 		// Fallback to basic phone pattern
-		phonePattern := regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
-		if phonePattern.MatchString(match) {
+		if phoneBasic.MatchString(match) {
 			confidence += 0.4
 			flags["contains_phone_number"] = true
 		}
@@ -1085,10 +1108,7 @@ func (v *Validator) extractSensitiveItem(line string) string {
 
 // extractEmail extracts email addresses from a line
 func (v *Validator) extractEmail(line string) string {
-	// Simple email extraction - look for @ symbol with domain
-	emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	match := emailPattern.FindString(line)
-	return match
+	return emailExtractPattern.FindString(line)
 }
 
 // validateWithPreprocessorRules validates content using preprocessor-specific rules
@@ -1356,20 +1376,11 @@ func (v *Validator) containsEnhancedCopyright(match string) bool {
 
 // containsEnhancedPhoneNumber checks for enhanced phone number patterns
 func (v *Validator) containsEnhancedPhoneNumber(match string) bool {
-	// Enhanced phone number patterns
-	phonePatterns := []*regexp.Regexp{
-		regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`),
-		regexp.MustCompile(`\b\(\d{3}\)\s?\d{3}[-.]?\d{4}\b`),
-		regexp.MustCompile(`\b\+\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b`),
-		regexp.MustCompile(`\b\d{3}\s\d{3}\s\d{4}\b`),
-	}
-
-	for _, pattern := range phonePatterns {
+	for _, pattern := range enhancedPhonePatterns {
 		if pattern.MatchString(match) {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -1392,8 +1403,7 @@ func (v *Validator) containsEnhancedGPSData(match string) bool {
 	}
 
 	// Check for coordinate patterns
-	coordPattern := regexp.MustCompile(`[+-]?\d+\.\d+`)
-	if coordPattern.MatchString(match) && (strings.Contains(matchLower, "n") || strings.Contains(matchLower, "s") ||
+	if gpsCoordPattern.MatchString(match) && (strings.Contains(matchLower, "n") || strings.Contains(matchLower, "s") ||
 		strings.Contains(matchLower, "e") || strings.Contains(matchLower, "w")) {
 		return true
 	}
@@ -1505,20 +1515,17 @@ func (v *Validator) isVersionNumber(line string) bool {
 	// These are typically software versions and not sensitive information
 	lineLower := strings.ToLower(strings.TrimSpace(line))
 
-	// Pattern for version numbers: digits, dots, and optional minor characters
-	versionPattern := regexp.MustCompile(`^\d+(\.\d+)*$`)
-
 	// If the line contains a colon, extract the value part
 	if strings.Contains(line, ":") {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
 			value := strings.TrimSpace(parts[1])
-			return versionPattern.MatchString(value)
+			return versionNumberPattern.MatchString(value)
 		}
 	}
 
 	// Check if the entire line is just a version number
-	return versionPattern.MatchString(lineLower)
+	return versionNumberPattern.MatchString(lineLower)
 }
 
 // hasNonEmptyValue checks if a metadata field has non-empty content after the colon

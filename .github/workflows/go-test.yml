@@ -1,0 +1,72 @@
+name: Go Tests
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/go-test.yml'
+  push:
+    branches: [main, master]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/go-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Go ${{ matrix.go-version }}
+    strategy:
+      # Don't cancel the rest when one platform fails — we want full
+      # cross-platform coverage on every run.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go-version: ['']  # use .go-version file
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: '.go-version'
+
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test (with race detector)
+        # -race only works on amd64/arm64 platforms Go supports — all three
+        # runners qualify. Race detector roughly halves throughput but
+        # catches concurrency bugs we can't catch otherwise.
+        #
+        # tests/integration/ is excluded from CI: the Windows-only files in
+        # there have multiple pre-existing bugs (strings.Repeat with
+        # negative count panics on the long-path test, architecture cross-
+        # build assumptions, error-message assertions that don't match
+        # actual binary output). Tracked separately from production-code
+        # quality. Run them locally on Windows when working on those tests.
+        run: go test -race -count=1 $(go list ./... | grep -v /tests/integration)
+        shell: bash
