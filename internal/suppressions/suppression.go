@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,6 +17,20 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// hashLineWithoutComment matches `hash:` lines that don't already carry a
+// trailing comment. Used to append `# pragma: allowlist secret` so secret
+// scanners (including ferret-scan itself) skip the high-entropy hash values.
+var hashLineWithoutComment = regexp.MustCompile(`(?m)^(\s*hash:\s*\S+)[ \t]*$`)
+
+// annotateHashesWithAllowlistPragma appends `# pragma: allowlist secret` to
+// every `hash:` line in the marshaled YAML that doesn't already have a
+// trailing comment. The hash field is a SHA-256 of the finding identity, not
+// the secret itself, but it has enough entropy to trip secret scanners — this
+// keeps the suppression file from generating false-positive findings.
+func annotateHashesWithAllowlistPragma(data []byte) []byte {
+	return hashLineWithoutComment.ReplaceAll(data, []byte("$1 # pragma: allowlist secret"))
+}
 
 // SuppressionRule represents a single suppression rule
 type SuppressionRule struct {
@@ -248,6 +263,7 @@ func (sm *SuppressionManager) saveConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal suppression config: %w", err)
 	}
+	data = annotateHashesWithAllowlistPragma(data)
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(sm.configPath)
@@ -563,7 +579,7 @@ func getString(data map[string]interface{}, key string) string {
 			return str
 		}
 	}
-	return "Unknown"
+	return ""
 }
 
 func getFloat(data map[string]interface{}, key string) float64 {
