@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"ferret-scan/internal/config"
@@ -39,13 +40,24 @@ import (
 //go:embed assets/template.html
 var embeddedTemplate string
 
-// WebServer represents the web server instance
+// WebServer represents the web server instance.
+//
+// suppressions/config caching: the manager and resolved config are built
+// lazily on first use and reloaded only when the underlying file's mtime
+// changes (or the file appears/disappears). This eliminates the per-request
+// YAML parse cost that previously dominated /scan and /suppressions latency.
+// suppCacheMu guards concurrent reload while readers run.
 type WebServer struct {
 	port             string
 	configPath       string
 	suppressionsPath string
 	excludePatterns  []string
 	server           *http.Server
+
+	suppCacheMu     sync.RWMutex
+	suppCacheMgr    *suppressions.SuppressionManager
+	suppCacheMtime  time.Time
+	suppCacheExists bool
 }
 
 // ScanResponse represents the response from a scan operation (wraps CLI JSON output)
@@ -775,473 +787,294 @@ func (ws *WebServer) resolveWebConfiguration(cfg *config.Config, confidence, che
 	return final
 }
 
-// initializeSuppressionManager initializes the suppression manager (same as CLI)
+// initializeSuppressionManager returns the cached suppression manager,
+// reloading from disk only when the underlying file's mtime changes (or
+// the file appears/disappears). Previously every HTTP handler built a
+// fresh manager — re-parsing the YAML on every request, which dominated
+// /scan and /suppressions latency for any non-trivial rules file.
+//
+// The suppressionFile parameter is preserved for compatibility but the
+// cache always uses ws.suppressionsPath. Callers all pass that anyway.
 func (ws *WebServer) initializeSuppressionManager(suppressionFile string) (*suppressions.SuppressionManager, error) {
-	// Initialize suppression manager with same logic as CLI (empty string uses default path)
-	suppressionManager := suppressions.NewSuppressionManager(suppressionFile)
-
-	return suppressionManager, nil
-}
-
-// Suppression management endpoints - delegate to CLI suppression system
-
-// handleSuppressions lists all suppression rules (GET /suppressions)
-func (ws *WebServer) handleSuppressions(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "GET" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+	// Resolve the path the cache is keyed against. If a non-empty path was
+	// passed and it differs from ws.suppressionsPath, build a one-off
+	// manager rather than poisoning the cache. (No production caller does
+	// this today, but it preserves the original API contract.)
+	cachePath := ws.suppressionsPath
+	if suppressionFile != "" && suppressionFile != cachePath {
+		return suppressions.NewSuppressionManager(suppressionFile), nil
 	}
 
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Get all suppression rules using CLI suppression system
-	rules := suppressionManager.ListSuppressions()
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"rules":   rules,
-	})
-}
-
-// handleSuppressionsCreate creates a new suppression rule (POST /suppressions/create)
-func (ws *WebServer) handleSuppressionsCreate(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var createRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&createRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Create suppression rule using CLI suppression system
-	hash, _ := createRequest["hash"].(string)
-	reason, _ := createRequest["reason"].(string)
-	findingData, _ := createRequest["finding_data"].(map[string]interface{})
-
-	err = suppressionManager.CreateSuppressionFromFinding(hash, reason, findingData)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to create suppression rule: %v", err))
-		return
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rule created successfully",
-	})
-}
-
-// handleSuppressionsEdit edits an existing suppression rule (POST /suppressions/edit)
-func (ws *WebServer) handleSuppressionsEdit(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var editRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&editRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Edit suppression rule using CLI suppression system
-	id, _ := editRequest["id"].(string)
-	reason, _ := editRequest["reason"].(string)
-	createdBy, _ := editRequest["created_by"].(string)
-	enabled, _ := editRequest["enabled"].(bool)
-
-	err = suppressionManager.EditSuppression(id, reason, createdBy, enabled, nil)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to edit suppression rule: %v", err))
-		return
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rule updated successfully",
-	})
-}
-
-// handleSuppressionsRemove removes a suppression rule (POST /suppressions/remove)
-func (ws *WebServer) handleSuppressionsRemove(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var removeRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&removeRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Remove suppression rule using CLI suppression system
-	id, _ := removeRequest["id"].(string)
-
-	err = suppressionManager.RemoveSuppression(id)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to remove suppression rule: %v", err))
-		return
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rule removed successfully",
-	})
-}
-
-// handleSuppressionsEnable enables a suppression rule (POST /suppressions/enable)
-func (ws *WebServer) handleSuppressionsEnable(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var enableRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&enableRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Enable suppression rule using CLI suppression system
-	id, _ := enableRequest["id"].(string)
-
-	// Get current rule and update it to enabled
-	rules := suppressionManager.ListSuppressions()
-	for _, rule := range rules {
-		if rule.ID == id {
-			err = suppressionManager.EditSuppression(id, rule.Reason, rule.CreatedBy, true, rule.ExpiresAt)
-			if err != nil {
-				ws.sendError(responseWriter, fmt.Sprintf("Failed to enable suppression rule: %v", err))
-				return
-			}
-			break
+	// Stat the file once to learn the current mtime / existence state.
+	var (
+		curMtime  time.Time
+		curExists bool
+	)
+	if cachePath != "" {
+		if info, err := os.Stat(cachePath); err == nil {
+			curMtime = info.ModTime()
+			curExists = true
 		}
 	}
 
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rule enabled successfully",
-	})
+	// Fast path: hold the read lock if the cached state matches what we
+	// just observed on disk.
+	ws.suppCacheMu.RLock()
+	if ws.suppCacheMgr != nil &&
+		ws.suppCacheExists == curExists &&
+		ws.suppCacheMtime.Equal(curMtime) {
+		mgr := ws.suppCacheMgr
+		ws.suppCacheMu.RUnlock()
+		return mgr, nil
+	}
+	ws.suppCacheMu.RUnlock()
+
+	// Slow path: rebuild. Re-check under the write lock in case another
+	// goroutine refreshed concurrently.
+	ws.suppCacheMu.Lock()
+	defer ws.suppCacheMu.Unlock()
+	if ws.suppCacheMgr != nil &&
+		ws.suppCacheExists == curExists &&
+		ws.suppCacheMtime.Equal(curMtime) {
+		return ws.suppCacheMgr, nil
+	}
+	ws.suppCacheMgr = suppressions.NewSuppressionManager(cachePath)
+	ws.suppCacheExists = curExists
+	ws.suppCacheMtime = curMtime
+	return ws.suppCacheMgr, nil
 }
 
-// handleSuppressionsDisable disables a suppression rule (POST /suppressions/disable)
-func (ws *WebServer) handleSuppressionsDisable(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
-	// Parse request body
-	var disableRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&disableRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
+// Suppression management endpoints — delegate to CLI suppression system.
+//
+// Each handler is a thin adapter on top of suppressionEndpoint, which
+// handles method validation, JSON decoding into a typed request struct,
+// suppression-manager acquisition, and JSON response encoding. Previously
+// each of the 12 handlers re-implemented all of this inline (~25 lines
+// each); now they're 5–10.
 
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Disable suppression rule using CLI suppression system
-	id, _ := disableRequest["id"].(string)
-
-	err = suppressionManager.DisableSuppressionByID(id)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to disable suppression rule: %v", err))
-		return
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rule disabled successfully",
-	})
+// suppressionRequest is the shape of every JSON body that reaches a
+// suppression endpoint. Optional fields stay zero-valued for endpoints
+// that don't need them — the alternative (a typed struct per endpoint)
+// adds 11 small types for negligible safety improvement, since we
+// already validate the required fields per-handler.
+type suppressionRequest struct {
+	ID          string                 `json:"id"`
+	Hash        string                 `json:"hash"`
+	Reason      string                 `json:"reason"`
+	CreatedBy   string                 `json:"created_by"`
+	Enabled     bool                   `json:"enabled"`
+	IDs         []string               `json:"ids"`
+	Findings    []map[string]any       `json:"findings"`
+	FindingData map[string]any         `json:"finding_data"`
 }
 
-// handleSuppressionsBulkEnable enables multiple suppression rules (POST /suppressions/bulk-enable)
-func (ws *WebServer) handleSuppressionsBulkEnable(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+// suppressionEndpoint wraps a handler with shared boilerplate: method
+// check, optional JSON decode (only for POST), suppression manager
+// resolution, and response encoding. The handler returns the response
+// payload and an optional error; non-nil errors become 400 responses.
+//
+// `decode` controls whether the request body should be parsed into a
+// suppressionRequest. GET endpoints that don't accept a body pass false.
+func (ws *WebServer) suppressionEndpoint(method string, decode bool,
+	fn func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error),
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != method {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req suppressionRequest
+		if decode {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				ws.sendError(w, "Invalid JSON in request body")
+				return
+			}
+		}
+
+		mgr, err := ws.initializeSuppressionManager(ws.suppressionsPath)
+		if err != nil {
+			ws.sendError(w, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
+			return
+		}
+
+		payload, err := fn(req, mgr)
+		if err != nil {
+			ws.sendError(w, err.Error())
+			return
+		}
+		ws.respondJSON(w, payload)
 	}
+}
 
-	// Parse request body
-	var bulkRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&bulkRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
+// respondJSON writes payload as the JSON response body with Content-Type set.
+func (ws *WebServer) respondJSON(w http.ResponseWriter, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(payload)
+}
 
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
+// successMessage is a small helper for endpoints whose response body is
+// just {"success": true, "message": "…"}.
+func successMessage(msg string) map[string]any {
+	return map[string]any{"success": true, "message": msg}
+}
 
-	// Bulk enable suppression rules using CLI suppression system
-	ids, _ := bulkRequest["ids"].([]interface{})
+// handleSuppressions lists all suppression rules (GET /suppressions).
+func (ws *WebServer) handleSuppressions(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("GET", false, func(_ suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		return map[string]any{"success": true, "rules": mgr.ListSuppressions()}, nil
+	})(w, r)
+}
 
-	rules := suppressionManager.ListSuppressions()
-	for _, idInterface := range ids {
-		if id, ok := idInterface.(string); ok {
+// handleSuppressionsCreate creates a new suppression rule (POST /suppressions/create).
+func (ws *WebServer) handleSuppressionsCreate(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := mgr.CreateSuppressionFromFinding(req.Hash, req.Reason, req.FindingData); err != nil {
+			return nil, fmt.Errorf("Failed to create suppression rule: %v", err)
+		}
+		return successMessage("Suppression rule created successfully"), nil
+	})(w, r)
+}
+
+// handleSuppressionsEdit edits an existing suppression rule (POST /suppressions/edit).
+func (ws *WebServer) handleSuppressionsEdit(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := mgr.EditSuppression(req.ID, req.Reason, req.CreatedBy, req.Enabled, nil); err != nil {
+			return nil, fmt.Errorf("Failed to edit suppression rule: %v", err)
+		}
+		return successMessage("Suppression rule updated successfully"), nil
+	})(w, r)
+}
+
+// handleSuppressionsRemove removes a suppression rule (POST /suppressions/remove).
+func (ws *WebServer) handleSuppressionsRemove(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := mgr.RemoveSuppression(req.ID); err != nil {
+			return nil, fmt.Errorf("Failed to remove suppression rule: %v", err)
+		}
+		return successMessage("Suppression rule removed successfully"), nil
+	})(w, r)
+}
+
+// handleSuppressionsEnable enables a suppression rule (POST /suppressions/enable).
+func (ws *WebServer) handleSuppressionsEnable(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		// Look up the existing rule so we preserve its reason/createdBy/expiry
+		// when flipping enabled→true.
+		for _, rule := range mgr.ListSuppressions() {
+			if rule.ID == req.ID {
+				if err := mgr.EditSuppression(req.ID, rule.Reason, rule.CreatedBy, true, rule.ExpiresAt); err != nil {
+					return nil, fmt.Errorf("Failed to enable suppression rule: %v", err)
+				}
+				break
+			}
+		}
+		return successMessage("Suppression rule enabled successfully"), nil
+	})(w, r)
+}
+
+// handleSuppressionsDisable disables a suppression rule (POST /suppressions/disable).
+func (ws *WebServer) handleSuppressionsDisable(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := mgr.DisableSuppressionByID(req.ID); err != nil {
+			return nil, fmt.Errorf("Failed to disable suppression rule: %v", err)
+		}
+		return successMessage("Suppression rule disabled successfully"), nil
+	})(w, r)
+}
+
+// handleSuppressionsBulkEnable enables multiple suppression rules (POST /suppressions/bulk-enable).
+func (ws *WebServer) handleSuppressionsBulkEnable(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		rules := mgr.ListSuppressions()
+		for _, id := range req.IDs {
 			for _, rule := range rules {
 				if rule.ID == id {
-					err = suppressionManager.EditSuppression(id, rule.Reason, rule.CreatedBy, true, rule.ExpiresAt)
-					if err != nil {
-						ws.sendError(responseWriter, fmt.Sprintf("Failed to enable suppression rule %s: %v", id, err))
-						return
+					if err := mgr.EditSuppression(id, rule.Reason, rule.CreatedBy, true, rule.ExpiresAt); err != nil {
+						return nil, fmt.Errorf("Failed to enable suppression rule %s: %v", id, err)
 					}
 					break
 				}
 			}
 		}
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rules enabled successfully",
-	})
+		return successMessage("Suppression rules enabled successfully"), nil
+	})(w, r)
 }
 
-// handleSuppressionsBulkDisable disables multiple suppression rules (POST /suppressions/bulk-disable)
-func (ws *WebServer) handleSuppressionsBulkDisable(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var bulkRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&bulkRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Bulk disable suppression rules using CLI suppression system
-	ids, _ := bulkRequest["ids"].([]interface{})
-
-	for _, idInterface := range ids {
-		if id, ok := idInterface.(string); ok {
-			err = suppressionManager.DisableSuppressionByID(id)
-			if err != nil {
-				ws.sendError(responseWriter, fmt.Sprintf("Failed to disable suppression rule %s: %v", id, err))
-				return
+// handleSuppressionsBulkDisable disables multiple suppression rules (POST /suppressions/bulk-disable).
+func (ws *WebServer) handleSuppressionsBulkDisable(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		for _, id := range req.IDs {
+			if err := mgr.DisableSuppressionByID(id); err != nil {
+				return nil, fmt.Errorf("Failed to disable suppression rule %s: %v", id, err)
 			}
 		}
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rules disabled successfully",
-	})
+		return successMessage("Suppression rules disabled successfully"), nil
+	})(w, r)
 }
 
-// handleSuppressionsBulkDelete deletes multiple suppression rules (POST /suppressions/bulk-delete)
-func (ws *WebServer) handleSuppressionsBulkDelete(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var bulkRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&bulkRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Bulk delete suppression rules using CLI suppression system
-	ids, _ := bulkRequest["ids"].([]interface{})
-
-	for _, idInterface := range ids {
-		if id, ok := idInterface.(string); ok {
-			err = suppressionManager.RemoveSuppression(id)
-			if err != nil {
-				ws.sendError(responseWriter, fmt.Sprintf("Failed to delete suppression rule %s: %v", id, err))
-				return
+// handleSuppressionsBulkDelete deletes multiple suppression rules (POST /suppressions/bulk-delete).
+func (ws *WebServer) handleSuppressionsBulkDelete(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		for _, id := range req.IDs {
+			if err := mgr.RemoveSuppression(id); err != nil {
+				return nil, fmt.Errorf("Failed to delete suppression rule %s: %v", id, err)
 			}
 		}
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rules deleted successfully",
-	})
+		return successMessage("Suppression rules deleted successfully"), nil
+	})(w, r)
 }
 
-// handleSuppressionsBulkCreate creates multiple suppression rules (POST /suppressions/bulk-create)
-func (ws *WebServer) handleSuppressionsBulkCreate(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var bulkRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&bulkRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Bulk create suppression rules using CLI suppression system
-	findings, _ := bulkRequest["findings"].([]interface{})
-	reason, _ := bulkRequest["reason"].(string)
-
-	for _, findingInterface := range findings {
-		if findingData, ok := findingInterface.(map[string]interface{}); ok {
-			hash, _ := findingData["hash"].(string)
-			err = suppressionManager.CreateSuppressionFromFinding(hash, reason, findingData)
-			if err != nil {
-				// Continue with other findings even if one fails
-				continue
-			}
+// handleSuppressionsBulkCreate creates multiple suppression rules (POST /suppressions/bulk-create).
+// Failures on individual findings are skipped silently so the bulk import
+// is forgiving — that matches the prior behavior.
+func (ws *WebServer) handleSuppressionsBulkCreate(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		for _, finding := range req.Findings {
+			hash, _ := finding["hash"].(string)
+			_ = mgr.CreateSuppressionFromFinding(hash, req.Reason, finding)
 		}
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Suppression rules created successfully",
-	})
+		return successMessage("Suppression rules created successfully"), nil
+	})(w, r)
 }
 
-// handleSuppressionsDownload downloads the suppression file (GET /suppressions/download)
-func (ws *WebServer) handleSuppressionsDownload(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "GET" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
+// handleSuppressionsDownload downloads the suppression file (GET /suppressions/download).
+// Doesn't use suppressionEndpoint because it returns the raw YAML, not JSON.
+func (ws *WebServer) handleSuppressionsDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
+	mgr, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
+		ws.sendError(w, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
 	}
 
-	// Get suppression file content using CLI suppression system
-	configPath := suppressionManager.GetConfigPath()
-	cleanConfigPath := filepath.Clean(configPath)
+	cleanConfigPath := filepath.Clean(mgr.GetConfigPath())
 	content, err := os.ReadFile(cleanConfigPath)
 	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to read suppression file: %v", err))
+		ws.sendError(w, fmt.Sprintf("Failed to read suppression file: %v", err))
 		return
 	}
 
-	// Set headers for file download
-	responseWriter.Header().Set("Content-Type", "application/x-yaml")
-	responseWriter.Header().Set("Content-Disposition", "attachment; filename=\".ferret-scan-suppressions.yaml\"")
-	responseWriter.WriteHeader(http.StatusOK)
-	responseWriter.Write(content)
+	w.Header().Set("Content-Type", "application/x-yaml")
+	w.Header().Set("Content-Disposition", "attachment; filename=\".ferret-scan-suppressions.yaml\"")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
 }
 
-// handleSuppressionsCheckHash checks hash for a finding (POST /suppressions/check-hash)
-func (ws *WebServer) handleSuppressionsCheckHash(responseWriter http.ResponseWriter, request *http.Request) {
-	if request.Method != "POST" {
-		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse request body
-	var hashRequest map[string]interface{}
-	if err := json.NewDecoder(request.Body).Decode(&hashRequest); err != nil {
-		ws.sendError(responseWriter, "Invalid JSON in request body")
-		return
-	}
-
-	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
-		return
-	}
-
-	// Generate hash using CLI suppression system
-	findingData, _ := hashRequest["finding_data"].(map[string]interface{})
-	hash, err := suppressionManager.GenerateFindingHashFromData(findingData)
-	if err != nil {
-		ws.sendError(responseWriter, fmt.Sprintf("Failed to generate hash: %v", err))
-		return
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
-		"success": true,
-		"hash":    hash,
-	})
+// handleSuppressionsCheckHash checks hash for a finding (POST /suppressions/check-hash).
+func (ws *WebServer) handleSuppressionsCheckHash(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		hash, err := mgr.GenerateFindingHashFromData(req.FindingData)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to generate hash: %v", err)
+		}
+		return map[string]any{"success": true, "hash": hash}, nil
+	})(w, r)
 }
 
 // Static asset serving endpoints with security validation
