@@ -732,10 +732,10 @@
                                 <label class="form-field-label">Files to scan</label>
                                 <div class="form-field-description">Select one or more files to analyze for sensitive
                                     data</div>
-                                <div class="file-upload">
+                                <div class="file-upload" id="fileDropZone">
                                     <input type="file" id="fileInput" multiple
                                         accept=".bash,.bmp,.c,.cfg,.conf,.config,.cpp,.cs,.css,.csv,.docx,.env,.flac,.gif,.go,.h,.hpp,.html,.ini,.java,.jpeg,.jpg,.js,.json,.jsx,.kt,.less,.log,.m4a,.md,.mp3,.odp,.ods,.odt,.pdf,.php,.png,.pptx,.properties,.py,.rb,.rst,.rs,.sass,.scala,.scss,.sh,.sql,.tif,.tiff,.toml,.ts,.tsx,.txt,.wav,.webp,.xlsx,.xml,.yaml,.yml,.zsh">
-                                    <div>Choose files or drag and drop here</div>
+                                    <div id="fileDropZoneLabel">Choose files or drag files/folders here</div>
                                 </div>
                             </div>
 
@@ -1684,6 +1684,15 @@
         let lastScanResults = [];
         let newFindings = [];
 
+        // Files queued from drag-and-drop (including walked folder contents).
+        // Each entry is { file: File, relativePath: string }. When non-empty,
+        // submit uses these instead of the native fileInput.files list.
+        let pendingDroppedFiles = [];
+
+        // Exclude patterns from --exclude / config.defaults.exclude_patterns.
+        // Populated from /config-info on load. Applied during folder walks.
+        let excludePatterns = [];
+
         function toggleSection(header) {
             const content = header.nextElementSibling;
             const arrow = header.querySelector('span');
@@ -1735,10 +1744,17 @@
 
             if (scanning) return;
 
-            const fileInput = document.getElementById('fileInput');
-            const files = fileInput.files;
+            // Prefer drag-dropped files (which may carry relativePath info from
+            // a folder walk) over the native input list.
+            let queue;
+            if (pendingDroppedFiles.length > 0) {
+                queue = pendingDroppedFiles.slice();
+            } else {
+                const fileInput = document.getElementById('fileInput');
+                queue = Array.from(fileInput.files).map(f => ({ file: f, relativePath: f.name }));
+            }
 
-            if (files.length === 0) {
+            if (queue.length === 0) {
                 showAlert('Please select at least one file to scan.');
                 return;
             }
@@ -1752,7 +1768,7 @@
             document.getElementById('resultsContainer').classList.add('hidden');
 
             try {
-                await processScan(files);
+                await processScan(queue);
             } catch (error) {
                 showAlert('Scan failed: ' + error.message);
             } finally {
@@ -1763,35 +1779,43 @@
             }
         });
 
-        async function processScan(files) {
+        async function processScan(queue) {
             currentResults = [];
             window.suppressedCount = 0;
             window.suppressedFindings = [];
-            const totalFiles = files.length;
+            const totalFiles = queue.length;
 
             for (let i = 0; i < totalFiles; i++) {
-                const file = files[i];
+                const item = queue[i];
+                const file = item.file;
+                const relativePath = item.relativePath || file.name;
                 const progress = Math.round(((i + 1) / totalFiles) * 100);
 
                 document.getElementById('progressFill').style.width = progress + '%';
-                document.getElementById('progressText').textContent = `Scanning file ${i + 1} of ${totalFiles}: ${file.name}`;
+                document.getElementById('progressText').textContent = `Scanning file ${i + 1} of ${totalFiles}: ${relativePath}`;
 
                 try {
-                    const results = await scanSingleFile(file);
+                    const results = await scanSingleFile(file, relativePath);
                     if (results && results.length > 0) {
                         currentResults = currentResults.concat(results);
                     }
                 } catch (error) {
-                    showAlert(`Error scanning ${file.name}: ${error.message}`, 'warning');
+                    showAlert(`Error scanning ${relativePath}: ${error.message}`, 'warning');
                 }
             }
 
             await displayResults();
         }
 
-        async function scanSingleFile(file) {
+        async function scanSingleFile(file, relativePath) {
             const formData = new FormData();
             formData.append('files', file);
+            // Sent as a parallel field because Go's multipart parser strips
+            // directories from the filename header. The server uses this to
+            // display findings as "myrepo/src/foo.go" instead of "foo.go".
+            if (relativePath && relativePath !== file.name) {
+                formData.append('relative_path', relativePath);
+            }
             formData.append('confidence', document.getElementById('confidenceSelect').value);
             formData.append('checks', getSelectedChecks());
             formData.append('verbose', document.getElementById('verboseCheck').checked);
@@ -2443,6 +2467,168 @@
         document.getElementById('verboseCheck').addEventListener('change', updateCliCommand);
         document.getElementById('showMatchCheck').addEventListener('change', updateCliCommand);
         document.getElementById('recursiveCheck').addEventListener('change', updateCliCommand);
+
+        // Drag-and-drop: accept both files and folders. Folders are walked
+        // client-side via the webkitGetAsEntry API and every file inside is
+        // added with a relative path so reports show e.g. "myrepo/src/foo.go".
+        (function setupDropZone() {
+            const dropZone = document.getElementById('fileDropZone');
+            const label = document.getElementById('fileDropZoneLabel');
+            if (!dropZone) return;
+
+            const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+            ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+                stop(e);
+                dropZone.style.borderColor = 'var(--color-text-accent)';
+                dropZone.style.background = '#f0f7ff';
+            }));
+            ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+                stop(e);
+                dropZone.style.borderColor = '';
+                dropZone.style.background = '';
+            }));
+
+            dropZone.addEventListener('drop', async (e) => {
+                const items = e.dataTransfer && e.dataTransfer.items;
+                if (!items || items.length === 0) return;
+
+                label.textContent = 'Reading files...';
+                try {
+                    const collected = await collectDroppedItems(items);
+                    if (collected.length === 0) {
+                        showAlert('No files found in dropped items.', 'warning');
+                        label.textContent = 'Choose files or drag files/folders here';
+                        return;
+                    }
+                    pendingDroppedFiles = collected;
+                    // Clear any previously-picked files from the native input so
+                    // the submit handler unambiguously picks the drop list.
+                    try { document.getElementById('fileInput').value = ''; } catch (_) {}
+                    updateDropZoneLabel();
+                } catch (err) {
+                    showAlert('Failed to read dropped items: ' + err.message);
+                    label.textContent = 'Choose files or drag files/folders here';
+                }
+            });
+
+            // When the user picks via the native file picker, drop the queued
+            // drag-drop files so the two sources don't combine unexpectedly.
+            document.getElementById('fileInput').addEventListener('change', () => {
+                if (document.getElementById('fileInput').files.length > 0) {
+                    pendingDroppedFiles = [];
+                    label.textContent = 'Choose files or drag files/folders here';
+                }
+            });
+
+            // Pull the configured exclude patterns from the server. Folder
+            // walks apply these to skip e.g. .git or node_modules when those
+            // are configured. Failure is non-fatal — we just won't filter.
+            fetch('/config-info').then(r => r.json()).then(d => {
+                if (d && Array.isArray(d.exclude_patterns)) {
+                    excludePatterns = d.exclude_patterns;
+                }
+            }).catch(() => {});
+        })();
+
+        function updateDropZoneLabel() {
+            const label = document.getElementById('fileDropZoneLabel');
+            if (!label) return;
+            const n = pendingDroppedFiles.length;
+            if (n === 0) {
+                label.textContent = 'Choose files or drag files/folders here';
+                return;
+            }
+            const folders = new Set();
+            for (const item of pendingDroppedFiles) {
+                const slash = item.relativePath.indexOf('/');
+                if (slash > 0) folders.add(item.relativePath.slice(0, slash));
+            }
+            if (folders.size > 0) {
+                label.textContent = `${n} file${n === 1 ? '' : 's'} ready from ${folders.size} folder${folders.size === 1 ? '' : 's'} (${[...folders].slice(0, 3).join(', ')}${folders.size > 3 ? '…' : ''})`;
+            } else {
+                label.textContent = `${n} file${n === 1 ? '' : 's'} ready`;
+            }
+        }
+
+        // Walk dropped DataTransferItems. Returns [{file, relativePath}].
+        async function collectDroppedItems(items) {
+            const entries = [];
+            for (let i = 0; i < items.length; i++) {
+                const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+                if (entry) {
+                    entries.push(entry);
+                } else {
+                    // Browser without entry API — fall back to flat file.
+                    const file = items[i].getAsFile && items[i].getAsFile();
+                    if (file) entries.push({ _flatFile: file });
+                }
+            }
+            const out = [];
+            for (const entry of entries) {
+                if (entry._flatFile) {
+                    out.push({ file: entry._flatFile, relativePath: entry._flatFile.name });
+                } else {
+                    await walkEntry(entry, '', out);
+                }
+            }
+            return out;
+        }
+
+        async function walkEntry(entry, parentPath, out) {
+            if (!entry) return;
+            const relPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+            if (isExcludedByPatterns(relPath, entry.name, excludePatterns)) return;
+
+            if (entry.isFile) {
+                const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+                out.push({ file, relativePath: relPath });
+                return;
+            }
+            if (entry.isDirectory) {
+                const reader = entry.createReader();
+                // readEntries yields up to 100 at a time; keep calling until empty.
+                while (true) {
+                    const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+                    if (!batch || batch.length === 0) break;
+                    for (const child of batch) {
+                        await walkEntry(child, relPath, out);
+                    }
+                }
+            }
+        }
+
+        // Mirrors the CLI's isExcluded matcher (see internal/exclude package):
+        //   - glob match against full relative path
+        //   - glob match against basename
+        //   - substring match against full path (matches the CLI behavior)
+        //   - patterns ending in '/' match any path segment (directory exclude)
+        function isExcludedByPatterns(relPath, baseName, patterns) {
+            if (!patterns || patterns.length === 0) return false;
+            for (const pat of patterns) {
+                if (!pat) continue;
+                if (matchGlob(pat, relPath)) return true;
+                if (matchGlob(pat, baseName)) return true;
+                if (relPath.indexOf(pat) >= 0) return true;
+                if (pat.endsWith('/')) {
+                    const dirPat = pat.slice(0, -1);
+                    for (const seg of relPath.split('/')) {
+                        if (matchGlob(dirPat, seg)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // Minimal Go-style filepath.Match: supports * (no separator) and ? for
+        // a single char. No bracket classes — the existing CLI flag rarely
+        // uses them, and we can extend if needed.
+        function matchGlob(pattern, name) {
+            const re = new RegExp('^' + pattern
+                .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+                .replace(/\*/g, '[^/]*')
+                .replace(/\?/g, '[^/]') + '$');
+            return re.test(name);
+        }
         /* GENAI_DISABLED: GenAI main checkbox and region event listeners
         document.getElementById('genaiCheck').addEventListener('change', updateCliCommand);
         document.getElementById('regionSelect').addEventListener('change', updateCliCommand);
