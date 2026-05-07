@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"ferret-scan/internal/detector"
@@ -53,11 +54,24 @@ type SuppressionConfig struct {
 	Rules   []SuppressionRule `yaml:"rules"`
 }
 
-// SuppressionManager handles finding suppressions
+// SuppressionManager handles finding suppressions.
+//
+// Mutating methods (AddSuppression, RemoveSuppression, EditSuppression,
+// CreateSuppressionFromFinding*, CleanupExpired, etc.) are NOT safe for
+// concurrent use — callers must ensure they happen serially or behind their
+// own lock. The read path (IsSuppressed and the rulesByHash index it
+// consults) is guarded by indexMu so concurrent reads are safe and so a lazy
+// index rebuild can't race itself.
 type SuppressionManager struct {
 	configPath string
 	config     *SuppressionConfig
 	enabled    bool
+	// rulesByHash indexes config.Rules by Hash so IsSuppressed runs in O(1)
+	// instead of O(N). Multiple rules can theoretically share a hash, so the
+	// value is a slice; the original linear scan returned the first match,
+	// which we preserve here. Rebuilt on every load/save under indexMu.
+	rulesByHash map[string][]int
+	indexMu     sync.RWMutex
 }
 
 // NewSuppressionManager creates a new suppression manager
@@ -80,7 +94,12 @@ func findDefaultSuppressionFile() string {
 	return paths.GetSuppressionsFile()
 }
 
-// loadConfig loads the suppression configuration
+// loadConfig loads the suppression configuration. A missing file is treated
+// as "no rules yet" silently — that's the legitimate first-run case. A file
+// that exists but fails to parse is logged loudly to stderr so the user
+// notices their rules aren't being applied; previously parse errors silently
+// produced an empty rule set, which made suppressions look configured but
+// silently inactive.
 func (sm *SuppressionManager) loadConfig() {
 	if sm.configPath == "" {
 		sm.config = &SuppressionConfig{
@@ -93,6 +112,13 @@ func (sm *SuppressionManager) loadConfig() {
 	cleanPath := filepath.Clean(sm.configPath)
 	data, err := os.ReadFile(cleanPath)
 	if err != nil {
+		// Distinguish "file does not exist" (silent) from any other error
+		// (which is real and worth surfacing).
+		if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr,
+				"warning: cannot read suppression file %q: %v — treating as empty\n",
+				sm.configPath, err)
+		}
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
 			Rules:   []SuppressionRule{},
@@ -102,6 +128,9 @@ func (sm *SuppressionManager) loadConfig() {
 
 	var config SuppressionConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"warning: suppression file %q is malformed (%v) — treating as empty; existing rules will NOT be applied\n",
+			sm.configPath, err)
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
 			Rules:   []SuppressionRule{},
@@ -110,6 +139,31 @@ func (sm *SuppressionManager) loadConfig() {
 	}
 
 	sm.config = &config
+	sm.rebuildHashIndex()
+}
+
+// rebuildHashIndex constructs the hash → rule-indices lookup. Call after any
+// mutation of sm.config.Rules. Cheap (single pass over rules) so we just
+// rebuild rather than maintain incremental updates across the many
+// add/edit/remove paths. Acquires the index write lock.
+func (sm *SuppressionManager) rebuildHashIndex() {
+	sm.indexMu.Lock()
+	defer sm.indexMu.Unlock()
+	sm.rebuildHashIndexLocked()
+}
+
+// rebuildHashIndexLocked rebuilds the index assuming the caller already holds
+// indexMu for writing.
+func (sm *SuppressionManager) rebuildHashIndexLocked() {
+	if sm.config == nil {
+		sm.rulesByHash = nil
+		return
+	}
+	idx := make(map[string][]int, len(sm.config.Rules))
+	for i, rule := range sm.config.Rules {
+		idx[rule.Hash] = append(idx[rule.Hash], i)
+	}
+	sm.rulesByHash = idx
 }
 
 // generateFindingHash creates a unique hash for a finding
@@ -146,7 +200,8 @@ func (sm *SuppressionManager) hashSensitiveData(data string) string {
 	return fmt.Sprintf("%x", hash)[:16] // Use first 16 chars for brevity
 }
 
-// IsSuppressed checks if a finding should be suppressed
+// IsSuppressed checks if a finding should be suppressed.
+// Safe for concurrent use across goroutines.
 func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *SuppressionRule) {
 	if !sm.enabled || sm.config == nil {
 		return false, nil
@@ -154,20 +209,44 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 
 	findingHash := sm.generateFindingHash(match)
 
-	for _, rule := range sm.config.Rules {
-		if rule.Hash == findingHash {
-			// Check if rule is enabled
+	// Fast read-locked path: index is already built.
+	sm.indexMu.RLock()
+	if sm.rulesByHash != nil {
+		for _, ruleIdx := range sm.rulesByHash[findingHash] {
+			rule := &sm.config.Rules[ruleIdx]
 			if !rule.Enabled {
 				continue
 			}
-			// Check if rule has expired
 			if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
 				continue
 			}
-			return true, &rule
+			sm.indexMu.RUnlock()
+			return true, rule
 		}
+		sm.indexMu.RUnlock()
+		return false, nil
 	}
+	sm.indexMu.RUnlock()
 
+	// Lazy build for tests/callers that mutate sm.config.Rules without
+	// going through saveConfig. Take the write lock and re-check (another
+	// caller may have built it in between).
+	sm.indexMu.Lock()
+	if sm.rulesByHash == nil {
+		sm.rebuildHashIndexLocked()
+	}
+	for _, ruleIdx := range sm.rulesByHash[findingHash] {
+		rule := &sm.config.Rules[ruleIdx]
+		if !rule.Enabled {
+			continue
+		}
+		if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
+			continue
+		}
+		sm.indexMu.Unlock()
+		return true, rule
+	}
+	sm.indexMu.Unlock()
 	return false, nil
 }
 
@@ -264,6 +343,8 @@ func (sm *SuppressionManager) saveConfig() error {
 		return fmt.Errorf("failed to marshal suppression config: %w", err)
 	}
 	data = annotateHashesWithAllowlistPragma(data)
+	// Rules just changed — invalidate the IsSuppressed lookup index.
+	sm.rebuildHashIndex()
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(sm.configPath)

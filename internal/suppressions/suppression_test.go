@@ -4,8 +4,10 @@
 package suppressions
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -190,4 +192,96 @@ func TestPersistence(t *testing.T) {
 	if !suppressed {
 		t.Error("suppression should persist across manager instances")
 	}
+}
+
+// TestIsSuppressed_ConcurrentReads exercises the read path under load to
+// make sure the lazy index build can't race itself. Run with `go test -race`
+// to catch lock-protocol regressions.
+func TestIsSuppressed_ConcurrentReads(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "sup.yaml")
+
+	sm := NewSuppressionManager(path)
+
+	// Seed a few real rules through the public API so the index is built
+	// the same way production code builds it.
+	for i := 0; i < 5; i++ {
+		match := newTestMatch("EMAIL", fmt.Sprintf("user%d@example.com", i), "sample.txt")
+		match.LineNumber = i + 1
+		if err := sm.AddSuppression(match, "concurrent test", "tester", nil); err != nil {
+			t.Fatalf("AddSuppression: %v", err)
+		}
+	}
+
+	// Two test matches: one that exists in the rules, one that doesn't.
+	hit := newTestMatch("EMAIL", "user2@example.com", "sample.txt")
+	hit.LineNumber = 3
+	miss := newTestMatch("EMAIL", "nobody@example.com", "missing.txt")
+
+	const goroutines = 100
+	const iters = 1000
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < iters; i++ {
+				if g%2 == 0 {
+					suppressed, _ := sm.IsSuppressed(hit)
+					if !suppressed {
+						t.Errorf("g=%d i=%d: hit case returned false", g, i)
+						return
+					}
+				} else {
+					suppressed, _ := sm.IsSuppressed(miss)
+					if suppressed {
+						t.Errorf("g=%d i=%d: miss case returned true", g, i)
+						return
+					}
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+}
+
+// TestIsSuppressed_LazyIndexBuildIsRaceFree forces the lazy-build branch by
+// constructing a manager and clearing its index before the first call. Each
+// test goroutine sees rulesByHash == nil on entry and would race the
+// rebuildHashIndex write under the old code. Run with `go test -race`.
+func TestIsSuppressed_LazyIndexBuildIsRaceFree(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "sup.yaml")
+
+	sm := NewSuppressionManager(path)
+	for i := 0; i < 10; i++ {
+		match := newTestMatch("EMAIL", fmt.Sprintf("u%d@example.com", i), "f.txt")
+		match.LineNumber = i + 1
+		if err := sm.AddSuppression(match, "lazy", "t", nil); err != nil {
+			t.Fatalf("AddSuppression: %v", err)
+		}
+	}
+	// Force the lazy path by clearing the index. Done under the same lock
+	// IsSuppressed uses so we don't fight with the production code path.
+	sm.indexMu.Lock()
+	sm.rulesByHash = nil
+	sm.indexMu.Unlock()
+
+	probe := newTestMatch("EMAIL", "u3@example.com", "f.txt")
+	probe.LineNumber = 4
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			defer wg.Done()
+			suppressed, _ := sm.IsSuppressed(probe)
+			if !suppressed {
+				t.Error("expected suppression match after lazy build")
+			}
+		}()
+	}
+	wg.Wait()
 }

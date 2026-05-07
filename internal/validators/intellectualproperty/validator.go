@@ -15,6 +15,11 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// copyrightYearPattern matches a 4-digit year or "YYYY-YYYY" range. Used by
+// calculateCopyrightConfidence on the per-match path; previously recompiled
+// on every call.
+var copyrightYearPattern = regexp.MustCompile(`\d{4}(-\d{4})?`)
+
 // Validator implements the detector.Validator interface for detecting
 // intellectual property identifiers and references using regex patterns and contextual analysis.
 // Internal URL detection is configuration-driven and requires explicit pattern configuration.
@@ -1071,8 +1076,7 @@ func (v *Validator) calculateCopyrightConfidence(match string, checks map[string
 	}
 
 	// Check for valid year format
-	yearPattern := regexp.MustCompile(`\d{4}(-\d{4})?`)
-	if !yearPattern.MatchString(match) {
+	if !copyrightYearPattern.MatchString(match) {
 		confidence -= 20
 		checks["format"] = false
 	}

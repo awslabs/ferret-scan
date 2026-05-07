@@ -5,6 +5,7 @@ package preprocessors
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,7 +177,11 @@ func (ptp *PlainTextPreprocessor) Process(filePath string) (*ProcessedContent, e
 	return result, nil
 }
 
-// readTextFile reads the content of a text file with proper encoding handling
+// readTextFile reads the content of a text file with proper encoding handling.
+// The file is opened once and read through the same handle (previously the
+// function opened it twice — once via os.Open for stat, once via os.ReadFile
+// for the content — which doubled the syscall count and introduced a TOCTOU
+// window where the file could change between the size check and the read).
 func (ptp *PlainTextPreprocessor) readTextFile(filePath string) (string, error) {
 	cleanPath := filepath.Clean(filePath)
 	file, err := os.Open(cleanPath)
@@ -196,9 +201,9 @@ func (ptp *PlainTextPreprocessor) readTextFile(filePath string) (string, error) 
 		return "", fmt.Errorf("file too large: %d bytes (max: %d bytes)", fileInfo.Size(), maxSize)
 	}
 
-	// Read the entire file content to preserve original formatting
-	// This approach preserves the exact original content including newline behavior
-	fileContent, err := os.ReadFile(cleanPath)
+	// Read through the same handle and cap at maxSize as a defense-in-depth
+	// guard against the file growing between Stat and ReadAll.
+	fileContent, err := io.ReadAll(io.LimitReader(file, maxSize))
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
