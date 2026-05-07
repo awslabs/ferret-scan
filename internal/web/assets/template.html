@@ -733,9 +733,20 @@
                                 <div class="form-field-description">Select one or more files to analyze for sensitive
                                     data</div>
                                 <div class="file-upload" id="fileDropZone">
-                                    <input type="file" id="fileInput" multiple
+                                    <!-- Native inputs are hidden; we trigger them from styled buttons
+                                         below so Choose Files and Choose Folder look identical. The
+                                         folder input is also the fallback path when the File System
+                                         Access API (showDirectoryPicker) isn't available. -->
+                                    <input type="file" id="fileInput" multiple hidden
                                         accept=".bash,.bmp,.c,.cfg,.conf,.config,.cpp,.cs,.css,.csv,.docx,.env,.flac,.gif,.go,.h,.hpp,.html,.ini,.java,.jpeg,.jpg,.js,.json,.jsx,.kt,.less,.log,.m4a,.md,.mp3,.odp,.ods,.odt,.pdf,.php,.png,.pptx,.properties,.py,.rb,.rst,.rs,.sass,.scala,.scss,.sh,.sql,.tif,.tiff,.toml,.ts,.tsx,.txt,.wav,.webp,.xlsx,.xml,.yaml,.yml,.zsh">
-                                    <div id="fileDropZoneLabel">Choose files or drag files/folders here</div>
+                                    <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+                                    <div style="display: flex; gap: var(--space-scaled-s); justify-content: center; margin-bottom: var(--space-scaled-s);">
+                                        <button type="button" class="button" id="filePickButton"
+                                            onclick="document.getElementById('fileInput').click()">Choose Files</button>
+                                        <button type="button" class="button" id="folderPickButton"
+                                            onclick="pickFolder()">Choose Folder</button>
+                                    </div>
+                                    <div id="fileDropZoneLabel">or drag files/folders here</div>
                                 </div>
                             </div>
 
@@ -1063,6 +1074,10 @@
                                 <button onclick="bulkDisableSuppressions()"
                                     style="background: #ff9900; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 8px;">Disable
                                     Selected</button>
+                                <button onclick="bulkMakePermanent()" class="button"
+                                    style="margin-right: 8px;">Make Permanent</button>
+                                <button onclick="bulkRenew30Days()" class="button"
+                                    style="margin-right: 8px;">Renew 30 Days</button>
                                 <button onclick="bulkDeleteSuppressions()"
                                     style="background: #d13212; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Delete
                                     Selected</button>
@@ -2468,6 +2483,66 @@
         document.getElementById('showMatchCheck').addEventListener('change', updateCliCommand);
         document.getElementById('recursiveCheck').addEventListener('change', updateCliCommand);
 
+        // Pick a folder. Prefers the File System Access API when available
+        // (Chromium 86+), because it lets us walk the tree ourselves and skip
+        // excluded directories like .git / node_modules before the browser
+        // enumerates them — so the native "upload N files" dialog shows a
+        // realistic count. Firefox / Safari fall back to <input webkitdirectory>,
+        // which unavoidably enumerates everything first (the filter still
+        // applies, but the browser's confirmation dialog shows the raw count).
+        async function pickFolder() {
+            if (typeof window.showDirectoryPicker === 'function') {
+                try {
+                    const dirHandle = await window.showDirectoryPicker();
+                    const label = document.getElementById('fileDropZoneLabel');
+                    if (label) label.textContent = 'Reading folder...';
+                    const collected = [];
+                    await walkDirectoryHandle(dirHandle, dirHandle.name, collected);
+                    if (collected.length === 0) {
+                        showAlert('No scannable files found in the selected folder (all filtered by exclude patterns).', 'warning');
+                        if (label) label.textContent = 'or drag files/folders here';
+                        return;
+                    }
+                    pendingDroppedFiles = collected;
+                    try { document.getElementById('fileInput').value = ''; } catch (_) {}
+                    updateDropZoneLabel();
+                } catch (err) {
+                    // User cancelled — leave existing state alone. Any other
+                    // failure falls through to the legacy picker.
+                    if (err && err.name === 'AbortError') return;
+                    document.getElementById('folderInput').click();
+                }
+                return;
+            }
+            // Older browsers: use the hidden webkitdirectory input. The browser
+            // will enumerate everything and show its own "upload N files"
+            // prompt; we can't influence that count, but we still filter out
+            // excluded paths before uploading.
+            document.getElementById('folderInput').click();
+        }
+
+        // Walk a FileSystemDirectoryHandle tree (File System Access API),
+        // applying the configured exclude patterns at each level so excluded
+        // directories are skipped wholesale — we never even read their files.
+        async function walkDirectoryHandle(dirHandle, parentPath, out) {
+            // Skip excluded directories before descending. Match against both
+            // the full relative path and the base name; also honor trailing-/
+            // patterns as directory excludes.
+            if (isExcludedByPatterns(parentPath, dirHandle.name, excludePatterns)) return;
+            for await (const [name, handle] of dirHandle.entries()) {
+                const relPath = `${parentPath}/${name}`;
+                if (isExcludedByPatterns(relPath, name, excludePatterns)) continue;
+                if (handle.kind === 'file') {
+                    try {
+                        const file = await handle.getFile();
+                        out.push({ file, relativePath: relPath });
+                    } catch (_) { /* unreadable file — skip */ }
+                } else if (handle.kind === 'directory') {
+                    await walkDirectoryHandle(handle, relPath, out);
+                }
+            }
+        }
+
         // Drag-and-drop: accept both files and folders. Folders are walked
         // client-side via the webkitGetAsEntry API and every file inside is
         // added with a relative path so reports show e.g. "myrepo/src/foo.go".
@@ -2497,7 +2572,7 @@
                     const collected = await collectDroppedItems(items);
                     if (collected.length === 0) {
                         showAlert('No files found in dropped items.', 'warning');
-                        label.textContent = 'Choose files or drag files/folders here';
+                        label.textContent = 'or drag files/folders here';
                         return;
                     }
                     pendingDroppedFiles = collected;
@@ -2507,7 +2582,7 @@
                     updateDropZoneLabel();
                 } catch (err) {
                     showAlert('Failed to read dropped items: ' + err.message);
-                    label.textContent = 'Choose files or drag files/folders here';
+                    label.textContent = 'or drag files/folders here';
                 }
             });
 
@@ -2516,8 +2591,33 @@
             document.getElementById('fileInput').addEventListener('change', () => {
                 if (document.getElementById('fileInput').files.length > 0) {
                     pendingDroppedFiles = [];
-                    label.textContent = 'Choose files or drag files/folders here';
+                    label.textContent = 'or drag files/folders here';
                 }
+            });
+
+            // Folder picker: convert the FileList into the same relativePath-
+            // tagged queue shape the drop handler produces so downstream code
+            // (exclude filters, submit, report paths) doesn't care how the
+            // files arrived. Browsers populate File.webkitRelativePath for
+            // folder-picked files, e.g. "myrepo/src/foo.go".
+            document.getElementById('folderInput').addEventListener('change', (e) => {
+                const picked = Array.from(e.target.files || []);
+                if (picked.length === 0) return;
+                const collected = [];
+                for (const f of picked) {
+                    const rel = f.webkitRelativePath || f.name;
+                    if (isExcludedByPatterns(rel, f.name, excludePatterns)) continue;
+                    collected.push({ file: f, relativePath: rel });
+                }
+                if (collected.length === 0) {
+                    showAlert('No scannable files found in the selected folder (all filtered by exclude patterns).', 'warning');
+                    e.target.value = '';
+                    return;
+                }
+                pendingDroppedFiles = collected;
+                // Clear the other input so the two sources don't combine.
+                try { document.getElementById('fileInput').value = ''; } catch (_) {}
+                updateDropZoneLabel();
             });
 
             // Pull the configured exclude patterns from the server. Folder
@@ -2535,7 +2635,7 @@
             if (!label) return;
             const n = pendingDroppedFiles.length;
             if (n === 0) {
-                label.textContent = 'Choose files or drag files/folders here';
+                label.textContent = 'or drag files/folders here';
                 return;
             }
             const folders = new Set();
@@ -3589,16 +3689,29 @@
                 document.getElementById('bulkActions').classList.add('hidden');
             }
 
-            // Update select all checkbox state
-            const allCheckboxes = document.querySelectorAll('.suppression-checkbox');
+            // Header select-all reflects the state of every checkbox-backed row
+            // in the table, not just the suppression-rule rows. Otherwise it
+            // ignores "new finding" rows entirely and can look broken on pages
+            // that contain both kinds.
+            syncSelectAllHeader();
+        }
+
+        // Keep the header checkbox in sync with both suppression rows and
+        // new-finding rows. Called by row-level onchange handlers.
+        function syncSelectAllHeader() {
+            const allCheckboxes = document.querySelectorAll('.suppression-checkbox, .new-finding-checkbox');
             const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            if (!selectAllCheckbox) return;
+
+            const checkedCount = document.querySelectorAll('.suppression-checkbox:checked, .new-finding-checkbox:checked').length;
+
             if (allCheckboxes.length === 0) {
                 selectAllCheckbox.checked = false;
                 selectAllCheckbox.indeterminate = false;
-            } else if (count === allCheckboxes.length) {
+            } else if (checkedCount === allCheckboxes.length) {
                 selectAllCheckbox.checked = true;
                 selectAllCheckbox.indeterminate = false;
-            } else if (count > 0) {
+            } else if (checkedCount > 0) {
                 selectAllCheckbox.checked = false;
                 selectAllCheckbox.indeterminate = true;
             } else {
@@ -3609,13 +3722,16 @@
 
         function toggleSelectAll() {
             const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-            const checkboxes = document.querySelectorAll('.suppression-checkbox');
+            // Toggle every row checkbox in the table — both existing suppression
+            // rules and new findings — so the header acts on everything visible.
+            const checkboxes = document.querySelectorAll('.suppression-checkbox, .new-finding-checkbox');
 
             checkboxes.forEach(checkbox => {
                 checkbox.checked = selectAllCheckbox.checked;
             });
 
             updateBulkActions();
+            updateNewFindingsBulkActions();
         }
 
         function selectAllSuppressions() {
@@ -3629,6 +3745,59 @@
             checkboxes.forEach(checkbox => checkbox.checked = false);
             document.getElementById('selectAllCheckbox').checked = false;
             updateBulkActions();
+        }
+
+        // Bulk expiration controls. "Make permanent" clears ExpiresAt (rule
+        // never expires); "renew 30 days" sets it to now + 30 days. Both go
+        // through a single server endpoint that updates all selected rules
+        // in one call.
+        function bulkMakePermanent() {
+            bulkUpdateExpiration(null, 'permanent (no expiration)');
+        }
+
+        function bulkRenew30Days() {
+            const d = new Date();
+            d.setDate(d.getDate() + 30);
+            // ISO 8601 with timezone — the server parses this into time.Time.
+            bulkUpdateExpiration(d.toISOString(), `expiring ${d.toLocaleDateString()}`);
+        }
+
+        async function bulkUpdateExpiration(expiresAtISO, humanLabel) {
+            const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+            const ids = Array.from(checkboxes).map(cb => cb.value);
+
+            if (ids.length === 0) {
+                showAlert('No suppressions selected', 'warning');
+                return;
+            }
+
+            // Capture prior expiration for undo so a mistaken click can be
+            // reverted rule-by-rule to whatever each rule had before.
+            const priorExpirations = {};
+            for (const rule of allSuppressionRules) {
+                const id = rule.ID || rule.id;
+                if (!ids.includes(id)) continue;
+                priorExpirations[id] = rule.ExpiresAt || rule.expires_at || null;
+            }
+
+            try {
+                const response = await fetch('/suppressions/bulk-update-expiration', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: ids, expires_at: expiresAtISO })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    trackOperation('updateExpiration', { priorExpirations });
+                    showAlert(`Updated ${ids.length} suppression(s) — now ${humanLabel}`, 'success');
+                    clearSelection();
+                    loadSuppressions();
+                } else {
+                    showAlert('Failed to update expirations: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                showAlert('Error updating expirations: ' + error.message);
+            }
         }
 
         function bulkEnableSuppressions() {
@@ -3888,6 +4057,10 @@
             } else {
                 document.getElementById('newFindingsBulkActions').classList.add('hidden');
             }
+
+            // Keep the table header's select-all in sync — new-finding rows
+            // participate in the "select all" set too.
+            syncSelectAllHeader();
         }
 
         function trackOperation(type, data) {
