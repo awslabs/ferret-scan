@@ -32,17 +32,17 @@ jobs:
       package-path: python-package/dist/
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Download Python package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ferret-scan-python-${{ github.sha }}
           path: python-package/dist/
@@ -66,7 +66,7 @@ jobs:
           echo "✅ Python package installation and basic functionality tests passed"
 
       - name: Upload Python package artifacts (final)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-package-release
           path: python-package/dist/
@@ -109,12 +109,12 @@ jobs:
       id-token: write # Required for trusted publishing to PyPI
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -124,7 +124,7 @@ jobs:
           pip install build twine setuptools_scm
 
       - name: Download Python package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: python-package-release
           path: python-package/dist/
