@@ -347,6 +347,111 @@ func TestSecretsValidator_PrivateKeys(t *testing.T) {
 	}
 }
 
+// TestSecretsValidator_MultiLinePEMDetection exercises the full ValidateContent
+// pipeline (which calls findMultiLineSecretsWithContext) against every
+// PEM-style multi-line secret type the validator claims to detect. This
+// catches regressions in the package-level regex variables — particularly
+// after they were hoisted out of the per-call function — that the existing
+// type-checker-only tests would miss.
+func TestSecretsValidator_MultiLinePEMDetection(t *testing.T) {
+	v := NewValidator()
+
+	cases := []struct {
+		name     string
+		content  string
+		wantType string
+	}{
+		{
+			name: "RSA private key block",
+			content: buildTestToken(
+				"-----BEGIN RSA ", "PRIVATE KEY-----\n",
+				"MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu\n",
+				"KUpRKfFLfRYC9AIKjbJTWit+CqvjWYzvQwECAQA=\n",
+				"-----END RSA ", "PRIVATE KEY-----"),
+			wantType: "SSH_PRIVATE_KEY",
+		},
+		{
+			name: "DSA private key block",
+			content: buildTestToken(
+				"-----BEGIN DSA ", "PRIVATE KEY-----\n",
+				"MIIBugIBAAKBgQDdsAQRiq...\n",
+				"-----END DSA ", "PRIVATE KEY-----"),
+			wantType: "SSH_PRIVATE_KEY",
+		},
+		{
+			name: "EC private key block",
+			content: buildTestToken(
+				"-----BEGIN EC ", "PRIVATE KEY-----\n",
+				"MHcCAQEEIH3+...\n",
+				"-----END EC ", "PRIVATE KEY-----"),
+			wantType: "SSH_PRIVATE_KEY",
+		},
+		{
+			name: "OPENSSH private key block",
+			content: buildTestToken(
+				"-----BEGIN OPENSSH ", "PRIVATE KEY-----\n",
+				"b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQy\n",
+				"-----END OPENSSH ", "PRIVATE KEY-----"),
+			wantType: "SSH_PRIVATE_KEY",
+		},
+		{
+			name: "Generic PRIVATE KEY block (no algorithm prefix)",
+			content: buildTestToken(
+				"-----BEGIN ", "PRIVATE KEY-----\n",
+				"MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDg...\n",
+				"-----END ", "PRIVATE KEY-----"),
+			wantType: "SSH_PRIVATE_KEY",
+		},
+		{
+			name: "X.509 certificate block",
+			content: buildTestToken(
+				"-----BEGIN ", "CERTIFICATE-----\n",
+				"MIIDXTCCAkWgAwIBAgIJAKL0UG+mRkSPMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV\n",
+				"BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX\n",
+				"-----END ", "CERTIFICATE-----"),
+			wantType: "CERTIFICATE",
+		},
+		{
+			name: "Encrypted private key block",
+			content: buildTestToken(
+				"-----BEGIN ENCRYPTED ", "PRIVATE KEY-----\n",
+				"MIIFDjBABgkqhkiG9w0BBQ0wMzAbBgkqhkiG9w0BBQwwDgQI...\n",
+				"-----END ENCRYPTED ", "PRIVATE KEY-----"),
+			wantType: "CERTIFICATE",
+		},
+		{
+			name: "PGP private key block",
+			content: buildTestToken(
+				"-----BEGIN PGP ", "PRIVATE KEY BLOCK-----\n",
+				"Version: GnuPG v2\n",
+				"\n",
+				"lQOYBGFp...random...content\n",
+				"-----END PGP ", "PRIVATE KEY BLOCK-----"),
+			wantType: "PGP_PRIVATE_KEY",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tc.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent: %v", err)
+			}
+
+			var got *detector.Match
+			for i := range matches {
+				if matches[i].Type == tc.wantType {
+					got = &matches[i]
+					break
+				}
+			}
+			if got == nil {
+				t.Fatalf("expected a match of type %q, got %d matches: %+v", tc.wantType, len(matches), matches)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Generic API Keys and Passwords (keyword-based detection)
 // ---------------------------------------------------------------------------

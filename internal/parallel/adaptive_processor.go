@@ -28,6 +28,10 @@ type AdaptiveProcessor struct {
 	// stopOnce.
 	done     chan struct{}
 	stopOnce sync.Once
+	// scalingWG tracks the adaptiveScalingLoop goroutine. Stop() waits on it
+	// before tearing down workerPool — otherwise a final scaling tick could
+	// race adjustWorkerCount's pool swap against Stop's pool teardown.
+	scalingWG sync.WaitGroup
 }
 
 // AdaptiveStats tracks adaptive processing statistics
@@ -99,6 +103,7 @@ func NewAdaptiveProcessor(config AdaptiveConfig, observer *observability.Standar
 		resourceMonitor.OnMetricsUpdate(ap.handleResourceMetrics)
 
 		// Start adaptive scaling monitor
+		ap.scalingWG.Add(1)
 		go ap.adaptiveScalingLoop(config.ScalingCheckInterval)
 	}
 
@@ -360,6 +365,7 @@ func (ap *AdaptiveProcessor) handleResourceMetrics(metrics ResourceMetrics) {
 // directly, which leaked the goroutine because Stop only stopped the ticker
 // and the goroutine kept blocking on a channel that would never close.
 func (ap *AdaptiveProcessor) adaptiveScalingLoop(interval time.Duration) {
+	defer ap.scalingWG.Done()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -384,6 +390,10 @@ func (ap *AdaptiveProcessor) Stop() {
 	ap.stopOnce.Do(func() {
 		close(ap.done)
 	})
+	// Wait for the scaling loop to exit so its pool-swap can't race the
+	// teardown below. Safe even when adaptive scaling was never started —
+	// scalingWG.Wait() with a zero counter returns immediately.
+	ap.scalingWG.Wait()
 	ap.resourceMonitor.Stop()
 	ap.workerPool.Stop()
 }
