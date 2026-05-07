@@ -883,7 +883,7 @@ func main() {
 
 	// Handle web mode early - validate flags and start web server if requested
 	if flags.webMode {
-		if err := handleWebMode(flags.webPort, flag.Args(), flags.inputFile); err != nil {
+		if err := handleWebMode(flags.webPort, flag.Args(), flags.inputFile, flags.configFile, flags.suppressionFile, flags.excludePatterns); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -2302,7 +2302,7 @@ func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 // }
 
 // handleWebMode validates web mode flags and starts the web server
-func handleWebMode(port string, args []string, inputFile string) error {
+func handleWebMode(port string, args []string, inputFile, configFile, suppressionFile string, excludePatterns []string) error {
 	// Validate that no file arguments are provided with web mode
 	if len(args) > 0 {
 		return fmt.Errorf("--web flag cannot be used with file arguments\n"+
@@ -2330,7 +2330,7 @@ func handleWebMode(port string, args []string, inputFile string) error {
 	}
 
 	// Start web server
-	return startWebServer(finalPort)
+	return startWebServer(finalPort, configFile, suppressionFile, excludePatterns)
 }
 
 // validateWebModeFlags validates that incompatible flags are not used with --web
@@ -2516,9 +2516,9 @@ func isPortAvailable(port string) bool {
 }
 
 // startWebServer starts the web server on the specified port with timeout and resilience
-func startWebServer(port string) error {
+func startWebServer(port, configFile, suppressionFile string, excludePatterns []string) error {
 	// Import web server package
-	webServer := web.NewWebServer(port)
+	webServer := web.NewWebServerWithOptions(port, configFile, suppressionFile, excludePatterns)
 
 	// Start the web server (this will block)
 	return webServer.Start()

@@ -41,8 +41,11 @@ var embeddedTemplate string
 
 // WebServer represents the web server instance
 type WebServer struct {
-	port   string
-	server *http.Server
+	port             string
+	configPath       string
+	suppressionsPath string
+	excludePatterns  []string
+	server           *http.Server
 }
 
 // ScanResponse represents the response from a scan operation (wraps CLI JSON output)
@@ -57,6 +60,20 @@ type ScanResponse struct {
 func NewWebServer(port string) *WebServer {
 	return &WebServer{
 		port: port,
+	}
+}
+
+// NewWebServerWithOptions creates a new web server instance with config and
+// suppression file paths supplied by the caller. Empty strings preserve the
+// existing default behavior (search standard locations). excludePatterns from
+// --exclude take precedence; empty slice means fall back to whatever the
+// loaded config file specifies.
+func NewWebServerWithOptions(port, configPath, suppressionsPath string, excludePatterns []string) *WebServer {
+	return &WebServer{
+		port:             port,
+		configPath:       configPath,
+		suppressionsPath: suppressionsPath,
+		excludePatterns:  excludePatterns,
 	}
 }
 
@@ -158,6 +175,7 @@ func (ws *WebServer) setupRoutes() {
 	http.HandleFunc("/health", ws.handleHealth)
 	http.HandleFunc("/scan", ws.handleScan)
 	http.HandleFunc("/export", ws.handleExport)
+	http.HandleFunc("/config-info", ws.handleConfigInfo)
 
 	// Static asset serving with security validation
 	http.HandleFunc("/logo", ws.serveLogo)
@@ -220,6 +238,38 @@ func (ws *WebServer) loadTemplate() string {
 <body><h1>Ferret Scan</h1><p>Template not found. Please ensure template.html is embedded in the binary.</p></body></html>`
 }
 
+// resolveExcludePatterns returns the patterns the front-end should apply when
+// walking dropped folders. --exclude (passed at startup) takes precedence over
+// whatever the loaded config file specifies, matching the CLI's precedence
+// order.
+func (ws *WebServer) resolveExcludePatterns() []string {
+	if len(ws.excludePatterns) > 0 {
+		return ws.excludePatterns
+	}
+	cfg := ws.loadConfiguration(ws.configPath)
+	if cfg != nil && len(cfg.Defaults.ExcludePatterns) > 0 {
+		return cfg.Defaults.ExcludePatterns
+	}
+	return nil
+}
+
+// handleConfigInfo returns config-derived values the front-end needs at load
+// time (currently just exclude_patterns for client-side folder filtering).
+func (ws *WebServer) handleConfigInfo(responseWriter http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" {
+		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	patterns := ws.resolveExcludePatterns()
+	if patterns == nil {
+		patterns = []string{}
+	}
+	responseWriter.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(responseWriter).Encode(map[string]interface{}{
+		"exclude_patterns": patterns,
+	})
+}
+
 // handleHealth provides a health check endpoint with CLI version information
 func (ws *WebServer) handleHealth(responseWriter http.ResponseWriter, request *http.Request) {
 	if request.Method != "GET" {
@@ -277,6 +327,10 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 
 	verbose := request.FormValue("verbose") == "true"
 	recursive := request.FormValue("recursive") == "true"
+	// Optional relative path from a folder drop (e.g. "myrepo/src/foo.go") —
+	// Go strips path components from multipart filename headers, so the
+	// front-end sends it as a parallel field.
+	relativePath := request.FormValue("relative_path")
 
 	// Get uploaded files
 	files := request.MultipartForm.File["files"]
@@ -291,7 +345,13 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	suppressedCount := 0
 
 	for i, fileHeader := range files {
-		matches, suppressed, suppCount, err := ws.processUploadedFileWithCLILogic(fileHeader, i, confidence, checks, verbose, recursive)
+		displayName := fileHeader.Filename
+		// relative_path applies when there's a single file in the request,
+		// which is the front-end's per-file upload pattern.
+		if relativePath != "" && len(files) == 1 {
+			displayName = relativePath
+		}
+		matches, suppressed, suppCount, err := ws.processUploadedFileWithCLILogic(fileHeader, i, confidence, checks, verbose, recursive, displayName)
 		if err != nil {
 			ws.sendError(responseWriter, err.Error())
 			return
@@ -343,11 +403,15 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 }
 
 // processUploadedFileWithCLILogic handles user file uploads using full CLI scanning logic
-func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.FileHeader, fileIndex int, confidence, checks string, verbose, recursive bool) ([]detector.Match, []detector.SuppressedMatch, int, error) {
+func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.FileHeader, fileIndex int, confidence, checks string, verbose, recursive bool, displayName string) ([]detector.Match, []detector.SuppressedMatch, int, error) {
+	if displayName == "" {
+		displayName = uploadedFile.Filename
+	}
+
 	// Open uploaded file
 	file, err := uploadedFile.Open()
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to open file %s: %v", uploadedFile.Filename, err)
+		return nil, nil, 0, fmt.Errorf("failed to open file %s: %v", displayName, err)
 	}
 	defer file.Close()
 
@@ -372,24 +436,27 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	normalizedTempPath := paths.NormalizePath(tempFile.Name())
 
 	// Run full CLI scanning logic on this file with original filename
-	return ws.runFullCLIScan(normalizedTempPath, uploadedFile.Filename, confidence, checks, verbose, recursive)
+	return ws.runFullCLIScan(normalizedTempPath, displayName, confidence, checks, verbose, recursive)
 }
 
 // runFullCLIScan executes the full CLI scanning logic with configuration and suppression support
 func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, checks string, verbose, recursive bool) ([]detector.Match, []detector.SuppressedMatch, int, error) {
-	cfg := ws.loadConfiguration("")
+	cfg := ws.loadConfiguration(ws.configPath)
 
 	var checksSlice []string
 	if checks != "" && checks != "all" {
 		checksSlice = strings.Split(checks, ",")
 	}
 
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to initialize suppression manager: %v", err)
 	}
 
-	// Set original filename on matches before suppression matching
+	// Scan without applying suppressions — the filename on each match is the
+	// random temp path, but suppression hashes were created against the
+	// original upload filename. We rename below and then apply suppressions
+	// ourselves so the hashes match.
 	scanConfig := core.ScanConfig{
 		FilePath:            filePath,
 		Checks:              checksSlice,
@@ -400,7 +467,7 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 		EnableRedaction:     false,
 		Config:              cfg,
 		Profile:             nil,
-		SuppressionManager:  suppressionManager,
+		SuppressionManager:  nil,
 	}
 
 	result, err := core.ScanFile(scanConfig)
@@ -408,16 +475,31 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 		return nil, nil, 0, fmt.Errorf("scanning failed: %v", err)
 	}
 
-	// Update filenames to original name for suppression matching, then sanitize for display
+	// Rewrite each match's filename to the original upload name so hashes
+	// computed against the upload identity (rather than the temp path) match
+	// any existing suppression rules.
 	safeFilename := ws.sanitizeFilenameForDisplay(originalFilename)
 	for i := range result.Matches {
 		result.Matches[i].Filename = safeFilename
 	}
-	for i := range result.SuppressedMatches {
-		result.SuppressedMatches[i].Match.Filename = safeFilename
+
+	// Apply suppressions now that filenames are stable.
+	var unsuppressed []detector.Match
+	var suppressed []detector.SuppressedMatch
+	for _, match := range result.Matches {
+		if isSuppressed, rule := suppressionManager.IsSuppressed(match); isSuppressed {
+			suppressed = append(suppressed, detector.SuppressedMatch{
+				Match:        match,
+				SuppressedBy: rule.ID,
+				RuleReason:   rule.Reason,
+				ExpiresAt:    rule.ExpiresAt,
+			})
+		} else {
+			unsuppressed = append(unsuppressed, match)
+		}
 	}
 
-	return result.Matches, result.SuppressedMatches, result.SuppressedCount, nil
+	return unsuppressed, suppressed, len(suppressed), nil
 }
 
 // handleExport exports scan results in the requested format
@@ -729,7 +811,7 @@ func (ws *WebServer) handleSuppressions(responseWriter http.ResponseWriter, requ
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -760,7 +842,7 @@ func (ws *WebServer) handleSuppressionsCreate(responseWriter http.ResponseWriter
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -799,7 +881,7 @@ func (ws *WebServer) handleSuppressionsEdit(responseWriter http.ResponseWriter, 
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -839,7 +921,7 @@ func (ws *WebServer) handleSuppressionsRemove(responseWriter http.ResponseWriter
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -876,7 +958,7 @@ func (ws *WebServer) handleSuppressionsEnable(responseWriter http.ResponseWriter
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -920,7 +1002,7 @@ func (ws *WebServer) handleSuppressionsDisable(responseWriter http.ResponseWrite
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -957,7 +1039,7 @@ func (ws *WebServer) handleSuppressionsBulkEnable(responseWriter http.ResponseWr
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -1004,7 +1086,7 @@ func (ws *WebServer) handleSuppressionsBulkDisable(responseWriter http.ResponseW
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -1045,7 +1127,7 @@ func (ws *WebServer) handleSuppressionsBulkDelete(responseWriter http.ResponseWr
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -1086,7 +1168,7 @@ func (ws *WebServer) handleSuppressionsBulkCreate(responseWriter http.ResponseWr
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -1122,7 +1204,7 @@ func (ws *WebServer) handleSuppressionsDownload(responseWriter http.ResponseWrit
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
@@ -1159,7 +1241,7 @@ func (ws *WebServer) handleSuppressionsCheckHash(responseWriter http.ResponseWri
 	}
 
 	// Initialize suppression manager using CLI logic
-	suppressionManager, err := ws.initializeSuppressionManager("")
+	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to initialize suppression manager: %v", err))
 		return
