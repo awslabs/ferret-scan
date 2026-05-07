@@ -202,6 +202,7 @@ func (ws *WebServer) setupRoutes() {
 	http.HandleFunc("/suppressions/bulk-enable", ws.handleSuppressionsBulkEnable)
 	http.HandleFunc("/suppressions/bulk-disable", ws.handleSuppressionsBulkDisable)
 	http.HandleFunc("/suppressions/bulk-delete", ws.handleSuppressionsBulkDelete)
+	http.HandleFunc("/suppressions/bulk-update-expiration", ws.handleSuppressionsBulkUpdateExpiration)
 	http.HandleFunc("/suppressions/bulk-create", ws.handleSuppressionsBulkCreate)
 	http.HandleFunc("/suppressions/download", ws.handleSuppressionsDownload)
 	http.HandleFunc("/suppressions/check-hash", ws.handleSuppressionsCheckHash)
@@ -867,6 +868,11 @@ type suppressionRequest struct {
 	IDs         []string               `json:"ids"`
 	Findings    []map[string]any       `json:"findings"`
 	FindingData map[string]any         `json:"finding_data"`
+	// ExpiresAt is the new expiration for bulk-update-expiration. A pointer
+	// lets JSON `null` clear the field (making the rule permanent); an
+	// omitted key leaves the pointer nil too, which the handler treats the
+	// same way. An ISO-8601 string becomes a concrete time.
+	ExpiresAt   *string                `json:"expires_at,omitempty"`
 }
 
 // suppressionEndpoint wraps a handler with shared boilerplate: method
@@ -1023,6 +1029,55 @@ func (ws *WebServer) handleSuppressionsBulkDelete(w http.ResponseWriter, r *http
 			}
 		}
 		return successMessage("Suppression rules deleted successfully"), nil
+	})(w, r)
+}
+
+// handleSuppressionsBulkUpdateExpiration updates the expiration on multiple
+// suppression rules (POST /suppressions/bulk-update-expiration).
+//
+// Request body:
+//   { "ids": ["…"], "expires_at": "2026-06-01T00:00:00Z" }   // renew to date
+//   { "ids": ["…"], "expires_at": null }                     // make permanent
+//   { "ids": ["…"] }                                         // (omitted) same as null
+//
+// EditSuppression takes a *time.Time and writes whatever it receives, so
+// nil clears ExpiresAt (permanent) and a concrete value renews it. We
+// preserve each rule's Reason, CreatedBy, and Enabled state — only the
+// expiration changes.
+func (ws *WebServer) handleSuppressionsBulkUpdateExpiration(w http.ResponseWriter, r *http.Request) {
+	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if len(req.IDs) == 0 {
+			return nil, fmt.Errorf("no suppression IDs supplied")
+		}
+
+		var newExpiry *time.Time
+		if req.ExpiresAt != nil && *req.ExpiresAt != "" {
+			t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+			if err != nil {
+				return nil, fmt.Errorf("invalid expires_at: %v (expected RFC3339)", err)
+			}
+			newExpiry = &t
+		}
+
+		// Build a quick lookup so we preserve each rule's current fields.
+		// ListSuppressions is cheap (already in memory) so one pass is fine
+		// even for the bulk case.
+		rules := mgr.ListSuppressions()
+		byID := make(map[string]suppressions.SuppressionRule, len(rules))
+		for _, rule := range rules {
+			byID[rule.ID] = rule
+		}
+
+		for _, id := range req.IDs {
+			rule, ok := byID[id]
+			if !ok {
+				return nil, fmt.Errorf("suppression rule not found: %s", id)
+			}
+			if err := mgr.EditSuppression(id, rule.Reason, rule.CreatedBy, rule.Enabled, newExpiry); err != nil {
+				return nil, fmt.Errorf("Failed to update expiration for rule %s: %v", id, err)
+			}
+		}
+		return successMessage("Suppression expirations updated successfully"), nil
 	})(w, r)
 }
 
