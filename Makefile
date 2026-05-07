@@ -36,6 +36,7 @@ help:
 	@echo ""
 	@echo "🧪 Testing:"
 	@echo "  test               - Run all tests"
+	@echo "  test-ci            - Run CI-equivalent tests (race detector, no cache)"
 	@echo "  test-windows       - Run Windows-specific tests"
 	@echo "  test-cross-platform - Run cross-platform compatibility tests"
 	@echo "  test-precommit     - Test pre-commit integration"
@@ -477,11 +478,15 @@ test: test-unit test-integration
 
 test-unit:
 	@echo "Running unit tests..."
-	@go test -v ./tests/unit/...
+	@go test -v ./internal/...
 
 test-integration:
 	@echo "Running integration tests..."
-	@FERRET_TEST_MODE=true go test -v ./tests/integration/...
+	@if [ -z "$$(go list ./tests/integration/... 2>/dev/null)" ]; then \
+		echo "  (no integration tests match current GOOS=$$(go env GOOS) — skipping)"; \
+	else \
+		FERRET_TEST_MODE=true go test -v ./tests/integration/...; \
+	fi
 
 # Windows-specific testing targets
 test-windows:
@@ -510,21 +515,27 @@ test-cross-platform:
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	@go test -coverprofile=coverage.out ./tests/...
+	@go test -coverprofile=coverage.out ./internal/... ./tests/integration/...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Coverage report generated: coverage.html"
 
 test-race:
 	@echo "Running tests with race detection..."
-	@go test -race ./tests/...
+	@go test -race ./internal/... ./tests/integration/...
+
+# CI-equivalent test run: race detector, no cache, excludes integration tests
+# Mirrors the pipeline command exactly so devs can reproduce CI locally.
+test-ci:
+	@echo "Running CI-equivalent test suite (race detector, no cache)..."
+	@go test -race -count=1 $$(go list ./... | grep -v /tests/integration)
 
 test-aws-mock:
 	@echo "Running AWS integration tests with mocks..."
-	@FERRET_TEST_MODE=true go test -v ./tests/integration/aws_integration_test.go
+	@FERRET_TEST_MODE=true go test -v ./tests/integration/...
 
 test-validators:
 	@echo "Running validator unit tests..."
-	@go test -v ./tests/unit/validators/...
+	@go test -v ./internal/validators/...
 
 test-clean:
 	@echo "Cleaning test artifacts..."
@@ -534,12 +545,12 @@ test-clean:
 # Benchmark tests
 benchmark:
 	@echo "Running benchmark tests..."
-	@go test -bench=. -benchmem ./tests/...
+	@go test -bench=. -benchmem ./internal/... ./tests/integration/...
 
 # Test with verbose output and debug logging
 test-debug:
 	@echo "Running tests with debug output..."
-	@FERRET_DEBUG=1 FERRET_TEST_MODE=true go test -v ./tests/...
+	@FERRET_DEBUG=1 FERRET_TEST_MODE=true go test -v ./internal/... ./tests/integration/...
 
 # Container targets (supports Docker and Finch)
 container-build:
