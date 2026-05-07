@@ -96,26 +96,31 @@ func TestRetryWithBackoff_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	calls := 0
-	// Cancel immediately before the first retry delay
+	// Cancel from inside the operation on the second call. The retry loop's
+	// first action after the operation returns is a select on ctx.Done — so
+	// once we cancel, the loop must observe cancellation before the next
+	// operation runs. This makes the assertion deterministic instead of
+	// relying on Go's randomized select ordering between two ready channels.
 	err := RetryWithBackoff(ctx, RetryConfig{
 		MaxRetries:      10,
 		InitialInterval: 100 * time.Millisecond,
+		MaxInterval:     1 * time.Second, // explicit cap so backoff is real
 		Multiplier:      1.0,
-		OnRetry: func(attempt int, err error) {
-			// Cancel during the first retry callback (before the delay wait)
-			cancel()
-		},
 	}, func(ctx context.Context) error {
 		calls++
+		if calls == 2 {
+			cancel()
+		}
 		return NewTransientError("fail", nil)
 	})
 
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	// Should have stopped due to context cancellation
-	if calls > 3 {
-		t.Errorf("expected few calls before cancellation, got %d", calls)
+	// Exactly two calls: one initial, one retry. The retry loop's pre-delay
+	// ctx.Done check exits before a third call can happen.
+	if calls != 2 {
+		t.Errorf("expected exactly 2 calls, got %d", calls)
 	}
 }
 

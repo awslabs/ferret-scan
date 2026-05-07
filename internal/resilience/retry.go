@@ -66,7 +66,13 @@ func RetryWithBackoff(ctx context.Context, config RetryConfig, operation Retryab
 			if config.Jitter {
 				delay += delay * 0.25 * rand.Float64()
 			}
-			capped := min(time.Duration(delay), config.MaxInterval)
+			// MaxInterval = 0 means "no cap" — treat the zero value as
+			// disabled rather than clamping every delay to zero, which
+			// silently turns off backoff for callers who forget to set it.
+			capped := time.Duration(delay)
+			if config.MaxInterval > 0 && capped > config.MaxInterval {
+				capped = config.MaxInterval
+			}
 
 			select {
 			case <-ctx.Done():
