@@ -23,6 +23,11 @@ type AdaptiveProcessor struct {
 	activeWorkers   int
 	maxBatchSize    int
 	stats           *AdaptiveStats
+	// done signals the adaptiveScalingLoop goroutine to exit on Stop().
+	// Closed (rather than sent on) so multiple Stop() calls are safe via
+	// stopOnce.
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // AdaptiveStats tracks adaptive processing statistics
@@ -83,6 +88,7 @@ func NewAdaptiveProcessor(config AdaptiveConfig, observer *observability.Standar
 			InitialWorkers: initialWorkers,
 			FinalWorkers:   initialWorkers,
 		},
+		done: make(chan struct{}),
 	}
 
 	// Start resource monitoring if adaptive scaling is enabled
@@ -349,25 +355,35 @@ func (ap *AdaptiveProcessor) handleResourceMetrics(metrics ResourceMetrics) {
 	ap.mu.Unlock()
 }
 
-// adaptiveScalingLoop monitors and adjusts resources periodically
+// adaptiveScalingLoop monitors and adjusts resources periodically. Exits when
+// ap.done is closed (see Stop). Previously this function ranged over ticker.C
+// directly, which leaked the goroutine because Stop only stopped the ticker
+// and the goroutine kept blocking on a channel that would never close.
 func (ap *AdaptiveProcessor) adaptiveScalingLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		// Check if we should adjust worker count based on current load
-		if ap.resourceMonitor.IsMemoryPressure() && ap.resourceMonitor.ShouldReduceWorkers(ap.activeWorkers) {
-			newWorkerCount := maxInt(ap.activeWorkers-1, ap.resourceMonitor.GetLimits().MinWorkers)
-			ap.adjustWorkerCount(newWorkerCount)
-		} else if !ap.resourceMonitor.IsMemoryPressure() && ap.resourceMonitor.ShouldIncreaseWorkers(ap.activeWorkers) {
-			newWorkerCount := minInt(ap.activeWorkers+1, ap.resourceMonitor.GetLimits().MaxWorkers)
-			ap.adjustWorkerCount(newWorkerCount)
+	for {
+		select {
+		case <-ap.done:
+			return
+		case <-ticker.C:
+			if ap.resourceMonitor.IsMemoryPressure() && ap.resourceMonitor.ShouldReduceWorkers(ap.activeWorkers) {
+				newWorkerCount := maxInt(ap.activeWorkers-1, ap.resourceMonitor.GetLimits().MinWorkers)
+				ap.adjustWorkerCount(newWorkerCount)
+			} else if !ap.resourceMonitor.IsMemoryPressure() && ap.resourceMonitor.ShouldIncreaseWorkers(ap.activeWorkers) {
+				newWorkerCount := minInt(ap.activeWorkers+1, ap.resourceMonitor.GetLimits().MaxWorkers)
+				ap.adjustWorkerCount(newWorkerCount)
+			}
 		}
 	}
 }
 
 // Stop gracefully shuts down the adaptive processor
 func (ap *AdaptiveProcessor) Stop() {
+	ap.stopOnce.Do(func() {
+		close(ap.done)
+	})
 	ap.resourceMonitor.Stop()
 	ap.workerPool.Stop()
 }

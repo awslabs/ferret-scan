@@ -58,6 +58,11 @@ type SuppressionManager struct {
 	configPath string
 	config     *SuppressionConfig
 	enabled    bool
+	// rulesByHash indexes config.Rules by Hash so IsSuppressed runs in O(1)
+	// instead of O(N). Multiple rules can theoretically share a hash, so the
+	// value is a slice; the original linear scan returned the first match,
+	// which we preserve here. Rebuilt on every load/save.
+	rulesByHash map[string][]int
 }
 
 // NewSuppressionManager creates a new suppression manager
@@ -110,6 +115,23 @@ func (sm *SuppressionManager) loadConfig() {
 	}
 
 	sm.config = &config
+	sm.rebuildHashIndex()
+}
+
+// rebuildHashIndex constructs the hash → rule-indices lookup. Call after any
+// mutation of sm.config.Rules. Cheap (single pass over rules) so we just
+// rebuild rather than maintain incremental updates across the many
+// add/edit/remove paths.
+func (sm *SuppressionManager) rebuildHashIndex() {
+	if sm.config == nil {
+		sm.rulesByHash = nil
+		return
+	}
+	idx := make(map[string][]int, len(sm.config.Rules))
+	for i, rule := range sm.config.Rules {
+		idx[rule.Hash] = append(idx[rule.Hash], i)
+	}
+	sm.rulesByHash = idx
 }
 
 // generateFindingHash creates a unique hash for a finding
@@ -154,18 +176,21 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 
 	findingHash := sm.generateFindingHash(match)
 
-	for _, rule := range sm.config.Rules {
-		if rule.Hash == findingHash {
-			// Check if rule is enabled
-			if !rule.Enabled {
-				continue
-			}
-			// Check if rule has expired
-			if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
-				continue
-			}
-			return true, &rule
+	// Lazily populate the index when callers mutate the manager directly
+	// (e.g. tests setting sm.config.Rules without going through saveConfig).
+	if sm.rulesByHash == nil {
+		sm.rebuildHashIndex()
+	}
+
+	for _, ruleIdx := range sm.rulesByHash[findingHash] {
+		rule := &sm.config.Rules[ruleIdx]
+		if !rule.Enabled {
+			continue
 		}
+		if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
+			continue
+		}
+		return true, rule
 	}
 
 	return false, nil
@@ -264,6 +289,8 @@ func (sm *SuppressionManager) saveConfig() error {
 		return fmt.Errorf("failed to marshal suppression config: %w", err)
 	}
 	data = annotateHashesWithAllowlistPragma(data)
+	// Rules just changed — invalidate the IsSuppressed lookup index.
+	sm.rebuildHashIndex()
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(sm.configPath)

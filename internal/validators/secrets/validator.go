@@ -14,6 +14,27 @@ import (
 	"ferret-scan/internal/observability"
 )
 
+// Multi-line PEM-style secret patterns. Compiled once at package init —
+// previously they were recompiled inside findMultiLineSecretsWithContext on
+// every call, which is the per-file scan path. The string concatenations
+// (`"-----" + "BEGIN"`) keep the literals from looking like real PEM markers
+// to upstream secret scanners.
+var (
+	pemBeginMarker = "-----" + "BEGIN"
+	pemEndMarker   = "-----" + "END"
+
+	multiLineSSHPatterns = []*regexp.Regexp{
+		regexp.MustCompile(pemBeginMarker + ` (RSA |DSA |EC |OPENSSH )?PRIVATE KEY` + "-----" + `[\s\S]*?` + pemEndMarker + ` (RSA |DSA |EC |OPENSSH )?PRIVATE KEY` + "-----"),
+	}
+	multiLineCertPatterns = []*regexp.Regexp{
+		regexp.MustCompile(pemBeginMarker + ` CERTIFICATE` + "-----" + `[\s\S]*?` + pemEndMarker + ` CERTIFICATE` + "-----"),
+		regexp.MustCompile(pemBeginMarker + ` ENCRYPTED PRIVATE KEY` + "-----" + `[\s\S]*?` + pemEndMarker + ` ENCRYPTED PRIVATE KEY` + "-----"),
+	}
+	multiLinePGPPatterns = []*regexp.Regexp{
+		regexp.MustCompile(pemBeginMarker + ` PGP PRIVATE KEY BLOCK` + "-----" + `[\s\S]*?` + pemEndMarker + ` PGP PRIVATE KEY BLOCK` + "-----"),
+	}
+)
+
 // Validator detects secrets using entropy analysis and keyword patterns
 type Validator struct {
 	// High entropy detection
@@ -1114,21 +1135,8 @@ func (v *Validator) looksLikeVariableName(match string) bool {
 func (v *Validator) findMultiLineSecretsWithContext(content, filePath string, contextInsights context.ContextInsights, isShellScript bool, envType string) []detector.Match {
 	var matches []detector.Match
 
-	// SSH Private Key patterns (encoded to bypass Code Defender)
-	beginKey := "-----" + "BEGIN"
-	endKey := "-----" + "END"
-	sshPatterns := []*regexp.Regexp{
-		regexp.MustCompile(beginKey + ` (RSA |DSA |EC |OPENSSH )?PRIVATE KEY` + "-----" + `[\s\S]*?` + endKey + ` (RSA |DSA |EC |OPENSSH )?PRIVATE KEY` + "-----"),
-	}
-
-	// Certificate patterns (encoded to bypass Code Defender)
-	certPatterns := []*regexp.Regexp{
-		regexp.MustCompile(beginKey + ` CERTIFICATE` + "-----" + `[\s\S]*?` + endKey + ` CERTIFICATE` + "-----"),
-		regexp.MustCompile(beginKey + ` ENCRYPTED PRIVATE KEY` + "-----" + `[\s\S]*?` + endKey + ` ENCRYPTED PRIVATE KEY` + "-----"),
-	}
-
 	// Process SSH keys
-	for _, pattern := range sshPatterns {
+	for _, pattern := range multiLineSSHPatterns {
 		found := pattern.FindAllString(content, -1)
 		for _, match := range found {
 			lineNum := v.findLineNumber(content, match)
@@ -1154,7 +1162,7 @@ func (v *Validator) findMultiLineSecretsWithContext(content, filePath string, co
 	}
 
 	// Process certificates
-	for _, pattern := range certPatterns {
+	for _, pattern := range multiLineCertPatterns {
 		found := pattern.FindAllString(content, -1)
 		for _, match := range found {
 			lineNum := v.findLineNumber(content, match)
@@ -1179,13 +1187,8 @@ func (v *Validator) findMultiLineSecretsWithContext(content, filePath string, co
 		}
 	}
 
-	// PGP Private Key patterns (encoded to bypass Code Defender)
-	pgpPatterns := []*regexp.Regexp{
-		regexp.MustCompile(beginKey + ` PGP PRIVATE KEY BLOCK` + "-----" + `[\s\S]*?` + endKey + ` PGP PRIVATE KEY BLOCK` + "-----"),
-	}
-
 	// Process PGP private keys
-	for _, pattern := range pgpPatterns {
+	for _, pattern := range multiLinePGPPatterns {
 		found := pattern.FindAllString(content, -1)
 		for _, match := range found {
 			lineNum := v.findLineNumber(content, match)
