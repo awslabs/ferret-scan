@@ -145,14 +145,24 @@ func TestRetryWithBackoff_OnRetryCallback(t *testing.T) {
 }
 
 func TestRetryWithBackoff_ExponentialDelayGrowth(t *testing.T) {
-	// Verify that delays grow exponentially by measuring timing
+	// Verify that delays grow exponentially by measuring timing.
+	//
+	// Intervals are deliberately well above Windows' default 15.6 ms timer
+	// resolution: with InitialInterval=50ms the expected delays are ~50ms,
+	// 100ms, 200ms — gaps wide enough that quantization noise can't push
+	// delay[2] below delay[0]. The earlier 10ms baseline produced ~16ms /
+	// ~16-31ms delays on Windows runners, where adjacent values landed in
+	// the same noisy band and the strict delay[1] >= delay[0] assertion
+	// flaked. We now check the broader monotonic property delay[2] > delay[0]
+	// (a 4× growth ratio, easy to satisfy even with scheduler jitter) which
+	// is what "exponential growth" actually means.
 	delays := []time.Duration{}
 	transient := NewTransientError("fail", nil)
 	lastTime := time.Now()
 
 	RetryWithBackoff(context.Background(), RetryConfig{
 		MaxRetries:      3,
-		InitialInterval: 10 * time.Millisecond,
+		InitialInterval: 50 * time.Millisecond,
 		MaxInterval:     1 * time.Second,
 		Multiplier:      2.0,
 		Jitter:          false, // disable jitter for deterministic test
@@ -166,11 +176,14 @@ func TestRetryWithBackoff_ExponentialDelayGrowth(t *testing.T) {
 	})
 
 	if len(delays) != 3 {
-		t.Fatalf("expected 3 delays, got %d", delays)
+		t.Fatalf("expected 3 delays, got %d", len(delays))
 	}
-	// Each delay should be roughly double the previous (with some tolerance)
-	if delays[1] < delays[0] {
-		t.Errorf("delay[1] (%v) should be >= delay[0] (%v)", delays[1], delays[0])
+	// delay[2] is expected to be ~4× delay[0] (200ms vs 50ms). Asserting it
+	// is at least 1.5× larger keeps the test sensitive to the exponential
+	// shape while tolerating scheduler jitter on slow CI runners.
+	if delays[2] < delays[0]*3/2 {
+		t.Errorf("expected exponential growth: delay[2] (%v) should be >= 1.5 * delay[0] (%v); all delays: %v",
+			delays[2], delays[0], delays)
 	}
 }
 
