@@ -314,7 +314,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - name: Scan for social media
         run: |
           ./ferret-scan --checks SOCIAL_MEDIA --format json --output social-media-report.json --recursive --file ./documents/

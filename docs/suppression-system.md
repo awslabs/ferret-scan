@@ -100,15 +100,29 @@ rules:
 ## Performance Characteristics
 
 ### Efficiency Features
-- **O(n) Lookup**: Linear scan through suppression rules (typically small dataset)
+
+- **O(1) Lookup**: Hash-indexed lookup in `IsSuppressed`. The index is rebuilt from `config.Rules` on every load and on every save, so it stays consistent across mutations. Microbench (per-call cost on a non-matching match):
+
+    | rules  | per-call cost |
+    |-------:|--------------:|
+    | 100    | 620 ns        |
+    | 1,000  | 631 ns        |
+    | 10,000 | 640 ns        |
+    | 50,000 | 619 ns        |
+
+  Previous linear scan grew with rule count (113 µs at 50,000 rules); the new index is constant-time. Replaced in v1.7.0.
+
+- **Web-mode caching**: When running with `--web`, the `SuppressionManager` is held on the `WebServer` and reloaded only when the underlying file's mtime changes. This eliminates the per-request YAML parse cost. Measured 2.4× / 2.3× speedup on `/scan` and `/suppressions` against a 5,000-rule file.
+- **Concurrent reads**: `RWMutex` around the hash index makes `IsSuppressed` safe for concurrent use. Mutating methods are still expected to be called serially (documented on the manager type).
 - **Memory Efficient**: Hash-based storage minimizes memory footprint
 - **Single Processing**: No duplicate filtering operations
 - **Fast Hashing**: SHA-256 provides good performance for small inputs
 
 ### Scalability Considerations
-- **Rule Limit**: Practical limit of ~1000 suppression rules for optimal performance
+
+- **Rule Limit**: With the hash index, lookup cost is constant up to and beyond 50,000 rules. Practical limits now come from YAML parse + write times, not lookup.
 - **Hash Collisions**: Cryptographically unlikely with SHA-256
-- **File Size**: Suppression file typically <100KB for normal usage
+- **File Size**: Suppression file typically well under 1 MB for normal usage; file mtime is checked on every web request to invalidate the cache
 
 ## Security Features
 
@@ -143,9 +157,15 @@ rules:
 
 ## Future Enhancements
 
+### Recently Shipped (v1.6.0)
+
+- ✅ **Rule Indexing**: Hash-based indexing for O(1) lookup performance
+- ✅ **Bulk Operations**: Efficient bulk enable/disable/delete and bulk expiration management
+- ✅ **Web-mode caching**: `SuppressionManager` cached on `WebServer` with mtime-based reload
+- ✅ **YAML pragma comments**: `# pragma: allowlist secret` auto-added to `hash:` lines so the file doesn't trip ferret-scan's own scanner
+
 ### Planned Improvements
-- **Rule Indexing**: Hash-based indexing for O(1) lookup performance
-- **Bulk Operations**: Efficient bulk suppression rule management
+
 - **Pattern Suppressions**: Support for regex-based suppression patterns
 - **Rule Analytics**: Usage statistics and effectiveness metrics
 

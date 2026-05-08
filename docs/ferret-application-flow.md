@@ -174,10 +174,10 @@ sequenceDiagram
 
     ParallelProc-->>CLI: All matches + processing stats
 
-    Note over CLI: 10. Apply suppressions
+    Note over CLI: 10. Apply suppressions (O(1) hash-indexed lookup per match)
     CLI->>Suppression: NewSuppressionManager(suppressionFile)
     loop For each match
-        CLI->>Suppression: IsSuppressed(match)
+        CLI->>Suppression: IsSuppressed(match) [O(1) hash index]
         Suppression-->>CLI: suppressed status + rule
     end
     CLI->>CLI: Separate suppressed and active matches

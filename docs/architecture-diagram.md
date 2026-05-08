@@ -31,7 +31,7 @@ flowchart TD
     CLIArgs["⚙️ CLI Arguments<br/>--file, --format, --checks, etc."]
     ConfigFile["📋 Configuration File<br/>YAML Config with defaults"]
     Profiles["👤 Configuration Profiles<br/>Named configuration sets"]
-    SuppressionRules["🚫 Suppression Rules<br/>.ferret-scan-suppressions.yaml"]
+    SuppressionRules["🚫 Suppression Rules<br/>$XDG_CONFIG_HOME/ferret-scan/suppressions.yaml<br/>(or %APPDATA% on Windows)"]
 
     %% Processing
     ConfigResolver["🔧 Configuration Resolver<br/>resolveConfiguration()"]
@@ -423,7 +423,7 @@ flowchart TD
     %% Results Processing
     ResultsAggregator["📋 Results Aggregator<br/>Collects all worker results<br/>from parallel processing"]
 
-    SuppressionManager["🚫 Suppression Manager<br/>IsSuppressed() rule matching<br/>• Rule-based filtering<br/>• Expiration tracking"]
+    SuppressionManager["🚫 Suppression Manager<br/>IsSuppressed() — O(1) hash-indexed<br/>• Rule-based filtering<br/>• Expiration tracking<br/>• Cached on WebServer with mtime reload"]
 
     ConfidenceFilter["📊 Confidence Filter<br/>parseConfidenceLevels()<br/>• High/Medium/Low filtering<br/>• User-specified thresholds"]
 
@@ -550,7 +550,7 @@ A key architectural innovation is the inline redaction capability that occurs du
 
 ### **Configuration-Driven Flexibility**
 
-The **Results Processing & Output Generation** stage demonstrates the system's adaptability through configuration-driven suppression and confidence filtering. The Suppression Manager applies rule-based filtering from `.ferret-scan-suppressions.yaml` files, allowing organizations to customize detection behavior without code changes. Multiple output formatters (text, JSON, CSV, YAML, JUnit, GitLab SAST) ensure compatibility with various downstream systems and workflows.
+The **Results Processing & Output Generation** stage demonstrates the system's adaptability through configuration-driven suppression and confidence filtering. The Suppression Manager applies rule-based filtering from a platform-aware default path (`$XDG_CONFIG_HOME/ferret-scan/suppressions.yaml` on Unix, `%APPDATA%\ferret-scan\suppressions.yaml` on Windows) or any `--suppression-file` override, allowing organizations to customize detection behavior without code changes. Lookups are O(1) via a hash index rebuilt on load and on every save, and the web server caches the parsed manager with mtime-based invalidation so per-request latency does not depend on rule-set size. Multiple output formatters (text, JSON, CSV, YAML, JUnit, GitLab SAST) ensure compatibility with various downstream systems and workflows.
 
 ### **Resilience & Observability**
 

@@ -24,10 +24,9 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - [Suppression Architecture](suppression-system.md) - Technical suppression system details
 
 ### 🧪 Testing & Quality Assurance
-- [Testing Guide](testing/TESTING.md) - Comprehensive testing documentation
-- [Testing Strategy](testing/testing-strategy.md) - Overall testing approach and architecture
-- [Implementation Summary](testing/TESTING_IMPLEMENTATION_SUMMARY.md) - What was implemented
-- [Success Summary](testing/TESTING_SUCCESS_SUMMARY.md) - Final results and achievements
+
+- [GitLab CI Testing Tracker](testing/GITLAB_CI_TESTING_TRACKER.md) - Status of the GitLab CI test suite
+- [Cross-platform Go Test Workflow](../.github/workflows/go-test.yml) - GitHub Actions matrix that runs `go test -race -count=1 ./...` on `ubuntu-latest`, `macos-latest`, and `windows-latest`. The `tests/integration/` package is excluded from the test step (Windows-only files have separate pre-existing bugs); `vet` and `build` still cover them. Run locally with `make test` (which targets `./internal/...`).
 
 ### 🚀 Deployment & CI/CD
 - [GitLab Integration](GITLAB_INTEGRATION.md) - GitLab Ultimate integration guide
@@ -63,10 +62,10 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 
 ### By Use Case
 - **New Users**: Start with [Main README](../README.md) → [Configuration Guide](configuration.md)
-- **Developers**: [Creating Validators](development/creating_validators.md) → [Testing Guide](testing/TESTING.md)
+- **Developers**: [Creating Validators](development/creating_validators.md) → run `make test` and check the [cross-platform Go Test Workflow](../.github/workflows/go-test.yml)
 - **DevOps/CI**: [GitLab Integration](GITLAB_INTEGRATION.md) → [GitLab Security Scanner Setup](deployment/GITLAB_SECURITY_SCANNER_SETUP.md)
 - **Web Interface**: [Web UI Guide](user-guides/README-WebUI.md) → [Docker Guide](user-guides/README-Docker.md)
-- **Testing**: [Testing Guide](testing/TESTING.md) → [Testing Strategy](testing/testing-strategy.md)
+- **Testing**: [GitLab CI Testing Tracker](testing/GITLAB_CI_TESTING_TRACKER.md) — `make test` runs the full Go suite locally; CI runs `go test -race ./...` on Linux/macOS/Windows
 
 ### By Topic
 - **🔧 Configuration**: [Configuration Guide](configuration.md)
@@ -75,21 +74,13 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - **🆕 Enhanced Metadata**: [Enhanced Metadata Guide](user-guides/README-Enhanced-Metadata.md)
 - **🔒 Redaction**: [Redaction Guide](user-guides/README-Redaction.md)
 <!-- GENAI_DISABLED: - **🤖 AI Features**: [GenAI Integration](development/genai_integration.md) -->
-- **🧪 Testing**: [Testing Guide](testing/TESTING.md)
+- **🧪 Testing**: [GitLab CI Testing Tracker](testing/GITLAB_CI_TESTING_TRACKER.md)
 - **🚀 Deployment**: [GitLab Security Scanner Setup](deployment/GITLAB_SECURITY_SCANNER_SETUP.md)
 - **🔧 Troubleshooting**: [GitLab Integration Troubleshooting](troubleshooting/GITLAB_INTEGRATION_TROUBLESHOOTING.md)
 
 ## 📋 Document Status
 
-| Category | Documents | Status |
-|----------|-----------|---------|
-| User Guides | 4 | ✅ Complete |
-| Development | 12 | ✅ Complete |
-| Testing | 4 | ✅ Complete |
-| Deployment | 3 | ✅ Complete |
-| Reference | 5 | ✅ Complete |
-| Troubleshooting | 1 | ✅ Complete |
-| **Total** | **29** | **✅ Complete** |
+Documents in this index are kept in sync with the codebase as features land. The CHANGELOG at the root of the repo is the source of truth for what shipped in each release; the per-topic guides above describe how each feature works in the current version.
 
 ## 🤝 Contributing to Documentation
 
@@ -109,4 +100,4 @@ When adding new documentation:
 
 ---
 
-*This documentation is maintained alongside the Ferret Scan codebase. Last updated: $(date)*
+*This documentation is maintained alongside the Ferret Scan codebase.*
