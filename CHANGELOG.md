@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<a name="v1.7.0"></a>
+## [v1.7.0] - 2026-05-08
+
+### 🚀 Features
+
+- **web:** drag-and-drop folders onto the upload zone — the browser walks the folder client-side via `webkitGetAsEntry`, applies any configured `--exclude` patterns during the walk, and uploads each file with its relative path so findings display as `myrepo/src/foo.go`. Single-file drops and the native picker still work; PR #52 also unifies "Choose Files" / "Choose Folder" into matching styled buttons and uses `showDirectoryPicker` where available so excluded dirs (`.git`, `node_modules`, `__pycache__`) are skipped before the browser prompts.
+- **web:** wire `--config`, `--suppression-file`, and `--exclude` through web mode so the server uses the same configuration as the CLI instead of always reading `~/.ferret-scan/suppressions.yaml`. New `/config-info` endpoint surfaces configured exclude patterns to the front-end.
+- **suppressions:** append `# pragma: allowlist secret` to `hash:` lines in the suppression YAML so the file itself doesn't trigger secret-scanner false positives. Idempotent on re-save.
+- **web:** suppression expiration bulk operations — Make Permanent / Renew 30 Days actions on selected rules, backed by `POST /suppressions/bulk-update-expiration`.
+
+### ⚡ Performance
+
+- **suppressions:** `IsSuppressed` is now O(1) via a hash index rebuilt on load and on every save. Per-call microbench (no-op match against a non-matching rule set):
+
+    | rules  | before     | after    | speedup |
+    |-------:|-----------:|---------:|--------:|
+    | 100    |   870 ns   |  620 ns  |   1.4×  |
+    | 1,000  | 2,984 ns   |  631 ns  |   4.7×  |
+    | 10,000 | 23,236 ns  |  640 ns  |  36×    |
+    | 50,000 | 113,155 ns |  619 ns  | 183×    |
+
+- **web:** cache `SuppressionManager` on the `WebServer` with mtime-based reload — eliminates the per-request YAML re-parse that previously dominated `/scan` and `/suppressions` latency. With a 5,000-rule (45k-line) suppression file across 50 sequential requests:
+  - `/scan`: 68.7 ms → 28.5 ms per request (**2.4×**)
+  - `/suppressions`: 67.3 ms → 29.6 ms per request (**2.3×**)
+
+- **validators:** hoist hot-path regex compilations to package level. Per-call microbench:
+
+    | function                      | before     | after     | speedup | allocs   |
+    |-------------------------------|-----------:|----------:|--------:|---------:|
+    | `containsEnhancedPhoneNumber` | 8,293 ns   | 1,057 ns  |   7.8×  | 200 → 0  |
+    | `extractEmail`                | 1,653 ns   |   378 ns  |   4.4×  |  37 → 0  |
+    | `containsEnhancedGPSData`     |   432 ns   |   184 ns  |   2.4×  |   8 → 0  |
+    | `isVersionNumber`             | 1,562 ns   |    86 ns  |  18×    |  62 → 1  |
+    | `calculateCopyrightConfidence`| 1,376 ns   |   199 ns  |   6.9×  |  35 → 0  |
+
+  Multi-line PEM regexes (SSH/cert/PGP) in the secrets validator and the year pattern in the intellectual-property validator are now compiled once at package init instead of recompiled per call.
+
+- **parallel:** unbounded goroutine spawn in `ResourceMonitor.notifyCallbacks` replaced with synchronous invocation; callbacks that need async work spawn their own goroutine.
+
+### 🐛 Bug Fixes
+
+- **suppressions:** the web flow's hash mismatch — `getString` defaulted missing finding fields to `"Unknown"`, so `mockMatch.Context.AfterText` became the literal string `"Unknown"` when re-creating from a JSON body that omitted empty fields. Returns `""` now, so suppress-then-rescan in the web UI correctly suppresses the finding.
+- **web:** suppressions inside `core.ScanFile` ran against the random temp filename, then matches were renamed to the upload's display name *after*. Suppressions now apply after the rename, so cross-mode rules (CLI rule applied to web scan and vice versa) match consistently.
+- **parallel:** fix goroutine leak in `AdaptiveProcessor.adaptiveScalingLoop` — `Stop()` only stopped the ticker; the loop kept blocking on a channel that would never close. Now gated on a `done` chan closed via `sync.Once`. Also fixes a pre-existing data race in `Stop()` between the scaling loop's `adjustWorkerCount` (which swaps the worker pool) and the teardown's pool stop, via `sync.WaitGroup`.
+- **suppressions:** parse errors on a malformed YAML file no longer silently produce an empty rule set — a stderr warning now names the file and the underlying error so users notice that their rules aren't being applied. Missing-file remains silent (the legitimate first-run case).
+- **suppressions:** `RWMutex` around the new hash index makes `IsSuppressed` safe for concurrent use; previously the manager had no synchronization around shared state.
+- **resilience:** `RetryWithBackoff` now treats `MaxInterval=0` as "no cap" instead of clamping every delay to zero, fixing a long-standing flake in `TestRetryWithBackoff_ContextCancellation`. Test rewritten to be deterministic.
+- **preprocessors:** `readTextFile` now opens the file once instead of twice — closes the TOCTOU window between the size check and the read.
+
+### 📦 Code Refactoring
+
+- **web:** dedup 12 near-identical suppression HTTP handlers into a shared `suppressionEndpoint` wrapper plus typed `suppressionRequest` struct. `internal/web/server.go` shrank from 1,350 to 1,183 LOC (−167, −12%).
+- **web:** delete unused `normalizePathForWeb` (strict subset of the live `sanitizeFilenameForDisplay`; zero callers since the initial commit).
+- **parallel:** simplify `WorkerPool.Submit` — the `default` arm fell into an inner `select` identical to the outer one and had no behavioral effect.
+
+### ✅ Tests
+
+- new cross-platform GitHub Actions workflow `.github/workflows/go-test.yml` runs `go test -race -count=1 ./...` on `ubuntu-latest`, `macos-latest`, and `windows-latest`. Previously the repo had no Go unit-test workflow at all (only a secret-scanning workflow and a build-binary workflow). `tests/integration` is excluded from the test step (Windows-only files have separate pre-existing bugs); `vet` and `build` still cover them.
+- restore `tests/helpers` package (was imported by `tests/integration/windows_*_test.go` but never committed).
+- new tests: multi-line PEM detection covering 8 PEM types end-to-end, concurrent `IsSuppressed` under `-race`, `AdaptiveProcessor.Stop` goroutine-exit verification.
+- track two validator test files (`internal/validators/email/validator_test.go`, `internal/validators/intellectualproperty/validator_test.go`, ~850 LOC combined) that the prior `*_test.go` ignore rule had been silently dropping from version control.
+- `make test` targets repointed from the non-existent `./tests/unit/...` to `./internal/...`.
+
+### 🛠 Build System
+
+- bump GitHub Actions to versions running on Node 24 across all workflows: `actions/checkout@v6`, `actions/setup-go@v6`, `actions/cache@v5`, `actions/setup-python@v6`, `actions/upload-artifact@v7`, `actions/download-artifact@v8`, `actions/github-script@v9`. GitHub is removing Node 20 from runners on 2026-09-16.
+- remove `*_test.go` and `tests/` patterns from `.gitignore` — they had been silently dropping every Go test file from version control; existing tests survived only via `git add -f`.
+
+### Pull Requests
+
+- Merge pull request [#52](https://github.com/awslabs/ferret-scan/pull/52) from awslabs/feature/web-enhancements
+- Merge pull request [#51](https://github.com/awslabs/ferret-scan/pull/51) from awslabs/dev/web-server-caching
+- Merge pull request [#50](https://github.com/awslabs/ferret-scan/pull/50) from awslabs/dev/perf-and-cleanup
+- Merge pull request [#48](https://github.com/awslabs/ferret-scan/pull/48) from awslabs/dev/web-folder-scan-and-suppression-fixes
+
 <a name="v1.5.2"></a>
 ## [v1.5.2] - 2026-02-18
 

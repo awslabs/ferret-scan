@@ -8,7 +8,7 @@ This document provides a comprehensive reference for all file size limits, proce
 
 | Component | Limit | AWS Service | Configurable | Notes |
 |-----------|-------|-------------|--------------|-------|
-| **Web UI Upload** | 10MB | No | No | Hardcoded limit for web interface |
+| **Web UI Upload** | 100MB | No | No | Per-file decompression-bomb guard (`internal/web/server.go`); folder uploads have no count limit |
 | **CLI General** | 100MB | No | Yes | Default for most file types |
 | **Text Files** | 100MB | No | No | Plaintext preprocessor limit |
 <!-- GENAI_DISABLED: | **Audio Files (GenAI)** | 500MB | AWS Transcribe | No | For transcription services | -->
@@ -45,7 +45,7 @@ This document provides a comprehensive reference for all file size limits, proce
 
 | Error Message | Cause | Solution |
 |---------------|-------|----------|
-| `File exceeds 10MB upload limit` | Web UI file too large | Use CLI or reduce file size |
+| `File too large: ... bytes (max: 104857600 bytes)` | Web UI / CLI file > 100 MB | Reduce file size or split into chunks |
 | `File too large (max: 100MB)` | CLI file exceeds default | Configure larger limit or use streaming |
 | `File too large: chunk offset exceeds int32 maximum` | File exceeds ~214GB | Split file into smaller parts |
 | `System under memory pressure` | Insufficient memory | Reduce worker count or batch size |

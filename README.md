@@ -43,7 +43,7 @@ Ferret Scan is extensively documented with comprehensive guides for users, devel
 
 - **🚀 Getting Started**: [Installation](#installation) | [Configuration Guide](docs/configuration.md) | [Architecture Overview](docs/architecture-diagram.md)
 - **👥 User Guides**: [Web UI](docs/user-guides/README-WebUI.md) | [Docker](docs/user-guides/README-Docker.md) | [Preprocess-Only](docs/user-guides/README-Preprocess-Only.md) | [Suppressions](docs/user-guides/README-Suppressions.md)
-- **🛠 Development**: [Creating Validators](docs/development/creating_validators.md) | [Testing Guide](docs/testing/TESTING.md)
+- **🛠 Development**: [Creating Validators](docs/development/creating_validators.md) | run `make test` (Go test suite) | [Cross-platform Test Workflow](.github/workflows/go-test.yml)
 - **🚀 Deployment**: [GitLab Integration](docs/GITLAB_INTEGRATION.md) | [GitLab Security Scanner Setup](docs/deployment/GITLAB_SECURITY_SCANNER_SETUP.md) | [CI/CD Setup](docs/deployment/GITLAB_CI_SETUP.md)
 
 ## Architecture
@@ -246,12 +246,23 @@ See the [Redaction Guide](docs/user-guides/README-Redaction.md) for strategy det
 
 #### Suppression Management
 - `--generate-suppressions`: Generate suppression rules for all findings (disabled by default, updates last_seen_at for existing rules)
-- `--suppression-file`: Path to suppression configuration file (default: ".ferret-scan-suppressions.yaml")
+- `--suppression-file`: Path to suppression configuration file (default: `$XDG_CONFIG_HOME/ferret-scan/suppressions.yaml` on Unix — falls back to `~/.ferret-scan/suppressions.yaml`; `%APPDATA%\ferret-scan\suppressions.yaml` on Windows)
 - `--show-suppressed`: Include suppressed findings in output with suppression details (marked as [SUPP] in text format)
 
 #### Web Server Mode
 - `--web`: Start web server mode instead of CLI scanning
 - `--port`: Port for web server (default: 8080, only used with --web)
+
+The web server honors `--config`, `--suppression-file`, and `--exclude` so it can use the same configuration as the CLI:
+
+```bash
+# Use a team-shared suppressions file and exclude common build dirs
+./ferret-scan --web --port 8080 \
+  --suppression-file ./team-suppressions.yaml \
+  --exclude '.git,node_modules,dist,target'
+```
+
+Without these flags, the web server uses the platform default suppression path (`~/.ferret-scan/suppressions.yaml` on Unix, `%APPDATA%\ferret-scan\suppressions.yaml` on Windows). Configured exclude patterns are applied client-side during folder drag-drop walks so excluded directories are never uploaded.
 
 
 
@@ -540,8 +551,10 @@ Generate suppression rules for findings to reduce false positives:
 # Use custom suppression file
 ./ferret-scan --file document.txt --suppression-file custom-suppressions.yaml
 
-# Default suppression file location
-# ~/.ferret-scan/suppressions.yaml
+# Default suppression file location (when --suppression-file is omitted):
+#   Unix:    $XDG_CONFIG_HOME/ferret-scan/suppressions.yaml  (falls back to ~/.ferret-scan/suppressions.yaml)
+#   Windows: %APPDATA%\ferret-scan\suppressions.yaml
+# Override via FERRET_CONFIG_DIR env var.
 ```
 
 **Web UI Management**: The web interface provides comprehensive suppression management:
@@ -836,9 +849,11 @@ Then open http://localhost:8080 in your browser (or the port you specified).
 
 - **Single File**: Click "Choose Files" and select one file
 - **Multiple Files**: Hold Ctrl/Cmd while selecting files, or drag multiple files onto the upload area
+- **Folder Upload**: Click "Choose Folder" or drag-and-drop a folder onto the upload zone — the browser walks the folder client-side and uploads every file with its relative path, so findings show as `myrepo/src/foo.go`. Configured `--exclude` patterns are applied during the walk, so excluded directories (e.g. `.git`, `node_modules`) are never uploaded. On browsers that support `showDirectoryPicker` (recent Chrome / Edge) the picker prompts directly; older browsers fall back to `<input webkitdirectory>`.
 - **Real-time Processing**: Results appear progressively as each file is scanned
 - **Visual Progress Bar**: Shows completion percentage and current file being processed
-- **Progress Tracking**: Shows current file being processed (e.g., "Scanning file 2 of 5: document.pdf")
+- **Progress Tracking**: Shows current file being processed (e.g., "Scanning file 2 of 5: myrepo/src/document.pdf")
+- **Per-file Limit**: 100 MB per file (decompression-bomb guard); folder uploads are unbounded in count
 
 #### Scan Configuration
 
@@ -874,12 +889,14 @@ Then open http://localhost:8080 in your browser (or the port you specified).
 #### Suppression Management
 
 - **Bulk Operations**: Select multiple suppressions using checkboxes for batch enable/disable/delete
+- **Bulk Expiration**: "Make Permanent" and "Renew 30 Days" actions on selected rules
 - **Individual Actions**: Quick enable/disable/edit/remove buttons for single rules
 - **Undo Functionality**: Undo button appears after operations to reverse the last change
 - **New Findings Integration**: Scan results show new findings that can be added as suppressions
 - **Rule Details**: Click rule IDs to view complete suppression information
 - **Status Indicators**: Visual ENABLED (green) and DISABLED (red) status badges
 - **Smart Pagination**: Navigate large suppression rule sets efficiently
+- **Cached Manager**: The web server caches the parsed suppressions file in memory and reloads only when the file's mtime changes. CLI-side or manual edits to the YAML are picked up on the next request.
 
 ### Supported File Types
 
@@ -981,9 +998,9 @@ The web UI supports all file types available in the CLI version:
 
 #### File Size Limits
 
-- Maximum upload: 10MB per file
+- Maximum upload: 100 MB per file (decompression-bomb guard, applied in both `/scan` and the multipart parser)
 <!-- GENAI_DISABLED: - Audio files: 500MB limit (for GenAI transcription) -->
-- Multiple files: No limit on total count
+- Multiple files / folder uploads: No limit on total count
 
 #### Performance
 
@@ -1018,7 +1035,7 @@ The web UI automatically finds an available port. Check the console output for t
 
 #### Large file uploads failing
 
-- Check file size limits (10MB for most files, 500MB for audio)
+- Check file size limits (100 MB per file)
 <!-- GENAI_DISABLED: - Ensure stable internet connection for GenAI features -->
 - Try processing files individually if bulk upload fails
 
