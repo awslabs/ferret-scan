@@ -7,14 +7,17 @@ A simple web interface for the Ferret Scan sensitive data detection tool.
 ## Features
 
 - **File Upload**: Upload single or multiple files directly through the web browser
-- **Drag & Drop**: Drag files directly onto the upload area
+- **Folder Upload**: Drag-and-drop a folder onto the upload zone, or click "Choose Folder" — the browser walks the directory client-side and uploads every file with its relative path. Configured `--exclude` patterns are applied during the walk so excluded directories (`.git`, `node_modules`, etc.) are never uploaded.
+- **Drag & Drop**: Drag files or folders directly onto the upload area
+- **CLI-Equivalent Flags**: `--web` honors `--config`, `--suppression-file`, and `--exclude` so the server uses the same configuration as the CLI
 - **Configurable Scans**: Choose confidence levels and specific detection types
 - **Real-time Results**: View scan results immediately in a clean, organized format
 - **Interactive Statistics**: Click stat cards to filter results by confidence level
 - **Color-coded Results**: High, medium, and low confidence findings are visually distinguished
 - **Sortable Tables**: Click column headers to sort results
 - **Export Options**: Download results as CSV, JSON, YAML, JUnit, or Text
-- **Suppression Management**: Create, edit, enable/disable, and bulk manage suppression rules
+- **Suppression Management**: Create, edit, enable/disable, and bulk manage suppression rules — including bulk "Make Permanent" / "Renew 30 Days" expiration actions
+- **Cached Suppression Manager**: Web server caches the parsed suppressions file in memory and reloads only when the file's mtime changes, so per-request latency does not depend on rule-set size
 - **Detailed Metadata**: View additional information about detected sensitive data
 - **Progress Tracking**: Real-time progress indicators during scanning
 - **Help System**: Built-in documentation and feature explanations
@@ -87,7 +90,7 @@ The web UI supports the same file types as the CLI version:
 - **Local Processing**: Files are processed locally on your machine - no data sent to external servers by default
 - **Temporary Storage**: Files are temporarily stored during scanning and automatically deleted
 - **Memory Scrubbing**: Secure memory handling for sensitive data
-- **Upload Limits**: Maximum file upload size is 50MB
+- **Upload Limits**: Maximum file upload size is 100 MB per file (decompression-bomb guard)
 - **No Data Retention**: Scan results are displayed in browser only, not stored permanently
 - **Audit Trail**: Comprehensive logging for compliance requirements
 <!-- GENAI_DISABLED: When GenAI features are enabled, files may be sent to AWS services (Textract, Transcribe, Comprehend) -->
@@ -101,9 +104,22 @@ To modify the web UI:
    ./bin/ferret-scan --web --port 3000
    ```
 
-2. **Modify the interface**: Edit `internal/web/server.go` to customize the web server or add new features
+2. **Use a custom config / suppressions file**: Web mode honors the same flags as the CLI
+   ```bash
+   ./bin/ferret-scan --web --port 8080 \
+     --config ./team-config.yaml \
+     --suppression-file ./team-suppressions.yaml
+   ```
 
-3. **Add new scan options**: Extend the form in the HTML template and update the scan handler
+3. **Configure folder-walk excludes**: `--exclude` patterns are surfaced to the front-end via `/config-info` and applied during folder drag-drop walks, so excluded directories never get uploaded
+   ```bash
+   ./bin/ferret-scan --web --port 8080 \
+     --exclude '.git,node_modules,dist,target,__pycache__'
+   ```
+
+4. **Modify the interface**: Edit `internal/web/server.go` to customize the web server or add new features
+
+5. **Add new scan options**: Extend the form in the HTML template and update the scan handler
 
 ## Suppression Management
 
@@ -132,9 +148,11 @@ The web UI includes a comprehensive suppression management system:
 - The web UI is integrated into the main `./bin/ferret-scan` binary
 
 **File upload fails**:
-- Check that the file is under 50MB
+
+- Check that the file is under 100 MB
 - Ensure the file type is supported by Ferret Scan
 - Try uploading files one at a time if multiple uploads fail
+- For folder drops: very large directory trees can take a moment to enumerate client-side; the upload zone shows "Reading files…" while the walk is in progress
 
 **Scan takes too long**:
 - Large files or complex documents may take longer to process

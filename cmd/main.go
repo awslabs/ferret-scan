@@ -812,7 +812,7 @@ func main() {
 	// genaiServices := flag.String("genai-services", "all", "Comma-separated list of GenAI services to use: textract, transcribe, comprehend, or 'all' (only used with --enable-genai)")
 	// textractRegion := flag.String("textract-region", "us-east-1", "AWS region for Textract service (only used with --enable-genai)")
 	// transcribeBucket := flag.String("transcribe-bucket", "", "S3 bucket name for Transcribe audio uploads (optional, creates temporary bucket if not specified)")
-	suppressionFile := flag.String("suppression-file", "", "Path to suppression configuration file (default: .ferret-scan-suppressions.yaml)")
+	suppressionFile := flag.String("suppression-file", "", "Path to suppression configuration file (default: $XDG_CONFIG_HOME/ferret-scan/suppressions.yaml on Unix, %APPDATA%\\ferret-scan\\suppressions.yaml on Windows)")
 	generateSuppressions := flag.Bool("generate-suppressions", false, "Generate suppression rules for all findings (disabled by default, can be enabled in YAML)")
 
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
@@ -1025,7 +1025,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if flags.suppressionFile != "" && flags.suppressionFile != ".ferret-scan-suppressions.yaml" {
+		if flags.suppressionFile != "" {
 			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --suppression-file\n")
 			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not perform validation.\n")
 			os.Exit(1)

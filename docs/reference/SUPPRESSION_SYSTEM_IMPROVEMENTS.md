@@ -160,17 +160,28 @@ Detection → Filename Normalization → Suppression → Confidence Filtering �
 - Comprehensive documentation
 - Future-proof architecture
 
+## Shipped (v1.7.0)
+
+### ✅ Performance Optimizations
+
+1. **Hash Indexing**: O(1) `IsSuppressed` lookup via `map[string][]int` keyed on rule hash, rebuilt on load and on every save. 183× faster than the previous linear scan at 50,000 rules. (PR [#50](https://github.com/awslabs/ferret-scan/pull/50))
+2. **Web-mode Manager Caching**: `SuppressionManager` cached on `WebServer` with mtime-based reload; eliminated the per-request YAML re-parse. 2.4× / 2.3× faster on `/scan` and `/suppressions`. (PR [#51](https://github.com/awslabs/ferret-scan/pull/51))
+3. **Bulk Operations**: Bulk enable/disable/delete plus bulk expiration management ("Make Permanent" / "Renew 30 Days") in the Web UI. (PRs [#48](https://github.com/awslabs/ferret-scan/pull/48), [#52](https://github.com/awslabs/ferret-scan/pull/52))
+4. **Concurrency Safety**: `RWMutex` around the hash index + lazy-init guard; concurrent `IsSuppressed` callers are now safe under `-race`.
+5. **YAML Pragma**: `# pragma: allowlist secret` auto-appended to `hash:` lines so the suppressions file doesn't trigger ferret-scan's own scanner.
+
 ## Future Considerations
 
 ### Potential Optimizations
-1. **Hash Indexing**: O(1) lookup for large suppression rule sets
-2. **Rule Caching**: In-memory caching for frequently accessed rules
-3. **Bulk Operations**: Efficient bulk suppression management
+
+- **Pattern Suppressions**: Support for regex-based suppression patterns
+- **Hot-reload via fsnotify**: Replace mtime polling with inotify/kqueue for instant pickup of external edits
 
 ### Monitoring Recommendations
-1. **Suppression Effectiveness**: Track suppression hit rates
-2. **Rule Management**: Monitor rule creation and expiration
-3. **Performance Metrics**: Hash generation and lookup times
+
+- **Suppression Effectiveness**: Track suppression hit rates
+- **Rule Management**: Monitor rule creation and expiration
+- **Performance Metrics**: Hash generation and lookup times
 
 ## Conclusion
 

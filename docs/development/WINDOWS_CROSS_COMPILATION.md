@@ -467,14 +467,14 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
     - name: Set up Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v6
       with:
-        go-version: 1.21
+        go-version-file: .go-version
 
     - name: Get version
       id: version
@@ -518,7 +518,7 @@ jobs:
         wine ferret-scan-${{ matrix.name }}.exe --version || echo "Wine test completed"
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ferret-scan-${{ matrix.name }}
         path: |
