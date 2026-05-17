@@ -48,22 +48,22 @@ echo "Build date: $BUILD_DATE"
 LDFLAGS="-s -w -X 'ferret-scan/internal/version.Version=$VERSION' -X 'ferret-scan/internal/version.GitCommit=$GIT_COMMIT' -X 'ferret-scan/internal/version.BuildDate=$BUILD_DATE'"
 
 # Linux AMD64
-GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-linux-amd64" ./cmd/main.go
+GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-linux-amd64" ./cmd
 
 # Linux ARM64
-GOOS=linux GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-linux-arm64" ./cmd/main.go
+GOOS=linux GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-linux-arm64" ./cmd
 
 # macOS AMD64
-GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-darwin-amd64" ./cmd/main.go
+GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-darwin-amd64" ./cmd
 
 # macOS ARM64
-GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-darwin-arm64" ./cmd/main.go
+GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-darwin-arm64" ./cmd
 
 # Windows AMD64
-GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-windows-amd64.exe" ./cmd/main.go
+GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-windows-amd64.exe" ./cmd
 
 # Windows ARM64
-GOOS=windows GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-windows-arm64.exe" ./cmd/main.go
+GOOS=windows GOARCH=arm64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-windows-arm64.exe" ./cmd
 
 # Return to python-package directory
 cd "$SCRIPT_DIR"

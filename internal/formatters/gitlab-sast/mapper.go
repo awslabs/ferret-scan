@@ -74,9 +74,14 @@ func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match) (*G
 	// Create enhanced description with context
 	description := m.generateDescription(match)
 
-	// Create location information
+	// Create location information. Virtual matches (stdin, in-memory) keep
+	// their synthetic label as-is; only filesystem paths get normalized.
+	locationFile := match.Filename
+	if !match.IsVirtual() {
+		locationFile = m.normalizeFilePath(match.Filename)
+	}
 	location := GitLabLocation{
-		File:      m.normalizeFilePath(match.Filename),
+		File:      locationFile,
 		StartLine: match.LineNumber,
 		EndLine:   match.LineNumber, // Single line for now
 	}

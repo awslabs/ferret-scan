@@ -19,6 +19,7 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - [Web UI Guide](user-guides/README-WebUI.md) - Web interface documentation
 - [🆕 Enhanced Metadata Guide](user-guides/README-Enhanced-Metadata.md) - Comprehensive guide to enhanced metadata validation
 - [Preprocess-Only Mode](user-guides/README-Preprocess-Only.md) - Text extraction without validation
+- [🆕 Stdin / Streaming Gateway](user-guides/README-Stdin.md) - Pipe content via stdin and use as a streaming redaction gateway (lambda / CI integration)
 - [Suppression System](user-guides/README-Suppressions.md) - Managing false positives
 - [Redaction Guide](user-guides/README-Redaction.md) - Redacting sensitive data with simple, format-preserving, and synthetic strategies
 - [Suppression Architecture](suppression-system.md) - Technical suppression system details
@@ -72,6 +73,7 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - **🐳 Docker**: [Docker Guide](user-guides/README-Docker.md)
 - **🌐 Web UI**: [Web UI Guide](user-guides/README-WebUI.md)
 - **🆕 Enhanced Metadata**: [Enhanced Metadata Guide](user-guides/README-Enhanced-Metadata.md)
+- **🆕 Stdin / Gateway**: [Stdin Guide](user-guides/README-Stdin.md)
 - **🔒 Redaction**: [Redaction Guide](user-guides/README-Redaction.md)
 <!-- GENAI_DISABLED: - **🤖 AI Features**: [GenAI Integration](development/genai_integration.md) -->
 - **🧪 Testing**: [GitLab CI Testing Tracker](testing/GITLAB_CI_TESTING_TRACKER.md)
