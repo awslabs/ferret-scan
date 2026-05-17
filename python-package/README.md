@@ -166,7 +166,9 @@ All features of the native ferret-scan binary are available:
 
 The Python package supports all command-line options of the native binary:
 
-- `--file`: Input file, directory, or glob pattern
+- `--file`: Input file, directory, or glob pattern. Use `-` to read from standard input.
+- `--stdin`: Read content from standard input (treated as plain text)
+- `--stdin-name`: Synthetic label for findings when scanning stdin (default: `<stdin>`)
 - `--format`: Output format (text, json, csv, yaml, junit, gitlab-sast)
 - `--confidence`: Confidence levels (high, medium, low, combinations)
 - `--checks`: Specific checks to run (CREDIT_CARD, SECRETS, SSN, etc.)

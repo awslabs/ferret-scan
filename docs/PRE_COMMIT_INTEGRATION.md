@@ -43,7 +43,7 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: go run cmd/main.go --config ferret.yaml --pre-commit-mode
+        entry: go run ./cmd --config ferret.yaml --pre-commit-mode
         language: system
         files: \.(txt|py|js|ts|go|java|json|yaml|yml|env|conf)$
         pass_filenames: true
@@ -394,7 +394,7 @@ make build
 entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode
 
 # Or use go run as fallback:
-entry: go run cmd/main.go --pre-commit-mode
+entry: go run ./cmd --pre-commit-mode
 ```
 
 **2. "Too many false positives"**

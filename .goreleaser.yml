@@ -10,7 +10,7 @@ before:
 
 builds:
   - id: ferret-scan-cli
-    main: ./cmd/main.go
+    main: ./cmd
     binary: ferret-scan
     env:
       - CGO_ENABLED=0

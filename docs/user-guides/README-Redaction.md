@@ -2,7 +2,10 @@
 
 [← Back to Documentation Index](../README.md)
 
-Ferret-scan can redact sensitive data in-place, writing clean copies of your files to an output directory while leaving originals untouched.
+Ferret-scan can redact sensitive data in two modes:
+
+- **File mode**: writes clean copies of files to an output directory while leaving originals untouched.
+- **Streaming mode** (`--stdin --enable-redaction`): pipes redacted content through stdout in real time. See the [Stdin Guide](README-Stdin.md) for the streaming gateway pattern (lambda, CI, shell pipelines).
 
 ## Quick Start
 
@@ -18,6 +21,9 @@ ferret-scan --enable-redaction --redaction-output-dir ./clean-copy /path/to/scan
 
 # Save a compliance audit log
 ferret-scan --enable-redaction --redaction-audit-log ./audit.json /path/to/scan
+
+# Streaming redaction via stdin (no temp file needed)
+cat sensitive.log | ferret-scan --stdin --enable-redaction > clean.log
 ```
 
 ## Strategies

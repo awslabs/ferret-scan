@@ -4,14 +4,17 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"ferret-scan/internal/config"
 	"ferret-scan/internal/detector"
 	"ferret-scan/internal/observability"
 	"ferret-scan/internal/parallel"
+	"ferret-scan/internal/preprocessors"
 	"ferret-scan/internal/router"
 	"ferret-scan/internal/suppressions"
 	"ferret-scan/internal/validators"
@@ -142,6 +145,146 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		SuppressedMatches: suppressed,
 		SuppressedCount:   len(suppressed),
 		ProcessedFiles:    stats.ProcessedFiles,
+	}, nil
+}
+
+// ContentScanConfig holds configuration for an in-memory content scan.
+// It deliberately omits FilePath/Recursive/Redaction settings since virtual
+// sources (stdin, in-memory buffers) have no filesystem location to write
+// redacted output to.
+type ContentScanConfig struct {
+	// VirtualPath is the synthetic label used as Match.Filename and for
+	// suppression keying. Conventionally "<stdin>" for stdin input.
+	VirtualPath string
+
+	// Format names the source format for display purposes (e.g. "Plain Text").
+	// Empty defaults to "Plain Text".
+	Format string
+
+	// Checks selects which validators to run; same semantics as ScanConfig.Checks.
+	Checks []string
+
+	Debug   bool
+	Verbose bool
+	Config  *config.Config
+	Profile *config.Profile
+
+	// SuppressionManager, when non-nil, is applied to matches before returning.
+	SuppressionManager *suppressions.SuppressionManager
+}
+
+// ScanContent scans an in-memory content buffer using the same validator
+// pipeline as ScanFile, bypassing the FileRouter (which is path-driven).
+// Every produced match is stamped with detector.SourceKindVirtual and its
+// Filename is set to cfg.VirtualPath.
+//
+// This is the entry point for stdin and any future in-process callers
+// (e.g. lambda handlers, gRPC endpoints) that already have content in memory.
+func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
+	if cfg.VirtualPath == "" {
+		cfg.VirtualPath = "<stdin>"
+	}
+	if cfg.Format == "" {
+		cfg.Format = "Plain Text"
+	}
+
+	// Build observer (mirrors ScanFile)
+	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, os.Stderr)
+	if cfg.Debug {
+		debugObs := observability.NewDebugObserver(os.Stderr)
+		observer = debugObs.StandardObserver
+		observer.DebugObserver = debugObs
+	}
+
+	// Build the filtered validator set.
+	enabledChecks := ParseChecksToRun(cfg.Checks)
+	standardValidators := BuildValidatorSet(enabledChecks, cfg.Config, cfg.Profile)
+
+	// In-memory content cannot drive metadata extraction (no filesystem path
+	// for the metadata extractors to read), so omit the metadata validator.
+	// Callers that need it can scan a file instead.
+	delete(standardValidators, "METADATA")
+
+	// Set up the enhanced manager + dual-path bridge so contextual analysis
+	// behaves identically to ScanFile. The dual-path helper is configured
+	// without a FileRouter; for plaintext (ProcessorType="plaintext") it
+	// never reaches the metadata extraction path.
+	evCfg := validators.DefaultEnhancedValidatorConfig()
+	evCfg.EnableRealTimeMetrics = cfg.Debug
+	enhancedManager := validators.NewEnhancedValidatorManager(evCfg)
+
+	dualPathHelper := validators.NewValidatorIntegrationHelper(observer)
+	if err := dualPathHelper.SetupDualPathValidation(standardValidators); err != nil {
+		return nil, fmt.Errorf("failed to setup dual path validation: %w", err)
+	}
+	enhancedManager.SetDualPathHelper(dualPathHelper)
+
+	for name, validator := range standardValidators {
+		bridge := validators.NewValidatorBridge(name, validator)
+		if err := enhancedManager.RegisterValidator(name, bridge); err != nil {
+			return nil, fmt.Errorf("failed to register enhanced validator %s: %w", name, err)
+		}
+	}
+	enhancedWrapper := validators.NewEnhancedManagerWrapper(enhancedManager)
+	validatorsList := []detector.Validator{enhancedWrapper}
+
+	// Synthesize ProcessedContent. Position tracking is not enabled for
+	// virtual content (no source document to map back to).
+	processed := &preprocessors.ProcessedContent{
+		OriginalPath:            cfg.VirtualPath,
+		Filename:                cfg.VirtualPath,
+		Text:                    content,
+		Format:                  cfg.Format,
+		ProcessorType:           "plaintext",
+		Success:                 true,
+		PositionTrackingEnabled: false,
+	}
+
+	// Run validators with no resilience strategy — in-memory content has no
+	// transient failure mode worth retrying for.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	matches, validationErr := parallel.RunValidators(ctx, validatorsList, processed, nil)
+	if validationErr != nil && cfg.Debug {
+		fmt.Fprintf(os.Stderr, "validator error during ScanContent: %v\n", validationErr)
+	}
+
+	// Stamp every match as virtual and ensure the filename is the synthetic
+	// label (some validators may carry the OriginalPath through unchanged,
+	// which is what we want; this normalizes the rest).
+	for i := range matches {
+		matches[i].SourceKind = detector.SourceKindVirtual
+		if matches[i].Filename == "" {
+			matches[i].Filename = cfg.VirtualPath
+		}
+	}
+
+	// Apply suppressions if a manager was provided (mirrors ScanFile).
+	var unsuppressed []detector.Match
+	var suppressed []detector.SuppressedMatch
+	if cfg.SuppressionManager != nil {
+		for _, match := range matches {
+			if isSuppressed, rule := cfg.SuppressionManager.IsSuppressed(match); isSuppressed {
+				suppressed = append(suppressed, detector.SuppressedMatch{
+					Match:        match,
+					SuppressedBy: rule.ID,
+					RuleReason:   rule.Reason,
+					ExpiresAt:    rule.ExpiresAt,
+				})
+			} else {
+				unsuppressed = append(unsuppressed, match)
+			}
+		}
+	} else {
+		unsuppressed = matches
+	}
+
+	return &ScanResult{
+		Matches:           unsuppressed,
+		SuppressedMatches: suppressed,
+		SuppressedCount:   len(suppressed),
+		ProcessedFiles:    1,
 	}, nil
 }
 

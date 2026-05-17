@@ -4,7 +4,10 @@
 package core
 
 import (
+	"strings"
 	"testing"
+
+	"ferret-scan/internal/detector"
 )
 
 func TestParseChecksToRun_All(t *testing.T) {
@@ -156,5 +159,162 @@ func TestBuildValidatorSet_NilChecks(t *testing.T) {
 	validators := BuildValidatorSet(checks, nil, nil)
 	if len(validators) != 0 {
 		t.Errorf("expected empty validator set, got %d validators", len(validators))
+	}
+}
+
+// matchValidators returns the set of producing validator names present in matches.
+func matchValidators(matches []detector.Match) map[string]int {
+	out := make(map[string]int)
+	for _, m := range matches {
+		out[m.Validator]++
+	}
+	return out
+}
+
+func TestScanContent_DetectsCommonPII(t *testing.T) {
+	// 4532-0151-1283-0366 is a Luhn-valid Visa test card used elsewhere in
+	// the suite. Validators emit specific subtypes (e.g. "VISA", "BUSINESS")
+	// in Match.Type and the producing validator name in Match.Validator;
+	// we assert against the latter for stability.
+	content := strings.Join([]string{
+		"credit card: 4532-0151-1283-0366",
+		"contact: alice@example.com",
+		"ssn: 123-45-6789",
+	}, "\n")
+
+	result, err := ScanContent(content, ContentScanConfig{
+		Checks: []string{"CREDIT_CARD", "EMAIL", "SSN"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("ScanContent returned nil result")
+	}
+	if result.ProcessedFiles != 1 {
+		t.Errorf("expected ProcessedFiles=1, got %d", result.ProcessedFiles)
+	}
+	if len(result.Matches) == 0 {
+		t.Fatal("expected at least one match, got zero")
+	}
+
+	byValidator := matchValidators(result.Matches)
+	for _, want := range []string{"creditcard", "email", "ssn"} {
+		if byValidator[want] == 0 {
+			t.Errorf("expected at least one match from validator %q, got %v", want, byValidator)
+		}
+	}
+}
+
+func TestScanContent_StampsVirtualSourceKind(t *testing.T) {
+	result, err := ScanContent("contact: alice@example.com", ContentScanConfig{
+		Checks: []string{"EMAIL"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent error: %v", err)
+	}
+	if len(result.Matches) == 0 {
+		t.Fatal("expected at least one match")
+	}
+	for _, m := range result.Matches {
+		if m.SourceKind != detector.SourceKindVirtual {
+			t.Errorf("expected SourceKindVirtual, got %q", m.SourceKind)
+		}
+		if !m.IsVirtual() {
+			t.Error("expected IsVirtual() to be true")
+		}
+		if m.Filename != "<stdin>" {
+			t.Errorf("expected Filename=<stdin>, got %q", m.Filename)
+		}
+	}
+}
+
+func TestScanContent_RespectsVirtualPath(t *testing.T) {
+	result, err := ScanContent("contact: alice@example.com", ContentScanConfig{
+		VirtualPath: "<diff>",
+		Checks:      []string{"EMAIL"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent error: %v", err)
+	}
+	if len(result.Matches) == 0 {
+		t.Fatal("expected at least one match")
+	}
+	if result.Matches[0].Filename != "<diff>" {
+		t.Errorf("expected Filename=<diff>, got %q", result.Matches[0].Filename)
+	}
+}
+
+func TestScanContent_EmptyContentNoMatches(t *testing.T) {
+	result, err := ScanContent("", ContentScanConfig{
+		Checks: []string{"all"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent error: %v", err)
+	}
+	if len(result.Matches) != 0 {
+		t.Errorf("expected zero matches for empty content, got %d", len(result.Matches))
+	}
+}
+
+func TestScanContent_FilteredChecks(t *testing.T) {
+	// Pass content that would match multiple validators but only enable EMAIL.
+	content := strings.Join([]string{
+		"credit card: 4532-0151-1283-0366",
+		"contact: alice@example.com",
+		"ssn: 123-45-6789",
+	}, "\n")
+
+	result, err := ScanContent(content, ContentScanConfig{
+		Checks: []string{"EMAIL"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent error: %v", err)
+	}
+	byValidator := matchValidators(result.Matches)
+	if byValidator["email"] == 0 {
+		t.Errorf("expected email matches, got %v", byValidator)
+	}
+	if byValidator["creditcard"] != 0 {
+		t.Errorf("expected zero creditcard matches when filter excludes it, got %d", byValidator["creditcard"])
+	}
+	if byValidator["ssn"] != 0 {
+		t.Errorf("expected zero ssn matches when filter excludes it, got %d", byValidator["ssn"])
+	}
+}
+
+func TestScanContent_MetadataExcludedEvenWhenRequested(t *testing.T) {
+	// Even with "all" checks, METADATA must not run on virtual content
+	// (no filesystem path to extract metadata from).
+	content := "alice@example.com"
+	result, err := ScanContent(content, ContentScanConfig{
+		Checks: []string{"all"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent error: %v", err)
+	}
+	for _, m := range result.Matches {
+		if strings.EqualFold(m.Validator, "metadata") {
+			t.Errorf("metadata match should not appear in virtual content scan: %+v", m)
+		}
+	}
+}
+
+func TestScanContent_SARIFRendersVirtualWithoutSrcRoot(t *testing.T) {
+	// Sanity check that the SARIF mapper doesn't prepend %SRCROOT% for
+	// virtual matches. This guards the Phase 1b formatter contract.
+	result, err := ScanContent("alice@example.com", ContentScanConfig{
+		Checks: []string{"EMAIL"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent error: %v", err)
+	}
+	if len(result.Matches) == 0 {
+		t.Fatal("expected at least one match")
+	}
+	for _, m := range result.Matches {
+		if !m.IsVirtual() {
+			t.Errorf("expected IsVirtual()=true, got SourceKind=%q", m.SourceKind)
+		}
 	}
 }

@@ -128,7 +128,7 @@ if [ $TOTAL_CHANGES -gt 0 ]; then
     echo ""
     echo "Next steps:"
     echo "1. Test the restored functionality:"
-    echo "   go build -o ferret-scan cmd/main.go"
+    echo "   go build -o ferret-scan ./cmd"
     echo "   ./ferret-scan --help | grep genai"
     echo ""
     echo "2. Verify GenAI flags are available:"

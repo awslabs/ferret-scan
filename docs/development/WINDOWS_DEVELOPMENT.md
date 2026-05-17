@@ -194,17 +194,17 @@ Create `.vscode/launch.json`:
 ### Local Development Build
 ```powershell
 # Build for current platform
-go build -o ferret-scan.exe ./cmd/main.go
+go build -o ferret-scan.exe ./cmd
 
 # Build with debug information
-go build -gcflags="all=-N -l" -o ferret-scan-debug.exe ./cmd/main.go
+go build -gcflags="all=-N -l" -o ferret-scan-debug.exe ./cmd
 
 # Build with version information
 $Version = "v1.0.0-dev"
 $Commit = git rev-parse HEAD
 $BuildDate = Get-Date -Format "2006-01-02T15:04:05Z"
 
-go build -ldflags "-X ferret-scan/internal/version.Version=$Version -X ferret-scan/internal/version.GitCommit=$Commit -X ferret-scan/internal/version.BuildDate=$BuildDate" -o ferret-scan.exe ./cmd/main.go
+go build -ldflags "-X ferret-scan/internal/version.Version=$Version -X ferret-scan/internal/version.GitCommit=$Commit -X ferret-scan/internal/version.BuildDate=$BuildDate" -o ferret-scan.exe ./cmd
 ```
 
 ### Cross-Platform Building
@@ -212,22 +212,22 @@ go build -ldflags "-X ferret-scan/internal/version.Version=$Version -X ferret-sc
 # Build for different Windows architectures
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
-go build -o ferret-scan-windows-amd64.exe ./cmd/main.go
+go build -o ferret-scan-windows-amd64.exe ./cmd
 
 $env:GOARCH = "arm64"
-go build -o ferret-scan-windows-arm64.exe ./cmd/main.go
+go build -o ferret-scan-windows-arm64.exe ./cmd
 
 $env:GOARCH = "386"
-go build -o ferret-scan-windows-386.exe ./cmd/main.go
+go build -o ferret-scan-windows-386.exe ./cmd
 
 # Build for other platforms from Windows
 $env:GOOS = "linux"
 $env:GOARCH = "amd64"
-go build -o ferret-scan-linux-amd64 ./cmd/main.go
+go build -o ferret-scan-linux-amd64 ./cmd
 
 $env:GOOS = "darwin"
 $env:GOARCH = "amd64"
-go build -o ferret-scan-darwin-amd64 ./cmd/main.go
+go build -o ferret-scan-darwin-amd64 ./cmd
 
 # Reset environment
 Remove-Item Env:\GOOS
@@ -280,7 +280,7 @@ if ($Race) {
 }
 
 # Build command
-$BuildArgs = @("build") + $BuildFlags + @("-ldflags", ($LdFlags -join " "), "-o", $Output, "./cmd/main.go")
+$BuildArgs = @("build") + $BuildFlags + @("-ldflags", ($LdFlags -join " "), "-o", $Output, "./cmd")
 
 Write-Host "Running: go $($BuildArgs -join ' ')" -ForegroundColor Cyan
 & go @BuildArgs
@@ -387,7 +387,7 @@ $env:FERRET_DEBUG_PATHS = "1"
 go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Debug the application
-dlv debug ./cmd/main.go -- scan . --debug
+dlv debug ./cmd -- scan . --debug
 
 # Debug tests
 dlv test ./internal/platform/ -- -test.run TestWindows
@@ -684,7 +684,7 @@ func TestWindowsIntegration(t *testing.T) {
 ### Profiling on Windows
 ```powershell
 # Build with profiling enabled
-go build -o ferret-scan-profile.exe ./cmd/main.go
+go build -o ferret-scan-profile.exe ./cmd
 
 # Run with CPU profiling
 .\ferret-scan-profile.exe scan . --cpuprofile=cpu.prof
@@ -759,7 +759,7 @@ jobs:
       run: go test -v -tags windows ./tests/integration/
 
     - name: Build Windows binary
-      run: go build -o ferret-scan.exe ./cmd/main.go
+      run: go build -o ferret-scan.exe ./cmd
 
     - name: Test Windows binary
       run: |
@@ -792,7 +792,7 @@ function Invoke-LocalCI {
     go test -v -tags windows ./tests/integration/
 
     # Build binary
-    go build -o ferret-scan.exe ./cmd/main.go
+    go build -o ferret-scan.exe ./cmd
 
     # Test binary
     .\ferret-scan.exe --version
@@ -915,7 +915,7 @@ go clean -testcache
 
 # CGO issues (if using CGO)
 $env:CGO_ENABLED = "0"
-go build ./cmd/main.go
+go build ./cmd
 
 # Path issues
 $env:GOPATH = "C:\Go"
@@ -925,7 +925,7 @@ $env:PATH += ";C:\Go\bin"
 ### Debugging Build Problems
 ```powershell
 # Verbose build output
-go build -v -x ./cmd/main.go
+go build -v -x ./cmd
 
 # Check Go environment
 go env

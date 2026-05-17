@@ -20,6 +20,25 @@ sequenceDiagram
 
     User->>CLI: ferret-scan --file input.pdf --format json --enable-redaction
 
+    Note over CLI: Alternative Flow for Stdin / Streaming Mode
+    alt Stdin Mode (--stdin or --file -)
+        User->>CLI: cat input.txt | ferret-scan --stdin --enable-redaction
+        CLI->>Config: LoadConfig(configPath)
+        Config-->>CLI: Configuration with defaults
+        Note over CLI: Skips getFilesToProcess and FileRouter entirely
+        CLI->>CLI: Read stdin (≤100MB), strip BOM, validate UTF-8, reject NUL bytes
+        CLI->>CLI: core.ScanContent(content, ContentScanConfig)
+        Note over CLI: Synthesizes ProcessedContent in memory<br/>METADATA validator excluded (no filesystem)
+        CLI->>EnhancedMgr: parallel.RunValidators(ctx, validators, content, nil)
+        EnhancedMgr-->>CLI: Findings with SourceKind=Virtual
+        opt Redaction enabled
+            CLI->>CLI: plaintext.RedactString(content, matches, strategy)
+            Note over CLI: Pure in-memory redactText() — same code path as RedactDocument
+            CLI-->>User: Redacted content → stdout, findings → stderr (or --output)
+        end
+        CLI-->>User: Findings (formatter output) and exit code
+    end
+
     Note over CLI: Alternative Flow for Preprocess-Only Mode
     alt Preprocess-Only Mode (--preprocess-only or -p)
         User->>CLI: ferret-scan --file document.pdf --preprocess-only

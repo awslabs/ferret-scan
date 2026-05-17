@@ -195,19 +195,25 @@ make install-config
 If you prefer not to use the Makefile, you can build manually:
 
 ```bash
-go build -ldflags="-s -w" -o ferret-scan cmd/main.go
+go build -ldflags="-s -w" -o ferret-scan ./cmd
 ```
 
 ## Usage
 
 ```bash
 ./ferret-scan --file <path-to-file> [options]
+
+# Or pipe content via stdin (treated as plain text):
+cat sample.txt | ./ferret-scan --stdin
+echo "secret: 4532-0151-1283-0366" | ./ferret-scan --file -
 ```
 
 ### Command Line Options
 
 #### Core Options
-- `--file`: Path to the input file, directory, or glob pattern (e.g., *.pdf) (required for CLI mode)
+- `--file`: Path to the input file, directory, or glob pattern (e.g., *.pdf). Use `-` to read from standard input. Required for CLI mode unless `--stdin` is set.
+- `--stdin`: Read content to scan from standard input (treated as plain text). Mutually exclusive with `--file <path>`, positional file args, and `--web`. Pair with `--enable-redaction` to act as a streaming redaction gateway (redacted content → stdout, findings → stderr or `--output <file>`).
+- `--stdin-name`: Synthetic label used as the filename in findings when scanning stdin (default: `<stdin>`). Useful for stable suppression keys when piping the same content repeatedly (e.g. `--stdin-name "<git-diff>"`).
 - `--config`: Path to configuration file (YAML)
 - `--profile`: Profile name to use from config file
 - `--list-profiles`: List available profiles in config file
@@ -325,6 +331,73 @@ Use a specific profile from the configuration file:
 ```bash
 ./ferret-scan --file sample.txt --config ferret.yaml --profile thorough
 ```
+
+### Reading from stdin
+
+Pipe content directly without writing it to a file:
+
+```bash
+# Scan a git diff before committing
+git diff | ./ferret-scan --stdin --pre-commit-mode
+
+# Scan command output for accidentally exposed credentials
+kubectl get secrets -o yaml | ./ferret-scan --stdin --confidence high
+
+# JSON output for scripted use
+echo "card 4532-0151-1283-0366" | ./ferret-scan --stdin --format json
+
+# POSIX-style alias: --file - is equivalent to --stdin
+cat sample.txt | ./ferret-scan --file -
+
+# Custom label for stable suppression keys across runs
+git diff | ./ferret-scan --stdin --stdin-name "<git-diff>" --suppression-file ./.ferret-stdin.yaml
+```
+
+**Limitations:**
+
+- stdin content is treated as plain text. To scan binary documents (PDF, DOCX, images, etc.), write them to a file and use `--file`.
+- Maximum stdin size: 100 MB.
+- `--respect-gitignore` and `--exclude` are silently ignored with stdin (no filesystem to walk).
+- `--redaction-audit-log` is not supported with stdin (requires on-disk index management). Scan a file if you need an audit log.
+
+### Streaming redaction (gateway pattern)
+
+When `--enable-redaction` is combined with `--stdin`, ferret-scan acts as a streaming redaction gateway: redacted content is written to stdout while findings go to stderr (or to `--output <file>` if you want a structured findings report).
+
+**Canonical pipe shape** — keeps redacted content and findings cleanly separated:
+
+```bash
+echo "card 5500-0000-0000-0004 email alice@example.com" \
+  | ferret-scan --stdin --enable-redaction --format json \
+    2> findings.json > clean.txt
+```
+
+`clean.txt` contains only the redacted bytes; `findings.json` parses cleanly as JSON. The same pattern works for any structured format (`json`, `yaml`, `sarif`, `gitlab-sast`, `junit`).
+
+> **Note:** When findings stream to stderr alongside redacted content on stdout (i.e., no `--output` is set), human-readable progress lines like "Scan complete: ..." are suppressed so the findings stream stays parseable end-to-end. With `--output <file>`, prose lines on stderr are restored — the findings document is going to a file, so stderr is free to carry progress messages.
+>
+> **Interactive use:** When stdout is a terminal (you ran the command without redirecting), the full findings document is replaced with a one-line hint pointing at the canonical pipe shape. This matches the `git diff` / `jq` convention of adapting output to the consumer. Pipe stdout (or set `--output`) to capture full findings.
+
+```bash
+# Pipe a log through ferret-scan and capture only the cleansed text
+cat sensitive.log | ./ferret-scan --stdin --enable-redaction > clean.log
+
+# Compose with other tools — the redacted bytes flow naturally through the pipe
+git diff | ./ferret-scan --stdin --enable-redaction --redaction-strategy synthetic | grep -v password
+
+# Capture findings as JSON while still streaming redacted content
+cat input.txt | ./ferret-scan --stdin --enable-redaction \
+  --redaction-strategy format_preserving \
+  --format json --output findings.json > clean.txt
+```
+
+All three plaintext redaction strategies are supported on stdin:
+
+- `simple` — replaces matches with `[TYPE-REDACTED]` placeholders
+- `format_preserving` — masks values while keeping length and shape (e.g. `4532-****-****-0366`)
+- `synthetic` — generates realistic-looking fake data of the same type
+
+Suppressed matches are passed through unmodified — a suppression rule is an explicit "this is fine" signal that overrides redaction.
 
 ### File Exclusion Examples
 

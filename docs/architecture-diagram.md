@@ -22,13 +22,20 @@ This document provides an accurate architectural overview of the ferret-scan app
 **Purpose**: Handles all input sources and resolves final configuration values.
 
 **Input**: Command line arguments, configuration files, profiles, suppression rules
-**Output**: Resolved configuration and file paths for processing
+
+**Input sources** (one of):
+- **File-based**: One or more file paths, directory paths, or glob patterns supplied via `--file` and/or positional args. Goes through file discovery, the file router, and the parallel worker pool.
+- **Streaming (stdin)**: Content piped on standard input via `--stdin` (or `--file -`). Bypasses file discovery and the file router entirely — content is treated as plain text and routed directly to the in-memory `core.ScanContent` entry point. Use for `git diff | ferret-scan --stdin`, lambda redaction gateways, and other in-process callers.
+- **Web upload**: Files posted to the embedded web server (`--web`). The server uses `core.ScanFile` for each upload.
+
+**Output**: Resolved configuration and either file paths (file mode) or an in-memory content buffer (stdin mode) for processing
 
 ```mermaid
 flowchart TD
     %% Inputs
     InputFiles["📁 Input Files<br/>Files, Directories, Glob Patterns"]
-    CLIArgs["⚙️ CLI Arguments<br/>--file, --format, --checks, etc."]
+    StdinStream["📥 Stdin Stream<br/>--stdin or --file -<br/>Plain text only, ≤100MB"]
+    CLIArgs["⚙️ CLI Arguments<br/>--file, --stdin, --format, --checks, etc."]
     ConfigFile["📋 Configuration File<br/>YAML Config with defaults"]
     Profiles["👤 Configuration Profiles<br/>Named configuration sets"]
     SuppressionRules["🚫 Suppression Rules<br/>$XDG_CONFIG_HOME/ferret-scan/suppressions.yaml<br/>(or %APPDATA% on Windows)"]
@@ -47,10 +54,12 @@ flowchart TD
 
     ConfigResolver --> FinalConfig
     InputFiles --> FileList
+    StdinStream --> ContentBuffer["💬 In-Memory Buffer<br/>core.ScanContent()<br/>Bypasses file router"]
 
     %% Outputs to next stage
     FinalConfig -.-> FileDiscovery("📤 To File Discovery<br/>& Filtering")
     FileList -.-> FileDiscovery
+    ContentBuffer -.-> ParallelProcessing("📤 To Validators<br/>(direct, no router)")
     SuppressionRules -.-> ResultsProcessing("📤 To Results<br/>Processing")
 
     %% Styling
@@ -58,8 +67,8 @@ flowchart TD
     classDef processing fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef output fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
 
-    class InputFiles,CLIArgs,ConfigFile,Profiles,SuppressionRules input
-    class ConfigResolver processing
+    class InputFiles,StdinStream,CLIArgs,ConfigFile,Profiles,SuppressionRules input
+    class ConfigResolver,ContentBuffer processing
     class FinalConfig,FileList output
 ```
 
@@ -515,6 +524,65 @@ flowchart LR
 
     class Input,Discovery,Processing,Validation,Results stage
 ```
+
+## 7. Streaming / Stdin Subsystem
+
+**Purpose**: Provides an in-memory scan and redaction path for content that doesn't live on the filesystem (stdin pipes, lambda invocations, gRPC handlers, etc.).
+
+**Input**: A content buffer (string or bytes) plus a synthetic label.
+**Output**: Findings (with `Match.SourceKind = SourceKindVirtual`) and, when redaction is enabled, a redacted content string.
+
+```mermaid
+flowchart TD
+    %% Inputs
+    StdinPipe["📥 Stdin Pipe<br/>echo / cat / git diff / curl"]
+    LambdaCaller["λ Lambda / In-Process Caller<br/>Direct API call"]
+
+    %% Stdin entry
+    CLIBranch["⚙️ CLI: runStdinScan()<br/>cmd/stdin.go<br/>• BOM strip<br/>• UTF-8 sanitize<br/>• NUL-byte rejection<br/>• 100MB cap"]
+
+    %% Direct entry
+    ScanContent["🧠 core.ScanContent()<br/>internal/core/scanner.go<br/>• Synthesizes ProcessedContent<br/>• Bypasses FileRouter<br/>• Excludes METADATA validator"]
+
+    %% Validator runner (shared)
+    RunValidators["🔁 parallel.RunValidators()<br/>Same validator pipeline as file mode<br/>nil retry strategy = direct invocation"]
+
+    %% Redaction branch
+    RedactString["✂️ plaintext.RedactString()<br/>internal/redactors/plaintext/<br/>Pure in-memory redactText()"]
+
+    %% Outputs
+    Findings["📋 Findings<br/>SourceKind = Virtual<br/>Filename = &lt;stdin&gt; or custom label"]
+    RedactedContent["🧹 Redacted Content<br/>Stdout (default) or<br/>caller's return value"]
+
+    %% Flow
+    StdinPipe --> CLIBranch
+    CLIBranch --> ScanContent
+    LambdaCaller --> ScanContent
+    ScanContent --> RunValidators
+    RunValidators --> Findings
+    Findings -.->|--enable-redaction| RedactString
+    RedactString --> RedactedContent
+
+    %% Outputs
+    Findings -.-> Formatters("📤 To Output<br/>Formatters")
+
+    %% Styling
+    classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef processing fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef output fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class StdinPipe,LambdaCaller input
+    class CLIBranch,ScanContent,RunValidators,RedactString processing
+    class Findings,RedactedContent output
+```
+
+**Key properties**:
+
+- The streaming path **shares the same validator pipeline** as file mode via `parallel.RunValidators` — extracted from the worker pool specifically so file and stdin modes use a single, consistent validator implementation.
+- Output is split by Unix convention: redacted content streams to stdout, findings go to stderr (or to `--output <file>` if set). This makes ferret-scan compose cleanly with shell pipes and lambda runtimes.
+- The METADATA validator is omitted because virtual content has no filesystem path for metadata extractors to read; all other validators run as usual.
+- Suppressed matches pass through unredacted — a suppression rule is an explicit "this is fine" override.
+- Lambda / IPC callers can invoke `core.ScanContent` and `plaintext.RedactString` directly, with no CLI process spawning. Both functions are pure in-memory and have no filesystem dependencies.
 
 ## Architecture Narrative
 
