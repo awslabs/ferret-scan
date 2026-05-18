@@ -140,7 +140,7 @@ ion After Restoration
 
 ```bash
 # Build the application
-go build -o ferret-scan cmd/main.go
+go build -o ferret-scan ./cmd
 
 # Verify GenAI flags are available
 ./ferret-scan --help | grep -i genai

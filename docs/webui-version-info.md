@@ -51,7 +51,7 @@ Returns health status with complete build information:
 
 ### Building with Version Information
 - **Correct**: `make build` - Injects git commit and build timestamp into single executable
-- **Incorrect**: `go build cmd/main.go` - Results in "unknown" values
+- **Incorrect**: `go build ./cmd` without `-ldflags` - Results in "unknown" values
 - **Production**: `make build-release VERSION=x.y.z` - Full version info
 
 ### Automatic Loading

@@ -114,7 +114,7 @@ echo ""
 
 # Test 6: Build Verification
 TOTAL_TESTS=$((TOTAL_TESTS + 1))
-if run_test "Build Verification" "cd '${TEST_DIR}' && go build -o '${TEMP_DIR}/ferret-scan-test' cmd/main.go"; then
+if run_test "Build Verification" "cd '${TEST_DIR}' && go build -o '${TEMP_DIR}/ferret-scan-test' ./cmd"; then
     PASSED_TESTS=$((PASSED_TESTS + 1))
 else
     FAILED_TESTS=$((FAILED_TESTS + 1))

@@ -37,6 +37,23 @@ type Validator interface {
 	ValidateContent(content string, originalPath string) ([]Match, error)
 }
 
+// SourceKind classifies the origin of a Match's content. The zero value is
+// SourceKindFile, so existing call sites that don't set this field continue
+// to behave as if the match came from a real filesystem path.
+type SourceKind string
+
+const (
+	// SourceKindFile indicates the match originated from a real filesystem
+	// path (the default for the file-driven scan pipeline).
+	SourceKindFile SourceKind = ""
+
+	// SourceKindVirtual indicates the match originated from an in-memory or
+	// streamed source such as stdin. Formatters use this to skip path
+	// normalization (e.g. SARIF's %SRCROOT% prefix) and to render a synthetic
+	// label like "<stdin>" instead of treating it as a relative path.
+	SourceKindVirtual SourceKind = "virtual"
+)
+
 // Match represents a detected sensitive data match
 type Match struct {
 	Text       string
@@ -48,8 +65,18 @@ type Match struct {
 	Filename   string // Path to the file where the match was found
 	Validator  string // Name of the validator that created this match
 
+	// SourceKind classifies the origin (file vs. virtual). Zero value
+	// (SourceKindFile) keeps existing behavior unchanged.
+	SourceKind SourceKind `json:"source_kind,omitempty"`
+
 	// New field for context information
 	Context ContextInfo
+}
+
+// IsVirtual reports whether this match originates from a virtual source
+// (e.g. stdin, in-memory buffer) rather than a real filesystem path.
+func (m Match) IsVirtual() bool {
+	return m.SourceKind == SourceKindVirtual
 }
 
 // SuppressedMatch represents a finding that was suppressed by a rule

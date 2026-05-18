@@ -443,6 +443,23 @@ func (ptr *PlainTextRedactor) GetComponentName() string {
 	return "plaintext_redactor"
 }
 
+// RedactString applies redaction to in-memory content using the supplied
+// matches and strategy. It is the file-free equivalent of RedactDocument /
+// RedactContent: no disk I/O, no temp file, no output manager required —
+// just (content, matches, strategy) in, (redactedContent, mappings) out.
+//
+// This is the entry point for streaming / lambda callers and for the CLI's
+// stdin redaction path. Callers can construct the redactor with
+// NewPlainTextRedactor(nil, nil) when they don't need an output manager.
+//
+// All three plaintext strategies (simple, format_preserving, synthetic) are
+// supported; the strategy parameter is passed through to the same internal
+// redactText routine that RedactDocument and RedactContent use, so there is
+// only one redaction code path to maintain.
+func (ptr *PlainTextRedactor) RedactString(content string, matches []detector.Match, strategy redactors.RedactionStrategy) (string, []redactors.RedactionMapping, error) {
+	return ptr.redactText(content, matches, strategy)
+}
+
 // RedactContent implements ContentRedactor interface for efficient content-based redaction
 func (ptr *PlainTextRedactor) RedactContent(content *preprocessors.ProcessedContent, outputPath string, matches []detector.Match, strategy redactors.RedactionStrategy) (*redactors.RedactionResult, error) {
 	var finishTiming func(bool, map[string]interface{})

@@ -130,6 +130,14 @@ func (m *VulnerabilityMapper) buildLocation(match detector.Match, options format
 
 // buildArtifactLocation creates the artifact location with file:// URI scheme
 func (m *VulnerabilityMapper) buildArtifactLocation(match detector.Match) SARIFArtifactLocation {
+	// Virtual sources (stdin, in-memory buffers) don't map to a filesystem
+	// location, so emit the label verbatim with no URI scheme or %SRCROOT%
+	// prefix. This keeps SARIF output valid while signalling that the
+	// "path" is synthetic.
+	if match.IsVirtual() {
+		return SARIFArtifactLocation{URI: match.Filename}
+	}
+
 	// Convert file path to URI using file:// scheme
 	// Clean the path and convert to forward slashes for URI
 	cleanPath := filepath.ToSlash(filepath.Clean(match.Filename))

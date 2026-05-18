@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<a name="unreleased"></a>
+## [Unreleased]
+
+### ✨ New Features
+
+- **stdin:** read content to scan from standard input via `--stdin` or the POSIX-style alias `--file -`. Content is treated as plain text and findings are labelled `<stdin>` (configurable via `--stdin-name`). Useful for `git diff | ferret-scan --stdin`, scanning command output, and lambda/IPC callers that already have content in memory. Mutually exclusive with `--file <path>`, positional file args, and `--web`. Max input size: 100 MB.
+- **stdin redaction (streaming gateway):** combine `--stdin` with `--enable-redaction` to act as a streaming redactor — redacted content streams to stdout while findings go to stderr (or `--output <file>` if specified). All three plaintext strategies (`simple`, `format_preserving`, `synthetic`) are supported. Suppressed matches pass through unmodified. When findings stream to stderr alongside redacted content on stdout, human-readable progress lines are suppressed so the findings document remains parseable (canonical shape: `... --enable-redaction --format json 2> findings.json > clean.txt`). When stdout is a terminal (interactive use, no redirect), findings are replaced by a one-line hint pointing at the pipe shape — this matches the `git diff` / `jq` convention of adapting output to the consumer.
+- **api:** new `core.ScanContent(content, ContentScanConfig)` entry point for in-process callers — scans an in-memory buffer using the same validator pipeline as `ScanFile` but bypasses the path-driven file router.
+- **api:** new `plaintext.PlainTextRedactor.RedactString(content, matches, strategy)` exposes pure in-memory redaction without requiring an output manager — the same code path that drives streaming stdin redaction is now available to lambda / gateway callers.
+
+### 🔨 Internal
+
+- **detector:** new `Match.SourceKind` field (zero-value `SourceKindFile`) classifies match origin. `SARIF` and `gitlab-sast` formatters skip path-normalization (`%SRCROOT%`, basename rewriting) for matches with `SourceKindVirtual`. JSON serialization is omit-when-empty so existing consumers see no change.
+- **parallel:** extracted shared `parallel.RunValidators(ctx, validators, content, strategy)` helper from the worker pool. Worker pool now passes a retry-backed strategy; in-memory callers pass nil for direct invocation. Same dual-path / metadata-skip behaviour preserved.
+
 <a name="v1.7.0"></a>
 ## [v1.7.0] - 2026-05-08
 
