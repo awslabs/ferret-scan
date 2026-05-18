@@ -49,11 +49,11 @@ func (v *stubContentValidator) ValidateContent(content string, originalPath stri
 // detector.Validator, but the runner should prefer the ProcessedContent
 // path.
 type stubProcessedContentValidator struct {
-	name             string
-	pcMatches        []detector.Match
-	contentMatches   []detector.Match
-	pcCalled         bool
-	contentCalled    bool
+	name           string
+	pcMatches      []detector.Match
+	contentMatches []detector.Match
+	pcCalled       bool
+	contentCalled  bool
 }
 
 func (v *stubProcessedContentValidator) Validate(filePath string) ([]detector.Match, error) {

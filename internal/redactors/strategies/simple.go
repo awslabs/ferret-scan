@@ -27,6 +27,8 @@ func NewSimpleRedactionStrategy() *SimpleRedactionStrategy {
 	strategy := &SimpleRedactionStrategy{
 		name:               "simple_redaction_strategy",
 		supportedDataTypes: []string{"*"}, // Supports all data types
+		// #nosec G101 -- redaction templates: public placeholders that
+		// replace secrets in output, not credential values themselves.
 		replacementTemplates: map[string]string{
 			"CREDIT_CARD": "[CREDIT-CARD-REDACTED]",
 			"SSN":         "[SSN-REDACTED]",

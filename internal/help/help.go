@@ -200,8 +200,8 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Println("  Environment: FERRET_CONFIG_DIR - Override config directory")
 	fmt.Println()
 	h.colors["header"].Println("SUPPORT:")
-	fmt.Println("  Developers: Andrea Di Fabio, Lee Myers")
-	fmt.Println("  Slack Channel: ferret-scan-interest")
+	fmt.Println("  Issues:  https://github.com/awslabs/ferret-scan/issues")
+	fmt.Println("  Source:  https://github.com/awslabs/ferret-scan")
 }
 
 // ShowChecksHelp displays information about all available checks

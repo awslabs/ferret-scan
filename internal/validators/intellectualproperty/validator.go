@@ -169,6 +169,8 @@ const (
 // with predefined patterns and keywords for detecting intellectual property references.
 // Internal URL patterns start empty and must be configured via the Configure method.
 func NewValidator() *Validator {
+	// #nosec G101 -- detector definitions: regex patterns and keyword lists
+	// for detecting IP markers (patents, trademarks, copyrights). Not credentials.
 	v := &Validator{
 		// Patent pattern: US patent numbers (e.g., US9123456, US 9,123,456) - case insensitive
 		patternPatent: `(?i)\b(US|EP|JP|CN|WO)[ -]?(\d{1,3}[,.]?\d{3}[,.]?\d{3}|\d{1,3}[,.]?\d{3}[,.]?\d{2}[A-Z]\d?)\b`,

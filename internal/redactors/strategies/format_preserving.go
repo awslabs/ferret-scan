@@ -227,21 +227,21 @@ func (fps *FormatPreservingStrategy) redactGenericFormatPreserving(original stri
 		case char >= '0' && char <= '9':
 			// Replace digits with random digits
 			if randomDigit, err := generateSecureRandom(0, 10); err == nil {
-				result[i] = rune('0' + randomDigit)
+				result[i] = rune('0' + randomDigit) // #nosec G115 -- generateSecureRandom(0, 10) returns [0,9]
 			} else {
 				result[i] = 'X'
 			}
 		case char >= 'A' && char <= 'Z':
 			// Replace uppercase letters with random uppercase letters
 			if randomLetter, err := generateSecureRandom(0, 26); err == nil {
-				result[i] = rune('A' + randomLetter)
+				result[i] = rune('A' + randomLetter) // #nosec G115 -- generateSecureRandom(0, 26) returns [0,25]
 			} else {
 				result[i] = 'X'
 			}
 		case char >= 'a' && char <= 'z':
 			// Replace lowercase letters with random lowercase letters
 			if randomLetter, err := generateSecureRandom(0, 26); err == nil {
-				result[i] = rune('a' + randomLetter)
+				result[i] = rune('a' + randomLetter) // #nosec G115 -- generateSecureRandom(0, 26) returns [0,25]
 			} else {
 				result[i] = 'x'
 			}
@@ -299,19 +299,19 @@ func (fps *FormatPreservingStrategy) redactUsernamePreservingFormat(username str
 		switch {
 		case char >= 'a' && char <= 'z':
 			if randomLetter, err := generateSecureRandom(0, 26); err == nil {
-				result[i] = rune('a' + randomLetter)
+				result[i] = rune('a' + randomLetter) // #nosec G115 -- generateSecureRandom(0, 26) returns [0,25]
 			} else {
 				result[i] = 'x'
 			}
 		case char >= 'A' && char <= 'Z':
 			if randomLetter, err := generateSecureRandom(0, 26); err == nil {
-				result[i] = rune('A' + randomLetter)
+				result[i] = rune('A' + randomLetter) // #nosec G115 -- generateSecureRandom(0, 26) returns [0,25]
 			} else {
 				result[i] = 'X'
 			}
 		case char >= '0' && char <= '9':
 			if randomDigit, err := generateSecureRandom(0, 10); err == nil {
-				result[i] = rune('0' + randomDigit)
+				result[i] = rune('0' + randomDigit) // #nosec G115 -- generateSecureRandom(0, 10) returns [0,9]
 			} else {
 				result[i] = '0'
 			}
@@ -346,7 +346,7 @@ func (fps *FormatPreservingStrategy) redactDomainPartPreservingFormat(part strin
 	for i, char := range part {
 		if char >= 'a' && char <= 'z' {
 			if randomLetter, err := generateSecureRandom(0, 26); err == nil {
-				result[i] = rune('a' + randomLetter)
+				result[i] = rune('a' + randomLetter) // #nosec G115 -- generateSecureRandom(0, 26) returns [0,25]
 			} else {
 				result[i] = 'x'
 			}
@@ -368,13 +368,13 @@ func (fps *FormatPreservingStrategy) redactNamePartPreservingFormat(namePart str
 		switch {
 		case char >= 'A' && char <= 'Z':
 			if randomLetter, err := generateSecureRandom(0, 26); err == nil {
-				result[i] = rune('A' + randomLetter)
+				result[i] = rune('A' + randomLetter) // #nosec G115 -- generateSecureRandom(0, 26) returns [0,25]
 			} else {
 				result[i] = 'X'
 			}
 		case char >= 'a' && char <= 'z':
 			if randomLetter, err := generateSecureRandom(0, 26); err == nil {
-				result[i] = rune('a' + randomLetter)
+				result[i] = rune('a' + randomLetter) // #nosec G115 -- generateSecureRandom(0, 26) returns [0,25]
 			} else {
 				result[i] = 'x'
 			}

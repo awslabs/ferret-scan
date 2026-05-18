@@ -102,9 +102,15 @@ benchmark_results*
 *.prof*
 profile.out
 
-# Development configuration
+# Development configuration. The literal entries below (.env, node_modules,
+# .terraform) are kept in addition to globs so security/hygiene scanners
+# that match on exact strings consider them ignored.
+.env
 .env*
 .envrc
+node_modules/
+.terraform/
+.terraform.lock.hcl
 .direnv/
 .*rc
 .*-version
@@ -209,3 +215,16 @@ kiro-*
 .private/
 .company/
 .enterprise/
+.kiro-prep-tmp/
+.kiro-prep-snapshots/
+
+# DevSecOps - Generated files (safe to ignore)
+ferret-sast-report.json
+ferret-scan-results.sarif
+.ash/
+.eslintcache
+
+# DevSecOps - Tool cache directories
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/

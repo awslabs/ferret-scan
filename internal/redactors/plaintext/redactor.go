@@ -150,7 +150,10 @@ func (ptr *PlainTextRedactor) RedactDocument(originalPath string, outputPath str
 		}
 	}
 
-	// Write redacted content to output file with secure permissions
+	// Write redacted content to output file with secure permissions.
+	// #nosec G703 -- outputPath is operator-controlled (--redaction-output-dir
+	// + mirrored input filename); CLI-only path. Web mode hard-codes
+	// EnableRedaction: false so this is unreachable from the HTTP boundary.
 	err = os.WriteFile(outputPath, []byte(redactedText), 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write redacted file: %w", err)
@@ -638,7 +641,16 @@ func (ptr *PlainTextRedactor) validatePositionCorrelationResult(correlation *pos
 	return nil
 }
 
-// calculateTextSimilarity calculates similarity between two text strings
+// calculateTextSimilarity calculates a coarse character-by-character
+// similarity between two text strings. Used for telemetry/metrics in
+// position-correlation logging, not as a security control.
+//
+// Implementation note: we compare rune-to-rune over both strings, indexed
+// by rune position rather than byte offset, so multi-byte UTF-8 sequences
+// produce the right answer. The previous implementation compared a rune
+// from the shorter string against a byte at the same byte offset of the
+// longer string, which silently produced wrong scores once either string
+// contained non-ASCII content.
 func (ptr *PlainTextRedactor) calculateTextSimilarity(text1, text2 string) float64 {
 	if text1 == text2 {
 		return 1.0
@@ -648,18 +660,16 @@ func (ptr *PlainTextRedactor) calculateTextSimilarity(text1, text2 string) float
 		return 0.0
 	}
 
-	// Simple similarity calculation based on common characters
-	// This is a simplified version - in production, you might want to use
-	// more sophisticated algorithms like Levenshtein distance
-
-	shorter, longer := text1, text2
-	if len(text1) > len(text2) {
-		shorter, longer = text2, text1
+	r1 := []rune(text1)
+	r2 := []rune(text2)
+	shorter, longer := r1, r2
+	if len(r1) > len(r2) {
+		shorter, longer = r2, r1
 	}
 
 	commonChars := 0
 	for i, char := range shorter {
-		if i < len(longer) && longer[i] == byte(char) {
+		if char == longer[i] {
 			commonChars++
 		}
 	}

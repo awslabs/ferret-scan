@@ -3,8 +3,8 @@
 
 # Global variables for version consistency
 variables:
-  GO_VERSION: "1.26.2"
-  GO_DOCKER_IMAGE: "golang:1.26.2-alpine"
+  GO_VERSION: "1.26.3"
+  GO_DOCKER_IMAGE: "golang:1.26.3-alpine"
   # Default resource limits for all jobs (increased for Docker builds)
   KUBERNETES_CPU_REQUEST: "1000m"
   KUBERNETES_CPU_LIMIT: "2000m"
@@ -168,7 +168,10 @@ include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
   - template: Security/Dependency-Scanning.gitlab-ci.yml
-  # Docker image build using Kaniko component
+  # Docker image build using Kaniko component. The component path below is
+  # AWS-internal; if mirroring this repo into a different GitLab instance,
+  # swap it for whichever Kaniko / image-builder component your instance
+  # publishes (the inputs schema is identical across most Kaniko wrappers).
   - component: [redacted-internal-ci-component]/kaniko/executor@~latest
     inputs:
       name: ferret-scan
@@ -297,7 +300,10 @@ goreleaser-release:
       if [ -n "$CI_COMMIT_TAG" ]; then
         echo "Building release for tag: $CI_COMMIT_TAG"
 
-        # Check if release already exists
+        # Check if release already exists. Use GitLab CI built-in variables
+        # so this file works in any GitLab project that mirrors the repo —
+        # CI_API_V4_URL points at the GitLab instance's REST API root and
+        # CI_PROJECT_ID is the numeric project ID for the running pipeline.
         if curl -s -H "PRIVATE-TOKEN: $GITLAB_RELEASE_TOKEN" \
            "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases/$CI_COMMIT_TAG" \
            | grep -q "tag_name"; then

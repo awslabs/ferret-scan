@@ -64,6 +64,9 @@ func RetryWithBackoff(ctx context.Context, config RetryConfig, operation Retryab
 				delay *= config.Multiplier
 			}
 			if config.Jitter {
+				// #nosec G404 -- jitter spreads concurrent retries; not a
+				// security boundary. crypto/rand would add cost without
+				// benefit here.
 				delay += delay * 0.25 * rand.Float64()
 			}
 			// MaxInterval = 0 means "no cap" — treat the zero value as
