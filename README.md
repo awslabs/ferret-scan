@@ -731,7 +731,6 @@ The metadata validator now includes intelligent file type filtering that automat
 
 ### Reference
 
-- [Battle Card](docs/battle-card.md) - Competitive analysis and positioning
 - [Changelog](CHANGELOG.md) - Version history and updates
 
 ## Docker and CI/CD Integration
