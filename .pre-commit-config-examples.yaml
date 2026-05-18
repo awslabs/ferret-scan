@@ -219,8 +219,7 @@ repos:
         pass_filenames: true
         env:
           FERRET_PRECOMMIT_EXIT_ON: "high"
-# ====
-=========================================================================
+# =============================================================================
 # FALLBACK: BUILD FROM SOURCE (If binary not available)
 # =============================================================================
 # Use this if you don't have the binary built or want to always use latest source
@@ -232,8 +231,9 @@ repos:
         entry: go run cmd/main.go --pre-commit-mode
         language: system
         files: '\.(go|js|py|java|json|yaml|yml)$'
-        pass_filenames: true# =======
-======================================================================
+        pass_filenames: true
+
+# =============================================================================
 # DOCKER INTEGRATION OPTIONS
 # =============================================================================
 

@@ -446,9 +446,8 @@ The enhanced metadata validation system provides automatic migration:
 - [Configuration Guide](../configuration.md)
 
 ### Getting Help
-- **Developers**: Andrea Di Fabio (adifabio@), Lee Myers (mlmyers@)
-- **Slack Channel**: ferret-scan-interest
-- **Channel Link**: https://amazon.enterprise.slack.com/archives/C09AXRBD90B
+- **Issues & Discussions**: [GitHub Issues](https://github.com/awslabs/ferret-scan/issues)
+- **Source**: [github.com/awslabs/ferret-scan](https://github.com/awslabs/ferret-scan)
 
 ### Troubleshooting
 - [Content Routing Troubleshooting](../development/content-routing-troubleshooting.md)

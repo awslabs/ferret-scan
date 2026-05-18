@@ -49,9 +49,11 @@ var embeddedTemplate string
 // suppCacheMu guards concurrent reload while readers run.
 type WebServer struct {
 	port             string
+	bindAddr         string
 	configPath       string
 	suppressionsPath string
 	excludePatterns  []string
+	mux              *http.ServeMux
 	server           *http.Server
 
 	suppCacheMu     sync.RWMutex
@@ -68,10 +70,13 @@ type ScanResponse struct {
 	Error      string                      `json:"error,omitempty"`
 }
 
-// NewWebServer creates a new web server instance
+// NewWebServer creates a new web server instance bound to loopback. Used by
+// tests and any caller that doesn't need to override the bind address.
 func NewWebServer(port string) *WebServer {
 	return &WebServer{
-		port: port,
+		port:     port,
+		bindAddr: "127.0.0.1",
+		mux:      http.NewServeMux(),
 	}
 }
 
@@ -80,16 +85,29 @@ func NewWebServer(port string) *WebServer {
 // existing default behavior (search standard locations). excludePatterns from
 // --exclude take precedence; empty slice means fall back to whatever the
 // loaded config file specifies.
-func NewWebServerWithOptions(port, configPath, suppressionsPath string, excludePatterns []string) *WebServer {
+//
+// bindAddr controls which interface the server listens on. Resolve it via
+// ResolveBindAddress to honor the precedence order (flag → env → /.dockerenv
+// → loopback). Pass "" to default to 127.0.0.1.
+func NewWebServerWithOptions(port, bindAddr, configPath, suppressionsPath string, excludePatterns []string) *WebServer {
+	if bindAddr == "" {
+		bindAddr = "127.0.0.1"
+	}
 	return &WebServer{
 		port:             port,
+		bindAddr:         bindAddr,
 		configPath:       configPath,
 		suppressionsPath: suppressionsPath,
 		excludePatterns:  excludePatterns,
+		mux:              http.NewServeMux(),
 	}
 }
 
-// Start starts the web server
+// Start starts the web server. Binds to ws.bindAddr (default 127.0.0.1) and
+// iterates ports 8080-8089 looking for the first free one starting at
+// ws.port. The port-availability test uses the same bind address as the
+// final server so a busy 192.168.1.5:8080 isn't masked by an idle
+// 127.0.0.1:8080 (or vice versa).
 func (ws *WebServer) Start() error {
 	// Setup routes with error handling
 	if err := ws.setupRoutesWithValidation(); err != nil {
@@ -105,24 +123,23 @@ func (ws *WebServer) Start() error {
 			currentPort = fmt.Sprintf("%d", 8080+i)
 		}
 
-		// Test if port is available first
-		listener, err := net.Listen("tcp", ":"+currentPort)
+		// Test if port is available first, on the same bind address we'll
+		// use for the real server.
+		probeAddr := ws.bindAddr + ":" + currentPort
+		listener, err := net.Listen("tcp", probeAddr)
 		if err != nil {
 			lastError = err
 			if i == 0 {
-				fmt.Printf("Port %s is not available, trying alternative ports...\n", currentPort)
+				fmt.Printf("Port %s is not available on %s, trying alternative ports...\n", currentPort, ws.bindAddr)
 			}
 			continue // Port is busy, try next one
 		}
 		listener.Close()
 
-		// Create secure server with timeout configurations
+		// Create secure server with timeout configurations.
 		ws.server = ws.createSecureServer(currentPort)
 
-		fmt.Printf("Ferret Scan Web UI started on port %s\n", currentPort)
-		fmt.Printf("Access URLs:\n")
-		fmt.Printf("Local:     http://localhost:%s\n", currentPort)
-		fmt.Printf("Container: Use your mapped port (e.g., -p 8082:%s → http://localhost:8082)\n", currentPort)
+		ws.printStartupBanner(currentPort)
 
 		// Start the server with enhanced error handling
 		if err := ws.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -134,13 +151,38 @@ func (ws *WebServer) Start() error {
 	}
 
 	// If we get here, no ports were available
-	return fmt.Errorf("could not find an available port in range 8080-8089\n"+
+	return fmt.Errorf("could not find an available port in range 8080-8089 on %s\n"+
 		"Last error: %v\n"+
 		"Troubleshooting:\n"+
 		"  1. Check if other services are using these ports: netstat -an | grep :808\n"+
 		"  2. Try a specific port with --port <number>\n"+
 		"  3. Ensure you have permission to bind to the requested port\n"+
-		"  4. Check firewall settings if accessing from remote machines", lastError)
+		"  4. Check firewall settings if accessing from remote machines", ws.bindAddr, lastError)
+}
+
+// printStartupBanner emits the post-bind status block. When the server is
+// bound to a non-loopback interface, a prominent warning is printed because
+// the UI has no authentication and any reachable client can mutate
+// suppression rules or upload arbitrary files for scanning.
+func (ws *WebServer) printStartupBanner(currentPort string) {
+	fmt.Printf("Ferret Scan Web UI started on %s:%s\n", ws.bindAddr, currentPort)
+	fmt.Printf("Access URLs:\n")
+	if IsLoopbackBind(ws.bindAddr) {
+		fmt.Printf("Local:     http://localhost:%s\n", currentPort)
+		fmt.Printf("(bound to loopback only — pass --bind 0.0.0.0 to expose on the network)\n")
+		return
+	}
+	fmt.Printf("Listening: http://%s:%s\n", ws.bindAddr, currentPort)
+	fmt.Printf("Container: Use your mapped port (e.g., -p 8082:%s → http://localhost:8082)\n", currentPort)
+	if ws.bindAddr == "0.0.0.0" || ws.bindAddr == "::" {
+		fmt.Fprintf(os.Stderr,
+			"\nWARNING: web UI is bound to %s with no authentication.\n"+
+				"Anyone able to reach this host on port %s can scan content,\n"+
+				"download findings, and modify suppression rules. Bind to a\n"+
+				"specific interface (--bind 127.0.0.1) when not running in a\n"+
+				"trusted network or container.\n\n",
+			ws.bindAddr, currentPort)
+	}
 }
 
 // Stop stops the web server
@@ -181,37 +223,48 @@ func (ws *WebServer) validateTemplate() error {
 	return nil
 }
 
-// setupRoutes configures all HTTP route handlers - MINIMAL ROUTES ONLY
+// setupRoutes configures all HTTP route handlers on the server's private
+// mux. Using a private mux (rather than http.DefaultServeMux) lets us wrap
+// the entire handler tree with security middleware before it's installed
+// onto the http.Server, and avoids cross-test contamination when multiple
+// server instances are constructed in the same process.
 func (ws *WebServer) setupRoutes() {
-	http.HandleFunc("/", ws.serveHome)
-	http.HandleFunc("/health", ws.handleHealth)
-	http.HandleFunc("/scan", ws.handleScan)
-	http.HandleFunc("/export", ws.handleExport)
-	http.HandleFunc("/config-info", ws.handleConfigInfo)
+	ws.mux.HandleFunc("/", ws.serveHome)
+	ws.mux.HandleFunc("/health", ws.handleHealth)
+	ws.mux.HandleFunc("/scan", ws.handleScan)
+	ws.mux.HandleFunc("/export", ws.handleExport)
+	ws.mux.HandleFunc("/config-info", ws.handleConfigInfo)
 
 	// Static asset serving with security validation
-	http.HandleFunc("/logo", ws.serveLogo)
+	ws.mux.HandleFunc("/logo", ws.serveLogo)
 
 	// Suppression management endpoints (delegate to CLI suppression system)
-	http.HandleFunc("/suppressions", ws.handleSuppressions)
-	http.HandleFunc("/suppressions/create", ws.handleSuppressionsCreate)
-	http.HandleFunc("/suppressions/edit", ws.handleSuppressionsEdit)
-	http.HandleFunc("/suppressions/remove", ws.handleSuppressionsRemove)
-	http.HandleFunc("/suppressions/enable", ws.handleSuppressionsEnable)
-	http.HandleFunc("/suppressions/disable", ws.handleSuppressionsDisable)
-	http.HandleFunc("/suppressions/bulk-enable", ws.handleSuppressionsBulkEnable)
-	http.HandleFunc("/suppressions/bulk-disable", ws.handleSuppressionsBulkDisable)
-	http.HandleFunc("/suppressions/bulk-delete", ws.handleSuppressionsBulkDelete)
-	http.HandleFunc("/suppressions/bulk-update-expiration", ws.handleSuppressionsBulkUpdateExpiration)
-	http.HandleFunc("/suppressions/bulk-create", ws.handleSuppressionsBulkCreate)
-	http.HandleFunc("/suppressions/download", ws.handleSuppressionsDownload)
-	http.HandleFunc("/suppressions/check-hash", ws.handleSuppressionsCheckHash)
+	ws.mux.HandleFunc("/suppressions", ws.handleSuppressions)
+	ws.mux.HandleFunc("/suppressions/create", ws.handleSuppressionsCreate)
+	ws.mux.HandleFunc("/suppressions/edit", ws.handleSuppressionsEdit)
+	ws.mux.HandleFunc("/suppressions/remove", ws.handleSuppressionsRemove)
+	ws.mux.HandleFunc("/suppressions/enable", ws.handleSuppressionsEnable)
+	ws.mux.HandleFunc("/suppressions/disable", ws.handleSuppressionsDisable)
+	ws.mux.HandleFunc("/suppressions/bulk-enable", ws.handleSuppressionsBulkEnable)
+	ws.mux.HandleFunc("/suppressions/bulk-disable", ws.handleSuppressionsBulkDisable)
+	ws.mux.HandleFunc("/suppressions/bulk-delete", ws.handleSuppressionsBulkDelete)
+	ws.mux.HandleFunc("/suppressions/bulk-update-expiration", ws.handleSuppressionsBulkUpdateExpiration)
+	ws.mux.HandleFunc("/suppressions/bulk-create", ws.handleSuppressionsBulkCreate)
+	ws.mux.HandleFunc("/suppressions/download", ws.handleSuppressionsDownload)
+	ws.mux.HandleFunc("/suppressions/check-hash", ws.handleSuppressionsCheckHash)
 }
 
-// createSecureServer creates an HTTP server with security timeouts
+// createSecureServer creates an HTTP server with security timeouts and the
+// hardening middleware chain (security headers + Origin/Referer check)
+// installed in front of the route mux.
 func (ws *WebServer) createSecureServer(port string) *http.Server {
+	expected := sameOriginHostSet(ws.bindAddr, port)
+	handler := securityHeadersMiddleware(
+		originCheckMiddleware(expected)(ws.mux),
+	)
 	return &http.Server{
-		Addr: ":" + port,
+		Addr:    ws.bindAddr + ":" + port,
+		Handler: handler,
 		// Timeout for reading request headers (prevents slow header attacks)
 		ReadHeaderTimeout: 15 * time.Second,
 		// Timeout for reading entire request
@@ -845,7 +898,6 @@ func (ws *WebServer) initializeSuppressionManager(suppressionFile string) (*supp
 	return ws.suppCacheMgr, nil
 }
 
-
 // Suppression management endpoints — delegate to CLI suppression system.
 //
 // Each handler is a thin adapter on top of suppressionEndpoint, which
@@ -860,19 +912,19 @@ func (ws *WebServer) initializeSuppressionManager(suppressionFile string) (*supp
 // adds 11 small types for negligible safety improvement, since we
 // already validate the required fields per-handler.
 type suppressionRequest struct {
-	ID          string                 `json:"id"`
-	Hash        string                 `json:"hash"`
-	Reason      string                 `json:"reason"`
-	CreatedBy   string                 `json:"created_by"`
-	Enabled     bool                   `json:"enabled"`
-	IDs         []string               `json:"ids"`
-	Findings    []map[string]any       `json:"findings"`
-	FindingData map[string]any         `json:"finding_data"`
+	ID          string           `json:"id"`
+	Hash        string           `json:"hash"`
+	Reason      string           `json:"reason"`
+	CreatedBy   string           `json:"created_by"`
+	Enabled     bool             `json:"enabled"`
+	IDs         []string         `json:"ids"`
+	Findings    []map[string]any `json:"findings"`
+	FindingData map[string]any   `json:"finding_data"`
 	// ExpiresAt is the new expiration for bulk-update-expiration. A pointer
 	// lets JSON `null` clear the field (making the rule permanent); an
 	// omitted key leaves the pointer nil too, which the handler treats the
 	// same way. An ISO-8601 string becomes a concrete time.
-	ExpiresAt   *string                `json:"expires_at,omitempty"`
+	ExpiresAt *string `json:"expires_at,omitempty"`
 }
 
 // suppressionEndpoint wraps a handler with shared boilerplate: method
@@ -1036,9 +1088,10 @@ func (ws *WebServer) handleSuppressionsBulkDelete(w http.ResponseWriter, r *http
 // suppression rules (POST /suppressions/bulk-update-expiration).
 //
 // Request body:
-//   { "ids": ["…"], "expires_at": "2026-06-01T00:00:00Z" }   // renew to date
-//   { "ids": ["…"], "expires_at": null }                     // make permanent
-//   { "ids": ["…"] }                                         // (omitted) same as null
+//
+//	{ "ids": ["…"], "expires_at": "2026-06-01T00:00:00Z" }   // renew to date
+//	{ "ids": ["…"], "expires_at": null }                     // make permanent
+//	{ "ids": ["…"] }                                         // (omitted) same as null
 //
 // EditSuppression takes a *time.Time and writes whatever it receives, so
 // nil clears ExpiresAt (permanent) and a concrete value renews it. We

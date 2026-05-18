@@ -392,6 +392,8 @@ func (rm *RecoveryManager) copyOriginal(originalPath, outputPath string) (*Recov
 		return nil, fmt.Errorf("failed to read original file: %w", err)
 	}
 
+	// #nosec G703 -- outputPath is operator-controlled (chosen via --output-dir
+	// or config); no untrusted input reaches this write. CLI-only path.
 	err = os.WriteFile(outputPath, originalContent, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy original file: %w", err)
@@ -456,6 +458,8 @@ func (rm *RecoveryManager) createBackup(originalPath string) (string, error) {
 		return "", fmt.Errorf("failed to read original file: %w", err)
 	}
 
+	// #nosec G703 -- backupPath joins backupDir (operator-controlled) with a
+	// generated backupName; no untrusted input reaches this write.
 	err = os.WriteFile(backupPath, originalContent, 0600)
 	if err != nil {
 		return "", fmt.Errorf("failed to create backup file: %w", err)

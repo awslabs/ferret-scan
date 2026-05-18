@@ -1,0 +1,103 @@
+[tool.licensecheck]
+zero = true
+format = "ansi"
+
+# =============================================================================
+# Open Source License Policy
+# =============================================================================
+# This configuration enforces open source licenses and blocks
+# copyleft/viral licenses that could create legal obligations.
+#
+# APPROVED LICENSES (Permissive):
+# - Allow use, modification, and distribution with minimal restrictions
+# - Do not require derivative works to use the same license
+# - Examples: MIT, Apache 2.0, BSD, ISC
+#
+# BLOCKED LICENSES (Copyleft/Viral):
+# - Require derivative works to be licensed under the same terms
+# - Can create legal obligations for proprietary code
+# - Examples: GPL, AGPL, LGPL, SSPL
+#
+# For questions about license compliance, consult your legal team or refer to
+# your organization's open source policy
+# =============================================================================
+
+# Approved Open Source Licenses
+# These permissive licenses are generally approved for use
+only_licenses = [
+    # MIT License Family
+    "MIT",
+    "MIT License",
+
+    # Apache License Family
+    "Apache-2.0",
+    "Apache Software License",
+    "Apache License 2.0",
+
+    # BSD License Family
+    "BSD",
+    "BSD License",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+
+    # Other Permissive Licenses
+    "ISC",
+    "ISC License",
+    "Python Software Foundation License",
+    "Unlicense",
+    "CC0-1.0",
+    "Public Domain",
+    "Boost Software License",
+    "BSL-1.0",
+    "NCSA"
+]
+
+# Licenses that are NOT approved (will cause build failure)
+# These copyleft/viral licenses require derivative works to use the same license
+fail_licenses = [
+    # GNU General Public License (GPL) - Strong Copyleft
+    "GPL",
+    "GPLv2",
+    "GPLv3",
+    "GPL-2.0",
+    "GPL-2.0-only",
+    "GPL-2.0-or-later",
+    "GPL-3.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "GNU General Public License",
+
+    # GNU Affero General Public License (AGPL) - Network Copyleft
+    "AGPL",
+    "AGPLv3",
+    "AGPL-3.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+
+    # GNU Lesser General Public License (LGPL) - Weak Copyleft
+    "LGPL",
+    "LGPLv2",
+    "LGPLv2.1",
+    "LGPLv3",
+    "LGPL-2.0",
+    "LGPL-2.0-only",
+    "LGPL-2.0-or-later",
+    "LGPL-2.1",
+    "LGPL-2.1-only",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later"
+]
+
+# Licenses to ignore (skipped from compatibility check)
+# Use this for approved licenses that aren't recognized by licensecheck's license matrix
+ignore_licenses = [
+    "Mozilla Public License 2.0",
+    "MPL-2.0",
+    "MPL 2.0"
+]
+
+# Packages to ignore (e.g., internal tools, dev-only dependencies)
+# Use this sparingly and document why each package is ignored
+ignore_packages = []

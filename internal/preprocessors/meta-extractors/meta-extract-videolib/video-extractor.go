@@ -800,9 +800,14 @@ func parseGPSBox(data []byte, metadata *VideoMetadata) {
 	lonUint := binary.BigEndian.Uint32(data[4:8])
 	altUint := binary.BigEndian.Uint32(data[8:12])
 
-	// Safe conversion from uint32 to int32 using type conversion
+	// QuickTime/MP4 GPS atoms store coordinates as 32-bit signed fixed-point
+	// values stored in big-endian uint32 fields. The conversion here is
+	// intentional and reproduces the original bit pattern for sign-extension.
+	// #nosec G115 -- bit-pattern preservation; not a magnitude conversion
 	lat := int32(latUint)
+	// #nosec G115 -- see lat above
 	lon := int32(lonUint)
+	// #nosec G115 -- see lat above
 	alt := int32(altUint)
 
 	// Convert fixed-point to float (divide by 65536)

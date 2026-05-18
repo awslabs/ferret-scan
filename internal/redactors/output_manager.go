@@ -341,35 +341,62 @@ func (osm *OutputStructureManager) CreateDirectoryStructure(paths []string) erro
 	return nil
 }
 
-// CleanupEmptyDirectories removes empty directories in the output structure
+// CleanupEmptyDirectories removes empty directories in the output structure.
+//
+// Uses os.OpenRoot rooted at baseOutputDir so that ReadDir/Remove cannot
+// traverse outside the output tree even if a symlink is dropped under it
+// between Walk and the per-entry calls. Closes the TOCTOU window the
+// previous implementation had between os.ReadDir(path) and os.Remove(path).
 func (osm *OutputStructureManager) CleanupEmptyDirectories() error {
 	finishTiming := osm.observer.StartTiming("output_manager", "cleanup_empty_directories", osm.baseOutputDir)
 	defer finishTiming(true, nil)
+
+	root, err := os.OpenRoot(osm.baseOutputDir)
+	if err != nil {
+		return fmt.Errorf("open output root %q: %w", osm.baseOutputDir, err)
+	}
+	defer root.Close()
 
 	return filepath.Walk(osm.baseOutputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
-		if info.IsDir() && path != osm.baseOutputDir {
-			// Check if directory is empty
-			entries, err := os.ReadDir(path)
-			if err != nil {
-				return err
-			}
-
-			if len(entries) == 0 {
-				// Remove empty directory
-				err := os.Remove(path)
-				if err != nil {
-					// Log warning but continue
-					osm.observer.StartTiming("output_manager", "cleanup_warning", path)(false, map[string]interface{}{
-						"warning": err.Error(),
-					})
-				}
-			}
+		if !info.IsDir() || path == osm.baseOutputDir {
+			return nil
 		}
 
+		// Translate the absolute walk path back to a path relative to the
+		// open root. Anything that walks out of the root is skipped.
+		rel, relErr := filepath.Rel(osm.baseOutputDir, path)
+		if relErr != nil || strings.HasPrefix(rel, "..") {
+			return nil
+		}
+
+		dir, err := root.Open(rel)
+		if err != nil {
+			return err
+		}
+		entries, readErr := dir.Readdirnames(1) // 1 entry is enough to know it's non-empty
+		closeErr := dir.Close()
+		if readErr != nil && readErr != io.EOF {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if len(entries) > 0 {
+			return nil
+		}
+
+		if err := root.Remove(rel); err != nil {
+			// Log warning but continue. Remove can fail when a sibling
+			// goroutine has populated the directory between ReadDir and
+			// Remove — that's acceptable; the directory just isn't empty
+			// anymore.
+			osm.observer.StartTiming("output_manager", "cleanup_warning", path)(false, map[string]interface{}{
+				"warning": err.Error(),
+			})
+		}
 		return nil
 	})
 }

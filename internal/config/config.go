@@ -381,6 +381,8 @@ func findUnixConfigFile() string {
 
 // fileExists checks if a file exists and is not a directory
 func fileExists(filename string) bool {
+	// #nosec G703 -- filename is the operator-supplied --config / --suppression-file
+	// path; no untrusted input reaches Stat.
 	info, err := os.Stat(filename)
 	if os.IsNotExist(err) {
 		return false

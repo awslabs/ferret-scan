@@ -207,9 +207,8 @@ script:
 - Maintain runbooks for common troubleshooting scenarios
 
 ### Contact
-- **Developers**: Andrea Di Fabio (adifabio@), Lee Myers (mlmyers@)
-- **Slack Channel**: [ferret-scan-interest](https://amazon.enterprise.slack.com/archives/C09AXRBD90B)
-- **Issues**: Report issues through the project's issue tracker
+- **Issues**: [GitHub Issues](https://github.com/awslabs/ferret-scan/issues)
+- **Source**: [github.com/awslabs/ferret-scan](https://github.com/awslabs/ferret-scan)
 
 ---
 

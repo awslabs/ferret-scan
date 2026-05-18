@@ -319,7 +319,7 @@ echo ".ferret-scan-suppressions.yaml" >> .gitignore
 version: "1.0"
 rules:
   - id: "SUP-00000001"
-    hash: "d7cba2ce6b8361659c919a5dffc28886cb490a9e8f63aa04437207b701297282"
+    hash: "d7cba2ce6b8361659c919a5dffc28886cb490a9e8f63aa04437207b701297282" # pragma: allowlist secret
     reason: "Test credit card number in documentation"
     enabled: true
     created_at: "2024-01-15T10:30:00Z"
