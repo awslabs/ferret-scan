@@ -842,6 +842,12 @@ func main() {
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
 	webPort := flag.String("port", "8080", "Port for web server (default: 8080)")
 
+	// Stdin input. --file - is also accepted as a POSIX-style alias.
+	// stdin content is treated as plain text; binary inputs should be written
+	// to a file first.
+	stdinMode := flag.Bool("stdin", false, "Read content to scan from standard input (treated as plain text)")
+	stdinName := flag.String("stdin-name", "<stdin>", "Synthetic label used as the filename in findings when scanning stdin")
+
 	flag.Parse()
 
 	// Extract all flag values once for performance and consistency
@@ -889,6 +895,23 @@ func main() {
 		}
 		// Web server will run indefinitely, so this should not be reached
 		return
+	}
+
+	// Handle stdin mode early - bypasses file discovery entirely.
+	// --stdin or --file - both trigger this path. Mutual-exclusion checks
+	// live inside runStdinScan to keep main.go's flag parsing flat.
+	// --help and --version always fall through to their dedicated handlers
+	// below regardless of --stdin, so users can inspect the CLI surface
+	// without piping anything.
+	stdinFromFile := flags.inputFile == "-"
+	if (*stdinMode || stdinFromFile) && !*showHelp && !*showVersion {
+		exitCode := runStdinScan(stdinScanInputs{
+			flags:          flags,
+			positionalArgs: flag.Args(),
+			stdinName:      *stdinName,
+			outputFile:     *outputFile,
+		})
+		os.Exit(exitCode)
 	}
 
 	// Auto-detect non-interactive environment

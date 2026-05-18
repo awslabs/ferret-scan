@@ -32,7 +32,7 @@ func TestWindowsErrorHandlingAndUserExperience(t *testing.T) {
 	tempDir := t.TempDir()
 	binaryPath := filepath.Join(tempDir, "ferret-scan.exe")
 
-	buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Failed to build binary for error handling test: %v\nOutput: %s", err, string(buildOutput))
@@ -456,7 +456,7 @@ func TestWindowsUserInterfaceExperience(t *testing.T) {
 	tempDir := t.TempDir()
 	binaryPath := filepath.Join(tempDir, "ferret-scan.exe")
 
-	buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Failed to build binary for UI test: %v\nOutput: %s", err, string(buildOutput))

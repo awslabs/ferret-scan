@@ -50,7 +50,7 @@ func TestWindowsBinaryDistributionAndInstallation(t *testing.T) {
 				binaryPath := filepath.Join(tempDir, binaryName)
 
 				// Build binary for specific architecture
-				buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+				buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 				buildCmd.Env = append(os.Environ(),
 					"GOOS=windows",
 					fmt.Sprintf("GOARCH=%s", arch.arch),
@@ -105,7 +105,7 @@ func TestWindowsBinaryDistributionAndInstallation(t *testing.T) {
 
 		// Build binary for packaging
 		binaryPath := filepath.Join(packageDir, "ferret-scan.exe")
-		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 		buildCmd.Env = append(os.Environ(),
 			"GOOS=windows",
 			"GOARCH=amd64",
@@ -251,7 +251,7 @@ For more information, visit: https://github.com/your-org/ferret-scan
 		}
 
 		binaryPath := filepath.Join(binaryDir, "ferret-scan.exe")
-		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 		buildCmd.Env = append(os.Environ(),
 			"GOOS=windows",
 			"GOARCH=amd64",
@@ -613,7 +613,7 @@ func TestWindowsReleaseErrorHandlingAndUserExperience(t *testing.T) {
 	tempDir := t.TempDir()
 	binaryPath := filepath.Join(tempDir, "ferret-scan.exe")
 
-	buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Failed to build binary for error handling test: %v\nOutput: %s", err, string(buildOutput))

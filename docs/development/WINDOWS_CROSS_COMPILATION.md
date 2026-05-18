@@ -16,7 +16,7 @@ export GOOS=windows
 export GOARCH=amd64
 
 # Build for Windows from any platform
-go build -o ferret-scan.exe ./cmd/main.go
+go build -o ferret-scan.exe ./cmd
 
 # Reset environment
 unset GOOS GOARCH
@@ -117,7 +117,7 @@ build_windows() {
     GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build \
         -ldflags "$LDFLAGS" \
         -o "$output" \
-        ./cmd/main.go
+        ./cmd
 
     if [ $? -eq 0 ]; then
         echo "✓ Built $output ($(du -h "$output" | cut -f1))"
@@ -184,7 +184,7 @@ build_target() {
         -ldflags "$ldflags" \
         -trimpath \
         -o "$output" \
-        ./cmd/main.go
+        ./cmd
 
     if [ $? -eq 0 ]; then
         local size=$(du -h "$output" | cut -f1)
@@ -400,7 +400,7 @@ build-windows:
 		GOOS=$$goos GOARCH=$$goarch CGO_ENABLED=0 go build \
 			-ldflags "$(LDFLAGS)" \
 			-o $$output \
-			./cmd/main.go; \
+			./cmd; \
 		if [ $$? -eq 0 ]; then \
 			echo "✓ Built $$output"; \
 		else \
@@ -500,7 +500,7 @@ jobs:
         LDFLAGS="$LDFLAGS -X ferret-scan/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
         # Build
-        go build -ldflags "$LDFLAGS" -trimpath -o "$OUTPUT" ./cmd/main.go
+        go build -ldflags "$LDFLAGS" -trimpath -o "$OUTPUT" ./cmd
 
         # Generate checksum
         sha256sum "$OUTPUT" > "${OUTPUT}.sha256"
@@ -543,7 +543,7 @@ before:
 
 builds:
   - id: ferret-scan
-    main: ./cmd/main.go
+    main: ./cmd
     binary: ferret-scan
     env:
       - CGO_ENABLED=0
@@ -787,14 +787,14 @@ main "$@"
 # Error: CGO not supported when cross-compiling
 # Solution: Disable CGO
 export CGO_ENABLED=0
-go build -o ferret-scan.exe ./cmd/main.go
+go build -o ferret-scan.exe ./cmd
 ```
 
 #### Missing Build Tags
 ```bash
 # Error: Windows-specific code not included
 # Solution: Ensure proper build tags
-go build -tags windows -o ferret-scan.exe ./cmd/main.go
+go build -tags windows -o ferret-scan.exe ./cmd
 ```
 
 #### Path Separator Issues
@@ -826,7 +826,7 @@ func getConfigDir() string {
 
 ```bash
 # Enable verbose build output
-go build -v -x -o ferret-scan.exe ./cmd/main.go
+go build -v -x -o ferret-scan.exe ./cmd
 
 # Check build environment
 go env GOOS GOARCH CGO_ENABLED
@@ -836,8 +836,8 @@ file ferret-scan.exe
 objdump -f ferret-scan.exe  # On Linux with mingw-w64
 
 # Test with different Go versions
-go1.20 build -o ferret-scan-120.exe ./cmd/main.go
-go1.21 build -o ferret-scan-121.exe ./cmd/main.go
+go1.20 build -o ferret-scan-120.exe ./cmd
+go1.21 build -o ferret-scan-121.exe ./cmd
 ```
 
 ## Best Practices

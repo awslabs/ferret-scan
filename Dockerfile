@@ -45,7 +45,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOMAXPROCS=2 go build \
               -X 'ferret-scan/internal/version.Version=${VERSION}' \
               -X 'ferret-scan/internal/version.GitCommit=${GIT_COMMIT}' \
               -X 'ferret-scan/internal/version.BuildDate=${BUILD_DATE}'" \
-    -o ferret-scan cmd/main.go && \
+    -o ferret-scan ./cmd && \
     go clean -cache -testcache -modcache
 
 # Create directory structure and user for scratch image

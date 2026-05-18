@@ -15,7 +15,6 @@ import (
 	"ferret-scan/internal/redactors"
 	"ferret-scan/internal/resilience"
 	"ferret-scan/internal/router"
-	"ferret-scan/internal/validators/metadata"
 )
 
 // WorkerPool manages parallel file processing with enhanced error handling
@@ -213,7 +212,7 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		}
 
 		// Run validators with error isolation
-		matches, validationErr := wp.runValidatorsWithResilience(ctx, job.Validators, processedContent)
+		matches, validationErr := RunValidators(ctx, job.Validators, processedContent, DefaultValidatorRetryStrategy())
 		if validationErr != nil {
 			// Don't fail entire job for validator errors, just log them
 			if job.Config.Debug {
@@ -278,114 +277,6 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		RedactionResult: redactionResult,
 		RedactedPath:    redactedPath,
 	}
-}
-
-// runValidatorsWithResilience runs validators with error isolation
-func (wp *WorkerPool) runValidatorsWithResilience(ctx context.Context, validators []detector.Validator, processedContent *preprocessors.ProcessedContent) ([]detector.Match, error) {
-	var allMatches []detector.Match
-	var wg sync.WaitGroup
-	matchesChan := make(chan []detector.Match, len(validators))
-	errorChan := make(chan error, len(validators))
-
-	for _, validator := range validators {
-		// Check for ProcessedContent validator first (for dual path system)
-		if processedContentValidator, ok := validator.(interface {
-			ValidateProcessedContent(content *preprocessors.ProcessedContent) ([]detector.Match, error)
-		}); ok {
-			wg.Add(1)
-			go func(v detector.Validator, pcv interface {
-				ValidateProcessedContent(content *preprocessors.ProcessedContent) ([]detector.Match, error)
-			}) {
-				defer wg.Done()
-
-				// Wrap validator execution with retry for transient errors
-				validatorOperation := func(ctx context.Context) error {
-					matches, err := pcv.ValidateProcessedContent(processedContent)
-					if err == nil {
-						matchesChan <- matches
-					} else {
-						matchesChan <- []detector.Match{}
-						return err
-					}
-					return nil
-				}
-
-				// Use shorter retry config for validators to avoid blocking
-				retryConfig := resilience.DefaultRetryConfig()
-				retryConfig.MaxRetries = 2
-				retryConfig.MaxElapsedTime = 30 * time.Second
-
-				err := resilience.RetryWithBackoff(ctx, retryConfig, validatorOperation)
-				if err != nil {
-					errorChan <- err
-				}
-			}(validator, processedContentValidator)
-		} else if contentValidator, ok := validator.(interface {
-			ValidateContent(content string, originalPath string) ([]detector.Match, error)
-		}); ok {
-			// Skip ONLY pure metadata content for non-metadata validators
-			if _, isMetadataValidator := validator.(*metadata.Validator); !isMetadataValidator && processedContent.ProcessorType == "metadata" {
-				continue
-			}
-
-			wg.Add(1)
-			go func(v detector.Validator, cv interface {
-				ValidateContent(content string, originalPath string) ([]detector.Match, error)
-			}) {
-				defer wg.Done()
-
-				// Wrap validator execution with retry for transient errors
-				validatorOperation := func(ctx context.Context) error {
-					filename := processedContent.OriginalPath
-					if filename == "" {
-						filename = processedContent.Filename
-					}
-
-					matches, err := cv.ValidateContent(processedContent.Text, filename)
-					if err == nil {
-						matchesChan <- matches
-					} else {
-						matchesChan <- []detector.Match{}
-						return err
-					}
-					return nil
-				}
-
-				// Use shorter retry config for validators to avoid blocking
-				retryConfig := resilience.DefaultRetryConfig()
-				retryConfig.MaxRetries = 2
-				retryConfig.MaxElapsedTime = 30 * time.Second
-
-				err := resilience.RetryWithBackoff(ctx, retryConfig, validatorOperation)
-				if err != nil {
-					errorChan <- err
-				}
-			}(validator, contentValidator)
-		}
-	}
-
-	// Wait for all validators to complete
-	wg.Wait()
-	close(matchesChan)
-	close(errorChan)
-
-	// Collect results
-	for matches := range matchesChan {
-		allMatches = append(allMatches, matches...)
-	}
-
-	// Collect errors (for logging/debugging)
-	var validationErrors []error
-	for err := range errorChan {
-		validationErrors = append(validationErrors, err)
-	}
-
-	if len(validationErrors) > 0 {
-		// Return first error for debugging, but don't fail the entire job
-		return allMatches, validationErrors[0]
-	}
-
-	return allMatches, nil
 }
 
 // performInlineRedaction performs redaction using the already-extracted content

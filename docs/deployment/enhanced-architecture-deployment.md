@@ -31,7 +31,7 @@ This document provides deployment procedures and monitoring guidelines for the e
 #### Phase 1: Development Environment
 ```bash
 # Build enhanced version
-go build -o ferret-scan-enhanced cmd/main.go
+go build -o ferret-scan-enhanced ./cmd
 
 # Run comprehensive test suite
 go test ./tests/integration/... -v

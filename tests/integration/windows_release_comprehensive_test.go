@@ -50,7 +50,7 @@ func TestWindowsReleaseDistributionValidation(t *testing.T) {
 				binaryPath := filepath.Join(tempDir, binaryName)
 
 				// Build binary for specific architecture
-				buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+				buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 				buildCmd.Env = append(os.Environ(),
 					"GOOS=windows",
 					fmt.Sprintf("GOARCH=%s", arch.arch),
@@ -127,7 +127,7 @@ func TestWindowsReleaseDistributionValidation(t *testing.T) {
 
 		// Build main binary
 		binaryPath := filepath.Join(packageDir, "bin", "ferret-scan.exe")
-		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 		buildCmd.Env = append(os.Environ(),
 			"GOOS=windows",
 			"GOARCH=amd64",
@@ -439,12 +439,13 @@ Environment Variables:
 - APPDATA: User application data directory
 
 PowerShell Integration:
-- ferret-scan scan . | Out-File results.txt
-- Get-ChildItem -Recurse | ferret-scan scan --stdin
+- ferret-scan --file . --recursive | Out-File results.txt
+- Get-Content notes.txt | ferret-scan --stdin
+- git diff | ferret-scan --stdin --pre-commit-mode
 
 Batch Script Integration:
 - @echo off
-- ferret-scan scan %1
+- ferret-scan --file %1
 - if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
 Common Issues:
@@ -557,7 +558,7 @@ if ($LASTEXITCODE -eq 0) {
 		}
 
 		binaryPath := filepath.Join(binaryDir, "ferret-scan.exe")
-		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/main.go")
+		buildCmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd")
 		buildCmd.Env = append(os.Environ(),
 			"GOOS=windows",
 			"GOARCH=amd64",
