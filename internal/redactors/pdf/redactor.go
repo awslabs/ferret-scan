@@ -508,7 +508,9 @@ func (pr *PDFRedactor) copyFile(src, dst string) error {
 		return fmt.Errorf("failed to read source file: %w", err)
 	}
 
-	// Write to destination with secure permissions
+	// Write to destination with secure permissions.
+	// #nosec G703 -- dst is operator-controlled (--redaction-output-dir);
+	// CLI-only path. Web mode hard-codes EnableRedaction: false.
 	err = os.WriteFile(dst, data, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to write destination file: %w", err)

@@ -229,6 +229,8 @@ func (s *DataSanitizer) IsSafeMetadataKey(key string) bool {
 
 // getRemediationGuidance provides remediation guidance based on check type
 func (s *DataSanitizer) getRemediationGuidance(checkType string) string {
+	// #nosec G101 -- human-readable remediation strings shown in GitLab
+	// SAST output. No credentials.
 	guidance := map[string]string{
 		"CREDIT_CARD":           "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
 		"VISA":                  "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <a name="unreleased"></a>
 ## [Unreleased]
 
+### 🔒 Security
+
+- **web:** bind to loopback (`127.0.0.1`) by default. Closes [TM-01](THREAT_MODEL.md). Container runtimes (Docker/Podman) auto-detected via `/.dockerenv` or `FERRET_CONTAINER_MODE=true` env var keep binding to `0.0.0.0` so port-publishing semantics work; bare-metal users get loopback-only by default. New `--bind <addr>` flag for explicit override (with stderr warning when bound to a non-loopback interface).
+- **web:** add Origin/Referer validation on POST/PUT/DELETE/PATCH for `/scan` and `/suppressions/*`. Closes [TM-02](THREAT_MODEL.md). Non-browser callers (curl, scripts) that send neither header are allowed — they aren't subject to CSRF.
+- **web:** emit baseline security headers on every response — `Content-Security-Policy` (`default-src 'self'` with `'unsafe-inline'` for the existing template), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`. Closes [TM-03](THREAT_MODEL.md). Strict CSP (no `'unsafe-inline'`) deferred pending template refactor — tracked as TM-05.
+- **web:** suppression endpoints now inherit the loopback trust boundary. Closes [TM-04](THREAT_MODEL.md).
+
 ### ✨ New Features
 
 - **stdin:** read content to scan from standard input via `--stdin` or the POSIX-style alias `--file -`. Content is treated as plain text and findings are labelled `<stdin>` (configurable via `--stdin-name`). Useful for `git diff | ferret-scan --stdin`, scanning command output, and lambda/IPC callers that already have content in memory. Mutually exclusive with `--file <path>`, positional file args, and `--web`. Max input size: 100 MB.

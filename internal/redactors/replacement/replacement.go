@@ -445,6 +445,7 @@ func syntheticPassport(original string) (string, error) {
 
 	upper26 := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	randLetter := func() byte { return upper26[secureRandom(26)] }
+	// #nosec G115 -- secureRandom(10) returns [0,9]; '0' + 9 = 57, fits in byte
 	randDigit := func() byte { return byte('0' + secureRandom(10)) }
 
 	switch {
@@ -490,6 +491,8 @@ func syntheticPassport(original string) (string, error) {
 			} else if c >= '0' && c <= '9' {
 				b[i] = randDigit()
 			} else {
+				// #nosec G115 -- c is a rune iterated from upper, an ASCII-only string
+				// (uppercased + space-stripped at line 444), so it fits in byte.
 				b[i] = byte(c)
 			}
 		}

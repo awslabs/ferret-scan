@@ -150,7 +150,7 @@ To set up your development environment:
 ```bash
 # First, clone the repository
 git clone https://github.com/awslabs/ferret-scan.git
-cd Ferret-Scan
+cd ferret-scan
 
 # Make the setup script executable and run it
 chmod +x scripts/setup-dev.sh
@@ -258,6 +258,7 @@ See the [Redaction Guide](docs/user-guides/README-Redaction.md) for strategy det
 #### Web Server Mode
 - `--web`: Start web server mode instead of CLI scanning
 - `--port`: Port for web server (default: 8080, only used with --web)
+- `--bind`: Network interface to bind to (default: `127.0.0.1`; auto-detects `0.0.0.0` inside containers via `/.dockerenv` or `FERRET_CONTAINER_MODE=true`). Pass `--bind 0.0.0.0` to expose on the LAN — note that the UI has no authentication.
 
 The web server honors `--config`, `--suppression-file`, and `--exclude` so it can use the same configuration as the CLI:
 
@@ -267,6 +268,8 @@ The web server honors `--config`, `--suppression-file`, and `--exclude` so it ca
   --suppression-file ./team-suppressions.yaml \
   --exclude '.git,node_modules,dist,target'
 ```
+
+**Security defaults.** The web UI binds to `127.0.0.1` by default and rejects cross-origin POST requests (Origin/Referer mismatch). It emits a baseline Content-Security-Policy plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` on every response. To expose the UI on the LAN, pass `--bind 0.0.0.0` and understand that the UI itself has no authentication — anyone reachable on the bound interface can scan content and modify suppression rules. Inside Docker/Podman the server auto-detects the container environment and binds to all interfaces; port publishing (`docker run -p 127.0.0.1:8080:8080 ...`) controls host exposure.
 
 Without these flags, the web server uses the platform default suppression path (`~/.ferret-scan/suppressions.yaml` on Unix, `%APPDATA%\ferret-scan\suppressions.yaml` on Windows). Configured exclude patterns are applied client-side during folder drag-drop walks so excluded directories are never uploaded.
 
@@ -1515,7 +1518,8 @@ See the existing validator READMEs for examples of the recommended documentation
 
 For questions, issues, or contributions:
 
-- **Developers**: Andrea Di Fabio (adifabio@), Lee Myers (mlmyers@)
+- **Issues & Discussions**: [GitHub Issues](https://github.com/awslabs/ferret-scan/issues)
+- **Source**: [github.com/awslabs/ferret-scan](https://github.com/awslabs/ferret-scan)
 - **Artwork**: Original logo artwork by Olivia Myers McMullin
 
 ## License

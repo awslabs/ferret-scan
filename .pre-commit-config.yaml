@@ -14,6 +14,12 @@ repos:
     args: ['--maxkb=102400']  # 100MB = 102400KB
   - id: check-json
   - id: check-yaml
+    # aws-iam-role.yaml uses CloudFormation intrinsic-function tags
+    # (!Not, !Equals) that PyYAML doesn't recognize — CloudFormation lints
+    # the template separately. .pre-commit-config-examples.yaml stitches
+    # multiple alternative `repos:` blocks into one file as documentation;
+    # the file isn't loaded by any consumer at runtime.
+    exclude: '^(aws-iam-role\.yaml|\.pre-commit-config-examples\.yaml)$'
   - id: debug-statements
   - id: detect-private-key
   - id: end-of-file-fixer
@@ -79,6 +85,11 @@ repos:
 
 # Ferret Scan security check (from GitHub)
 - repo: https://github.com/awslabs/ferret-scan
-  rev: v1.5.0
+  rev: v1.5.2
   hooks:
     - id: ferret-scan
+      # Only block on HIGH-confidence findings. Medium-confidence hits in
+      # documentation (e.g. example suppression-rule SHA-256 hashes that look
+      # like high-entropy tokens) are review signals, not commit blockers.
+      env:
+        FERRET_PRECOMMIT_EXIT_ON: "high"

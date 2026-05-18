@@ -669,6 +669,7 @@ func shouldSuppressProgressOutput(finalConfig *finalConfiguration, precommitConf
 type extractedFlags struct {
 	webMode              bool
 	webPort              string
+	webBind              string
 	inputFile            string
 	configFile           string
 	profileName          string
@@ -720,6 +721,7 @@ type flagPointers struct {
 
 	// String flags
 	webPort            *string
+	webBind            *string
 	inputFile          *string
 	configFile         *string
 	profileName        *string
@@ -740,6 +742,7 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 	return extractedFlags{
 		webMode:              getBoolFlag(flags.webMode),
 		webPort:              getStringFlag(flags.webPort),
+		webBind:              getStringFlag(flags.webBind),
 		inputFile:            getStringFlag(flags.inputFile),
 		configFile:           getStringFlag(flags.configFile),
 		profileName:          getStringFlag(flags.profileName),
@@ -841,6 +844,7 @@ func main() {
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
 	webPort := flag.String("port", "8080", "Port for web server (default: 8080)")
+	webBind := flag.String("bind", "", "Network interface for the web server (default: 127.0.0.1; auto-detects 0.0.0.0 inside containers). Pass --bind 0.0.0.0 to expose on the LAN — note that the UI has no authentication.")
 
 	// Stdin input. --file - is also accepted as a POSIX-style alias.
 	// stdin content is treated as plain text; binary inputs should be written
@@ -872,6 +876,7 @@ func main() {
 
 		// String flags
 		webPort:            webPort,
+		webBind:            webBind,
 		inputFile:          inputFile,
 		configFile:         configFile,
 		profileName:        profileName,
@@ -889,7 +894,7 @@ func main() {
 
 	// Handle web mode early - validate flags and start web server if requested
 	if flags.webMode {
-		if err := handleWebMode(flags.webPort, flag.Args(), flags.inputFile, flags.configFile, flags.suppressionFile, flags.excludePatterns); err != nil {
+		if err := handleWebMode(flags.webPort, flags.webBind, flag.Args(), flags.inputFile, flags.configFile, flags.suppressionFile, flags.excludePatterns); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -2325,7 +2330,7 @@ func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 // }
 
 // handleWebMode validates web mode flags and starts the web server
-func handleWebMode(port string, args []string, inputFile, configFile, suppressionFile string, excludePatterns []string) error {
+func handleWebMode(port, bindFlag string, args []string, inputFile, configFile, suppressionFile string, excludePatterns []string) error {
 	// Validate that no file arguments are provided with web mode
 	if len(args) > 0 {
 		return fmt.Errorf("--web flag cannot be used with file arguments\n"+
@@ -2352,8 +2357,13 @@ func handleWebMode(port string, args []string, inputFile, configFile, suppressio
 			"Troubleshooting: Try a different port with --port <number> or ensure no other services are using ports 8080-8089", err)
 	}
 
+	// Resolve bind address now (after port resolution) so the startup banner
+	// reflects what we actually used. The web package owns the resolution
+	// rules so the policy stays in one place.
+	bindAddr, _ := web.ResolveBindAddress(bindFlag)
+
 	// Start web server
-	return startWebServer(finalPort, configFile, suppressionFile, excludePatterns)
+	return startWebServer(finalPort, bindAddr, configFile, suppressionFile, excludePatterns)
 }
 
 // validateWebModeFlags validates that incompatible flags are not used with --web
@@ -2538,10 +2548,11 @@ func isPortAvailable(port string) bool {
 	return true
 }
 
-// startWebServer starts the web server on the specified port with timeout and resilience
-func startWebServer(port, configFile, suppressionFile string, excludePatterns []string) error {
+// startWebServer starts the web server on the specified port + bind address
+// with timeout and resilience.
+func startWebServer(port, bindAddr, configFile, suppressionFile string, excludePatterns []string) error {
 	// Import web server package
-	webServer := web.NewWebServerWithOptions(port, configFile, suppressionFile, excludePatterns)
+	webServer := web.NewWebServerWithOptions(port, bindAddr, configFile, suppressionFile, excludePatterns)
 
 	// Start the web server (this will block)
 	return webServer.Start()

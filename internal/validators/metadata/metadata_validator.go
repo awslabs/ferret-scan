@@ -25,7 +25,7 @@ var (
 	// `phoneBasic` is the loose three-three-four digit pattern used by
 	// containsEnhancedPhoneNumber's first slot AND by an unrelated fallback
 	// path in calculateMatchConfidence — same literal in two places.
-	phoneBasic        = regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
+	phoneBasic         = regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
 	phoneParenAreaCode = regexp.MustCompile(`\b\(\d{3}\)\s?\d{3}[-.]?\d{4}\b`)
 	phoneInternational = regexp.MustCompile(`\b\+\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b`)
 	phoneSpaceSep      = regexp.MustCompile(`\b\d{3}\s\d{3}\s\d{4}\b`)
@@ -37,8 +37,8 @@ var (
 		phoneSpaceSep,
 	}
 
-	emailExtractPattern = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	gpsCoordPattern     = regexp.MustCompile(`[+-]?\d+\.\d+`)
+	emailExtractPattern  = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+	gpsCoordPattern      = regexp.MustCompile(`[+-]?\d+\.\d+`)
 	versionNumberPattern = regexp.MustCompile(`^\d+(\.\d+)*$`)
 )
 

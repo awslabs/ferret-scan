@@ -156,7 +156,7 @@ func (m *VulnerabilityMapper) mapCheckTypeToCategory(checkType string) string {
 
 // generateVulnerabilityName creates a human-readable name for the vulnerability
 func (m *VulnerabilityMapper) generateVulnerabilityName(checkType string) string {
-	// Convert check type to human-readable format
+	// #nosec G101 -- display-name dictionary for finding categories. No credentials.
 	nameMap := map[string]string{
 		"CREDIT_CARD":           "Credit Card Number Detected",
 		"SSN":                   "Social Security Number Detected",

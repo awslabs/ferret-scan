@@ -68,7 +68,7 @@ ferret-scan --file . --recursive --exclude ".git,*.log,node_modules"
 defaults:
   exclude_patterns:
     - ".git"          # Exclude .git directory
-    - "*.log"         # Exclude all .log files  
+    - "*.log"         # Exclude all .log files
     - "node_modules"  # Exclude node_modules directory
     - "target"        # Exclude target directory
     - "*.tmp"         # Exclude temporary files
@@ -106,7 +106,7 @@ Exclusion patterns support the following matching strategies:
    - `*.log` matches all files ending with ".log"
 
 2. **Directory Matching**: Patterns are matched against directory names in the path
-   - `.git` matches any directory named ".git" 
+   - `.git` matches any directory named ".git"
    - `node_modules` matches any directory named "node_modules"
 
 3. **Path Substring Matching**: Patterns are matched as substrings within the full path
@@ -130,17 +130,17 @@ exclude_patterns:
   - ".git"              # Matches .git directory exactly
   - ".DS_Store"         # Matches .DS_Store files exactly
   - "config.json"       # Matches config.json files exactly
-  
+
   # Glob wildcards
   - "*.log"             # Matches all .log files
   - "test_*"            # Matches files starting with "test_"
   - "*.tmp"             # Matches all .tmp files
-  
+
   # Directory patterns
   - "node_modules"      # Matches node_modules directories
   - "target"            # Matches target directories
   - "build/"            # Matches build directories (trailing slash optional)
-  
+
   # Character ranges
   - "[Tt]est*"          # Matches files starting with "Test" or "test"
   - "file[0-9].txt"     # Matches file0.txt, file1.txt, etc.
