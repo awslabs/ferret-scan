@@ -50,7 +50,6 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 <!-- GENAI_DISABLED: - [Comprehend Implementation](development/comprehend_implementation_summary.md) - AI PII detection -->
 
 ### 📖 Reference
-- [Battle Card](battle-card.md) - Competitive analysis and positioning
 - [Quotas and Limits](reference/quotas-and-limits.md) - File size limits and system constraints
 - [Changelog](reference/CHANGELOG.md) - Version history and updates
 - [Implementation Status](reference/IMPLEMENTATION_STATUS.md) - Current feature status
