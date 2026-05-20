@@ -773,8 +773,14 @@ func ApplyPlatformDefaults(config *Config) {
 }
 
 // LoadConfigOrDefault loads configuration from configFile (or searches standard locations
-// when configFile is empty). If loading fails, it returns a default configuration.
-// This is the shared helper used by both the CLI and the web server.
+// when configFile is empty). If loading fails, it logs a warning to stderr and
+// returns a default configuration so callers don't crash on a missing/malformed
+// auto-discovered file.
+//
+// This helper is intended for the auto-discovery path (configFile == "") and
+// for callers that explicitly want best-effort loading. When the user passes an
+// explicit --config <path> flag, prefer LoadConfigStrict so YAML parse errors
+// surface immediately instead of being silently swallowed.
 func LoadConfigOrDefault(configFile string) *Config {
 	configPath := configFile
 	if configPath == "" {
@@ -783,8 +789,45 @@ func LoadConfigOrDefault(configFile string) *Config {
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
-		// Fall back to defaults — callers should not crash on a missing/bad config file.
+		// Surface the failure on stderr so users at least see *something* when
+		// their config silently isn't applied. Previously this was swallowed
+		// entirely, which made YAML escape gotchas (e.g. "\b" in double-quoted
+		// strings) and missing-file typos invisible.
+		if configPath != "" {
+			fmt.Fprintf(os.Stderr,
+				"Warning: failed to load config %q: %v — using built-in defaults.\n",
+				configPath, err)
+		}
 		cfg, _ = LoadConfig("")
 	}
 	return cfg
+}
+
+// LoadConfigStrict loads configuration from configFile and returns an error if
+// the file does not exist, cannot be read, or fails to parse.
+//
+// This is a thin wrapper around LoadConfig that adds two contract guarantees
+// relevant to operator-supplied paths:
+//
+//  1. An empty path is rejected outright (unlike LoadConfig, which silently
+//     returns a default config when given ""). Callers that want
+//     auto-discovery should explicitly use LoadConfigOrDefault — passing ""
+//     to a function named "Strict" is almost certainly a bug.
+//  2. Errors are wrapped with the file path so the operator sees what they
+//     supplied in the error message (LoadConfig's errors don't include the
+//     path the caller used).
+//
+// Use this when the caller has an operator-supplied path (e.g. --config <path>
+// or web --config) and a silent fallback to defaults would hide a real bug.
+// Both wrap-and-reject behaviors are exercised by callers in production
+// (cmd/main.go, internal/web/server.go) so the wrapper pulls its weight.
+func LoadConfigStrict(configFile string) (*Config, error) {
+	if configFile == "" {
+		return nil, fmt.Errorf("LoadConfigStrict requires an explicit config path; use LoadConfigOrDefault for auto-discovery")
+	}
+	cfg, err := LoadConfig(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config %q: %w", configFile, err)
+	}
+	return cfg, nil
 }

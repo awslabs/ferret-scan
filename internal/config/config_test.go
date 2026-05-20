@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,113 @@ func TestLoadConfigOrDefault_InvalidYAML(t *testing.T) {
 	cfg := LoadConfigOrDefault(configPath)
 	if cfg == nil {
 		t.Fatal("expected non-nil config (fallback to defaults on parse error)")
+	}
+}
+
+// LoadConfigStrict fails hard on missing/malformed configs. This is the path
+// used by --config <path> on the CLI and the web server's startup check, where
+// silent fallback would hide a real bug from the operator.
+
+func TestLoadConfigStrict_RequiresExplicitPath(t *testing.T) {
+	cfg, err := LoadConfigStrict("")
+	if err == nil {
+		t.Fatal("expected error for empty path; LoadConfigStrict must not auto-discover")
+	}
+	if cfg != nil {
+		t.Fatalf("expected nil config on error, got %#v", cfg)
+	}
+	// Lock in the contract that the error tells the caller they used the
+	// wrong API for auto-discovery — without this, a future refactor could
+	// silently change behavior to fall through to LoadConfig("") which is
+	// exactly the bug class this function exists to prevent.
+	if !strings.Contains(err.Error(), "LoadConfigOrDefault") {
+		t.Errorf("error should point caller at LoadConfigOrDefault for auto-discovery; got: %v", err)
+	}
+}
+
+func TestLoadConfigStrict_NonexistentFile(t *testing.T) {
+	const path = "/nonexistent/path/config.yaml"
+	cfg, err := LoadConfigStrict(path)
+	if err == nil {
+		t.Fatal("expected error for nonexistent file; got nil")
+	}
+	if cfg != nil {
+		t.Fatalf("expected nil config on error, got %#v", cfg)
+	}
+	// Operators must see the supplied path's filename in the error so they
+	// can recognize what they typed — without this the CLI would surface a
+	// bare "no such file" with no indication of which path was attempted,
+	// which is precisely the failure mode this PR fixes. Match on the
+	// filename rather than the full path so the assertion holds on Windows
+	// where %q in the wrapped error doubles backslashes.
+	if !strings.Contains(err.Error(), filepath.Base(path)) {
+		t.Errorf("error must include the supplied filename; got: %v", err)
+	}
+}
+
+func TestLoadConfigStrict_InvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "bad.yaml")
+
+	// This is the exact YAML escape footgun that triggered the bug report:
+	// double-quoted strings process \b and \s as escape sequences, producing
+	// "found unknown escape character" from yaml.v3.
+	contents := `validators:
+  intellectual_property:
+    intellectual_property_patterns:
+      trade_secret: "\b(Trade\s+Secret)\b"
+`
+	if err := os.WriteFile(configPath, []byte(contents), 0600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfigStrict(configPath)
+	if err == nil {
+		t.Fatal("expected parse error for YAML with unknown escape; got nil")
+	}
+	if cfg != nil {
+		t.Fatalf("expected nil config on parse error, got %#v", cfg)
+	}
+	// Match the filename rather than the full path: %q in the error wrapper
+	// double-escapes backslashes on Windows (C:\\foo vs C:\foo), so a raw
+	// strings.Contains(err, configPath) fails on Windows even though the
+	// operator-visible path is in the message. The filename is enough to
+	// identify which file failed.
+	if !strings.Contains(err.Error(), filepath.Base(configPath)) {
+		t.Errorf("error must include the supplied filename; got: %v", err)
+	}
+	// The underlying yaml.v3 message is the operator's main signal about
+	// what's wrong with their config. Lock in that we don't strip it.
+	if !strings.Contains(err.Error(), "unknown escape") {
+		t.Errorf("error should propagate underlying YAML parse error; got: %v", err)
+	}
+}
+
+func TestLoadConfigStrict_ValidFile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "good.yaml")
+
+	contents := `defaults:
+  format: json
+  exclude_patterns:
+    - .git
+`
+	if err := os.WriteFile(configPath, []byte(contents), 0600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfigStrict(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if cfg.Defaults.Format != "json" {
+		t.Errorf("expected format=json, got %q", cfg.Defaults.Format)
+	}
+	if len(cfg.Defaults.ExcludePatterns) != 1 || cfg.Defaults.ExcludePatterns[0] != ".git" {
+		t.Errorf("expected exclude_patterns=[.git], got %v", cfg.Defaults.ExcludePatterns)
 	}
 }
 

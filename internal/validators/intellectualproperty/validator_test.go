@@ -482,3 +482,80 @@ func TestConfigureEmptyValidators(t *testing.T) {
 		t.Error("copyright should be detected with empty validators config")
 	}
 }
+
+// --- Pattern overrides from config ---
+
+// TestConfigure_InvalidRegexDoesNotPanic locks in the contract that an
+// invalid regex from config logs a warning and falls back to the built-in
+// default. Previously regexp.MustCompile would panic the entire scan when
+// users supplied a malformed pattern (or, more commonly, a YAML-escape-mangled
+// pattern from a double-quoted scalar like "\b(...)\b"). See validator.go
+// applyIPPatternOverride.
+func TestConfigure_InvalidRegexDoesNotPanic(t *testing.T) {
+	v := NewValidator()
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Configure must not panic on invalid user regex; got: %v", r)
+		}
+	}()
+
+	cfg := &config.Config{
+		Validators: map[string]map[string]interface{}{
+			"intellectual_property": {
+				"intellectual_property_patterns": map[string]any{
+					"trade_secret": "(unclosed group", // invalid regex
+				},
+			},
+		},
+	}
+	v.Configure(cfg)
+
+	// Built-in trade_secret pattern should still fire — invalid override
+	// must not silently erase the default.
+	matches, err := v.ValidateContent("This is Confidential information.\n", "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !matchesContainIPType(matches, "trade_secret") {
+		t.Error("invalid override should leave the built-in trade_secret pattern in place")
+	}
+}
+
+// TestConfigure_ValidPatternOverrideApplied confirms a well-formed user
+// pattern actually replaces the built-in. The user-supplied narrowed pattern
+// matches "Trade Secret" but not generic terms like "Confidential" or
+// "Restricted" that the default catches.
+func TestConfigure_ValidPatternOverrideApplied(t *testing.T) {
+	v := NewValidator()
+
+	cfg := &config.Config{
+		Validators: map[string]map[string]interface{}{
+			"intellectual_property": {
+				"intellectual_property_patterns": map[string]any{
+					// Narrow override: only matches "Trade Secret" exactly.
+					"trade_secret": `\bTrade\s+Secret\b`,
+				},
+			},
+		},
+	}
+	v.Configure(cfg)
+
+	// Generic "Confidential" should NOT match the narrowed pattern.
+	matches, err := v.ValidateContent("This is Confidential information.\n", "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if matchesContainIPType(matches, "trade_secret") {
+		t.Error("narrowed override should not match generic 'Confidential'")
+	}
+
+	// "Trade Secret" should still match.
+	matches, err = v.ValidateContent("This is a Trade Secret.\n", "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !matchesContainIPType(matches, "trade_secret") {
+		t.Error("narrowed override should still match 'Trade Secret'")
+	}
+}

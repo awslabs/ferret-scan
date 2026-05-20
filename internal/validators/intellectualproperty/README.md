@@ -184,6 +184,11 @@ validators:
       trademark: "\\b(\\w+\\s*[™®]|\\w+\\s*\\(TM\\)|\\w+\\s*\\(R\\)|\\w+\\s+Trademark|\\w+\\s+Registered\\s+Trademark)\\b"
       copyright: "(©|\\(c\\)|\\(C\\)|Copyright|\\bCopyright\\b)\\s*\\d{4}[-,]?(\\d{4})?\\s+[A-Za-z0-9\\s\\.,]+"
       trade_secret: "\\b(Confidential|Trade\\s+Secret|Proprietary|Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted|Classified)\\b"
+```
+
+> **YAML escape gotcha:** writing a regex inside a double-quoted YAML scalar (`"\b(...)\b"`) makes YAML treat `\b` as a backspace and reject `\s` as an unknown escape. Use unquoted scalars, single quotes, or double-quoted with doubled backslashes (`"\\b(...)\\b"`). See [docs/configuration.md → Regex Values in YAML](../../../docs/configuration.md#regex-values-in-yaml--escaping-rules) for the full rules and the `disabled_types` escape hatch.
+
+```yaml
 
 # Profile-specific validator configuration (overrides global settings)
 profiles:
