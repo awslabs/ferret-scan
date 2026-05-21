@@ -120,6 +120,18 @@ data "aws_iam_policy_document" "lambda_assume_role" {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]
     }
+
+    # Confused-deputy defense: scope the trust to this account
+    # only. Without this, any Lambda service principal — including
+    # one in a different AWS account that somehow got the role ARN —
+    # could in principle assume the role. AWS docs flag this for any
+    # role assumed by a service principal:
+    # https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
   }
 }
 
@@ -152,6 +164,18 @@ data "aws_iam_policy_document" "lambda_logs" {
       resources = [
         aws_kms_key.logs[0].arn,
       ]
+      # Defense in depth: pin this grant to use only via CloudWatch
+      # Logs in this region. The function code never calls KMS
+      # directly — its only legitimate use of the CMK is via
+      # logs:PutLogEvents, which CloudWatch then services with KMS
+      # under the hood. Without kms:ViaService, the role could in
+      # principle decrypt this key from any KMS-integrated service
+      # (S3 with this BYO key, Secrets Manager with this key, etc.).
+      condition {
+        test     = "StringEquals"
+        variable = "kms:ViaService"
+        values   = ["logs.${local.region}.amazonaws.com"]
+      }
     }
   }
 }
@@ -371,13 +395,24 @@ resource "aws_apigatewayv2_stage" "default" {
   }
 }
 
-# Allow API Gateway to invoke the function. The source_arn includes
-# the api ID + a wildcard for stage/method/route, scoped to this
-# specific API.
+# Allow API Gateway to invoke the function. The source_arn pins to
+# the EXACT route path rather than the more permissive `/*/*`
+# wildcard. With `/*/*`, a future change that added a second route
+# to this same API (e.g. an OPTIONS handler, a debug route, an
+# alternate /v2/redact) would automatically grant API Gateway
+# invoke rights to it — even if the maintainer forgot to add a
+# matching aws_lambda_permission. The tight form forecloses that
+# class of regression: any new route requires an explicit new
+# aws_lambda_permission resource.
+#
+# The middle wildcard (`/*/`) covers the stage. We have only
+# `$default`, but the AWS-side execution ARN renders the default
+# stage as `*` in the source-arn match, so the wildcard is
+# semantically equivalent to a literal `$default`.
 resource "aws_lambda_permission" "apigw_invoke" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.this.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/POST/v1/redact"
 }

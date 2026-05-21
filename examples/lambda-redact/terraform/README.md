@@ -72,6 +72,29 @@ to verify each property holds.
   `Action` or `Resource`. `kms:Decrypt` is added only when the CMK
   toggle is on.
 
+- **Confused-deputy defense on the Lambda execution role**: the
+  trust policy includes a `StringEquals: aws:SourceAccount` condition
+  pinning role-assumption to this account only. Without it, any
+  Lambda service principal in any account could in principle assume
+  the role; the condition makes the role unusable to a different
+  account's Lambda even if the role ARN leaked.
+
+- **`kms:ViaService` condition on the CMK decrypt grant**: when the
+  CMK toggle is on, the role's `kms:Decrypt`/`GenerateDataKey` grant
+  is conditional on `kms:ViaService = logs.<region>.amazonaws.com`.
+  The function never calls KMS directly — its only legitimate use
+  of the CMK is via `logs:PutLogEvents`, so pinning the via-service
+  forecloses any theoretical misuse of the role with this key
+  against a different KMS-integrated service.
+
+- **Lambda invoke permission scoped to the exact route**: the
+  `aws_lambda_permission.apigw_invoke` source ARN is
+  `<execution_arn>/*/POST/v1/redact`, not the more permissive
+  `<execution_arn>/*/*`. A future change that adds a second route
+  to this API requires an explicit new `aws_lambda_permission`
+  resource — the wildcard form would have silently granted invoke
+  rights to any new route added later.
+
 - **X-Ray tracing in PassThrough mode**: traces only when the
   upstream caller propagates a trace header. PassThrough vs Active
   is deliberate — Active mode produces trace segments for ALL
