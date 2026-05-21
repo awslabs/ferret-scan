@@ -4,8 +4,8 @@
 package preprocessors
 
 import (
-	"ferret-scan/internal/observability"
-	meta_extract_videolib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-videolib"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	meta_extract_videolib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-videolib"
 )
 
 // VideoMetadataPreprocessor extracts metadata from video files

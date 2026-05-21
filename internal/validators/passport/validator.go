@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode"
 
-	"ferret-scan/internal/context"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/context"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // Package-level pre-compiled regexps for static patterns

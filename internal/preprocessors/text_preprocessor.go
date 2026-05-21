@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ferret-scan/internal/observability"
-	textextractofficetextlib "ferret-scan/internal/preprocessors/text-extractors/text-extract-officetextlib"
-	textextractpdftextlib "ferret-scan/internal/preprocessors/text-extractors/text-extract-pdftextlib"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	textextractofficetextlib "github.com/awslabs/ferret-scan/internal/preprocessors/text-extractors/text-extract-officetextlib"
+	textextractpdftextlib "github.com/awslabs/ferret-scan/internal/preprocessors/text-extractors/text-extract-pdftextlib"
 )
 
 // TextPreprocessor handles text extraction from various document formats

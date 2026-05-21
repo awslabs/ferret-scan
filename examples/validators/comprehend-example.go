@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	comprehend_analyzer_lib "ferret-scan/internal/validators/comprehend/comprehend-analyzer-lib"
+	comprehend_analyzer_lib "github.com/awslabs/ferret-scan/internal/validators/comprehend/comprehend-analyzer-lib"
 )
 
 func main() {

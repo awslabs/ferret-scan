@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // ObservabilityHooks provides debugging and observability hooks for the enhanced architecture

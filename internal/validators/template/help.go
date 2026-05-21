@@ -3,7 +3,7 @@
 
 package template
 
-import "ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/internal/help"
 
 // GetCheckInfo returns standardized information about this check
 // IMPORTANT: When implementing your own validator:

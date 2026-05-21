@@ -23,12 +23,12 @@ import (
 	"strings"
 	"time"
 
-	"ferret-scan/internal/observability"
-	audiolib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-audiolib"
-	meta_extract_exiflib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-exiflib"
-	meta_extract_officelib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-officelib"
-	meta_extract_pdflib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-pdflib"
-	meta_extract_videolib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-videolib"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	audiolib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-audiolib"
+	meta_extract_exiflib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-exiflib"
+	meta_extract_officelib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-officelib"
+	meta_extract_pdflib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-pdflib"
+	meta_extract_videolib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-videolib"
 )
 
 // DEPRECATED: MetadataPreprocessor is deprecated and will be removed in a future version.

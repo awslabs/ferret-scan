@@ -4,7 +4,7 @@
 package position
 
 import (
-	"ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/redactors"
 	"math"
 	"strings"
 	"unicode"

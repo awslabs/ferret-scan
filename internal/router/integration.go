@@ -4,7 +4,7 @@
 package router
 
 import (
-	"ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
 
 // RegisterDefaultPreprocessors registers all built-in preprocessors

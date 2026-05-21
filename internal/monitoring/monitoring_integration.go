@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/performance"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/performance"
 )
 
 // MonitoringIntegration provides a unified interface for all monitoring components

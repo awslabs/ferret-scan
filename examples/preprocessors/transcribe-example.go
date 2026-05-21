@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	transcribe_extractor_lib "ferret-scan/internal/preprocessors/audio-extractors/transcribe-extractor-lib"
+	transcribe_extractor_lib "github.com/awslabs/ferret-scan/internal/preprocessors/audio-extractors/transcribe-extractor-lib"
 )
 
 func main() {

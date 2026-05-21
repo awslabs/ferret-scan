@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/preprocessors"
-	"ferret-scan/internal/redactors"
-	"ferret-scan/internal/resilience"
-	"ferret-scan/internal/router"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/resilience"
+	"github.com/awslabs/ferret-scan/internal/router"
 )
 
 // WorkerPool manages parallel file processing with enhanced error handling

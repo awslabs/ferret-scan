@@ -1,0 +1,3418 @@
+# Project-sanctioned suppression rules for ferret-scan.
+#
+# This file is COMMITTED (see .gitignore exception) so all contributors
+# and CI share the same baseline. Every rule below was auto-generated
+# from running ferret-scan on the repo itself, then hand-reviewed.
+#
+# Categories of suppressed findings:
+# - Validator help text (internal/validators/*/help.go): documentation
+#   examples like phone format strings ("+1-555-..."), example IPs,
+#   example email patterns. These are docstrings, not real PII.
+# - Validator regex patterns (internal/validators/*/validator.go):
+#   the actual regexes detect PII; the patterns themselves embed
+#   sample fixtures in comments and string literals.
+# - Redaction strategy examples (internal/redactors/.../*.go):
+#   simple/synthetic strategy fixtures used as defaults.
+# - Replacement library (internal/redactors/replacement/replacement.go):
+#   example tokens for the replacement table.
+# - Benchmark fixtures (internal/.../*benchmark*.go): synthetic
+#   payloads for performance testing.
+#
+# Only HIGH-confidence rules (>=90) are enabled, matching the
+# pre-commit hook policy (FERRET_PRECOMMIT_EXIT_ON=high). Lower-
+# confidence rules are tracked but disabled — they re-flag if
+# they cross the high-confidence threshold in a future change.
+#
+# To regenerate: ./bin/ferret-scan --suppression-file ./.ferret-scan-suppressions.yaml --generate-suppressions <files>
+# To audit a specific rule: search by hash or filename below.
+
+version: "1.0"
+rules:
+    - id: SUP-00000001
+      hash: 5790758bb3731b5569ebf0d390b0d41b938ae9b01030a18c2a419fef9daffd84 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "11"
+        context_hash: 3592ca69049c3573
+        filename: sanitizer.go
+        finding_type: BUSINESS
+        line_number: "244"
+        match_text_hash: 42ef7e84274c6d59
+    - id: SUP-00000002
+      hash: 5a1b5dda0b392d5d52dbd7f3248fd6364e4205ff916a559e07b0d0df696a89a9 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: bec86cb80e52f541
+        filename: sanitizer.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "250"
+        match_text_hash: 9049697da52b7e0e
+    - id: SUP-00000003
+      hash: 36ab874df589556a1aab39b558d8b07aa1f270fa3dd24c9c97be7ce7d93e199d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "49"
+        context_hash: 07bb5f7ecf10a06c
+        filename: benchmark.go
+        finding_type: BUSINESS
+        line_number: "534"
+        match_text_hash: 8fbd65a0c37b2cd3
+    - id: SUP-00000004
+      hash: 0f6a1e5d22acd12ff17ff6807bb1e5c686c83a423b1afbbe4ce0d094d2ba8afa # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "54"
+        context_hash: ""
+        filename: benchmark.go
+        finding_type: PERSON_NAME
+        line_number: "498"
+        match_text_hash: 6cea57c2fb6cbc2a
+    - id: SUP-00000005
+      hash: cc11c3bca538bfc185f24025de6221e0414f60dc14c4d464485fa692af7cbcd8 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "93"
+        context_hash: c2d5d821b0c83f52
+        filename: benchmark.go
+        finding_type: PHONE
+        line_number: "480"
+        match_text_hash: a28583fa6bb7d643
+    - id: SUP-00000006
+      hash: 575e21641b85cdc255899bfe25acc228543ac37d52e3e46820801b8249c5f222 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "68"
+        context_hash: ""
+        filename: plaintext_preprocessor.go
+        finding_type: PERSON_NAME
+        line_number: "402"
+        match_text_hash: 24f952b0d08ddae8
+    - id: SUP-00000007
+      hash: 84bb21f107fbfd7d88bb1c6021add013d786b45ba74a28352162c7c7ffab3c66 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: simple.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "43"
+        match_text_hash: 8bc7ba03bb970703
+    - id: SUP-00000008
+      hash: 62fa65f4b6fc7ef20a83de0ed7aca8c7b4cca977e598e71df00b37e4a99a3d38 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "35"
+        context_hash: b390017ae02bcb8a
+        filename: replacement.go
+        finding_type: BUSINESS
+        line_number: "298"
+        match_text_hash: b4c9a289323b21a0
+    - id: SUP-00000009
+      hash: 47af26a12e59ba4be8a0a7331ea94d931d466b1556cd4b28cbb0ae77b495a7d0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 65c6e37681767073
+        filename: replacement.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "561"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000010
+      hash: b4debcf09b756dcf43e5c27cae35fbd2d150804b830a3d3c8629979fdd0e8a72 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 3a768b1611bebda6
+        filename: replacement.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "561"
+        match_text_hash: 9049697da52b7e0e
+    - id: SUP-00000011
+      hash: 57b9239ba50f271e73d0513f7b1e2fb2af415083d713207fe70187f84a9308da # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 7d27ccd87c9a5e75
+        filename: replacement.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "562"
+        match_text_hash: 55594b7c3bc50229
+    - id: SUP-00000012
+      hash: fab92f3449bab5702732f0d59165b703203496c82831a11ad6abbb3092fab896 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 8cd7d79cc4397e93
+        filename: replacement.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "562"
+        match_text_hash: 7a0d91593df9293a
+    - id: SUP-00000013
+      hash: 7c8ca2fb57127cd2e59358b8a3092c1b89ff0f4c76f1df5fa07115849da20713 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "92"
+        context_hash: 4d1f816b3ffb8722
+        filename: replacement.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "564"
+        match_text_hash: 253d21d1b39145af
+    - id: SUP-00000014
+      hash: 3df18a702162f57b81d9b508137cad968ce1a953cf28c3c3aea75cd46057ddc2 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "89"
+        context_hash: e0b75f457cd78d8d
+        filename: replacement.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "565"
+        match_text_hash: df88989dc8a83827
+    - id: SUP-00000015
+      hash: 7aabad1e4b2ebfb0708f9f7858c79060d0de8c883df050d3f6ba0530096cd084 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "360"
+        match_text_hash: 9f9f5111f7b27a78
+    - id: SUP-00000016
+      hash: 61e9e009320184a94603b265e8c09d8224c353faa9332edf842de60287d2a904 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "361"
+        match_text_hash: 540363d1071a0029
+    - id: SUP-00000017
+      hash: 545a9df884e2768548f0e6d5824fbdef0336ef5a4e5d912740f0d1b9e1d093b3 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "381"
+        match_text_hash: 2d18c15e22115104
+    - id: SUP-00000018
+      hash: 3df46812304a8d371597d147818594ce80ebc2c25478d8ca87db0b8c9bc60372 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "415"
+        match_text_hash: d49bf5dcbe88ee62
+    - id: SUP-00000019
+      hash: 9e8200a769f352a4f38299582a326f7b154f3c828f18b67bb589d436785aae9d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "429"
+        match_text_hash: 1f55b9dbb34db31e
+    - id: SUP-00000020
+      hash: da966433e33cff7315631d316c82d3eb988ed02df70e9d2e1d206f2aeb465e25 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "446"
+        match_text_hash: d6ec6898de87ddac
+    - id: SUP-00000021
+      hash: 1a62d6ea57b21d0f44df64b20713c18ee00929903504bee376757102f249d1a0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "478"
+        match_text_hash: 2d18c15e22115104
+    - id: SUP-00000022
+      hash: 7fbb10f0a0d57447f3abc464fa1ae2f7410e2180f90f53fe90929937d008c1cb # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: ""
+        filename: replacement.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "606"
+        match_text_hash: 540363d1071a0029
+    - id: SUP-00000023
+      hash: a3a8bc3ca7970587f55b9e0ddfba7d91d0aa40ab6995fed4ee31d3ac8be07be4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: synthetic.go
+        finding_type: PERSON_NAME
+        line_number: "393"
+        match_text_hash: c2dd51dff91e7984
+    - id: SUP-00000024
+      hash: 5f03e719cc183a466bd93987e7c97037ea1a745db05eb4e654b7ceb3d9b00613 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "15"
+        context_hash: 5b178d23b0abe3a2
+        filename: synthetic.go
+        finding_type: PHONE
+        line_number: "236"
+        match_text_hash: b63a781ee3272032
+    - id: SUP-00000025
+      hash: 3ddb972ee99e12678a24c10599854a9f2d031be7803694eb9879d12eea5edbad # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "15"
+        context_hash: a9ffac064398c4da
+        filename: validator.go
+        finding_type: CREDIT_CARD
+        line_number: "396"
+        match_text_hash: fcdb4b423f4e5283
+    - id: SUP-00000026
+      hash: 9092d0d63d3310b1cfaebf7883ede5fdc99ed5a1e49f86f42963e77f3b30d0fc # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "55"
+        context_hash: b570ee8fd5fa9756
+        filename: help.go
+        finding_type: BUSINESS
+        line_number: "43"
+        match_text_hash: f7ee5ec731216514
+    - id: SUP-00000027
+      hash: a0d8af2771247f9d1cf1809f7d63b546e0e379dd186ea36ebbc88998505dd2c2 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "88"
+        context_hash: e361cc8971b3001c
+        filename: help.go
+        finding_type: BUSINESS
+        line_number: "44"
+        match_text_hash: e38cd62f422f2a0e
+    - id: SUP-00000028
+      hash: fb2d6956a50fe4e04a7d0d5e7f15fc1ba1c606e9a7b444b06b397eae895d9ac9 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 141549f8afd02bad
+        filename: help.go
+        finding_type: BUSINESS
+        line_number: "45"
+        match_text_hash: ca9cfbc341c245cf
+    - id: SUP-00000029
+      hash: cc2f46b1086d21de0dadee2659852b88056ee4234eb34b8b4951d5ec0965d722 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 46e32585e2fb6547
+        filename: help.go
+        finding_type: BUSINESS
+        line_number: "46"
+        match_text_hash: 32bde0648eadf2cd
+    - id: SUP-00000030
+      hash: c7845cc8303be8bccd50b31a69032c1b6445858976332a199ffd0c5d2548111f # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 9aa08caa1ecb51cc
+        filename: help.go
+        finding_type: IP_ADDRESS
+        line_number: "22"
+        match_text_hash: 50467266fc4130a6
+    - id: SUP-00000031
+      hash: 9c0cfc646713c73bdae4c37375bfef550da58109d9648578378f856d6d9791ca # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: 9a4bc987557f8017
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "23"
+        match_text_hash: 210995591bc96335
+    - id: SUP-00000032
+      hash: 623c8187259db680d82bb165b83892501e17596dd470d1f5c3cdb62d26f55f05 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "83"
+        context_hash: f69e5bb03bc0d7b6
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "40"
+        match_text_hash: ae3f9c27d91223a3
+    - id: SUP-00000033
+      hash: 439957d50d8ad02130a546b4ff210044da31b78705082898db2e5bf7eb818039 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "83"
+        context_hash: 70952a8c4f398fec
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "40"
+        match_text_hash: 911038982f17bf52
+    - id: SUP-00000034
+      hash: b66af8f1bdb96779bf90293cfd0ed330754cc1f46665049eaadb28ba6c69b949 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: 26289d7dd352c923
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "43"
+        match_text_hash: 210995591bc96335
+    - id: SUP-00000035
+      hash: 1cd21c24540b1d3e6e9ea7f2f1a07b605bc08c64ce20a3def05a389298dec385 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: 1d04777948d092f3
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "52"
+        match_text_hash: 55594b7c3bc50229
+    - id: SUP-00000036
+      hash: de63a8f0dc5225959fbd70937fcc6539d5d0f4951f4b94fea24199d771c803cf # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: e5b932c0f151bb66
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "123"
+        match_text_hash: 7da1693976b62c5f
+    - id: SUP-00000037
+      hash: 71440c37c82d6dfaa41ce1a952092808ac2bb323365569befdb15b811a3c2cff # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "68"
+        context_hash: ""
+        filename: dual_path_bridge.go
+        finding_type: PERSON_NAME
+        line_number: "1250"
+        match_text_hash: c27b7c37fa6372af
+    - id: SUP-00000038
+      hash: d5d936c53cf12226d0f49096ec088bcd24136eef65fbf169cc93dfb96859ca7c # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: 7ca255b433a202be
+        filename: help.go
+        finding_type: BUSINESS
+        line_number: "121"
+        match_text_hash: fdc2a4abc53872d0
+    - id: SUP-00000039
+      hash: 8558a060a40f41252aa3e033fb1e4211642a30533522b5529835ceca486eb446 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: c42b1d0c1b419423
+        filename: help.go
+        finding_type: BUSINESS
+        line_number: "127"
+        match_text_hash: d714ef8dbd1abc0d
+    - id: SUP-00000040
+      hash: 4a449d8a14ea50806126bf51a687ede7db4b651e71b175ffcdeb67743481ac0f # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "68"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "116"
+        match_text_hash: 856a981c4bd9d20c
+    - id: SUP-00000041
+      hash: f9fa00a7751492f01ebce6c59ce7b627a6d28b50f84810fa2526ae1e3f12d48c # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "54"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "120"
+        match_text_hash: 01332c876518a793
+    - id: SUP-00000042
+      hash: 041d85d016274f36d2ffc6f1bc970e5138b33205ba40d6776dfac0937e584764 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "122"
+        match_text_hash: 4fc6dde1abc70a75
+    - id: SUP-00000043
+      hash: 35cf76255c3ac8900d02c56e23134eab6aba4f362e05a0c3b853b168823e42ce # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "129"
+        match_text_hash: 4d39d702c5c6d0fa
+    - id: SUP-00000044
+      hash: 2bc60586811d6608570127cb134c09f1b809e49b89aae36fea4f9ba4eb28b155 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "92"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "132"
+        match_text_hash: ee5d792357f94844
+    - id: SUP-00000045
+      hash: 70a35058bd3648d5c7bbd28bcb66907801668facfcf05400bd8b58a7d060c72f # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 34fb23d35104cd2f
+        filename: help.go
+        finding_type: PHONE
+        line_number: "134"
+        match_text_hash: f3ca525a75140114
+    - id: SUP-00000046
+      hash: fafc227e43bfc318d43380e17597595172806a6e85ac26af49c1a5e2ba97495c # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "15"
+        context_hash: 1925663cb5c1c773
+        filename: help.go
+        finding_type: PHONE
+        line_number: "134"
+        match_text_hash: 71cc287a8d6cf585
+    - id: SUP-00000047
+      hash: 0083bb59e0e17c499d34136b0b41ead8cdd92d2044803dd3a62daeb26e82dc88 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 9decb4cbc1c7931f
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "105"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000048
+      hash: e4d5cfebdaff1e7fc3addafff5196366306bfc0f96156dd17b4dfff649de4347 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "83"
+        context_hash: 16f3213e554c22e2
+        filename: help.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "123"
+        match_text_hash: a3e83aee8605fad9
+    - id: SUP-00000049
+      hash: 77227d6c34fcc017a4080a13759213007ad737223d3337c379deaa1dd1c60d66 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ebf24311425f9785
+        filename: help.go
+        finding_type: PASSPORT
+        line_number: "23"
+        match_text_hash: dd02c1a40a7b832c
+    - id: SUP-00000050
+      hash: 3257580f5addc66029a8527e3f1cf4186373fcf6bc3270900f54d231b41980f0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "30"
+        context_hash: aa14ac47aee20f61
+        filename: help.go
+        finding_type: SSN
+        line_number: "21"
+        match_text_hash: 15e2b0d3c33891eb
+    - id: SUP-00000051
+      hash: f6467f3dc3c1c3b8fc7cd11792a9cfeb6c5b308b2c85f8af302e7e2fd673c004 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "15"
+        context_hash: 6259dd05567d886c
+        filename: validator.go
+        finding_type: GITHUB
+        line_number: "897"
+        match_text_hash: 3de132cd98be7bf2
+    - id: SUP-00000052
+      hash: b26a33d119563954507b4e882de41b160cf0035d61e7acfd46c2b512ea5f6717 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "22"
+        match_text_hash: ef61a579c907bbed
+    - id: SUP-00000053
+      hash: 2e3f2e6021b58b55da9944d31f63dcdf01b734bed845541c0745c52dd6b1be60 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "65"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "23"
+        match_text_hash: 1060abeaff6a07d9
+    - id: SUP-00000054
+      hash: 234bb95388dffa64cb7a58367ef477c3846a1fd040a79d442f3a78a3d3ee80b9 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "24"
+        match_text_hash: d82be6c1a03b8422
+    - id: SUP-00000055
+      hash: 8f1a213f9b5a8be54e59b3cf679f0340e80bf1e6a146f108bc00d5400e4fcd6d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "25"
+        match_text_hash: 010d37b71b3eccc0
+    - id: SUP-00000056
+      hash: 7a2e110747acb25536bfb102224631614aab8afaa6ab2591d09aa496ff2f298d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "26"
+        match_text_hash: 7797897751e335de
+    - id: SUP-00000057
+      hash: 175e16e08c7491aa53eeafd37003cbe70d4800c0717aa77b13d7aed53d06f46c # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "78"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "27"
+        match_text_hash: 7f470b1869b46196
+    - id: SUP-00000058
+      hash: dca0dd6ea2f6ef61297e995d29352422152b8eefc0774003743be7ca530795e6 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "28"
+        match_text_hash: 7d2ad7d45ece17b9
+    - id: SUP-00000059
+      hash: ec41f07905dfdd7ef9997c1ab7471be07cffbb6277a0b4d5c154ac14e7a2f39b # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "92"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "34"
+        match_text_hash: ef61a579c907bbed
+    - id: SUP-00000060
+      hash: 9f8b71f5ccf211667faae9525f9b8808dac712732a87435d3361d4350641727e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "53"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "35"
+        match_text_hash: 1060abeaff6a07d9
+    - id: SUP-00000061
+      hash: 6757c2814de631c5f52e0a05c8fa279a05053a463e42923cc03d3fdfb5dbffce # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "93"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "36"
+        match_text_hash: 7797897751e335de
+    - id: SUP-00000062
+      hash: 50f3548a1c09126bd34f297a166426ec1529bdc5f73d78db7bd420850ed65c55 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "93"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "37"
+        match_text_hash: 5398b24a4868fd17
+    - id: SUP-00000063
+      hash: 9260042bad551f159d3f4048435125c84bc755de4d06552fe290cfeec407ab48 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "38"
+        match_text_hash: d82be6c1a03b8422
+    - id: SUP-00000064
+      hash: 7221cea61467241e662ca8ded97c2fe4623aebebca9c9e137dfe283aafbb1568 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "66"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "39"
+        match_text_hash: 7f470b1869b46196
+    - id: SUP-00000065
+      hash: e7d815660705398c7b6ed1b7694f9283178d5e6413f83ccf2d729d05dd2f736a # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "91"
+        context_hash: ""
+        filename: help.go
+        finding_type: PERSON_NAME
+        line_number: "40"
+        match_text_hash: 7d2ad7d45ece17b9
+    - id: SUP-00000066
+      hash: efad650b2a83e6b60b454a9aaac3462cc3a913da8c06193eb72996330eb23ba3 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "85"
+        context_hash: 1b7b799e4e77d059
+        filename: help.go
+        finding_type: PHONE
+        line_number: "20"
+        match_text_hash: a28583fa6bb7d643
+    - id: SUP-00000067
+      hash: f62d78f8efcf963a5dde7223ebb5e23b07df294c0fef925b29f5cd5a6c01fab2 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: add7cc5f4dde6499
+        filename: help.go
+        finding_type: PHONE
+        line_number: "21"
+        match_text_hash: 36263b4ebd8356bc
+    - id: SUP-00000068
+      hash: ff6e7130075a2c5f21e879a9ad5d78879b02cb590cc29f1e2692174498be0365 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: aa5bf94618d2a2f8
+        filename: help.go
+        finding_type: PHONE
+        line_number: "21"
+        match_text_hash: 7379747ad084e42b
+    - id: SUP-00000069
+      hash: 8a1a392720208eca4b6790db8d9889bcf7fddc1300ff2f97249dc489831c3a65 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 8af4edfce878f8a9
+        filename: help.go
+        finding_type: PHONE
+        line_number: "21"
+        match_text_hash: 935435299827c06b
+    - id: SUP-00000070
+      hash: b586c17c5d4b7fe2a89bf348ef3773ae161a8c52ccfee4ec5dde830997079e51 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 4417b482b1243ebf
+        filename: help.go
+        finding_type: PHONE
+        line_number: "21"
+        match_text_hash: 1c7ebfc582f20e94
+    - id: SUP-00000071
+      hash: 11ac69c822bb1b8192a6cfa45fa4e62dca4590b0a4e378f74ebbc8520ada2741 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: fb09ebc53fc2ef31
+        filename: help.go
+        finding_type: PHONE
+        line_number: "22"
+        match_text_hash: 6c7d22e151c763e6
+    - id: SUP-00000072
+      hash: b216c39d02244152c248b5c5045cdc8f559df35dec628984d6cfb98da66cf50f # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: 9a017dd20500f5ca
+        filename: help.go
+        finding_type: PHONE
+        line_number: "22"
+        match_text_hash: a5c53a5ef460f4c7
+    - id: SUP-00000073
+      hash: 82c69e4d26f1396d206ebd3e791c71809c94d9b3f085561841e4c789d575a98a # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 1f3b377dfcfad2f1
+        filename: help.go
+        finding_type: PHONE
+        line_number: "22"
+        match_text_hash: e2fc04fff81dfa34
+    - id: SUP-00000074
+      hash: a1134a385dd1857523d7f3a7aa7f0ccd4e6c61ad44e1b83784cd2ac36c643070 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 507502c1956544b9
+        filename: help.go
+        finding_type: PHONE
+        line_number: "23"
+        match_text_hash: c5bcdffb20c293db
+    - id: SUP-00000075
+      hash: 0934ed0f2cd7d2b90fe58bde007bf8dfc1b34710ed8d49b327058d94e2583b3d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: bcc7b7f33dcfdee0
+        filename: help.go
+        finding_type: PHONE
+        line_number: "23"
+        match_text_hash: 85e518b21711deaa
+    - id: SUP-00000076
+      hash: 4353a26d3ce45f5bd7f47862daffcae74c178bd77c630febfa121de9622c7e18 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: deef0477f00c832f
+        filename: help.go
+        finding_type: PHONE
+        line_number: "23"
+        match_text_hash: 05c95adc4a3eddfa
+    - id: SUP-00000077
+      hash: eb790541f67c28903f8cca5517c3f0364161a514338d81209cb3369f5d0e1c89 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 763b69ea99bf63c1
+        filename: help.go
+        finding_type: PHONE
+        line_number: "24"
+        match_text_hash: a5db1052ec7fb55a
+    - id: SUP-00000078
+      hash: 85ed31b3c776a65f3de4dbd052147da12b7980a2239fe3aa3537fc6c50810fe3 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 1ccad9e03980b578
+        filename: help.go
+        finding_type: PHONE
+        line_number: "24"
+        match_text_hash: e6b90b7d86615bac
+    - id: SUP-00000079
+      hash: 82353d6f69dc848ec2188e70f44933994c1ddf907280c328dda077f8a9019b9d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 97b15c6d3a7a25f0
+        filename: help.go
+        finding_type: PHONE
+        line_number: "24"
+        match_text_hash: 3c6e99e03260da2d
+    - id: SUP-00000080
+      hash: 59ce76ff89b78d72b163d2312a674e1c733225b494f3167d573dc3676bc5fad4 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: a213b139f3f4a268
+        filename: help.go
+        finding_type: PHONE
+        line_number: "25"
+        match_text_hash: d36e83082288d9f2
+    - id: SUP-00000081
+      hash: eca1cd3e2c02202a3c8a1665f3d32f13c08fb108174e9f9be5654fc59dfe40f4 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 324ceff79ba08fd1
+        filename: help.go
+        finding_type: PHONE
+        line_number: "25"
+        match_text_hash: 4793ec2095e1eddd
+    - id: SUP-00000082
+      hash: 53f5c99236583145ad26b2061fb611972d99ec3d1a1786ac50a150e32ee5ae62 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 0d99d763d1387bbb
+        filename: help.go
+        finding_type: PHONE
+        line_number: "25"
+        match_text_hash: 91a262950f9be261
+    - id: SUP-00000083
+      hash: 62edad1dac0f883159ba163ccf020ebccd4f8815f7526ac46994bdc3551890b9 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 9816f5934dd66130
+        filename: help.go
+        finding_type: PHONE
+        line_number: "25"
+        match_text_hash: 1080f91510290ec3
+    - id: SUP-00000084
+      hash: 80c2ed727b8465a4bc015da9a4117b87ecc6898809585c1f9617ecb854191884 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 1a795f747d1e0ddc
+        filename: validator.go
+        finding_type: SSN
+        line_number: "156"
+        match_text_hash: 15e2b0d3c33891eb
+    - id: SUP-00000085
+      hash: 4ee29a70b0d55372f0efb710496a88cefd2a01915835672903b9154d3af67eff # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 2b37d784884564ba
+        filename: validator.go
+        finding_type: SSN
+        line_number: "189"
+        match_text_hash: 1a5376ad727d6521
+    - id: SUP-00000086
+      hash: 63a03d0582d6361ea802ac2f25a1f40b8610d1565dc2e66a8d31788d9488fcf2 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: c3bef0b1ba981572
+        filename: validator.go
+        finding_type: SSN
+        line_number: "189"
+        match_text_hash: 15e2b0d3c33891eb
+    - id: SUP-00000087
+      hash: b27ca0d076c510504c8f3f6761c91bde743de79c8649584c53af50a9f1abe594 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: dca2d4923e5d6377
+        filename: validator.go
+        finding_type: SSN
+        line_number: "698"
+        match_text_hash: 1a5376ad727d6521
+    - id: SUP-00000088
+      hash: 8607d633fd35a088a6f640b4509881480581044a38ffa99c7fe62ae5cce08958 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: c5cd24f4ebe249d4
+        filename: validator.go
+        finding_type: SSN
+        line_number: "698"
+        match_text_hash: 15e2b0d3c33891eb
+    - id: SUP-00000089
+      hash: d21edd9c2849e521ee400d1a62b70d6e9f9eff66aeafdc444b139b648e64e05d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: validator.go
+        finding_type: PERSON_NAME
+        line_number: "71"
+        match_text_hash: 4c4b0344d61de916
+    - id: SUP-00000090
+      hash: bae7a09ac2aea692c3e2773593eca2dfda561b911eaf7e80cdc39f4a00184b4e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: validator.go
+        finding_type: PERSON_NAME
+        line_number: "219"
+        match_text_hash: 3cb8a45aa4daa8d3
+    - id: SUP-00000091
+      hash: 44eb58bea58aaad935845d9043b326f8c3275269f4a0eb676be8653fc410e3e8 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: validator.go
+        finding_type: PERSON_NAME
+        line_number: "222"
+        match_text_hash: 553196241cdac46a
+    - id: SUP-00000092
+      hash: 112ffcafc38c1cd3f3eb618c4ada0d394b24ca11aa4b986acdf1ed5d272b0b96 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "68"
+        context_hash: ""
+        filename: validator.go
+        finding_type: PERSON_NAME
+        line_number: "225"
+        match_text_hash: 900643af8f20a7ce
+    - id: SUP-00000093
+      hash: 391ffa0c830818ccd6484c37cc30b60d99338aa342b826c1320ec6ff96d04c36 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: validator.go
+        finding_type: PERSON_NAME
+        line_number: "228"
+        match_text_hash: 1fa3285fea74df92
+    - id: SUP-00000094
+      hash: bf3e165dcd50839c8ab8e0ac9aecdf89c6211a7e5bb08e895dc02ef0d80333e3 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: cdbf28eff9cba1af
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "190"
+        match_text_hash: 80ad4bfc6c4c1b86
+    - id: SUP-00000095
+      hash: c81db7df25f4df694bf6c89755c10ba4f49b697913b358c30145405f4b8e3f8b # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: a0e5a350c469ef03
+        filename: help.go
+        finding_type: SOCIAL_MEDIA_CLUSTER
+        line_number: "58"
+        match_text_hash: 9d3cadec69f02dfc
+    - id: SUP-00000096
+      hash: 380db76b20d04c357dddf9e645d537c8c2ecafc43fc6fa2a48788328665e7d3d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: 698735ce958f3905
+        filename: help.go
+        finding_type: SOCIAL_MEDIA_CLUSTER
+        line_number: "41"
+        match_text_hash: defe598225b07e96
+    - id: SUP-00000097
+      hash: bf0423931df9602bdf8bfdabb812bd710dd195fe60754f24558446723135a802 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 95a42ac3401e74a6
+        filename: help.go
+        finding_type: YOUTUBE
+        line_number: "22"
+        match_text_hash: fc0f1d34a96762b9
+    - id: SUP-00000098
+      hash: 1543b7df8f898b2e8d27e58bada3416aeca67c9839360a7e80677d6c80bb81cd # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "23"
+        context_hash: bc8e3b3efa64dde4
+        filename: help.go
+        finding_type: FACEBOOK
+        line_number: "38"
+        match_text_hash: 2f03cbf7a37ead02
+    - id: SUP-00000099
+      hash: 0816e58fe77718c8014a01856438aeedfecc7ea0de39fd2bff1c8cf33eaa3558 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 7e853103f151dd1f
+        filename: help.go
+        finding_type: DISCORD
+        line_number: "57"
+        match_text_hash: 09edd76c13a808f1
+    - id: SUP-00000100
+      hash: 3ce8fb23fd89d98025b705d9caa0777f05c3918da3769fd658d3e29ec10eda79 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 5ad572b35dab18b2
+        filename: help.go
+        finding_type: DISCORD
+        line_number: "43"
+        match_text_hash: 09edd76c13a808f1
+    - id: SUP-00000101
+      hash: 1d3dcdf939361e42124ac63346df783dfce51b53a2524c641aeb3e7634be6418 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 0a5470bf38e71932
+        filename: help.go
+        finding_type: YOUTUBE
+        line_number: "41"
+        match_text_hash: fc0f1d34a96762b9
+    - id: SUP-00000102
+      hash: 16d52d4ca844d37857156bcf9c8fdabcf5cf84d1317eec59db915792c495e521 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: 6b6bdfd8fdbeb229
+        filename: help.go
+        finding_type: SOCIAL_MEDIA_CLUSTER
+        line_number: "17"
+        match_text_hash: 638ab76e8d6245b7
+    - id: SUP-00000103
+      hash: 47cc0b05f56ff573013c33bff40036d128a4cc9fcb1fe8f8de0c2bdde1eb78a6 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: a2f55585b26ddafd
+        filename: help.go
+        finding_type: REDDIT
+        line_number: "44"
+        match_text_hash: fa5e9101d119a0c7
+    - id: SUP-00000104
+      hash: 8296aaea366aedeb3806031643fcc3ac039627ca3da8729fcd188268df23342d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: validator.go
+        finding_type: PERSON_NAME
+        line_number: "1436"
+        match_text_hash: cb0a7dac7276a452
+    - id: SUP-00000105
+      hash: 156cec883d2bc9bdb701d78865959a32563a95dcf707b3b7ca020003fabc9161 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "15"
+        context_hash: 563ec6105dd3f050
+        filename: validator.go
+        finding_type: CREDIT_CARD
+        line_number: "124"
+        match_text_hash: 14bdcd6fd64180af
+    - id: SUP-00000106
+      hash: e41096edc0e3e5b35d6fae4dcd8fd511faa9562d7bd75029448a76ce8670b4e7 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: ""
+        filename: validator.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "82"
+        match_text_hash: 4fb0115e6ea0cf1b
+    - id: SUP-00000107
+      hash: 161c6d24098d26d9c34c93d76e1ec048430c91255810743875d6d1180e06f3f3 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "70"
+        context_hash: ""
+        filename: validator.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "926"
+        match_text_hash: 605575f8acea7172
+    - id: SUP-00000108
+      hash: a8514a6c2ea7abc9d2bf0beab153c84760f09c61d46491d006a498ce73e8e8f3 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "70"
+        context_hash: ""
+        filename: validator.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "969"
+        match_text_hash: 605575f8acea7172
+    - id: SUP-00000109
+      hash: 669b7f0fae96ab3f0b4ec87a1d3b5ebb52832e9c6ef764ccb4042534ba5d55f8 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: validator.go
+        finding_type: AWS_ACCESS_KEY
+        line_number: "1385"
+        match_text_hash: 1a5d44a2dca19669
+    - id: SUP-00000110
+      hash: 1ceaedcf5353cda1c6c96e67e887752fc1af9ce30b9f35be19f8bb84d64111cb # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "5"
+        context_hash: bea2e9e64581e27c
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "97"
+        match_text_hash: 29ec0a06044bedff
+    - id: SUP-00000111
+      hash: 7704c9c653eae7cab046e98519f8f93f96bfa0ea6847423b5677d91958ba7597 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "5"
+        context_hash: 1ca54c52d22083e6
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "98"
+        match_text_hash: ddd9a3490afb30da
+    - id: SUP-00000112
+      hash: 0c7ca9e2914ced6eeaab43893fa2ad3b851cad3d8c5d645bec1da2139662e9b0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "65"
+        context_hash: 7ce3ca5eaa22f3eb
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "98"
+        match_text_hash: 4f5db0a4e668e036
+    - id: SUP-00000113
+      hash: 3f7a505c4d3e1f89a3a7d9fe1714ec3db7968d649f7f04ea14fd750e2bc4f149 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "65"
+        context_hash: fef575616d2a5a32
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "98"
+        match_text_hash: a7f1b95d3b41d9ba
+    - id: SUP-00000114
+      hash: 9c59a0917b73fcc72ab0b92459597426e32ce7dd63d8d6f476edab75281c5a0b # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "65"
+        context_hash: c9525c1634cc1c42
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "99"
+        match_text_hash: 06e62966c4bc12cc
+    - id: SUP-00000115
+      hash: 3e8ba937b607d5c630e86c14fe1e43d4ff693c0eb854ba9fdf0fadfd7cbcee42 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "65"
+        context_hash: 9573c370116bf5fb
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "99"
+        match_text_hash: 89a0af94167fe6b9
+    - id: SUP-00000116
+      hash: 10e5f6783295c119ca01afaa9b7ef7bb42c6a79b7c343da11c4da68fada702c1 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "65"
+        context_hash: dc25501beb2352f8
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "99"
+        match_text_hash: c59a5bd5521dd9ae
+    - id: SUP-00000117
+      hash: bdafe017fed9339ad8a4d9ce0762ebc547adc34c61ef01dce55295404e4e237e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "65"
+        context_hash: 1f84bad68715b851
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "99"
+        match_text_hash: 08e917aef8f66ec8
+    - id: SUP-00000118
+      hash: 6f9c608cd010b4c26351efc0050e04c946cd17c0c950a33d32e12e0bec2ff21d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 61c540c992921db0
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "100"
+        match_text_hash: a31c9ff079d875b3
+    - id: SUP-00000119
+      hash: 600e13ae630680a6b2873cdda661c3accb73cb1ab4ce3a470e4a20bfff521180 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 062fc461a88850f9
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "100"
+        match_text_hash: 9cb76633dd13fb54
+    - id: SUP-00000120
+      hash: 5c667b871f9391fcef685244c52ca31a30f5615befe058edc37aed0f3acc24c5 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 0873fec6dbcdaa15
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "100"
+        match_text_hash: bd706b761c3e828a
+    - id: SUP-00000121
+      hash: 1c7e963d7e98f1b92408d20860979095ab22b86fefb379ec9ea4ce5e0c0a8270 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 887cd8fd7cb9f74c
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "100"
+        match_text_hash: 4a13f86aadbf9ecc
+    - id: SUP-00000122
+      hash: 5c48083ab45dc352dd4bdb10ccf592a28c56585d02e069844f1a433b11c56782 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "40"
+        context_hash: bd466e67b1e10c58
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "816"
+        match_text_hash: 972dcafa6fb4c2c8
+    - id: SUP-00000123
+      hash: d26907ff4c50c290780b563967114add2dbc8dce00b6818c065928338271daa7 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: 222ed9ff0fb2be9b
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "853"
+        match_text_hash: b9e2e034ae067deb
+    - id: SUP-00000124
+      hash: 96ff6c85df2341b0aba430b2c39e7596649d07c1999d666b4c91e548b8a106b0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: 7401e7313a3adb8c
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "1038"
+        match_text_hash: 578ea3f103a2e4a8
+    - id: SUP-00000125
+      hash: f40bf58d9b8f5234970d8d825d74dd5ad971a8a42cc5181dc33bf9f21b63e226 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "32"
+        context_hash: 825b79c4d5e9bda8
+        filename: validator.go
+        finding_type: PHONE
+        line_number: "1050"
+        match_text_hash: 578ea3f103a2e4a8
+    - id: SUP-00000126
+      hash: 9265ed320409c854da3061ddd5bd7a0a4e3c1e532afd0b27e217df7a7fb46969 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 731aba9ad343dfba
+        filename: help.go
+        finding_type: VIN
+        line_number: "20"
+        match_text_hash: 8e7f861771044a74
+    - id: SUP-00000127
+      hash: a43e84cbb3d13d71d40d67b5d7272b4bc86ed65c18a23ebe379efee94cd6b1b7 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 70adf4b99b6fda85
+        filename: validator.go
+        finding_type: SSN
+        line_number: "107"
+        match_text_hash: 1a5376ad727d6521
+    - id: SUP-00000128
+      hash: e9a89e23f8109cdcdb8a8de83098394637af976c690b7008f384a81cea779998 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 6b3e72bb19bf39ab
+        filename: validator.go
+        finding_type: SSN
+        line_number: "107"
+        match_text_hash: 342e489174cc8579
+    - id: SUP-00000129
+      hash: 5b9e325e3247f598bf8efb838e74079fd8eb94375f3b9521e518d233ad1da78d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: d577d9a7e46f0322
+        filename: validator.go
+        finding_type: SSN
+        line_number: "107"
+        match_text_hash: 6d350a2155acf0c0
+    - id: SUP-00000130
+      hash: 1a51f4957513056ccac763c1d099428ba8ea9c500bf8301a2e73266973f8c9c4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 023ef7dc29f874b0
+        filename: validator.go
+        finding_type: SSN
+        line_number: "107"
+        match_text_hash: bb0f6a26de562e48
+    - id: SUP-00000131
+      hash: 4f638fee5a074aba07c6c415f933e19046db849c950970fded57e3f3f5ed3431 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 04555294fbc4efc7
+        filename: validator.go
+        finding_type: SSN
+        line_number: "107"
+        match_text_hash: 2b218a3de6e9c348
+    - id: SUP-00000132
+      hash: 0747f6d50852a9fcf8f3582fd4997d960c23b023809099c208caafbdca41bbf1 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: cd3381f034ef2587
+        filename: validator.go
+        finding_type: SSN
+        line_number: "108"
+        match_text_hash: d43403a2c3dae4e4
+    - id: SUP-00000133
+      hash: b62b9ed876e728fbcca41ff4870581877423e0b80ae967e30681c5b48fa98848 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: dea441b00f897270
+        filename: validator.go
+        finding_type: SSN
+        line_number: "108"
+        match_text_hash: 68bd1464f79367d0
+    - id: SUP-00000134
+      hash: 157bc70cff58b5c40eb8101e7167443edd2b0fdf8212a4796a74865df921cebf # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 118aa0519cb5e682
+        filename: validator.go
+        finding_type: SSN
+        line_number: "108"
+        match_text_hash: 15e2b0d3c33891eb
+    - id: SUP-00000135
+      hash: e0854373680cd02519aeef2ebe9fddd869acbd9c3f60b60c5dc7800dfc69bc6c # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "603"
+        match_text_hash: 15e2b0d3c33891eb
+    - id: SUP-00000136
+      hash: 2945481e6d8306af55ea1597186fc560806929d812bd1b1f06e32cc76f75c505 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "604"
+        match_text_hash: 1a5376ad727d6521
+    - id: SUP-00000137
+      hash: 81abd050827c8e970724cb67ca42a4d774557a86026c2bc1fd949cfbe9bb48c7 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "605"
+        match_text_hash: 342e489174cc8579
+    - id: SUP-00000138
+      hash: 9792e46592085401737a6c74e6cbd306900bf68421f06ca29cbfdf917d60f458 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "606"
+        match_text_hash: 6d350a2155acf0c0
+    - id: SUP-00000139
+      hash: 2b1fbc68bd50c7315f6961703d273c68fa45dc782855f7b28b4e6faba495dac7 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "607"
+        match_text_hash: bb0f6a26de562e48
+    - id: SUP-00000140
+      hash: 4369a1ca6cc0996ac4f5b186b92970bb5d26626ad1dc0b28947171675fb12def # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "608"
+        match_text_hash: 2b218a3de6e9c348
+    - id: SUP-00000141
+      hash: f2b3ca9f337ebdbadfed84971803c629db7b4a58a24ca9b4ee233dc32319ff07 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "609"
+        match_text_hash: d43403a2c3dae4e4
+    - id: SUP-00000142
+      hash: b362d7e36d881ee012e91eca4e4fd3be5d9584e1ffde2d87b8c5b6c5e853600b # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "10"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "610"
+        match_text_hash: 68bd1464f79367d0
+    - id: SUP-00000143
+      hash: b4c19856e21450f817b4ad1e198616896f1fcc001dffa91c56a6cf6e504a971e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "85"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: SSN
+        line_number: "613"
+        match_text_hash: 1f8c179789d94259
+    - id: SUP-00000144
+      hash: 08432300b1448a12b8b95ee994c7d2578444f9ac388a238936104b3fbe024d82 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "25"
+        context_hash: 4549eaa54d4e021a
+        filename: validator.go
+        finding_type: SSN
+        line_number: "669"
+        match_text_hash: 15e2b0d3c33891eb
+    - id: SUP-00000145
+      hash: 54696ec900791d0a91954d6eba3cfd9b05d58e66280a845fce13e337f281c781 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "87"
+        context_hash: ""
+        filename: validator.go
+        finding_type: PERSON_NAME
+        line_number: "42"
+        match_text_hash: 74d936730a36ca42
+    - id: SUP-00000146
+      hash: 2dff1fa58335023d1e9938a50b2d578dd1b9ac138cbc6121cab0ae03544e0a80 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: ""
+        filename: validator.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "90"
+        match_text_hash: 97f40b8ae3e4d311
+    - id: SUP-00000147
+      hash: 072eb09c4a6d70fb64bc091735b4b50e29fcc6b5643ae43d08673bd862563e3e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: 95ed8c239eb08b93
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2633"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000148
+      hash: 83ce20846583953a375938acd3984d560111281223c8aeb4ed2b9a8e12170daa # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "90"
+        context_hash: 77cc302a3116aaa6
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2635"
+        match_text_hash: 4a5c5936918886ee
+    - id: SUP-00000149
+      hash: 264f20043982e0d223e91263516cd584ca85c059e68dc40f71789e6c1c64a12d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "91"
+        context_hash: 42ec43f88fbd5822
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "128"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000150
+      hash: 8f835104a6b1de4b6656ad00b520b9f46dcf845eaabf59d3d61ba8d3401b5bc7 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 81e00fae6ed9c671
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "152"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000151
+      hash: 45b62847fb9e9a22b4155c6dfa8f9626f0e58ff3dda70bb0f18ba81beb8c8cb8 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: 9e645f0de424c9f8
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "184"
+        match_text_hash: 210995591bc96335
+    - id: SUP-00000152
+      hash: c83ba90aeedebe230f15206a80c5e17e13ee1b0a428accadd0f361e893cc2ed4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "80"
+        context_hash: 8749d317ff087aa1
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "184"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000153
+      hash: 09b7ee2eafc2cb5dcbfe7d60eaca3d26374a9ce682ebd042bd2a38e07d42ba09 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: efcf0b6e4d042243
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "185"
+        match_text_hash: 315b5ffa1790d6f7
+    - id: SUP-00000154
+      hash: 1fd2a74d278396916195866dcca84f48f7798c9a68bbdab357f98f14dea75187 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 57584ec1c3bf7c9e
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "227"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000155
+      hash: 92ee34cbe8bd4478be66ab90a67a72c1a9053a540ee4e6972088fbcb166498b0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: bcde54badd275f9f
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "229"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000156
+      hash: d9069f49c646062328af6041891fe85145844c5073f82c5d2f75f0716d1ef78a # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: d2401c4cd59133f7
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1055"
+        match_text_hash: 2a1013f670c23e7e
+    - id: SUP-00000157
+      hash: 20002d9b0f3ffb26214c1536a9e141d46458484a43f034504d466ccbdd23185d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 8a7e35be9cd4acc4
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1487"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000158
+      hash: 7fb38fb2e32e4e862f0d4845e74c51b8bfbf2de05e3c5e3a3d1a877b94c0023c # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 3d3315f62f776de2
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1468"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000159
+      hash: 8866c20e2c9c124b533d956811e3cabd8c8de929b0cbb69303a9e3a6e213cf2e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "70"
+        context_hash: fac63a3f89213264
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1483"
+        match_text_hash: 7aecb3e0aaac699f
+    - id: SUP-00000160
+      hash: 8e2dca52d9af4ac5dedca72c8dd375b84f251b4610fe542282e22a21d9d764e8 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: b991f31bacd5609f
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1485"
+        match_text_hash: 3284ce30961b82d4
+    - id: SUP-00000161
+      hash: f3468d68275d3633f989eb9b76704ce1dae7a2b69571f10c82e1e8d5944cc890 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 3e7171dc6b124b13
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1532"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000162
+      hash: cba7ada7e8ac8818d572bd810114b6e758405bee6ba196e3390d53d18eea5489 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 7c253504f44fc066
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1537"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000163
+      hash: 19bf3d081248f2afd745e50962466dacdfc0c18433ab90f8d267476a65349491 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "70"
+        context_hash: 20f3777a75beea51
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1781"
+        match_text_hash: 24626cb1dc15eb75
+    - id: SUP-00000164
+      hash: 536ddc7b4fecf401a8c811d96c6bfa97cf53d21110640dcaa7320c27d4b48387 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: b3345f7df4d1d607
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1801"
+        match_text_hash: 83fa96e4d31af8c5
+    - id: SUP-00000165
+      hash: ee98d3d8b44b24646d01852ebf748f503fff0014ee0ae9307725dab2fc2873ba # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "91"
+        context_hash: b2b40e2d67a8a369
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2613"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000166
+      hash: e1c18dde0510bd3f8a0632678a008a2e0a34cc8dc27cc2b7ee157d54214d8879 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "87"
+        context_hash: 90f8107a0935ade4
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "175"
+        match_text_hash: ae3f9c27d91223a3
+    - id: SUP-00000167
+      hash: 737505c4a1a527eaf0330334cbc1037d5ed68a29889a2f8eca1897e5f0fac34e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "87"
+        context_hash: 03350dc30d0e2c9d
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "175"
+        match_text_hash: 911038982f17bf52
+    - id: SUP-00000168
+      hash: 43467018c09fd0e6636a6a5223fd484375ca15d3f1e431f80aae66ecbc0b03f6 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: d2401c4cd59133f7
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1057"
+        match_text_hash: 37b8f0d0c563844a
+    - id: SUP-00000169
+      hash: bdb0a9467866f5ff349161b55ddc2a8169dfe4df55a49deaf1af5847079418fd # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "87"
+        context_hash: e40f8ee69fcf6132
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1089"
+        match_text_hash: d880abb980a76489
+    - id: SUP-00000170
+      hash: a87b9dbe700afec701f1d06af6984c8f9bab8c0c291c528086bd560f06c03ab8 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "72"
+        context_hash: 960d96de78b10b9c
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1153"
+        match_text_hash: f18fb4172e669444
+    - id: SUP-00000171
+      hash: 20ab4e8416b0993b88cb1cb5360b1fdcf8e50015d3bd0262fa334809c5afbe57 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "94"
+        context_hash: 6642d381b3569536
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1429"
+        match_text_hash: a3e83aee8605fad9
+    - id: SUP-00000172
+      hash: 559d3279bd06347c12dbd91ad6a65d23a8d25c32f51730ea1942f7a8da06c9d1 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 3d3315f62f776de2
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1470"
+        match_text_hash: 9049697da52b7e0e
+    - id: SUP-00000173
+      hash: 719027a3d5c7cc2dcfc9e40681dc43153d7792f11955717523df21ee46ba667d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "83"
+        context_hash: a9d2fa9e8cdaaae8
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "124"
+        match_text_hash: a3e83aee8605fad9
+    - id: SUP-00000174
+      hash: d46243902b10b10bd73bbe485d01903401cd1c11c2628d617c614c4e07afdf0c # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "87"
+        context_hash: f2c27a8e11a405d6
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "151"
+        match_text_hash: d880abb980a76489
+    - id: SUP-00000175
+      hash: 4a941257137357e34471bb41c2a6dff04360a2e1b839ec7abb41c9ebad1b00ac # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 10e73cb43382134e
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "230"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000176
+      hash: 4a7660b96992119dbd780849527b572ec5b4cb3a73605bda0813e5e1c10be9e2 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1058"
+        match_text_hash: c7c201494811e8af
+    - id: SUP-00000177
+      hash: 140456d9b64e2ef25e282b6b9b4950b05edfeb37ec27a809066c260f1c3d27bd # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 57894216ad0b5606
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1434"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000178
+      hash: 40eab82a1032bead2bac41beea141286d2f0810272d06f217934351567aad7d7 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 94f54249c8523500
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "155"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000179
+      hash: a23b353e655bc5c30d23166b6d4cca66c9279d4e9642790522e5e0ad860f0b52 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: ce415cc6a9ab8249
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "194"
+        match_text_hash: 37b87e77091fa9b2
+    - id: SUP-00000180
+      hash: c78f6696e0397a2cb2de31f83e5194b9f5c111bae5e0f56fb82886113dd94809 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: f2d072d0c6eb7754
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1139"
+        match_text_hash: 55594b7c3bc50229
+    - id: SUP-00000181
+      hash: e009482d49d95db5514c6f5ccec07a9250cbafcfc1f6a14fde765bcb5e88f7da # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: b2e8ab8d8c82151d
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1144"
+        match_text_hash: ecc5e5296dd23aa2
+    - id: SUP-00000182
+      hash: d972effd877c89efe9d99f41bb23117aacbf38bf5a81a0c555751a84090c7a06 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 6b80e0af6d0afb49
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1467"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000183
+      hash: a036001cb13ae10b8fe7b03807ceb27d6cbd7752bf404b43156749cdb23d3dd6 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: cf26c8b048be4695
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1484"
+        match_text_hash: 0445e1cefcd4b81b
+    - id: SUP-00000184
+      hash: e83c4dc8bf7f740326323c302dee8a5708fcdee3a5dac2c28a68e941ac6a148f # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: f482171519855348
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "189"
+        match_text_hash: 9049697da52b7e0e
+    - id: SUP-00000185
+      hash: e015c09b12fae186f0aeea638920faa1f9a8e3694aeb4bb6502f4adcebe6a4f5 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: cf252d5b6b334b83
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "189"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000186
+      hash: 24a4189dc2c5038a62e883630c2458d3c7a999d341f27bcfcd6def53877b0399 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: 60d257c8b4d2df28
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "189"
+        match_text_hash: 55594b7c3bc50229
+    - id: SUP-00000187
+      hash: f61846af093b54f82e7b9b057ce57b5ff3b93ad8c0d22e5e13e7dbe5ff756b86 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 7d4dcf35b2d3f871
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "231"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000188
+      hash: 9d981cbdc501266abfc3b856eb23a03b6a974004cc567174cbc5d14ec55cf9b4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: d2401c4cd59133f7
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1059"
+        match_text_hash: ea09308ba1292cca
+    - id: SUP-00000189
+      hash: 0c712341c13f48a0000373f4500cdd8d24a8efa56fd89138cda684bd0ddcf503 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "94"
+        context_hash: dbc944f953dc9de3
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1419"
+        match_text_hash: a3e83aee8605fad9
+    - id: SUP-00000190
+      hash: 92b2c7c483eb4fc75461140b8132f4b0c62d5582cb6b300b521085448fdc5386 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "94"
+        context_hash: 56424bcef452481a
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1424"
+        match_text_hash: 2dcb850d9ee7e214
+    - id: SUP-00000191
+      hash: bb74159f03cbda44d60c839e24deac3a2fb8ada38aa9edd9eee607b6846dafa3 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "84"
+        context_hash: 6b80e0af6d0afb49
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1469"
+        match_text_hash: 9049697da52b7e0e
+    - id: SUP-00000192
+      hash: 43963f4f024ab19c113357d3a330d31da59f3a977b39bdc7fd91631d56704844 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: fac63a3f89213264
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1482"
+        match_text_hash: d18db02481f9c151
+    - id: SUP-00000193
+      hash: 96f7b98477ad44e1e9dca1a431f50469787bdb58f5dc0a61a1cf0b393d15ebd4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: d45866fe7c03e476
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1486"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000194
+      hash: 089adfd07d323365f043d450f45e0879cc412188468a4fb1490b562455a21b0d # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: 24747a3eb7a88115
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "127"
+        match_text_hash: c089f531e19c5c0d
+    - id: SUP-00000195
+      hash: c235a600f8661bcf8da601f3ce0bfc5ca1b6db020a4539580cf11e1a5c17fdb4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "86"
+        context_hash: 44f763416ad8ebee
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "178"
+        match_text_hash: 0d67ec3613b03dfa
+    - id: SUP-00000196
+      hash: 27ea476c533ab287234e3d3cd061030b86ccd5dd3519f8a79417678b7d3e3923 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "98"
+        context_hash: 1dd966b9e3b5fee0
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "193"
+        match_text_hash: 1469ca7e0ad39fc4
+    - id: SUP-00000197
+      hash: 72e1efbac217492693a6c4bb9b2ba2ea9621f8534ad72861d1c54dac24e71f67 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1056"
+        match_text_hash: b26d7833c470995e
+    - id: SUP-00000198
+      hash: 6ae23f0995a9e6b5b4458ccccd63c2d02d693e74e1acfb055a961d52f7d0a0dd # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "89"
+        context_hash: d3e0a7150e61ccd1
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1414"
+        match_text_hash: a3e83aee8605fad9
+    - id: SUP-00000199
+      hash: 55c2c0ca012e8977738fcf3bd714fa3850a6e607726cea03e627fd5920ca48ce # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "90"
+        context_hash: 795de52533c20fa5
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1547"
+        match_text_hash: 2dcb850d9ee7e214
+    - id: SUP-00000200
+      hash: 36f7056ce6e305b5df64848e3b9e8c86dfab662e0343e84c6d288c7d2e98e0bb # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "90"
+        context_hash: 1ade41be16e07259
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2617"
+        match_text_hash: 2dcb850d9ee7e214
+    - id: SUP-00000201
+      hash: 8671a66d35de7ce7387e5277a72d56f996b204cd4ec57cd7e00a67e307a2bafa # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "50"
+        context_hash: 5eabec071b3fb931
+        filename: validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1060"
+        match_text_hash: c39bffca479b17bd
+    - id: SUP-00000202
+      hash: 03116fa85321f67b0f3b9d322a27691de768d169ab694e987d7a41688a089395 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "67"
+        context_hash: ""
+        filename: metadata_validator.go
+        finding_type: PERSON_NAME
+        line_number: "2416"
+        match_text_hash: fcaf3c7c43a64345
+    - id: SUP-00000203
+      hash: b40dfd8720fc91aa14e0804b6bd6ab5bb31b8da9f306455e986249d6267b50fe # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "69"
+        context_hash: ""
+        filename: metadata_validator.go
+        finding_type: PERSON_NAME
+        line_number: "2416"
+        match_text_hash: a4e057098cc96e8c
+    - id: SUP-00000204
+      hash: 405691c87937f5918354a476ee0f73e38f83eea33813283b2f3b1d1b9edb51ba # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: 09c1910ea9684e86
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1365"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000205
+      hash: 317c6f5c174dde355d78042ea354624c495adc62f2323bcb78dfe1e79b92b929 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: 614f445262162ad2
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1365"
+        match_text_hash: 55594b7c3bc50229
+    - id: SUP-00000206
+      hash: 7701c9e56f71f5a5f98c388f012f40848ea242d8662cd93cedab2237d29fa512 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: a4080edb33d13d6e
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2505"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000207
+      hash: 12aca66cd4c026cda403e29d26182e2da1d5af4a9175db9f4b7ee9f05c9f2ca0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: d14503635712debe
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2505"
+        match_text_hash: 24626cb1dc15eb75
+    - id: SUP-00000208
+      hash: 89976f01d73cfe0680368acf5b616de139c9cbdd4f550b96b0f975044c8256ad # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 91f337784b013f2a
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2505"
+        match_text_hash: 7a0d91593df9293a
+    - id: SUP-00000209
+      hash: 6986dbf5de3b1fd70ac2d4b1acbb1270977f174844b1db8415fe6f6e3b269db4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 30503729ede53ca0
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2569"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000210
+      hash: e72de3ba48cf651cf02ba620fac97d8d0effc02f094484ca96ffb6061b38cedc # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "70"
+        context_hash: a2274f0d0abb5c40
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "2570"
+        match_text_hash: 7a0d91593df9293a
+    - id: SUP-00000211
+      hash: 55f2c3ec86a1d5b03a11697c69ae85fbb1b5ed212d04da41e65fe389c9eb5017 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 271402cd5fc5de16
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "612"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000212
+      hash: cb3785eda28c63db2d6a0c1315c16d1c79146f898a92ad8b4da1d7bd1abe34d5 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: 388955133e4897e2
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "612"
+        match_text_hash: 7a0d91593df9293a
+    - id: SUP-00000213
+      hash: 148836c6d084e98b24d86338fd1bfdd9bf8956b89e490736e493b21007bc893a # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "77"
+        context_hash: f110e1448689ce29
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1081"
+        match_text_hash: 3151084286f59511
+    - id: SUP-00000214
+      hash: 770eafbdf2682a0d98923c827cac07866d1ea2915706a90ed5adc9cc14d254a5 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "91"
+        context_hash: 50d7826b58f40773
+        filename: metadata_validator.go
+        finding_type: INTELLECTUAL_PROPERTY
+        line_number: "1364"
+        match_text_hash: 9049697da52b7e0e
+    - id: SUP-00000215
+      hash: c1cf993b5f96b044b37a80ee9d703c759ef10358adfbe747b17d8a35b6c18fa1 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "59"
+        context_hash: 41f2e5bf6b94fd88
+        filename: validator.go
+        finding_type: BUSINESS
+        line_number: "4555"
+        match_text_hash: b4c9a289323b21a0
+    - id: SUP-00000216
+      hash: 97e1edbdf5e90d45d28d140286457fac6cceb37af595c9766e195b605b2d9172 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: c8bc0a92f961f9be
+        filename: validator.go
+        finding_type: BUSINESS
+        line_number: "4632"
+        match_text_hash: d603b3130269b29b
+    - id: SUP-00000217
+      hash: bcc25100aa3241076f1288755d533a5269dbd4091f3dfc6413dfbacb2ed86537 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "9"
+        context_hash: 6d817e53a748a37f
+        filename: validator.go
+        finding_type: FACEBOOK
+        line_number: "1233"
+        match_text_hash: 2f03cbf7a37ead02
+    - id: SUP-00000218
+      hash: ce3e0cd5315116074680e559536462fd58f3a4c17425dd19eaed0e944a02cdbe # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "97"
+        context_hash: e299a00654a7a812
+        filename: validator.go
+        finding_type: LINKEDIN
+        line_number: "2898"
+        match_text_hash: 6901da423fd3e280
+    - id: SUP-00000219
+      hash: 1f3614a75f5b9601c726278f51d2a25c1c0622cda4a4c03adf49624255200a62 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "92"
+        context_hash: 46feea9504abc75b
+        filename: validator.go
+        finding_type: INSTAGRAM
+        line_number: "1273"
+        match_text_hash: 5ce3032534f91a67
+    - id: SUP-00000220
+      hash: 920d37dc9a56b4572a5104ed2ae7d1b862c6a7e2f7e62e7a204f5fbc4feca299 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: da67504456f6d34f
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "1333"
+        match_text_hash: f0225a710d948e7d
+    - id: SUP-00000221
+      hash: 9c5ec5e3956b13c696dafe97623e23619a7a3ff21c691fa639e63da69511d6bc # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "61"
+        context_hash: 310688fab13827de
+        filename: validator.go
+        finding_type: TWITTER
+        line_number: "2922"
+        match_text_hash: ba7695a868caf652
+    - id: SUP-00000222
+      hash: b22f5d2fe97a7f725acd1ca5e944a5db212f68c413b411e0a50d8a4c2bf355aa # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "36"
+        context_hash: bfa0f4266ab2d3ac
+        filename: validator.go
+        finding_type: TWITTER
+        line_number: "2922"
+        match_text_hash: efaafcb54d6bee29
+    - id: SUP-00000223
+      hash: dc1e0cc7f72edb534cb3c8f1cbded1a1c813a9e8763a7816d5282e50b526cc19 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: a934874529f4ea5a
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "1318"
+        match_text_hash: a5b556d340a8798e
+    - id: SUP-00000224
+      hash: 2b4cd21d4a308646bfe46ed92203fd21f83952d00c4c5159f05eec90ecd4c50b # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 6425aee452e6d072
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "1318"
+        match_text_hash: 5e47ff127fad79d3
+    - id: SUP-00000225
+      hash: 1b3096604a8bd01a28b7add110dc7df5587af4b27c2f66058642fe174befd33e # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "89"
+        context_hash: 2bdd8e8ac050b732
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "1318"
+        match_text_hash: e7ad30f487b3a733
+    - id: SUP-00000226
+      hash: 3fe288575daee1664bedc292342760e45594d169f3df44a580dd35873c3c7023 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "97"
+        context_hash: 0d1c1afd12211ef8
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "1320"
+        match_text_hash: 972f0723f9646399
+    - id: SUP-00000227
+      hash: 89451592c7eefd9152f5877b405df86ffaa16992e90c3c33a71805839aee1d33 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "64"
+        context_hash: e88d8663614f237a
+        filename: validator.go
+        finding_type: TWITTER
+        line_number: "1127"
+        match_text_hash: ba7695a868caf652
+    - id: SUP-00000228
+      hash: 5a5ab8e405698b2994bec655a144f69af23a6b651ab6d6c2c0882c3b7d161f51 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "39"
+        context_hash: 25a5e794b1a299c4
+        filename: validator.go
+        finding_type: TWITTER
+        line_number: "1127"
+        match_text_hash: efaafcb54d6bee29
+    - id: SUP-00000229
+      hash: 19f680a688e870cd9c90c8fcc99deec19cc546bb63492726db33086c2c8c0810 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: bb008e7d45736da7
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "2982"
+        match_text_hash: a5b556d340a8798e
+    - id: SUP-00000230
+      hash: a58f3771d3bdb22184aede92def4215ec3caf5134743a39231b369de3edea0f0 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 69fffe24f8fad52e
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "2982"
+        match_text_hash: 5e47ff127fad79d3
+    - id: SUP-00000231
+      hash: 392b15b3c33c0c446be9a4172f0d0b5f62dbda99dba5b5774ae40bebd77cbc9d # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "62"
+        context_hash: ada03f2244366b97
+        filename: validator.go
+        finding_type: FACEBOOK
+        line_number: "1245"
+        match_text_hash: aac9a46a342bfee7
+    - id: SUP-00000232
+      hash: 60b53326797ecb8f03873cc86826d230d4f8087518f6963a17a5110d32f750b1 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "62"
+        context_hash: 62370f272a44839c
+        filename: validator.go
+        finding_type: FACEBOOK
+        line_number: "1245"
+        match_text_hash: fee0c196aa375293
+    - id: SUP-00000233
+      hash: 9b0b24e49fd30ac52866c9c7747c774d94f127d6b87a8d33f54d23a95e3d5353 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "89"
+        context_hash: 683d73c85a5b1cc4
+        filename: validator.go
+        finding_type: INSTAGRAM
+        line_number: "2970"
+        match_text_hash: 5ce3032534f91a67
+    - id: SUP-00000234
+      hash: 514e8a64e74e27ae50688b526df04a6ca62608eca970a92568a201832ecc20d0 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "95"
+        context_hash: 03d8d1e90fc87c87
+        filename: validator.go
+        finding_type: SOCIAL_MEDIA_CLUSTER
+        line_number: "1850"
+        match_text_hash: fe0ef7085305a71d
+    - id: SUP-00000235
+      hash: eabd75346a1a3c3e0f0004c74dc9c57e810c4bbebcd6b93acc33b68cb8189bde # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: dcbe5f34ef898a6e
+        filename: validator.go
+        finding_type: LINKEDIN
+        line_number: "1034"
+        match_text_hash: 6901da423fd3e280
+    - id: SUP-00000236
+      hash: d96246a4864ff91c1ce98274ae706134279b6e502f9addf1e36efaf4929649f8 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "62"
+        context_hash: 9cc00d88ba9a4b21
+        filename: validator.go
+        finding_type: FACEBOOK
+        line_number: "2957"
+        match_text_hash: aac9a46a342bfee7
+    - id: SUP-00000237
+      hash: 3815b47b25c708192d4f31140b1ba6032a7d0b1add1a129ecd290e51a24ffcd6 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "62"
+        context_hash: ca45386995fecc63
+        filename: validator.go
+        finding_type: FACEBOOK
+        line_number: "2957"
+        match_text_hash: fee0c196aa375293
+    - id: SUP-00000238
+      hash: c7f7597e35923db3499c0e6de6582170022adb74cbcd666973333926fc8359f0 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "97"
+        context_hash: 647d4a7b9742c0c6
+        filename: validator.go
+        finding_type: YOUTUBE
+        line_number: "1346"
+        match_text_hash: e1c5be339e80bc59
+    - id: SUP-00000239
+      hash: 8b2f6460c36f769afcf1d202067cda129e92bec7ac1877d57b988f94954da802 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "93"
+        context_hash: 3c6882ec1e2a5b81
+        filename: validator.go
+        finding_type: REDDIT
+        line_number: "1452"
+        match_text_hash: fa5e9101d119a0c7
+    - id: SUP-00000240
+      hash: 951994b2dc187ec831c4577188c109895795f369f90fef72507dbda81e2166a1 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "93"
+        context_hash: e562e19734424ad0
+        filename: validator.go
+        finding_type: REDDIT
+        line_number: "1452"
+        match_text_hash: c373925a94491dad
+    - id: SUP-00000241
+      hash: e57ee424ea4295d12860a2c51ad13407493440d7f4faf206cc9d8663c326f7da # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "88"
+        context_hash: 810f987585474b8e
+        filename: validator.go
+        finding_type: TIKTOK
+        line_number: "3001"
+        match_text_hash: 5abce14cf98082bf
+    - id: SUP-00000242
+      hash: 650f1a22330952f5072d56b7910179e4af1e1f6d36f62c57ee10dcc43b5933b0 # pragma: allowlist secret
+      reason: Project-sanctioned test fixture, validator regex pattern, or example data (high-confidence; reviewed during pkg/redact rename)
+      enabled: true
+      created_at: 2026-05-21T08:46:54.600859-04:00
+      last_seen_at: 2026-05-21T08:46:54.600859-04:00
+      expires_at: 2026-05-28T08:46:54.600859-04:00
+      metadata:
+        confidence: "100"
+        context_hash: d4f4d5b8ed3c2158
+        filename: validator.go
+        finding_type: DISCORD
+        line_number: "1419"
+        match_text_hash: a5501ee1be5fe022

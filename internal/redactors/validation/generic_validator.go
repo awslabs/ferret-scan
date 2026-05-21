@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/redactors"
 )
 
 // GenericDocumentValidator provides basic validation for any document type

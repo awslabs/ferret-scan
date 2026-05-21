@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ferret-scan/internal/observability"
-	metaextractpdflib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-pdflib"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	metaextractpdflib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-pdflib"
 )
 
 // PDFMetadataPreprocessor extracts metadata from PDF documents

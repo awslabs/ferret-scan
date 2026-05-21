@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	meta_extract_officelib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-officelib"
+	meta_extract_officelib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-officelib"
 )
 
 func main() {

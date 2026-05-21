@@ -4,8 +4,8 @@
 package shared
 
 import (
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/formatters"
 )
 
 // JSONResponse represents the top-level response structure for JSON/YAML output

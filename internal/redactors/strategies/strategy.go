@@ -11,9 +11,9 @@ import (
 	"regexp"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/redactors"
 )
 
 // RedactionStrategyImplementation defines the interface for redaction strategy implementations

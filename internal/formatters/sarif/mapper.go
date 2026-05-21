@@ -4,10 +4,10 @@
 package sarif
 
 import (
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/formatters"
-	"ferret-scan/internal/formatters/shared"
 	"fmt"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/formatters/shared"
 	"math"
 	"path/filepath"
 	"strings"

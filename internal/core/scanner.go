@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"ferret-scan/internal/config"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/parallel"
-	"ferret-scan/internal/preprocessors"
-	"ferret-scan/internal/router"
-	"ferret-scan/internal/suppressions"
-	"ferret-scan/internal/validators"
+	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/parallel"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/router"
+	"github.com/awslabs/ferret-scan/internal/suppressions"
+	"github.com/awslabs/ferret-scan/internal/validators"
 )
 
 // ScanConfig holds configuration for scanning operations.

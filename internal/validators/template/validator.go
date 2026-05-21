@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 // Validator is a starting point for creating new validators

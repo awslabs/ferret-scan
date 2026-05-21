@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
 
 // ContentRouter intelligently separates metadata from document body content

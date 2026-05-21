@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/paths"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/paths"
 
 	"gopkg.in/yaml.v3"
 )

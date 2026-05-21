@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 // DataSanitizer handles sanitization of sensitive data for GitLab security reports

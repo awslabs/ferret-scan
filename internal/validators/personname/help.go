@@ -3,7 +3,7 @@
 
 package personname
 
-import "ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/internal/help"
 
 // GetCheckInfo returns standardized information about the person name check
 func (v *Validator) GetCheckInfo() help.CheckInfo {

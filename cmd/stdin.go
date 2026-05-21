@@ -14,15 +14,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"ferret-scan/internal/config"
-	"ferret-scan/internal/core"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/formatters"
-	"ferret-scan/internal/precommit"
-	"ferret-scan/internal/redactors"
-	plaintextredactor "ferret-scan/internal/redactors/plaintext"
-	"ferret-scan/internal/router"
-	"ferret-scan/internal/suppressions"
+	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/internal/core"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/precommit"
+	"github.com/awslabs/ferret-scan/internal/redactors"
+	plaintextredactor "github.com/awslabs/ferret-scan/internal/redactors/plaintext"
+	"github.com/awslabs/ferret-scan/internal/router"
+	"github.com/awslabs/ferret-scan/internal/suppressions"
 )
 
 // stdinScanInputs collects everything runStdinScan needs from main(). It

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // DebugLogger provides enhanced logging for debugging content routing decisions and validation outcomes

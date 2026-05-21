@@ -1,4 +1,4 @@
-module ferret-scan
+module github.com/awslabs/ferret-scan
 
 go 1.26
 

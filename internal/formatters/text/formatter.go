@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/formatters"
 
 	"github.com/fatih/color"
 )

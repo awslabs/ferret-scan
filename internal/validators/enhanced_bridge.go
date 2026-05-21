@@ -4,8 +4,8 @@
 package validators
 
 import (
-	"ferret-scan/internal/context"
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/context"
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 // ValidatorBridge wraps standard validators to work with the enhanced system

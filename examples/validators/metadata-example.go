@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"ferret-scan/internal/validators/metadata"
+	"github.com/awslabs/ferret-scan/internal/validators/metadata"
 )
 
 func main() {

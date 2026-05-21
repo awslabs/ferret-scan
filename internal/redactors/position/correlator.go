@@ -8,7 +8,7 @@ import (
 	"math"
 	"strings"
 
-	"ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/redactors"
 )
 
 // PositionCorrelator interface defines the contract for position correlation algorithms

@@ -8,9 +8,9 @@ import (
 	"log"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/formatters"
-	"ferret-scan/internal/version"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/version"
 )
 
 // Formatter implements the GitLab SAST security report formatter

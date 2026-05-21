@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // PerformanceMonitor provides comprehensive performance monitoring for the enhanced architecture

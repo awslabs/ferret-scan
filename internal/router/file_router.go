@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
 
 // FileRouter handles file routing and preprocessing decisions

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/context"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/context"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
 
 // EnhancedValidatorManager manages enhanced validators with streamlined features (no caching)

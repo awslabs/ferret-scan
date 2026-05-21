@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/preprocessors"
-	"ferret-scan/internal/resilience"
-	"ferret-scan/internal/validators"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/resilience"
+	"github.com/awslabs/ferret-scan/internal/validators"
 )
 
 // DualPathWorker handles validation using the dual-path bridge architecture

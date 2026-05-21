@@ -4,8 +4,8 @@
 package validators
 
 import (
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
 
 // ProcessedContentValidator interface for validators that can handle ProcessedContent

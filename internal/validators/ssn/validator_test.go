@@ -6,7 +6,7 @@ package ssn
 import (
 	"testing"
 
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 func TestSSNValidator_ValidSSNs(t *testing.T) {

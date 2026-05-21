@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"ferret-scan/internal/validators/creditcard"
+	"github.com/awslabs/ferret-scan/internal/validators/creditcard"
 )
 
 func main() {

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"testing"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
 
 // stubContentValidator implements detector.Validator + ValidateContent

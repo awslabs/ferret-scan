@@ -12,12 +12,12 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/preprocessors"
-	"ferret-scan/internal/redactors"
-	"ferret-scan/internal/redactors/position"
-	"ferret-scan/internal/redactors/replacement"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/redactors/position"
+	"github.com/awslabs/ferret-scan/internal/redactors/replacement"
 )
 
 // PDFRedactor implements redaction for PDF files using pdfcpu

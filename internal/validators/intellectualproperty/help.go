@@ -3,7 +3,7 @@
 
 package intellectualproperty
 
-import "ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/internal/help"
 
 // Ensure we're using the same Validator type defined in validator.go
 // This is just a reference to make the compiler happy - no need to redefine all fields

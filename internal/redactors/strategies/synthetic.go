@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"ferret-scan/internal/redactors"
-	"ferret-scan/internal/validators/personname"
+	"github.com/awslabs/ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/validators/personname"
 )
 
 // SyntheticDataStrategy implements synthetic data generation for redaction

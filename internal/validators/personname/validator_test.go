@@ -6,8 +6,8 @@ package personname
 import (
 	"testing"
 
-	"ferret-scan/internal/context"
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/context"
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 // TestPersonNameValidator_ValidNames tests detection of valid person names

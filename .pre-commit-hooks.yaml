@@ -4,7 +4,18 @@
   entry: ferret-scan
   language: python
   additional_dependencies: ['ferret-scan']
-  files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh|ts|jsx|tsx|php|rb|c|cpp|h|hpp|cs|kt|swift|rs|scala|clj|pl|r|m|mm)'
-  exclude: '^(\.git/|bin/|dist/|node_modules/|\.cache/|test_|_test\.|vendor/|\.venv/|__pycache__/)'
+  # `\.(...)$` anchors the extension match at end-of-string so files like
+  # `go.mod` don't accidentally match because they contain ".go" as a
+  # substring. The previous unanchored form passed go.mod / go.sum to
+  # ferret-scan, which returns exit code 2 (system error) on unsupported
+  # input, blocking unrelated commits.
+  files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh|ts|jsx|tsx|php|rb|c|cpp|h|hpp|cs|kt|swift|rs|scala|clj|pl|r|m|mm)$'
+  # Path-prefix excludes use the ^ anchor; test fixture excludes (test_, _test.)
+  # do not, because they need to match anywhere in the path (e.g.
+  # internal/foo/bar_test.go, tests/integration/some_test.go). The previous
+  # version of this regex anchored the test patterns at the start of the path,
+  # so only root-level test files were excluded — nested test files leaked
+  # through and tripped the scanner on intentional test fixtures.
+  exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)'
   pass_filenames: true
   args: [--pre-commit-mode]

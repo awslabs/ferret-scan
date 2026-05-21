@@ -178,6 +178,11 @@ env/
 
 # Project-specific
 .ferret-*
+# Project-sanctioned suppression rules MUST be tracked so contributors
+# and CI share the same baseline (otherwise every contributor hits the
+# same set of false positives on legitimate test fixtures and example
+# data — see the file's header for what each block covers).
+!.ferret-scan-suppressions.yaml
 ferret-scan.local*
 ferret-scan.dev*
 config.yaml
