@@ -64,6 +64,13 @@ aws lambda create-function \
   --memory-size 256 --timeout 10
 ```
 
+> **Note**: the `--memory-size` and `--timeout` values above are
+> illustrative starting points only. The follow-up `terraform/` stack
+> pins the canonical defaults in `terraform/variables.tf` — when that
+> ships, treat those numbers (not these) as the production-recommended
+> sizing. Regex evaluation can spike CPU; the Terraform default is
+> likely to land at 512 MB based on benchmarking.
+
 The IAM role above needs `logs:CreateLogStream` and `logs:PutLogEvents`
 on its own log group only. No other permissions. The follow-up
 terraform/ stack provisions that role explicitly.

@@ -122,5 +122,10 @@ jobs:
         run: |
           test -s examples/lambda-redact/bootstrap || { echo "bootstrap binary missing or empty"; exit 1; }
           test -s examples/lambda-redact/function.zip || { echo "function.zip missing or empty"; exit 1; }
-          echo "bootstrap: $(stat -c%s examples/lambda-redact/bootstrap) bytes"
-          echo "function.zip: $(stat -c%s examples/lambda-redact/function.zip) bytes"
+          # Use `wc -c < file` rather than `stat -c%s` — the latter is
+          # GNU-only and breaks anyone running these commands locally on
+          # macOS. The CI runner is Linux so both work, but consistency
+          # with what a contributor would run on their own machine
+          # avoids "this works in CI but not for me" surprises.
+          echo "bootstrap: $(wc -c < examples/lambda-redact/bootstrap) bytes"
+          echo "function.zip: $(wc -c < examples/lambda-redact/function.zip) bytes"

@@ -301,7 +301,7 @@ func main() {
 // last thing executed in main().
 func runLocal() {
 	if len(os.Args) < 2 {
-		log.Println("usage: FERRET_LOCAL=1 ./handler '<text to redact>'")
+		log.Println("usage: FERRET_LOCAL=1 ./bootstrap '<text to redact>'")
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
