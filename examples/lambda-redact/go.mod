@@ -3,7 +3,7 @@ module github.com/awslabs/ferret-scan/examples/lambda-redact
 go 1.26
 
 require (
-	github.com/aws/aws-lambda-go v1.49.0
+	github.com/aws/aws-lambda-go v1.54.0
 	github.com/awslabs/ferret-scan v0.0.0-00010101000000-000000000000
 )
 
@@ -13,7 +13,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
