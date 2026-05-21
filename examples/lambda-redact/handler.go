@@ -37,14 +37,17 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/awslabs/ferret-scan/pkg/redact"
 )
@@ -114,68 +117,128 @@ type Request struct {
 	Label    string `json:"label,omitempty"`
 }
 
-// Response is the JSON body the handler returns on success. Note the
-// absence of `findings_with_match_text` or any field that could carry
-// the matched substring — this is the safe default. Callers that need
-// the matched bytes should add a separate, authenticated endpoint.
+// Response is the JSON body the handler returns on success. Field
+// presence is deliberate:
 //
-// FindingsByType is omitted by default; see includeFindingsInResponse
-// for the side-channel rationale. The audit log always carries it
-// regardless.
+//   - `redacted` is always present.
+//
+//   - `request_id` echoes the caller's `Request.Label` when supplied,
+//     and is OMITTED (omitempty) when the caller didn't supply a
+//     label. We do NOT generate a server-side UUID to fill it in:
+//     a server-supplied identifier the caller can't predict is worse
+//     than a missing field — callers wouldn't know whether it's
+//     stable across retries (it isn't), wouldn't know whether to log
+//     it, and would have a third correlation key on top of
+//     `gateway_request_id` and their own. Omission is correct here.
+//
+//   - `gateway_request_id` is the API Gateway request ID, always
+//     present. This is the canonical correlation key for operators —
+//     it's what shows up in CloudWatch and X-Ray.
+//
+//   - `duration_ms` is always present.
+//
+//   - `findings_count` and `findings_by_type` are BOTH gated by the
+//     same FERRET_INCLUDE_FINDINGS toggle. They're a side-channel
+//     even at single-integer resolution ("your input had 4 sensitive
+//     items") in multi-tenant deployments. Single toggle, both
+//     signals follow it.
+//
+// The matched substring is never on the wire. Callers that need the
+// matched bytes must add a separate, authenticated endpoint that
+// uses pkg/redact's FindingsWithMatchText and is gated by a
+// stricter authorization layer than the redaction route itself.
 type Response struct {
-	Redacted       string         `json:"redacted"`
-	FindingsByType map[string]int `json:"findings_by_type,omitempty"`
-	RequestID      string         `json:"request_id"`
-	DurationMS     int64          `json:"duration_ms"`
+	Redacted         string         `json:"redacted"`
+	RequestID        string         `json:"request_id,omitempty"`
+	GatewayRequestID string         `json:"gateway_request_id"`
+	DurationMS       int64          `json:"duration_ms"`
+	FindingsCount    *int           `json:"findings_count,omitempty"`
+	FindingsByType   map[string]int `json:"findings_by_type,omitempty"`
 }
 
 // ErrorResponse is returned for invalid input. It deliberately does NOT
 // echo the request body — that's the input we're trying to protect.
 type ErrorResponse struct {
-	Error     string `json:"error"`
-	RequestID string `json:"request_id"`
+	Error            string `json:"error"`
+	RequestID        string `json:"request_id,omitempty"`
+	GatewayRequestID string `json:"gateway_request_id"`
 }
 
 // buildResponse assembles the JSON response. Pulled out as a pure
 // function so the side-channel guard (includeFindings=false elides
-// FindingsByType) is unit-testable without spinning up the full
-// handler or mutating package state.
+// FindingsCount AND FindingsByType) is unit-testable without spinning
+// up the full handler or mutating package state.
 //
 // Security reviewers can verify the entire side-channel logic in
-// isolation: when includeFindings is false, FindingsByType is left at
-// its zero value (nil) and the json.Marshal on the Response struct
-// will omit the field due to the `omitempty` tag.
+// isolation: when includeFindings is false, both FindingsCount (a
+// pointer; nil triggers omitempty) and FindingsByType (a nil map;
+// also triggers omitempty) are left at their zero value, and the
+// json.Marshal on the Response struct will omit both fields.
+//
+// requestID is the caller's label or empty (omitted on the wire).
+// gatewayRequestID is the API Gateway request ID and always emitted.
 func buildResponse(
 	redacted string,
 	findingsByType map[string]int,
 	durationMS int64,
 	requestID string,
+	gatewayRequestID string,
 	includeFindings bool,
 ) Response {
 	resp := Response{
-		Redacted:   redacted,
-		RequestID:  requestID,
-		DurationMS: durationMS,
+		Redacted:         redacted,
+		RequestID:        requestID,
+		GatewayRequestID: gatewayRequestID,
+		DurationMS:       durationMS,
 	}
 	if includeFindings {
+		// Compute total count by summing per-type counts. Both
+		// signals follow the same toggle; reporting one without the
+		// other would either confuse callers (count without breakdown
+		// = "we know there's data but won't tell you what kind") or
+		// inflate side-channel risk (breakdown without count = same
+		// signal in two places).
+		total := 0
+		for _, n := range findingsByType {
+			total += n
+		}
+		resp.FindingsCount = &total
 		resp.FindingsByType = findingsByType
 	}
 	return resp
 }
 
-// handle is the Lambda entry point. The wrapper is generic enough to
-// adapt to any runtime: API Gateway HTTP API (the default), Function
-// URLs, EventBridge, or direct invocation. For HTTP API integrations
-// you typically wrap this with the events.APIGatewayV2HTTPRequest
-// adapter; that adaptation lives in your deployment, not the handler.
-func handle(ctx context.Context, req Request) (Response, error) {
+// redactCore is the inner business-logic handler. It takes a parsed
+// Request and a gateway-supplied request ID, and produces a Response
+// (or an error). Pulled out from the HTTP-shaped entry point
+// (handleHTTP, below) so the redaction logic stays runtime-agnostic
+// and the HTTP framing — body parsing, status codes, error envelope,
+// panic recovery — lives in one place.
+//
+// requestID is the caller's label or empty (no synthetic default). The
+// audit log uses "<unset>" as a placeholder when label is empty for
+// readability, but the wire response uses omitempty — see Response.
+//
+// gatewayRequestID is the API Gateway request ID, threaded through so
+// audit records and error logs can correlate to CloudWatch / X-Ray
+// without depending on the caller having supplied a label.
+//
+// Unit tests can target redactCore directly without spinning up an
+// API Gateway event mock.
+func redactCore(ctx context.Context, req Request, gatewayRequestID string) (Response, error) {
 	requestID := req.Label
-	if requestID == "" {
-		requestID = "<unset>"
+
+	// auditID is what shows up in audit log lines and error messages.
+	// "<unset>" is a placeholder for human readability ONLY — the wire
+	// response uses the real requestID (or omits the field) per the
+	// Response struct's omitempty contract.
+	auditID := requestID
+	if auditID == "" {
+		auditID = "<unset>"
 	}
 
 	if req.Text == "" {
-		return Response{}, fmt.Errorf("request_id=%s: text is required", requestID)
+		return Response{}, fmt.Errorf("request_id=%s: text is required", auditID)
 	}
 
 	strategy := redact.FormatPreserving
@@ -183,7 +246,23 @@ func handle(ctx context.Context, req Request) (Response, error) {
 	if req.Strategy != "" {
 		s, err := parseStrategy(req.Strategy)
 		if err != nil {
-			return Response{}, fmt.Errorf("request_id=%s: %w", requestID, err)
+			// Operator-side log: capture the offending value with %q
+			// so operators can see what the caller sent. The wire
+			// response uses the fixed-shape ErrInvalidStrategy
+			// sentinel — see parseStrategy and errorCategory. The
+			// %q-quoted value lands in CloudWatch only, never on
+			// the wire.
+			//
+			// SINGLE-TENANT ASSUMPTION: this log line is appropriate
+			// only when the function log group is operator-only.
+			// For a multi-tenant deployment where less-privileged
+			// users have read access to the function log group,
+			// callers could exfiltrate sensitive data by stuffing
+			// it into the strategy field. In that model, drop the
+			// `value=%q` field and rely on the access log's
+			// requestId for correlation.
+			log.Printf("invalid_strategy gateway_request_id=%s value=%q", gatewayRequestID, req.Strategy)
+			return Response{}, fmt.Errorf("request_id=%s: %w", auditID, err)
 		}
 		strategy = s
 		overrideStrategy = true
@@ -202,14 +281,21 @@ func handle(ctx context.Context, req Request) (Response, error) {
 		// Sanitize: never echo req.Text or anything the engine produced.
 		switch {
 		case errors.Is(err, redact.ErrEmptyText):
-			return Response{}, fmt.Errorf("request_id=%s: text is required", requestID)
+			return Response{}, fmt.Errorf("request_id=%s: text is required", auditID)
 		case errors.Is(err, redact.ErrTextTooLarge):
-			return Response{}, fmt.Errorf("request_id=%s: text exceeds %d-byte limit", requestID, redact.MaxInputBytes)
+			return Response{}, fmt.Errorf("request_id=%s: text exceeds %d-byte limit", auditID, redact.MaxInputBytes)
 		case errors.Is(err, redact.ErrEngineClosed):
-			return Response{}, fmt.Errorf("request_id=%s: gateway shutting down", requestID)
+			return Response{}, fmt.Errorf("request_id=%s: gateway shutting down", auditID)
 		default:
 			// Generic message — don't leak internals to caller.
-			return Response{}, fmt.Errorf("request_id=%s: redaction failed", requestID)
+			// Specifically check for the NUL-byte rejection from
+			// pkg/redact's input normalization. ErrEmptyText and
+			// ErrTextTooLarge are sentinels; the NUL-byte rejection
+			// is a wrapped error with a stable substring.
+			if strings.Contains(err.Error(), "NUL bytes") {
+				return Response{}, fmt.Errorf("request_id=%s: text contains binary content (NUL byte detected)", auditID)
+			}
+			return Response{}, fmt.Errorf("request_id=%s: redaction failed", auditID)
 		}
 	}
 
@@ -232,9 +318,9 @@ func handle(ctx context.Context, req Request) (Response, error) {
 		// name and the error category only. The audit record contains
 		// no PII even on success, but we hold the line on
 		// "the only thing in the log is what we explicitly approve."
-		log.Printf("audit_marshal_failed err=%q request_id=%s", err, requestID)
+		log.Printf("audit_marshal_failed err=%q request_id=%s gateway_request_id=%s", err, auditID, gatewayRequestID)
 	} else {
-		log.Printf("audit %s", auditJSON)
+		log.Printf("audit gateway_request_id=%s %s", gatewayRequestID, auditJSON)
 	}
 
 	return buildResponse(
@@ -242,15 +328,201 @@ func handle(ctx context.Context, req Request) (Response, error) {
 		audit.FindingsByType,
 		audit.Duration.Milliseconds(),
 		requestID,
+		gatewayRequestID,
 		includeFindingsInResponse,
 	), nil
 }
 
+// errorBody is the JSON shape for error responses. Contains a category
+// string and the request_id (caller's label, omitted if unset) plus
+// the gateway request ID. Deliberately omits any field that could
+// carry the original input or the matched substring.
+type errorBody struct {
+	Error            string `json:"error"`
+	RequestID        string `json:"request_id,omitempty"`
+	GatewayRequestID string `json:"gateway_request_id"`
+}
+
+// handleHTTP is the actual Lambda entry point under API Gateway HTTP API
+// (payload format version 2.0). It unwraps the event, parses the JSON
+// body into a Request, calls redactCore, and translates the result into
+// an APIGatewayV2HTTPResponse with the right HTTP status code.
+//
+// Defense in depth: a deferred recover() at the top sanitizes any
+// panic from downstream code (engine internals, validators) into a
+// 500 with a generic error string. Without this, aws-lambda-go's
+// default panic behavior surfaces the panic value to the caller in
+// the error response — and the panic value can include input bytes if
+// the panic was a nil deref reading req.Text. The recover keeps the
+// no-payload-bytes contract holding by construction.
+//
+// Status code mapping:
+//
+//   - 200: success
+//   - 400: client error — empty text, oversized text, invalid strategy,
+//     malformed JSON, or NUL-byte content. The error body's `error`
+//     field carries a generic category string; the request_id is
+//     preserved (caller's label) for correlation when present.
+//   - 503: gateway shutting down (engine closed mid-request).
+//   - 500: internal error (marshal failure on the response side, or
+//     a recovered panic from downstream code). Generic message; no
+//     internal state leaked to the caller.
+func handleHTTP(ctx context.Context, evt events.APIGatewayV2HTTPRequest) (resp events.APIGatewayV2HTTPResponse, err error) {
+	gatewayRequestID := evt.RequestContext.RequestID
+
+	// Defense in depth: recover from any panic in the handler chain
+	// (or the engine internals). Without this, aws-lambda-go's
+	// default behavior is to return the panic value as the Lambda
+	// invocation error, which API Gateway then surfaces in the
+	// integration response. A nil-deref panic on req.Text would
+	// echo the input bytes to the caller. Recover here flattens any
+	// panic into a generic 500 with a sanitized error category.
+	defer func() {
+		if r := recover(); r != nil {
+			// Log the panic type and gateway_request_id ONLY. Never
+			// log the panic value itself (`r`) — a panic value can
+			// contain input bytes, especially for runtime panics
+			// like nil-deref where the runtime synthesizes a message
+			// that may include surrounding context.
+			log.Printf("panic_recovered type=%T gateway_request_id=%s", r, gatewayRequestID)
+			resp = errorResponse(http.StatusInternalServerError, "internal_error", "", gatewayRequestID)
+			err = nil
+		}
+	}()
+
+	// Unwrap the body. HTTP API v2 sets isBase64Encoded when the
+	// upstream client sent binary; for JSON requests it's normally
+	// false but we handle it defensively.
+	body := evt.Body
+	if evt.IsBase64Encoded {
+		decoded, decErr := base64.StdEncoding.DecodeString(body)
+		if decErr != nil {
+			return errorResponse(http.StatusBadRequest, "invalid_base64_body", "", gatewayRequestID), nil
+		}
+		body = string(decoded)
+	}
+
+	var req Request
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		// Don't echo the body — it might already contain sensitive
+		// content that the caller intended us to redact.
+		return errorResponse(http.StatusBadRequest, "invalid_json_body", "", gatewayRequestID), nil
+	}
+
+	result, redactErr := redactCore(ctx, req, gatewayRequestID)
+	if redactErr != nil {
+		// Map errors to HTTP status. The error message format
+		// "request_id=<id>: <category>" is produced by redactCore;
+		// we extract the category for the JSON body without echoing
+		// internal details. The caller's request_id (req.Label) is
+		// preserved on the wire (omitempty when unset).
+		category := errorCategory(redactErr)
+		status := errorStatus(redactErr)
+		return errorResponse(status, category, req.Label, gatewayRequestID), nil
+	}
+
+	respBody, marshalErr := json.Marshal(result)
+	if marshalErr != nil {
+		// Marshal of our own Response struct can't realistically fail,
+		// but suppress-and-log is wrong here. Return a 500 with a
+		// generic message.
+		log.Printf("response_marshal_failed err=%q gateway_request_id=%s", marshalErr, gatewayRequestID)
+		return errorResponse(http.StatusInternalServerError, "internal_error", req.Label, gatewayRequestID), nil
+	}
+
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		Body: string(respBody),
+	}, nil
+}
+
+// errorResponse builds an APIGatewayV2HTTPResponse with a JSON body
+// containing the error category, the caller's request_id (omitted if
+// unset), and the gateway request ID. Centralized so every error path
+// produces the same wire shape and we can't accidentally omit
+// gateway_request_id.
+func errorResponse(status int, category, requestID, gatewayRequestID string) events.APIGatewayV2HTTPResponse {
+	body, err := json.Marshal(errorBody{
+		Error:            category,
+		RequestID:        requestID,
+		GatewayRequestID: gatewayRequestID,
+	})
+	if err != nil {
+		// Triple-impossible: marshaling a struct of three strings.
+		// If it ever happens, return a hardcoded body so we don't
+		// leak a panic up the stack.
+		body = []byte(`{"error":"internal_error","gateway_request_id":""}`)
+	}
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: status,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		Body: string(body),
+	}
+}
+
+// errorCategory pulls a stable short string out of redactCore's error.
+// We don't echo redactCore's full message because it includes the
+// request_id and a colon separator that we render separately.
+func errorCategory(err error) string {
+	msg := err.Error()
+	// Format is "request_id=<id>: <category>". Strip the prefix.
+	if idx := strings.Index(msg, ": "); idx >= 0 {
+		return msg[idx+2:]
+	}
+	return msg
+}
+
+// errorStatus maps redactCore's known errors to HTTP status codes.
+// Anything that didn't come from a known sentinel is treated as
+// internal (500) rather than client (400) — failing closed.
+func errorStatus(err error) int {
+	switch {
+	case errors.Is(err, redact.ErrEmptyText),
+		errors.Is(err, redact.ErrTextTooLarge),
+		errors.Is(err, ErrInvalidStrategy):
+		return http.StatusBadRequest
+	case errors.Is(err, redact.ErrEngineClosed):
+		return http.StatusServiceUnavailable
+	}
+	// String-match the categories that redactCore produces but that
+	// don't have public sentinels (text-required check before reaching
+	// the engine, NUL-byte rejection from pkg/redact's input
+	// normalization). All matched substrings are FIXED, never
+	// derived from caller input — see parseStrategy and ErrInvalidStrategy
+	// for the rationale.
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "text is required"),
+		strings.Contains(msg, "text exceeds"),
+		strings.Contains(msg, "binary content"):
+		return http.StatusBadRequest
+	case strings.Contains(msg, "gateway shutting down"):
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusInternalServerError
+}
+
 // parseStrategy converts the wire-level strategy string to the public
-// redact.Strategy enum. Unknown values produce an error rather than
-// silently falling through to the default — silent fallback would
-// hide a typo'd client config and produce confusingly different
-// redactions than the caller asked for.
+// redact.Strategy enum. Unknown values produce a fixed-shape error
+// (ErrInvalidStrategy) rather than echoing the caller's value: even
+// for an enum check, putting `%q` of caller-supplied input in the
+// error message means the input lands on the wire in the error
+// envelope (errorCategory strips only the request_id= prefix). The
+// fixed-shape error keeps the wire response payload-free; operators
+// can still see the bad value in the audit log line, which is
+// produced from req.Strategy directly rather than via this error.
+//
+// Silent fallback to a default would hide a typo'd client config and
+// produce confusingly different redactions than the caller asked
+// for, so we still return an error — just one that doesn't echo
+// the input.
+var ErrInvalidStrategy = errors.New("invalid strategy (want simple|format_preserving|synthetic)")
+
 func parseStrategy(s string) (redact.Strategy, error) {
 	switch s {
 	case "simple":
@@ -260,7 +532,7 @@ func parseStrategy(s string) (redact.Strategy, error) {
 	case "synthetic":
 		return redact.Synthetic, nil
 	default:
-		return 0, fmt.Errorf("invalid strategy %q (want simple|format_preserving|synthetic)", s)
+		return 0, ErrInvalidStrategy
 	}
 }
 
@@ -286,17 +558,21 @@ func parseCSV(v string) []string {
 //
 //	FERRET_LOCAL=1 ./bootstrap 'card 5500-0000-0000-0004 from alice@example.com'
 //
-// Otherwise lambda.Start(handle) blocks until the runtime delivers an
+// Otherwise lambda.Start blocks until the runtime delivers an
 // invocation, which is the correct behavior under provided.al2023.
 func main() {
 	if os.Getenv("FERRET_LOCAL") == "1" {
 		runLocal()
 		return
 	}
-	lambda.Start(handle)
+	lambda.Start(handleHTTP)
 }
 
 // runLocal drives a single invocation from argv for local testing.
+// Bypasses the HTTP framing in handleHTTP and calls redactCore
+// directly — useful for verifying the redaction logic without
+// constructing an APIGatewayV2HTTPRequest by hand.
+//
 // Kept separate so the production path through lambda.Start is the
 // last thing executed in main().
 func runLocal() {
@@ -306,9 +582,9 @@ func runLocal() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := handle(ctx, Request{Text: os.Args[1], Label: "local-test"})
+	res, err := redactCore(ctx, Request{Text: os.Args[1], Label: "local-test"}, "local-no-gateway")
 	if err != nil {
-		log.Fatalf("handle: %v", err)
+		log.Fatalf("redactCore: %v", err)
 	}
 	out, err := json.MarshalIndent(res, "", "  ")
 	if err != nil {

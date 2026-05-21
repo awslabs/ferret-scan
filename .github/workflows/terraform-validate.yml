@@ -1,0 +1,67 @@
+name: Terraform Validate
+
+# Validates the lambda-redact Terraform stack on every PR/push that
+# touches the .tf files. Runs `terraform fmt -check` and
+# `terraform validate` against an unauthenticated provider session
+# (no AWS credentials needed) — these are static checks that catch
+# syntax errors, undefined variables, and provider misconfiguration
+# before they hit a real `terraform apply`.
+#
+# Does NOT run `terraform plan` because plan requires AWS credentials
+# and an actual account to refresh state against. The `apply`-time
+# validation belongs in a separate workflow gated on a deployment
+# environment (see the apply path documented in
+# examples/lambda-redact/terraform/README.md).
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'examples/lambda-redact/terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  push:
+    branches: [main, master]
+    paths:
+      - 'examples/lambda-redact/terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: lambda-redact terraform validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/lambda-redact/terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          # Match the constraint in versions.tf. setup-terraform
+          # accepts version strings; pinning to >= 1.5 keeps the CI
+          # behavior stable across minor Terraform releases.
+          terraform_version: 1.15.4
+          terraform_wrapper: false
+
+      - name: Terraform fmt -check
+        # Fails if any .tf file is not canonically formatted. Run
+        # `terraform fmt -recursive` locally to fix.
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init (no backend, no plugin verification)
+        # -backend=false skips state backend init, which we don't
+        # have configured anyway (state is local for v1 deployments).
+        # -input=false prevents accidental interactive prompts in CI.
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        # Static validation: undefined variables, type mismatches,
+        # provider attribute errors, etc. Does NOT contact AWS.
+        run: terraform validate

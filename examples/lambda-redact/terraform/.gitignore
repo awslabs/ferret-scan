@@ -1,0 +1,27 @@
+# Local Terraform state and lock files. Never commit these — they
+# contain resource ARNs, IAM policies, and (in some setups) plaintext
+# secrets like passwords or API keys captured during apply.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Plan output. Often contains environment-specific values that
+# shouldn't be tracked.
+*.tfplan
+
+# Per-deployment overrides. terraform.tfvars.example is the
+# committed template; terraform.tfvars is the operator's local copy.
+terraform.tfvars
+*.auto.tfvars
+
+# Provider plugin cache. Hashicorp plugins are downloaded by
+# `terraform init` and live under .terraform/. Don't track them.
+#
+# NOTE: .terraform.lock.hcl IS tracked (not gitignored) — it pins
+# provider versions for reproducible builds and is the recommended
+# Terraform Community practice.
+.terraform/
+
+# Crash logs
+crash.log
+crash.*.log

@@ -1,0 +1,87 @@
+# Example terraform.tfvars for the lambda-redact stack.
+#
+# Copy to terraform.tfvars and edit the values you want to override.
+# Every value in here has a default in variables.tf; the file is
+# illustrative, not required.
+#
+# Use:
+#   cp terraform.tfvars.example terraform.tfvars
+#   $EDITOR terraform.tfvars
+#   terraform init && terraform apply
+
+# ---- Required-ish (override defaults to match your environment) ----
+
+# Region. Pick the region nearest to your callers; cross-region
+# invocation adds 50–200 ms of latency per request.
+region = "us-east-1"
+
+# Function name. Shows up in IAM ARNs, CloudWatch dashboards, and
+# the API Gateway name. Keep it short and descriptive — you'll see
+# it a lot.
+function_name = "ferret-redact-gw"
+
+# ---- Optional sizing ----
+
+# Memory. 512 MB is the default and the recommended baseline. Bump
+# if your workload has unusually large or regex-heavy payloads.
+# memory_mb = 512
+
+# Reserved concurrency. NULL by default (uses the account pool).
+# Set this only when you have a real workload profile and need to
+# prevent this gateway from exhausting the account-wide concurrency
+# limit. See the variable docstring for the formula.
+# reserved_concurrent_executions = null
+
+# ---- Throttling ----
+#
+# Default is burst=20, rate=10 — conservative for an internal tool.
+# Raise when measured usage justifies it. The throttling limits ARE
+# the DoS-bounding control; reserved concurrency is not.
+
+# throttling_burst_limit = 20
+# throttling_rate_limit  = 10
+
+# ---- Logging ----
+
+# Log retention. CloudWatch's default is "never expire" — pin a
+# value explicitly. 30 days is enough for incident response on an
+# experimental deployment.
+# log_retention_days = 30
+
+# Customer-managed KMS key for log groups. Default is false (uses
+# the AWS-managed aws/logs key). Flip to true only for compliance
+# requirements that mandate a CMK.
+# use_customer_managed_kms_key = false
+
+# ---- Handler runtime ----
+
+# Comma-separated validator list. Empty or "all" enables every
+# validator. Restrict to reduce CPU on payloads where you only
+# care about specific PII types.
+# ferret_checks = "all"
+
+# Default redaction strategy: simple | format_preserving | synthetic.
+# Callers can override per-request via the JSON `strategy` field.
+# ferret_strategy = "format_preserving"
+
+# Side-channel control: when true, the response body includes
+# `findings_by_type` with per-type counts. Defaults to false.
+# Flip to true ONLY for single-tenant or debug deployments.
+# include_findings_in_response = false
+
+# ---- Build artifact ----
+
+# Path to the Lambda zip. Defaults to ../function.zip (the artifact
+# produced by `make build` in the parent directory). Override if
+# you build the artifact elsewhere or fetch it from S3.
+# function_zip_path = "../function.zip"
+
+# ---- Tagging ----
+
+# Tags applied to every resource. The Project tag is the
+# recommended dimension for billing alarms.
+# tags = {
+#   Project   = "ferret-redact-gw"
+#   ManagedBy = "terraform"
+#   Example   = "github.com/awslabs/ferret-scan/examples/lambda-redact"
+# }

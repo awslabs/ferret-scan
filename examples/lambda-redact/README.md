@@ -20,10 +20,12 @@ make -C examples/lambda-redact test       # unit tests for the handler logic
 make -C examples/lambda-redact vet
 ```
 
-The `terraform/` directory provisioning the supporting AWS infrastructure
-(API Gateway HTTP API, IAM role, log group, throttling) ships in a
-follow-up change. Until that lands, deploy the produced `function.zip`
-manually if you want to test end-to-end.
+The `terraform/` directory in this submodule provisions the supporting
+AWS infrastructure (Lambda function, IAM role, CloudWatch log groups,
+API Gateway HTTP API with IAM auth + throttling, body-redacting access
+log format) as a single-tenant, internal-experimental baseline. See
+[terraform/README.md](terraform/README.md) for `terraform apply` walkthrough
+and security defaults pinned in the IaC.
 
 ## Local invocation
 
@@ -48,7 +50,34 @@ invocation:
 }
 ```
 
-## Build / deploy (manual, until terraform/ ships)
+## Build / deploy
+
+The recommended path is the [terraform/](terraform/) stack:
+
+```bash
+make -C examples/lambda-redact build
+cd examples/lambda-redact/terraform
+cp terraform.tfvars.example terraform.tfvars   # optional
+terraform init
+terraform apply
+```
+
+After `apply`:
+
+```bash
+# Smoke-test end-to-end (asserts redaction is actually happening).
+INVOKE_URL=$(terraform output -raw invoke_url) make -C .. smoke
+
+# Get a ready-to-paste awscurl command.
+terraform output -raw example_curl_invocation
+
+# Get the IAM policy a caller needs to invoke the gateway.
+terraform output -raw caller_invoke_policy_doc
+```
+
+### Manual deploy without Terraform
+
+For a one-off test or a different infrastructure stack:
 
 ```bash
 make -C examples/lambda-redact build
@@ -61,19 +90,12 @@ aws lambda create-function \
   --handler bootstrap \
   --zip-file fileb://examples/lambda-redact/function.zip \
   --role arn:aws:iam::ACCOUNT:role/lambda-redact-role \
-  --memory-size 256 --timeout 10
+  --memory-size 512 --timeout 10
 ```
 
-> **Note**: the `--memory-size` and `--timeout` values above are
-> illustrative starting points only. The follow-up `terraform/` stack
-> pins the canonical defaults in `terraform/variables.tf` — when that
-> ships, treat those numbers (not these) as the production-recommended
-> sizing. Regex evaluation can spike CPU; the Terraform default is
-> likely to land at 512 MB based on benchmarking.
-
 The IAM role above needs `logs:CreateLogStream` and `logs:PutLogEvents`
-on its own log group only. No other permissions. The follow-up
-terraform/ stack provisions that role explicitly.
+on its own log group only. No other permissions. The `terraform/` stack
+provisions that role explicitly with no wildcards.
 
 ## API
 
@@ -173,13 +195,26 @@ in `handler_test.go` so a regression here fails CI rather than shipping.
 
 ## Smoke testing the deployed gateway
 
-After the terraform/ stack ships, `make smoke` exercises the deployed
-gateway end-to-end:
+`make smoke` exercises a deployed gateway end-to-end:
 
 ```bash
+# Set credentials in scope first (the gateway uses IAM auth).
+export AWS_PROFILE=my-profile
+export AWS_REGION=us-east-1
+
 INVOKE_URL=$(terraform -chdir=examples/lambda-redact/terraform output -raw invoke_url) \
   make -C examples/lambda-redact smoke
 ```
+
+Or use the ready-to-paste invocation rendered by Terraform:
+
+```bash
+$(terraform -chdir=examples/lambda-redact/terraform output -raw make_smoke_invocation)
+```
+
+Prerequisites: `awscurl` (`pip install awscurl` or `uv tool install
+awscurl`) and `jq`. Full credential / region / error-path
+documentation in [terraform/README.md § Testing the deployed gateway](terraform/README.md#testing-the-deployed-gateway).
 
 The smoke target asserts:
 
@@ -220,5 +255,5 @@ go get github.com/awslabs/ferret-scan@latest
   payload limit is 6 MB. Larger payloads need an S3 → Lambda fan-out.
 
 These are infrastructure concerns owned by the consumer's CDK / Terraform.
-The terraform/ stack shipped in the follow-up change provides a sane
-v1 baseline (single-tenant, IAM auth, throttling pinned, no WAF/CloudFront).
+The `terraform/` stack in this submodule provides a sane v1 baseline
+(single-tenant, IAM auth, throttling pinned, no WAF/CloudFront).
