@@ -117,20 +117,73 @@ Suppressed matches **pass through unredacted** — a suppression rule is an expl
 
 ## In-process usage (lambda / gRPC)
 
-The CLI is built on a small in-memory API that any Go binary can import:
+For Go callers, the recommended path is the public `pkg/redact` package — a stable, safe-by-default API designed for embedding ferret-scan as an in-process library:
 
 ```go
 import (
-    "ferret-scan/internal/core"
-    "ferret-scan/internal/redactors"
-    "ferret-scan/internal/redactors/plaintext"
+    "context"
+    "log"
+
+    "github.com/awslabs/ferret-scan/pkg/redact"
 )
 
-func RedactString(input string) (string, error) {
+func handler() {
+    // Construct ONCE per process. The Engine reuses validators, the
+    // enhanced manager, and the dual-path bridge across every Redact
+    // call — per-request setup cost is zero.
+    engine, err := redact.NewEngine(redact.EngineOptions{
+        Strategy: redact.FormatPreserving,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer engine.Close()
+
+    res, err := engine.Redact(context.Background(), redact.Request{
+        Text:  "card 5500-0000-0000-0004 from alice@example.com",
+        Label: "req-abc-123",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Println(res.Redacted)
+    // Audit-safe summary — no payload bytes, no offsets, no substrings.
+    // Suitable for CloudWatch / S3 Object Lock without leaking input.
+    log.Printf("audit: %+v", res.AuditRecord())
+}
+```
+
+Key properties:
+
+- **Zero per-call construction**: `NewEngine` builds the validator graph once. The CLI's stdin path rebuilds it on every invocation; for a hot gateway that's roughly an order of magnitude slower than the actual scan.
+- **Safe-by-default suppressions**: no constructor loads a suppression file from disk. Suppression rules are passed per-request via `Request.AllowSuppressions` so a misconfigured server can't accidentally let suppressed content through.
+- **Payload-free findings**: `Result.Findings()` returns type / line / confidence — no matched substrings. Callers who need the bytes opt in via `Result.FindingsWithMatchText()`.
+- **WORM-safe audit shape**: `Result.AuditRecord()` returns counts by type, byte counts, duration, and timestamp. No offsets, no input bytes. Log it directly to CloudWatch / S3 Object Lock.
+- **Configurable LogWriter**: `EngineOptions.LogWriter` defaults to `io.Discard` so nothing leaks to stderr by default. Pass `os.Stderr` for dev visibility or wire your structured logger.
+- **Thread-safe**: an `Engine` is safe for concurrent use. Two pieces of internal state serialize across goroutines (cross-validator signals, confidence calibrator); high-concurrency workloads should pool engines (one per worker).
+
+For other languages (Python, Node, etc.), shell out to the binary with `--stdin --enable-redaction --quiet --no-color` — the `--quiet` flag suppresses progress prose so stderr stays parseable, `--no-color` strips ANSI codes so log sinks render cleanly, and the binary's own `--pre-commit-mode` exit semantics signal whether anything was matched. Avoid `--debug` in production: it enables verbose validator-internal logging that adds latency and noise without helping a gateway caller.
+
+## Lower-level in-process usage
+
+If you need direct access to the scanner pipeline (e.g. to plug ferret-scan into a custom processing graph rather than calling Redact end-to-end), the underlying `core.ScanContent` + `plaintext.RedactString` API remains available:
+
+```go
+import (
+    "github.com/awslabs/ferret-scan/internal/core"
+    "github.com/awslabs/ferret-scan/internal/redactors"
+    "github.com/awslabs/ferret-scan/internal/redactors/plaintext"
+)
+
+func RedactStringLowLevel(input string) (string, error) {
     // Step 1: scan
     result, err := core.ScanContent(input, core.ContentScanConfig{
         VirtualPath: "<lambda-input>",
         Checks:      []string{"all"},
+        // LogWriter routes the internal observer's output. Defaults to
+        // os.Stderr when nil; pass io.Discard or a structured logger
+        // writer to keep CloudWatch free of progress prose.
     })
     if err != nil {
         return "", err
@@ -144,7 +197,30 @@ func RedactString(input string) (string, error) {
 }
 ```
 
-This path has no filesystem dependencies. It works in any environment that can import the `ferret-scan` Go module — Lambda, Fargate, gRPC, sidecar containers, etc.
+This path has no filesystem dependencies. It works in any environment that can import the `ferret-scan` Go module — Lambda, Fargate, gRPC, sidecar containers, etc. Note that `internal/` packages don't carry the same API stability guarantees as `pkg/redact`; prefer the public package for production code.
+
+## Subprocess usage (non-Go callers)
+
+When calling the binary from Python, Node, Java, etc., the canonical invocation for a gateway is:
+
+```bash
+echo "$INPUT" | ferret-scan --stdin --enable-redaction \
+    --redaction-strategy format_preserving \
+    --quiet --no-color \
+    --format json --output /tmp/findings.json
+# stdout: redacted content
+# /tmp/findings.json: structured findings (no payload by default)
+```
+
+Recommended flags for production gateway use:
+
+- `--quiet` — suppress human-readable progress prose so stderr stays parseable.
+- `--no-color` — strip ANSI codes so log sinks render cleanly.
+- `--enable-redaction` — make redacted content the primary stdout output.
+- `--format json` (or `yaml`/`sarif`) + `--output <file>` — capture structured findings without interleaving them with the redacted stream.
+- Avoid `--debug` — verbose validator-internal logging that adds latency and noise.
+
+Exit codes follow `--pre-commit-mode` semantics when set: non-zero on findings at or above the configured confidence threshold.
 
 ## Limitations
 

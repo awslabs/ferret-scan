@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -36,6 +37,18 @@ type ScanConfig struct {
 	// SuppressionManager, when non-nil, is applied to matches before returning.
 	// ScanResult.SuppressedCount and SuppressedMatches are populated accordingly.
 	SuppressionManager *suppressions.SuppressionManager
+	// LogWriter receives observability output (progress lines, debug messages).
+	// Defaults to os.Stderr when nil to preserve existing CLI behavior; pass
+	// io.Discard to silence all output, or wire a custom writer to route the
+	// internal observer through a structured logger.
+	//
+	// Critically, the observer writes payload-free progress strings only —
+	// it does NOT log matched substrings or input bytes. LogWriter exists
+	// to give callers (Lambda handlers, sidecars, etc.) a chokepoint to
+	// enforce no-payload-bytes at the destination, futureproofing the
+	// no-leak guarantee against any change that might accidentally start
+	// logging content.
+	LogWriter io.Writer
 }
 
 // ScanResult holds the results of a scanning operation.
@@ -47,12 +60,25 @@ type ScanResult struct {
 	Error             error
 }
 
+// resolveLogWriter returns the writer to use for observability output:
+// the caller-supplied LogWriter when non-nil, or os.Stderr to preserve
+// existing CLI behavior. Pass io.Discard to silence output entirely.
+func resolveLogWriter(w io.Writer) io.Writer {
+	if w != nil {
+		return w
+	}
+	return os.Stderr
+}
+
 // ScanFile performs the core scanning logic shared by the CLI and the web server.
 func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
-	// Build observer
-	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, os.Stderr)
+	// Build observer. LogWriter defaults to os.Stderr when nil so existing
+	// CLI callers see the same output they always have; in-process callers
+	// (Lambda, sidecars) pass io.Discard or a structured logger writer.
+	logWriter := resolveLogWriter(scanConfig.LogWriter)
+	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, logWriter)
 	if scanConfig.Debug {
-		debugObs := observability.NewDebugObserver(os.Stderr)
+		debugObs := observability.NewDebugObserver(logWriter)
 		observer = debugObs.StandardObserver
 		observer.DebugObserver = debugObs
 	}
@@ -171,6 +197,13 @@ type ContentScanConfig struct {
 
 	// SuppressionManager, when non-nil, is applied to matches before returning.
 	SuppressionManager *suppressions.SuppressionManager
+
+	// LogWriter receives observability output (progress lines, debug
+	// messages). Defaults to os.Stderr when nil to preserve existing CLI
+	// behavior; pass io.Discard to silence all output, or wire a custom
+	// writer to route the internal observer through a structured logger.
+	// See ScanConfig.LogWriter for the no-payload-bytes contract.
+	LogWriter io.Writer
 }
 
 // ScanContent scans an in-memory content buffer using the same validator
@@ -188,10 +221,13 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 		cfg.Format = "Plain Text"
 	}
 
-	// Build observer (mirrors ScanFile)
-	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, os.Stderr)
+	// Build observer (mirrors ScanFile). LogWriter defaults to os.Stderr
+	// when nil; in-process callers (Lambda, sidecars) pass io.Discard or
+	// a structured logger writer.
+	logWriter := resolveLogWriter(cfg.LogWriter)
+	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, logWriter)
 	if cfg.Debug {
-		debugObs := observability.NewDebugObserver(os.Stderr)
+		debugObs := observability.NewDebugObserver(logWriter)
 		observer = debugObs.StandardObserver
 		observer.DebugObserver = debugObs
 	}
@@ -247,7 +283,7 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 
 	matches, validationErr := parallel.RunValidators(ctx, validatorsList, processed, nil)
 	if validationErr != nil && cfg.Debug {
-		fmt.Fprintf(os.Stderr, "validator error during ScanContent: %v\n", validationErr)
+		fmt.Fprintf(logWriter, "validator error during ScanContent: %v\n", validationErr)
 	}
 
 	// Stamp every match as virtual and ensure the filename is the synthetic

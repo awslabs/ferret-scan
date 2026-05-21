@@ -318,3 +318,43 @@ func TestScanContent_SARIFRendersVirtualWithoutSrcRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestScanContent_LogWriter_Custom(t *testing.T) {
+	// LogWriter routes the internal observer's output to a caller-supplied
+	// writer. With Debug=true a custom writer should receive content; the
+	// default (nil) routes to os.Stderr to preserve CLI behavior.
+	var sink strings.Builder
+
+	_, err := ScanContent("alice@example.com", ContentScanConfig{
+		Checks:    []string{"EMAIL"},
+		Debug:     true,
+		LogWriter: &sink,
+	})
+	if err != nil {
+		t.Fatalf("ScanContent: %v", err)
+	}
+
+	if sink.Len() == 0 {
+		t.Errorf("Debug=true with custom LogWriter wrote nothing")
+	}
+
+	// Defensive: verify the matched substring did NOT leak into the writer.
+	// The internal observer is supposed to emit progress markers only, not
+	// payload bytes, but this test pins that contract.
+	if strings.Contains(sink.String(), "alice@example.com") {
+		t.Errorf("LogWriter received the matched substring (payload leak): %q", sink.String())
+	}
+}
+
+func TestScanContent_LogWriter_NilDefaultsToStderr(t *testing.T) {
+	// Nil LogWriter must NOT panic — it falls back to os.Stderr internally.
+	// We can't easily redirect os.Stderr in a test without leaking state, so
+	// we just verify the call completes without error.
+	_, err := ScanContent("alice@example.com", ContentScanConfig{
+		Checks: []string{"EMAIL"},
+		// LogWriter intentionally left nil
+	})
+	if err != nil {
+		t.Fatalf("ScanContent with nil LogWriter: %v", err)
+	}
+}
