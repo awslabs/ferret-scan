@@ -4,12 +4,10 @@
 package redact
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -55,10 +53,6 @@ type Engine struct {
 	// closed is set atomically when Close is called; subsequent
 	// Redact calls return ErrEngineClosed.
 	closed atomic.Bool
-
-	// pool holds reusable byte buffers used by the redactor's text
-	// path; avoids allocating MaxInputBytes-sized buffers repeatedly.
-	pool sync.Pool
 }
 
 // NewEngine constructs a reusable Engine. The construction cost is
@@ -145,11 +139,6 @@ func NewEngine(opts EngineOptions) (*Engine, error) {
 		validatorsList:  []detector.Validator{enhancedWrapper},
 		observer:        observer,
 		redactor:        redactor,
-	}
-	e.pool.New = func() any {
-		// Pool buffers for the per-call ProcessedContent normalization.
-		// 4 KiB is a reasonable starting size; it grows on demand.
-		return new(bytes.Buffer)
 	}
 	return e, nil
 }

@@ -70,6 +70,12 @@ const (
 //     "DINERS_CLUB", "UNKNOWN_CARD". To suppress all credit-card
 //     findings you must enumerate the brands you want to allow.
 //
+//     TODO(future): a redact.ExpandTypeAliases([]string{"CREDIT_CARD"})
+//     helper or an Aliases []string field would close the gap. Tracked
+//     as a v1.x follow-up — for now, callers should consult
+//     Result.AuditRecord().FindingsByType to enumerate the actual
+//     emitted types and write rules against those.
+//
 //   - Scope optionally restricts the rule to findings whose Label (the
 //     synthetic source label set in Request.Label) matches the given
 //     string exactly. An empty Scope means "applies to all labels".
