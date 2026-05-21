@@ -368,34 +368,20 @@ func (v *Validator) Configure(cfg *config.Config) {
 		}
 	}
 
-	// Update IP patterns if provided
+	// Update IP patterns if provided.
+	//
+	// Each override compiles the user-supplied regex with regexp.Compile (not
+	// MustCompile) so a malformed pattern from config logs a warning and the
+	// built-in default stays in place — instead of panicking the whole scan.
+	// On success, debug observers see a one-line confirmation that the
+	// override took effect, which makes "is my config actually loaded?"
+	// answerable from --debug output alone.
 	if patterns, ok := ipConfig["intellectual_property_patterns"].(map[string]any); ok {
-		// Update patent pattern if provided
-		if pattern, ok := patterns["patent"].(string); ok && pattern != "" {
-			v.patternPatent = v.ensureCaseInsensitive(pattern)
-			v.regexPatent = regexp.MustCompile(v.patternPatent)
-		}
-
-		// Update trademark pattern if provided
-		if pattern, ok := patterns["trademark"].(string); ok && pattern != "" {
-			v.patternTrademark = v.ensureCaseInsensitive(pattern)
-			v.regexTrademark = regexp.MustCompile(v.patternTrademark)
-		}
-
-		// Update copyright pattern if provided
-		if pattern, ok := patterns["copyright"].(string); ok && pattern != "" {
-			v.patternCopyright = v.ensureCaseInsensitive(pattern)
-			v.regexCopyright = regexp.MustCompile(v.patternCopyright)
-		}
-
-		// Update trade secret pattern if provided
+		v.applyIPPatternOverride(patterns, "patent", &v.patternPatent, &v.regexPatent)
+		v.applyIPPatternOverride(patterns, "trademark", &v.patternTrademark, &v.regexTrademark)
+		v.applyIPPatternOverride(patterns, "copyright", &v.patternCopyright, &v.regexCopyright)
 		//  pragma: allowlist nextline secret
-		if pattern, ok := patterns["trade_secret"].(string); ok && pattern != "" {
-			//  pragma: allowlist nextline secret
-			v.patternTradeSecret = v.ensureCaseInsensitive(pattern)
-			//  pragma: allowlist nextline secret
-			v.regexTradeSecret = regexp.MustCompile(v.patternTradeSecret)
-		}
+		v.applyIPPatternOverride(patterns, "trade_secret", &v.patternTradeSecret, &v.regexTradeSecret)
 	}
 
 	// Parse disabled_types to skip specific IP sub-type detections
@@ -417,6 +403,60 @@ func (v *Validator) Configure(cfg *config.Config) {
 		if os.Getenv("FERRET_DEBUG") == "1" && len(v.disabledTypes) > 0 {
 			fmt.Fprintf(os.Stderr, "[DEBUG] Intellectual Property Validator: Disabled types: %v\n", v.disabledTypes)
 		}
+	}
+}
+
+// applyIPPatternOverride attempts to override one of the four built-in IP
+// patterns (patent, trademark, copyright, trade_secret) from the user-supplied
+// config map. The pattern is compiled with regexp.Compile (not MustCompile)
+// so a malformed regex from config logs a warning and the built-in default
+// stays in place — invalid user input must not panic the scan.
+//
+// On success, a debug-level log line records the override so operators can
+// answer "did my config actually load?" from --debug output without needing
+// to add print statements.
+//
+// patternKey is the YAML key under intellectual_property_patterns. patternStore
+// and regexStore are pointers to the validator fields that hold the active
+// (default or overridden) pattern + compiled regex respectively.
+func (v *Validator) applyIPPatternOverride(
+	patterns map[string]any,
+	patternKey string,
+	patternStore *string,
+	regexStore **regexp.Regexp,
+) {
+	raw, ok := patterns[patternKey].(string)
+	if !ok || raw == "" {
+		return
+	}
+
+	processed := v.ensureCaseInsensitive(raw)
+	compiled, err := regexp.Compile(processed)
+	if err != nil {
+		// Invalid regex from config: log and keep the built-in default.
+		// Mirror the internal_urls override path (see validator.go ~L297) so
+		// behavior is consistent across all configurable IP regex fields.
+		if v.observer != nil && v.observer.DebugObserver != nil {
+			v.observer.DebugObserver.LogDetail("intellectualproperty",
+				fmt.Sprintf("Invalid %s pattern %q: %v — keeping built-in default", patternKey, raw, err))
+		}
+		fmt.Fprintf(os.Stderr,
+			"Warning: invalid intellectual_property_patterns.%s regex %q: %v — built-in default retained.\n",
+			patternKey, raw, err)
+		fmt.Fprintf(os.Stderr,
+			"Hint: regex values in YAML need single-quoted or unquoted scalars; "+
+				"double-quoted strings process \\b, \\s, etc. as escape sequences. "+
+				"To skip a built-in IP sub-type entirely, use disabled_types: "+
+				"[%q] under validators.intellectual_property.\n", patternKey)
+		return
+	}
+
+	*patternStore = processed
+	*regexStore = compiled
+
+	if v.observer != nil && v.observer.DebugObserver != nil {
+		v.observer.DebugObserver.LogDetail("intellectualproperty",
+			fmt.Sprintf("Applied %s pattern override from config: %s", patternKey, processed))
 	}
 }
 

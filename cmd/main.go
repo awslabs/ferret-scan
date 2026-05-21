@@ -56,8 +56,27 @@ import (
 )
 
 // loadConfiguration loads the configuration file or returns default config.
-// Delegates to config.LoadConfigOrDefault which is shared with the web server.
+//
+// When the user passes an explicit --config <path> flag, parse errors and
+// missing files are fatal so YAML escape gotchas and typo'd paths surface
+// immediately instead of being silently swallowed. When configFile is empty,
+// auto-discovery is best-effort (LoadConfigOrDefault) and falls back to
+// built-in defaults with a stderr warning.
 func loadConfiguration(configFile string) *config.Config {
+	if configFile != "" {
+		cfg, err := config.LoadConfigStrict(configFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintf(os.Stderr,
+				"Hint: regex values in YAML need single-quoted or unquoted "+
+					"scalars; double-quoted strings process \\b, \\s, etc. "+
+					"as escape sequences. Either drop the quotes, switch to "+
+					"single quotes, or double every backslash inside double "+
+					"quotes (e.g. \"\\\\b(...)\\\\b\").\n")
+			os.Exit(1)
+		}
+		return cfg
+	}
 	cfg := config.LoadConfigOrDefault(configFile)
 	if cfg == nil {
 		fmt.Fprintf(os.Stderr, "Warning: Error loading config file, using defaults\n")

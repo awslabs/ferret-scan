@@ -561,6 +561,29 @@ validators:
       trade_secret: "\\b(Confidential|Trade\\s+Secret|Proprietary|Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted|Classified)\\b"
 ```
 
+##### Regex Values in YAML — Escaping Rules
+
+YAML's escape behavior depends on quoting style, and this trips up everyone who writes a regex with `\b`, `\s`, `\d`, etc. Pick one of the safe forms below; any of them produces an identical Go regex.
+
+| Form | Example | Notes |
+|------|---------|-------|
+| Unquoted | `trade_secret: \b(Trade\s+Secret)\b` | YAML treats backslashes literally. Simplest. |
+| Single-quoted | `trade_secret: '\b(Trade\s+Secret)\b'` | Single quotes preserve content as-is. |
+| Double-quoted with `\\` | `trade_secret: "\\b(Trade\\s+Secret)\\b"` | Double quotes process escapes; you must double every backslash. |
+
+**Avoid** double-quoted scalars with single backslashes (`"\b(...)\b"`). YAML processes `\b` as a backspace byte (0x08) and `\s` raises `found unknown escape character`. ferret-scan now reports the parse error and exits, but if you've ever seen "my override doesn't seem to apply" silently, this is almost always the cause.
+
+If you want to skip a built-in IP sub-type entirely instead of debugging YAML escaping, use `disabled_types` — it's a clean escape hatch:
+
+```yaml
+validators:
+  intellectual_property:
+    disabled_types:
+      - trade_secret    # built-in pattern is never compiled or evaluated
+```
+
+The same escaping rules apply to every regex-valued config key (secrets patterns, internal URLs, future custom patterns).
+
 ## Profile-Specific Validator Configuration
 
 You can override the global validator configuration for specific profiles:

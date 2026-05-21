@@ -47,6 +47,13 @@ var embeddedTemplate string
 // changes (or the file appears/disappears). This eliminates the per-request
 // YAML parse cost that previously dominated /scan and /suppressions latency.
 // suppCacheMu guards concurrent reload while readers run.
+//
+// cachedConfig holds the resolved config validated at Start() and is reused
+// across all per-request handlers. It must not be reloaded mid-flight: doing
+// so re-introduces the silent-fallback class of bug where a config that
+// passed startup validation is later mutated/removed and the server falls
+// back to defaults without telling anyone. If operators need a config
+// change, they restart the server.
 type WebServer struct {
 	port             string
 	bindAddr         string
@@ -55,6 +62,7 @@ type WebServer struct {
 	excludePatterns  []string
 	mux              *http.ServeMux
 	server           *http.Server
+	cachedConfig     *config.Config
 
 	suppCacheMu     sync.RWMutex
 	suppCacheMgr    *suppressions.SuppressionManager
@@ -109,6 +117,32 @@ func NewWebServerWithOptions(port, bindAddr, configPath, suppressionsPath string
 // final server so a busy 192.168.1.5:8080 isn't masked by an idle
 // 127.0.0.1:8080 (or vice versa).
 func (ws *WebServer) Start() error {
+	// Validate the operator-supplied config once at startup and cache the
+	// result. If the user passed --config <path> and the file is missing or
+	// malformed, refuse to start instead of silently scanning every request
+	// with built-in defaults.
+	//
+	// The resolved config is cached on the WebServer and reused by every
+	// per-request handler — see ws.loadConfiguration. This avoids two
+	// failure modes that the per-request reload had: (a) silent fallback
+	// when the file is later mutated/removed mid-flight, and (b) re-parsing
+	// YAML on every /scan call. To pick up a config change, restart.
+	if ws.configPath != "" {
+		cfg, err := config.LoadConfigStrict(ws.configPath)
+		if err != nil {
+			return fmt.Errorf("refusing to start: %w\n"+
+				"Hint: regex values in YAML need single-quoted or unquoted "+
+				"scalars; double-quoted strings process \\b, \\s, etc. as "+
+				"escape sequences", err)
+		}
+		ws.cachedConfig = cfg
+	} else {
+		// Auto-discovery path: best-effort load, warn-and-fallback inside
+		// LoadConfigOrDefault. Caching means we run discovery once at
+		// boot rather than on every request.
+		ws.cachedConfig = config.LoadConfigOrDefault("")
+	}
+
 	// Setup routes with error handling
 	if err := ws.setupRoutesWithValidation(); err != nil {
 		return fmt.Errorf("failed to setup web server routes: %w\n"+
@@ -781,9 +815,20 @@ func (ws *WebServer) sanitizeFilenameForDisplay(filename string) string {
 	return sanitizeUserInput(normalized, 500)
 }
 
-// loadConfiguration loads the configuration file or returns default config (same as CLI)
-func (ws *WebServer) loadConfiguration(configFile string) *config.Config {
-	return config.LoadConfigOrDefault(configFile)
+// loadConfiguration returns the config validated and cached at Start(). The
+// configFile parameter is unused — kept for callsite compatibility — because
+// the path is already resolved on the WebServer struct. Per-request reloads
+// were intentionally removed: re-parsing YAML on every /scan request was
+// both slow and reintroduced the silent-fallback bug class. To pick up a
+// config change, restart the server.
+func (ws *WebServer) loadConfiguration(_ string) *config.Config {
+	if ws.cachedConfig != nil {
+		return ws.cachedConfig
+	}
+	// Defensive fallback: if Start() was bypassed (e.g. tests that exercise
+	// handlers directly), do a one-shot best-effort load. Production code
+	// always goes through Start() and hits the cache.
+	return config.LoadConfigOrDefault(ws.configPath)
 }
 
 // webConfiguration holds resolved configuration values for web mode

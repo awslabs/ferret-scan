@@ -127,7 +127,7 @@ to determine the likelihood that they represent actual intellectual property ref
 		"- Run ferret-scan with the --config flag: ferret-scan --config ferret.yaml --file document.txt\n" +
 		"- Or use a specific profile: ferret-scan --config ferret.yaml --profile company-specific --file document.txt\n\n" +
 		"Without configuration, internal URL detection will be disabled. Other IP types (patents, trademarks, copyrights, trade secrets) will still work.\n\n" +
-		"See the documentation in docs/configuration.md for more details."
+		"See https://github.com/awslabs/ferret-scan for more details."
 
 	// Set examples
 	info.Examples = []string{

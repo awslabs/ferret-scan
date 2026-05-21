@@ -781,7 +781,7 @@ func (f *Formatter) getPrecommitResolutionGuidance(matches []detector.Match) str
 
 	guidance.WriteString("Resolution options:\n")
 	guidance.WriteString("1. Remove or redact the sensitive data\n")
-	guidance.WriteString("2. Add suppression rules if data is intentional (see docs/suppression-system.md)\n")
+	guidance.WriteString("2. Add suppression rules if data is intentional (run `ferret-scan --help` for the suppression flags, or see https://github.com/awslabs/ferret-scan)\n")
 	guidance.WriteString("3. Use --show-match flag to see exact matches for review (otherwise shows [HIDDEN])\n")
 
 	// Check if there are high confidence findings that should block
