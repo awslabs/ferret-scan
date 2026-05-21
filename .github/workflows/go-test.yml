@@ -70,3 +70,57 @@ jobs:
         # quality. Run them locally on Windows when working on those tests.
         run: go test -race -count=1 $(go list ./... | grep -v /tests/integration)
         shell: bash
+
+  # The lambda-redact example is its own Go submodule (separate go.mod)
+  # so the AWS Lambda runtime dependency does not leak into the parent
+  # module. The `test` job above doesn't see it because `go list ./...`
+  # is scoped to a single module. This job exercises the submodule
+  # explicitly: vet, unit tests, AND the cross-compile for the
+  # production target (linux/arm64 with the lambda.norpc tag).
+  #
+  # The cross-compile is the most important step here. PR 1's "drop the
+  # build tag, real lambda.Start(handle)" change can ship in a state
+  # that builds on the contributor's machine but breaks for the
+  # production target if someone "improves" the imports without
+  # checking arm64. CI catches that before deploy.
+  lambda-redact-example:
+    name: lambda-redact submodule
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: '.go-version'
+
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ubuntu-latest-go-lambda-${{ hashFiles('examples/lambda-redact/go.sum') }}
+          restore-keys: |
+            ubuntu-latest-go-lambda-
+
+      - name: Go vet (example module)
+        working-directory: examples/lambda-redact
+        run: go vet ./...
+
+      - name: Test (example module)
+        working-directory: examples/lambda-redact
+        run: go test -race -count=1 ./...
+
+      - name: Cross-compile bootstrap for linux/arm64
+        # Mirrors the production build path. If this fails, the
+        # deployment artifact is broken even if local tests pass.
+        run: make -C examples/lambda-redact build
+
+      - name: Verify build artifact exists
+        run: |
+          test -s examples/lambda-redact/bootstrap || { echo "bootstrap binary missing or empty"; exit 1; }
+          test -s examples/lambda-redact/function.zip || { echo "function.zip missing or empty"; exit 1; }
+          echo "bootstrap: $(stat -c%s examples/lambda-redact/bootstrap) bytes"
+          echo "function.zip: $(stat -c%s examples/lambda-redact/function.zip) bytes"

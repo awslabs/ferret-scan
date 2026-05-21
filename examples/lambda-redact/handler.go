@@ -1,16 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build examples_lambda
-// +build examples_lambda
-
 // Package main is a reference Lambda handler for a redaction gateway
 // built on github.com/awslabs/ferret-scan/pkg/redact.
 //
-// See README.md in this directory for build / deploy instructions and
-// architecture notes. The build tag prevents this file from being
-// compiled as part of the main ferret-scan module — copy it into your
-// own module to deploy.
+// This is its own Go module (see go.mod) so the AWS Lambda runtime
+// dependency does not leak into the parent ferret-scan module. Build
+// for arm64/al2023 with the project Makefile:
+//
+//	make -C examples/lambda-redact build
+//
+// See README.md for end-to-end deploy instructions and architecture
+// notes. The companion terraform/ directory provisions the supporting
+// infrastructure (API Gateway, IAM role, log group, etc.).
 //
 // Key design properties this example demonstrates:
 //
@@ -19,14 +21,18 @@
 //     Engine pattern.
 //
 //   - No payload logging. The handler logs only the audit record (counts,
-//     byte sizes, duration) — never req.Text or res.Redacted. CloudWatch
-//     stays free of input bytes by construction.
+//     byte sizes, duration) — never req.Text or res.Redacted. The
+//     function's log stream stays free of input bytes by construction.
 //
 //   - Sanitized errors. The handler returns a request ID for correlation
 //     but never the raw input or matched substring in error responses.
 //
 //   - Strategy validation. Unknown strategy strings produce a 400-style
 //     error rather than silently falling through to the default.
+//
+//   - Side-channel guard. Per-type finding counts are omitted from the
+//     response by default; flip FERRET_INCLUDE_FINDINGS=true to enable
+//     them for single-tenant or debug deployments.
 package main
 
 import (
@@ -36,14 +42,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
-	// Uncomment when deploying to Lambda. Adding it here would force a
-	// dependency on aws-lambda-go for the entire ferret-scan module,
-	// which intentionally avoids AWS SDK imports in its core.
-	//
-	// "github.com/aws/aws-lambda-go/lambda"
-
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/awslabs/ferret-scan/pkg/redact"
 )
 
@@ -62,7 +64,8 @@ var engine *redact.Engine
 // Flip via FERRET_INCLUDE_FINDINGS=true ONLY for single-tenant or
 // debug deployments where the caller already knows what they sent.
 // The audit log always carries the full counts regardless — operators
-// can query CloudWatch for them without exposing them on the wire.
+// can query the function's log stream for them without exposing them
+// on the wire.
 var includeFindingsInResponse bool
 
 func init() {
@@ -90,8 +93,8 @@ func init() {
 
 	// LogWriter is intentionally left nil — pkg/redact defaults to
 	// io.Discard, which keeps the internal observer's output out of
-	// CloudWatch entirely. The handler writes its own structured
-	// audit record at the end of each invocation.
+	// the function's log stream entirely. The handler writes its own
+	// structured audit record at the end of each invocation.
 	e, err := redact.NewEngine(redact.EngineOptions{
 		Checks:   checks,
 		Strategy: strategy,
@@ -117,8 +120,8 @@ type Request struct {
 // the matched bytes should add a separate, authenticated endpoint.
 //
 // FindingsByType is omitted by default; see includeFindingsInResponse
-// in init() for the side-channel rationale. The audit log always carries
-// it regardless.
+// for the side-channel rationale. The audit log always carries it
+// regardless.
 type Response struct {
 	Redacted       string         `json:"redacted"`
 	FindingsByType map[string]int `json:"findings_by_type,omitempty"`
@@ -133,9 +136,38 @@ type ErrorResponse struct {
 	RequestID string `json:"request_id"`
 }
 
-// handle is the Lambda entry point. Replace with whatever your runtime
-// needs (events.APIGatewayProxyRequest for API Gateway HTTP API,
-// events.LambdaFunctionURLRequest for Function URLs, etc.).
+// buildResponse assembles the JSON response. Pulled out as a pure
+// function so the side-channel guard (includeFindings=false elides
+// FindingsByType) is unit-testable without spinning up the full
+// handler or mutating package state.
+//
+// Security reviewers can verify the entire side-channel logic in
+// isolation: when includeFindings is false, FindingsByType is left at
+// its zero value (nil) and the json.Marshal on the Response struct
+// will omit the field due to the `omitempty` tag.
+func buildResponse(
+	redacted string,
+	findingsByType map[string]int,
+	durationMS int64,
+	requestID string,
+	includeFindings bool,
+) Response {
+	resp := Response{
+		Redacted:   redacted,
+		RequestID:  requestID,
+		DurationMS: durationMS,
+	}
+	if includeFindings {
+		resp.FindingsByType = findingsByType
+	}
+	return resp
+}
+
+// handle is the Lambda entry point. The wrapper is generic enough to
+// adapt to any runtime: API Gateway HTTP API (the default), Function
+// URLs, EventBridge, or direct invocation. For HTTP API integrations
+// you typically wrap this with the events.APIGatewayV2HTTPRequest
+// adapter; that adaptation lives in your deployment, not the handler.
 func handle(ctx context.Context, req Request) (Response, error) {
 	requestID := req.Label
 	if requestID == "" {
@@ -193,7 +225,8 @@ func handle(ctx context.Context, req Request) (Response, error) {
 	// adds a custom MarshalJSON to one of the embedded types, surfacing
 	// the failure here lets the operator notice instead of silently
 	// emitting unhelpful logs.
-	auditJSON, err := json.Marshal(res.AuditRecord())
+	audit := res.AuditRecord()
+	auditJSON, err := json.Marshal(audit)
 	if err != nil {
 		// Don't leak the marshal target in the message — log the type
 		// name and the error category only. The audit record contains
@@ -204,20 +237,20 @@ func handle(ctx context.Context, req Request) (Response, error) {
 		log.Printf("audit %s", auditJSON)
 	}
 
-	resp := Response{
-		Redacted:   res.Redacted,
-		RequestID:  requestID,
-		DurationMS: res.AuditRecord().Duration.Milliseconds(),
-	}
-	// Side-channel guard: only include FindingsByType when the
-	// operator has explicitly opted in. See includeFindingsInResponse
-	// in init() for the rationale.
-	if includeFindingsInResponse {
-		resp.FindingsByType = res.AuditRecord().FindingsByType
-	}
-	return resp, nil
+	return buildResponse(
+		res.Redacted,
+		audit.FindingsByType,
+		audit.Duration.Milliseconds(),
+		requestID,
+		includeFindingsInResponse,
+	), nil
 }
 
+// parseStrategy converts the wire-level strategy string to the public
+// redact.Strategy enum. Unknown values produce an error rather than
+// silently falling through to the default — silent fallback would
+// hide a typo'd client config and produce confusingly different
+// redactions than the caller asked for.
 func parseStrategy(s string) (redact.Strategy, error) {
 	switch s {
 	case "simple":
@@ -231,38 +264,44 @@ func parseStrategy(s string) (redact.Strategy, error) {
 	}
 }
 
+// parseCSV splits a comma-separated string and trims whitespace from
+// each entry. Empty entries (trailing commas, double commas) are
+// dropped. Used to parse FERRET_CHECKS at init time.
 func parseCSV(v string) []string {
-	out := []string{}
-	start := 0
-	for i := 0; i <= len(v); i++ {
-		if i == len(v) || v[i] == ',' {
-			s := v[start:i]
-			// trim spaces
-			for len(s) > 0 && s[0] == ' ' {
-				s = s[1:]
-			}
-			for len(s) > 0 && s[len(s)-1] == ' ' {
-				s = s[:len(s)-1]
-			}
-			if s != "" {
-				out = append(out, s)
-			}
-			start = i + 1
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
 		}
 	}
 	return out
 }
 
-// main is the program entry point. When deploying as a real Lambda,
-// uncomment the lambda.Start line and remove the local-test fallback.
+// main wires up the Lambda runtime. For local testing without a
+// Lambda runtime, set FERRET_LOCAL=1 and pass the input as argv[1]:
+//
+//	FERRET_LOCAL=1 ./bootstrap 'card 5500-0000-0000-0004 from alice@example.com'
+//
+// Otherwise lambda.Start(handle) blocks until the runtime delivers an
+// invocation, which is the correct behavior under provided.al2023.
 func main() {
-	// In a real deployment:
-	//
-	// lambda.Start(handle)
-	//
-	// For local testing, run a single redaction against argv[1]:
+	if os.Getenv("FERRET_LOCAL") == "1" {
+		runLocal()
+		return
+	}
+	lambda.Start(handle)
+}
+
+// runLocal drives a single invocation from argv for local testing.
+// Kept separate so the production path through lambda.Start is the
+// last thing executed in main().
+func runLocal() {
 	if len(os.Args) < 2 {
-		log.Println("usage: handler '<text to redact>'")
+		log.Println("usage: FERRET_LOCAL=1 ./handler '<text to redact>'")
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

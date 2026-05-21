@@ -1,0 +1,10 @@
+# Build artifacts produced by `make build`. The bootstrap binary and
+# function.zip are regenerated on every build — committing them would
+# invite stale-artifact bugs.
+bootstrap
+function.zip
+
+# Stray binary that Go's default `go build ./...` produces (named after
+# the directory). The Makefile uses `go build -o bootstrap` explicitly,
+# but a casual `go build` from inside this directory would create one.
+lambda-redact

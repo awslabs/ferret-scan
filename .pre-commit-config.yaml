@@ -104,13 +104,16 @@ repos:
       # This local override applies the corrected regex; the same fix
       # has been applied to .pre-commit-hooks.yaml for downstream consumers.
       #
-      # Also exclude go.mod and go.sum: the upstream `files:` regex matches
-      # the substring \.(go|js|...) anywhere in the path, including inside
-      # "go.mod" because that's "go" followed by "." in some position. The
-      # binary returns exit code 2 (system error) when given an unsupported
-      # file like go.mod, blocking the commit. Excluding them here is safe —
-      # those files have a separate go-mod-tidy hook validating their content.
-      exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)|(^go\.(mod|sum)$)'
+      # Also exclude go.mod and go.sum at any depth: the upstream `files:`
+      # regex matches the substring \.(go|js|...) anywhere in the path,
+      # including inside "go.mod" because that's "go" followed by "." in
+      # some position. The binary returns exit code 2 (system error) when
+      # given an unsupported file like go.mod, blocking the commit.
+      # Excluding them here is safe — those files have a separate
+      # go-mod-tidy hook validating their content. Use ((^|/)go\.(mod|sum)$)
+      # rather than (^go\.(mod|sum)$) so submodule go.mod files (e.g.
+      # examples/lambda-redact/go.mod) are also caught.
+      exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)|((^|/)go\.(mod|sum)$)'
       # Point the scanner at the project-local suppression file so the
       # scan honors project-sanctioned rules (validator help text examples,
       # benchmark fixtures, regex pattern strings). ferret-scan's default
