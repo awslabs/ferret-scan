@@ -71,17 +71,19 @@ Lambda function:
   multi-tenant gateway should not.
 
 - **Audit logging via `Result.AuditRecord()`**: the handler writes the
-  audit record to CloudWatch via `log.Printf`. The record carries no
-  payload bytes, no offsets, no matched substrings — safe to ship to
-  CloudWatch / S3 Object Lock without leaking inputs.
+  audit record via `log.Printf` — in a Lambda deployment that lands in
+  the function's CloudWatch log stream. The record carries no payload
+  bytes, no offsets, and no matched substrings, so it is safe to ship
+  to long-retention or WORM-style audit sinks (S3 with Object Lock,
+  etc.) without leaking inputs.
 
 - **Errors are sanitized**: the handler never returns the raw input or
   matched substring in error responses. A request ID is included
   for correlation.
 
 - **No payload logging**: the handler does NOT log `req.Text` or
-  `res.Redacted`. The only thing that hits CloudWatch is the audit
-  record (counts + metadata). Per BSC4: never log PII.
+  `res.Redacted`. The only thing that hits the function's log stream is
+  the audit record (counts + metadata). Never log PII.
 
 ## API
 
@@ -102,7 +104,6 @@ Content-Type: application/json
 
 {
   "redacted": "card 5500-****-****-0004 from a****@example.com",
-  "findings_by_type": {"MASTERCARD": 1, "EMAIL": 1},
   "request_id": "req-abc-123",
   "duration_ms": 12
 }
@@ -110,11 +111,42 @@ Content-Type: application/json
 
 `strategy` is one of: `simple`, `format_preserving` (default), `synthetic`.
 
+### Returning finding counts on the wire
+
+By default the response does **not** include per-type finding counts.
+The full counts are always logged to CloudWatch via the audit record,
+but they are not echoed back to the caller. This is intentional: in a
+multi-tenant gateway the per-type counts constitute a soft side-channel
+("tenant X consistently submits PASSPORT data") even though no payload
+bytes are exposed.
+
+For single-tenant or debug deployments where the caller already knows
+what they sent, set `FERRET_INCLUDE_FINDINGS=true` to enable the
+`findings_by_type` field in the response. Example response with the
+flag enabled:
+
+```json
+{
+  "redacted": "card 5500-****-****-0004 from a****@example.com",
+  "findings_by_type": {"MASTERCARD": 1, "EMAIL": 1},
+  "request_id": "req-abc-123",
+  "duration_ms": 12
+}
+```
+
+### Configuration env vars
+
+| Variable | Default | Effect |
+|---|---|---|
+| `FERRET_CHECKS` | `all` | Comma-separated validator IDs (e.g. `EMAIL,SSN`) |
+| `FERRET_STRATEGY` | `format_preserving` | Default redaction strategy |
+| `FERRET_INCLUDE_FINDINGS` | `false` | Echo per-type counts in the response |
+
 ## What this example deliberately does NOT cover
 
 - **Authentication / authorization**: API Gateway IAM auth, Cognito JWT,
-  or a Lambda authorizer all go in front of this handler. Per ARCC
-  BSC10 guidance, never deploy with `AuthorizationType.NONE`.
+  or a Lambda authorizer all go in front of this handler. Never deploy
+  with `AuthorizationType.NONE`.
 - **Throttling / rate limiting**: configure via API Gateway stage
   throttle + Lambda reserved concurrency. WAF for source-IP rate rules.
 - **CloudFront / WAF**: optional edge layer, recommended for

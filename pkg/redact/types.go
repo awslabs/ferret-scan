@@ -175,14 +175,15 @@ type FindingWithMatchText struct {
 	MatchText string
 }
 
-// AuditRecord is a payload-free, BSC4-shaped summary of a redaction
-// operation. It is safe to log directly to CloudWatch, S3 with Object
-// Lock, or any WORM-style audit sink; it contains no matched substrings,
-// no offsets, and no input bytes.
+// AuditRecord is a payload-free summary of a redaction operation. It
+// is safe to log directly to CloudWatch, S3 with Object Lock, or any
+// WORM-style audit sink; it contains no matched substrings, no offsets,
+// and no input bytes.
 //
 // Schema is intentionally narrow: per-type counts are sufficient to
 // answer "did the gateway see a CC at this point in time?" without
-// telling the reader which CC.
+// telling the reader which CC. The struct shape enforces this by
+// construction; no field carries payload bytes, offsets, or substrings.
 type AuditRecord struct {
 	// Label is the request's Label (or "<request>" if unset). Use this
 	// to correlate the audit record with upstream request logs.
@@ -291,7 +292,7 @@ func (r *Result) FindingsWithMatchText() []FindingWithMatchText {
 	return out
 }
 
-// AuditRecord returns the BSC4-shaped audit summary for this Redact call.
+// AuditRecord returns the audit summary for this Redact call.
 func (r *Result) AuditRecord() AuditRecord {
 	// Defensive copies so a caller can't mutate the engine's snapshot.
 	findingsByT := make(map[string]int, len(r.auditInputs.findingsByT))
@@ -341,7 +342,10 @@ type EngineOptions struct {
 	// strings only — it does NOT log matched substrings. Future-proofing:
 	// even if a future change accidentally introduced payload logging,
 	// LogWriter gives the caller a chokepoint to enforce no-payload-bytes
-	// at the destination.
+	// at the destination. The io.Discard default makes the no-leak
+	// property enforceable rather than aspirational — even a regression
+	// that started writing payload bytes to the observer would not
+	// reach a log sink unless the caller explicitly wired LogWriter.
 	LogWriter io.Writer
 
 	// Debug toggles verbose internal logging. Implies LogWriter is set

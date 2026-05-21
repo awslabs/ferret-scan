@@ -397,7 +397,7 @@ func TestAuditRecord_Shape(t *testing.T) {
 
 func TestAuditRecord_NoPayloadLeak(t *testing.T) {
 	// Verify the AuditRecord shape never includes the matched substring
-	// or input bytes. This is the BSC4 contract.
+	// or input bytes — that's the no-payload-bytes contract.
 	e := newTestEngine(t, redact.EngineOptions{})
 
 	const sensitiveCC = "5500-0000-0000-0004"

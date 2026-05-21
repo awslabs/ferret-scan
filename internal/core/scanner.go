@@ -47,7 +47,10 @@ type ScanConfig struct {
 	// to give callers (Lambda handlers, sidecars, etc.) a chokepoint to
 	// enforce no-payload-bytes at the destination, futureproofing the
 	// no-leak guarantee against any change that might accidentally start
-	// logging content.
+	// logging content. In-process callers should pass io.Discard or a
+	// structured logger writer that filters payload bytes; the internal
+	// observer never emits PII today, but LogWriter is the chokepoint
+	// that makes the no-leak property enforceable rather than aspirational.
 	LogWriter io.Writer
 }
 

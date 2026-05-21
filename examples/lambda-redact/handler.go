@@ -53,6 +53,18 @@ import (
 // critical path.
 var engine *redact.Engine
 
+// includeFindingsInResponse, when true, attaches FindingsByType to the
+// JSON response body. Defaults to false because the per-type counts
+// constitute a soft side-channel: a multi-tenant gateway that returns
+// {"PASSPORT": 1} tells the caller they sent passport data, which can
+// leak inferred user behavior even though no payload bytes are exposed.
+//
+// Flip via FERRET_INCLUDE_FINDINGS=true ONLY for single-tenant or
+// debug deployments where the caller already knows what they sent.
+// The audit log always carries the full counts regardless — operators
+// can query CloudWatch for them without exposing them on the wire.
+var includeFindingsInResponse bool
+
 func init() {
 	// Validators to run. Configure via env var so deployers can
 	// restrict the validator surface without a code change.
@@ -70,6 +82,11 @@ func init() {
 		}
 		strategy = s
 	}
+
+	// Side-channel control: response body keeps FindingsByType only
+	// when explicitly opted in. Safe-by-default — the audit log still
+	// has the full counts, so operators don't lose visibility.
+	includeFindingsInResponse = os.Getenv("FERRET_INCLUDE_FINDINGS") == "true"
 
 	// LogWriter is intentionally left nil — pkg/redact defaults to
 	// io.Discard, which keeps the internal observer's output out of
@@ -98,9 +115,13 @@ type Request struct {
 // absence of `findings_with_match_text` or any field that could carry
 // the matched substring — this is the safe default. Callers that need
 // the matched bytes should add a separate, authenticated endpoint.
+//
+// FindingsByType is omitted by default; see includeFindingsInResponse
+// in init() for the side-channel rationale. The audit log always carries
+// it regardless.
 type Response struct {
 	Redacted       string         `json:"redacted"`
-	FindingsByType map[string]int `json:"findings_by_type"`
+	FindingsByType map[string]int `json:"findings_by_type,omitempty"`
 	RequestID      string         `json:"request_id"`
 	DurationMS     int64          `json:"duration_ms"`
 }
@@ -160,17 +181,41 @@ func handle(ctx context.Context, req Request) (Response, error) {
 		}
 	}
 
-	// Log the audit record (no payload bytes). Format as JSON so
-	// CloudWatch Insights can query it. Per BSC4: never log PII.
-	auditJSON, _ := json.Marshal(res.AuditRecord())
-	log.Printf("audit %s", auditJSON)
+	// Log the audit record (no payload bytes). Format as JSON so log
+	// aggregators can query it. Never log the input or the redacted
+	// output — those are the bytes the gateway is supposed to protect.
+	//
+	// AuditRecord is a flat struct of primitives + small string-keyed
+	// maps, so json.Marshal cannot realistically fail in practice. We
+	// still check the error rather than discarding it because (a)
+	// silently-dropped errors are an antipattern, especially in example
+	// code that consumers will copy-paste, and (b) if a future change
+	// adds a custom MarshalJSON to one of the embedded types, surfacing
+	// the failure here lets the operator notice instead of silently
+	// emitting unhelpful logs.
+	auditJSON, err := json.Marshal(res.AuditRecord())
+	if err != nil {
+		// Don't leak the marshal target in the message — log the type
+		// name and the error category only. The audit record contains
+		// no PII even on success, but we hold the line on
+		// "the only thing in the log is what we explicitly approve."
+		log.Printf("audit_marshal_failed err=%q request_id=%s", err, requestID)
+	} else {
+		log.Printf("audit %s", auditJSON)
+	}
 
-	return Response{
-		Redacted:       res.Redacted,
-		FindingsByType: res.AuditRecord().FindingsByType,
-		RequestID:      requestID,
-		DurationMS:     res.AuditRecord().Duration.Milliseconds(),
-	}, nil
+	resp := Response{
+		Redacted:   res.Redacted,
+		RequestID:  requestID,
+		DurationMS: res.AuditRecord().Duration.Milliseconds(),
+	}
+	// Side-channel guard: only include FindingsByType when the
+	// operator has explicitly opted in. See includeFindingsInResponse
+	// in init() for the rationale.
+	if includeFindingsInResponse {
+		resp.FindingsByType = res.AuditRecord().FindingsByType
+	}
+	return resp, nil
 }
 
 func parseStrategy(s string) (redact.Strategy, error) {
@@ -226,6 +271,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("handle: %v", err)
 	}
-	out, _ := json.MarshalIndent(res, "", "  ")
+	out, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		// Same reasoning as the audit-log marshal: realistically
+		// unreachable, but example code shouldn't model
+		// `_ =`-style error suppression.
+		log.Fatalf("marshal response: %v", err)
+	}
 	fmt.Println(string(out))
 }

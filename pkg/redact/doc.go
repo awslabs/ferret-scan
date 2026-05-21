@@ -25,9 +25,9 @@
 //   - Minimal Result surface. Result.Findings exposes type, line number,
 //     and confidence — not the matched substring or any free-form metadata.
 //     Callers who want the matched bytes opt in via FindingsWithMatchText.
-//     Result.AuditRecord returns a payload-free, BSC4-shaped structured
-//     summary suitable for WORM-safe audit logging (no offsets, no
-//     substrings, no PII positions).
+//     Result.AuditRecord returns a payload-free structured summary
+//     suitable for WORM-safe audit logging (no offsets, no substrings,
+//     no PII positions).
 //
 //   - Configurable log writer. Engine and the underlying scanner write
 //     no observability output by default; pass an io.Writer in
