@@ -17,8 +17,8 @@ import (
 	"strings"
 	"testing"
 
-	"ferret-scan/internal/platform"
-	"ferret-scan/tests/helpers"
+	"github.com/awslabs/ferret-scan/internal/platform"
+	"github.com/awslabs/ferret-scan/tests/helpers"
 )
 
 // TestWindowsReleaseDistributionValidation tests Windows binary distribution and installation

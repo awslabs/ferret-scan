@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ferret-scan/internal/observability"
-	textract_extractor_lib "ferret-scan/internal/preprocessors/text-extractors/textract-extractor-lib"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	textract_extractor_lib "github.com/awslabs/ferret-scan/internal/preprocessors/text-extractors/textract-extractor-lib"
 )
 */
 

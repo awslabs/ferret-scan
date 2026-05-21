@@ -17,10 +17,10 @@ import (
 	"strings"
 	"testing"
 
-	"ferret-scan/internal/config"
-	"ferret-scan/internal/paths"
-	"ferret-scan/internal/platform"
-	"ferret-scan/tests/helpers"
+	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/internal/paths"
+	"github.com/awslabs/ferret-scan/internal/platform"
+	"github.com/awslabs/ferret-scan/tests/helpers"
 )
 
 // TestWindowsBinaryDistributionAndInstallation tests Windows binary distribution and installation

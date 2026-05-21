@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // BaseMetadataPreprocessor provides common functionality for all specialized metadata preprocessors

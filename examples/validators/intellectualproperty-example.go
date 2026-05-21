@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"os"
 
-	"ferret-scan/internal/config"
-	"ferret-scan/internal/validators/intellectualproperty"
+	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/internal/validators/intellectualproperty"
 )
 
 func main() {

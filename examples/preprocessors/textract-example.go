@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	textract_extractor_lib "ferret-scan/internal/preprocessors/text-extractors/textract-extractor-lib"
+	textract_extractor_lib "github.com/awslabs/ferret-scan/internal/preprocessors/text-extractors/textract-extractor-lib"
 )
 
 func main() {

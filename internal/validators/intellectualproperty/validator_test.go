@@ -4,8 +4,8 @@
 package intellectualproperty
 
 import (
-	"ferret-scan/internal/config"
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/internal/detector"
 	"testing"
 )
 

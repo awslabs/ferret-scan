@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // Pre-compiled regex patterns to avoid repeated compilation in hot paths.

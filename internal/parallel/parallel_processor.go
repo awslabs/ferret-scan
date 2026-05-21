@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/redactors"
-	"ferret-scan/internal/router"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/router"
 )
 
 // ParallelProcessor manages parallel file processing

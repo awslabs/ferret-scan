@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/performance"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/performance"
 )
 
 // EnhancedAlerting provides advanced alerting for validation accuracy degradation

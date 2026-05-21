@@ -4,7 +4,7 @@
 package router
 
 import (
-	"ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
 
 // PreprocessorFactory creates preprocessors with given configuration

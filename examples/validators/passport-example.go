@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"ferret-scan/internal/validators/passport"
+	"github.com/awslabs/ferret-scan/internal/validators/passport"
 )
 
 func main() {

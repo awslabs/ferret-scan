@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/redactors"
 )
 
 // FormatPreservingStrategy implements format-preserving redaction

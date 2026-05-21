@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/preprocessors"
-	"ferret-scan/internal/resilience"
-	"ferret-scan/internal/validators/metadata"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/internal/resilience"
+	"github.com/awslabs/ferret-scan/internal/validators/metadata"
 )
 
 // ValidatorStrategy controls how a single validator invocation is executed.

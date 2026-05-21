@@ -4,20 +4,20 @@
 package core
 
 import (
-	"ferret-scan/internal/config"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/validators/creditcard"
-	"ferret-scan/internal/validators/email"
-	"ferret-scan/internal/validators/intellectualproperty"
-	"ferret-scan/internal/validators/ipaddress"
-	"ferret-scan/internal/validators/metadata"
-	"ferret-scan/internal/validators/passport"
-	"ferret-scan/internal/validators/personname"
-	"ferret-scan/internal/validators/phone"
-	"ferret-scan/internal/validators/secrets"
-	"ferret-scan/internal/validators/socialmedia"
-	"ferret-scan/internal/validators/ssn"
-	"ferret-scan/internal/validators/vin"
+	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/validators/creditcard"
+	"github.com/awslabs/ferret-scan/internal/validators/email"
+	"github.com/awslabs/ferret-scan/internal/validators/intellectualproperty"
+	"github.com/awslabs/ferret-scan/internal/validators/ipaddress"
+	"github.com/awslabs/ferret-scan/internal/validators/metadata"
+	"github.com/awslabs/ferret-scan/internal/validators/passport"
+	"github.com/awslabs/ferret-scan/internal/validators/personname"
+	"github.com/awslabs/ferret-scan/internal/validators/phone"
+	"github.com/awslabs/ferret-scan/internal/validators/secrets"
+	"github.com/awslabs/ferret-scan/internal/validators/socialmedia"
+	"github.com/awslabs/ferret-scan/internal/validators/ssn"
+	"github.com/awslabs/ferret-scan/internal/validators/vin"
 )
 
 // BuildValidatorSet constructs the standard set of validators filtered by the

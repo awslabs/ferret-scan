@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // RedactionManager coordinates all redaction operations and manages multiple redactors

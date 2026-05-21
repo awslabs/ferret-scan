@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/internal/redactors"
 )
 
 // PositionMappingManager manages position mappings for documents

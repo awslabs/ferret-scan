@@ -8,10 +8,10 @@ import (
 	"regexp"
 	"strings"
 
-	"ferret-scan/internal/context"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/help"
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/context"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/help"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // Multi-line PEM-style secret patterns. Compiled once at package init —

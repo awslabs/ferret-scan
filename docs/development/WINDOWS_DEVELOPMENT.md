@@ -652,7 +652,7 @@ import (
     "path/filepath"
     "testing"
 
-    "ferret-scan/internal/platform"
+    "github.com/awslabs/ferret-scan/internal/platform"
 )
 
 func TestWindowsIntegration(t *testing.T) {

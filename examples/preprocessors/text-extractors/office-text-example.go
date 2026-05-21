@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	text_extract_officetextlib "ferret-scan/internal/preprocessors/text-extractors/text-extract-officetextlib"
+	text_extract_officetextlib "github.com/awslabs/ferret-scan/internal/preprocessors/text-extractors/text-extract-officetextlib"
 )
 
 func main() {

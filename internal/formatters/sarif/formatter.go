@@ -5,11 +5,11 @@ package sarif
 
 import (
 	"encoding/json"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/formatters"
-	"ferret-scan/internal/formatters/shared"
-	"ferret-scan/internal/version"
 	"fmt"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/formatters/shared"
+	"github.com/awslabs/ferret-scan/internal/version"
 )
 
 // Formatter implements the formatters.Formatter interface for SARIF output

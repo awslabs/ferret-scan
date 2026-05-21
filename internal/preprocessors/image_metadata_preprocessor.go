@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"ferret-scan/internal/observability"
-	meta_extract_exiflib "ferret-scan/internal/preprocessors/meta-extractors/meta-extract-exiflib"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	meta_extract_exiflib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-exiflib"
 )
 
 // ImageMetadataPreprocessor extracts metadata from image files

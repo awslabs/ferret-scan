@@ -88,7 +88,7 @@ import (
     "regexp"
     "strings"
 
-    "ferret-scan/internal/detector"
+    "github.com/awslabs/ferret-scan/internal/detector"
 )
 
 type YourValidator struct {
@@ -293,7 +293,7 @@ The help.go file provides runtime documentation for your validator that can be a
 ```go
 package yourvalidator
 
-import "ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/internal/help"
 
 // GetCheckInfo returns standardized information about this check
 func (v *YourValidator) GetCheckInfo() help.CheckInfo {
@@ -391,7 +391,7 @@ To register your validator with the Ferret Scan tool, you need to make three cha
 ```go
 import (
     // Other imports...
-    "ferret-scan/internal/validators/yourvalidator"
+    "github.com/awslabs/ferret-scan/internal/validators/yourvalidator"
 )
 ```
 

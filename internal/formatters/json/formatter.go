@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/formatters"
-	"ferret-scan/internal/formatters/shared"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/formatters/shared"
 )
 
 // Formatter implements JSON output formatting

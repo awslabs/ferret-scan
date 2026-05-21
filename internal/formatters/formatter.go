@@ -4,8 +4,8 @@
 package formatters
 
 import (
-	"ferret-scan/internal/detector"
 	"fmt"
+	"github.com/awslabs/ferret-scan/internal/detector"
 	"strings"
 )
 

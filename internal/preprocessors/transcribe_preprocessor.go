@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ferret-scan/internal/observability"
-	transcribe_extractor_lib "ferret-scan/internal/preprocessors/audio-extractors/transcribe-extractor-lib"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	transcribe_extractor_lib "github.com/awslabs/ferret-scan/internal/preprocessors/audio-extractors/transcribe-extractor-lib"
 )
 */
 

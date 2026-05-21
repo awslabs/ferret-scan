@@ -3,7 +3,7 @@ package email
 import (
 	"testing"
 
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 func TestEmailValidator_URLStructureDetection(t *testing.T) {

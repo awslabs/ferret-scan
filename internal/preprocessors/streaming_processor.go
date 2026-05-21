@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // StreamingProcessor handles large files by processing them in chunks

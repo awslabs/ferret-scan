@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"ferret-scan/internal/platform"
+	"github.com/awslabs/ferret-scan/internal/platform"
 )
 
 // GetConfigDir returns the ferret-scan configuration directory

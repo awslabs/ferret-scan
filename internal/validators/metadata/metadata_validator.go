@@ -4,11 +4,11 @@
 package metadata
 
 import (
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
-	"ferret-scan/internal/router"
-	"ferret-scan/internal/validators"
 	"fmt"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/router"
+	"github.com/awslabs/ferret-scan/internal/validators"
 	"path/filepath"
 	"regexp"
 	"strings"

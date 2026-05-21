@@ -85,11 +85,39 @@ repos:
 
 # Ferret Scan security check (from GitHub)
 - repo: https://github.com/awslabs/ferret-scan
-  rev: v1.5.2
+  rev: v1.8.0
   hooks:
     - id: ferret-scan
-      # Only block on HIGH-confidence findings. Medium-confidence hits in
-      # documentation (e.g. example suppression-rule SHA-256 hashes that look
-      # like high-entropy tokens) are review signals, not commit blockers.
-      env:
-        FERRET_PRECOMMIT_EXIT_ON: "high"
+      # The hook only blocks on HIGH-confidence findings. Medium-confidence
+      # hits in documentation (e.g. example suppression-rule SHA-256 hashes
+      # that look like high-entropy tokens) are review signals, not commit
+      # blockers. ferret-scan's --pre-commit-mode defaults to ExitOnFindings:
+      # "high" already (internal/precommit/detector.go), so no env override
+      # is needed. (pre-commit doesn't honor `env:` on remote-repo hooks
+      # anyway — it emits an "Unexpected key(s)" warning at parse time.)
+      # Override the upstream hook's exclude until the bugfix lands in
+      # awslabs/ferret-scan: the published .pre-commit-hooks.yaml in
+      # v1.8.0 anchors the test_/_test. tokens with ^, so only root-level
+      # test files are excluded. Nested test files (internal/.../*_test.go,
+      # tests/integration/*_test.go) leak through and trip the scanner on
+      # intentional test fixtures (test SSNs, test credit cards, etc.).
+      # This local override applies the corrected regex; the same fix
+      # has been applied to .pre-commit-hooks.yaml for downstream consumers.
+      #
+      # Also exclude go.mod and go.sum: the upstream `files:` regex matches
+      # the substring \.(go|js|...) anywhere in the path, including inside
+      # "go.mod" because that's "go" followed by "." in some position. The
+      # binary returns exit code 2 (system error) when given an unsupported
+      # file like go.mod, blocking the commit. Excluding them here is safe —
+      # those files have a separate go-mod-tidy hook validating their content.
+      exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)|(^go\.(mod|sum)$)'
+      # Point the scanner at the project-local suppression file so the
+      # scan honors project-sanctioned rules (validator help text examples,
+      # benchmark fixtures, regex pattern strings). ferret-scan's default
+      # lookup is platform config dir (~/.config/ferret-scan/suppressions.yaml
+      # on Unix, %APPDATA%\ferret-scan\suppressions.yaml on Windows), which
+      # is per-user and not shared with CI. Passing --suppression-file
+      # explicitly makes every contributor and the CI pipeline use the
+      # same baseline. The first --pre-commit-mode entry is preserved
+      # from the upstream hook definition.
+      args: ['--pre-commit-mode', '--suppression-file', './.ferret-scan-suppressions.yaml']

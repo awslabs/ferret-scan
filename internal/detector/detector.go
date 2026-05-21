@@ -4,7 +4,7 @@
 package detector
 
 import (
-	"ferret-scan/internal/security"
+	"github.com/awslabs/ferret-scan/internal/security"
 	"time"
 )
 

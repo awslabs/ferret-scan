@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"ferret-scan/internal/config"
-	"ferret-scan/internal/detector"
-	"ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
 // Helper functions for min/max operations

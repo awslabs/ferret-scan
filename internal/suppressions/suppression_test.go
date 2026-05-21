@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 func newTestMatch(matchType, text, filename string) detector.Match {
