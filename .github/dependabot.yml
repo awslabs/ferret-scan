@@ -1,0 +1,95 @@
+# Dependabot configuration for ferret-scan
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Notes:
+# - GitHub Actions are SHA-pinned with a trailing version comment (`# v6.0.2`).
+#   Dependabot understands this pattern and updates both the SHA and the
+#   version comment together. Without this config, the SHA pins would rot
+#   silently and contributors would gradually re-introduce floating @vN tags.
+# - Minor + patch action updates are grouped to limit CI churn. Major bumps
+#   open per-action so they can be reviewed against changelogs.
+# - The Go module updates section makes the existing auto-config explicit in
+#   source control.
+
+version: 2
+updates:
+  # GitHub Actions used in .github/workflows/*.yml
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      # Group all non-major updates so a typical week opens one PR, not many.
+      # Major bumps stay separate for changelog review.
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Go module dependencies in go.mod / go.sum
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "go"
+    groups:
+      go-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Python build/runtime dependencies in python-package/
+  - package-ecosystem: "pip"
+    directory: "/python-package"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      python-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Docker base images referenced in Dockerfile
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
