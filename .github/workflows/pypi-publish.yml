@@ -60,17 +60,17 @@ jobs:
     steps:
 
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: '.go-version'
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.13"
 
@@ -250,7 +250,7 @@ jobs:
           fi
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-package-${{ github.sha }}
           path: python-package/dist/
@@ -258,7 +258,7 @@ jobs:
 
       - name: Publish to Test PyPI
         if: github.event.inputs.action == 'publish-testpypi'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1 (2026-04-07)
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: python-package/dist/
@@ -293,7 +293,7 @@ jobs:
 
       - name: Publish to PyPI
         if: steps.should_publish.outputs.should_publish == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1 (2026-04-07)
         with:
           packages-dir: python-package/dist/
           verbose: true
