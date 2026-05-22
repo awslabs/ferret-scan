@@ -25,6 +25,7 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 | TB-5 | Process → AWS APIs (Textract/Transcribe/Comprehend) | outbound | Only when GenAI flag enabled. Credentials from standard AWS chain (env, profile, IAM role). Currently disabled in source. |
 | TB-6 | Process → external HTTP (Transcribe transcript URI) | outbound | `http.Get(uri)` in transcribe-extractor.go:186 against a URI returned by `GetTranscriptionJob`. Service-controlled, not user-controlled. |
 | TB-7 | Pre-commit hook → ferret-scan binary | inbound (developer machine) | Pre-commit invokes the binary against staged files; same trust as CLI. |
+| TB-8 | GitHub Actions runners → external registries (ECR Public / GHCR / PyPI) | outbound | Build, package, and publish flow. Workflows run with `contents: write`, `packages: write`, and `id-token: write` (PyPI trusted publishing + AWS OIDC for ECR). Third-party actions are SHA-pinned with version comments (`@<sha> # vX.Y.Z`) — see PR #64 and `.github/workflows/README.md`. Auto-version-tag job pushes tags to `main` on every push. |
 
 ## 3. STRIDE threats and mitigations
 
@@ -80,6 +81,14 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 |---|---|---|
 | Pre-commit hook bypassed (`--no-verify`) | E | **Compensating control** — server-side ferret-scan in CI (gitlab-ci.yml has `ferret-sast` and `gosec-sast` jobs). Pre-commit is best-effort developer hygiene. |
 
+### TB-8 (CI runners → external registries)
+
+| Threat | STRIDE | Mitigation |
+|---|---|---|
+| Compromised third-party action (e.g. attacker repoints `softprops/action-gh-release@v3` upstream) reads `${{ secrets.* }}`, exfiltrates `GITHUB_TOKEN` / OIDC issuance, pushes commits to `main` as `github-actions[bot]`, publishes a tampered `ferret-scan` to PyPI / ECR Public / GHCR. | T (Tampering), E (Elevation of Privilege) | **Mitigated** — every external `uses:` reference is SHA-pinned (PR #64). Dependabot tracks upstream releases against the version-comment field (PR #66). The trust path is now git's content-addressing + dependabot review surface, not GitHub's tag mutability. Tracked as TM-08. |
+| `auto-version-tag` job in `.gitlab-ci.yml` pushes tags to `main` on every push using `GITLAB_RELEASE_TOKEN`. No human approval gate beyond the originating commit. | E | **Compensating control** — `if:` condition limits the job to default-branch pushes by humans (not MRs, not tag pushes). Token can still issue a release without explicit `/release`-style gate. Tracked as TM-09. |
+| Dockerfile `FROM` lines reference upstream images by tag (`golang:1.26.3-alpine`), not by `@sha256:<digest>`. Final image is `FROM scratch`, so the runtime impact is bounded to the builder stage's compiled binary, but the upstream image swap surface is real. | T | **Compensating control** — final stage is `FROM scratch` with no upstream layer; only the builder-stage compilation is at risk. Defense-in-depth fix is digest pinning. Tracked as TM-10. |
+
 ## 4. Open items / unmitigated threats blocking publication
 
 | ID | Threat | Severity | Status |
@@ -91,6 +100,33 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 | TM-05 | Embedded HTML template has ~90 inline event handlers and ~301 inline `style` attributes; CSP must include `'unsafe-inline'` until refactored | Minor (defense-in-depth) | **Open** — tracked. Refactor handlers to `addEventListener`, hoist inline styles into the embedded stylesheet, then tighten CSP. |
 | TM-06 | Cloudscape design-system stylesheet loaded from `https://d0.awsstatic.com` (CSP allow-listed) | Minor (defense-in-depth) | **Open** — tracked. Self-host the CSS in the embed to drop the third-party `style-src` allowance. |
 | TM-07 | SSRF defense-in-depth on Transcribe transcript URI fetch (TB-6) | Minor | **Deferred** — file is `GENAI_DISABLED` and not compiled in. Re-evaluate when GenAI is re-enabled. |
+| TM-08 | Floating-tag GitHub Actions chained with elevated runner permissions and auto-commit (TB-8) | **Major** | **In progress** — added 2026-05-22 by REPO scan. PR #64 SHA-pins every `uses:` reference (`@<sha> # vX.Y.Z` pattern); PR #66 adds dependabot config so the pins stay maintainable. Worst offender pre-fix was `pypa/gh-action-pypi-publish@release/v1` (a branch reference); now pinned to `cef22109... # release/v1 (2026-04-07)`. |
+| TM-09 | `auto-version-tag` GitLab job pushes tags without manual approval (TB-8) | Minor | **Open** — added 2026-05-22 by REPO scan. Add an explicit approval gate or scope `GITLAB_RELEASE_TOKEN` to `write_repository`. |
+| TM-10 | Dockerfile builder-stage `FROM` not pinned by digest (TB-8) | Minor | **Open** — added 2026-05-22 by REPO scan. Pin to `@sha256:<digest>` for defense in depth. |
+
+## 4.5 Highest-leverage attack paths
+
+Three numbered chains the model should be evaluated against. Each names the starting trust zone, the chain of steps to impact, and the defense that breaks the chain.
+
+1. **Compromised third-party GitHub Action → tampered PyPI / GHCR / ECR release.**
+   Starting position: attacker controls one upstream action (or its mutable tag/branch). Chain: floating tag in `.github/workflows/*.yml` → action runs with `id-token: write` and `contents: write` → exfiltrates OIDC token / `GITHUB_TOKEN` → pushes a tampered package to PyPI via the `pypi` environment, or pushes a tampered image to GHCR / ECR Public. Impact: every downstream `pip install ferret-scan` or `docker pull ghcr.io/awslabs/ferret-scan:latest` receives the tampered artefact. Defense that breaks the chain: SHA-pin every `uses:` (TM-08).
+
+2. **Operator binds web UI to LAN → cross-origin POST forges suppression rule.**
+   Starting position: A1 unauthenticated remote attacker on the same LAN as an operator who has passed `--bind 0.0.0.0`. Chain: attacker sends `POST /suppressions/create` with a spoofed `Origin` header matching the operator's `host:port`. Defense that breaks the chain: `originCheckMiddleware` requires the Origin / Referer to be in `sameOriginHostSet`, which excludes LAN-resolvable hostnames the server can't enumerate. Today's mitigation is "best-effort" by design; re-evaluate if a future deployment moves to LAN-default. Stays at "compensating control" until then.
+
+3. **Operator scans an attacker-supplied PDF / DOCX → preprocessor parser exploit.**
+   Starting position: operator runs `ferret-scan --file <attacker-supplied.pdf>`. Chain: bug in `pdfcpu`, `ledongthuc/pdf`, or office-extractor library is triggered. Defense: dependency provenance (gemnasium dep-scan in `.gitlab-ci.yml`, `go mod tidy` pre-commit hook), 100 MB size cap, sandboxed `FROM scratch` runtime. Still relies on upstream library quality; if `gemnasium-python-dependency_scanning` does not run (currently blocked by Phase 3 #3 YAML parse error), this defense is offline.
+
+## 4.6 Action items
+
+In priority order. Numbered for cross-reference from the REPO scan punch list.
+
+1. **~~Pin every `uses:` in `.github/workflows/*` to commit SHA with version comment.~~** (TM-08 / Phase 3 #1.) Shipped in PR #64. Companion PR #66 adds dependabot tracking and a workflow-conventions README so the pins stay maintainable.
+2. **Fix `.gitlab-ci.yml` line 175** (`[redacted-internal-ci-component]/kaniko/executor@~latest`). Without this fix the GitLab pipeline doesn't parse, so `gosec-sast`, `ferret-sast`, and `gemnasium-python-dependency_scanning` don't run.
+3. **Pin Dockerfile `FROM` lines to `@sha256:<digest>`.** (TM-10.) Defense-in-depth, low effort.
+4. **Add a manual approval gate or token-scope reduction on `auto-version-tag`.** (TM-09.)
+5. **Refactor `internal/web/assets/template.html` to drop `'unsafe-inline'`** from CSP `script-src` and `style-src`. (TM-05.) Tracked, no time pressure.
+6. **Self-host the Cloudscape stylesheet** to drop the `https://d0.awsstatic.com` allowance. (TM-06.)
 
 ## 5. Out of scope
 
