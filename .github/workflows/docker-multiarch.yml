@@ -264,6 +264,18 @@ jobs:
       security-events: write
 
     steps:
+      # Authenticate to GHCR before grype attempts to pull the image.
+      # Without this, anchore/scan-action@v7+ fails with
+      #   "UNAUTHORIZED: authentication required"
+      # because the GHCR package is private by default and the v7 grype
+      # resolver requires explicit auth on the oci-registry path.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run Grype vulnerability scanner on GHCR
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         id: scan-ghcr
