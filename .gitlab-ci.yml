@@ -172,11 +172,17 @@ include:
   # AWS-internal; if mirroring this repo into a different GitLab instance,
   # swap it for whichever Kaniko / image-builder component your instance
   # publishes (the inputs schema is identical across most Kaniko wrappers).
-  - component: [redacted-internal-ci-component]/kaniko/executor@~latest
-    inputs:
-      name: ferret-scan
-      destination: $CI_REGISTRY_IMAGE/ferret-scan:latest
-      dockerfile: Dockerfile
+  #
+  # The block is commented out in the public repo because the placeholder
+  # path makes the YAML invalid — without this comment, the entire pipeline
+  # fails to parse and the security jobs (gosec-sast, ferret-sast,
+  # gemnasium-python-dependency_scanning) cannot run.
+  #
+  # - component: <your-kaniko-component-path>/kaniko/executor@~latest
+  #   inputs:
+  #     name: ferret-scan
+  #     destination: $CI_REGISTRY_IMAGE/ferret-scan:latest
+  #     dockerfile: Dockerfile
 
 # Comprehensive Go security scanning with Gosec
 gosec-sast:
@@ -378,9 +384,23 @@ auto-version-tag:
     - git push origin $NEW_VERSION
     - echo "Tag $NEW_VERSION created and pushed!"
   rules:
-    # Only run on main/master branch pushes (not merge requests, not tag pushes)
+    # SECURITY GATE: this job pushes a release tag using GITLAB_RELEASE_TOKEN.
+    # The token must be scoped to `write_repository` only (NOT `api`, NOT
+    # `read_api`) — configure in GitLab project settings → CI/CD → Variables.
+    # The job runs only on protected default-branch pushes initiated by a
+    # human, never on MR pipelines or tag pushes (which would loop). The
+    # `when: manual` clause adds an explicit human approval step; a
+    # maintainer must click "play" in the GitLab UI for the tag to be
+    # pushed. This is the gate that prevents an attacker who lands a
+    # commit on main from auto-issuing a release.
+    #
+    # To re-enable fully automatic tagging, set AUTO_VERSION_ENABLED to
+    # "true" AND change `when: manual` to `when: on_success` — but only
+    # do that if the project's branch protection rules require ≥2 reviewer
+    # approvals on every main-targeted MR.
     - if: ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master") && $CI_COMMIT_TAG == null && $AUTO_VERSION_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push"
-      when: on_success
+      when: manual
+      allow_failure: true
   dependencies:
     - build
 

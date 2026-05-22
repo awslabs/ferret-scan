@@ -17,6 +17,9 @@
 #   example tokens for the replacement table.
 # - Benchmark fixtures (internal/.../*benchmark*.go): synthetic
 #   payloads for performance testing.
+# - CI configuration (.gitlab-ci.yml): git author email used for CI
+#   commits triggers the GITLAB validator but is convention, not a
+#   credential.
 #
 # Only HIGH-confidence rules (>=90) are enabled, matching the
 # pre-commit hook policy (FERRET_PRECOMMIT_EXIT_ON=high). Lower-
@@ -25,6 +28,9 @@
 #
 # To regenerate: ./bin/ferret-scan --suppression-file ./.ferret-scan-suppressions.yaml --generate-suppressions <files>
 # To audit a specific rule: search by hash or filename below.
+#
+# WARNING: --generate-suppressions strips this header. Restore it manually
+# after running the regenerate command.
 
 version: "1.0"
 rules:
@@ -3416,3 +3422,55 @@ rules:
         finding_type: DISCORD
         line_number: "1419"
         match_text_hash: a5501ee1be5fe022
+    - id: SUP-00000243
+      hash: 92d9515af1aa4cd634a901176e3dc9c4a8685cbb6d2c4be5794e5b1f43438439 # pragma: allowlist secret
+      reason: |-
+        Git author email used for CI commits in `git config user.email`.
+        Triggers the GITLAB validator's email pattern but is not a
+        credential — the value is hardcoded GitLab convention, not a
+        real account.
+      enabled: true
+      created_at: 2026-05-22T14:39:51.017305-04:00
+      last_seen_at: 2026-05-22T14:39:51.017305-04:00
+      expires_at: 2026-05-29T14:39:51.017305-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 1023d2b9ae3773c3
+        filename: .gitlab-ci.yml
+        finding_type: GITLAB
+        line_number: "281"
+        match_text_hash: fdebb41e0fa8c3ef
+    - id: SUP-00000244
+      hash: 104e21bea998624ad15e4d39cfff8a038af8d4933fa5acc676fe1ef203115e8f # pragma: allowlist secret
+      reason: |-
+        Git author email used for CI commits in `git config user.email`.
+        Triggers the GITLAB validator's email pattern but is not a
+        credential.
+      enabled: true
+      created_at: 2026-05-22T14:39:51.017305-04:00
+      last_seen_at: 2026-05-22T14:39:51.017305-04:00
+      expires_at: 2026-05-29T14:39:51.017305-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 1023d2b9ae3773c3
+        filename: .gitlab-ci.yml
+        finding_type: GITLAB
+        line_number: "354"
+        match_text_hash: fdebb41e0fa8c3ef
+    - id: SUP-00000245
+      hash: 001e6a5acc7b2db3a0a8436384fa3405ee16daba58c7831c3e4cf9e9fa6e2d6f # pragma: allowlist secret
+      reason: |-
+        Git author email used for CI commits in `git config user.email`.
+        Triggers the GITLAB validator's email pattern but is not a
+        credential.
+      enabled: true
+      created_at: 2026-05-22T14:39:51.017305-04:00
+      last_seen_at: 2026-05-22T14:39:51.017305-04:00
+      expires_at: 2026-05-29T14:39:51.017305-04:00
+      metadata:
+        confidence: "100"
+        context_hash: 1023d2b9ae3773c3
+        filename: .gitlab-ci.yml
+        finding_type: GITLAB
+        line_number: "413"
+        match_text_hash: fdebb41e0fa8c3ef
