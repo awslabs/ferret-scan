@@ -5,13 +5,23 @@
 # Target: Absolute smallest possible image (~5-10MB)
 
 # Builder stage
-FROM public.ecr.aws/docker/library/golang:1.26.3-alpine AS builder
+# Pinned to digest for supply-chain integrity (TM-10). The trailing tag
+# is informational; the @sha256:... digest is what determines what's
+# pulled. To update, run:
+#   crane digest public.ecr.aws/docker/library/golang:1.26.3-alpine
+# or use `docker manifest inspect` and replace both the tag and digest.
+FROM public.ecr.aws/docker/library/golang:1.26.3-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS builder
 
 # Install minimal build dependencies
 # Add ca-certificates back if you uncomment the COPY line below
 RUN apk add --no-cache git ca-certificates
 
 # Set Go environment - critical for module downloads
+# GOPROXY=direct fetches modules from upstream VCS hosts directly,
+# bypassing proxy.golang.org. The go.sum hash check still applies
+# (and GOSUMDB=sum.golang.org is left at the default), so the
+# integrity guarantee is unchanged. Tradeoff: no proxy caching, no
+# DOS protection for upstream hosts.
 ENV GOPROXY=direct
 RUN go env -w GOPROXY=direct
 
