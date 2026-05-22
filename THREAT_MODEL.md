@@ -101,8 +101,8 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 | TM-06 | Cloudscape design-system stylesheet loaded from `https://d0.awsstatic.com` (CSP allow-listed) | Minor (defense-in-depth) | **Open** — tracked. Self-host the CSS in the embed to drop the third-party `style-src` allowance. |
 | TM-07 | SSRF defense-in-depth on Transcribe transcript URI fetch (TB-6) | Minor | **Deferred** — file is `GENAI_DISABLED` and not compiled in. Re-evaluate when GenAI is re-enabled. |
 | TM-08 | Floating-tag GitHub Actions chained with elevated runner permissions and auto-commit (TB-8) | **Major** | **In progress** — added 2026-05-22 by REPO scan. PR #64 SHA-pins every `uses:` reference (`@<sha> # vX.Y.Z` pattern); PR #66 adds dependabot config so the pins stay maintainable. Worst offender pre-fix was `pypa/gh-action-pypi-publish@release/v1` (a branch reference); now pinned to `cef22109... # release/v1 (2026-04-07)`. |
-| TM-09 | `auto-version-tag` GitLab job pushes tags without manual approval (TB-8) | Minor | **Open** — added 2026-05-22 by REPO scan. Add an explicit approval gate or scope `GITLAB_RELEASE_TOKEN` to `write_repository`. |
-| TM-10 | Dockerfile builder-stage `FROM` not pinned by digest (TB-8) | Minor | **Open** — added 2026-05-22 by REPO scan. Pin to `@sha256:<digest>` for defense in depth. |
+| TM-09 | `auto-version-tag` GitLab job pushes tags without manual approval (TB-8) | Minor | **In progress** — added 2026-05-22 by REPO scan. PR #69 adds `when: manual` + `allow_failure: true` on the rule (a maintainer must click "play" in the GitLab UI for the tag to push) and inline-documents the expectation that `GITLAB_RELEASE_TOKEN` is scoped `write_repository` only. Final closure also requires verifying the token scope in the GitLab project-settings UI. |
+| TM-10 | Dockerfile builder-stage `FROM` not pinned by digest (TB-8) | Minor | **In progress** — added 2026-05-22 by REPO scan. PR #70 pins `golang:1.26.3-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d`. The digest references a multi-arch manifest list covering both `linux/amd64` and `linux/arm64v8`, matching the platforms `docker-multiarch.yml` builds. Final stage is `FROM scratch` and is unaffected. |
 
 ## 4.5 Highest-leverage attack paths
 
@@ -115,16 +115,16 @@ Three numbered chains the model should be evaluated against. Each names the star
    Starting position: A1 unauthenticated remote attacker on the same LAN as an operator who has passed `--bind 0.0.0.0`. Chain: attacker sends `POST /suppressions/create` with a spoofed `Origin` header matching the operator's `host:port`. Defense that breaks the chain: `originCheckMiddleware` requires the Origin / Referer to be in `sameOriginHostSet`, which excludes LAN-resolvable hostnames the server can't enumerate. Today's mitigation is "best-effort" by design; re-evaluate if a future deployment moves to LAN-default. Stays at "compensating control" until then.
 
 3. **Operator scans an attacker-supplied PDF / DOCX → preprocessor parser exploit.**
-   Starting position: operator runs `ferret-scan --file <attacker-supplied.pdf>`. Chain: bug in `pdfcpu`, `ledongthuc/pdf`, or office-extractor library is triggered. Defense: dependency provenance (gemnasium dep-scan in `.gitlab-ci.yml`, `go mod tidy` pre-commit hook), 100 MB size cap, sandboxed `FROM scratch` runtime. Still relies on upstream library quality; if `gemnasium-python-dependency_scanning` does not run (currently blocked by Phase 3 #3 YAML parse error), this defense is offline.
+   Starting position: operator runs `ferret-scan --file <attacker-supplied.pdf>`. Chain: bug in `pdfcpu`, `ledongthuc/pdf`, or office-extractor library is triggered. Defense: dependency provenance (gemnasium dep-scan in `.gitlab-ci.yml`, `go mod tidy` pre-commit hook), 100 MB size cap, sandboxed `FROM scratch` runtime. Still relies on upstream library quality; the `gemnasium-python-dependency_scanning` job was previously blocked by the Phase 3 #3 YAML parse error and is restored in PR #69.
 
 ## 4.6 Action items
 
 In priority order. Numbered for cross-reference from the REPO scan punch list.
 
-1. **~~Pin every `uses:` in `.github/workflows/*` to commit SHA with version comment.~~** (TM-08 / Phase 3 #1.) Shipped in PR #64. Companion PR #66 adds dependabot tracking and a workflow-conventions README so the pins stay maintainable.
-2. **Fix `.gitlab-ci.yml` line 175** (`[redacted-internal-ci-component]/kaniko/executor@~latest`). Without this fix the GitLab pipeline doesn't parse, so `gosec-sast`, `ferret-sast`, and `gemnasium-python-dependency_scanning` don't run.
-3. **Pin Dockerfile `FROM` lines to `@sha256:<digest>`.** (TM-10.) Defense-in-depth, low effort.
-4. **Add a manual approval gate or token-scope reduction on `auto-version-tag`.** (TM-09.)
+1. **~~Pin every `uses:` in `.github/workflows/*` to commit SHA with version comment.~~** (TM-08 / Phase 3 #1.) Shipped in PR #64. Companion PR #66 adds dependabot tracking and a workflow-conventions README so the pins stay maintainable. PR #65 takes available major-version upgrades on top of the pins.
+2. **~~Fix `.gitlab-ci.yml` line 175~~** (`[redacted-internal-ci-component]/kaniko/executor@~latest`). Shipped in PR #69. With the parse error fixed, `gosec-sast`, `ferret-sast`, and `gemnasium-python-dependency_scanning` are restored.
+3. **~~Pin Dockerfile `FROM` lines to `@sha256:<digest>`.~~** (TM-10.) Shipped in PR #70.
+4. **~~Add a manual approval gate or token-scope reduction on `auto-version-tag`.~~** (TM-09.) Shipped in PR #69. Final closure of TM-09 also requires verifying `GITLAB_RELEASE_TOKEN` scope in GitLab project settings — the YAML inline comment points to the right place.
 5. **Refactor `internal/web/assets/template.html` to drop `'unsafe-inline'`** from CSP `script-src` and `style-src`. (TM-05.) Tracked, no time pressure.
 6. **Self-host the Cloudscape stylesheet** to drop the `https://d0.awsstatic.com` allowance. (TM-06.)
 
