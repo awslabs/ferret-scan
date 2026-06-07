@@ -23,35 +23,52 @@ This file contains the **exact** Go version used across the project.
 | File | Version Format | Purpose |
 |------|----------------|---------|
 | `go.mod` | `1.26` | Go module compatibility (major.minor) |
-| `.gitlab-ci.yml` | `1.26.4` | CI/CD Docker images |
-| `Dockerfile` | `1.26.4-alpine` | Container builds |
+| `.gitlab-ci.yml` | `1.26.4` | CI/CD Docker images (`GO_VERSION`, `GO_DOCKER_IMAGE`) |
+| `Dockerfile` | `1.26.4-alpine` + `@sha256:…` | Container builds (tag **and** digest — see below) |
+| GitHub workflows | `go-version-file: .go-version` | No literal pin — they read `.go-version` directly |
 | Local development | `1.26.4` | Developer environments |
+
+> **Dockerfile digest (TM-10).** The builder image is digest-pinned for
+> supply-chain integrity: the `@sha256:…` is what actually determines the
+> pulled image; the tag is informational. The sync tool resolves and rewrites
+> the digest for the new tag, so you never edit it by hand. GitHub Actions use
+> `go-version-file: .go-version`, so there is no literal version to keep in
+> sync there — `check` asserts no workflow has reintroduced a hardcoded pin.
 
 ## Synchronization Tools
 
-### 1. Automatic Sync Script
-```bash
-# Sync all files to match .go-version
-./scripts/sync-versions.sh
-```
+`.go-version` is the single source of truth. One script — `scripts/go-version.sh`
+— both propagates it and validates consistency.
 
-### 2. Makefile Targets
+### 1. Makefile Targets (preferred)
+
 ```bash
-# Check version consistency
+# Cross-validate every pin against .go-version (used by CI + pre-commit)
 make check-go-version
 
-# Sync versions and update files
+# Propagate .go-version to go.mod, Dockerfile (tag + digest), .gitlab-ci.yml
 make sync-go-version
 ```
 
-### 3. Pre-commit Hooks
-Version consistency is automatically checked before commits:
-```bash
-# Install pre-commit hooks
-pre-commit install
+### 2. The script directly
 
-# Manual check
-pre-commit run go-version-check --all-files
+```bash
+./scripts/go-version.sh check   # validate; non-zero exit on any drift
+./scripts/go-version.sh all     # sync all pins (alias: sync)
+```
+
+Resolving the Dockerfile digest needs network access plus one of `crane`,
+`docker`, or `curl`+`jq`. Offline, `sync` updates the tag and warns that the
+digest must be set manually (`crane digest <registry>/golang:<ver>-alpine`),
+and `check` validates the tag but only warns on an unverifiable digest.
+
+### 3. Pre-commit Hook
+The `go-version-check` hook runs `go-version-check` on any commit touching
+`.go-version`, `go.mod`, `.gitlab-ci.yml`, or `Dockerfile`, so drift is caught
+before it lands:
+```bash
+pre-commit install
+pre-commit run go-version-check --all-files   # manual check
 ```
 
 ## Updating Go Version
@@ -63,7 +80,7 @@ echo "1.26.4" > .go-version
 
 ### Step 2: Sync All Files
 ```bash
-./scripts/sync-versions.sh
+make sync-go-version
 ```
 
 ### Step 3: Verify Changes
@@ -134,10 +151,10 @@ Download from [golang.org/dl](https://golang.org/dl/) and install the exact vers
 ### Version Mismatch Errors
 ```bash
 # Check current versions
-./scripts/go-version.sh check
+make check-go-version
 
 # Fix mismatches
-./scripts/sync-versions.sh
+make sync-go-version
 ```
 
 ### CI/CD Failures
@@ -175,10 +192,9 @@ make build
 ├── .go-version                 # Primary version source
 ├── go.mod                      # Go module version (major.minor)
 ├── .gitlab-ci.yml             # CI/CD version variables
-├── Dockerfile                  # Container Go version (if exists)
+├── Dockerfile                  # Container Go version: tag + @sha256 digest
 ├── scripts/
-│   ├── go-version.sh          # Version checking utility
-│   └── sync-versions.sh       # Comprehensive sync script
+│   └── go-version.sh          # Single sync + check tool (.go-version -> all pins)
 ├── .pre-commit-config.yaml    # Pre-commit version checks
 └── docs/
     └── GO_VERSION_MANAGEMENT.md  # This document
@@ -197,7 +213,7 @@ When using semantic-release, version updates should be part of the release proce
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "./scripts/sync-versions.sh"
+        "prepareCmd": "./scripts/go-version.sh all"
       }
     ]
   ]

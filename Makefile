@@ -697,5 +697,5 @@ sync-go-version:
 	@echo "✅ Go version synchronized"
 	@echo ""
 	@echo "📝 Updated files may need to be committed:"
-	@echo "   git add go.mod .go-version"
+	@echo "   git add go.mod .go-version Dockerfile .gitlab-ci.yml"
 	@echo "   git commit -m 'chore: sync Go version to $(shell cat .go-version)'"
