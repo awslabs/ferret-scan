@@ -27,6 +27,11 @@
 //
 //   - Strategy validation. Unknown strategy strings produce a 400-style
 //     error rather than silently falling through to the default.
+//
+//   - Check validation. An unrecognized FERRET_CHECKS name (e.g. a typo
+//     like "email" or "CREDITCARD") fails the init() fast instead of
+//     being silently dropped — which would disable a validator with no
+//     signal and let that data type pass unredacted (fail-open).
 package main
 
 import (
@@ -36,6 +41,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	// Uncomment when deploying to Lambda. Adding it here would force a
@@ -71,6 +78,15 @@ func init() {
 	checks := []string{"all"}
 	if v := os.Getenv("FERRET_CHECKS"); v != "" {
 		checks = parseCSV(v)
+		// Fail closed on a typo. redact.NewEngine silently drops names it
+		// doesn't recognize and only errors when the resulting set is
+		// empty — so "CREDIT_CARD,emial" would build an engine with the
+		// misspelled validator quietly disabled, leaking that data type.
+		// Validate against the public name list at init instead, mirroring
+		// the FERRET_STRATEGY check below.
+		if err := validateChecks(checks); err != nil {
+			log.Fatalf("init: invalid FERRET_CHECKS: %v", err)
+		}
 	}
 
 	// Default redaction strategy. Override per-request via Request.Strategy.
@@ -229,6 +245,30 @@ func parseStrategy(s string) (redact.Strategy, error) {
 	default:
 		return 0, fmt.Errorf("invalid strategy %q (want simple|format_preserving|synthetic)", s)
 	}
+}
+
+// validateChecks rejects any FERRET_CHECKS entry that is not a known
+// validator name (or the "all" sentinel). Fail-closed by design: an
+// unrecognized name is silently dropped by redact.NewEngine, so a typo
+// would run the gateway with fewer detectors than the operator intended.
+// The valid set comes from redact.ValidCheckNames() rather than a
+// hardcoded copy, so it can't drift as validators are added upstream.
+func validateChecks(checks []string) error {
+	valid := map[string]struct{}{}
+	for _, n := range redact.ValidCheckNames() {
+		valid[n] = struct{}{}
+	}
+	for _, c := range checks {
+		if c == "all" {
+			continue
+		}
+		if _, ok := valid[c]; !ok {
+			names := redact.ValidCheckNames()
+			sort.Strings(names) // already sorted, but keep the message deterministic regardless
+			return fmt.Errorf("unrecognized check %q (want one of: all, %s)", c, strings.Join(names, ", "))
+		}
+	}
+	return nil
 }
 
 func parseCSV(v string) []string {
