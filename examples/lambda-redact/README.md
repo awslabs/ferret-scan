@@ -138,7 +138,7 @@ flag enabled:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `FERRET_CHECKS` | `all` | Comma-separated validator IDs (e.g. `EMAIL,SSN`) |
+| `FERRET_CHECKS` | `all` | Comma-separated validator IDs (e.g. `EMAIL,SSN`). Case-sensitive; an unrecognized name (typo) fails the `init()` rather than silently disabling that validator. Valid IDs come from `redact.ValidCheckNames()`. |
 | `FERRET_STRATEGY` | `format_preserving` | Default redaction strategy |
 | `FERRET_INCLUDE_FINDINGS` | `false` | Echo per-type counts in the response |
 

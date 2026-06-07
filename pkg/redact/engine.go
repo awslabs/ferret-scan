@@ -95,8 +95,9 @@ func NewEngine(opts EngineOptions) (*Engine, error) {
 	standardValidators := core.BuildValidatorSet(enabledChecks, nil, nil)
 
 	// METADATA needs filesystem access; the CLI deletes it from the set
-	// on its in-memory path for the same reason.
-	delete(standardValidators, "METADATA")
+	// on its in-memory path for the same reason. ValidCheckNames excludes
+	// it for the same reason, via the same constant.
+	delete(standardValidators, checkUnsupportedInMemory)
 
 	if len(standardValidators) == 0 {
 		return nil, fmt.Errorf("redact: no validators enabled (Checks=%v)", opts.Checks)
@@ -141,6 +142,39 @@ func NewEngine(opts EngineOptions) (*Engine, error) {
 		redactor:        redactor,
 	}
 	return e, nil
+}
+
+// checkUnsupportedInMemory names the one validator that exists in the core
+// validator set but cannot run on this in-memory path because it requires
+// filesystem access. NewEngine deletes it from the constructed set, and
+// ValidCheckNames omits it, so the two stay consistent: a name advertised as
+// valid is always a name that actually contributes a validator here.
+const checkUnsupportedInMemory = "METADATA"
+
+// ValidCheckNames returns the sorted set of canonical validator IDs accepted
+// in EngineOptions.Checks (e.g. "CREDIT_CARD", "EMAIL", "SSN"). It does NOT
+// include the "all" sentinel or the empty default, both of which select every
+// validator, nor "METADATA" — that validator needs filesystem access and is a
+// no-op on this in-memory path, so selecting only METADATA would error with
+// "no validators enabled".
+//
+// NewEngine deliberately tolerates unrecognized names — it drops them and only
+// errors when the resulting set is empty (see EngineOptions.Checks). That makes
+// a mixed list like {"CREDIT_CARD", "emial"} fail OPEN: the typo'd validator is
+// silently disabled while the engine still constructs. Callers that want
+// fail-closed behavior should validate their Checks against this list before
+// calling NewEngine and reject anything unrecognized. The names are
+// case-sensitive and match the project's internal validator IDs.
+func ValidCheckNames() []string {
+	all := core.CheckNames()
+	out := make([]string, 0, len(all))
+	for _, n := range all {
+		if n == checkUnsupportedInMemory {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // Close releases resources held by the Engine. v1 implementations are

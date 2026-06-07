@@ -330,19 +330,13 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 // ParseChecksToRun converts a slice of check names into an enabled-checks map.
 // An empty slice or ["all"] enables every check.
 func ParseChecksToRun(checks []string) map[string]bool {
-	result := map[string]bool{
-		"CREDIT_CARD":           false,
-		"EMAIL":                 false,
-		"PHONE":                 false,
-		"IP_ADDRESS":            false,
-		"PASSPORT":              false,
-		"METADATA":              false,
-		"INTELLECTUAL_PROPERTY": false,
-		"SOCIAL_MEDIA":          false,
-		"SSN":                   false,
-		"SECRETS":               false,
-		"PERSON_NAME":           false,
-		"VIN":                   false,
+	// Seed every known validator to false from the single source of truth
+	// (validatorConstructors). Keeping this in sync with BuildValidatorSet
+	// by construction prevents a validator from being parseable but never
+	// built, or vice versa.
+	result := make(map[string]bool, len(validatorConstructors))
+	for name := range validatorConstructors {
+		result[name] = false
 	}
 
 	if len(checks) == 0 || (len(checks) == 1 && checks[0] == "all") {

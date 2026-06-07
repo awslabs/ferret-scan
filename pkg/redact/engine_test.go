@@ -493,3 +493,53 @@ func TestEngine_DefaultLogWriterIsDiscard(t *testing.T) {
 	// No assertion needed — if io.Discard is honored we don't panic
 	// and nothing leaks.
 }
+
+func TestValidCheckNames(t *testing.T) {
+	names := redact.ValidCheckNames()
+
+	// Sorted and non-empty: the contract callers rely on for stable
+	// error messages and deterministic iteration.
+	if len(names) == 0 {
+		t.Fatal("ValidCheckNames returned empty slice")
+	}
+	for i := 1; i < len(names); i++ {
+		if names[i-1] >= names[i] {
+			t.Errorf("ValidCheckNames not sorted/unique: %q before %q", names[i-1], names[i])
+		}
+	}
+
+	// The sentinel "all" is handled by the caller, not a real validator,
+	// so it must NOT appear in the list.
+	for _, n := range names {
+		if n == "all" {
+			t.Errorf("ValidCheckNames must not include the \"all\" sentinel")
+		}
+	}
+
+	// Every returned name must actually construct a working engine — this
+	// is the property that makes the list safe to validate against. If a
+	// name were parseable but not buildable (or vice versa), NewEngine
+	// would error here.
+	for _, n := range names {
+		e, err := redact.NewEngine(redact.EngineOptions{Checks: []string{n}})
+		if err != nil {
+			t.Errorf("NewEngine with Checks=[%q] failed: %v", n, err)
+			continue
+		}
+		_ = e.Close()
+	}
+
+	// Spot-check a couple of documented names so a rename can't quietly
+	// pass by leaving the slice technically valid but semantically wrong.
+	want := map[string]bool{"CREDIT_CARD": false, "EMAIL": false}
+	for _, n := range names {
+		if _, ok := want[n]; ok {
+			want[n] = true
+		}
+	}
+	for n, found := range want {
+		if !found {
+			t.Errorf("ValidCheckNames missing documented validator %q", n)
+		}
+	}
+}

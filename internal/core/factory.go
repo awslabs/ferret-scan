@@ -4,6 +4,8 @@
 package core
 
 import (
+	"sort"
+
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
 	"github.com/awslabs/ferret-scan/internal/validators/creditcard"
@@ -20,47 +22,51 @@ import (
 	"github.com/awslabs/ferret-scan/internal/validators/vin"
 )
 
+// validatorConstructors is the single source of truth for which validator
+// IDs ferret-scan recognizes. ParseChecksToRun, BuildValidatorSet, and the
+// public redact.ValidCheckNames accessor all derive from this map, so adding
+// or renaming a validator is a one-line change here rather than several
+// parallel lists that can silently drift apart.
+var validatorConstructors = map[string]func() detector.Validator{
+	"CREDIT_CARD":           func() detector.Validator { return creditcard.NewValidator() },
+	"EMAIL":                 func() detector.Validator { return email.NewValidator() },
+	"PHONE":                 func() detector.Validator { return phone.NewValidator() },
+	"IP_ADDRESS":            func() detector.Validator { return ipaddress.NewValidator() },
+	"PASSPORT":              func() detector.Validator { return passport.NewValidator() },
+	"PERSON_NAME":           func() detector.Validator { return personname.NewValidator() },
+	"METADATA":              func() detector.Validator { return metadata.NewValidator() },
+	"INTELLECTUAL_PROPERTY": func() detector.Validator { return intellectualproperty.NewValidator() },
+	"SOCIAL_MEDIA":          func() detector.Validator { return socialmedia.NewValidator() },
+	"SSN":                   func() detector.Validator { return ssn.NewValidator() },
+	"SECRETS":               func() detector.Validator { return secrets.NewValidator() },
+	"VIN":                   func() detector.Validator { return vin.NewValidator() },
+}
+
+// CheckNames returns the sorted set of canonical validator IDs recognized by
+// ParseChecksToRun and BuildValidatorSet. It is re-exported publicly as
+// redact.ValidCheckNames so consumers can validate Checks input against the
+// real list instead of hardcoding (and drifting from) a private copy. The
+// "all" sentinel and the empty default are handled by the callers and are not
+// included here.
+func CheckNames() []string {
+	names := make([]string, 0, len(validatorConstructors))
+	for name := range validatorConstructors {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // BuildValidatorSet constructs the standard set of validators filtered by the
 // enabled checks map. Pass nil for cfg to skip validator-specific configuration.
 // Pass nil for profile to skip profile-specific overrides.
 func BuildValidatorSet(enabledChecks map[string]bool, cfg *config.Config, profile *config.Profile) map[string]detector.Validator {
 	result := make(map[string]detector.Validator)
 
-	if enabledChecks["CREDIT_CARD"] {
-		result["CREDIT_CARD"] = creditcard.NewValidator()
-	}
-	if enabledChecks["EMAIL"] {
-		result["EMAIL"] = email.NewValidator()
-	}
-	if enabledChecks["PHONE"] {
-		result["PHONE"] = phone.NewValidator()
-	}
-	if enabledChecks["IP_ADDRESS"] {
-		result["IP_ADDRESS"] = ipaddress.NewValidator()
-	}
-	if enabledChecks["PASSPORT"] {
-		result["PASSPORT"] = passport.NewValidator()
-	}
-	if enabledChecks["PERSON_NAME"] {
-		result["PERSON_NAME"] = personname.NewValidator()
-	}
-	if enabledChecks["METADATA"] {
-		result["METADATA"] = metadata.NewValidator()
-	}
-	if enabledChecks["INTELLECTUAL_PROPERTY"] {
-		result["INTELLECTUAL_PROPERTY"] = intellectualproperty.NewValidator()
-	}
-	if enabledChecks["SOCIAL_MEDIA"] {
-		result["SOCIAL_MEDIA"] = socialmedia.NewValidator()
-	}
-	if enabledChecks["SSN"] {
-		result["SSN"] = ssn.NewValidator()
-	}
-	if enabledChecks["SECRETS"] {
-		result["SECRETS"] = secrets.NewValidator()
-	}
-	if enabledChecks["VIN"] {
-		result["VIN"] = vin.NewValidator()
+	for name, newValidator := range validatorConstructors {
+		if enabledChecks[name] {
+			result[name] = newValidator()
+		}
 	}
 
 	// Apply global config-level validator settings
