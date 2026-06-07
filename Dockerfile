@@ -8,9 +8,9 @@
 # Pinned to digest for supply-chain integrity (TM-10). The trailing tag
 # is informational; the @sha256:... digest is what determines what's
 # pulled. To update, run:
-#   crane digest public.ecr.aws/docker/library/golang:1.26.3-alpine
+#   crane digest public.ecr.aws/docker/library/golang:1.26.4-alpine
 # or use `docker manifest inspect` and replace both the tag and digest.
-FROM public.ecr.aws/docker/library/golang:1.26.3-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS builder
+FROM public.ecr.aws/docker/library/golang:1.26.4-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS builder
 
 # Install minimal build dependencies
 # Add ca-certificates back if you uncomment the COPY line below
