@@ -10,7 +10,7 @@
 # pulled. To update, run:
 #   crane digest public.ecr.aws/docker/library/golang:1.26.4-alpine
 # or use `docker manifest inspect` and replace both the tag and digest.
-FROM public.ecr.aws/docker/library/golang:1.26.4-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS builder
+FROM public.ecr.aws/docker/library/golang:1.26.4-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS builder
 
 # Install minimal build dependencies
 # Add ca-certificates back if you uncomment the COPY line below
