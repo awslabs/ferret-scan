@@ -49,7 +49,6 @@ permissions:
   contents: read
   pull-requests: write
   checks: write
-  security-events: write
 
 jobs:
   build:
@@ -69,7 +68,6 @@ jobs:
       contents: read
       pull-requests: write
       checks: write
-      security-events: write
 
     steps:
       - name: Checkout code
@@ -135,8 +133,8 @@ jobs:
         run: |
           echo "🔍 Scanning changed files for sensitive data..."
 
-          # Create results directories
-          mkdir -p results sarif
+          # Create results directory
+          mkdir -p results
 
           # Scan each changed file
           exit_code=0
@@ -186,26 +184,14 @@ jobs:
             fi
           done
 
-          # Generate native SARIF report for GitHub Security
-          echo "📄 Generating native SARIF report..."
-          while IFS= read -r file; do
-            if [ -f "$file" ]; then
-              ./bin/ferret-scan \
-                --file "$file" \
-                --confidence "${{ steps.scope.outputs.confidence }}" \
-                --format sarif \
-                --no-color \
-                --quiet >> sarif/ferret-scan-temp.sarif 2>/dev/null || true
-            fi
-          done < changed_files.txt
-
-          # Merge SARIF results if multiple files were scanned
-          if [ -f "sarif/ferret-scan-temp.sarif" ]; then
-            mv sarif/ferret-scan-temp.sarif sarif/ferret-scan.sarif
-          else
-            # Create empty SARIF if no results
-            ./bin/ferret-scan --file /dev/null --format sarif --no-color --quiet > sarif/ferret-scan.sarif 2>/dev/null || echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"Ferret Scan","version":"1.0.0"}},"results":[]}]}' > sarif/ferret-scan.sarif
-          fi
+          # NOTE: Ferret Scan findings are intentionally NOT uploaded to the
+          # GitHub Security tab as SARIF. They are scan results about arbitrary
+          # repo content (test fixtures, example secrets, the scanner's own
+          # output), not vulnerabilities in this repo's code — uploading them
+          # buried the real dependency CVEs under thousands of "alerts". PII
+          # findings surface via the PR comment below; the JSON is uploaded as
+          # a build artifact. The Security tab is reserved for Trivy/Grype/
+          # CodeQL (actual vulnerability scanners).
 
           # Generate summary
           echo "high_findings=$high_findings" >> $GITHUB_ENV
@@ -221,30 +207,23 @@ jobs:
         run: |
           echo "🔍 Scanning full repository for sensitive data..."
 
-          # Create results directories
-          mkdir -p results sarif
+          # Create results directory
+          mkdir -p results
 
-          # Use profile-based configuration if available
+          # Use profile-based configuration if available.
+          # Exclude VCS metadata, vendored deps, and our own output dir so the
+          # scan doesn't flag .git/logs refs, node_modules, or results/*.json
+          # as findings (that self-referential noise was the bulk of the old
+          # alert count).
           scan_args_json=(
             "--file" "."
             "--recursive"
             "--exclude" "results/**"
-            "--exclude" "sarif/**"
+            "--exclude" ".git/**"
+            "--exclude" "node_modules/**"
             "--confidence" "${{ steps.scope.outputs.confidence }}"
             "--format" "json"
             "--output" "results/full-scan.json"
-            "--no-color"
-            "--quiet"
-          )
-
-          scan_args_sarif=(
-            "--file" "."
-            "--recursive"
-            "--exclude" "results/**"
-            "--exclude" "sarif/**"
-            "--confidence" "${{ steps.scope.outputs.confidence }}"
-            "--format" "sarif"
-            "--output" "sarif/ferret-scan.sarif"
             "--no-color"
             "--quiet"
           )
@@ -253,11 +232,8 @@ jobs:
           if [ -f ".ferret-scan.yaml" ]; then
             scan_args_json+=("--config" ".ferret-scan.yaml")
             scan_args_json+=("--profile" "ci")
-            scan_args_sarif+=("--config" ".ferret-scan.yaml")
-            scan_args_sarif+=("--profile" "ci")
           elif [ -f "ferret-config.yaml" ]; then
             scan_args_json+=("--config" "ferret-config.yaml")
-            scan_args_sarif+=("--config" "ferret-config.yaml")
           fi
 
           # Run the scan in JSON format (for PR comments)
@@ -278,18 +254,9 @@ jobs:
             echo "❌ Full repository scan failed"
           fi
 
-          # Generate native SARIF report for GitHub Security
-          echo "📄 Generating native SARIF report..."
-          ./bin/ferret-scan "${scan_args_sarif[@]}" || echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"Ferret Scan","version":"1.0.0"}},"results":[]}]}' > sarif/ferret-scan.sarif
-
-
-      - name: Upload SARIF to GitHub Security
-        if: always()
-        uses: github/codeql-action/upload-sarif@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4.36.1
-        with:
-          sarif_file: sarif/ferret-scan.sarif
-          category: ferret-scan
-        continue-on-error: true
+          # SARIF generation + upload removed: see the note in the changed-files
+          # step. Ferret Scan PII findings are not code-vulnerability alerts and
+          # are not published to the GitHub Security tab.
 
       - name: Create PR comment
         if: github.event_name == 'pull_request' && always()
@@ -371,7 +338,6 @@ jobs:
           name: ferret-scan-results
           path: |
             results/
-            sarif/
           retention-days: 30
 
       - name: Fail on high confidence findings
