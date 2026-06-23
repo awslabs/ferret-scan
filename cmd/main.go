@@ -1747,6 +1747,17 @@ func main() {
 		}
 	}
 
+	// Advisory explanation pass (opt-in via --explain). Annotate the full
+	// match set BEFORE the suppression split so the drafted per-finding
+	// suppression reasons are available both to --generate-suppressions (which
+	// operates on allMatches) and to the formatters (which receive the
+	// unsuppressed subset). Annotate never mutates Confidence, so the
+	// suppression hash — and thus every finding's suppression identity — is
+	// unaffected. Fully offline.
+	if *explainFindings {
+		explain.Annotate(allMatches, explain.NewSignalSynthesizer())
+	}
+
 	// Apply suppressions
 	var unsuppressedMatches []detector.Match
 	var suppressedMatches []detector.SuppressedMatch
@@ -1774,14 +1785,6 @@ func main() {
 		} else {
 			unsuppressedMatches = append(unsuppressedMatches, match)
 		}
-	}
-
-	// Advisory explanation pass (opt-in via --explain). Runs AFTER the
-	// suppression split so it only annotates findings that will surface, and
-	// it never mutates Confidence — so suppression-hash identity (used by
-	// GenerateSuppressionRules below) is unaffected. Fully offline.
-	if *explainFindings {
-		explain.Annotate(unsuppressedMatches, explain.NewSignalSynthesizer())
 	}
 
 	if suppressedCount > 0 {

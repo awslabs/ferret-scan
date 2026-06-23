@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 )
 
 func newTestMatch(matchType, text, filename string) detector.Match {
@@ -160,6 +161,46 @@ func TestGenerateSuppressionRules(t *testing.T) {
 	rules := sm.ListSuppressions()
 	if len(rules) != 2 {
 		t.Errorf("expected 2 rules, got %d", len(rules))
+	}
+}
+
+func TestGenerateSuppressionRules_PrefersDraftedExplanationReason(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "suppressions.yaml")
+	sm := NewSuppressionManager(path)
+
+	annotated := newTestMatch("CREDIT_CARD", "4111111111111111", "card_test.go")
+	plain := newTestMatch("EMAIL", "a@b.com", "f.txt")
+	// Attach a drafted suppression reason only to the first match.
+	withReason := []detector.Match{annotated}
+	explain.Annotate(withReason, explain.NewSignalSynthesizer())
+
+	matches := []detector.Match{withReason[0], plain}
+	if err := sm.GenerateSuppressionRules(matches, "GENERIC FALLBACK", false); err != nil {
+		t.Fatalf("GenerateSuppressionRules failed: %v", err)
+	}
+
+	rules := sm.ListSuppressions()
+	if len(rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(rules))
+	}
+
+	// Find each rule by finding_type and assert its reason.
+	var ccReason, emailReason string
+	for _, r := range rules {
+		switch r.Metadata["finding_type"] {
+		case "CREDIT_CARD":
+			ccReason = r.Reason
+		case "EMAIL":
+			emailReason = r.Reason
+		}
+	}
+
+	if ccReason == "GENERIC FALLBACK" || ccReason == "" {
+		t.Errorf("annotated finding should use the drafted reason, got %q", ccReason)
+	}
+	if emailReason != "GENERIC FALLBACK" {
+		t.Errorf("unannotated finding should fall back to the generic reason, got %q", emailReason)
 	}
 }
 

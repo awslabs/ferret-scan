@@ -225,6 +225,7 @@ echo "secret: 4532-0151-1283-0366" | ./ferret-scan --file -
 
 #### Output and Display Options
 - `--verbose`: Display detailed information for each finding (default: false)
+- `--explain`: Annotate each finding with a plain-language rationale ("why was this flagged?"), a verdict (`likely_real` / `likely_test` / `uncertain`), and a drafted suppression reason. Fully offline and deterministic — it only re-phrases signals the engine already computed (no network calls, no new dependencies, no data leaves the host). Off by default. The explanation appears in text (verbose and pre-commit modes), JSON/YAML (as a first-class `explanation` field), SARIF (in the result message and properties), and gitlab-sast (in the description). When combined with `--generate-suppressions`, generated rules use the drafted per-finding reason. Note: a HIGH-confidence finding is never labelled `likely_test`, so the verdict can't talk a reviewer out of a real finding.
 - `--debug`: Enable debug logging to show preprocessing and validation flow
 - `--output`: Path to output file (if not specified, output to stdout)
 - `--no-color`: Disable colored output (useful for logging or non-terminal output)
