@@ -1,6 +1,7 @@
 package email
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
@@ -160,8 +161,6 @@ func TestEmailValidator_URLStructureDetection(t *testing.T) {
 }
 
 func TestEmailValidator_StructuralAnalysis(t *testing.T) {
-	validator := NewValidator()
-
 	tests := []struct {
 		match    string
 		line     string
@@ -184,10 +183,14 @@ func TestEmailValidator_StructuralAnalysis(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.match+" in "+tt.line, func(t *testing.T) {
-			result := validator.hasURLStructure(tt.match, tt.line)
+			afterMatch := ""
+			if idx := strings.Index(tt.line, tt.match); idx >= 0 {
+				afterMatch = tt.line[idx+len(tt.match):]
+			}
+			result := hasURLStructureAfter(afterMatch)
 			if result != tt.expected {
-				t.Errorf("hasURLStructure(%q, %q) = %v, want %v",
-					tt.match, tt.line, result, tt.expected)
+				t.Errorf("hasURLStructureAfter(%q) = %v, want %v",
+					afterMatch, result, tt.expected)
 			}
 		})
 	}
@@ -365,4 +368,58 @@ func TestEmailValidator_RegressionTests(t *testing.T) {
 			t.Errorf("Legitimate email should be detected")
 		}
 	})
+}
+
+// TestEmailValidator_DelegatedTLDs is a regression test for M13: real emails on
+// delegated gTLDs absent from the hardcoded allowlist (.amazon/.google/.aws)
+// were zeroed out by a -100 penalty and dropped. They must now surface.
+func TestEmailValidator_DelegatedTLDs(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"contact user@brand.amazon today",
+		"mail x@team.google here",
+		"ping admin@svc.aws now",
+	} {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("email on delegated TLD should be detected for %q, got none", line)
+		}
+	}
+}
+
+// TestEmailValidator_KeywordWordBoundary is a regression test for M14: negative
+// keywords matched as substrings ("bar" in "barack") suppressed real emails.
+func TestEmailValidator_KeywordWordBoundary(t *testing.T) {
+	v := NewValidator()
+	// "barack" contains "bar", "bazaar" contains "baz" — must not suppress.
+	for _, line := range []string{
+		"email barack@whitehouse.gov now",
+		"owner person@bazaar-trading.com replied",
+	} {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("real email should not be suppressed by a substring keyword in %q", line)
+		}
+	}
+}
+
+// TestEmailValidator_DuplicateOccurrenceContext is a regression test for M15:
+// the same email text appearing twice on a line was always analyzed with the
+// first occurrence's context. Here one occurrence is a git URL (git@host:repo)
+// and one is a real email; only the real one should surface.
+func TestEmailValidator_DuplicateOccurrenceContext(t *testing.T) {
+	v := NewValidator()
+	matches, err := v.ValidateContent("mail git@github.com and clone git@github.com:repo", "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Errorf("expected exactly 1 surfaced email (URL occurrence suppressed), got %d", len(matches))
+	}
 }
