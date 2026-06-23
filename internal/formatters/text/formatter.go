@@ -35,6 +35,19 @@ func NewFormatter() *Formatter {
 	}
 }
 
+// displayMatchText returns the text to print for a match's value, honoring the
+// ShowMatch redaction control. The raw matched value is revealed ONLY when
+// --show-match is set; --verbose controls how much detail/structure is shown,
+// not whether the secret is exposed. Every site that would otherwise print
+// match.Text must go through this helper so verbose output cannot re-leak a
+// value that ShowMatch is meant to hide.
+func displayMatchText(match detector.Match, options formatters.FormatterOptions) string {
+	if !options.ShowMatch {
+		return "[HIDDEN]"
+	}
+	return match.Text
+}
+
 func (f *Formatter) Name() string {
 	return "text"
 }
@@ -172,7 +185,7 @@ func (f *Formatter) appendHeaders(builder *strings.Builder, matches []detector.M
 func (f *Formatter) calculateMatchColumnWidth(matches []detector.Match, options formatters.FormatterOptions) int {
 	maxWidth := 10 // Minimum width for "[HIDDEN]"
 	for _, match := range matches {
-		if options.ShowMatch || options.Verbose {
+		if options.ShowMatch {
 			matchText := strings.ReplaceAll(match.Text, "\n", " ")
 			matchText = strings.ReplaceAll(matchText, "\t", " ")
 			runeCount := len([]rune(matchText))
@@ -263,11 +276,12 @@ func (f *Formatter) appendSummaryLine(builder *strings.Builder, match detector.M
 		validatorStr = f.colors["green"].Sprintf("%-12s", validatorName)
 	}
 
-	// Show match text (dynamic width for alignment)
-	var matchText string
+	// Show match text (dynamic width for alignment). Revealed only when
+	// ShowMatch is set; --verbose alone must not expose the value.
 	targetWidth := f.calculateMatchColumnWidth(allMatches, options)
-	if options.ShowMatch || options.Verbose {
-		matchText = strings.ReplaceAll(match.Text, "\n", " ")
+	matchText := displayMatchText(match, options)
+	if options.ShowMatch {
+		matchText = strings.ReplaceAll(matchText, "\n", " ")
 		matchText = strings.ReplaceAll(matchText, "\t", " ")
 
 		// For metadata fields, extract just the value part to avoid redundancy with TYPE column
@@ -286,8 +300,6 @@ func (f *Formatter) appendSummaryLine(builder *strings.Builder, match detector.M
 		if len(runes) > targetWidth {
 			matchText = string(runes[:targetWidth-3]) + "..."
 		}
-	} else {
-		matchText = "[HIDDEN]"
 	}
 	// Ensure exactly targetWidth visible characters by padding with spaces
 	runeCount := len([]rune(matchText))
@@ -324,15 +336,17 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 		fmt.Fprintf(builder, "=== Match Details ===\n")
 	}
 
-	// Match text with filename and line number
+	// Match text with filename and line number. The value is shown only when
+	// ShowMatch is set; verbose detail must not expose a hidden secret.
+	shownText := displayMatchText(match, options)
 	if !options.NoColor {
 		f.colors["cyan"].Fprintf(builder, "Match found in ")
 		f.colors["white"].Fprintf(builder, "%s", match.Filename)
 		f.colors["cyan"].Fprintf(builder, " on ")
 		f.colors["magenta"].Fprintf(builder, "line %d", match.LineNumber)
-		f.colors["cyan"].Fprintf(builder, ": %s\n", match.Text)
+		f.colors["cyan"].Fprintf(builder, ": %s\n", shownText)
 	} else {
-		fmt.Fprintf(builder, "Match found in %s on line %d: %s\n", match.Filename, match.LineNumber, match.Text)
+		fmt.Fprintf(builder, "Match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
 	}
 
 	// Type
@@ -539,15 +553,16 @@ func (f *Formatter) appendDetailedSuppressedMatch(builder *strings.Builder, supp
 		fmt.Fprintf(builder, "=== Suppressed Match Details ===\n")
 	}
 
-	// Match text with filename and line number
+	// Match text with filename and line number. Shown only when ShowMatch is set.
+	shownText := displayMatchText(match, options)
 	if !options.NoColor {
 		f.colors["cyan"].Fprintf(builder, "Suppressed match found in ")
 		f.colors["white"].Fprintf(builder, "%s", match.Filename)
 		f.colors["cyan"].Fprintf(builder, " on ")
 		f.colors["magenta"].Fprintf(builder, "line %d", match.LineNumber)
-		f.colors["cyan"].Fprintf(builder, ": %s\n", match.Text)
+		f.colors["cyan"].Fprintf(builder, ": %s\n", shownText)
 	} else {
-		fmt.Fprintf(builder, "Suppressed match found in %s on line %d: %s\n", match.Filename, match.LineNumber, match.Text)
+		fmt.Fprintf(builder, "Suppressed match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
 	}
 
 	// Suppression info
