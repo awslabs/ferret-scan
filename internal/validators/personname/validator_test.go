@@ -1091,3 +1091,22 @@ func TestPersonNameValidator_AllCapsNames(t *testing.T) {
 		}
 	}
 }
+
+// TestPersonNameValidator_ContextKeywordWordBoundary is a regression test for
+// L25: context keywords were matched as substrings, so "park" fired inside
+// "parking" (-35) and "inc" inside "incident" (-20), nudging confidence. They
+// now match on whole words; a real keyword still applies its penalty.
+func TestPersonNameValidator_ContextKeywordWordBoundary(t *testing.T) {
+	v := NewValidator()
+	// Substrings inside unrelated words must not trip the penalty.
+	for _, line := range []string{"Grace Hill parking lot", "Mark Brown incident report"} {
+		if imp := v.AnalyzeContext(strings.Join(strings.Fields(line)[:2], " "),
+			detector.ContextInfo{FullLine: line}); imp < 0 {
+			t.Errorf("L25: %q should not incur a negative keyword penalty, got %.1f", line, imp)
+		}
+	}
+	// A real geographic keyword still penalizes.
+	if imp := v.AnalyzeContext("John Smith", detector.ContextInfo{FullLine: "John Smith visited park today"}); imp >= 0 {
+		t.Errorf("L25: a real 'park' keyword should still penalize, got %.1f", imp)
+	}
+}

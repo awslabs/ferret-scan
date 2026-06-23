@@ -787,6 +787,39 @@ func (v *Validator) isTechnicalTerm(match string) bool {
 	return false
 }
 
+// containsWordKeyword reports whether text contains keyword as a whole word/
+// phrase (case-insensitive, text already lowercased by callers). The previous
+// substring matching let short context keywords fire inside unrelated words
+// ("park" in "parking" -> -35, "inc" in "incident" -> -20, "name" in
+// "username" -> +12), nudging confidence in both directions (L25). A word byte
+// is [a-z0-9]; multi-word phrases are matched with \b on the outer edges.
+func containsWordKeyword(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	for from := 0; from+len(keyword) <= len(text); {
+		i := strings.Index(text[from:], keyword)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isNameWordByte(text[i-1])
+		right := i + len(keyword)
+		rightOK := right >= len(text) || !isNameWordByte(text[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// isNameWordByte reports whether b is a word character ([a-z0-9]) for keyword
+// boundary detection. Callers pass already-lowercased text.
+func isNameWordByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
 // AnalyzeContext implements the detector.Validator interface for contextual analysis
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
 	adjustment := 0.0
@@ -799,17 +832,18 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		positiveMatches := 0
 		negativeMatches := 0
 
-		// Check for positive keywords (boost confidence)
+		// Check for positive keywords (boost confidence). Whole-word matching so
+		// "name" doesn't fire inside "username"/"filename".
 		for _, keyword := range v.positiveKeywords {
-			if strings.Contains(lowerLine, keyword) {
+			if containsWordKeyword(lowerLine, keyword) {
 				positiveMatches++
 			}
 		}
 
-		// Check for negative keywords (reduce confidence)
-		// Name database validation handles most false positives, so keep this simple
+		// Check for negative keywords (reduce confidence). Whole-word matching so
+		// "inc"/"corp"/"drive" don't fire inside "incident"/"corporate"/"driver".
 		for _, keyword := range v.negativeKeywords {
-			if strings.Contains(lowerLine, keyword) {
+			if containsWordKeyword(lowerLine, keyword) {
 				negativeMatches++
 			}
 		}
@@ -939,25 +973,27 @@ func (v *Validator) analyzeSpecificPatterns(contextLine, match string) float64 {
 		}
 	}
 
-	// Check for business context patterns (strong negative indicators)
+	// Check for business context patterns (strong negative indicators).
+	// Whole-word matching so "inc" doesn't fire inside "incident"/"since" (L25).
 	for _, pattern := range v.getSortedBusinessPatterns() {
-		if strings.Contains(contextLine, pattern) {
+		if containsWordKeyword(contextLine, pattern) {
 			adjustment -= 20.0 // Moderate penalty for technical/business contexts
 			break
 		}
 	}
 
-	// Check for product-specific patterns (very strong negative indicators)
+	// Check for product-specific patterns (very strong negative indicators).
 	for _, pattern := range v.getSortedProductPatterns() {
-		if strings.Contains(contextLine, pattern) {
+		if containsWordKeyword(contextLine, pattern) {
 			adjustment -= 8.0 // Light penalty for product contexts
 			break
 		}
 	}
 
-	// Check for geographic patterns (negative indicators)
+	// Check for geographic patterns (negative indicators). Whole-word matching so
+	// "park" doesn't fire inside "parking"/"sparkle" (L25).
 	for pattern := range geoPatternsMap {
-		if strings.Contains(contextLine, pattern) {
+		if containsWordKeyword(contextLine, pattern) {
 			adjustment -= 35.0 // Strong penalty for geographic contexts
 			break
 		}
