@@ -614,11 +614,15 @@ func TestPhoneValidator_ContextAnalysis(t *testing.T) {
 			expectedImpact: "negative",
 		},
 		{
+			// "number" was removed from negativeKeywords (L28) — it collides with
+			// legitimate phone context and tabular contact data, so it no longer
+			// applies a penalty. A valid-looking number with no real negative
+			// signal now scores high, as it should.
 			name:           "Neutral Context",
-			content:        "The number is 555-123-4567",
+			content:        "The entry is 555-123-4567",
 			expectMatch:    true,
 			minConfidence:  40,
-			maxConfidence:  80,
+			maxConfidence:  100,
 			expectedImpact: "neutral",
 		},
 	}
@@ -773,5 +777,48 @@ func TestPhoneValidator_NoDuplicatePartials(t *testing.T) {
 			got = append(got, m.Text)
 		}
 		t.Errorf("expected a single match for one phone number, got %d: %v", len(matches), got)
+	}
+}
+
+// TestPhoneValidator_LowSeverityFindings covers three LOW-severity fixes:
+// L28 generic words (number/name/id/account) removed from negativeKeywords;
+// L29 test-pattern matching anchored to the full number (not short fragments);
+// L30 a bare leading "1" country code is stripped for US/CA format validation.
+func TestPhoneValidator_LowSeverityFindings(t *testing.T) {
+	v := NewValidator()
+
+	// L28: legitimate "phone number"/contact-record context must not demote.
+	for _, line := range []string{
+		"Phone number: 415-555-2671",
+		"name, id, account, phone 415-555-2671",
+	} {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		var best float64
+		for _, m := range matches {
+			if m.Confidence > best {
+				best = m.Confidence
+			}
+		}
+		if best < 60 {
+			t.Errorf("L28: %q should stay MEDIUM/HIGH, got %.1f", line, best)
+		}
+	}
+
+	// L29: real numbers that merely contain a test fragment are not test numbers;
+	// full known test numbers and the fictional 555-01xx range still are.
+	for _, real := range []string{"415-123-4567", "303-987-6543"} {
+		if v.isTestPhoneNumber(real) {
+			t.Errorf("L29: %s is a real number, not a test number", real)
+		}
+	}
+	for _, test := range []string{"555-0100", "123-456-7890"} {
+		if !v.isTestPhoneNumber(test) {
+			t.Errorf("L29: %s should still be recognized as a test number", test)
+		}
+	}
+
+	// L30: a bare leading "1" must be stripped for US/CA 10-digit validation.
+	if !v.isValidCountryFormat("1-800-555-1234", phonePattern{country: "US/CA"}) {
+		t.Error("L30: bare-1 toll-free number should be a valid US/CA format")
 	}
 }

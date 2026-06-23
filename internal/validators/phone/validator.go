@@ -18,6 +18,10 @@ import (
 var (
 	phoneValidCharsPattern = regexp.MustCompile(`^[\d+\-.\s()]+$`)
 	phoneCleanPattern      = regexp.MustCompile(`[^\d+]`)
+	// reFictional555 matches the NANP reserved fictional exchange 555-0100..0199
+	// in cleaned-digit form ("55501" + two digits), anchored to a 7- or 10/11-digit
+	// number so it doesn't fire on an incidental "55501" run inside other digits.
+	reFictional555         = regexp.MustCompile(`(?:^|[^\d])\+?1?(?:\d{3})?55501\d{2}$`)
 	ssnPattern             = regexp.MustCompile(`^\d{3}[-.\s]\d{2}[-.\s]\d{4}$`)
 	phoneMultiSpacePattern = regexp.MustCompile(`\s{2,}`)
 	namePhonePattern       = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\(?\d{3}\)?`)
@@ -76,13 +80,18 @@ func NewValidator() *Validator {
 			"demo", "template", "tutorial", "documentation", "readme",
 			"lorem", "ipsum", "foo", "bar", "baz", "temp", "temporary",
 			"invalid", "nonexistent", "blackhole", "devnull", "null",
-			// SSN-specific keywords to avoid false positives
+			// SSN-specific keywords to avoid false positives. Generic words
+			// "number"/"id"/"name"/"account" were removed (L28): they collide with
+			// legitimate phone context ("phone number", "contact number") and
+			// tabular contact records ("name, phone, id"), demoting real phones out
+			// of HIGH/MEDIUM. The structural SSN/credit-card/timestamp checks (which
+			// don't rely on these words) still suppress those data types.
 			"ssn", "social", "security", "social security", "tax", "identification",
-			"taxpayer", "employee", "id", "number", "federal", "ein", "itin",
+			"taxpayer", "employee", "federal", "ein", "itin",
 			// Credit card and financial data keywords
 			"credit", "card", "visa", "mastercard", "amex", "american express",
-			"discover", "account", "balance", "payment", "transaction", "amount",
-			"first and last name", "last name", "first name", "name",
+			"discover", "balance", "payment", "transaction", "amount",
+			"first and last name", "last name", "first name",
 			// Timestamp and technical keywords
 			"timestamp", "unix", "epoch", "milliseconds", "seconds", "time",
 			"created", "modified", "updated", "generated", "build", "version",
@@ -641,19 +650,30 @@ func (v *Validator) hasPhoneSeparators(match string) bool {
 
 func (v *Validator) isTestPhoneNumber(phone string) bool {
 	lowerPhone := strings.ToLower(phone)
+	cleanDigits := v.cleanPhoneNumber(phone)
 
-	// Check against known test numbers
+	// Match full known test numbers by cleaned-digit equality, not substring
+	// (L29): substring matching on short fragments like "123-456" / "987-654"
+	// penalized real numbers that merely contained those runs.
 	for _, testNumber := range v.testPhoneNumbers {
-		if strings.Contains(phone, testNumber) {
+		if cleanDigits == v.cleanPhoneNumber(testNumber) {
 			return true
 		}
 	}
 
-	// Check against test patterns
-	for _, pattern := range v.knownTestPatterns {
-		if strings.Contains(lowerPhone, strings.ToLower(pattern)) {
+	// Textual placeholder words anywhere in the raw value are still a test signal.
+	for _, word := range []string{"test", "example"} {
+		if strings.Contains(lowerPhone, word) {
 			return true
 		}
+	}
+
+	// The 555-0100..555-0199 exchange is the reserved fictional/test range
+	// (NANP): in cleaned digits that is "55501" + two digits. Match it
+	// structurally rather than via the broad "555-0" fragment, which previously
+	// also flagged real numbers containing that run.
+	if reFictional555.MatchString(cleanDigits) {
+		return true
 	}
 
 	return false
@@ -731,10 +751,15 @@ func (v *Validator) isValidCountryFormat(phone string, pattern phonePattern) boo
 	// Basic validation based on pattern country
 	switch pattern.country {
 	case "US/CA":
-		// US/Canada numbers should be 10 digits (excluding country code)
+		// US/Canada numbers should be 10 digits (excluding country code). Strip a
+		// leading country code whether written "+1" or as a bare "1" (L30): a
+		// toll-free / long-distance number like "1-800-555-1234" cleans to 11
+		// digits, and the previous code only stripped "+1", so it wrongly scored
+		// the bare-1 form as an invalid country format (-10 instead of +5).
 		clean := v.cleanPhoneNumber(phone)
-		if strings.HasPrefix(clean, "+1") {
-			clean = clean[2:]
+		clean = strings.TrimPrefix(clean, "+")
+		if len(clean) == 11 && strings.HasPrefix(clean, "1") {
+			clean = clean[1:]
 		}
 		return len(clean) == 10
 	case "UK":
