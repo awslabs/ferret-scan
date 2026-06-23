@@ -712,6 +712,14 @@ func (v *Validator) isTestDomain(domain string) bool {
 			return true
 		}
 	}
+	// Non-routable / reserved pseudo-TLD suffixes (RFC 2606/6761) are dev-only
+	// and not real deliverable addresses (L8): treat them as test domains so
+	// user@host.local / .localhost / .test / .invalid don't surface at HIGH.
+	for _, suffix := range []string{".local", ".localhost", ".test", ".invalid", ".example"} {
+		if strings.HasSuffix(domain, suffix) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -867,8 +875,11 @@ func (v *Validator) hasValidTLD(domain string) bool {
 		"wf": true, "ws": true, "ye": true, "yt": true, "za": true, "zm": true,
 		"zw": true,
 
-		// Special/testing domains (keep for compatibility)
-		"local": true, "localhost": true, "test": true,
+		// NOTE: the pseudo-TLDs "local", "localhost" and "test" are deliberately
+		// NOT in this set (L8). They are dev/non-routable suffixes (k8s manifests,
+		// /etc/hosts, .env files) and treating them as valid TLDs let
+		// user@host.local surface at HIGH. Excluding them routes such addresses
+		// through the small unknown-TLD penalty instead of full TLD validity.
 	}
 
 	parts := strings.Split(domain, ".")

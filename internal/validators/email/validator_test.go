@@ -423,3 +423,30 @@ func TestEmailValidator_DuplicateOccurrenceContext(t *testing.T) {
 		t.Errorf("expected exactly 1 surfaced email (URL occurrence suppressed), got %d", len(matches))
 	}
 }
+
+// TestEmailValidator_PseudoTLDsGated is a regression test for L8: non-routable
+// reserved pseudo-TLDs (.local/.localhost/.test) were treated as valid TLDs, so
+// dev addresses like user@host.local surfaced at HIGH. They are now gated below
+// the HIGH bucket while real emails are unaffected.
+func TestEmailValidator_PseudoTLDsGated(t *testing.T) {
+	v := NewValidator()
+	best := func(line string) float64 {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		var b float64
+		for _, m := range matches {
+			if m.Confidence > b {
+				b = m.Confidence
+			}
+		}
+		return b
+	}
+	for _, line := range []string{"user@db.local", "svc@api.localhost", "x@h.test"} {
+		if c := best(line); c >= 90 {
+			t.Errorf("L8: pseudo-TLD address %q should not reach HIGH, got %.1f", line, c)
+		}
+	}
+	// A real email on a routable TLD must still be HIGH.
+	if c := best("contact alice@realcompany.com"); c < 90 {
+		t.Errorf("L8: real email should stay HIGH, got %.1f", c)
+	}
+}
