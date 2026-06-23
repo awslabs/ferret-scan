@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/ferret-scan/internal/validators"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -50,7 +51,26 @@ var (
 	// version number (e.g. "Software: Adobe Photoshop 21.0").
 	gpsCoordRefPattern   = regexp.MustCompile(`(?i)[+-]?\d{1,3}\.\d+\s*°?\s*[NSEW]\b`)
 	versionNumberPattern = regexp.MustCompile(`^\d+(\.\d+)*$`)
+	// leadingDecimalPattern extracts a leading signed decimal from a coordinate
+	// value that may carry a trailing degree symbol / hemisphere ref.
+	leadingDecimalPattern = regexp.MustCompile(`^[+-]?\d+(?:\.\d+)?`)
 )
+
+// parseCoordinate extracts the leading signed decimal from a coordinate string
+// (e.g. "40.7128", "40.7128° N") and returns it with ok=true. ok is false when
+// no leading numeric value is present (e.g. a DMS string or placeholder text),
+// in which case the caller treats the value as unparseable rather than invalid.
+func parseCoordinate(s string) (float64, bool) {
+	m := leadingDecimalPattern.FindString(strings.TrimSpace(s))
+	if m == "" {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(m, 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
+}
 
 // ValidationRule defines validation rules for specific preprocessor types
 type ValidationRule struct {
@@ -1542,20 +1562,56 @@ func (v *Validator) getGPSDetectionReason(line string) string {
 // isVersionNumber checks if a line contains only a version number (not sensitive)
 func (v *Validator) isVersionNumber(line string) bool {
 	// Check for version number patterns like "15.0000", "1.0", "2.1.3", etc.
-	// These are typically software versions and not sensitive information
+	// These are typically software versions and not sensitive information.
 	lineLower := strings.ToLower(strings.TrimSpace(line))
 
-	// If the line contains a colon, extract the value part
+	// If the line contains a colon, extract the key and value parts.
 	if strings.Contains(line, ":") {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
+			key := strings.ToLower(strings.TrimSpace(parts[0]))
 			value := strings.TrimSpace(parts[1])
-			return versionNumberPattern.MatchString(value)
+			if !versionNumberPattern.MatchString(value) {
+				return false
+			}
+			// Only treat a numeric value as a version when the field key is
+			// version-related, OR the value is short and version-shaped (L18).
+			// A bare long all-digit value in a NAME/AUTHOR/COPYRIGHT/MANAGER
+			// field is far more likely a numeric ID/phone than a version, and
+			// suppressing it hid real metadata.
+			return isVersionishKey(key) || isVersionShapedValue(value)
 		}
 	}
 
-	// Check if the entire line is just a version number
-	return versionNumberPattern.MatchString(lineLower)
+	// A bare line with no key: only a short, dotted, version-shaped value counts.
+	return versionNumberPattern.MatchString(lineLower) && isVersionShapedValue(lineLower)
+}
+
+// isVersionishKey reports whether a metadata field key denotes a software version.
+func isVersionishKey(key string) bool {
+	for _, k := range []string{"version", "ver.", "ver ", "software", "application", "app", "build", "revision", "release", "schema", "format"} {
+		if strings.Contains(key, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// isVersionShapedValue reports whether a numeric value looks like a version
+// rather than an ID: at most 3 dotted groups (e.g. "1", "1.0", "2.1.3") and a
+// short first component. A long undotted integer ("1234567890") is treated as
+// an ID, not a version.
+func isVersionShapedValue(value string) bool {
+	groups := strings.Split(value, ".")
+	if len(groups) > 4 {
+		return false
+	}
+	if len(groups) == 1 {
+		// A bare integer is only "version-shaped" if it is short (<=2 digits).
+		return len(groups[0]) <= 2
+	}
+	// Dotted form: first component should be a small number (<=4 digits).
+	return len(groups[0]) <= 4
 }
 
 // hasNonEmptyValue checks if a metadata field has non-empty content after the colon
@@ -2405,14 +2461,32 @@ func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsL
 			combinedText = fmt.Sprintf("%s, %s", latitude, longitude)
 		}
 
+		// Validate the coordinate pair (L17): reject 0/0 (Null Island / unset GPS)
+		// and out-of-range values rather than always scoring 100. Confidence is
+		// scaled by parse validity so a syntactically valid in-range pair stays
+		// HIGH while a malformed/placeholder pair drops out.
+		latVal, latOK := parseCoordinate(latitude)
+		longVal, longOK := parseCoordinate(longitude)
+		if latOK && longOK {
+			if (latVal == 0 && longVal == 0) ||
+				latVal < -90 || latVal > 90 || longVal < -180 || longVal > 180 {
+				return matches // not a real location; skip emitting a GPS pair
+			}
+		}
+
 		// Use the earlier line number
 		lineNumber := latLine
 		if longLine < latLine && longLine > 0 {
 			lineNumber = longLine
 		}
 
-		// Calculate confidence for combined coordinates
-		confidence := 1.0 // High confidence for coordinate pairs
+		// Calculate confidence for combined coordinates. A pair that parsed to a
+		// valid in-range decimal is high confidence; one we could not parse (DMS
+		// strings, unusual formats) is still emitted but slightly lower.
+		confidence := 1.0
+		if !latOK || !longOK {
+			confidence = 0.75
+		}
 		checks := map[string]bool{
 			"contains_coordinate_pair": true,
 			"contains_gps_coords":      true,

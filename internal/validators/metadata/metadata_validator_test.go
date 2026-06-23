@@ -117,3 +117,52 @@ func TestMetadata_CombineGPSNoEarlyReturn(t *testing.T) {
 		t.Error("real lat/long pair should still be combined despite the stray Coordinates field")
 	}
 }
+
+// TestMetadata_GPSPairValidation is a regression test for L17: the combined GPS
+// pair was hardcoded to confidence 100 with no validation, so a 0/0 (Null
+// Island / unset GPS) or out-of-range pair surfaced as HIGH. Such pairs are now
+// rejected; a valid in-range pair still scores HIGH.
+func TestMetadata_GPSPairValidation(t *testing.T) {
+	v := NewValidator()
+
+	// 0/0 and out-of-range pairs must not be emitted.
+	for _, tc := range []struct{ lat, long string }{
+		{"0", "0"},
+		{"999.0", "5.0"},
+		{"10.0", "200.0"},
+	} {
+		res := v.combineGPSCoordinates(
+			map[string]string{"gpslatitude": tc.lat, "gpslongitude": tc.long},
+			map[string]int{"gpslatitude": 1, "gpslongitude": 2}, "f.jpg", "")
+		if len(res) > 0 {
+			t.Errorf("L17: invalid pair (%s,%s) should not be emitted, got %d", tc.lat, tc.long, len(res))
+		}
+	}
+	// A valid in-range pair is still HIGH.
+	res := v.combineGPSCoordinates(
+		map[string]string{"gpslatitude": "40.7128", "gpslongitude": "-74.0060"},
+		map[string]int{"gpslatitude": 1, "gpslongitude": 2}, "f.jpg", "")
+	if len(res) != 1 || res[0].Confidence < 90 {
+		t.Errorf("L17: valid pair should be one HIGH GPS match, got %d", len(res))
+	}
+}
+
+// TestMetadata_VersionNumberVsID is a regression test for L18: isVersionNumber
+// blanket-suppressed any all-numeric value, hiding numeric IDs placed in
+// author/manager/copyright fields. It now only treats version-keyed or
+// version-shaped values as versions.
+func TestMetadata_VersionNumberVsID(t *testing.T) {
+	v := NewValidator()
+	// Genuine version values.
+	for _, line := range []string{"Application: 16.0", "Version: 2.1.3", "Software: 21.0"} {
+		if !v.isVersionNumber(line) {
+			t.Errorf("L18: %q should be treated as a version", line)
+		}
+	}
+	// Numeric IDs in non-version fields must NOT be suppressed as versions.
+	for _, line := range []string{"Author: 1234567890", "Manager: 12345", "Copyright: 100200300"} {
+		if v.isVersionNumber(line) {
+			t.Errorf("L18: %q is a numeric ID, not a version", line)
+		}
+	}
+}
