@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
@@ -362,6 +364,14 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 		if v.isTechnicalContext(match, components) {
 			// Technical context: reduce to MEDIUM confidence even with both names
 			baseConfidence = 65.0
+		} else if v.isCommonWordBigram(components) && !v.isFormalNamePattern(components.Pattern) {
+			// Both tokens are ordinary English words that also happen to be in the
+			// name databases ("Will Read", "Grace Hill"). Without a formal pattern
+			// (title/suffix/comma/initial) this is far more likely prose than a
+			// person name, so hold it at MEDIUM rather than jumping to HIGH. A name
+			// with even one distinctive token, or any formal pattern, is unaffected
+			// and still reaches HIGH below.
+			baseConfidence = 65.0
 		} else {
 			// True person name: HIGH confidence for sensitive data detection
 			baseConfidence = 90.0
@@ -603,14 +613,36 @@ func (v *Validator) hasRepeatedCharacters(name string) bool {
 	return false
 }
 
-// isProperlyCapitalized checks if the name has proper capitalization
+// titleAndSuffixTokens are honorifics/suffixes exempt from the leading-capital
+// check in isProperlyCapitalized (they may be lowercased or all-caps).
+var titleAndSuffixTokens = map[string]bool{
+	"mr.": true, "ms.": true, "mrs.": true, "dr.": true, "prof.": true,
+	"mr": true, "ms": true, "mrs": true, "dr": true, "prof": true,
+	"jr.": true, "sr.": true, "jr": true, "sr": true,
+	"ii": true, "iii": true, "iv": true, "v": true,
+}
+
+// isProperlyCapitalized checks if each name word starts with an uppercase letter.
+//
+// Two bugs were fixed here (M20):
+//   - The previous code did strings.Contains("Mr.Ms.Mrs.Dr.Prof.Jr.Sr.III.IV.",
+//     word) — arguments reversed — so any word that was a SUBSTRING of that
+//     concatenation ("M", "I", "V", "Pro", "Sr") skipped the capitalization
+//     check. We now compare against a proper token set.
+//   - It indexed word[0] (a byte), so an accented capital like 'Á' (first byte
+//     0xC3 > 'Z') was wrongly treated as not-capitalized. We now decode the
+//     first rune and use unicode.IsUpper.
 func (v *Validator) isProperlyCapitalized(name string) bool {
-	words := strings.Fields(name)
-	for _, word := range words {
-		if len(word) > 0 && !strings.Contains("Mr.Ms.Mrs.Dr.Prof.Jr.Sr.III.IV.", word) {
-			if word[0] < 'A' || word[0] > 'Z' {
-				return false
-			}
+	for _, word := range strings.Fields(name) {
+		if word == "" {
+			continue
+		}
+		if titleAndSuffixTokens[strings.ToLower(word)] {
+			continue
+		}
+		r, _ := utf8.DecodeRuneInString(word)
+		if !unicode.IsUpper(r) {
+			return false
 		}
 	}
 	return true
@@ -624,6 +656,20 @@ func (v *Validator) isVeryCommonName(name string) bool {
 
 	lowerName := strings.ToLower(name)
 	return veryCommonNamesMap[lowerName]
+}
+
+// isCommonWordBigram reports whether BOTH the first and last name tokens are
+// ordinary English words that merely happen to also be in the name databases
+// (e.g. "Will Read", "Grace Hill"). Such a bigram is usually prose or a heading,
+// not a person name, so it should not reach HIGH confidence on the strength of a
+// bare two-word database match alone.
+func (v *Validator) isCommonWordBigram(components NameComponents) bool {
+	first := strings.ToLower(components.FirstName)
+	last := strings.ToLower(components.LastName)
+	if first == "" || last == "" {
+		return false
+	}
+	return commonWordNamesMap[first] && commonWordNamesMap[last]
 }
 
 // isKnownShortName checks if a short name (< 4 chars) is in the known name databases

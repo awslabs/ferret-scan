@@ -4,6 +4,7 @@
 package personname
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/internal/context"
@@ -71,6 +72,102 @@ func TestPersonNameValidator_ValidNames(t *testing.T) {
 				t.Errorf("Expected no match but got %d: %s", len(matches), tt.description)
 			}
 		})
+	}
+}
+
+// TestPersonNameValidator_AccentedNames is a regression test for the ASCII
+// word-boundary bug. The old patterns used [A-ZÀ-ÿ] with a leading/trailing
+// ASCII \b, so:
+//   - names starting with an accented capital (Ángel, Óscar) never matched, and
+//   - names ending in an accent (José, André) were truncated ("Jos", "Andr"),
+//     corrupting the reported Text and the name-DB lookup.
+//
+// The patterns now use Unicode-aware boundaries (wrapNamePattern) and capture
+// the name in group 1.
+func TestPersonNameValidator_AccentedNames(t *testing.T) {
+	pm := NewPatternManager()
+
+	// Each name must be found AND reported in full (no truncation).
+	wantFound := []string{
+		"Ángel Ruiz",
+		"Óscar Núñez",
+		"José André",
+		"María González",
+		"François Dubois",
+	}
+	for _, name := range wantFound {
+		line := "contact " + name + " today"
+		matches := pm.FindMatches(line)
+		found := false
+		for _, m := range matches {
+			if m.Text == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			got := make([]string, 0, len(matches))
+			for _, m := range matches {
+				got = append(got, m.Text)
+			}
+			t.Errorf("expected to find %q in full, got matches %v", name, got)
+		}
+	}
+
+	// The math symbols × (U+00D7) and ÷ (U+00F7) fall inside the old À-ÿ range
+	// but are NOT letters; they must not be treated as name characters.
+	for _, line := range []string{"5 × 3 equals 15", "A ÷ B ratio"} {
+		for _, m := range pm.FindMatches(line) {
+			if strings.ContainsAny(m.Text, "×÷") {
+				t.Errorf("name match %q in %q wrongly includes a math symbol", m.Text, line)
+			}
+		}
+	}
+}
+
+// TestPersonNameValidator_CommonWordBigram is a regression test for H6: a
+// Title-Cased bigram whose two tokens are both ordinary English words that also
+// appear in the name databases ("Will Read", "Grace Hill") jumped straight to 90
+// (HIGH). Such bigrams must now stay BELOW the HIGH bucket, while real names
+// (with at least one distinctive token) and formal patterns stay HIGH.
+func TestPersonNameValidator_CommonWordBigram(t *testing.T) {
+	v := NewValidator()
+	const highBucket = 90.0
+
+	best := func(line string) float64 {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", line, err)
+		}
+		var b float64
+		for _, m := range matches {
+			if m.Confidence > b {
+				b = m.Confidence
+			}
+		}
+		return b
+	}
+
+	// Common-word bigrams: must not reach HIGH on a bare two-word match.
+	for _, line := range []string{"Will Read", "Mark Brown", "Grace Hill", "Bill Young", "Rose Stone"} {
+		if c := best(line); c >= highBucket {
+			t.Errorf("common-word bigram %q should stay below HIGH (%.0f), got %.1f", line, highBucket, c)
+		}
+	}
+
+	// Real names (at least one distinctive token) must still reach HIGH.
+	for _, line := range []string{"John Smith", "Sarah Johnson", "Michael Williams", "David Brown"} {
+		if c := best(line); c < highBucket {
+			t.Errorf("real name %q should reach HIGH (>=%.0f), got %.1f", line, highBucket, c)
+		}
+	}
+
+	// A formal pattern (title / comma form) overrides the gate: a titled or
+	// directory-style entry could be a genuine person, so it stays HIGH.
+	for _, line := range []string{"Dr. Will Read", "Read, Will"} {
+		if c := best(line); c < highBucket {
+			t.Errorf("formal pattern %q should stay HIGH (>=%.0f), got %.1f", line, highBucket, c)
+		}
 	}
 }
 
@@ -919,5 +1016,78 @@ func TestPersonNameValidator_IsFormalNamePattern(t *testing.T) {
 				t.Errorf("isFormalNamePattern(%q) = %v, want %v", tt.pattern, result, tt.isFormal)
 			}
 		})
+	}
+}
+
+// TestPersonNameValidator_IsProperlyCapitalizedUnicode is a regression test for
+// M20: (1) the title/suffix exemption used a reversed strings.Contains so
+// substrings like "M"/"V"/"Pro" skipped the check; (2) word[0] byte-indexing
+// rejected accented capitals like 'Á'.
+func TestPersonNameValidator_IsProperlyCapitalizedUnicode(t *testing.T) {
+	v := NewValidator()
+	proper := []string{"John Smith", "Ángel Ramos", "Óscar Núñez", "Dr. Smith", "Mr. John Doe"}
+	for _, n := range proper {
+		if !v.isProperlyCapitalized(n) {
+			t.Errorf("%q should be considered properly capitalized", n)
+		}
+	}
+	improper := []string{"john smith", "john Smith", "ángel ramos"}
+	for _, n := range improper {
+		if v.isProperlyCapitalized(n) {
+			t.Errorf("%q should NOT be considered properly capitalized", n)
+		}
+	}
+}
+
+// TestPersonNameValidator_SuffixNotInWord is a regression test for M21: the
+// name_with_suffix pattern matched ordinary word triples ("Grace Park Verified")
+// by treating a leading "V"/"IV"/"III" of the third word as a suffix.
+func TestPersonNameValidator_SuffixNotInWord(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"Grace Park Verified today",
+		"Michael Davis IVory tower",
+		"Thomas Anderson IIIumination",
+	} {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		for _, m := range matches {
+			if p, ok := m.Metadata["pattern"]; ok && p == "name_with_suffix" {
+				t.Errorf("%q should not match as name_with_suffix (matched %q)", line, m.Text)
+			}
+		}
+	}
+	// A genuine suffixed name still matches.
+	matches, _ := v.ValidateContent("Grace Park Jr.", "test.txt")
+	if len(matches) == 0 {
+		t.Error("genuine 'Grace Park Jr.' should still be detected")
+	}
+}
+
+// TestPersonNameValidator_AllCapsNames is a regression test for M22: all-caps
+// names (common in forms/spreadsheets) never matched. They now surface when
+// DB-backed, while non-name all-caps prose is rejected (no new false positives).
+func TestPersonNameValidator_AllCapsNames(t *testing.T) {
+	v := NewValidator()
+	best := func(line string) float64 {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		var b float64
+		for _, m := range matches {
+			if m.Confidence > b {
+				b = m.Confidence
+			}
+		}
+		return b
+	}
+	// Real all-caps names must surface.
+	for _, n := range []string{"JOHN SMITH", "SARAH JOHNSON", "MICHAEL WILLIAMS"} {
+		if best(n) < 50 {
+			t.Errorf("all-caps name %q should surface, got %.1f", n, best(n))
+		}
+	}
+	// All-caps prose must NOT surface (not in the name DB).
+	for _, n := range []string{"ERROR CODE", "TODO FIXME", "THE END", "NOT FOUND"} {
+		if best(n) >= 60 {
+			t.Errorf("all-caps prose %q must not reach MEDIUM, got %.1f", n, best(n))
+		}
 	}
 }

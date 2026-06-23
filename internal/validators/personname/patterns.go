@@ -17,6 +17,34 @@ type NamePattern struct {
 	Cultural    []string // Cultural contexts where this pattern is common
 }
 
+// Latin letter character classes used to build name patterns.
+//
+// The previous patterns used [A-ZÀ-ÿ] / [a-zà-ÿ]. Those have two problems:
+//  1. A leading/trailing ASCII \b does not fire next to an accented letter, so
+//     names starting with an accented capital (Ángel, Óscar) never matched and
+//     names ending in an accent (José) were truncated ("Jos").
+//  2. The range À-ÿ wrongly includes U+00D7 (×) and U+00F7 (÷), which are math
+//     symbols, not letters.
+//
+// We therefore use explicit Latin-1 letter ranges that exclude × and ÷, and
+// build word boundaries by consuming a non-letter (or string edge) on each side
+// via wrapNamePattern (RE2 has no look-around), capturing the actual name in
+// group 1.
+const (
+	nameUpper  = `A-ZÀ-ÖØ-Þ` // Latin-1 uppercase letters (excludes × at U+00D7)
+	nameLower  = `a-zß-öø-ÿ` // Latin-1 lowercase letters (excludes ÷ at U+00F7)
+	nameLetter = nameUpper + nameLower
+)
+
+// wrapNamePattern turns a "core" name pattern into a boundary-anchored pattern
+// with the name captured in group 1. The leading/trailing groups consume a
+// non-letter character (or the string start/end) so the match does not run into
+// an adjacent word, while correctly handling accented letters that ASCII \b
+// cannot. Callers must read submatch group 1 (see FindMatches).
+func wrapNamePattern(core string) string {
+	return `(?:^|[^` + nameLetter + `])(` + core + `)(?:[^` + nameLetter + `]|$)`
+}
+
 // PatternManager manages name detection patterns
 type PatternManager struct {
 	patterns []NamePattern
@@ -40,105 +68,126 @@ func (pm *PatternManager) compileAllPatterns() {
 	}{
 		{
 			name:        "basic_western_name",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Basic Western name format: First Last (minimum 2 chars each)",
 			priority:    5,
 			cultural:    []string{"western", "english", "european"},
 		},
 		{
+			name: "all_caps_name",
+			// ALL-CAPS names (JOHN SMITH, GRACE HILL) are common in forms,
+			// spreadsheets and legal records but never matched the Title-case
+			// patterns. This pattern surfaces them, but it is only a candidate
+			// finder: CalculateConfidenceWithComponents still requires a name-DB
+			// hit (lowercasing the tokens), so non-name all-caps prose ("ERROR
+			// CODE", "TODO FIXME") is rejected, and the common-word-bigram gate
+			// keeps DB-colliding word pairs out of the HIGH bucket. Low priority —
+			// all-caps is weaker evidence than mixed-case.
+			pattern:     `[` + nameUpper + `]{2,30}\s+[` + nameUpper + `]{2,30}`,
+			description: "All-caps name: FIRST LAST",
+			priority:    3,
+			cultural:    []string{"western", "formal"},
+		},
+		{
 			name:        "name_with_middle_initial",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ]\.\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `]\.\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with middle initial: First M. Last",
 			priority:    7,
 			cultural:    []string{"western", "american"},
 		},
 		{
 			name:        "name_with_title",
-			pattern:     `\b(?:Mr|Ms|Mrs|Dr|Prof|Sir|Dame|Lord|Lady)\.\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `(?:Mr|Ms|Mrs|Dr|Prof|Sir|Dame|Lord|Lady)\.\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with title: Dr. First Last",
 			priority:    8,
 			cultural:    []string{"western", "formal"},
 		},
 		{
-			name:        "name_with_suffix",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+(?:Jr\.?|Sr\.?|III|IV|V|PhD|MD|Esq\.?)`,
+			name: "name_with_suffix",
+			// Bare single-letter "V" was dropped from the suffix alternation: as a
+			// lone Roman numeral it matched ordinary "First Last Vword" triples
+			// ("Grace Park Verified") far more often than a real generational
+			// suffix. Jr/Sr/III/IV plus the academic suffixes cover the common
+			// cases; wrapNamePattern supplies the trailing boundary that stops
+			// "IV"/"III" matching inside "IVory"/"IIIumination".
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+(?:Jr\.?|Sr\.?|III|IV|PhD|MD|Esq\.?)`,
 			description: "Name with suffix: First Last Jr.",
 			priority:    8,
 			cultural:    []string{"western", "american", "academic"},
 		},
 		{
 			name:        "three_part_name",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Three-part name: First Middle Last",
 			priority:    6,
 			cultural:    []string{"western", "hispanic", "compound"},
 		},
 		{
 			name:        "hyphenated_last_name",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}-[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Hyphenated last name: First Last-Name",
 			priority:    7,
 			cultural:    []string{"western", "modern", "compound"},
 		},
 		{
 			name:        "name_with_apostrophe_first",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]*'[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]*'[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with apostrophe in first name: O'Connor Smith",
 			priority:    7,
 			cultural:    []string{"irish", "scottish", "western"},
 		},
 		{
 			name:        "name_with_apostrophe_last",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]*'[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]*'[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with apostrophe in last name: David O'Connor",
 			priority:    7,
 			cultural:    []string{"irish", "scottish", "western"},
 		},
 		{
 			name:        "compound_first_name",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}-[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Compound first name: Mary-Jane Smith",
 			priority:    6,
 			cultural:    []string{"western", "compound", "modern"},
 		},
 		{
 			name:        "name_with_multiple_titles",
-			pattern:     `\b(?:Dr|Prof)\.\s+(?:Mr|Ms|Mrs)\.\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `(?:Dr|Prof)\.\s+(?:Mr|Ms|Mrs)\.\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Multiple titles: Dr. Ms. First Last",
 			priority:    9,
 			cultural:    []string{"academic", "formal"},
 		},
 		{
 			name:        "four_part_name",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Four-part name: First Middle Middle Last",
 			priority:    4,
 			cultural:    []string{"hispanic", "compound", "formal"},
 		},
 		{
 			name:        "last_comma_first",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29},\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Last, First format (database/directory style)",
 			priority:    8,
 			cultural:    []string{"formal", "database", "directory"},
 		},
 		{
 			name:        "last_comma_first_middle",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29},\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Last, First Middle format",
 			priority:    8,
 			cultural:    []string{"formal", "database", "directory"},
 		},
 		{
 			name:        "last_comma_first_initial",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29},\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ]\.\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `]\.`,
 			description: "Last, First M. format",
 			priority:    8,
 			cultural:    []string{"formal", "database", "directory"},
 		},
 		{
 			name:        "name_with_professional_suffix",
-			pattern:     `\b[A-ZÀ-ÿ][a-zà-ÿ]{1,29}\s+[A-ZÀ-ÿ][a-zà-ÿ]{1,29},\s+(?:PhD|MD|DDS|JD|EdD|PharmD|PsyD|DVM|RN|CPA|PE)\b`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29},\s+(?:PhD|MD|DDS|JD|EdD|PharmD|PsyD|DVM|RN|CPA|PE)`,
 			description: "Name with professional suffix: John Smith, PhD",
 			priority:    9,
 			cultural:    []string{"academic", "professional", "formal"},
@@ -147,7 +196,9 @@ func (pm *PatternManager) compileAllPatterns() {
 
 	pm.patterns = make([]NamePattern, len(patternDefinitions))
 	for i, def := range patternDefinitions {
-		compiled := regexp.MustCompile(def.pattern)
+		// Each definition is a "core" pattern; wrapNamePattern adds Unicode-aware
+		// word boundaries and captures the name in group 1.
+		compiled := regexp.MustCompile(wrapNamePattern(def.pattern))
 		pm.patterns[i] = NamePattern{
 			Pattern:     compiled,
 			Name:        def.name,
@@ -163,21 +214,31 @@ func (pm *PatternManager) GetPatterns() []NamePattern {
 	return pm.patterns
 }
 
-// FindMatches finds all pattern matches in the given text
+// FindMatches finds all pattern matches in the given text.
+//
+// Patterns are boundary-wrapped (see wrapNamePattern): group 0 includes the
+// consumed boundary characters, while group 1 is the actual name. We therefore
+// read group 1 and use its exact submatch offsets — this both strips the
+// boundary chars from the reported name and gives correct StartIndex/EndIndex
+// even when the same name appears more than once on a line (the old
+// strings.Index returned the first occurrence regardless).
 func (pm *PatternManager) FindMatches(text string) []PatternMatch {
 	var matches []PatternMatch
 
 	for _, pattern := range pm.patterns {
-		regexMatches := pattern.Pattern.FindAllStringSubmatch(text, -1)
-		for _, match := range regexMatches {
-			if len(match) > 0 {
-				matches = append(matches, PatternMatch{
-					Text:       match[0],
-					Pattern:    pattern,
-					StartIndex: strings.Index(text, match[0]),
-					EndIndex:   strings.Index(text, match[0]) + len(match[0]),
-				})
+		locs := pattern.Pattern.FindAllStringSubmatchIndex(text, -1)
+		for _, loc := range locs {
+			// loc layout: [g0start, g0end, g1start, g1end, ...]; need group 1.
+			if len(loc) < 4 || loc[2] < 0 || loc[3] < 0 {
+				continue
 			}
+			start, end := loc[2], loc[3]
+			matches = append(matches, PatternMatch{
+				Text:       text[start:end],
+				Pattern:    pattern,
+				StartIndex: start,
+				EndIndex:   end,
+			})
 		}
 	}
 
