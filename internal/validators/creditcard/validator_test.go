@@ -4,6 +4,7 @@
 package creditcard
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
@@ -668,11 +669,14 @@ func TestCreditCardValidator_IsValidLength(t *testing.T) {
 		number string
 		valid  bool
 	}{
-		{"12345678901234", true},     // 14 digits (Diners)
-		{"123456789012345", true},    // 15 digits (Amex)
-		{"1234567890123456", true},   // 16 digits (standard)
-		{"1234567890123", false},     // 13 digits
-		{"12345678901234567", false}, // 17 digits
+		{"1234567890123", true},       // 13 digits (legacy Visa)
+		{"12345678901234", true},      // 14 digits (Diners)
+		{"123456789012345", true},     // 15 digits (Amex)
+		{"1234567890123456", true},    // 16 digits (standard)
+		{"4532015112830366123", true}, // 19 digits (ISO/IEC 7812 extended)
+		{"123456789012", false},       // 12 digits
+		{"12345678901234567", false},  // 17 digits
+		{"123456789012345678", false}, // 18 digits
 	}
 
 	for _, tt := range tests {
@@ -739,5 +743,186 @@ func TestCreditCardValidator_KnownTestPattern(t *testing.T) {
 				t.Errorf("isKnownTestPattern(%s) should return false", pattern)
 			}
 		})
+	}
+}
+
+// TestCreditCardValidator_AdjacentCards is a regression test for the
+// single-delimiter false negative: the pattern requires a delimiter on both
+// sides of the number, so a non-overlapping FindAll consumed the single
+// space/comma between two PANs and dropped every even-positioned card in a
+// dump/CSV. The manual scan now resumes from the end of the captured number, so
+// all adjacent cards are found (without duplicating a standalone card).
+func TestCreditCardValidator_AdjacentCards(t *testing.T) {
+	v := NewValidator()
+
+	multi := []struct {
+		name    string
+		content string
+		want    int
+	}{
+		{"space-separated triple", "credit cards: 4532015112830366 5425233430109903 6011111111111117", 3},
+		{"comma-separated triple", "4532015112830366,5425233430109903,6011111111111117", 3},
+		{"dash-formatted pair", "4532-0151-1283-0366 5425-2334-3010-9903", 2},
+	}
+	for _, tt := range multi {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			distinct := map[string]int{}
+			for _, m := range matches {
+				distinct[v.cleanCreditCardNumber(m.Text)]++
+			}
+			if len(distinct) != tt.want {
+				t.Errorf("expected %d distinct cards, got %d (%v)", tt.want, len(distinct), distinct)
+			}
+			for card, n := range distinct {
+				if n > 1 {
+					t.Errorf("card %s detected %d times (should not duplicate)", card, n)
+				}
+			}
+		})
+	}
+
+	// A standalone card must still produce exactly one match.
+	single, err := v.ValidateContent("payment 4532015112830366 received", "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(single) != 1 {
+		t.Errorf("standalone card should produce exactly 1 match, got %d", len(single))
+	}
+}
+
+// TestCreditCardValidator_NegativeKeywordWordBoundary is a regression test for the
+// substring-keyword false negative: short negative keywords ("id", "tel", "sha")
+// matched inside ordinary words ("david", "hotel", "sha256") and forced a
+// Luhn-valid card's context impact to -100, dropping it entirely. Matching is now
+// on whole words, so these benign words must no longer suppress a real card, while
+// genuine negative keywords still do.
+func TestCreditCardValidator_NegativeKeywordWordBoundary(t *testing.T) {
+	validator := NewValidator()
+	const card = "4532015112830366" // Luhn-valid, not a known test pattern
+
+	// AnalyzeContext must NOT return the -100 rejection for these benign words
+	// that merely *contain* a negative keyword as a substring.
+	notSuppressed := []string{
+		"david paid with card " + card,   // "david" contains "id"; "paid"/"card" positive
+		"valid card " + card,             // "valid" contains "id"
+		"hotel charge to card " + card,   // "hotel" contains "tel"
+		"sha256 unrelated, card " + card, // "sha256" contains "sha"
+	}
+	for _, line := range notSuppressed {
+		impact := validator.AnalyzeContext(card, detector.ContextInfo{FullLine: line})
+		if impact <= -100 {
+			t.Errorf("benign word should not trigger -100 rejection for %q, got impact %.1f", line, impact)
+		}
+	}
+
+	// Genuine negative keywords (whole words) must still suppress.
+	suppressed := []string{
+		"order id: " + card,
+		"account number " + card,
+		"telephone " + card,
+		"md5 hash " + card,
+	}
+	for _, line := range suppressed {
+		impact := validator.AnalyzeContext(card, detector.ContextInfo{FullLine: line})
+		if impact > -100 {
+			t.Errorf("genuine negative keyword should still suppress for %q, got impact %.1f", line, impact)
+		}
+	}
+
+	// End-to-end: a Luhn-valid card in benign "david"/"hotel" context must now
+	// surface (it was previously dropped to zero confidence).
+	for _, line := range []string{
+		"customer david card on file " + card,
+		"hotel reservation card " + card,
+	} {
+		matches, err := validator.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if strings.Contains(m.Text, card) && m.Confidence > 15 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected Luhn-valid card to surface for %q, got %d matches", line, len(matches))
+		}
+	}
+}
+
+// TestCreditCardValidator_EqualsColonDelimiters is a regression test for M4:
+// the delimiter classes omitted '=' and ':', so PANs in config / key=value /
+// key:value logs (the dominant leak format) were missed.
+func TestCreditCardValidator_EqualsColonDelimiters(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"VISA=4532015112830366",
+		"cc:4532015112830366",
+		"card=4532015112830366 logged",
+		"config: pan:4532015112830366;",
+	} {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("PAN after '='/':' should be detected for %q, got none", line)
+		}
+	}
+}
+
+// TestCreditCardValidator_ThirteenAndNineteenDigit is a regression test for M5:
+// legacy 13-digit Visa and 19-digit ISO/IEC 7812 PANs were not matched.
+func TestCreditCardValidator_ThirteenAndNineteenDigit(t *testing.T) {
+	v := NewValidator()
+	// Luhn-valid 13-digit and 19-digit PANs.
+	for _, line := range []string{
+		"card 4929000000006 here",          // 13-digit, Luhn-valid
+		"pan 4532015112830366120 recorded", // 19-digit, Luhn-valid
+	} {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("13/19-digit PAN should be detected for %q, got none", line)
+		}
+	}
+}
+
+// TestCreditCardValidator_LongDigitRunNotCapped is a regression test for M3: a
+// Luhn-valid PAN with a run of 8-11 identical digits was hard-capped at
+// confidence 15 by the >=8-consecutive rule. The threshold is now 12, so a
+// genuine card with a long-but-not-degenerate run can surface above LOW.
+func TestCreditCardValidator_LongDigitRunNotCapped(t *testing.T) {
+	v := NewValidator()
+	// Luhn-valid Visa numbers with an 11-digit identical run, not known test cards.
+	for _, num := range []string{"4111111111110006", "4999999999990003"} {
+		if v.isKnownTestPattern(num) {
+			t.Fatalf("test fixture %s should not be a known test pattern", num)
+		}
+		if v.hasRepeatingPatterns(num) {
+			t.Errorf("%s (11-digit run) should no longer be flagged as a repeating pattern", num)
+		}
+		matches, _ := v.ValidateContent("payment credit card "+num+" charged", "test.txt")
+		if len(matches) == 0 || matches[0].Confidence <= 15 {
+			conf := -1.0
+			if len(matches) > 0 {
+				conf = matches[0].Confidence
+			}
+			t.Errorf("genuine PAN %s with payment context should exceed LOW cap, got %.1f", num, conf)
+		}
+	}
+
+	// All-same-digit and sequential junk must still be rejected/capped.
+	if !v.hasRepeatingPatterns("4444444444444444") {
+		t.Error("all-same-digit number should still be flagged as repeating")
 	}
 }

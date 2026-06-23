@@ -38,6 +38,13 @@ type Validator struct {
 	positiveKeywords []string
 	negativeKeywords []string
 
+	// Pre-compiled word-boundary keyword matchers. Built from the slices above,
+	// these match a keyword only as a whole word (\bkw\b) so short tokens like
+	// "id"/"tel"/"sha" no longer match inside "david"/"hotel"/"sha256" — a
+	// substring match there was forcing Luhn-valid cards to -100 (dropped).
+	positiveKeywordRegex *regexp.Regexp
+	negativeKeywordRegex *regexp.Regexp
+
 	// Observability
 	observer *observability.StandardObserver
 }
@@ -61,7 +68,11 @@ func NewValidator() *Validator {
 		// 5. Fixed boundary issue that was causing false matches across columns
 		// 6. Added support for space-only separators and no separators
 		// 7. Improved quoted string handling
-		pattern: `(?:^|[\s\t,;|"'(){}[\]<>])(\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{4}|\d{4}[\s\-]\d{6}[\s\-]\d{5}|\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{3}|\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{2}|\d{4}\s\d{4}\s\d{4}\s\d{4}|\d{4}\s\d{6}\s\d{5}|\d{4}\s\d{4}\s\d{4}\s\d{3}|\d{4}\s\d{4}\s\d{4}\s\d{2}|\d{16}|\d{15}|\d{14})(?:[\s\t,;|"'(){}[\]<>]|$)`,
+		// 8. '=' and ':' added to the delimiter classes so PANs in config /
+		//    key=value / key:value logs (the dominant leak format) are matched.
+		// 9. Added bare \d{13} (legacy Visa) and \d{19} (ISO/IEC 7812 extended)
+		//    lengths; \d{19} precedes \d{16} so a 19-digit PAN is not truncated.
+		pattern: `(?:^|[\s\t,;|"'(){}[\]<>=:])(\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{4}|\d{4}[\s\-]\d{6}[\s\-]\d{5}|\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{3}|\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{2}|\d{4}\s\d{4}\s\d{4}\s\d{4}|\d{4}\s\d{6}\s\d{5}|\d{4}\s\d{4}\s\d{4}\s\d{3}|\d{4}\s\d{4}\s\d{4}\s\d{2}|\d{19}|\d{16}|\d{15}|\d{14}|\d{13})(?:[\s\t,;|"'(){}[\]<>=:]|$)`,
 
 		binRanges: initBINRanges(),
 
@@ -75,6 +86,10 @@ func NewValidator() *Validator {
 		negativeKeywords: []string{
 			"account", "id", "identifier", "serial", "tracking", "reference",
 			"order", "invoice", "timestamp", "unix", "epoch", "phone", "tel",
+			// "telephone" is kept as an explicit keyword: with whole-word
+			// matching "tel" no longer matches inside "telephone", but a phone
+			// label is still a legitimate negative signal.
+			"telephone",
 			"md5", "sha", "hash", "uuid", "guid", "crc", "checksum",
 			"version", "build", "test", "example", "fake", "mock", "sample",
 		},
@@ -82,6 +97,10 @@ func NewValidator() *Validator {
 
 	// Compile regex once
 	v.regex = regexp.MustCompile(v.pattern)
+
+	// Build word-boundary keyword matchers from the slices above.
+	v.positiveKeywordRegex = buildKeywordRegex(v.positiveKeywords)
+	v.negativeKeywordRegex = buildKeywordRegex(v.negativeKeywords)
 
 	// Pre-compile test patterns for fast rejection
 	v.testPatterns = []*regexp.Regexp{
@@ -158,15 +177,33 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
-		// Find potential matches using improved regex
-		regexMatches := v.regex.FindAllStringSubmatch(line, -1)
+		// Find potential matches. The pattern requires a delimiter on BOTH sides
+		// of the number, so a naive FindAllStringSubmatch (non-overlapping over
+		// the FULL match, delimiters included) consumes the single space/comma
+		// between two adjacent PANs as card N's trailing delimiter, leaving it
+		// unavailable as card N+1's leading delimiter — every even-positioned
+		// card in a dump/CSV ("pan1,pan2,pan3") was silently dropped. We instead
+		// scan manually and resume from the end of the captured number (group 1)
+		// rather than the end of the full match, so a shared delimiter can serve
+		// as the next match's leading boundary.
+		for pos := 0; pos <= len(line); {
+			loc := v.regex.FindStringSubmatchIndex(line[pos:])
+			if loc == nil {
+				break
+			}
+			// loc is relative to line[pos:]; group 1 (the number) is loc[2]:loc[3].
+			matchStart, matchEnd := pos+loc[2], pos+loc[3]
+			match := line[matchStart:matchEnd]
 
-		for _, regexMatch := range regexMatches {
-			if len(regexMatch) < 2 {
-				continue
+			// Resume scanning from the end of the captured number so the trailing
+			// delimiter remains available to the next candidate. Guard against a
+			// zero-width advance.
+			if matchEnd > pos {
+				pos = matchEnd
+			} else {
+				pos++
 			}
 
-			match := regexMatch[1] // Extract the captured group (the actual number)
 			cleanMatch := v.cleanCreditCardNumber(match)
 
 			// OPTIMIZATION 1: Early rejection for obvious non-credit cards
@@ -261,10 +298,13 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	return matches, nil
 }
 
-// isValidLength checks if the number has a valid credit card length
+// isValidLength checks if the number has a valid credit card length.
+// 13 (legacy Visa) and 19 (ISO/IEC 7812 extended, in active use by Visa/Discover/
+// Maestro) are valid PAN lengths alongside Diners (14), Amex (15) and standard (16).
+// Luhn + BIN validation suppress the extra false-positive surface 13/19 add.
 func (v *Validator) isValidLength(number string) bool {
 	length := len(number)
-	return length == 14 || length == 15 || length == 16 // Support Diners (14), Amex (15), and standard (16)
+	return length == 13 || length == 14 || length == 15 || length == 16 || length == 19
 }
 
 // isKnownTestPattern uses pre-compiled regexes for fast test pattern detection
@@ -379,13 +419,18 @@ func (v *Validator) calculateConfidence(match, cleanMatch string) (float64, map[
 func (v *Validator) hasRepeatingPatterns(number string) bool {
 	// This should catch patterns that are unlikely to be real credit cards
 
-	// Check for excessive consecutive identical digits (8+ consecutive)
-	// Real cards can have some repetition, but 8+ consecutive is suspicious
+	// Check for excessive consecutive identical digits. The previous threshold of
+	// 8 was too aggressive: a genuine Luhn-valid PAN can legitimately contain a
+	// run of 8-11 identical digits (the canonical Discover test card
+	// 6011111111111117 has eleven consecutive 1s), and tripping this hard-capped
+	// real cards at confidence 15 (LOW). The all-same / alternating / sequential
+	// checks below still reject obvious junk, so we only treat a very long run
+	// (12+) as a repeating pattern here.
 	consecutiveCount := 1
 	for i := 1; i < len(number); i++ {
 		if number[i] == number[i-1] {
 			consecutiveCount++
-			if consecutiveCount >= 8 {
+			if consecutiveCount >= 12 {
 				return true
 			}
 		} else {
@@ -458,27 +503,46 @@ func (v *Validator) calculateEntropy(number string) float64 {
 	return float64(uniqueDigits) * 0.5 // Rough approximation
 }
 
-// analyzeContext provides faster context analysis with better false positive detection
+// buildKeywordRegex compiles a slice of keywords into a single case-insensitive
+// whole-word matcher: \b(kw1|kw2|...)\b. Keywords are lowercased and regex-quoted
+// (so multi-word entries like "american express" still match, with \b sitting at
+// the outer edges and the space matched literally). Matching on word boundaries
+// — rather than strings.Contains — prevents short keywords ("id", "tel", "sha")
+// from matching inside unrelated words ("david", "hotel", "sha256").
+func buildKeywordRegex(keywords []string) *regexp.Regexp {
+	if len(keywords) == 0 {
+		return nil
+	}
+	escaped := make([]string, len(keywords))
+	for i, k := range keywords {
+		escaped[i] = regexp.QuoteMeta(strings.ToLower(k))
+	}
+	return regexp.MustCompile(`\b(?:` + strings.Join(escaped, "|") + `)\b`)
+}
+
+// analyzeContext provides faster context analysis with better false positive detection.
+//
+// Keyword matching is done on WHOLE WORDS (see buildKeywordRegex). The previous
+// implementation used strings.Contains, so a negative keyword like "id"/"tel"/"sha"
+// matched inside ordinary words ("david", "hotel", "sha256") and returned -100,
+// dropping Luhn-valid cards outright even under explicit "credit card" context.
+// Whole-word matching is a strict subset of the old substring matching, so this
+// change can only RECOVER cards that were wrongly dropped — it can never newly
+// drop a card or surface one that carries a genuine negative keyword.
 func (v *Validator) analyzeContext(match string, context detector.ContextInfo) float64 {
 	fullContext := strings.ToLower(context.FullLine)
 
 	// Quick negative keyword check (more important for false positive reduction)
-	for _, keyword := range v.negativeKeywords {
-		if strings.Contains(fullContext, keyword) {
-			return -100 // Very strong negative impact to ensure rejection
-		}
+	if v.negativeKeywordRegex != nil && v.negativeKeywordRegex.MatchString(fullContext) {
+		return -100 // Very strong negative impact to ensure rejection
 	}
 
 	// Quick positive keyword check
-	confidenceImpact := 0.0
-	for _, keyword := range v.positiveKeywords {
-		if strings.Contains(fullContext, keyword) {
-			confidenceImpact += 15 // Increased boost for positive context
-			break                  // Only count one positive keyword to avoid over-boosting
-		}
+	if v.positiveKeywordRegex != nil && v.positiveKeywordRegex.MatchString(fullContext) {
+		return 15 // Boost for positive context (single boost; avoid over-boosting)
 	}
 
-	return confidenceImpact
+	return 0.0
 }
 
 // buildContextInfo efficiently builds context information
