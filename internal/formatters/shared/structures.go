@@ -112,7 +112,11 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 			}
 		}
 
-		if options.Verbose {
+		// Verbose context fields (full line, surrounding text) contain the raw
+		// matched value, so they must ALSO be gated on ShowMatch — otherwise
+		// --verbose re-leaks the secret that ShowMatch=false just hid in Text
+		// (e.g. full_line "apiKey := \"sk_live_...\""). Require both.
+		if options.Verbose && options.ShowMatch {
 			if match.Context.FullLine != "" {
 				jsonMatch.FullLine = match.Context.FullLine
 			}
