@@ -262,11 +262,22 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				}
 				// Don't cap confidence for tabular data - let the base confidence stand
 			} else if len(contextInfo.PositiveKeywords) == 0 {
-				// For non-tabular data without positive keywords, be more restrictive
+				// For non-tabular data without positive keywords, be more restrictive.
 				if len(contextInfo.NegativeKeywords) > 0 {
 					confidence -= 25 // Stronger penalty for negative context in non-tabular data
-				} else if confidence > 50 {
-					confidence = 50 // Cap at medium confidence without context for non-tabular data
+				} else {
+					// The strongly-formatted hyphenated XXX-XX-XXXX form (which has
+					// already passed all structural checks) is high-quality evidence
+					// on its own, so allow it to reach the 60 MEDIUM threshold even
+					// without a keyword (L45). The riskier separator-less / spaced
+					// forms keep the stricter LOW cap of 50.
+					capValue := 50.0
+					if v.isStrongHyphenatedSSN(match) {
+						capValue = 60.0
+					}
+					if confidence > capValue {
+						confidence = capValue
+					}
 				}
 			}
 
@@ -629,6 +640,18 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 // Helper methods
 func (v *Validator) cleanSSN(ssn string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(ssn, "-", ""), " ", "")
+}
+
+// isStrongHyphenatedSSN reports whether match is the canonical hyphenated
+// XXX-XX-XXXX form with a valid area number — the highest-quality SSN shape.
+// Such a value is strong enough evidence to reach MEDIUM without a nearby
+// keyword (L45), unlike the riskier bare/space-separated forms.
+func (v *Validator) isStrongHyphenatedSSN(match string) bool {
+	parts := strings.Split(match, "-")
+	if len(parts) != 3 || len(parts[0]) != 3 || len(parts[1]) != 2 || len(parts[2]) != 4 {
+		return false
+	}
+	return v.isValidAreaNumber(parts[0])
 }
 
 func (v *Validator) isValidSSN(ssn string) bool {

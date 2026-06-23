@@ -930,3 +930,20 @@ func TestSSNValidator_BareNineDigitWeakerThanDashed(t *testing.T) {
 		t.Errorf("dashed SSN (%.1f) should outscore the bare 9-digit form (%.1f)", dashed, bare)
 	}
 }
+
+// TestSSNValidator_StrongHyphenatedReachesMedium is a regression test for L45:
+// a well-formatted XXX-XX-XXXX SSN with no nearby keyword was hard-capped at 50
+// (LOW). The strong hyphenated form now reaches at least MEDIUM, while the
+// riskier bare 9-digit form keeps the stricter LOW cap.
+func TestSSNValidator_StrongHyphenatedReachesMedium(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{"449-87-4100", "value: 412-22-5678"} {
+		if c := ssnMatchConfidence(t, v, line); c < 60 {
+			t.Errorf("L45: strong hyphenated SSN %q should reach MEDIUM without a keyword, got %.1f", line, c)
+		}
+	}
+	// The bare 9-digit form (no keyword) stays below MEDIUM.
+	if c := ssnMatchConfidence(t, v, "449874100"); c >= 60 {
+		t.Errorf("L45: bare 9-digit SSN without a keyword should stay below MEDIUM, got %.1f", c)
+	}
+}
