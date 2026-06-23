@@ -136,8 +136,12 @@ func NewValidator() *Validator {
 		},
 		// International formats
 		{
-			name:    "International_Plus",
-			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b`),
+			name: "International_Plus",
+			// Tightened (M10): the middle/last groups now require 2-4 / 3-9 digits
+			// so dotted version tags like "+2024.1.1" or "+1.2.3.4" (groups of 1)
+			// no longer match as international phone numbers, while real numbers
+			// (+44 20 7946 0958, +1 415 555 2671, +12025550173) still do.
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{3,9}\b`),
 			country: "International",
 			format:  "+XX XXXX XXXX XXXX",
 		},
@@ -149,8 +153,11 @@ func NewValidator() *Validator {
 		},
 		// UK formats
 		{
-			name:    "UK_Standard",
-			regex:   regexp.MustCompile(`\b0\d{2,4}[-.\s]?\d{3,8}\b`),
+			name: "UK_Standard",
+			// Allow an optional THIRD group (M9): a real UK national number like
+			// "0161 496 0345" is area + two subscriber groups, which the previous
+			// two-group pattern truncated to "0161 496".
+			regex:   regexp.MustCompile(`\b0\d{2,4}[-.\s]?\d{3,8}([-.\s]\d{3,4})?\b`),
 			country: "UK",
 			format:  "0XXX XXXXXXXX",
 		},
@@ -162,8 +169,11 @@ func NewValidator() *Validator {
 		},
 		// European formats
 		{
-			name:    "European",
-			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{2}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}\b`),
+			name: "European",
+			// Tightened (M10): last group requires 3-4 digits and inner groups
+			// 2-4, so dotted version tags like "+2024.1.1" / "+1.2.3.4" no longer
+			// match as European phone numbers.
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{2}[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{3,4}\b`),
 			country: "Europe",
 			format:  "+XX XXXX XXXX XXXX",
 		},
@@ -357,16 +367,30 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	return matches, nil
 }
 
-// isDuplicateMatch checks if a match was already found (same number, same line)
+// isDuplicateMatch checks if a match was already found on the same line. Beyond
+// exact cleaned-digit equality, it also treats a match whose cleaned digits are
+// a prefix/substring of an already-found number (or vice versa) as a duplicate
+// (M11): overlapping patterns otherwise emit a truncated partial of the same
+// physical number (e.g. "+44 20 7946" alongside "+44 20 7946 0958"), inflating
+// finding counts with an incorrect partial value.
 func (v *Validator) isDuplicateMatch(existing []detector.Match, newMatch string, lineNum int) bool {
 	cleanNew := v.cleanPhoneNumber(newMatch)
+	if cleanNew == "" {
+		return false
+	}
 
 	for _, match := range existing {
-		if match.LineNumber == lineNum {
-			cleanExisting := v.cleanPhoneNumber(match.Text)
-			if cleanExisting == cleanNew {
-				return true
-			}
+		if match.LineNumber != lineNum {
+			continue
+		}
+		cleanExisting := v.cleanPhoneNumber(match.Text)
+		if cleanExisting == "" {
+			continue
+		}
+		if cleanExisting == cleanNew ||
+			strings.Contains(cleanExisting, cleanNew) ||
+			strings.Contains(cleanNew, cleanExisting) {
+			return true
 		}
 	}
 	return false
@@ -606,6 +630,15 @@ func (v *Validator) cleanPhoneNumber(phone string) string {
 	return cleaned
 }
 
+// hasPhoneSeparators reports whether the raw match is formatted like a phone
+// number — i.e. it contains parentheses, dashes, dots, spaces or a leading "+".
+// A bare run of digits with no separators is what timestamps, IDs and serials
+// look like; the timestamp/date heuristics should only fire on those, not on a
+// number a human clearly formatted as a phone (e.g. "(212) 555-0173").
+func (v *Validator) hasPhoneSeparators(match string) bool {
+	return strings.ContainsAny(match, "()-. ") || strings.HasPrefix(match, "+")
+}
+
 func (v *Validator) isTestPhoneNumber(phone string) bool {
 	lowerPhone := strings.ToLower(phone)
 
@@ -806,8 +839,18 @@ func (v *Validator) looksLikeCreditCard(match string) bool {
 	return false
 }
 
-// looksLikeTimestamp checks if the pattern matches common timestamp formats
+// looksLikeTimestamp checks if the pattern matches common timestamp formats.
+//
+// It only fires on a BARE run of digits with no phone separators: a number a
+// human formatted with parens/dashes/spaces ("(212) 555-0173") is a phone, not
+// a Unix timestamp, even though its 10-digit clean form (2125550173) falls in
+// the 32-bit timestamp range — which is exactly how valid NANP area codes
+// 200-214 (DC 202, NYC 212, 213/214) and the 19xx/20xx-prefixed long forms were
+// being wrongly penalized -60.
 func (v *Validator) looksLikeTimestamp(match string) bool {
+	if v.hasPhoneSeparators(match) {
+		return false
+	}
 	clean := v.cleanPhoneNumber(match)
 
 	// Unix timestamp patterns (10 digits starting with 1 or 2)
@@ -859,10 +902,10 @@ func (v *Validator) looksLikeInvalidNumber(match string) bool {
 		return true
 	}
 
-	// Numbers starting with 0 that aren't international format
-	if strings.HasPrefix(clean, "0") && !strings.HasPrefix(match, "+") && len(clean) < 10 {
-		return true
-	}
+	// Numbers starting with a trunk "0" (UK/EU national format). These are valid
+	// even when shorter than 10 digits, so we no longer reject them on length
+	// alone (M8) — only the <7-digit floor above applies. A genuinely invalid
+	// short leading-0 run is already caught by that floor.
 
 	// All zeros or mostly zeros
 	zeroCount := strings.Count(clean, "0")
