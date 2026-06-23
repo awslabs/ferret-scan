@@ -370,3 +370,22 @@ func TestVINValidator_KeywordWordBoundary(t *testing.T) {
 		t.Errorf("real VIN keywords should boost, impact=%.1f", imp)
 	}
 }
+
+// TestVINValidator_HexDumpHeuristic is a regression test for L47: the 0x>=3
+// count dropped a valid VIN whenever its line mentioned three hex literals
+// (e.g. color values). A real hex dump must still be rejected.
+func TestVINValidator_HexDumpHeuristic(t *testing.T) {
+	v := NewValidator()
+	// Valid VIN with incidental hex color literals must still be detected.
+	m, _ := v.ValidateContent("VIN 1HGBH41JXMN109186 colors 0xFF0000 0x00FF00 0x0000FF", "test.txt")
+	if len(m) == 0 {
+		t.Error("L47: valid VIN with incidental hex literals should be detected")
+	}
+	// A genuine hex dump (majority 0x tokens) is still recognized as encoded.
+	if !looksLikeHexDump("0x1A 0x2B 0x3C 0x4D 0x5E 0x6F") {
+		t.Error("L47: a real hex dump should be recognized")
+	}
+	if looksLikeHexDump("VIN 1HGBH41JXMN109186 colors 0xFF0000 0x00FF00 0x0000FF") {
+		t.Error("L47: a VIN line with a few hex literals is not a hex dump")
+	}
+}

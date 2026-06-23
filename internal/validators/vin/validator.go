@@ -462,10 +462,12 @@ func (v *Validator) isTestPattern(vin string) bool {
 
 // isEncodedData detects if the match is likely part of encoded data (base64, hex dumps, etc.).
 func (v *Validator) isEncodedData(line, match string) bool {
-	lower := strings.ToLower(line)
-
-	// Hex dump patterns: line contains multiple "0x" prefixes typical of hex dumps
-	if strings.Count(lower, "0x") >= 3 {
+	// Hex dump patterns. The previous `Count(line,"0x") >= 3` rule dropped the
+	// whole line — and the valid VIN on it — whenever it mentioned three hex
+	// literals, e.g. "VIN 1HGBH41JXMN109186 colors 0xFF0000 0x00FF00 0x0000FF"
+	// (L47). A genuine hex dump is DOMINATED by 0x tokens, so we instead require
+	// a strict majority of whitespace tokens to be 0x-prefixed hex words.
+	if looksLikeHexDump(line) {
 		return true
 	}
 	if strings.Count(line, " ") > 10 && isHexDump(line) {
@@ -500,6 +502,26 @@ func isHexDump(line string) bool {
 		}
 	}
 	return len(line) > 0 && float64(hexChars)/float64(len(line)) > 0.85
+}
+
+// looksLikeHexDump reports whether a line is a hex dump — i.e. a strict majority
+// of its whitespace-separated tokens are 0x-prefixed hex words (and there are at
+// least three). This distinguishes a real dump ("0x1A 0x2B 0x3C ...") from a
+// VIN line that merely mentions a few hex literals ("VIN ... 0xFF0000 0x00FF00
+// 0x0000FF"), which should not be discarded.
+func looksLikeHexDump(line string) bool {
+	toks := strings.Fields(line)
+	if len(toks) == 0 {
+		return false
+	}
+	hex := 0
+	for _, t := range toks {
+		lt := strings.ToLower(t)
+		if strings.HasPrefix(lt, "0x") && len(lt) > 2 {
+			hex++
+		}
+	}
+	return hex >= 3 && hex*2 > len(toks)
 }
 
 // buildContext extracts context information around a match within the current line.
