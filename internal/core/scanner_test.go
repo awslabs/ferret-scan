@@ -176,10 +176,16 @@ func TestScanContent_DetectsCommonPII(t *testing.T) {
 	// the suite. Validators emit specific subtypes (e.g. "VISA", "BUSINESS")
 	// in Match.Type and the producing validator name in Match.Validator;
 	// we assert against the latter for stability.
+	//
+	// The SSN must be a *realistic* value, not a denylisted fake: the SSN
+	// validator (correctly) drops well-known test numbers such as 123-45-6789 as
+	// false positives, so using one here would assert that a fake SSN is reported
+	// as PII. 449-87-4100 has a valid area/group/serial and is not on any
+	// test/sequential denylist.
 	content := strings.Join([]string{
 		"credit card: 4532-0151-1283-0366",
 		"contact: alice@example.com",
-		"ssn: 123-45-6789",
+		"ssn: 449-87-4100",
 	}, "\n")
 
 	result, err := ScanContent(content, ContentScanConfig{

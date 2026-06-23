@@ -783,3 +783,150 @@ func TestSSNValidator_NewValidator(t *testing.T) {
 		t.Fatal("NewValidator() has no healthcare keywords")
 	}
 }
+
+// ssnMatchConfidence returns the confidence of the first SSN match on the line,
+// or -1 if none was produced.
+func ssnMatchConfidence(t *testing.T, v *Validator, line string) float64 {
+	t.Helper()
+	matches, err := v.ValidateContent(line, "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error for %q: %v", line, err)
+	}
+	if len(matches) == 0 {
+		return -1
+	}
+	return matches[0].Confidence
+}
+
+// TestSSNValidator_StandaloneFormatsDetected is a regression test for H1: the
+// isEncodedData 85%-numeric heuristic silently dropped bare ("219099999") and
+// space-separated ("219 09 9999") SSNs — two of the three advertised formats —
+// whenever they appeared alone (CSV cell, log column, one value per line).
+func TestSSNValidator_StandaloneFormatsDetected(t *testing.T) {
+	v := NewValidator()
+	standalone := []string{
+		"219 09 9999", // space-separated, line is just the SSN
+		"219099999",   // bare 9-digit
+		"449874100",   // bare 9-digit, valid area
+	}
+	for _, s := range standalone {
+		matches, err := v.ValidateContent(s, "export.csv")
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", s, err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("standalone SSN %q should be detected, got none", s)
+		}
+	}
+
+	// A genuinely dense numeric blob (many number groups, no SSN structure) must
+	// still be treated as encoded data and dropped.
+	blob := "100 200 300 400 500 600 700 800 900 1000 1100 1200 1300 1400 1500 1600"
+	matches, err := v.ValidateContent(blob, "data.bin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(matches) > 0 {
+		t.Errorf("dense numeric blob should be treated as encoded, got %d matches", len(matches))
+	}
+}
+
+// TestSSNValidator_KeywordWordBoundary is a regression test for H2: keyword
+// matching used strings.Contains, so short keywords matched inside unrelated
+// words ("hr" in "Christopher", "ein" in "Einstein"), inflating confidence on
+// non-SSN lines. Matching is now on whole words.
+func TestSSNValidator_KeywordWordBoundary(t *testing.T) {
+	v := NewValidator()
+
+	// "Christopher" contains "hr" but is not an HR context: the bare 9-digit
+	// number must NOT be boosted to the HIGH bucket by a phantom keyword.
+	embedded := ssnMatchConfidence(t, v, "Christopher 449874100")
+	// A real "hr" context word legitimately boosts the same number.
+	realKeyword := ssnMatchConfidence(t, v, "hr record 449874100")
+	if embedded < 0 || realKeyword < 0 {
+		t.Fatalf("expected both lines to produce an SSN match (embedded=%.1f, real=%.1f)", embedded, realKeyword)
+	}
+	if embedded >= realKeyword {
+		t.Errorf("phantom 'hr' inside 'Christopher' (%.1f) should not boost as much as a real 'hr' keyword (%.1f)",
+			embedded, realKeyword)
+	}
+	if embedded >= 90 {
+		t.Errorf("number near 'Christopher' (no real SSN keyword) should not reach HIGH, got %.1f", embedded)
+	}
+}
+
+// TestSSNValidator_KnownTestSSNStaysLow is a regression test for H3: the
+// denylisted test SSN 123-45-4321 scored 100 (HIGH) whenever a positive keyword
+// like "SSN"/"employee" was nearby, because the flat -25 test penalty left it at
+// ~60 and context pushed it over. It must now stay below the MEDIUM threshold.
+func TestSSNValidator_KnownTestSSNStaysLow(t *testing.T) {
+	v := NewValidator()
+	const mediumThreshold = 60.0
+
+	for _, line := range []string{
+		"Employee SSN: 123-45-4321",
+		"SSN 123-45-4321 on file",
+		"123-45-4321",
+		"taxpayer id 123454321 payroll",
+	} {
+		conf := ssnMatchConfidence(t, v, line)
+		if conf >= mediumThreshold {
+			t.Errorf("known test SSN in %q should stay below MEDIUM (%.0f), got %.1f", line, mediumThreshold, conf)
+		}
+	}
+
+	// A real, valid SSN with strong context must still reach HIGH (the cap is
+	// scoped to denylisted test numbers only).
+	real := ssnMatchConfidence(t, v, "Employee SSN: 449-87-4100")
+	if real < 90 {
+		t.Errorf("real SSN with strong context should reach HIGH, got %.1f", real)
+	}
+}
+
+// TestSSNValidator_DocWordDoesNotSuppress is a regression test for M1: generic
+// doc/config words ("default", "documentation", "readme", "template") were in
+// the global test-pattern list and applied a -40 penalty on mere presence,
+// pushing real SSNs below the surfacing threshold. They were removed from the
+// strong-indicator list and remaining word matches are whole-word only.
+func TestSSNValidator_DocWordDoesNotSuppress(t *testing.T) {
+	v := NewValidator()
+	const mediumThreshold = 60.0
+	for _, line := range []string{
+		"default config SSN 219-09-9999",
+		"see documentation, SSN 219-09-9999",
+		"demographic record SSN 219-09-9999", // 'demo' must not match inside 'demographic'
+	} {
+		c := ssnMatchConfidence(t, v, line)
+		if c < mediumThreshold {
+			t.Errorf("real SSN should not be suppressed below MEDIUM by a doc word in %q, got %.1f", line, c)
+		}
+	}
+	// A genuine test word still suppresses.
+	if c := ssnMatchConfidence(t, v, "this is a test SSN 219-09-9999"); c >= mediumThreshold {
+		t.Errorf("'test' should still suppress a sample SSN, got %.1f", c)
+	}
+}
+
+// TestSSNValidator_BareNineDigitWeakerThanDashed is a regression test for M2:
+// a separator-less 9-digit token (order/serial/ZIP9 ID) over-matched and could
+// reach HIGH in vaguely positive context. The bare form now scores lower than
+// the dashed form, so it no longer reaches HIGH without strong corroboration,
+// while remaining detectable.
+func TestSSNValidator_BareNineDigitWeakerThanDashed(t *testing.T) {
+	v := NewValidator()
+
+	// Bare numeric ID in a non-SSN context must not reach HIGH.
+	if c := ssnMatchConfidence(t, v, "order number 321074567 shipped"); c >= 90 {
+		t.Errorf("bare 9-digit ID should not reach HIGH, got %.1f", c)
+	}
+
+	// Same digits dashed + SSN keyword must outscore the bare form.
+	bare := ssnMatchConfidence(t, v, "employee ssn 219099999 on file")
+	dashed := ssnMatchConfidence(t, v, "employee ssn 219-09-9999 on file")
+	if bare < 0 || dashed < 0 {
+		t.Fatalf("expected both forms to be detected (bare=%.1f dashed=%.1f)", bare, dashed)
+	}
+	if dashed <= bare {
+		t.Errorf("dashed SSN (%.1f) should outscore the bare 9-digit form (%.1f)", dashed, bare)
+	}
+}
