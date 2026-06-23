@@ -20,6 +20,7 @@ import (
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/core"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/formatters"
 	formatterShared "github.com/awslabs/ferret-scan/internal/formatters/shared"
 	"github.com/awslabs/ferret-scan/internal/paths"
@@ -582,6 +583,13 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 	for i := range result.Matches {
 		result.Matches[i].Filename = safeFilename
 	}
+
+	// Annotate findings with an advisory explanation now that filenames are
+	// stable (the drafted suppression reason references the filename). This is
+	// always on for the web UI: it powers the "Add Suppression" reason
+	// prefill, is fully offline, and never mutates Confidence — so the
+	// suppression hashes computed below are unaffected.
+	explain.Annotate(result.Matches, explain.NewSignalSynthesizer())
 
 	// Apply suppressions now that filenames are stable.
 	var unsuppressed []detector.Match

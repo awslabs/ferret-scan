@@ -13,6 +13,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/observability"
 	"github.com/awslabs/ferret-scan/internal/parallel"
 	"github.com/awslabs/ferret-scan/internal/preprocessors"
@@ -32,8 +33,13 @@ type ScanConfig struct {
 	EnableRedaction     bool
 	RedactionStrategy   string
 	RedactionOutputDir  string
-	Config              *config.Config
-	Profile             *config.Profile
+	// Explain, when true, attaches an advisory explanation (plain-language
+	// rationale, verdict gloss, drafted suppression reason) to each surfaced
+	// match via internal/explain. Off by default; opt-in like the historical
+	// --enable-genai. It never mutates Confidence and never auto-suppresses.
+	Explain bool
+	Config  *config.Config
+	Profile *config.Profile
 	// SuppressionManager, when non-nil, is applied to matches before returning.
 	// ScanResult.SuppressedCount and SuppressedMatches are populated accordingly.
 	SuppressionManager *suppressions.SuppressionManager
@@ -169,6 +175,13 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		unsuppressed = parallelMatches
 	}
 
+	// Advisory explanation pass. Runs AFTER suppression so it only annotates
+	// findings that will surface and cannot affect suppression-hash identity
+	// (the hash depends on Confidence, which Annotate never mutates).
+	if scanConfig.Explain {
+		explain.Annotate(unsuppressed, explain.NewSignalSynthesizer())
+	}
+
 	return &ScanResult{
 		Matches:           unsuppressed,
 		SuppressedMatches: suppressed,
@@ -197,6 +210,10 @@ type ContentScanConfig struct {
 	Verbose bool
 	Config  *config.Config
 	Profile *config.Profile
+
+	// Explain, when true, attaches an advisory explanation to each surfaced
+	// match via internal/explain. Same semantics as ScanConfig.Explain.
+	Explain bool
 
 	// SuppressionManager, when non-nil, is applied to matches before returning.
 	SuppressionManager *suppressions.SuppressionManager
@@ -317,6 +334,11 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 		}
 	} else {
 		unsuppressed = matches
+	}
+
+	// Advisory explanation pass (see ScanFile for the after-suppression rationale).
+	if cfg.Explain {
+		explain.Annotate(unsuppressed, explain.NewSignalSynthesizer())
 	}
 
 	return &ScanResult{

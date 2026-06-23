@@ -373,6 +373,90 @@ func TestPassportValidator_FalsePositives(t *testing.T) {
 // Edge Cases
 // ---------------------------------------------------------------------------
 
+func TestPassportValidator_MRZ_StandaloneLine(t *testing.T) {
+	v := NewValidator()
+
+	// A canonical ICAO 9303 TD3 line-1 MRZ: "P" + "<" doc filler + 3-letter
+	// issuing-state ("GBR") + name field. Regression: the detection regexes
+	// previously required a LETTER after "P" (and MRZ_TD3 required three), so
+	// a standard "P<GBR..." MRZ never matched. It also must be detected on its
+	// own line, with no surrounding prose keywords.
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{"standalone MRZ line", "P<GBRSMITH<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"},
+		{"USA issuing state", "P<USADOE<<JANE<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"},
+		{"MRZ with surrounding text", "Travel document\nP<DEUMUSTERMANN<<ERIKA<<<<<<<<<<<<<<<<<<<<<<\nend"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tt.content, "mrz.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent error: %v", err)
+			}
+			if len(matches) == 0 {
+				t.Fatalf("expected a passport MRZ match for %q, got none", tt.content)
+			}
+			// A valid MRZ with a recognized country code should score well above
+			// the surfacing gate (60). Without external prose context the
+			// validator alone yields ~80 (base 60 + country-code boost);
+			// cross-validator context analysis can lift it further at scan time.
+			if matches[0].Confidence <= 60 {
+				t.Errorf("expected confidence above the surfacing gate for valid MRZ, got %.1f", matches[0].Confidence)
+			}
+			if vc, ok := matches[0].Metadata["validation_checks"].(map[string]bool); ok {
+				if !vc["valid_country_code"] {
+					t.Errorf("expected valid_country_code=true for a recognized MRZ country, checks=%v", vc)
+				}
+			}
+		})
+	}
+}
+
+func TestPassportValidator_MRZ_DoesNotMatchRandomTokens(t *testing.T) {
+	v := NewValidator()
+	// Regression: the standalone-MRZ self-context bypass must NOT wave through
+	// long uppercase tokens (secrets, hashes, IDs) that merely start with a
+	// country-code-shaped substring. A genuine MRZ has "P<" + "<"-padded name
+	// field; these have no fillers.
+	negatives := []string{
+		"PRUSAQWERTYUIOPASDFGHJKLZXCVBNM1234567890ABCD", // random base32-ish
+		"PXUSADEADBEEFCAFEBABE1234567890ABCDEFGHIJKLMN", // hex-ish, USA at 2-4
+		"PKMNQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ1234",  // random hash
+		"AKIAIOSFODNN7EXAMPLE",                          // AWS key shape
+		"PROCESSING_LARGE_UPPERCASE_CONSTANT_NAME_HERE", // code constant
+	}
+	for _, s := range negatives {
+		// On its own line (no passport prose), none of these should surface.
+		matches, _ := v.ValidateContent(s, "x.txt")
+		if len(matches) > 0 {
+			t.Errorf("false positive: %q surfaced as a passport (conf %.0f)", s, matches[0].Confidence)
+		}
+	}
+
+	// hasMRZStructure unit-level guard.
+	if hasMRZStructure("PRUSAQWERTYUIOPASDFGHJKLZXCVBNM1234567890ABCD") {
+		t.Error("hasMRZStructure must reject a filler-less token")
+	}
+	if !hasMRZStructure("P<GBRSMITH<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<") {
+		t.Error("hasMRZStructure must accept a real MRZ line")
+	}
+}
+
+func TestPassportValidator_MRZ_InvalidCountryCode(t *testing.T) {
+	v := NewValidator()
+	// "ZZZ" is not a recognized issuing-state code; confidence should be lower
+	// and the country-code check should fail (but it may still match the regex).
+	content := "P<ZZZSMITH<<JOHN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
+	matches, _ := v.ValidateContent(content, "mrz.txt")
+	for _, m := range matches {
+		if vc, ok := m.Metadata["validation_checks"].(map[string]bool); ok && vc["valid_country_code"] {
+			t.Errorf("ZZZ should not be a valid MRZ country code, checks=%v", vc)
+		}
+	}
+}
+
 func TestPassportValidator_EdgeCases_PassportInBookingText(t *testing.T) {
 	v := NewValidator()
 

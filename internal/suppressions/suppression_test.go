@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 )
 
 func newTestMatch(matchType, text, filename string) detector.Match {
@@ -160,6 +161,77 @@ func TestGenerateSuppressionRules(t *testing.T) {
 	rules := sm.ListSuppressions()
 	if len(rules) != 2 {
 		t.Errorf("expected 2 rules, got %d", len(rules))
+	}
+}
+
+func TestGenerateSuppressionRules_PrefersDraftedExplanationReason(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "suppressions.yaml")
+	sm := NewSuppressionManager(path)
+
+	annotated := newTestMatch("CREDIT_CARD", "4111111111111111", "card_test.go")
+	plain := newTestMatch("EMAIL", "a@b.com", "f.txt")
+	// Attach a drafted suppression reason only to the first match.
+	withReason := []detector.Match{annotated}
+	explain.Annotate(withReason, explain.NewSignalSynthesizer())
+
+	matches := []detector.Match{withReason[0], plain}
+	if err := sm.GenerateSuppressionRules(matches, "GENERIC FALLBACK", false); err != nil {
+		t.Fatalf("GenerateSuppressionRules failed: %v", err)
+	}
+
+	rules := sm.ListSuppressions()
+	if len(rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(rules))
+	}
+
+	// Find each rule by finding_type and assert its reason.
+	var ccReason, emailReason string
+	for _, r := range rules {
+		switch r.Metadata["finding_type"] {
+		case "CREDIT_CARD":
+			ccReason = r.Reason
+		case "EMAIL":
+			emailReason = r.Reason
+		}
+	}
+
+	if ccReason == "GENERIC FALLBACK" || ccReason == "" {
+		t.Errorf("annotated finding should use the drafted reason, got %q", ccReason)
+	}
+	if emailReason != "GENERIC FALLBACK" {
+		t.Errorf("unannotated finding should fall back to the generic reason, got %q", emailReason)
+	}
+}
+
+func TestSuppressionRoundTrip_ExplainDoesNotChangeHash(t *testing.T) {
+	// Regression: the --explain annotation must not alter a finding's
+	// suppression identity. A rule generated from an annotated match must
+	// still suppress the same finding on re-scan (and the un-annotated
+	// equivalent), proving the explanation didn't change the hash.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "suppressions.yaml")
+	sm := NewSuppressionManager(path)
+
+	base := newTestMatch("CREDIT_CARD", "4111111111111111", "card.txt")
+
+	// Annotate a copy and generate a rule from it (enabled).
+	annotated := []detector.Match{base}
+	explain.Annotate(annotated, explain.NewSignalSynthesizer())
+	if _, ok := explain.FromMatch(annotated[0]); !ok {
+		t.Fatal("precondition: match should be annotated")
+	}
+	if err := sm.GenerateSuppressionRules(annotated, "generic", true); err != nil {
+		t.Fatalf("GenerateSuppressionRules: %v", err)
+	}
+
+	// The annotated match is suppressed...
+	if ok, _ := sm.IsSuppressed(annotated[0]); !ok {
+		t.Error("annotated finding should be suppressed by the rule generated from it")
+	}
+	// ...and so is the identical UN-annotated match (same hash).
+	if ok, _ := sm.IsSuppressed(base); !ok {
+		t.Error("un-annotated finding should be suppressed by the same rule — explanation must not change the hash")
 	}
 }
 

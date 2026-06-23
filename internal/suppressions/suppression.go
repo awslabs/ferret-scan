@@ -14,10 +14,22 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/paths"
 
 	"gopkg.in/yaml.v3"
 )
+
+// draftedSuppressReason returns the per-finding suppression reason drafted by
+// the --explain pass, if one is attached to the match; otherwise "". Used to
+// give generated suppression rules a specific, human-reviewable justification
+// instead of a generic boilerplate string.
+func draftedSuppressReason(match detector.Match) string {
+	if ex, ok := explain.FromMatch(match); ok {
+		return ex.DraftSuppressReason
+	}
+	return ""
+}
 
 // hashLineWithoutComment matches `hash:` lines that don't already carry a
 // trailing comment. Used to append `# pragma: allowlist secret` so secret
@@ -496,10 +508,20 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		// Set default expiration to 1 week
 		defaultExpiry := now.AddDate(0, 0, 7)
 
+		// Prefer the per-finding drafted reason from --explain when present;
+		// it states WHY this specific finding looks suppressible (e.g. "Test
+		// fixture ... not a real VISA"). Fall back to the caller's generic
+		// reason for unannotated findings, so behaviour is unchanged without
+		// --explain.
+		ruleReason := reason
+		if drafted := draftedSuppressReason(match); drafted != "" {
+			ruleReason = drafted
+		}
+
 		rule := SuppressionRule{
 			ID:         id,
 			Hash:       findingHash,
-			Reason:     reason,
+			Reason:     ruleReason,
 			Enabled:    enabled,
 			CreatedAt:  now,
 			LastSeenAt: &now,

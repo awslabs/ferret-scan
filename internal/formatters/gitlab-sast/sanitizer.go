@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 )
 
 // DataSanitizer handles sanitization of sensitive data for GitLab security reports
@@ -84,6 +85,18 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match) string {
 			for _, item := range safeMetadata {
 				description.WriteString(item + "\n")
 			}
+		}
+	}
+
+	// Add the advisory explanation when present (--explain). The rationale and
+	// verdict carry no payload bytes (they reference the finding's type and the
+	// signals the engine computed, not its content), so they are safe to
+	// include in this payload-careful description.
+	if ex, ok := explain.FromMatch(match); ok {
+		description.WriteString(fmt.Sprintf("\n**Why:** %s\n", ex.Rationale))
+		description.WriteString(fmt.Sprintf("**Verdict:** %s\n", ex.Verdict))
+		if ex.DraftSuppressReason != "" {
+			description.WriteString(fmt.Sprintf("**Suggested suppression reason:** %s\n", ex.DraftSuppressReason))
 		}
 	}
 

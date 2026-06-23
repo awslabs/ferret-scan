@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/formatters"
 
 	"github.com/fatih/color"
@@ -485,7 +486,43 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 		}
 	}
 
+	// Advisory explanation (present only when scanned with --explain).
+	f.appendExplanation(builder, match, options)
+
 	fmt.Fprintln(builder)
+}
+
+// appendExplanation renders the advisory explanation attached by the
+// --explain pass, if present. It is purely additive narrative — no payload
+// bytes, no effect on confidence or suppression.
+func (f *Formatter) appendExplanation(builder *strings.Builder, match detector.Match, options formatters.FormatterOptions) {
+	ex, ok := explain.FromMatch(match)
+	if !ok {
+		return
+	}
+	if !options.NoColor {
+		f.colors["cyan"].Fprintf(builder, "Explanation:\n")
+		fmt.Fprintf(builder, "- Why: %s\n", ex.Rationale)
+		fmt.Fprintf(builder, "- Verdict: ")
+		switch ex.Verdict {
+		case explain.VerdictLikelyReal:
+			f.colors["red"].Fprintf(builder, "%s\n", ex.Verdict)
+		case explain.VerdictLikelyTest:
+			f.colors["green"].Fprintf(builder, "%s\n", ex.Verdict)
+		default:
+			f.colors["yellow"].Fprintf(builder, "%s\n", ex.Verdict)
+		}
+		if ex.DraftSuppressReason != "" {
+			fmt.Fprintf(builder, "- Suggested suppression reason: %s\n", ex.DraftSuppressReason)
+		}
+	} else {
+		fmt.Fprintf(builder, "Explanation:\n")
+		fmt.Fprintf(builder, "- Why: %s\n", ex.Rationale)
+		fmt.Fprintf(builder, "- Verdict: %s\n", ex.Verdict)
+		if ex.DraftSuppressReason != "" {
+			fmt.Fprintf(builder, "- Suggested suppression reason: %s\n", ex.DraftSuppressReason)
+		}
+	}
 }
 
 // appendDetailedSuppressedMatch adds detailed suppressed match information to the string builder
@@ -718,6 +755,17 @@ func (f *Formatter) formatPrecommitOutput(matches []detector.Match, suppressedMa
 					match.LineNumber,
 					f.getPrecommitIssueDescription(match),
 					strings.ToLower(confidenceLevel))
+
+				// Per-finding explanation when scanned with --explain: promote
+				// the "why" and a verdict to the pre-commit gate, the highest-
+				// friction moment, instead of leaving it in verbose-only output.
+				if ex, ok := explain.FromMatch(match); ok {
+					fmt.Fprintf(&builder, "    why: %s\n", ex.Rationale)
+					fmt.Fprintf(&builder, "    verdict: %s\n", ex.Verdict)
+					if ex.DraftSuppressReason != "" {
+						fmt.Fprintf(&builder, "    suppression reason: %s\n", ex.DraftSuppressReason)
+					}
+				}
 			}
 		}
 	}

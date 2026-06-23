@@ -101,6 +101,16 @@ func (m *Match) Clear() {
 	m.Context.BeforeText = ""
 	m.Context.AfterText = ""
 	m.Context.FullLine = ""
+
+	// Drop the advisory explanation annotation (internal/explain attaches it
+	// under this key). It carries no payload bytes today, but keeping it on
+	// the same lifecycle as Text/Context prevents it from becoming a retention
+	// surface if a richer backend ever echoes content. The key is duplicated
+	// here as a literal to avoid an import cycle (explain imports detector);
+	// it must stay in sync with explain.MetadataKey.
+	if m.Metadata != nil {
+		delete(m.Metadata, "explanation")
+	}
 }
 
 // ContextExtractor extracts context from a file around a specific match
