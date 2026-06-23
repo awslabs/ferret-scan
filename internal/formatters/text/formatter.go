@@ -464,8 +464,11 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 		}
 	}
 
-	// Show context snippet if available and verbose mode is on
-	if options.Verbose && (match.Context.BeforeText != "" || match.Context.AfterText != "") {
+	// Show context snippet if available and verbose mode is on. Gated on
+	// ShowMatch too: the snippet prints the raw before/[match]/after text, so
+	// emitting it when ShowMatch is false would re-leak the secret that hiding
+	// is meant to suppress (consistent with the JSON/YAML/SARIF/JUnit formatters).
+	if options.Verbose && options.ShowMatch && (match.Context.BeforeText != "" || match.Context.AfterText != "") {
 		if !options.NoColor {
 			f.colors["cyan"].Fprintf(builder, "Context snippet:\n")
 			if match.Context.BeforeText != "" {

@@ -242,7 +242,10 @@ func (f *Formatter) createFailureFromMatches(matches []detector.Match, options f
 			contentBuilder.WriteString(fmt.Sprintf("\nMatch: %s", match.Text))
 		}
 
-		if options.Verbose && match.Context.FullLine != "" {
+		// Gated on ShowMatch too: FullLine contains the raw matched value, so
+		// emitting it when ShowMatch is false would re-leak the hidden secret
+		// (consistent with the JSON/YAML/SARIF/text formatters).
+		if options.Verbose && options.ShowMatch && match.Context.FullLine != "" {
 			contentBuilder.WriteString(fmt.Sprintf("\nContext: %s", match.Context.FullLine))
 		}
 
