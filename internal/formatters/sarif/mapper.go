@@ -5,12 +5,14 @@ package sarif
 
 import (
 	"fmt"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/formatters"
-	"github.com/awslabs/ferret-scan/internal/formatters/shared"
 	"math"
 	"path/filepath"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
+	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/formatters/shared"
 )
 
 // VulnerabilityMapper converts ferret-scan detector matches to SARIF results
@@ -247,14 +249,29 @@ func (m *VulnerabilityMapper) buildProperties(match detector.Match) map[string]i
 		properties["validator"] = match.Validator
 	}
 
-	// Add metadata if available (with rounded floats)
+	// Add metadata if available (with rounded floats). Skip the explanation
+	// key here — it is surfaced as a first-class "explanation" property below
+	// (and in the message), so it gets exactly one representation.
 	if len(match.Metadata) > 0 {
-		// Deep copy and round all float values in metadata
 		roundedMetadata := make(map[string]interface{})
 		for key, value := range match.Metadata {
+			if key == explain.MetadataKey {
+				continue
+			}
 			roundedMetadata[key] = roundMetadataFloats(value)
 		}
-		properties["metadata"] = roundedMetadata
+		if len(roundedMetadata) > 0 {
+			properties["metadata"] = roundedMetadata
+		}
+	}
+
+	// Add the advisory explanation as a structured, first-class property.
+	if ex, ok := explain.FromMatch(match); ok {
+		properties["explanation"] = map[string]interface{}{
+			"rationale":             ex.Rationale,
+			"verdict":               string(ex.Verdict),
+			"draft_suppress_reason": ex.DraftSuppressReason,
+		}
 	}
 
 	// Add context keywords if available
@@ -372,6 +389,13 @@ func (m *VulnerabilityMapper) buildMessage(match detector.Match, options formatt
 		if len(match.Context.NegativeKeywords) > 0 {
 			message.WriteString(fmt.Sprintf(". Negative indicators: %s", strings.Join(match.Context.NegativeKeywords, ", ")))
 		}
+	}
+
+	// Surface the advisory explanation in the message itself (present only when
+	// scanned with --explain) so it reaches the GitHub code-scanning annotation
+	// a reviewer actually reads — not just the result's properties bag.
+	if ex, ok := explain.FromMatch(match); ok {
+		message.WriteString(fmt.Sprintf("\nWhy: %s\nVerdict: %s", ex.Rationale, ex.Verdict))
 	}
 
 	return SARIFMessage{

@@ -5,6 +5,7 @@ package shared
 
 import (
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/formatters"
 )
 
@@ -24,9 +25,20 @@ type JSONMatch struct {
 	Filename        string                 `json:"filename" yaml:"filename"`
 	Validator       string                 `json:"validator,omitempty" yaml:"validator,omitempty"`
 	Metadata        map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Explanation     *JSONExplanation       `json:"explanation,omitempty" yaml:"explanation,omitempty"`
 	FullLine        string                 `json:"full_line,omitempty" yaml:"full_line,omitempty"`
 	BeforeText      string                 `json:"before_text,omitempty" yaml:"before_text,omitempty"`
 	AfterText       string                 `json:"after_text,omitempty" yaml:"after_text,omitempty"`
+}
+
+// JSONExplanation is the first-class, schema-stable rendering of an advisory
+// explanation (present only when scanned with --explain). It is lifted out of
+// the raw Metadata map so consumers get a defined field instead of a nested
+// blob, and so the explanation has exactly one representation on the wire.
+type JSONExplanation struct {
+	Rationale           string `json:"rationale" yaml:"rationale"`
+	Verdict             string `json:"verdict" yaml:"verdict"`
+	DraftSuppressReason string `json:"draft_suppress_reason,omitempty" yaml:"draft_suppress_reason,omitempty"`
 }
 
 // FilterMatchesByConfidence filters matches based on confidence level settings
@@ -60,7 +72,15 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 	for _, match := range matches {
 		metadata := make(map[string]interface{})
 		for k, v := range match.Metadata {
+			// The explanation is surfaced as a first-class field below; don't
+			// also dump it as a raw blob in metadata (one representation only).
+			if k == explain.MetadataKey {
+				continue
+			}
 			metadata[k] = v
+		}
+		if len(metadata) == 0 {
+			metadata = nil // keep `metadata` omitted rather than emitting {}
 		}
 
 		confidenceLevel := GetConfidenceLevel(match.Confidence)
@@ -74,6 +94,14 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 			Filename:        match.Filename,
 			Validator:       match.Validator,
 			Metadata:        metadata,
+		}
+
+		if ex, ok := explain.FromMatch(match); ok {
+			jsonMatch.Explanation = &JSONExplanation{
+				Rationale:           ex.Rationale,
+				Verdict:             string(ex.Verdict),
+				DraftSuppressReason: ex.DraftSuppressReason,
+			}
 		}
 
 		if options.Verbose {
