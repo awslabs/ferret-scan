@@ -713,3 +713,30 @@ func TestEnsureCaseInsensitive(t *testing.T) {
 		}
 	}
 }
+
+// TestTradeSecretSuppressedByOpenSourceLicense is a regression test for L12: a
+// trade-secret marker (Proprietary/Confidential/Trade Secret) on a line that
+// also carries a recognized open-source / public-domain license must be capped
+// below the MEDIUM threshold, since open licensing contradicts trade-secrecy.
+func TestTradeSecretSuppressedByOpenSourceLicense(t *testing.T) {
+	v := NewValidator()
+	tsConf := func(line string) float64 {
+		matches, _ := v.ValidateContent(line+"\n", "test.txt")
+		for _, m := range matches {
+			if mt, ok := m.Metadata["ip_type"]; ok && mt == "trade_secret" {
+				return m.Confidence
+			}
+		}
+		return -1
+	}
+	for _, line := range []string{
+		"Proprietary blend, MIT license applies",
+		"Confidential? No, this is open source",
+		"Trade Secret SPDX-License-Identifier: Apache-2.0",
+		"Proprietary algorithm released under the GPL",
+	} {
+		if c := tsConf(line); c >= 60 {
+			t.Errorf("L12: %q should be capped below MEDIUM with an OSS license present, got %.1f", line, c)
+		}
+	}
+}

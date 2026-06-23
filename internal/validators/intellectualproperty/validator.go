@@ -20,6 +20,26 @@ import (
 // on every call.
 var copyrightYearPattern = regexp.MustCompile(`\d{4}(-\d{4})?`)
 
+// openSourceLicenseMarkers are unambiguous indicators that a line/file is
+// openly licensed (or public domain), and therefore not a trade secret.
+var openSourceLicenseMarkers = []string{
+	"open source", "open-source", "public domain", "creative commons",
+	"mit license", "apache license", "apache-2.0", "bsd license",
+	"gpl", "lgpl", "mpl", "mozilla public license", "spdx-license-identifier",
+}
+
+// containsOpenSourceLicense reports whether the line carries a recognized
+// open-source / public-domain license marker (case-insensitive).
+func containsOpenSourceLicense(line string) bool {
+	lower := strings.ToLower(line)
+	for _, m := range openSourceLicenseMarkers {
+		if strings.Contains(lower, m) {
+			return true
+		}
+	}
+	return false
+}
+
 // leadingFlagGroup matches a genuine inline-flag group at the start of a regex —
 // (?i), (?im), (?-i), (?s:...) — but NOT a non-capturing group "(?:..." or a
 // named group "(?P<...". Used by ensureCaseInsensitive to decide whether a
@@ -942,6 +962,17 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 				// Analyze context and adjust confidence
 				contextImpact := v.AnalyzeContext(match, contextInfo)
 				confidence += contextImpact
+
+				// A recognized open-source / public-domain license marker on the
+				// line is decisive evidence the content is NOT a trade secret (L12):
+				// hard-cap a trade_secret finding below the 60 MEDIUM threshold so a
+				// file clearly marked MIT/Apache/GPL/"open source"/"public domain"
+				// does not emit a MEDIUM "Proprietary"/"Confidential" finding. The
+				// matched word and "license" are themselves positive keywords, so
+				// the per-keyword penalty alone could not reliably suppress these.
+				if ipType == "trade_secret" && containsOpenSourceLicense(line) && confidence > 45 {
+					confidence = 45
+				}
 
 				// Ensure confidence stays within bounds
 				if confidence > 100 {
