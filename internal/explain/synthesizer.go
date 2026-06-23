@@ -167,12 +167,24 @@ func passedChecks(checks map[string]bool) []string {
 }
 
 // describeType renders a readable subject, preferring vendor when present
-// (e.g. "a Visa credit card" rather than just "VISA").
+// (e.g. "a Visa card"). It avoids redundancy when the vendor and the finding
+// type are the same word (e.g. type "VISA" + vendor "Visa" -> "a Visa card",
+// not "a Visa visa").
 func describeType(m detector.Match) string {
-	if vendor, ok := metaString(m, "vendor"); ok && vendor != "" {
-		return fmt.Sprintf("a %s %s", vendor, friendlyType(m.Type))
-	}
 	t := friendlyType(m.Type)
+	if vendor, ok := metaString(m, "vendor"); ok && vendor != "" {
+		if strings.EqualFold(vendor, t) {
+			// Vendor already names the type. Add a generic noun for readability
+			// only for card-like findings (the credit-card validator is the
+			// one that sets a vendor matching the type); otherwise the vendor
+			// name alone reads fine.
+			if _, ok := m.Metadata["card_type"]; ok {
+				return "a " + vendor + " card"
+			}
+			return "a " + vendor
+		}
+		return fmt.Sprintf("a %s %s", vendor, t)
+	}
 	if startsWithVowel(t) {
 		return "an " + t
 	}

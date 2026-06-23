@@ -28,6 +28,7 @@ import (
 	// GENAI_DISABLED: Cost estimation for GenAI services
 	// "github.com/awslabs/ferret-scan/internal/cost"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/help"
 	"github.com/awslabs/ferret-scan/internal/observability"
 	"github.com/awslabs/ferret-scan/internal/redactors"
@@ -829,6 +830,7 @@ func main() {
 	enablePreprocessors := flag.Bool("enable-preprocessors", true, "Enable text extraction from documents (PDF, Office files) (default: true, use --enable-preprocessors=false to disable)")
 	preprocessOnly := flag.Bool("preprocess-only", false, "Output preprocessed text and exit (no validation or redaction)")
 	preprocessOnlyShort := flag.Bool("p", false, "Output preprocessed text and exit (alias for --preprocess-only)")
+	explainFindings := flag.Bool("explain", false, "Annotate each finding with a plain-language rationale, a verdict (likely real/test/uncertain), and a drafted suppression reason. Fully offline; no data leaves the host.")
 	// GENAI_DISABLED: GenAI-related command line flags
 	// enableGenAI := flag.Bool("enable-genai", false, "Enable AI-powered services: Textract OCR, Transcribe, and Comprehend PII detection (requires AWS credentials, data sent to AWS, costs may apply)")
 	// genaiServices := flag.String("genai-services", "all", "Comma-separated list of GenAI services to use: textract, transcribe, comprehend, or 'all' (only used with --enable-genai)")
@@ -1772,6 +1774,14 @@ func main() {
 		} else {
 			unsuppressedMatches = append(unsuppressedMatches, match)
 		}
+	}
+
+	// Advisory explanation pass (opt-in via --explain). Runs AFTER the
+	// suppression split so it only annotates findings that will surface, and
+	// it never mutates Confidence — so suppression-hash identity (used by
+	// GenerateSuppressionRules below) is unaffected. Fully offline.
+	if *explainFindings {
+		explain.Annotate(unsuppressedMatches, explain.NewSignalSynthesizer())
 	}
 
 	if suppressedCount > 0 {

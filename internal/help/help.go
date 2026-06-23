@@ -118,6 +118,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --show-match\t\tDisplay the actual matched text in findings (otherwise shows [HIDDEN])")
 	fmt.Fprintln(w, "  --enable-preprocessors\t\tEnable text extraction from documents (PDF, Office files) (default: true, use --enable-preprocessors=false to disable)")
 	fmt.Fprintln(w, "  --preprocess-only, -p\t\tOutput preprocessed text and exit (no validation or redaction)")
+	fmt.Fprintln(w, "  --explain\t\tAnnotate each finding with a plain-language rationale, a verdict (likely real/test/uncertain), and a drafted suppression reason. Fully offline; no data leaves the host.")
 	// GENAI_DISABLED: GenAI-related command line options
 	// fmt.Fprintln(w, "  --enable-genai\t\tEnable AI-powered services: Textract OCR, Transcribe, Comprehend PII (AWS costs apply)")
 	// fmt.Fprintln(w, "  --genai-services\t<services>\tGenAI services to use: textract,transcribe,comprehend,all (default: all)")
@@ -148,6 +149,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Println("  Basic Usage:")
 	h.colors["example"].Println("    ferret-scan --file sample.txt")
 	h.colors["example"].Println("    ferret-scan --file sample.txt --confidence high,medium --verbose")
+	h.colors["example"].Println("    ferret-scan --file sample.txt --explain  # add a plain-language why/verdict to each finding (offline)")
 	fmt.Println("  File Exclusion:")
 	h.colors["example"].Println("    ferret-scan --file . --recursive --exclude '.git,*.log'")
 	h.colors["example"].Println("    ferret-scan --file '*.txt' --exclude 'test_*,temp/'")
