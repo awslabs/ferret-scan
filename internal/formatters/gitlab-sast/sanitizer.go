@@ -72,6 +72,15 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 		} else {
 			description.WriteString("\n**Context:** [HIDDEN] (use --show-match to include the surrounding line)\n")
 		}
+	} else if showMatch && match.Text != "" {
+		// Validator-independent reveal path. SanitizeMessage always emits
+		// "[HIDDEN]", so the Context line above is normally the only place the
+		// matched value can surface — but some validators (e.g. secrets/AWS
+		// keys) never populate Context.FullLine, so --show-match would reveal
+		// nothing for them, contradicting the flag's contract. Fall back to the
+		// matched value itself so every validator honors --show-match, while the
+		// deny-by-default branch (no --show-match) still emits nothing here.
+		description.WriteString(fmt.Sprintf("\n**Matched value:**\n```\n%s\n```\n", match.Text))
 	}
 
 	// Add metadata information if available

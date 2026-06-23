@@ -90,3 +90,48 @@ func TestTextFormatter_VerboseDetailedViewDoesNotLeak(t *testing.T) {
 		t.Errorf("--show-match should reveal the value in verbose output")
 	}
 }
+
+// TestTextFormatter_PrecommitHonorsShowMatch is a regression test for the
+// pre-commit reveal gap: formatPrecommitOutput never printed match.Text, so
+// --show-match was a silent no-op there even though the resolution guidance
+// told users to "Use --show-match flag to see exact matches." The matched
+// value must surface in pre-commit output when ShowMatch is set, and stay
+// [HIDDEN] when it is not (so the hint is truthful in both directions).
+func TestTextFormatter_PrecommitHonorsShowMatch(t *testing.T) {
+	const secret = "4929-3813-3266-4295"
+	matches := []detector.Match{{
+		Text:       secret,
+		LineNumber: 2,
+		Type:       "CREDIT_CARD",
+		Confidence: 100,
+		Filename:   "cards.tsv",
+		Validator:  "creditcard",
+		Context:    detector.ContextInfo{FullLine: "Robert Aragon\t" + secret},
+	}}
+	levels := map[string]bool{"high": true, "medium": true, "low": true}
+
+	// Hidden: pre-commit output must not print the value; it shows [HIDDEN].
+	hidden, err := NewFormatter().Format(matches, nil, formatters.FormatterOptions{
+		PrecommitMode: true, ShowMatch: false, NoColor: true, ConfidenceLevel: levels,
+	})
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+	if strings.Contains(hidden, secret) {
+		t.Errorf("pre-commit output leaked the value with ShowMatch=false:\n%s", hidden)
+	}
+	if !strings.Contains(hidden, "[HIDDEN]") {
+		t.Errorf("pre-commit output should show [HIDDEN] for the match when ShowMatch=false:\n%s", hidden)
+	}
+
+	// Revealed: --show-match surfaces the value (makes the resolution hint honest).
+	shown, err := NewFormatter().Format(matches, nil, formatters.FormatterOptions{
+		PrecommitMode: true, ShowMatch: true, NoColor: true, ConfidenceLevel: levels,
+	})
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+	if !strings.Contains(shown, secret) {
+		t.Errorf("pre-commit --show-match should reveal the matched value:\n%s", shown)
+	}
+}

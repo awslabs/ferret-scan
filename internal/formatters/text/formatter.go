@@ -774,6 +774,13 @@ func (f *Formatter) formatPrecommitOutput(matches []detector.Match, suppressedMa
 					f.getPrecommitIssueDescription(match),
 					strings.ToLower(confidenceLevel))
 
+				// Honor --show-match here too, so the resolution hint below
+				// ("Use --show-match flag to see exact matches") is truthful in
+				// pre-commit mode. displayMatchText returns "[HIDDEN]" by default
+				// and the raw value only when ShowMatch is set, so the default
+				// pre-commit output still never prints the matched value.
+				fmt.Fprintf(&builder, "    match: %s\n", displayMatchText(match, options))
+
 				// Per-finding explanation when scanned with --explain: promote
 				// the "why" and a verdict to the pre-commit gate, the highest-
 				// friction moment, instead of leaving it in verbose-only output.
