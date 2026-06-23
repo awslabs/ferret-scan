@@ -902,3 +902,51 @@ func TestIPAddressValidator_FullFormHexTupleNotHigh(t *testing.T) {
 		t.Errorf("compressed public IPv6 with context should stay HIGH, got %.1f", best)
 	}
 }
+
+// TestIPAddressValidator_LowSeverityFindings covers four LOW-severity fixes:
+// L13 5+-octet dotted sequences don't leak their leading IPv4; L14 CGNAT /
+// benchmark ranges are non-sensitive; L15 single-host test IPs match exactly
+// (not by prefix); L16 context keywords match whole words.
+func TestIPAddressValidator_LowSeverityFindings(t *testing.T) {
+	v := NewValidator()
+
+	// L13: a 5+-octet dotted sequence must not surface its leading four octets.
+	if m, _ := v.ValidateContent("ref 40.71.74.0.99 here", "test.txt"); len(m) > 0 {
+		t.Errorf("L13: 5-octet sequence should not yield an IP match, got %d", len(m))
+	}
+
+	// L14: CGNAT (RFC 6598) and benchmarking (RFC 2544) are not sensitive.
+	for _, line := range []string{"host 100.64.1.1 connected", "bench 198.18.0.5 ran"} {
+		if m, _ := v.ValidateContent(line, "test.txt"); len(m) > 0 {
+			t.Errorf("L14: non-sensitive range in %q should be filtered, got %d", line, len(m))
+		}
+	}
+
+	// L15: a real public IP adjacent to a single-host test IP value must still
+	// surface (prefix matching previously suppressed 1.1.1.10-1.1.1.199 etc.).
+	if v.isTestIP("8.8.8.88") {
+		t.Error("L15: 8.8.8.88 is a real IP, not the test host 8.8.8.8")
+	}
+	if v.isTestIP("1.1.1.123") {
+		t.Error("L15: 1.1.1.123 is a real IP, not the test host 1.1.1.1")
+	}
+	// The exact test hosts are still classified as test IPs.
+	for _, ip := range []string{"1.1.1.1", "8.8.8.8"} {
+		if !v.isTestIP(ip) {
+			t.Errorf("L15: %s should still be a known test IP", ip)
+		}
+	}
+
+	// L16: a public IP near prose containing a substring of a negative keyword
+	// ("nullable" contains "null") should not be demoted out of HIGH.
+	matches, _ := v.ValidateContent("the nullable server 13.52.11.22 responded", "test.txt")
+	var best float64
+	for _, m := range matches {
+		if m.Confidence > best {
+			best = m.Confidence
+		}
+	}
+	if best < 90 {
+		t.Errorf("L16: 'nullable' should not demote a real IP below HIGH, got %.1f", best)
+	}
+}

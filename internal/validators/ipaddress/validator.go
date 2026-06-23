@@ -223,6 +223,9 @@ func NewValidator() *Validator {
 		"192.0.2.0/24",    // RFC 5737 TEST-NET-1
 		"198.51.100.0/24", // RFC 5737 TEST-NET-2
 		"203.0.113.0/24",  // RFC 5737 TEST-NET-3
+		"100.64.0.0/10",   // RFC 6598 carrier-grade NAT shared space (not end-user identifying)
+		"198.18.0.0/15",   // RFC 2544 benchmarking
+		"192.0.0.0/24",    // RFC 7335 IETF protocol assignments
 	} {
 		if _, network, err := net.ParseCIDR(cidr); err == nil {
 			v.nonSensitiveNets = append(v.nonSensitiveNets, network)
@@ -438,11 +441,12 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	var confidenceImpact float64 = 0
 
-	// Check for positive keywords (increase confidence)
+	// Check for positive keywords (increase confidence). Whole-word matching only,
+	// so short keywords ("ip"/"nat") don't fire inside "description"/"signature".
 	for _, keyword := range v.positiveKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if ipContainsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if ipContainsKeyword(context.FullLine, keyword) {
 				confidenceImpact += 12 // +12% for keywords in the same line
 			} else {
 				confidenceImpact += 6 // +6% for keywords in surrounding context
@@ -450,11 +454,12 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		}
 	}
 
-	// Check for negative keywords (decrease confidence)
+	// Check for negative keywords (decrease confidence). Whole-word matching, so
+	// "null"/"bar"/"baz"/"temp" don't fire inside nullable/barometer/bazaar/template.
 	for _, keyword := range v.negativeKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if ipContainsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if ipContainsKeyword(context.FullLine, keyword) {
 				confidenceImpact -= 30 // -30% for negative keywords in the same line
 			} else {
 				confidenceImpact -= 15 // -15% for negative keywords in surrounding context
@@ -484,7 +489,7 @@ func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string
 
 	var found []string
 	for _, keyword := range keywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if ipContainsKeyword(fullContext, keyword) {
 			found = append(found, keyword)
 		}
 	}
@@ -630,14 +635,21 @@ func (v *Validator) cleanIPAddress(ip string) string {
 func (v *Validator) isTestIP(ip string) bool {
 	cleanIP := v.cleanIPAddress(ip)
 
-	// Check against known test patterns
+	// Single-host test/example addresses are matched by EXACT equality, not
+	// HasPrefix: a prefix test made "1.1.1.1" also match real public IPs like
+	// "1.1.1.10".."1.1.1.199" and "8.8.8.8" match "8.8.8.88", silently dropping
+	// genuine addresses (L15). Multi-host /24 prefixes keep HasPrefix below.
 	for _, pattern := range v.knownTestPatterns {
-		if strings.HasPrefix(cleanIP, pattern) {
+		if strings.HasSuffix(pattern, ".") {
+			if strings.HasPrefix(cleanIP, pattern) {
+				return true
+			}
+		} else if cleanIP == pattern {
 			return true
 		}
 	}
 
-	// RFC 5737 test ranges
+	// RFC 5737 test ranges (/24 prefixes)
 	testRanges := []string{
 		"192.0.2.",    // TEST-NET-1
 		"198.51.100.", // TEST-NET-2
@@ -826,6 +838,19 @@ func (v *Validator) isEmbeddedInString(match, line string) bool {
 		if (charAfter >= 'a' && charAfter <= 'z') ||
 			(charAfter >= 'A' && charAfter <= 'Z') ||
 			(charAfter >= '0' && charAfter <= '9') {
+			return true
+		}
+	}
+
+	// For a dotted-decimal IPv4 match, a '.' immediately before or after means the
+	// match is the leading/trailing four octets of a LONGER dotted sequence (e.g.
+	// "40.71.74.0" extracted from "40.71.74.0.99") — not a standalone IP. The
+	// previous alnum-only check missed this because '.' is not alphanumeric.
+	if strings.Contains(match, ".") && !strings.Contains(match, ":") {
+		if matchIndex > 0 && line[matchIndex-1] == '.' {
+			return true
+		}
+		if matchEnd < len(line) && line[matchEnd] == '.' {
 			return true
 		}
 	}
