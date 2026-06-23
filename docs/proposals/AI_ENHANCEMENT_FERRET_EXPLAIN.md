@@ -168,7 +168,9 @@ Thread per-finding reasons through `GenerateSuppressionRules` (the ~3-call-site 
 - ✅ **Phase 1a** — `internal/explain` package (`Explainer`, `Explanation`, `SignalSynthesizer`, `Annotate`/`FromMatch`); `Match.Clear()` scrubs the annotation. Unit-tested.
 - ✅ **Phase 1b** — `--explain` flag (off by default); annotation wired at the post-detection seam; text verbose + pre-commit output render the explanation.
 - ✅ **Phase 2** — first-class explanation across **JSON/YAML** (typed field, lifted out of the raw metadata blob), **SARIF** (message + structured property), and **gitlab-sast** (sanitized description). `--generate-suppressions` now writes the per-finding **drafted reason** (falling back to the generic reason when unannotated). Cross-format + suppression-reason tests added.
-  - Design note: rather than change the `GenerateSuppressionRules` signature, the drafted reason is read per-match via `explain.FromMatch` inside the generator — same effect, zero call-site churn. The CLI annotates the full match set *before* the suppression split so both the generator (operates on all matches) and the formatters (unsuppressed subset) see it. "Web UI prefill" remains a small follow-up.
+  - Design note: rather than change the `GenerateSuppressionRules` signature, the drafted reason is read per-match via `explain.FromMatch` inside the generator — same effect, zero call-site churn. The CLI annotates the full match set *before* the suppression split so both the generator (operates on all matches) and the formatters (unsuppressed subset) see it.
+  - **Web UI prefill (done):** the web `/scan` path annotates findings after the filename rewrite, so the JSON each finding carries includes `explanation.draft_suppress_reason`; the "Add Suppression" button passes it (via a `data-reason` attribute, attribute-escaped) to prefill the reason field, editable before saving.
+  - Verified round-trip: a suppression rule generated from an annotated finding still suppresses that finding (and its un-annotated equivalent) on re-scan — the explanation never changes the suppression hash. Regression-tested.
 - ⬜ **Phase 3** — not started.
 
 ---

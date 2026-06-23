@@ -204,6 +204,37 @@ func TestGenerateSuppressionRules_PrefersDraftedExplanationReason(t *testing.T) 
 	}
 }
 
+func TestSuppressionRoundTrip_ExplainDoesNotChangeHash(t *testing.T) {
+	// Regression: the --explain annotation must not alter a finding's
+	// suppression identity. A rule generated from an annotated match must
+	// still suppress the same finding on re-scan (and the un-annotated
+	// equivalent), proving the explanation didn't change the hash.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "suppressions.yaml")
+	sm := NewSuppressionManager(path)
+
+	base := newTestMatch("CREDIT_CARD", "4111111111111111", "card.txt")
+
+	// Annotate a copy and generate a rule from it (enabled).
+	annotated := []detector.Match{base}
+	explain.Annotate(annotated, explain.NewSignalSynthesizer())
+	if _, ok := explain.FromMatch(annotated[0]); !ok {
+		t.Fatal("precondition: match should be annotated")
+	}
+	if err := sm.GenerateSuppressionRules(annotated, "generic", true); err != nil {
+		t.Fatalf("GenerateSuppressionRules: %v", err)
+	}
+
+	// The annotated match is suppressed...
+	if ok, _ := sm.IsSuppressed(annotated[0]); !ok {
+		t.Error("annotated finding should be suppressed by the rule generated from it")
+	}
+	// ...and so is the identical UN-annotated match (same hash).
+	if ok, _ := sm.IsSuppressed(base); !ok {
+		t.Error("un-annotated finding should be suppressed by the same rule — explanation must not change the hash")
+	}
+}
+
 func TestGetConfigPath(t *testing.T) {
 	path := "/some/path.yaml"
 	sm := NewSuppressionManager(path)

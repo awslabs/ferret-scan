@@ -2144,6 +2144,18 @@
             return div.innerHTML;
         }
 
+        // escapeAttr escapes a string for safe use inside a double-quoted HTML
+        // attribute value. escapeHtml (textContent/innerHTML) does NOT escape
+        // quotes, so it is unsafe for attributes that may contain them.
+        function escapeAttr(text) {
+            return String(text == null ? '' : text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // Windows path formatting functions
         // These functions handle cross-platform path display in the web UI
         // The server normalizes paths to web-friendly format, but these provide additional client-side formatting
@@ -3017,7 +3029,7 @@
                         <td>${Math.round(finding.confidence)}%</td>
                         <td>${finding.line_number}</td>
                         <td>
-                            <button onclick="showAddSuppressionModal('${item.hash}')" class="button" style="padding: 4px 8px; font-size: 12px;">Add Suppression</button>
+                            <button data-hash="${escapeAttr(item.hash)}" data-reason="${escapeAttr((finding.explanation && finding.explanation.draft_suppress_reason) || '')}" onclick="showAddSuppressionModal(this.dataset.hash, this.dataset.reason)" class="button" style="padding: 4px 8px; font-size: 12px;">Add Suppression</button>
                         </td>
                     `;
                 } else {
@@ -3485,9 +3497,12 @@
             return false;
         }
 
-        function showAddSuppressionModal(hash) {
+        function showAddSuppressionModal(hash, draftReason) {
             document.getElementById('addSuppressionHash').value = hash;
-            document.getElementById('addSuppressionReason').value = '';
+            // Prefill the reason with the drafted suppression reason from the
+            // --explain pass when available; the operator can edit before
+            // saving. Falls back to empty for unannotated findings.
+            document.getElementById('addSuppressionReason').value = draftReason || '';
             document.getElementById('addSuppressionModal').classList.remove('hidden');
         }
 
