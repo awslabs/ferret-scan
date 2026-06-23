@@ -85,8 +85,16 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 
 		confidenceLevel := GetConfidenceLevel(match.Confidence)
 
+		// Determine display text based on ShowMatch option. When ShowMatch is
+		// false, substitute "[HIDDEN]" so raw sensitive data is never serialized
+		// into JSON/YAML output, matching the text, CSV, SARIF, and JUnit formatters.
+		displayText := "[HIDDEN]"
+		if options.ShowMatch {
+			displayText = match.Text
+		}
+
 		jsonMatch := JSONMatch{
-			Text:            match.Text,
+			Text:            displayText,
 			LineNumber:      match.LineNumber,
 			Type:            match.Type,
 			Confidence:      match.Confidence,

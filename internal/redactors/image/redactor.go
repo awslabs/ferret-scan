@@ -401,14 +401,24 @@ func (imr *ImageMetadataRedactor) redactImageMetadata(originalPath, outputPath s
 		err = imr.redactJPEGMetadata(originalFile, outputFile, metadata, &redactionMap, strategy)
 	case FormatPNG:
 		err = imr.redactPNGMetadata(originalFile, outputFile, metadata, &redactionMap, strategy)
-	case FormatGIF, FormatTIFF, FormatBMP, FormatWEBP:
-		// For other formats, copy image data without metadata
-		err = imr.redactGenericImageMetadata(originalFile, outputFile, format, metadata, &redactionMap, strategy)
 	default:
-		return nil, fmt.Errorf("unsupported image format: %s", format.String())
+		// Metadata stripping is only implemented for JPEG and PNG. Other formats
+		// (GIF, TIFF, BMP, WEBP) have no real redaction path and must NOT silently
+		// copy the original through — doing so would leave EXIF/GPS/serial metadata
+		// intact in a file the caller believes was redacted. Fail safe instead.
+		err = fmt.Errorf("metadata redaction not implemented for %s images", format.String())
 	}
 
 	if err != nil {
+		// Remove the output file so a failed/unredacted result is never mistaken
+		// for a successfully redacted document.
+		outputFile.Close()
+		if rmErr := os.Remove(outputPath); rmErr != nil {
+			imr.logEvent("output_cleanup_failed", false, map[string]interface{}{
+				"output_path": outputPath,
+				"error":       rmErr.Error(),
+			})
+		}
 		return nil, fmt.Errorf("failed to redact %s metadata: %w", format.String(), err)
 	}
 
@@ -505,44 +515,6 @@ func (imr *ImageMetadataRedactor) redactPNGMetadata(originalFile *os.File, outpu
 		},
 	}
 	*redactionMap = append(*redactionMap, mapping)
-
-	return nil
-}
-
-// redactGenericImageMetadata handles metadata removal for other image formats
-func (imr *ImageMetadataRedactor) redactGenericImageMetadata(originalFile *os.File, outputFile *os.File, format ImageFormat, metadata *ImageMetadata, redactionMap *[]redactors.RedactionMapping, strategy redactors.RedactionStrategy) error {
-	// For formats we can't specifically handle, copy the file and create a mapping
-	// indicating that metadata removal was attempted
-
-	_, err := io.Copy(outputFile, originalFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy image file: %w", err)
-	}
-
-	// Create a generic metadata removal mapping
-	mapping := redactors.RedactionMapping{
-		RedactedText: "[METADATA-COPY]",
-		Position: redactors.TextPosition{
-			Line:      0,
-			StartChar: 0,
-			EndChar:   len(format.String()) + 9,
-		},
-		DataType:   "IMAGE_METADATA",
-		Strategy:   strategy,
-		Confidence: 0.5, // Lower confidence for generic handling
-
-		Metadata: map[string]interface{}{
-			"metadata_type": "generic_copy",
-			"image_format":  format.String(),
-			"note":          "File copied without specific metadata processing",
-		},
-	}
-	*redactionMap = append(*redactionMap, mapping)
-
-	imr.logEvent("generic_image_processed", true, map[string]interface{}{
-		"format": format.String(),
-		"note":   "Copied without specific metadata processing",
-	})
 
 	return nil
 }
