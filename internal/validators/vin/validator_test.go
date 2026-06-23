@@ -5,6 +5,8 @@ package vin
 
 import (
 	"testing"
+
+	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 func TestVINValidator_ValidVINs(t *testing.T) {
@@ -253,5 +255,118 @@ func TestVINValidator_LegacyValidate(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Errorf("Validate() should return empty matches, got %d", len(matches))
+	}
+}
+
+// TestVINValidator_NonNorthAmericanCheckDigit is a regression test for the
+// mandatory-check-digit gate that silently dropped most non-North-American
+// VINs. The ISO 3779 check digit is required only for WMI region 1-5 (North
+// America); EU/Asian manufacturers commonly do not encode it, so genuine VINs
+// from WVW/WAU/ZFF (all in knownWMIs) were being hard-rejected. We assert those
+// are now detected, while VINs that fail the check digit WITHOUT a corroborating
+// signal (NA region, or unknown WMI) remain rejected so we add no false positives.
+func TestVINValidator_NonNorthAmericanCheckDigit(t *testing.T) {
+	validator := NewValidator()
+
+	// True positives recovered: non-NA VINs with a known WMI that fail the
+	// (optional) NA check digit.
+	detect := []struct {
+		name    string
+		content string
+	}{
+		{"VW Europe", "VIN: WVWZZZ1JZ3W386752"},
+		{"Audi Europe", "vehicle identification number WAUZZZ8K9BA123456"},
+		{"Ferrari Italy", "chassis ZFF67NFA8E0193082 on file"},
+	}
+	for _, tt := range detect {
+		t.Run("detect/"+tt.name, func(t *testing.T) {
+			matches, err := validator.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent() error = %v", err)
+			}
+			if len(matches) == 0 {
+				t.Errorf("%s: expected non-NA VIN to be detected, got none", tt.name)
+			}
+		})
+	}
+
+	// False-positive guards: failing the check digit with no corroboration must
+	// still be rejected.
+	reject := []struct {
+		name    string
+		content string
+	}{
+		// Non-NA shape, unknown WMI, bad check digit -> not enough signal.
+		{"Unknown WMI random token", "ref ABCDEFGH1JKLMNPRS in log"},
+		// North American region (starts with 1) with a wrong check digit is a
+		// genuinely invalid VIN and must stay rejected (unchanged behavior).
+		{"NA VIN bad check digit", "VIN: 1HGBH41JAMN109186"},
+	}
+	for _, tt := range reject {
+		t.Run("reject/"+tt.name, func(t *testing.T) {
+			matches, err := validator.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent() error = %v", err)
+			}
+			if len(matches) > 0 {
+				t.Errorf("%s: expected no match, got %d", tt.name, len(matches))
+			}
+		})
+	}
+
+	// A verified (valid check digit) VIN should still outscore a non-NA VIN that
+	// relies only on its WMI, so ranking still favors fully-validated VINs. We
+	// check the base score directly: in the full pipeline a positive context
+	// keyword ("VIN:") saturates both to 100, masking the (real) base-score gap.
+	verifiedConf, vChecks := validator.CalculateConfidence("1HGBH41JXMN109186")
+	wmiOnlyConf, wChecks := validator.CalculateConfidence("WVWZZZ1JZ3W386752")
+	if !vChecks["check_digit"] {
+		t.Error("expected valid check digit for 1HGBH41JXMN109186")
+	}
+	if wChecks["check_digit"] {
+		t.Error("expected invalid check digit for WVWZZZ1JZ3W386752")
+	}
+	if wmiOnlyConf >= verifiedConf {
+		t.Errorf("check-digit-valid VIN (%.1f) should outscore WMI-only VIN (%.1f)",
+			verifiedConf, wmiOnlyConf)
+	}
+}
+
+// TestVINValidator_LowercaseAndMixedCase is a regression test for M19: the
+// uppercase-only regex never matched lowercase/mixed-case VINs (common in
+// logs/JSON/CSV), and the downstream ToUpper was a detection no-op.
+func TestVINValidator_LowercaseAndMixedCase(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"vin: 1hgbh41jxmn109186",
+		"vin 1HgBh41JxMn109186",
+		"chassis WVWZZZ1JZ3W386752 logged",
+	} {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("lowercase/mixed-case VIN should be detected for %q, got none", line)
+		}
+	}
+}
+
+// TestVINValidator_KeywordWordBoundary is a regression test for M18: context
+// keywords matched as substrings ("car" in "carbon", negative "sha" in "shall")
+// fabricated or suppressed confidence. Matching is now whole-word.
+func TestVINValidator_KeywordWordBoundary(t *testing.T) {
+	v := NewValidator()
+	// Phantom positives must contribute nothing.
+	if imp := v.AnalyzeContext("X", detector.ContextInfo{FullLine: "carbon moving study"}); imp != 0 {
+		t.Errorf("'carbon'/'moving' should not register as VIN keywords, impact=%.1f", imp)
+	}
+	// Phantom negative must contribute nothing.
+	if imp := v.AnalyzeContext("X", detector.ContextInfo{FullLine: "we shall proceed"}); imp != 0 {
+		t.Errorf("'shall' should not register as negative keyword 'sha', impact=%.1f", imp)
+	}
+	// Real keywords still boost.
+	if imp := v.AnalyzeContext("X", detector.ContextInfo{FullLine: "vehicle vin chassis"}); imp <= 0 {
+		t.Errorf("real VIN keywords should boost, impact=%.1f", imp)
 	}
 }
