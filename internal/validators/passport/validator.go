@@ -67,6 +67,9 @@ type Validator struct {
 
 	// Valid country codes for passports
 	validCountryCodes map[string]bool
+	// validMRZCountryCodes holds 3-letter ICAO issuing-state codes used in the
+	// MRZ (e.g. "GBR", "USA"), distinct from the 2-letter codes above.
+	validMRZCountryCodes map[string]bool
 
 	// Common English words that might be mistaken for passport numbers
 	commonWords []string
@@ -99,8 +102,24 @@ func NewValidator() *Validator {
 		"Canada": `\b[A-Z]{2}\d{6}\b`,       // Canada: 2 letters followed by 6 digits
 		"EU":     `\b[A-Z]{2}[A-Z0-9]{7}\b`, // EU: 2 letters followed by 7 alphanumeric chars
 		// Removed overly broad Generic pattern - it was causing too many false positives
-		"MRZ":     `\bP[A-Z]{1}[A-Z0-9<]{42,44}\b`,        // Machine Readable Zone format
-		"MRZ_TD3": `\bP[A-Z]{3}[A-Z0-9<]{39}[0-9][0-9]\b`, // MRZ TD3 format
+		// Machine Readable Zone (ICAO 9303). Line 1 of a TD3 passport MRZ is
+		// "P" + document-type filler + 3-letter issuing state + name field,
+		// e.g. "P<GBRSMITH<<JOHN<<...". The character after "P" is the
+		// document sub-type, which for ordinary passports is the filler "<"
+		// (it may also be a letter), so it must be matched by [A-Z<], not
+		// [A-Z]. The previous patterns required a letter there (and MRZ_TD3
+		// required three), so they never matched a standard passport MRZ.
+		// No trailing \b: MRZ lines end in "<" or a digit, and "<" is a
+		// non-word char so \b would fail after it.
+		//
+		// We require a literal "P<" prefix (the document-type filler for an
+		// ordinary passport) followed by a 3-letter issuing state. Requiring
+		// the "<" here — rather than [A-Z<] — is what stops a random uppercase
+		// token like "PRUSA...<no fillers>" from matching: a real line-1 MRZ
+		// for a passport begins "P<". The name field is then "<"-padded, which
+		// the surfacing logic additionally checks (see hasMRZStructure).
+		"MRZ":     `\bP<[A-Z]{3}[A-Z0-9<]{38,40}`, // Machine Readable Zone line 1 (~44-46 chars)
+		"MRZ_TD3": `\bP<[A-Z]{3}[A-Z0-9<]{39}`,    // MRZ TD3 line 1 (exactly 44 chars)
 	}
 
 	compiledPatterns := make(map[string]*regexp.Regexp, len(patterns))
@@ -144,7 +163,8 @@ func NewValidator() *Validator {
 			"primary key", "foreign key", "index", "database", "table", "record",
 			"field", "column", "row", "entry", "item", "element",
 		},
-		validCountryCodes: initValidCountryCodes(),
+		validCountryCodes:    initValidCountryCodes(),
+		validMRZCountryCodes: initValidMRZCountryCodes(),
 		commonWords: []string{
 			"positive", "negative", "passport", "document", "identity", "national",
 			"personal", "official", "original", "certified", "verified", "approved",
@@ -229,6 +249,67 @@ func initValidCountryCodes() map[string]bool {
 		"ZA": true, "EG": true, "NG": true,
 	}
 	return codes
+}
+
+// initValidMRZCountryCodes returns the set of 3-letter ICAO issuing-state
+// codes recognized in passport MRZ lines (a representative subset; ICAO 9303
+// also defines codes like "GBR" for the UK and "D" for Germany, plus special
+// codes such as "UNO"). This mirrors initValidCountryCodes but for the
+// 3-letter MRZ alphabet.
+func initValidMRZCountryCodes() map[string]bool {
+	return map[string]bool{
+		// Europe
+		"GBR": true, "DEU": true, "FRA": true, "ITA": true, "ESP": true,
+		"NLD": true, "BEL": true, "CHE": true, "AUT": true, "SWE": true,
+		"NOR": true, "DNK": true, "FIN": true, "IRL": true, "PRT": true,
+		"POL": true, "CZE": true, "GRC": true, "HUN": true, "ROU": true,
+		// North America
+		"USA": true, "CAN": true, "MEX": true,
+		// Asia
+		"CHN": true, "JPN": true, "KOR": true, "IND": true, "SGP": true,
+		"HKG": true, "TWN": true, "THA": true, "MYS": true, "IDN": true,
+		// Oceania
+		"AUS": true, "NZL": true,
+		// South America
+		"BRA": true, "ARG": true, "CHL": true, "COL": true, "PER": true,
+		// Africa / Middle East
+		"ZAF": true, "EGY": true, "NGA": true, "ARE": true, "SAU": true,
+		"ISR": true, "TUR": true,
+	}
+}
+
+// mrzCountryCode extracts the 3-letter issuing-state code from an MRZ line-1
+// string of the form "P" + sub-code + 3-letter country (e.g. "P<GBR..." ->
+// "GBR"). Returns false if the string is too short to contain one.
+func mrzCountryCode(mrz string) (string, bool) {
+	// positions: [0]=P, [1]=doc sub-code, [2:5]=country code
+	if len(mrz) < 5 {
+		return "", false
+	}
+	return mrz[2:5], true
+}
+
+// hasMRZStructure reports whether s has the structural fingerprint of an ICAO
+// 9303 TD3 line-1 MRZ, beyond merely matching the detection regex. This is the
+// guard that lets a standalone MRZ bypass the prose-context requirement
+// WITHOUT also waving through random long uppercase tokens (base32 secrets,
+// hashes, IDs) that happen to start with a country-code-shaped substring.
+//
+// Two cheap, highly discriminating checks:
+//   - It must begin "P<" (ordinary-passport document-type filler).
+//   - The name field is "<"-padded, so a real line-1 MRZ contains many filler
+//     characters. Random tokens contain none. We require the run of fillers a
+//     genuine MRZ always has; a token with zero/near-zero "<" is rejected.
+func hasMRZStructure(s string) bool {
+	if !strings.HasPrefix(s, "P<") || len(s) < 44 {
+		return false
+	}
+	// Count "<" fillers. Empirically a real TD3 line-1 has ~30+ (the name
+	// field padding); the false-positive tokens we care about have 0. A
+	// conservative floor of 5 cleanly separates the two while tolerating
+	// unusually long names.
+	fillers := strings.Count(s, "<")
+	return fillers >= 5
 }
 
 // Validate implements the detector.Validator interface
@@ -560,6 +641,20 @@ func (v *Validator) hasStrongPassportContext(match string, context *detector.Con
 		return false
 	}
 
+	// A well-formed MRZ is self-evidently a travel document: it begins "P<",
+	// carries a valid 3-letter issuing-state code in-band, and has the "<"-
+	// padded name field characteristic of the format. Such a match needs no
+	// external keywords — requiring prose context here is why standalone MRZ
+	// lines (the common real-world case) were missed entirely. The structure
+	// check (hasMRZStructure) is what prevents a random uppercase token that
+	// merely starts with a country-code-shaped substring from bypassing the
+	// context requirement.
+	if hasMRZStructure(match) {
+		if code, ok := mrzCountryCode(match); ok && v.validMRZCountryCodes[code] {
+			return true
+		}
+	}
+
 	fullContext := strings.ToLower(context.BeforeText + " " + context.FullLine + " " + context.AfterText)
 
 	// Strong indicators - any of these is sufficient
@@ -753,9 +848,8 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		}
 
 	case "MRZ", "MRZ_TD3":
-		// Machine Readable Zone checks
-		// These are more complex and would need specific validation
-		// For now, just check basic format
+		// Machine Readable Zone (ICAO 9303) line 1:
+		// "P" + document-type sub-code + 3-letter issuing-state code + name field.
 		if !strings.HasPrefix(cleanMatch, "P") {
 			confidence -= 20
 			checks["format"] = false
@@ -765,6 +859,20 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		if !reMRZChars.MatchString(cleanMatch) {
 			confidence -= 15
 			checks["valid_characters"] = false
+		}
+
+		// Validate the embedded 3-letter issuing-state code (positions 2-4,
+		// i.e. immediately after "P" + the document sub-code). A real MRZ
+		// carries its country in-band, so this is a strong structural signal:
+		// a valid code boosts confidence (a well-formed MRZ is unambiguous and
+		// should clear the surfacing threshold on its own merit), while an
+		// invalid one drops it.
+		if code, ok := mrzCountryCode(cleanMatch); ok && v.validMRZCountryCodes[code] {
+			confidence += 20
+			checks["valid_country_code"] = true
+		} else {
+			confidence -= 10
+			checks["valid_country_code"] = false
 		}
 
 	case "Generic":
