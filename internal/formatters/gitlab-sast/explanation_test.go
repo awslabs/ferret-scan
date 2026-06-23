@@ -19,7 +19,7 @@ func TestSanitizeDescription_IncludesExplanation(t *testing.T) {
 	}}
 	explain.Annotate(s, explain.NewSignalSynthesizer())
 
-	desc := NewDataSanitizer().SanitizeDescription(s[0])
+	desc := NewDataSanitizer().SanitizeDescription(s[0], false)
 	for _, want := range []string{"**Why:**", "**Verdict:**", "**Suggested suppression reason:**"} {
 		if !strings.Contains(desc, want) {
 			t.Errorf("description missing %q:\n%s", want, desc)
@@ -31,7 +31,7 @@ func TestSanitizeDescription_NoExplanationWhenAbsent(t *testing.T) {
 	m := detector.Match{
 		Text: "x", Type: "EMAIL", Confidence: 50, Filename: "a.go", LineNumber: 1,
 	}
-	desc := NewDataSanitizer().SanitizeDescription(m)
+	desc := NewDataSanitizer().SanitizeDescription(m, false)
 	if strings.Contains(desc, "**Why:**") {
 		t.Errorf("description should not contain explanation when unannotated:\n%s", desc)
 	}

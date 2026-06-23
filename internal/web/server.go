@@ -462,11 +462,22 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		suppressedCount += suppCount
 	}
 
-	// Use CLI's JSON formatter with CLI's confidence parsing
-	// Always use verbose for web UI to include context fields needed for suppression creation
+	// Use CLI's JSON formatter with CLI's confidence parsing.
+	//
+	// The web UI does redaction CLIENT-SIDE: this /scan response is delivered to
+	// the operator's own browser, which stores the real value, displays a
+	// "🔒 [HIDDEN]" placeholder, and reveals it only on click. It also recomputes
+	// the suppression hash from the real text + context (full_line/before/after),
+	// which must match the scan-time hash. So this call MUST receive the real
+	// data: ShowMatch:true defeats the formatter's deny-by-default redaction
+	// (which is meant for file/stdout output, not the interactive UI), and
+	// Verbose:true includes the context fields the hash depends on. The file
+	// download path (/export) still honors the user's --show-match choice
+	// server-side, so exported artifacts remain redacted by default.
 	formatterOptions := formatters.FormatterOptions{
 		ConfidenceLevel: core.ParseConfidenceLevels(confidence),
-		Verbose:         true, // Always verbose for web UI to include context fields
+		Verbose:         true, // Include context fields (needed for suppression creation)
+		ShowMatch:       true, // Deliver real data to the browser; UI redacts client-side
 	}
 
 	// Use CLI's exact JSON formatting

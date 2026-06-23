@@ -82,7 +82,7 @@ func (m *VulnerabilityMapper) MapToSARIFResult(match detector.Match, options for
 		Level:      LevelError, // All sensitive data findings are errors
 		Message:    m.buildMessage(match, options),
 		Locations:  []SARIFLocation{m.buildLocation(match, options)},
-		Properties: m.buildProperties(match),
+		Properties: m.buildProperties(match, options),
 		Rank:       m.calculateRank(match),
 	}
 
@@ -100,7 +100,7 @@ func (m *VulnerabilityMapper) MapSuppressedMatch(suppressed detector.SuppressedM
 		Level:      LevelNone, // Suppressed results use "none" level
 		Message:    m.buildMessage(suppressed.Match, options),
 		Locations:  []SARIFLocation{m.buildLocation(suppressed.Match, options)},
-		Properties: m.buildPropertiesForSuppressed(suppressed),
+		Properties: m.buildPropertiesForSuppressed(suppressed, options),
 		Suppressions: []SARIFSuppression{
 			{
 				Kind:          SuppressionKindInSource,
@@ -122,9 +122,13 @@ func (m *VulnerabilityMapper) buildLocation(match detector.Match, options format
 		},
 	}
 
-	// Add context region if available
-	if contextRegion := m.buildContextRegion(match); contextRegion != nil {
-		location.PhysicalLocation.ContextRegion = contextRegion
+	// Add context region only when ShowMatch is set: its snippet embeds the raw
+	// surrounding line(s) (BeforeText/FullLine/AfterText), which contain the
+	// matched value, so emitting it while the value is hidden would leak it.
+	if options.ShowMatch {
+		if contextRegion := m.buildContextRegion(match); contextRegion != nil {
+			location.PhysicalLocation.ContextRegion = contextRegion
+		}
 	}
 
 	return location
@@ -237,7 +241,7 @@ func (m *VulnerabilityMapper) buildContextRegion(match detector.Match) *SARIFReg
 }
 
 // buildProperties includes confidence, confidenceLevel, validator, and metadata in result properties
-func (m *VulnerabilityMapper) buildProperties(match detector.Match) map[string]interface{} {
+func (m *VulnerabilityMapper) buildProperties(match detector.Match, options formatters.FormatterOptions) map[string]interface{} {
 	properties := make(map[string]interface{})
 
 	// Add confidence information (rounded to 1 decimal place)
@@ -249,20 +253,17 @@ func (m *VulnerabilityMapper) buildProperties(match detector.Match) map[string]i
 		properties["validator"] = match.Validator
 	}
 
-	// Add metadata if available (with rounded floats). Skip the explanation
-	// key here — it is surfaced as a first-class "explanation" property below
-	// (and in the message), so it gets exactly one representation.
-	if len(match.Metadata) > 0 {
-		roundedMetadata := make(map[string]interface{})
-		for key, value := range match.Metadata {
-			if key == explain.MetadataKey {
-				continue
-			}
+	// Add metadata if available (with rounded floats). The shared sanitizer
+	// drops the explanation key (surfaced as a first-class property below) and,
+	// when ShowMatch is false, redacts any value that embeds the raw matched
+	// text so metadata cannot leak what the snippet/message redaction hides.
+	sanitized := shared.SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch)
+	if len(sanitized) > 0 {
+		roundedMetadata := make(map[string]interface{}, len(sanitized))
+		for key, value := range sanitized {
 			roundedMetadata[key] = roundMetadataFloats(value)
 		}
-		if len(roundedMetadata) > 0 {
-			properties["metadata"] = roundedMetadata
-		}
+		properties["metadata"] = roundedMetadata
 	}
 
 	// Add the advisory explanation as a structured, first-class property.
@@ -287,8 +288,8 @@ func (m *VulnerabilityMapper) buildProperties(match detector.Match) map[string]i
 
 // buildPropertiesForSuppressed builds properties for suppressed matches
 // including expiration information
-func (m *VulnerabilityMapper) buildPropertiesForSuppressed(suppressed detector.SuppressedMatch) map[string]interface{} {
-	properties := m.buildProperties(suppressed.Match)
+func (m *VulnerabilityMapper) buildPropertiesForSuppressed(suppressed detector.SuppressedMatch, options formatters.FormatterOptions) map[string]interface{} {
+	properties := m.buildProperties(suppressed.Match, options)
 
 	// Add suppression-specific properties
 	properties["suppressedBy"] = suppressed.SuppressedBy

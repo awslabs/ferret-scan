@@ -31,7 +31,7 @@ type VulnerabilityMapperInterface interface {
 // DataSanitizerInterface defines the contract for data sanitization
 type DataSanitizerInterface interface {
 	SanitizeMessage(match detector.Match) string
-	SanitizeDescription(match detector.Match) string
+	SanitizeDescription(match detector.Match, showMatch bool) string
 	EnsureNoSensitiveData(text string) string
 }
 
@@ -155,7 +155,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 
 		// Sanitize the vulnerability data to ensure no sensitive information is exposed
 		vuln.Message = f.sanitizer.SanitizeMessage(match)
-		vuln.Description = f.sanitizer.SanitizeDescription(match)
+		vuln.Description = f.sanitizer.SanitizeDescription(match, options.ShowMatch)
 
 		// Validate the vulnerability before adding
 		if err := f.validator.ValidateVulnerability(vuln); err != nil {
