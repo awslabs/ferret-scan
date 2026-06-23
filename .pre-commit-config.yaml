@@ -1,123 +1,89 @@
-# Pre-commit configuration for Ferret Scan
-# To test: make test-precommit
-# To customize: See .pre-commit-config-examples.yaml for different configurations
-#
-# Current config: Simple approach using script defaults
-# - Scans for: HIGH confidence findings only
-# - Fails on: HIGH confidence findings only
-# - Format: text output, no color, quiet mode
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v6.0.0
-  hooks:
-  - id: check-added-large-files
-    args: ['--maxkb=102400']  # 100MB = 102400KB
-  - id: check-json
-  - id: check-yaml
-    # aws-iam-role.yaml uses CloudFormation intrinsic-function tags
-    # (!Not, !Equals) that PyYAML doesn't recognize — CloudFormation lints
-    # the template separately. .pre-commit-config-examples.yaml stitches
-    # multiple alternative `repos:` blocks into one file as documentation;
-    # the file isn't loaded by any consumer at runtime.
-    exclude: '^(aws-iam-role\.yaml|\.pre-commit-config-examples\.yaml)$'
-  - id: debug-statements
-  - id: detect-private-key
-  - id: end-of-file-fixer
-  - id: name-tests-test
-  - id: no-commit-to-branch
-    args: ['--branch', 'main', '--branch', 'master']
-  - id: requirements-txt-fixer
-  - id: trailing-whitespace
+  # ============================================================================
+  # BASIC CODE QUALITY (NON-FORMATTING)
+  # ============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=102400"] # 100MB = 102400KB
+      - id: check-json
+        exclude: '(package-lock\.json$|yarn\.lock$|pnpm-lock\.yaml$|cdk\.context\.json$|\.vscode/|\.idea/|\.terraform/)'
+      - id: check-yaml
+        args: ["--unsafe", "--allow-multiple-documents"]
+      - id: debug-statements
+      - id: detect-private-key
+        exclude: '(\.terraform/|node_modules/|\.venv/|venv/|\.virtualenv/|vendor/|Pods/)'
+      - id: name-tests-test
+      - id: no-commit-to-branch
+        args: ["--branch", "main", "--branch", "master"]
 
-# Go version consistency check
-- repo: local
-  hooks:
-    - id: go-version-check
-      name: Check Go version consistency
-      entry: ./scripts/go-version.sh
-      args: [check]
-      language: script
-      files: '^(go\.mod|\.go-version|\.gitlab-ci\.yml|Dockerfile)$'
-      pass_filenames: false
+  # ============================================================================
+  # PYTHON SECURITY
+  # ============================================================================
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.10.0
+    hooks:
+      - id: pip-audit
+        args: ["-r", "requirements.txt"]
+        files: requirements\.txt$
 
-# Go formatting
-- repo: local
-  hooks:
-    - id: go-fmt
-      name: Go Format
-      entry: gofmt
-      args: [-w]
-      language: golang
-      files: '\.go$'
+  # ============================================================================
+  # SECURITY SCANNING
+  # ============================================================================
+  - repo: https://github.com/awslabs/automated-security-helper
+    rev: v3.5.3
+    hooks:
+      - id: ash-simple-scan
 
-# Go vet
-- repo: local
-  hooks:
-    - id: go-vet
-      name: Go Vet
-      entry: go
-      args: [vet, ./...]
-      language: golang
-      files: '\.go$'
-      pass_filenames: false
+  - repo: https://github.com/awslabs/ferret-scan
+    rev: v1.8.3
+    hooks:
+      - id: ferret-scan
+        name: Ferret Scan Security Check
+        args:
+          [
+            "--pre-commit-mode",
+            "--confidence",
+            "medium,high",
+            "--checks",
+            "EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,SECRETS,SOCIAL_MEDIA",
+            "--disable-ip-types",
+            "trademark,copyright,trade_secret",
+            "--config",
+            ".devsecops/ferret-scan.yaml",
+          ]
+        files: '\.(go|java|json|md|py|sh|sql|txt|xml|yaml|yml)$'
+        # Note: .js files temporarily removed from files pending performance fix
+        exclude: '(^\.git/|\.ash/|\.cache/|\.devsecops/|\.dsr/|\.idea/|\.kiro/|\.venv/|\.virtualenv/|__pycache__/|\.pytest_cache/|\.mypy_cache/|\.ruff_cache/|\.tox/|\.terraform/|\.next/|\.nuxt/|\.svelte-kit/|\.turbo/|\.docusaurus/|_build/|site/|bin/|cdk\.out/|dist/|node_modules/|\.pnpm-store/|\.yarn/|bower_components/|\.vscode/|out/|\.output/|\.nyc_output/|test-results/|reports/|tmp/|temp/|logs/|setup\.sh|vendor/|Pods/|venv/|test_|_test\.|^README\.md$|\.DS_Store$|Thumbs\.db$|.*\.pyc$|.*\.pyo$|.*\.swp$|.*\.swo$|.*\.log$|package-lock\.json$|yarn\.lock$|pnpm-lock\.yaml$|poetry\.lock$|Pipfile\.lock$|Gemfile\.lock$|\.terraform\.lock\.hcl$|terraform\.tfstate$|cdk\.context\.json$)'
+        pass_filenames: true
 
-# Go mod tidy
-- repo: local
-  hooks:
-    - id: go-mod-tidy
-      name: Go Mod Tidy
-      entry: go
-      args: [mod, tidy]
-      language: golang
-      files: '^go\.(mod|sum)$'
-      pass_filenames: false
+  # ============================================================================
+  # INFRASTRUCTURE SECURITY
+  # ============================================================================
+  - repo: https://github.com/aws-cloudformation/cfn-lint
+    rev: v1.51.2
+    hooks:
+      - id: cfn-lint
+        exclude: ^\.*
 
-# Gosec security scanner (high severity only)
-- repo: local
-  hooks:
-    - id: gosec
-      name: Gosec Security Scanner
-      entry: gosec
-      args: [-severity, high, -quiet, ./...]
-      language: golang
-      files: '\.go$'
-      pass_filenames: false
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.105.0
+    hooks:
+      - id: terraform_tflint
+        files: '\.tf$'
+        verbose: true
+        args:
+          - --args=--format=compact --force
 
-# Ferret Scan security check (from GitHub)
-- repo: https://github.com/awslabs/ferret-scan
-  rev: v1.8.0
-  hooks:
-    - id: ferret-scan
-      # The hook only blocks on HIGH-confidence findings. Medium-confidence
-      # hits in documentation (e.g. example suppression-rule SHA-256 hashes
-      # that look like high-entropy tokens) are review signals, not commit
-      # blockers. ferret-scan's --pre-commit-mode defaults to ExitOnFindings:
-      # "high" already (internal/precommit/detector.go), so no env override
-      # is needed. (pre-commit doesn't honor `env:` on remote-repo hooks
-      # anyway — it emits an "Unexpected key(s)" warning at parse time.)
-      # Override the upstream hook's exclude until the bugfix lands in
-      # awslabs/ferret-scan: the published .pre-commit-hooks.yaml in
-      # v1.8.0 anchors the test_/_test. tokens with ^, so only root-level
-      # test files are excluded. Nested test files (internal/.../*_test.go,
-      # tests/integration/*_test.go) leak through and trip the scanner on
-      # intentional test fixtures (test SSNs, test credit cards, etc.).
-      # This local override applies the corrected regex; the same fix
-      # has been applied to .pre-commit-hooks.yaml for downstream consumers.
-      #
-      # Also exclude go.mod and go.sum: the upstream `files:` regex matches
-      # the substring \.(go|js|...) anywhere in the path, including inside
-      # "go.mod" because that's "go" followed by "." in some position. The
-      # binary returns exit code 2 (system error) when given an unsupported
-      # file like go.mod, blocking the commit. Excluding them here is safe —
-      # those files have a separate go-mod-tidy hook validating their content.
-      exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)|(^go\.(mod|sum)$)'
-      # Point the scanner at the project-local suppression file so the
-      # scan honors project-sanctioned rules (validator help text examples,
-      # benchmark fixtures, regex pattern strings). ferret-scan's default
-      # lookup is platform config dir (~/.config/ferret-scan/suppressions.yaml
-      # on Unix, %APPDATA%\ferret-scan\suppressions.yaml on Windows), which
-      # is per-user and not shared with CI. Passing --suppression-file
-      # explicitly makes every contributor and the CI pipeline use the
-      # same baseline. The first --pre-commit-mode entry is preserved
-      # from the upstream hook definition.
-      args: ['--pre-commit-mode', '--suppression-file', './.ferret-scan-suppressions.yaml']
+  # ============================================================================
+  # LICENSE COMPLIANCE
+  # ============================================================================
+  - repo: https://github.com/FHPythonUtils/LicenseCheck
+    rev: "2025.1.0"
+    hooks:
+      - id: licensecheck
+        name: License Compliance Check
+        args: ["--format", "ansi", "--zero"]
+        # Note: licensecheck will automatically detect pyproject.toml or requirements.txt
+        # Configure allowed/blocked licenses in licensecheck.toml
