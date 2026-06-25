@@ -1,4 +1,8 @@
-# <img src="docs/images/ferret-scan-logo.png" alt="Ferret Scan Logo" width="200" style="vertical-align: middle;"> Ferret Scan
+<p align="center">
+  <img src="docs/images/ferret-scan-logo-original.png" alt="Ferret Scan Logo" width="200">
+</p>
+
+# Ferret Scan
 
 - [Ferret Scan](#ferret-scan)
   - [Installation](#installation)
