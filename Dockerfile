@@ -52,9 +52,9 @@ ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 GOOS=linux GOMAXPROCS=2 go build \
     -a -installsuffix cgo -p 2 \
     -ldflags="-s -w -extldflags '-static' \
-              -X 'ferret-scan/internal/version.Version=${VERSION}' \
-              -X 'ferret-scan/internal/version.GitCommit=${GIT_COMMIT}' \
-              -X 'ferret-scan/internal/version.BuildDate=${BUILD_DATE}'" \
+              -X 'github.com/awslabs/ferret-scan/internal/version.Version=${VERSION}' \
+              -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=${GIT_COMMIT}' \
+              -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=${BUILD_DATE}'" \
     -o ferret-scan ./cmd && \
     go clean -cache -testcache -modcache
 
