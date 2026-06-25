@@ -16,6 +16,7 @@
   # version of this regex anchored the test patterns at the start of the path,
   # so only root-level test files were excluded — nested test files leaked
   # through and tripped the scanner on intentional test fixtures.
-  exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)'
+  # The suppressions file is excluded because its hashes trigger false positives.
+  exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)\.?ferret-scan-suppressions\.ya?ml$)|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)'
   pass_filenames: true
-  args: [--pre-commit-mode]
+  args: [--pre-commit-mode, --profile, precommit, --respect-gitignore]

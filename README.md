@@ -333,7 +333,7 @@ Use a configuration file:
 Use a specific profile from the configuration file:
 
 ```bash
-./ferret-scan --file sample.txt --config ferret.yaml --profile thorough
+./ferret-scan --file sample.txt --profile ci
 ```
 
 ### Reading from stdin
@@ -484,79 +484,50 @@ Extract text with verbose output showing processor details:
 
 ### Profile-Based Configuration Examples
 
-Ferret Scan includes comprehensive pre-configured profiles for different use cases:
-
-#### CI/CD Integration with JUnit Output
+Ferret Scan includes pre-configured profiles for common use cases. Place a `ferret.yaml` in your project root (auto-discovered) or specify with `--config`:
 
 ```bash
-# Generate JUnit XML for test result integration
-./ferret-scan --file . --recursive --config ferret.yaml --profile ci
+# List available profiles
+./ferret-scan --list-profiles
 ```
 
-#### Security Audit Scanning
+#### CLI (Default)
 
 ```bash
-# Security-focused scan excluding low confidence matches
-./ferret-scan --file . --recursive --config ferret.yaml --profile security-audit
+# Standard interactive scan — human-readable text output
+./ferret-scan --file . --recursive --profile cli
 ```
 
-<!-- GENAI_DISABLED: Cost Estimation for GenAI Services example
-#### Cost Estimation for GenAI Services
-```bash
-# Show cost estimates without processing (no AWS credentials needed)
-./ferret-scan --file document.pdf --config ferret.yaml --profile cost-estimate
-```
--->
-
-#### Quick Development Scans
+#### CI/CD Pipeline
 
 ```bash
-# Fast scan focusing on critical data types only
-./ferret-scan --file . --config ferret.yaml --profile quick
+# GitLab SAST format (change to --format junit or --format sarif as needed)
+./ferret-scan --file . --recursive --profile ci
+
+# Override format for GitHub Actions / Azure DevOps
+./ferret-scan --file . --recursive --profile ci --format sarif --output results.sarif
 ```
 
-#### Comprehensive Analysis
+#### Web UI
 
 ```bash
-# Full analysis with all features and YAML output
-./ferret-scan --file document.pdf --config ferret.yaml --profile comprehensive
+# Start web server (always runs --explain automatically)
+./ferret-scan --web --port 8080
 ```
 
-#### Data Export Formats
+#### Pre-commit Hook
 
 ```bash
-```bash
-# CSV format for spreadsheet analysis
-./ferret-scan --file . --recursive --config ferret.yaml --profile csv-export
-
-# JSON API format for programmatic processing
-./ferret-scan --file document.txt --config ferret.yaml --profile json-api
-
-# GitLab Security Scanner Integration
-./ferret-scan --file . --recursive --config ferret.yaml --profile gitlab-security
+# Fast scan of staged files (used by .pre-commit-hooks.yaml)
+./ferret-scan --pre-commit-mode --profile precommit --respect-gitignore
 ```
 
-<!-- GENAI_DISABLED: GenAI-Powered Analysis example
-#### GenAI-Powered Analysis
+#### Redaction
+
 ```bash
-# AI-powered scanning with cost controls (requires AWS credentials)
-./ferret-scan --file scanned-document.pdf --config ferret.yaml --profile cost-aware-genai
+# Scan and redact sensitive data with format-preserving replacement
+./ferret-scan --file . --recursive --profile redaction
 ```
--->
-
-<!-- GENAI_DISABLED: Cost Management and Estimation examples
-#### Cost Management and Estimation
-```bash
-# Show cost estimates without AWS credentials or processing
-./ferret-scan --file document.pdf --config ferret.yaml --profile cost-estimate
-
-# Set spending limits with command-line flags
-./ferret-scan --file *.pdf --enable-genai --max-cost 5.00
-
-# Profile-based cost control with built-in limits
-./ferret-scan --file documents/ --recursive --config ferret.yaml --profile cost-aware-genai
-```
--->
 
 <!-- GENAI_DISABLED: Amazon Textract OCR examples
 Use Amazon Textract OCR for advanced text extraction from images and scanned documents:

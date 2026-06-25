@@ -115,8 +115,8 @@ ferret-scan --file document.txt
 # Web interface
 ferret-scan --web
 
-# Pre-configured profiles
-ferret-scan --file . --recursive --profile quick
+# Pre-configured profiles (cli, web, ci, precommit, redaction)
+ferret-scan --file . --recursive --profile ci
 ```
 
 ## 🗑️ Uninstallation
