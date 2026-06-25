@@ -45,7 +45,7 @@ echo "Git commit: $GIT_COMMIT"
 echo "Build date: $BUILD_DATE"
 
 # Set up ldflags with version information
-LDFLAGS="-s -w -X 'ferret-scan/internal/version.Version=$VERSION' -X 'ferret-scan/internal/version.GitCommit=$GIT_COMMIT' -X 'ferret-scan/internal/version.BuildDate=$BUILD_DATE'"
+LDFLAGS="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$GIT_COMMIT' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$BUILD_DATE'"
 
 # Linux AMD64
 GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o "$BINARY_DIR/ferret-scan-linux-amd64" ./cmd
