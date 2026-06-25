@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/ferret-scan/internal/validators"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -22,10 +23,13 @@ import (
 // per-call helpers below; for a metadata-heavy scan that runs into the
 // hundreds-of-thousands of allocations on the hot path.
 var (
-	// `phoneBasic` is the loose three-three-four digit pattern used by
-	// containsEnhancedPhoneNumber's first slot AND by an unrelated fallback
-	// path in calculateMatchConfidence — same literal in two places.
-	phoneBasic         = regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`)
+	// `phoneBasic` is the three-three-four digit phone pattern. A separator
+	// (- or .) between the groups is now REQUIRED: the previous optional
+	// separator (`[-.]?`) matched any bare 10-digit run (timestamps, asset/ID
+	// numbers like "ID: 1234567890"), producing phantom phone confidence. Bare
+	// 10-digit numbers are too ambiguous to treat as phones in metadata; the
+	// space-separated and parenthesized forms cover the other real layouts.
+	phoneBasic         = regexp.MustCompile(`\b\d{3}[-.]\d{3}[-.]\d{4}\b`)
 	phoneParenAreaCode = regexp.MustCompile(`\b\(\d{3}\)\s?\d{3}[-.]?\d{4}\b`)
 	phoneInternational = regexp.MustCompile(`\b\+\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b`)
 	phoneSpaceSep      = regexp.MustCompile(`\b\d{3}\s\d{3}\s\d{4}\b`)
@@ -37,10 +41,36 @@ var (
 		phoneSpaceSep,
 	}
 
-	emailExtractPattern  = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	gpsCoordPattern      = regexp.MustCompile(`[+-]?\d+\.\d+`)
+	emailExtractPattern = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+	gpsCoordPattern     = regexp.MustCompile(`[+-]?\d+\.\d+`)
+	// gpsCoordRefPattern matches a decimal-degree coordinate with an adjacent
+	// N/S/E/W hemisphere reference (optionally a degree symbol), e.g. "40.7128 N"
+	// or "74.0060° W". The directional letter must sit next to the number — this
+	// replaces the old "decimal anywhere AND the letters n/s/e/w appear anywhere
+	// on the line" test, which matched almost any English text containing a
+	// version number (e.g. "Software: Adobe Photoshop 21.0").
+	gpsCoordRefPattern   = regexp.MustCompile(`(?i)[+-]?\d{1,3}\.\d+\s*°?\s*[NSEW]\b`)
 	versionNumberPattern = regexp.MustCompile(`^\d+(\.\d+)*$`)
+	// leadingDecimalPattern extracts a leading signed decimal from a coordinate
+	// value that may carry a trailing degree symbol / hemisphere ref.
+	leadingDecimalPattern = regexp.MustCompile(`^[+-]?\d+(?:\.\d+)?`)
 )
+
+// parseCoordinate extracts the leading signed decimal from a coordinate string
+// (e.g. "40.7128", "40.7128° N") and returns it with ok=true. ok is false when
+// no leading numeric value is present (e.g. a DMS string or placeholder text),
+// in which case the caller treats the value as unparseable rather than invalid.
+func parseCoordinate(s string) (float64, bool) {
+	m := leadingDecimalPattern.FindString(strings.TrimSpace(s))
+	if m == "" {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(m, 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
+}
 
 // ValidationRule defines validation rules for specific preprocessor types
 type ValidationRule struct {
@@ -797,11 +827,18 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			matches = append(matches, *officeMatch)
 		}
 
+		// The priority helpers below cover the same fields (author, manager,
+		// comments, description, keywords) as the legacy inline blocks further
+		// down. Track whether any helper emitted for this line so we can skip the
+		// redundant legacy blocks and avoid emitting the SAME field twice (M31).
+		priorityFieldMatched := false
+
 		// Check for high priority sensitive fields
 		if highPriorityMatch := v.checkHighPrioritySensitive(line); highPriorityMatch != nil {
 			highPriorityMatch.LineNumber = lineNumber + 1
 			highPriorityMatch.Filename = filename
 			matches = append(matches, *highPriorityMatch)
+			priorityFieldMatched = true
 		}
 
 		// Check for medium priority sensitive fields
@@ -809,6 +846,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			mediumPriorityMatch.LineNumber = lineNumber + 1
 			mediumPriorityMatch.Filename = filename
 			matches = append(matches, *mediumPriorityMatch)
+			priorityFieldMatched = true
 		}
 
 		// Check for low priority sensitive fields
@@ -816,188 +854,197 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			lowPriorityMatch.LineNumber = lineNumber + 1
 			lowPriorityMatch.Filename = filename
 			matches = append(matches, *lowPriorityMatch)
+			priorityFieldMatched = true
 		}
 
-		// Check for LastModifiedBy field specifically (high priority)
-		if v.containsLastModifiedBy(line) {
-			confidence, checks := v.CalculateConfidence(line)
-			contextInfo := detector.ContextInfo{FullLine: line}
-			contextImpact := v.AnalyzeContext(line, contextInfo)
-			confidence += contextImpact
-			if confidence > 1.0 {
-				confidence = 1.0
-			} else if confidence < 0.0 {
-				confidence = 0.0
-			}
-			contextInfo.ConfidenceImpact = contextImpact
-			matches = append(matches, detector.Match{
-				Text:       v.extractSensitiveValue(line, "LAST_MODIFIED_BY"),
-				LineNumber: lineNumber + 1,
-				Type:       "LAST_MODIFIED_BY",
-				Confidence: confidence * 100,
-				Filename:   filename,
-				Validator:  "metadata",
-				Context:    contextInfo,
-				Metadata: map[string]any{
-					"metadata_type":     "last_modified_by",
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
-			})
-		}
+		// Legacy inline field blocks (LastModifiedBy/Manager/Comments/Description/
+		// Keywords/AuthorInfo) duplicate the priority helpers above. Skip them when
+		// a helper already emitted for this line so the same field is not reported
+		// twice; otherwise fall through so any field the helpers don't cover is
+		// still detected.
+		if !priorityFieldMatched {
 
-		// Check for Manager field (high priority)
-		if v.containsManager(line) {
-			confidence, checks := v.CalculateConfidence(line)
-			contextInfo := detector.ContextInfo{FullLine: line}
-			contextImpact := v.AnalyzeContext(line, contextInfo)
-			confidence += contextImpact + 0.1 // Boost for manager field
-			if confidence > 1.0 {
-				confidence = 1.0
-			} else if confidence < 0.0 {
-				confidence = 0.0
+			// Check for LastModifiedBy field specifically (high priority)
+			if v.containsLastModifiedBy(line) {
+				confidence, checks := v.CalculateConfidence(line)
+				contextInfo := detector.ContextInfo{FullLine: line}
+				contextImpact := v.AnalyzeContext(line, contextInfo)
+				confidence += contextImpact
+				if confidence > 1.0 {
+					confidence = 1.0
+				} else if confidence < 0.0 {
+					confidence = 0.0
+				}
+				contextInfo.ConfidenceImpact = contextImpact
+				matches = append(matches, detector.Match{
+					Text:       v.extractSensitiveValue(line, "LAST_MODIFIED_BY"),
+					LineNumber: lineNumber + 1,
+					Type:       "LAST_MODIFIED_BY",
+					Confidence: confidence * 100,
+					Filename:   filename,
+					Validator:  "metadata",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"metadata_type":     "last_modified_by",
+						"validation_checks": checks,
+						"context_impact":    contextImpact,
+						"source":            "preprocessed_content",
+						"original_file":     originalPath,
+					},
+				})
 			}
-			contextInfo.ConfidenceImpact = contextImpact
-			matches = append(matches, detector.Match{
-				Text:       v.extractSensitiveValue(line, "MANAGER_INFO"),
-				LineNumber: lineNumber + 1,
-				Type:       "MANAGER_INFO",
-				Confidence: confidence * 100,
-				Filename:   filename,
-				Validator:  "metadata",
-				Context:    contextInfo,
-				Metadata: map[string]any{
-					"metadata_type":     "manager_info",
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
-			})
-		}
 
-		// Check for Comments field (high priority)
-		if v.containsComments(line) {
-			confidence, checks := v.CalculateConfidence(line)
-			contextInfo := detector.ContextInfo{FullLine: line}
-			contextImpact := v.AnalyzeContext(line, contextInfo)
-			confidence += contextImpact + 0.15 // High boost for comments
-			if confidence > 1.0 {
-				confidence = 1.0
-			} else if confidence < 0.0 {
-				confidence = 0.0
+			// Check for Manager field (high priority)
+			if v.containsManager(line) {
+				confidence, checks := v.CalculateConfidence(line)
+				contextInfo := detector.ContextInfo{FullLine: line}
+				contextImpact := v.AnalyzeContext(line, contextInfo)
+				confidence += contextImpact + 0.1 // Boost for manager field
+				if confidence > 1.0 {
+					confidence = 1.0
+				} else if confidence < 0.0 {
+					confidence = 0.0
+				}
+				contextInfo.ConfidenceImpact = contextImpact
+				matches = append(matches, detector.Match{
+					Text:       v.extractSensitiveValue(line, "MANAGER_INFO"),
+					LineNumber: lineNumber + 1,
+					Type:       "MANAGER_INFO",
+					Confidence: confidence * 100,
+					Filename:   filename,
+					Validator:  "metadata",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"metadata_type":     "manager_info",
+						"validation_checks": checks,
+						"context_impact":    contextImpact,
+						"source":            "preprocessed_content",
+						"original_file":     originalPath,
+					},
+				})
 			}
-			contextInfo.ConfidenceImpact = contextImpact
-			matches = append(matches, detector.Match{
-				Text:       v.extractSensitiveValue(line, "DOCUMENT_COMMENTS"),
-				LineNumber: lineNumber + 1,
-				Type:       "DOCUMENT_COMMENTS",
-				Confidence: confidence * 100,
-				Filename:   filename,
-				Validator:  "metadata",
-				Context:    contextInfo,
-				Metadata: map[string]any{
-					"metadata_type":     "document_comments",
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
-			})
-		}
 
-		// Check for Description field (high priority)
-		if v.containsDescription(line) {
-			confidence, checks := v.CalculateConfidence(line)
-			contextInfo := detector.ContextInfo{FullLine: line}
-			contextImpact := v.AnalyzeContext(line, contextInfo)
-			confidence += contextImpact + 0.1 // Boost for description
-			if confidence > 1.0 {
-				confidence = 1.0
-			} else if confidence < 0.0 {
-				confidence = 0.0
+			// Check for Comments field (high priority)
+			if v.containsComments(line) {
+				confidence, checks := v.CalculateConfidence(line)
+				contextInfo := detector.ContextInfo{FullLine: line}
+				contextImpact := v.AnalyzeContext(line, contextInfo)
+				confidence += contextImpact + 0.15 // High boost for comments
+				if confidence > 1.0 {
+					confidence = 1.0
+				} else if confidence < 0.0 {
+					confidence = 0.0
+				}
+				contextInfo.ConfidenceImpact = contextImpact
+				matches = append(matches, detector.Match{
+					Text:       v.extractSensitiveValue(line, "DOCUMENT_COMMENTS"),
+					LineNumber: lineNumber + 1,
+					Type:       "DOCUMENT_COMMENTS",
+					Confidence: confidence * 100,
+					Filename:   filename,
+					Validator:  "metadata",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"metadata_type":     "document_comments",
+						"validation_checks": checks,
+						"context_impact":    contextImpact,
+						"source":            "preprocessed_content",
+						"original_file":     originalPath,
+					},
+				})
 			}
-			contextInfo.ConfidenceImpact = contextImpact
-			matches = append(matches, detector.Match{
-				Text:       v.extractSensitiveValue(line, "DOCUMENT_DESCRIPTION"),
-				LineNumber: lineNumber + 1,
-				Type:       "DOCUMENT_DESCRIPTION",
-				Confidence: confidence * 100,
-				Filename:   filename,
-				Validator:  "metadata",
-				Context:    contextInfo,
-				Metadata: map[string]any{
-					"metadata_type":     "document_description",
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
-			})
-		}
 
-		// Check for Keywords field (medium priority)
-		if v.containsKeywords(line) {
-			confidence, checks := v.CalculateConfidence(line)
-			contextInfo := detector.ContextInfo{FullLine: line}
-			contextImpact := v.AnalyzeContext(line, contextInfo)
-			confidence += contextImpact
-			if confidence > 1.0 {
-				confidence = 1.0
-			} else if confidence < 0.0 {
-				confidence = 0.0
+			// Check for Description field (high priority)
+			if v.containsDescription(line) {
+				confidence, checks := v.CalculateConfidence(line)
+				contextInfo := detector.ContextInfo{FullLine: line}
+				contextImpact := v.AnalyzeContext(line, contextInfo)
+				confidence += contextImpact + 0.1 // Boost for description
+				if confidence > 1.0 {
+					confidence = 1.0
+				} else if confidence < 0.0 {
+					confidence = 0.0
+				}
+				contextInfo.ConfidenceImpact = contextImpact
+				matches = append(matches, detector.Match{
+					Text:       v.extractSensitiveValue(line, "DOCUMENT_DESCRIPTION"),
+					LineNumber: lineNumber + 1,
+					Type:       "DOCUMENT_DESCRIPTION",
+					Confidence: confidence * 100,
+					Filename:   filename,
+					Validator:  "metadata",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"metadata_type":     "document_description",
+						"validation_checks": checks,
+						"context_impact":    contextImpact,
+						"source":            "preprocessed_content",
+						"original_file":     originalPath,
+					},
+				})
 			}
-			contextInfo.ConfidenceImpact = contextImpact
-			matches = append(matches, detector.Match{
-				Text:       v.extractSensitiveValue(line, "DOCUMENT_KEYWORDS"),
-				LineNumber: lineNumber + 1,
-				Type:       "DOCUMENT_KEYWORDS",
-				Confidence: confidence * 100,
-				Filename:   filename,
-				Validator:  "metadata",
-				Context:    contextInfo,
-				Metadata: map[string]any{
-					"metadata_type":     "document_keywords",
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
-			})
-		}
 
-		// Check for author/creator information (legacy)
-		if !seenAuthor && v.containsAuthorInfo(line) {
-			confidence, checks := v.CalculateConfidence(line)
-			contextInfo := detector.ContextInfo{FullLine: line}
-			contextImpact := v.AnalyzeContext(line, contextInfo)
-			confidence += contextImpact
-			if confidence > 1.0 {
-				confidence = 1.0
-			} else if confidence < 0.0 {
-				confidence = 0.0
+			// Check for Keywords field (medium priority)
+			if v.containsKeywords(line) {
+				confidence, checks := v.CalculateConfidence(line)
+				contextInfo := detector.ContextInfo{FullLine: line}
+				contextImpact := v.AnalyzeContext(line, contextInfo)
+				confidence += contextImpact
+				if confidence > 1.0 {
+					confidence = 1.0
+				} else if confidence < 0.0 {
+					confidence = 0.0
+				}
+				contextInfo.ConfidenceImpact = contextImpact
+				matches = append(matches, detector.Match{
+					Text:       v.extractSensitiveValue(line, "DOCUMENT_KEYWORDS"),
+					LineNumber: lineNumber + 1,
+					Type:       "DOCUMENT_KEYWORDS",
+					Confidence: confidence * 100,
+					Filename:   filename,
+					Validator:  "metadata",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"metadata_type":     "document_keywords",
+						"validation_checks": checks,
+						"context_impact":    contextImpact,
+						"source":            "preprocessed_content",
+						"original_file":     originalPath,
+					},
+				})
 			}
-			contextInfo.ConfidenceImpact = contextImpact
-			matches = append(matches, detector.Match{
-				Text:       v.extractSensitiveValue(line, "AUTHOR_INFO"),
-				LineNumber: lineNumber + 1,
-				Type:       "AUTHOR_INFO",
-				Confidence: confidence * 100,
-				Filename:   filename,
-				Validator:  "metadata",
-				Context:    contextInfo,
-				Metadata: map[string]any{
-					"metadata_type":     "author_info",
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
-			})
-			seenAuthor = true
-		}
+
+			// Check for author/creator information (legacy)
+			if !seenAuthor && v.containsAuthorInfo(line) {
+				confidence, checks := v.CalculateConfidence(line)
+				contextInfo := detector.ContextInfo{FullLine: line}
+				contextImpact := v.AnalyzeContext(line, contextInfo)
+				confidence += contextImpact
+				if confidence > 1.0 {
+					confidence = 1.0
+				} else if confidence < 0.0 {
+					confidence = 0.0
+				}
+				contextInfo.ConfidenceImpact = contextImpact
+				matches = append(matches, detector.Match{
+					Text:       v.extractSensitiveValue(line, "AUTHOR_INFO"),
+					LineNumber: lineNumber + 1,
+					Type:       "AUTHOR_INFO",
+					Confidence: confidence * 100,
+					Filename:   filename,
+					Validator:  "metadata",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"metadata_type":     "author_info",
+						"validation_checks": checks,
+						"context_impact":    contextImpact,
+						"source":            "preprocessed_content",
+						"original_file":     originalPath,
+					},
+				})
+				seenAuthor = true
+			}
+		} // end legacy inline field blocks (skipped when a priority helper matched)
 
 		// Check for other potentially sensitive metadata patterns
 		if v.containsSensitiveMetadata(line) {
@@ -1402,9 +1449,12 @@ func (v *Validator) containsEnhancedGPSData(match string) bool {
 		}
 	}
 
-	// Check for coordinate patterns
-	if gpsCoordPattern.MatchString(match) && (strings.Contains(matchLower, "n") || strings.Contains(matchLower, "s") ||
-		strings.Contains(matchLower, "e") || strings.Contains(matchLower, "w")) {
+	// Check for coordinate patterns. A real coordinate is a decimal value with an
+	// adjacent N/S/E/W hemisphere reference. The previous test OR-ed single
+	// letters across the whole line, so any field carrying a decimal version
+	// number (e.g. "Software: Adobe Photoshop 21.0") was misclassified as GPS and
+	// pushed to HIGH confidence.
+	if gpsCoordRefPattern.MatchString(match) {
 		return true
 	}
 
@@ -1512,20 +1562,56 @@ func (v *Validator) getGPSDetectionReason(line string) string {
 // isVersionNumber checks if a line contains only a version number (not sensitive)
 func (v *Validator) isVersionNumber(line string) bool {
 	// Check for version number patterns like "15.0000", "1.0", "2.1.3", etc.
-	// These are typically software versions and not sensitive information
+	// These are typically software versions and not sensitive information.
 	lineLower := strings.ToLower(strings.TrimSpace(line))
 
-	// If the line contains a colon, extract the value part
+	// If the line contains a colon, extract the key and value parts.
 	if strings.Contains(line, ":") {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
+			key := strings.ToLower(strings.TrimSpace(parts[0]))
 			value := strings.TrimSpace(parts[1])
-			return versionNumberPattern.MatchString(value)
+			if !versionNumberPattern.MatchString(value) {
+				return false
+			}
+			// Only treat a numeric value as a version when the field key is
+			// version-related, OR the value is short and version-shaped (L18).
+			// A bare long all-digit value in a NAME/AUTHOR/COPYRIGHT/MANAGER
+			// field is far more likely a numeric ID/phone than a version, and
+			// suppressing it hid real metadata.
+			return isVersionishKey(key) || isVersionShapedValue(value)
 		}
 	}
 
-	// Check if the entire line is just a version number
-	return versionNumberPattern.MatchString(lineLower)
+	// A bare line with no key: only a short, dotted, version-shaped value counts.
+	return versionNumberPattern.MatchString(lineLower) && isVersionShapedValue(lineLower)
+}
+
+// isVersionishKey reports whether a metadata field key denotes a software version.
+func isVersionishKey(key string) bool {
+	for _, k := range []string{"version", "ver.", "ver ", "software", "application", "app", "build", "revision", "release", "schema", "format"} {
+		if strings.Contains(key, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// isVersionShapedValue reports whether a numeric value looks like a version
+// rather than an ID: at most 3 dotted groups (e.g. "1", "1.0", "2.1.3") and a
+// short first component. A long undotted integer ("1234567890") is treated as
+// an ID, not a version.
+func isVersionShapedValue(value string) bool {
+	groups := strings.Split(value, ".")
+	if len(groups) > 4 {
+		return false
+	}
+	if len(groups) == 1 {
+		// A bare integer is only "version-shaped" if it is short (<=2 digits).
+		return len(groups[0]) <= 2
+	}
+	// Dotted form: first component should be a small number (<=4 digits).
+	return len(groups[0]) <= 4
 }
 
 // hasNonEmptyValue checks if a metadata field has non-empty content after the colon
@@ -2293,10 +2379,20 @@ func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsL
 	var latitude, longitude, latRef, longRef string
 	var latLine, longLine int
 
-	// Check for already consolidated GPS coordinates first
+	// Emit any already-consolidated GPS coordinate entries. We do NOT return
+	// early here (M33): a stray "Coordinates:" field — possibly a placeholder
+	// like "N/A" — must not short-circuit the separate GPSLatitude/GPSLongitude
+	// pairing below, and a placeholder value must not be emitted as a GPS match.
+	// We therefore validate the value looks like a real coordinate before
+	// emitting, and fall through to the component-pairing logic regardless.
 	for field, value := range gpsCoordinates {
 		fieldLower := strings.ToLower(field)
 		if strings.Contains(fieldLower, "gps_coordinates") || strings.Contains(fieldLower, "coordinates") {
+			// A real coordinate value contains digits; skip placeholders such as
+			// "N/A", "unknown", or empty so they aren't emitted as GPS matches.
+			if !v.isMeaningfulGPSValue(field, value) || !strings.ContainsAny(value, "0123456789") {
+				continue
+			}
 			// This is already a consolidated GPS coordinate entry
 			confidence, checks := v.CalculateConfidence(fmt.Sprintf("%s: %s", field, value))
 			contextInfo := detector.ContextInfo{FullLine: fmt.Sprintf("%s: %s", field, value)}
@@ -2324,7 +2420,6 @@ func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsL
 				},
 			}
 			matches = append(matches, match)
-			return matches // Return early since we found consolidated coordinates
 		}
 	}
 
@@ -2366,14 +2461,32 @@ func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsL
 			combinedText = fmt.Sprintf("%s, %s", latitude, longitude)
 		}
 
+		// Validate the coordinate pair (L17): reject 0/0 (Null Island / unset GPS)
+		// and out-of-range values rather than always scoring 100. Confidence is
+		// scaled by parse validity so a syntactically valid in-range pair stays
+		// HIGH while a malformed/placeholder pair drops out.
+		latVal, latOK := parseCoordinate(latitude)
+		longVal, longOK := parseCoordinate(longitude)
+		if latOK && longOK {
+			if (latVal == 0 && longVal == 0) ||
+				latVal < -90 || latVal > 90 || longVal < -180 || longVal > 180 {
+				return matches // not a real location; skip emitting a GPS pair
+			}
+		}
+
 		// Use the earlier line number
 		lineNumber := latLine
 		if longLine < latLine && longLine > 0 {
 			lineNumber = longLine
 		}
 
-		// Calculate confidence for combined coordinates
-		confidence := 1.0 // High confidence for coordinate pairs
+		// Calculate confidence for combined coordinates. A pair that parsed to a
+		// valid in-range decimal is high confidence; one we could not parse (DMS
+		// strings, unusual formats) is still emitted but slightly lower.
+		confidence := 1.0
+		if !latOK || !longOK {
+			confidence = 0.75
+		}
 		checks := map[string]bool{
 			"contains_coordinate_pair": true,
 			"contains_gps_coords":      true,

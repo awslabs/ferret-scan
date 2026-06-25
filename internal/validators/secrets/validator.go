@@ -4,6 +4,7 @@
 package secrets
 
 import (
+	"encoding/base64"
 	"math"
 	"regexp"
 	"strings"
@@ -101,15 +102,24 @@ func NewValidator() *Validator {
 		contextAnalyzer: context.NewContextAnalyzer(),
 
 		// Development/staging environment keywords
+		// devKeywords are kept DISJOINT from testKeywords (M25): "test"/"testing"/
+		// "demo" were in both sets, so they incremented both scores equally and
+		// the testScore>devScore tie-break could essentially never fire, misclass-
+		// ifying test content as "development" (-15 instead of -25).
 		devKeywords: []string{
-			"dev", "development", "staging", "stage", "test", "testing",
-			"local", "localhost", "demo", "sandbox", "preview", "beta",
+			"dev", "development", "staging", "stage",
+			"local", "localhost", "sandbox", "preview",
 		},
 
 		// Production environment keywords
+		// prodKeywords use only unambiguous production markers (M25): generic
+		// tokens "main"/"master"/"real"/"actual"/"customer"/"client" were
+		// dropped because they classified ordinary source ("package main",
+		// "func main") as production and applied a spurious +10 boost to every
+		// candidate in the file.
 		prodKeywords: []string{
-			"prod", "production", "live", "release", "deploy", "master",
-			"main", "stable", "customer", "client", "real", "actual",
+			"production", "prod-", "prod_", ".prod", "live", "release",
+			"deploy", "stable", "node_env=production",
 		},
 
 		// Test-specific keywords
@@ -728,11 +738,15 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		confidence -= 10 // Very long strings might be less likely to be secrets
 	}
 
-	// Check for common words/patterns
+	// Check for common words/patterns. Only penalize when the word DOMINATES the
+	// token (the match is essentially that word), not when it is an incidental
+	// substring of a long high-entropy value — a 30-char random secret that
+	// merely begins with "test" or contains "secret" is still a real secret
+	// (M26). Require the common word to make up at least half the match.
 	lowerMatch := strings.ToLower(match)
 	commonWords := []string{"password", "secret", "example", "test", "sample", "default"}
 	for _, word := range commonWords {
-		if strings.Contains(lowerMatch, word) {
+		if strings.Contains(lowerMatch, word) && len(word)*2 >= len(lowerMatch) {
 			confidence -= 20
 			checks["not_common_word"] = false
 			break
@@ -749,10 +763,13 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		checks["has_entropy"] = false
 	}
 
-	// Test data patterns
+	// Test data patterns. Like the common-word check above, only penalize when the
+	// token IS essentially the test word (delimiter-bounded or dominating the
+	// length), not when "test"/"demo" is an incidental substring of a long
+	// high-entropy secret (M26).
 	testPatterns := []string{"test", "demo", "example", "sample", "fake", "mock"}
 	for _, pattern := range testPatterns {
-		if strings.Contains(lowerMatch, pattern) {
+		if strings.Contains(lowerMatch, pattern) && len(pattern)*3 >= len(lowerMatch) {
 			confidence -= 30
 			checks["not_test_data"] = false
 			break
@@ -832,11 +849,28 @@ func (v *Validator) isCertificate(match string) bool {
 		strings.Contains(match, endMarker)
 }
 
-// isJWTToken checks if the match is a JWT token
+// isJWTToken checks if the match is a JWT token. Beyond the "eyJ" prefix and
+// three dot-separated parts, it requires non-trivial segment lengths AND that
+// the header segment base64url-decodes to JSON containing "alg". The previous
+// prefix-and-dot-count check accepted "eyJ..", minified-JS identifiers
+// ("eyJfile.min.js") and arbitrary "eyJabc.def.ghi" strings as confidence-100
+// JWTs.
 func (v *Validator) isJWTToken(match string) bool {
-	// JWT tokens have 3 parts separated by dots, starting with eyJ
 	parts := strings.Split(match, ".")
-	return len(parts) == 3 && strings.HasPrefix(match, "eyJ")
+	if len(parts) != 3 || !strings.HasPrefix(match, "eyJ") {
+		return false
+	}
+	// Real JWT header/payload are non-trivial; the signature is shorter but
+	// never empty.
+	if len(parts[0]) < 10 || len(parts[1]) < 10 || len(parts[2]) < 5 {
+		return false
+	}
+	// The header must base64url-decode to JSON declaring an algorithm.
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(decoded), `"alg"`)
 }
 
 // isAWSAccessKey checks if the match is an AWS access key
@@ -878,9 +912,19 @@ func (v *Validator) isDockerToken(match string) bool {
 	return strings.HasPrefix(match, "dckr_pat_") && len(match) == 45
 }
 
-// isSlackToken checks if the match is a Slack token
+// slackBotTokenPattern / slackUserTokenPattern validate the full Slack token
+// structure (mirroring the strict compiled patterns used elsewhere), not just
+// the "xoxb-"/"xoxp-" prefix.
+var (
+	slackBotTokenPattern  = regexp.MustCompile(`^xoxb-[0-9]{11,12}-[0-9]{11,12}-[a-zA-Z0-9]{24}$`)
+	slackUserTokenPattern = regexp.MustCompile(`^xoxp-[0-9]{11,12}-[0-9]{11,12}-[0-9]{11,12}-[a-zA-Z0-9]{32}$`)
+)
+
+// isSlackToken checks if the match is a Slack token. It validates the full token
+// structure rather than just the prefix: the previous prefix-only check returned
+// true for any string starting with the bot/user token prefix and scored it 94.
 func (v *Validator) isSlackToken(match string) bool {
-	return strings.HasPrefix(match, "xoxb-") || strings.HasPrefix(match, "xoxp-")
+	return slackBotTokenPattern.MatchString(match) || slackUserTokenPattern.MatchString(match)
 }
 
 // isPGPPrivateKey checks if the match is a PGP private key. Markers are
@@ -1317,6 +1361,18 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 		}
 	}
 
+	// Generic high-entropy strings (git SHAs, UUIDs, base64 asset hashes) start at
+	// base 85 and the doc-type boosts above can push them to HIGH with no evidence
+	// they are credentials (M24). When the match is NOT a specific typed pattern
+	// (AWS/JWT/GitHub/...) and there is no corroborating secret keyword nearby,
+	// cap it just below the MEDIUM threshold so it does not surface as MEDIUM/HIGH
+	// on shape alone. A specific pattern, or a nearby secret keyword, lifts it.
+	if !checks["specific_pattern"] && !v.hasNearbySecretKeyword(fullContent, match) {
+		if confidence > 55 {
+			confidence = 55
+		}
+	}
+
 	// Ensure confidence bounds
 	if confidence < 0 {
 		confidence = 0
@@ -1325,6 +1381,30 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 	}
 
 	return confidence, checks
+}
+
+// hasNearbySecretKeyword reports whether a positive secret keyword appears on the
+// same line as the match — corroboration that a generic high-entropy string is a
+// credential rather than an incidental hash/UUID/blob.
+func (v *Validator) hasNearbySecretKeyword(fullContent, match string) bool {
+	line := match
+	if idx := strings.Index(fullContent, match); idx >= 0 {
+		start := strings.LastIndexByte(fullContent[:idx], '\n') + 1
+		end := idx + len(match)
+		if nl := strings.IndexByte(fullContent[end:], '\n'); nl >= 0 {
+			end += nl
+		} else {
+			end = len(fullContent)
+		}
+		line = fullContent[start:end]
+	}
+	lower := strings.ToLower(line)
+	for _, kw := range v.positiveKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // detectEnvironmentType detects if content is from development, test, or production environment

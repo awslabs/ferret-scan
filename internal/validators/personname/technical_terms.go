@@ -289,6 +289,30 @@ var veryCommonNamesMap = map[string]bool{
 	"operate":   true,
 }
 
+// commonWordNamesMap holds tokens that are BOTH common English words AND present
+// in the first/last name databases (will/read, mark/brown, grace/hill, ...). A
+// Title-Cased bigram whose two tokens are both in this set ("Will Read", "Mark
+// Brown", "Grace Hill") is far more often ordinary prose/headings than a person
+// name, yet the both-names-known path scored it 90-100 (HIGH). When BOTH tokens
+// are in this set and there is no corroborating name signal (formal pattern,
+// title, suffix, comma form, or context keyword), the score is held at MEDIUM
+// instead of HIGH. A real name needs only one distinctive (non-dictionary) token
+// to stay HIGH, so this does not demote names like "John Smith" or "David Brown".
+var commonWordNamesMap = map[string]bool{
+	// first-name-like common words
+	"will": true, "mark": true, "grace": true, "may": true, "june": true,
+	"april": true, "art": true, "bill": true, "rose": true, "hope": true,
+	"joy": true, "frank": true, "rich": true, "guy": true, "drew": true,
+	"chase": true, "reed": true, "robin": true, "jay": true, "dawn": true,
+	"faith": true, "hap": true, "sunny": true,
+	// last-name-like common words
+	"read": true, "brown": true, "hill": true, "young": true, "stone": true,
+	"park": true, "moon": true, "king": true, "long": true, "west": true,
+	"white": true, "wood": true, "day": true, "love": true, "price": true,
+	"bell": true, "cook": true, "fields": true, "banks": true, "rivers": true,
+	"flowers": true, "winter": true, "summers": true, "rain": true,
+}
+
 // emailPatternsMap for efficient email context analysis
 var emailPatternsMap = map[string]bool{
 	"from:":        true,

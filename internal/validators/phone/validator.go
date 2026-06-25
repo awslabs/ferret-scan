@@ -18,6 +18,10 @@ import (
 var (
 	phoneValidCharsPattern = regexp.MustCompile(`^[\d+\-.\s()]+$`)
 	phoneCleanPattern      = regexp.MustCompile(`[^\d+]`)
+	// reFictional555 matches the NANP reserved fictional exchange 555-0100..0199
+	// in cleaned-digit form ("55501" + two digits), anchored to a 7- or 10/11-digit
+	// number so it doesn't fire on an incidental "55501" run inside other digits.
+	reFictional555         = regexp.MustCompile(`(?:^|[^\d])\+?1?(?:\d{3})?55501\d{2}$`)
 	ssnPattern             = regexp.MustCompile(`^\d{3}[-.\s]\d{2}[-.\s]\d{4}$`)
 	phoneMultiSpacePattern = regexp.MustCompile(`\s{2,}`)
 	namePhonePattern       = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\(?\d{3}\)?`)
@@ -76,13 +80,18 @@ func NewValidator() *Validator {
 			"demo", "template", "tutorial", "documentation", "readme",
 			"lorem", "ipsum", "foo", "bar", "baz", "temp", "temporary",
 			"invalid", "nonexistent", "blackhole", "devnull", "null",
-			// SSN-specific keywords to avoid false positives
+			// SSN-specific keywords to avoid false positives. Generic words
+			// "number"/"id"/"name"/"account" were removed (L28): they collide with
+			// legitimate phone context ("phone number", "contact number") and
+			// tabular contact records ("name, phone, id"), demoting real phones out
+			// of HIGH/MEDIUM. The structural SSN/credit-card/timestamp checks (which
+			// don't rely on these words) still suppress those data types.
 			"ssn", "social", "security", "social security", "tax", "identification",
-			"taxpayer", "employee", "id", "number", "federal", "ein", "itin",
+			"taxpayer", "employee", "federal", "ein", "itin",
 			// Credit card and financial data keywords
 			"credit", "card", "visa", "mastercard", "amex", "american express",
-			"discover", "account", "balance", "payment", "transaction", "amount",
-			"first and last name", "last name", "first name", "name",
+			"discover", "balance", "payment", "transaction", "amount",
+			"first and last name", "last name", "first name",
 			// Timestamp and technical keywords
 			"timestamp", "unix", "epoch", "milliseconds", "seconds", "time",
 			"created", "modified", "updated", "generated", "build", "version",
@@ -136,8 +145,12 @@ func NewValidator() *Validator {
 		},
 		// International formats
 		{
-			name:    "International_Plus",
-			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}\b`),
+			name: "International_Plus",
+			// Tightened (M10): the middle/last groups now require 2-4 / 3-9 digits
+			// so dotted version tags like "+2024.1.1" or "+1.2.3.4" (groups of 1)
+			// no longer match as international phone numbers, while real numbers
+			// (+44 20 7946 0958, +1 415 555 2671, +12025550173) still do.
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{1,4}[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{3,9}\b`),
 			country: "International",
 			format:  "+XX XXXX XXXX XXXX",
 		},
@@ -149,8 +162,11 @@ func NewValidator() *Validator {
 		},
 		// UK formats
 		{
-			name:    "UK_Standard",
-			regex:   regexp.MustCompile(`\b0\d{2,4}[-.\s]?\d{3,8}\b`),
+			name: "UK_Standard",
+			// Allow an optional THIRD group (M9): a real UK national number like
+			// "0161 496 0345" is area + two subscriber groups, which the previous
+			// two-group pattern truncated to "0161 496".
+			regex:   regexp.MustCompile(`\b0\d{2,4}[-.\s]?\d{3,8}([-.\s]\d{3,4})?\b`),
 			country: "UK",
 			format:  "0XXX XXXXXXXX",
 		},
@@ -162,8 +178,11 @@ func NewValidator() *Validator {
 		},
 		// European formats
 		{
-			name:    "European",
-			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{2}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4}\b`),
+			name: "European",
+			// Tightened (M10): last group requires 3-4 digits and inner groups
+			// 2-4, so dotted version tags like "+2024.1.1" / "+1.2.3.4" no longer
+			// match as European phone numbers.
+			regex:   regexp.MustCompile(`(?:^|[\s,;|"'<>])\+\d{2}[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{3,4}\b`),
 			country: "Europe",
 			format:  "+XX XXXX XXXX XXXX",
 		},
@@ -357,16 +376,30 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	return matches, nil
 }
 
-// isDuplicateMatch checks if a match was already found (same number, same line)
+// isDuplicateMatch checks if a match was already found on the same line. Beyond
+// exact cleaned-digit equality, it also treats a match whose cleaned digits are
+// a prefix/substring of an already-found number (or vice versa) as a duplicate
+// (M11): overlapping patterns otherwise emit a truncated partial of the same
+// physical number (e.g. "+44 20 7946" alongside "+44 20 7946 0958"), inflating
+// finding counts with an incorrect partial value.
 func (v *Validator) isDuplicateMatch(existing []detector.Match, newMatch string, lineNum int) bool {
 	cleanNew := v.cleanPhoneNumber(newMatch)
+	if cleanNew == "" {
+		return false
+	}
 
 	for _, match := range existing {
-		if match.LineNumber == lineNum {
-			cleanExisting := v.cleanPhoneNumber(match.Text)
-			if cleanExisting == cleanNew {
-				return true
-			}
+		if match.LineNumber != lineNum {
+			continue
+		}
+		cleanExisting := v.cleanPhoneNumber(match.Text)
+		if cleanExisting == "" {
+			continue
+		}
+		if cleanExisting == cleanNew ||
+			strings.Contains(cleanExisting, cleanNew) ||
+			strings.Contains(cleanNew, cleanExisting) {
+			return true
 		}
 	}
 	return false
@@ -606,21 +639,41 @@ func (v *Validator) cleanPhoneNumber(phone string) string {
 	return cleaned
 }
 
+// hasPhoneSeparators reports whether the raw match is formatted like a phone
+// number — i.e. it contains parentheses, dashes, dots, spaces or a leading "+".
+// A bare run of digits with no separators is what timestamps, IDs and serials
+// look like; the timestamp/date heuristics should only fire on those, not on a
+// number a human clearly formatted as a phone (e.g. "(212) 555-0173").
+func (v *Validator) hasPhoneSeparators(match string) bool {
+	return strings.ContainsAny(match, "()-. ") || strings.HasPrefix(match, "+")
+}
+
 func (v *Validator) isTestPhoneNumber(phone string) bool {
 	lowerPhone := strings.ToLower(phone)
+	cleanDigits := v.cleanPhoneNumber(phone)
 
-	// Check against known test numbers
+	// Match full known test numbers by cleaned-digit equality, not substring
+	// (L29): substring matching on short fragments like "123-456" / "987-654"
+	// penalized real numbers that merely contained those runs.
 	for _, testNumber := range v.testPhoneNumbers {
-		if strings.Contains(phone, testNumber) {
+		if cleanDigits == v.cleanPhoneNumber(testNumber) {
 			return true
 		}
 	}
 
-	// Check against test patterns
-	for _, pattern := range v.knownTestPatterns {
-		if strings.Contains(lowerPhone, strings.ToLower(pattern)) {
+	// Textual placeholder words anywhere in the raw value are still a test signal.
+	for _, word := range []string{"test", "example"} {
+		if strings.Contains(lowerPhone, word) {
 			return true
 		}
+	}
+
+	// The 555-0100..555-0199 exchange is the reserved fictional/test range
+	// (NANP): in cleaned digits that is "55501" + two digits. Match it
+	// structurally rather than via the broad "555-0" fragment, which previously
+	// also flagged real numbers containing that run.
+	if reFictional555.MatchString(cleanDigits) {
+		return true
 	}
 
 	return false
@@ -698,10 +751,15 @@ func (v *Validator) isValidCountryFormat(phone string, pattern phonePattern) boo
 	// Basic validation based on pattern country
 	switch pattern.country {
 	case "US/CA":
-		// US/Canada numbers should be 10 digits (excluding country code)
+		// US/Canada numbers should be 10 digits (excluding country code). Strip a
+		// leading country code whether written "+1" or as a bare "1" (L30): a
+		// toll-free / long-distance number like "1-800-555-1234" cleans to 11
+		// digits, and the previous code only stripped "+1", so it wrongly scored
+		// the bare-1 form as an invalid country format (-10 instead of +5).
 		clean := v.cleanPhoneNumber(phone)
-		if strings.HasPrefix(clean, "+1") {
-			clean = clean[2:]
+		clean = strings.TrimPrefix(clean, "+")
+		if len(clean) == 11 && strings.HasPrefix(clean, "1") {
+			clean = clean[1:]
 		}
 		return len(clean) == 10
 	case "UK":
@@ -806,8 +864,18 @@ func (v *Validator) looksLikeCreditCard(match string) bool {
 	return false
 }
 
-// looksLikeTimestamp checks if the pattern matches common timestamp formats
+// looksLikeTimestamp checks if the pattern matches common timestamp formats.
+//
+// It only fires on a BARE run of digits with no phone separators: a number a
+// human formatted with parens/dashes/spaces ("(212) 555-0173") is a phone, not
+// a Unix timestamp, even though its 10-digit clean form (2125550173) falls in
+// the 32-bit timestamp range — which is exactly how valid NANP area codes
+// 200-214 (DC 202, NYC 212, 213/214) and the 19xx/20xx-prefixed long forms were
+// being wrongly penalized -60.
 func (v *Validator) looksLikeTimestamp(match string) bool {
+	if v.hasPhoneSeparators(match) {
+		return false
+	}
 	clean := v.cleanPhoneNumber(match)
 
 	// Unix timestamp patterns (10 digits starting with 1 or 2)
@@ -859,10 +927,10 @@ func (v *Validator) looksLikeInvalidNumber(match string) bool {
 		return true
 	}
 
-	// Numbers starting with 0 that aren't international format
-	if strings.HasPrefix(clean, "0") && !strings.HasPrefix(match, "+") && len(clean) < 10 {
-		return true
-	}
+	// Numbers starting with a trunk "0" (UK/EU national format). These are valid
+	// even when shorter than 10 digits, so we no longer reject them on length
+	// alone (M8) — only the <7-digit floor above applies. A genuinely invalid
+	// short leading-0 run is already caught by that floor.
 
 	// All zeros or mostly zeros
 	zeroCount := strings.Count(clean, "0")

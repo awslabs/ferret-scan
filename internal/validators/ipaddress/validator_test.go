@@ -728,3 +728,225 @@ func TestIPAddressValidator_IsMulticastIP(t *testing.T) {
 		})
 	}
 }
+
+// TestIPAddressValidator_BareIPv4ContextSignal is a regression test for the
+// IPv4 over-matching false positive: a context-free dotted-decimal that happens
+// to be a routable public IPv4 (a software version "5.4.36.180", pi digits
+// "3.14.15.92", an arbitrary tuple "11.22.33.44") scored 100 (HIGH). Such bare
+// IPv4 with no corroborating signal is now capped below HIGH, while a real IP
+// carrying an IP keyword or a port/CIDR suffix stays HIGH.
+func TestIPAddressValidator_BareIPv4ContextSignal(t *testing.T) {
+	v := NewValidator()
+
+	// No IP context: must surface BELOW the HIGH (>=90) bucket.
+	bare := []string{
+		"upgraded to 5.4.36.180 today",
+		"tuple 11.22.33.44 in the dataset",
+		"pi digits 3.14.15.92 approx",
+	}
+	for _, line := range bare {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, m := range matches {
+			if m.Confidence >= 90 {
+				t.Errorf("context-free dotted-decimal in %q should be < HIGH, got %.1f", line, m.Confidence)
+			}
+		}
+	}
+
+	// Corroborating signal present (keyword or port/CIDR): must stay HIGH.
+	withSignal := []string{
+		"connection to server 172.217.14.206 established", // keyword "server"
+		"network endpoint 54.239.28.85 configured",        // keyword "endpoint"/"network"
+		"backend 13.52.11.22:8080 responded",              // port suffix
+		"route 13.52.11.22/24 added",                      // CIDR suffix
+	}
+	for _, line := range withSignal {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("expected detection for %q", line)
+			continue
+		}
+		var best float64
+		for _, m := range matches {
+			if m.Confidence > best {
+				best = m.Confidence
+			}
+		}
+		if best < 90 {
+			t.Errorf("IP with corroborating signal in %q should stay HIGH, got %.1f", line, best)
+		}
+	}
+}
+
+// TestIPAddressValidator_CompressedIPv6 is a regression test for the compressed-IPv6
+// matching bug: the old pattern captured only the "::suffix" fragment of a real
+// compressed address (e.g. "::1111" out of "2606:4700:4700::1111"), which the
+// embedded-string guard then dropped, so essentially all public IPv6 was missed.
+// We assert the FULL address is detected (not a truncated fragment) and that
+// non-IPv6 "::" constructs and IPv6 documentation ranges are not surfaced.
+func TestIPAddressValidator_CompressedIPv6(t *testing.T) {
+	v := NewValidator()
+
+	// Real public compressed IPv6 — must be detected, and the reported Text must
+	// be the entire address (the bug truncated it to a fragment).
+	publicV6 := []string{
+		"2606:4700:4700::1111",     // Cloudflare
+		"2a00:1450:4001:81b::200e", // Google
+		"2001:4860:4860::8888",     // Google DNS
+		"2607:f8b0:4005:80b::200e",
+	}
+	for _, ip := range publicV6 {
+		content := "connecting to host " + ip + " over ipv6"
+		matches, err := v.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", ip, err)
+		}
+		found := false
+		for _, m := range matches {
+			if m.Text == ip {
+				found = true
+				break
+			}
+		}
+		if !found {
+			got := make([]string, 0, len(matches))
+			for _, m := range matches {
+				got = append(got, m.Text)
+			}
+			t.Errorf("expected full compressed IPv6 %q to be detected, got matches %v", ip, got)
+		}
+	}
+
+	// Must NOT surface: non-IPv6 "::" tokens (code/namespace separators) and the
+	// IPv6 documentation prefix 2001:db8::/32 (RFC 3849), which isSensitiveIP filters.
+	negatives := []struct {
+		name    string
+		content string
+	}{
+		{"C++ scope resolution", "calling std::vector::push_back here"},
+		{"AWS CFN resource type", "Type: AWS::EC2::Instance in template"},
+		{"IPv6 documentation prefix", "example 2001:db8::ff00:42:8329 from the RFC"},
+	}
+	for _, tt := range negatives {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(matches) > 0 {
+				got := make([]string, 0, len(matches))
+				for _, m := range matches {
+					got = append(got, m.Text)
+				}
+				t.Errorf("expected no IPv6 detection for %q, got %v", tt.content, got)
+			}
+		})
+	}
+}
+
+// TestIPAddressValidator_DocIPv6ZeroPadded is a regression test for M16: the
+// RFC 3849 documentation prefix was filtered by a textual "2001:db8:" prefix
+// check, which missed the canonical zero-padded form "2001:0db8:...". Now
+// filtered via parsed net.IPNet membership.
+func TestIPAddressValidator_DocIPv6ZeroPadded(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"doc 2001:0db8:85a3:0000:0000:8a2e:0370:7334 here", // zero-padded
+		"compressed 2001:db8::1 here",                      // canonical compressed
+	} {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(matches) > 0 {
+			t.Errorf("RFC 3849 documentation IPv6 should be filtered for %q, got %d matches", line, len(matches))
+		}
+	}
+}
+
+// TestIPAddressValidator_FullFormHexTupleNotHigh is a regression test for M17:
+// a full-form 8-group hex tuple (MAC-like or arbitrary hex) parses as valid
+// IPv6 and scored 100 with no context. It must now be capped below HIGH, while
+// a compressed public IPv6 with context stays HIGH.
+func TestIPAddressValidator_FullFormHexTupleNotHigh(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"mac 12:34:56:78:90:ab:cd:ef here",
+		"hex 2024:1234:5678:90ab:cdef:1111:2222:3333 token",
+	} {
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, m := range matches {
+			if m.Confidence >= 90 {
+				t.Errorf("context-free full-form hex tuple should be < HIGH for %q, got %.1f", line, m.Confidence)
+			}
+		}
+	}
+	// Compressed public IPv6 with a keyword stays HIGH.
+	matches, _ := v.ValidateContent("endpoint 2606:4700:4700::1111 online", "test.txt")
+	var best float64
+	for _, m := range matches {
+		if m.Confidence > best {
+			best = m.Confidence
+		}
+	}
+	if best < 90 {
+		t.Errorf("compressed public IPv6 with context should stay HIGH, got %.1f", best)
+	}
+}
+
+// TestIPAddressValidator_LowSeverityFindings covers four LOW-severity fixes:
+// L13 5+-octet dotted sequences don't leak their leading IPv4; L14 CGNAT /
+// benchmark ranges are non-sensitive; L15 single-host test IPs match exactly
+// (not by prefix); L16 context keywords match whole words.
+func TestIPAddressValidator_LowSeverityFindings(t *testing.T) {
+	v := NewValidator()
+
+	// L13: a 5+-octet dotted sequence must not surface its leading four octets.
+	if m, _ := v.ValidateContent("ref 40.71.74.0.99 here", "test.txt"); len(m) > 0 {
+		t.Errorf("L13: 5-octet sequence should not yield an IP match, got %d", len(m))
+	}
+
+	// L14: CGNAT (RFC 6598) and benchmarking (RFC 2544) are not sensitive.
+	for _, line := range []string{"host 100.64.1.1 connected", "bench 198.18.0.5 ran"} {
+		if m, _ := v.ValidateContent(line, "test.txt"); len(m) > 0 {
+			t.Errorf("L14: non-sensitive range in %q should be filtered, got %d", line, len(m))
+		}
+	}
+
+	// L15: a real public IP adjacent to a single-host test IP value must still
+	// surface (prefix matching previously suppressed 1.1.1.10-1.1.1.199 etc.).
+	if v.isTestIP("8.8.8.88") {
+		t.Error("L15: 8.8.8.88 is a real IP, not the test host 8.8.8.8")
+	}
+	if v.isTestIP("1.1.1.123") {
+		t.Error("L15: 1.1.1.123 is a real IP, not the test host 1.1.1.1")
+	}
+	// The exact test hosts are still classified as test IPs.
+	for _, ip := range []string{"1.1.1.1", "8.8.8.8"} {
+		if !v.isTestIP(ip) {
+			t.Errorf("L15: %s should still be a known test IP", ip)
+		}
+	}
+
+	// L16: a public IP near prose containing a substring of a negative keyword
+	// ("nullable" contains "null") should not be demoted out of HIGH.
+	matches, _ := v.ValidateContent("the nullable server 13.52.11.22 responded", "test.txt")
+	var best float64
+	for _, m := range matches {
+		if m.Confidence > best {
+			best = m.Confidence
+		}
+	}
+	if best < 90 {
+		t.Errorf("L16: 'nullable' should not demote a real IP below HIGH, got %.1f", best)
+	}
+}

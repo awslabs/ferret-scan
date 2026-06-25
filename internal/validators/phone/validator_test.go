@@ -614,11 +614,15 @@ func TestPhoneValidator_ContextAnalysis(t *testing.T) {
 			expectedImpact: "negative",
 		},
 		{
+			// "number" was removed from negativeKeywords (L28) — it collides with
+			// legitimate phone context and tabular contact data, so it no longer
+			// applies a penalty. A valid-looking number with no real negative
+			// signal now scores high, as it should.
 			name:           "Neutral Context",
-			content:        "The number is 555-123-4567",
+			content:        "The entry is 555-123-4567",
 			expectMatch:    true,
 			minConfidence:  40,
-			maxConfidence:  80,
+			maxConfidence:  100,
 			expectedImpact: "neutral",
 		},
 	}
@@ -689,4 +693,132 @@ func TestPhoneValidator_RegressionTests(t *testing.T) {
 			t.Errorf("Unix timestamp should not be detected as phone")
 		}
 	})
+}
+
+// TestPhoneValidator_NANPAreaCodesNotTimestamps is a regression test for M6/M12:
+// formatted NANP numbers in area codes 200-214 (and 19xx/20xx long forms) were
+// penalized -60 as Unix timestamps/dates. The timestamp heuristic now only fires
+// on a bare digit run with no phone separators.
+func TestPhoneValidator_NANPAreaCodesNotTimestamps(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"call (212) 555-0173 now",
+		"Phone: (202) 555-0173",
+		"contact 213-555-0173",
+		"phone 201-998-7654",
+	} {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		var best float64
+		for _, m := range matches {
+			if m.Confidence > best {
+				best = m.Confidence
+			}
+		}
+		if best < 60 {
+			t.Errorf("formatted NANP number in %q should reach MEDIUM, got %.1f", line, best)
+		}
+	}
+	// A bare 10-digit run with no separators may still be treated as a timestamp.
+	if !v.looksLikeTimestamp("2125550173") {
+		t.Error("a bare 10-digit run should still be eligible as a timestamp")
+	}
+	if v.looksLikeTimestamp("(212) 555-0173") {
+		t.Error("a separator-formatted phone must not be treated as a timestamp")
+	}
+}
+
+// TestPhoneValidator_UKNationalThreeGroup is a regression test for M8/M9: a
+// full UK national number (area + two subscriber groups) was truncated to two
+// groups and the leading-0 form was penalized as invalid.
+func TestPhoneValidator_UKNationalThreeGroup(t *testing.T) {
+	v := NewValidator()
+	matches, _ := v.ValidateContent("ring 0161 496 0345 today", "test.txt")
+	found := false
+	for _, m := range matches {
+		if m.Text == "0161 496 0345" {
+			found = true
+		}
+	}
+	if !found {
+		got := make([]string, 0, len(matches))
+		for _, m := range matches {
+			got = append(got, m.Text)
+		}
+		t.Errorf("full UK number '0161 496 0345' should be captured whole, got %v", got)
+	}
+}
+
+// TestPhoneValidator_VersionStringNotPhone is a regression test for M10: dotted,
+// "+"-prefixed version tags ("+2024.1.1", "+1.2.3.4") matched as international
+// phone numbers.
+func TestPhoneValidator_VersionStringNotPhone(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{"git tag +2024.1.1 released", "version +1.2.3.4 here"} {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		if len(matches) > 0 {
+			t.Errorf("version string %q should not match as a phone, got %d", line, len(matches))
+		}
+	}
+	// Real international numbers still match.
+	if m, _ := v.ValidateContent("call +44 20 7946 0958 now", "test.txt"); len(m) == 0 {
+		t.Error("real international number should still be detected")
+	}
+}
+
+// TestPhoneValidator_NoDuplicatePartials is a regression test for M11:
+// overlapping patterns emitted a truncated partial of the same number alongside
+// the full match.
+func TestPhoneValidator_NoDuplicatePartials(t *testing.T) {
+	v := NewValidator()
+	matches, _ := v.ValidateContent("Reach me +44 20 7946 0958 today", "test.txt")
+	if len(matches) != 1 {
+		got := make([]string, 0, len(matches))
+		for _, m := range matches {
+			got = append(got, m.Text)
+		}
+		t.Errorf("expected a single match for one phone number, got %d: %v", len(matches), got)
+	}
+}
+
+// TestPhoneValidator_LowSeverityFindings covers three LOW-severity fixes:
+// L28 generic words (number/name/id/account) removed from negativeKeywords;
+// L29 test-pattern matching anchored to the full number (not short fragments);
+// L30 a bare leading "1" country code is stripped for US/CA format validation.
+func TestPhoneValidator_LowSeverityFindings(t *testing.T) {
+	v := NewValidator()
+
+	// L28: legitimate "phone number"/contact-record context must not demote.
+	for _, line := range []string{
+		"Phone number: 415-555-2671",
+		"name, id, account, phone 415-555-2671",
+	} {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		var best float64
+		for _, m := range matches {
+			if m.Confidence > best {
+				best = m.Confidence
+			}
+		}
+		if best < 60 {
+			t.Errorf("L28: %q should stay MEDIUM/HIGH, got %.1f", line, best)
+		}
+	}
+
+	// L29: real numbers that merely contain a test fragment are not test numbers;
+	// full known test numbers and the fictional 555-01xx range still are.
+	for _, real := range []string{"415-123-4567", "303-987-6543"} {
+		if v.isTestPhoneNumber(real) {
+			t.Errorf("L29: %s is a real number, not a test number", real)
+		}
+	}
+	for _, test := range []string{"555-0100", "123-456-7890"} {
+		if !v.isTestPhoneNumber(test) {
+			t.Errorf("L29: %s should still be recognized as a test number", test)
+		}
+	}
+
+	// L30: a bare leading "1" must be stripped for US/CA 10-digit validation.
+	if !v.isValidCountryFormat("1-800-555-1234", phonePattern{country: "US/CA"}) {
+		t.Error("L30: bare-1 toll-free number should be a valid US/CA format")
+	}
 }

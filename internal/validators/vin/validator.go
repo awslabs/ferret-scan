@@ -23,6 +23,41 @@ var transliterationMap = map[byte]int{
 // positionWeights are the weights for each of the 17 VIN positions.
 var positionWeights = [17]int{8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2}
 
+// containsKeyword reports whether text contains keyword as a whole word,
+// case-insensitively. The previous code used strings.Contains, so short context
+// keywords matched inside unrelated words — positive "car"/"vin" inside
+// "carbon"/"moving" fabricated a +50 boost on a random check-digit-passing
+// token, and negative "sha"/"key"/"api" inside "shall"/"monkey"/"rapid" dropped
+// real VINs. A plain string scan (word byte = [a-z0-9]) keeps this cheap.
+func containsKeyword(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	lt := strings.ToLower(text)
+	lk := strings.ToLower(keyword)
+	for from := 0; from+len(lk) <= len(lt); {
+		i := strings.Index(lt[from:], lk)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isVINWordByte(lt[i-1])
+		right := i + len(lk)
+		rightOK := right >= len(lt) || !isVINWordByte(lt[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// isVINWordByte reports whether b is a word character ([a-z0-9]) for keyword
+// boundary detection. text is already lowercased by the caller.
+func isVINWordByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
 // knownWMIs maps common World Manufacturer Identifier prefixes to manufacturer names.
 var knownWMIs = map[string]string{
 	"1G1": "Chevrolet", "1G2": "Pontiac", "1GC": "Chevrolet Truck",
@@ -65,8 +100,12 @@ type Validator struct {
 // NewValidator creates and returns a new VIN Validator instance.
 func NewValidator() *Validator {
 	v := &Validator{
-		// 17 alphanumeric characters excluding I, O, Q
-		pattern: `\b[A-HJ-NPR-Z0-9]{17}\b`,
+		// 17 alphanumeric characters excluding I, O, Q. Case-insensitive: VINs
+		// are commonly stored lowercase or mixed-case in logs/JSON/CSV, and the
+		// uppercase-only class never matched them (ValidateContent ToUppers the
+		// match afterward, so the previous lowercasing was a detection no-op).
+		// The lowercase exclusions (i, o, q) mirror the uppercase ones.
+		pattern: `\b[A-HJ-NPR-Za-hj-npr-z0-9]{17}\b`,
 		positiveKeywords: []string{
 			"vin", "vehicle identification", "vehicle id", "chassis",
 			"title", "registration", "dmv", "odometer", "mileage",
@@ -150,8 +189,25 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				continue
 			}
 
-			if !v.checkDigitValid(upper) {
-				continue
+			// Check-digit gate. The ISO 3779 position-9 check digit is mandatory
+			// ONLY for North American VINs (WMI region 1-5); manufacturers in
+			// the rest of the world are not required to encode it, so a huge
+			// share of genuine EU/Asian VINs legitimately "fail" this checksum.
+			// Hard-rejecting on failure therefore dropped most non-NA VINs —
+			// including ones whose WMI is in our own knownWMIs table (WVW, WAU,
+			// ZFF, ...). We now only hard-reject when the check digit is
+			// REQUIRED (NA region). For non-NA VINs we keep the candidate but
+			// require a recognized WMI as corroboration so we don't start
+			// surfacing arbitrary 17-char alphanumeric tokens (hashes, base32);
+			// the check-digit status is carried into confidence scoring below.
+			checkDigitOK := v.checkDigitValid(upper)
+			if !checkDigitOK {
+				if v.isNorthAmericanVIN(upper) {
+					continue // NA VIN with a bad check digit is genuinely invalid
+				}
+				if v.detectManufacturer(upper) == "" {
+					continue // no check digit AND no known WMI -> not enough signal
+				}
 			}
 
 			if v.isEncodedData(line, match) {
@@ -160,7 +216,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 			// --- Passed all gates: score confidence ---
 
-			confidence, checks := v.CalculateConfidence(upper)
+			confidence, checks := v.calculateConfidence(upper, checkDigitOK)
 
 			contextInfo := v.buildContext(line, match)
 			contextImpact := v.AnalyzeContext(match, contextInfo)
@@ -214,10 +270,22 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 }
 
 // CalculateConfidence returns a base confidence and validation checks map.
+// It satisfies the detector.Validator interface; the check-digit status is
+// derived here so external callers get a correct score. The internal scan path
+// uses calculateConfidence directly to avoid recomputing the check digit.
 func (v *Validator) CalculateConfidence(vin string) (float64, map[string]bool) {
+	return v.calculateConfidence(vin, v.checkDigitValid(vin))
+}
+
+// calculateConfidence scores a VIN given the already-computed check-digit
+// result. A valid check digit is a strong signal (+20); an invalid one is only
+// reached here for non-North-American VINs with a recognized WMI (the scan
+// gate rejects NA VINs and unknown-WMI VINs that fail the check digit), so we
+// neither add nor heavily penalize — the known WMI below carries the weight.
+func (v *Validator) calculateConfidence(vin string, checkDigitOK bool) (float64, map[string]bool) {
 	checks := map[string]bool{
 		"format":        true,
-		"check_digit":   true,
+		"check_digit":   checkDigitOK,
 		"known_wmi":     false,
 		"valid_year":    false,
 		"not_test":      true,
@@ -226,9 +294,14 @@ func (v *Validator) CalculateConfidence(vin string) (float64, map[string]bool) {
 
 	confidence := 65.0
 
-	// Check digit already validated in early rejection, so always +20
-	confidence += 20
-	checks["check_digit"] = true
+	if checkDigitOK {
+		confidence += 20
+	} else {
+		// Non-NA VIN without the optional check digit: drop below the +20 a
+		// valid checksum earns, so these surface lower than verified VINs but
+		// remain detectable (a known WMI re-adds signal just below).
+		confidence -= 10
+	}
 
 	// Known manufacturer
 	if v.detectManufacturer(vin) != "" {
@@ -245,6 +318,18 @@ func (v *Validator) CalculateConfidence(vin string) (float64, map[string]bool) {
 	return confidence, checks
 }
 
+// isNorthAmericanVIN reports whether the VIN's WMI region (first character)
+// designates North America (1-5), where the ISO 3779 position-9 check digit is
+// mandatory. For these VINs a failed check digit means the VIN is invalid; for
+// all other regions the check digit is optional and a failure is not
+// disqualifying on its own.
+func (v *Validator) isNorthAmericanVIN(vin string) bool {
+	if len(vin) == 0 {
+		return false
+	}
+	return vin[0] >= '1' && vin[0] <= '5'
+}
+
 // AnalyzeContext adjusts confidence based on surrounding text.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
 	fullContext := strings.ToLower(context.BeforeText + " " + context.FullLine + " " + context.AfterText)
@@ -253,9 +338,8 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	var impact float64
 
 	for _, keyword := range v.positiveKeywords {
-		kw := strings.ToLower(keyword)
-		if strings.Contains(fullContext, kw) {
-			if strings.Contains(fullLine, kw) {
+		if containsKeyword(fullContext, keyword) {
+			if containsKeyword(fullLine, keyword) {
 				impact += 25
 			} else {
 				impact += 10
@@ -264,9 +348,8 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	}
 
 	for _, keyword := range v.negativeKeywords {
-		kw := strings.ToLower(keyword)
-		if strings.Contains(fullContext, kw) {
-			if strings.Contains(fullLine, kw) {
+		if containsKeyword(fullContext, keyword) {
+			if containsKeyword(fullLine, keyword) {
 				impact -= 15
 			} else {
 				impact -= 8
@@ -289,7 +372,7 @@ func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string
 
 	var found []string
 	for _, keyword := range keywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if containsKeyword(fullContext, keyword) {
 			found = append(found, keyword)
 		}
 	}
@@ -379,10 +462,12 @@ func (v *Validator) isTestPattern(vin string) bool {
 
 // isEncodedData detects if the match is likely part of encoded data (base64, hex dumps, etc.).
 func (v *Validator) isEncodedData(line, match string) bool {
-	lower := strings.ToLower(line)
-
-	// Hex dump patterns: line contains multiple "0x" prefixes typical of hex dumps
-	if strings.Count(lower, "0x") >= 3 {
+	// Hex dump patterns. The previous `Count(line,"0x") >= 3` rule dropped the
+	// whole line — and the valid VIN on it — whenever it mentioned three hex
+	// literals, e.g. "VIN 1HGBH41JXMN109186 colors 0xFF0000 0x00FF00 0x0000FF"
+	// (L47). A genuine hex dump is DOMINATED by 0x tokens, so we instead require
+	// a strict majority of whitespace tokens to be 0x-prefixed hex words.
+	if looksLikeHexDump(line) {
 		return true
 	}
 	if strings.Count(line, " ") > 10 && isHexDump(line) {
@@ -417,6 +502,26 @@ func isHexDump(line string) bool {
 		}
 	}
 	return len(line) > 0 && float64(hexChars)/float64(len(line)) > 0.85
+}
+
+// looksLikeHexDump reports whether a line is a hex dump — i.e. a strict majority
+// of its whitespace-separated tokens are 0x-prefixed hex words (and there are at
+// least three). This distinguishes a real dump ("0x1A 0x2B 0x3C ...") from a
+// VIN line that merely mentions a few hex literals ("VIN ... 0xFF0000 0x00FF00
+// 0x0000FF"), which should not be discarded.
+func looksLikeHexDump(line string) bool {
+	toks := strings.Fields(line)
+	if len(toks) == 0 {
+		return false
+	}
+	hex := 0
+	for _, t := range toks {
+		lt := strings.ToLower(t)
+		if strings.HasPrefix(lt, "0x") && len(lt) > 2 {
+			hex++
+		}
+	}
+	return hex >= 3 && hex*2 > len(toks)
 }
 
 // buildContext extracts context information around a match within the current line.

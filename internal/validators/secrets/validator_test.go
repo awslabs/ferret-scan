@@ -7,8 +7,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
 )
+
+// contextInsightsForTest builds a minimal ContextInsights with the given
+// document type for confidence tests.
+func contextInsightsForTest(docType string) context.ContextInsights {
+	return context.ContextInsights{DocumentType: docType}
+}
 
 // buildTestToken constructs test tokens at runtime to avoid triggering
 // static secret scanners in pre-commit hooks. These are intentional test
@@ -271,9 +278,17 @@ func TestSecretsValidator_JWTTokens(t *testing.T) {
 			wantDetect: true,
 		},
 		{
-			name:       "Minimal JWT structure",
+			// Tightened by M23: short segments whose header does not base64url-
+			// decode to JSON with "alg" are no longer accepted as JWTs (this
+			// rejects minified-JS identifiers and "eyJ.." style false positives).
+			name:       "Too-short non-decoding segments are not a JWT",
 			match:      "eyJhbGci.eyJzdWIi.sig123",
-			wantDetect: true,
+			wantDetect: false,
+		},
+		{
+			name:       "eyJ prefix with empty segments is not a JWT",
+			match:      "eyJ..",
+			wantDetect: false,
 		},
 		{
 			name:       "Missing eyJ prefix",
@@ -1449,5 +1464,94 @@ func TestSecretsValidator_AnalyzeContext_CapsImpact(t *testing.T) {
 	impact = v.AnalyzeContext("match", negativeContext)
 	if impact < -40 {
 		t.Errorf("Negative impact should be capped at -40, got %.1f", impact)
+	}
+}
+
+// TestSecretsValidator_SlackTokenStructure is a regression test for M27: the
+// Slack token check was prefix-only, accepting junk that merely started with the
+// bot/user prefix. It now validates the full token structure. Tokens are built
+// at runtime via buildTestToken to avoid tripping static secret scanners.
+func TestSecretsValidator_SlackTokenStructure(t *testing.T) {
+	v := NewValidator()
+	botPrefix := buildTestToken("xox", "b-")
+	userPrefix := buildTestToken("xox", "p-")
+
+	// Structurally valid tokens.
+	valid := []string{
+		buildTestToken(botPrefix, "123456789012-123456789012-abcdefghijklmnopqrstuvwx"),
+		buildTestToken(userPrefix, "123456789012-123456789012-123456789012-abcdefghijklmnopqrstuvwxyz123456"),
+	}
+	for _, tok := range valid {
+		if !v.isSlackToken(tok) {
+			t.Errorf("structurally valid Slack token %q should be detected", tok)
+		}
+	}
+	// Prefix-only junk must be rejected.
+	junk := []string{
+		buildTestToken(botPrefix, "abc"),
+		buildTestToken(userPrefix, "1"),
+		botPrefix,
+		buildTestToken("xox", "bnotatoken"),
+	}
+	for _, tok := range junk {
+		if v.isSlackToken(tok) {
+			t.Errorf("prefix-only junk %q should not be a Slack token", tok)
+		}
+	}
+}
+
+// TestSecretsValidator_HighEntropyTestSubstring is a regression test for M26: a
+// long high-entropy secret that merely contains "test"/"secret" as a substring
+// was penalized below the MEDIUM threshold. Such tokens keep their base score.
+func TestSecretsValidator_HighEntropyTestSubstring(t *testing.T) {
+	v := NewValidator()
+	for _, tok := range []string{
+		"testkR9wX2mQ7vL4nB8pZ1aT6cF3hJ5", // 30 chars, begins with "test"
+		"kR9secretX2mQ7vL4nB8pZ1aT6cF3hJ5",
+	} {
+		conf, _ := v.CalculateConfidence(tok)
+		if conf < 60 {
+			t.Errorf("high-entropy secret %q should not be gutted by an incidental substring, got %.1f", tok, conf)
+		}
+	}
+	// A token that IS essentially the word must still be penalized.
+	if conf, _ := v.CalculateConfidence("test1234"); conf >= 85 {
+		t.Errorf("token dominated by 'test' should still be penalized, got %.1f", conf)
+	}
+}
+
+// TestSecretsValidator_EnvironmentClassification is a regression test for M25:
+// "package main" / "func main" classified as production (spurious +10 boost),
+// and test content misclassified as development due to dev/test keyword overlap.
+func TestSecretsValidator_EnvironmentClassification(t *testing.T) {
+	v := NewValidator()
+	if env := v.detectEnvironmentType("package main\nfunc main() {}"); env == "production" {
+		t.Errorf("ordinary Go source should not be classified production, got %q", env)
+	}
+	if env := v.detectEnvironmentType("this is example mock fake sample data"); env != "test" {
+		t.Errorf("clear test content should classify as test, got %q", env)
+	}
+}
+
+// TestSecretsValidator_GenericEntropyNotHighWithoutContext is a regression test
+// for M24: a context-free high-entropy string (git SHA, hash, blob) started at
+// base 85 and reached HIGH via doc-type boosts with no evidence it is a secret.
+// It must not reach HIGH without a corroborating secret keyword; with one, it
+// still does.
+func TestSecretsValidator_GenericEntropyNotHighWithoutContext(t *testing.T) {
+	v := NewValidator()
+	full := "checksum: aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u"
+	conf, checks := v.calculateEnhancedConfidenceWithCacheAndEnv(
+		"aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u", full, contextInsightsForTest("Configuration"), false, "")
+	if !checks["specific_pattern"] && conf >= 60 {
+		t.Errorf("context-free generic entropy string should stay below MEDIUM, got %.1f", conf)
+	}
+
+	// With a secret keyword on the line it should be allowed to reach HIGH.
+	withKw := "api_secret = aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u"
+	confKw, _ := v.calculateEnhancedConfidenceWithCacheAndEnv(
+		"aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u", withKw, contextInsightsForTest("Configuration"), false, "")
+	if confKw < 60 {
+		t.Errorf("entropy string with a secret keyword should reach MEDIUM/HIGH, got %.1f", confKw)
 	}
 }

@@ -559,3 +559,184 @@ func TestConfigure_ValidPatternOverrideApplied(t *testing.T) {
 		t.Error("narrowed override should still match 'Trade Secret'")
 	}
 }
+
+// TestTrademarkSymbolForms is a regression test for the trailing-\b bug: the ™, ®,
+// (TM), and (R) markers — the dominant real-world trademark indicators — were never
+// detected because a trailing ASCII \b cannot follow a non-word character. The word
+// forms ("X Trademark") DID match, which is why earlier tests missed the gap.
+func TestTrademarkSymbolForms(t *testing.T) {
+	v := NewValidator()
+
+	// True positives that must now be detected.
+	positives := []string{
+		"Acme™",    // Acme™
+		"Acme®",    // Acme®
+		"Acme(TM)", // (TM)
+		"Acme(R)",  // (R)
+		"Use of Photoshop™ is governed by license.", // ™ mid-line
+		"the Windows® operating system",             // ® mid-line
+		"ProductName Trademark is registered.",      // word form (unchanged)
+		"FooBar Registered Trademark notice",        // registered word form
+	}
+	for _, line := range positives {
+		matches, err := v.ValidateContent(line+"\n", "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", line, err)
+		}
+		if !matchesContainIPType(matches, "trademark") {
+			t.Errorf("expected trademark detection for %q, got none", line)
+		}
+	}
+
+	// Must NOT false-match: no trademark marker present, and "Trademarked" must not
+	// partial-match the "...Trademark" word alternative (trailing \b on word forms).
+	negatives := []string{
+		"This is a normal line of code.",
+		"version 2.0 of the library",
+		"FooBar Trademarked goods are sold here", // 'Trademarked' != 'Trademark'
+	}
+	for _, line := range negatives {
+		matches, err := v.ValidateContent(line+"\n", "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", line, err)
+		}
+		if matchesContainIPType(matches, "trademark") {
+			t.Errorf("expected NO trademark detection for %q, but got one", line)
+		}
+	}
+}
+
+// tradeSecretConfidence returns the confidence of the first trade_secret match on
+// the line, or -1 if none was produced.
+func tradeSecretConfidence(t *testing.T, v *Validator, line string) float64 {
+	t.Helper()
+	matches, err := v.ValidateContent(line+"\n", "test.txt")
+	if err != nil {
+		t.Fatalf("unexpected error for %q: %v", line, err)
+	}
+	for _, m := range matches {
+		if mt, ok := m.Metadata["ip_type"]; ok && mt == "trade_secret" {
+			return m.Confidence
+		}
+	}
+	return -1
+}
+
+// TestTradeSecretBareWordScoring is a regression test for bare generic trade-secret
+// words surfacing at MEDIUM with no context. "Restricted"/"Classified"/"Proprietary"
+// used to score 70-80 (>=60 MEDIUM); they now start below 60 so they only reach
+// MEDIUM with corroborating context, while explicit confidentiality phrases stay
+// MEDIUM-capable. We still detect all of them (so nothing is lost at LOW), but the
+// bucket must differ.
+func TestTradeSecretBareWordScoring(t *testing.T) {
+	v := NewValidator()
+	const mediumThreshold = 60.0
+
+	// Bare generic words: detected, but BELOW the MEDIUM threshold without context.
+	bare := []string{"Restricted", "Classified", "Proprietary"}
+	for _, w := range bare {
+		conf := tradeSecretConfidence(t, v, "Status: "+w)
+		if conf < 0 {
+			t.Errorf("%q should still be detected (at LOW), got no trade_secret match", w)
+			continue
+		}
+		if conf >= mediumThreshold {
+			t.Errorf("bare %q should score below MEDIUM (%.0f) without context, got %.1f", w, mediumThreshold, conf)
+		}
+	}
+
+	// Explicit confidentiality phrases must remain MEDIUM-capable.
+	explicit := []string{"Trade Secret", "Company Confidential", "Internal Use Only", "Confidential"}
+	for _, w := range explicit {
+		conf := tradeSecretConfidence(t, v, "Notice: "+w)
+		if conf < mediumThreshold {
+			t.Errorf("explicit marker %q should stay MEDIUM (>=%.0f), got %.1f", w, mediumThreshold, conf)
+		}
+	}
+}
+
+// TestPatentPrefixCaseSensitive is a regression test for M28: the patent prefix
+// was case-insensitive, so lowercase currency/quantity figures ("cn 100,000,000
+// yuan") matched as patents. The prefix is now case-sensitive (office codes are
+// uppercase) while real uppercase patents still match.
+func TestPatentPrefixCaseSensitive(t *testing.T) {
+	v := NewValidator()
+	// Currency/quantity prose must NOT be a patent.
+	for _, line := range []string{"the cn 100,000,000 yuan", "jp 123,456,789 yen", "ep 12,345,678"} {
+		matches, _ := v.ValidateContent(line+"\n", "test.txt")
+		if matchesContainIPType(matches, "patent") {
+			t.Errorf("lowercase currency %q should not match as a patent", line)
+		}
+	}
+	// Real uppercase patents must still match.
+	for _, line := range []string{"US 9,123,456 patent", "filed EP1234567 today"} {
+		matches, _ := v.ValidateContent(line+"\n", "test.txt")
+		if !matchesContainIPType(matches, "patent") {
+			t.Errorf("real patent %q should be detected", line)
+		}
+	}
+}
+
+// TestCopyrightFooterVariants is a regression test for M29: copyright notices
+// without a year, with em-dash ranges, or with parenthesized/no-year entities
+// were missed because the pattern required a 4-digit year + ASCII-only name.
+func TestCopyrightFooterVariants(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"© 2024",
+		"© 2024 — Acme",
+		"© 2024 (Acme)",
+		"© Acme Corporation",
+		"Copyright Acme Inc. All rights reserved",
+		"© 2020-2024 Example LLC",
+	} {
+		matches, _ := v.ValidateContent(line+"\n", "test.txt")
+		if !matchesContainIPType(matches, "copyright") {
+			t.Errorf("copyright footer %q should be detected", line)
+		}
+	}
+}
+
+// TestEnsureCaseInsensitive is a regression test for M30: non-capturing "(?:..."
+// and named "(?P<..." groups were mistaken for inline-flag groups, so a config
+// override starting with one was left case-sensitive instead of getting (?i).
+func TestEnsureCaseInsensitive(t *testing.T) {
+	v := NewValidator()
+	cases := map[string]bool{ // want (?i) prepended?
+		`(?:US\d+)`: true, `(?P<x>a)`: true, `plain`: true,
+		`(?i)foo`: false, `(?im)foo`: false, `(?-i)foo`: false, `(?s:.*)`: false,
+	}
+	for p, want := range cases {
+		got := v.ensureCaseInsensitive(p)
+		if (got != p) != want {
+			t.Errorf("ensureCaseInsensitive(%q)=%q, prepended=%v want=%v", p, got, got != p, want)
+		}
+	}
+}
+
+// TestTradeSecretSuppressedByOpenSourceLicense is a regression test for L12: a
+// trade-secret marker (Proprietary/Confidential/Trade Secret) on a line that
+// also carries a recognized open-source / public-domain license must be capped
+// below the MEDIUM threshold, since open licensing contradicts trade-secrecy.
+func TestTradeSecretSuppressedByOpenSourceLicense(t *testing.T) {
+	v := NewValidator()
+	tsConf := func(line string) float64 {
+		matches, _ := v.ValidateContent(line+"\n", "test.txt")
+		for _, m := range matches {
+			if mt, ok := m.Metadata["ip_type"]; ok && mt == "trade_secret" {
+				return m.Confidence
+			}
+		}
+		return -1
+	}
+	for _, line := range []string{
+		"Proprietary blend, MIT license applies",
+		"Confidential? No, this is open source",
+		"Trade Secret SPDX-License-Identifier: Apache-2.0",
+		"Proprietary algorithm released under the GPL",
+	} {
+		if c := tsConf(line); c >= 60 {
+			t.Errorf("L12: %q should be capped below MEDIUM with an OSS license present, got %.1f", line, c)
+		}
+	}
+}

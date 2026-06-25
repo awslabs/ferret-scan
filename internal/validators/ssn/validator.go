@@ -31,6 +31,47 @@ var (
 	reDigitSequences = regexp.MustCompile(`\b\d{18}\b`)
 )
 
+// containsKeyword reports whether text contains keyword as a whole word/phrase,
+// case-insensitively. The previous code used strings.Contains, so short keywords
+// matched inside unrelated words — "hr" in "Christopher" (+45 inflation), "ein"
+// in "Einstein", "ext" in "next", "code" in "barcode" — both fabricating context
+// boosts on non-SSN lines and spuriously penalizing real SSNs.
+//
+// It is implemented as a plain string scan with manual boundary checks rather
+// than a regex: AnalyzeContext/validateSSNByDomain/findKeywords invoke it on the
+// order of a hundred times per matched SSN, and a compiled-regex MatchString per
+// keyword made SSN-dense input ~13x slower. A "word" character here is
+// [a-z0-9_]; a boundary is the string edge or any non-word byte, which also
+// correctly anchors keywords whose own edges are non-word (e.g. "w-2").
+func containsKeyword(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	lt := strings.ToLower(text)
+	lk := strings.ToLower(keyword)
+	for from := 0; from+len(lk) <= len(lt); {
+		i := strings.Index(lt[from:], lk)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isWordByte(lt[i-1])
+		right := i + len(lk)
+		rightOK := right >= len(lt) || !isWordByte(lt[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// isWordByte reports whether b is a word character ([a-z0-9_]) for the purpose
+// of keyword boundary detection. text is already lowercased by the caller.
+func isWordByte(b byte) bool {
+	return b == '_' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
 // Validator implements the detector.Validator interface for detecting
 // Social Security Numbers using regex patterns and contextual analysis.
 type Validator struct {
@@ -101,8 +142,12 @@ func NewValidator() *Validator {
 			"medical insurance", "health insurance", "patient id", "medical id",
 		},
 		globalTestPatterns: []string{
+			// Strong test-data indicators. Generic doc/config words
+			// ("documentation", "readme", "template", "default", "tutorial") were
+			// intentionally removed: they commonly appear on legitimate doc/config
+			// lines that may also carry a real SSN, and a -40 penalty on their mere
+			// presence pushed genuine SSNs below the surfacing threshold.
 			"test", "example", "sample", "demo", "placeholder", "mock", "fake",
-			"tutorial", "documentation", "readme", "template", "default",
 			"lorem ipsum", "john doe", "jane smith", "foo bar", "qwerty",
 			"111111111", "222222222", "333333333", "444444444", "555555555",
 			"777777777", "888888888", "999999999", "123456789", "987654321",
@@ -217,12 +262,35 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				}
 				// Don't cap confidence for tabular data - let the base confidence stand
 			} else if len(contextInfo.PositiveKeywords) == 0 {
-				// For non-tabular data without positive keywords, be more restrictive
+				// For non-tabular data without positive keywords, be more restrictive.
 				if len(contextInfo.NegativeKeywords) > 0 {
 					confidence -= 25 // Stronger penalty for negative context in non-tabular data
-				} else if confidence > 50 {
-					confidence = 50 // Cap at medium confidence without context for non-tabular data
+				} else {
+					// The strongly-formatted hyphenated XXX-XX-XXXX form (which has
+					// already passed all structural checks) is high-quality evidence
+					// on its own, so allow it to reach the 60 MEDIUM threshold even
+					// without a keyword (L45). The riskier separator-less / spaced
+					// forms keep the stricter LOW cap of 50.
+					capValue := 50.0
+					if v.isStrongHyphenatedSSN(match) {
+						capValue = 60.0
+					}
+					if confidence > capValue {
+						confidence = capValue
+					}
 				}
+			}
+
+			// Drop known denylisted test SSNs (123-45-6789, 123-45-4321, all-same
+			// digits, etc.). These are not real PII, yet a nearby positive keyword
+			// like "ssn"/"employee" could previously push them to HIGH (100) — a
+			// maximum-confidence false positive on a value the validator itself
+			// flags as test data. The decision is made here, after context
+			// analysis, so it is not defeated by keyword boosts. This is the
+			// false-positive-minimizing behavior and matches the validator's own
+			// denylist intent.
+			if v.isTestSSN(v.cleanSSN(match)) {
+				continue
 			}
 
 			// Ensure confidence stays within bounds
@@ -277,9 +345,9 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	// Check for positive keywords (increase confidence)
 	for _, keyword := range v.positiveKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if containsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if containsKeyword(context.FullLine, keyword) {
 				confidenceImpact += 25 // +25% for keywords in the same line
 			} else {
 				confidenceImpact += 10 // +10% for keywords in surrounding context
@@ -289,9 +357,9 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	// Check for negative keywords (decrease confidence)
 	for _, keyword := range v.negativeKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if containsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if containsKeyword(context.FullLine, keyword) {
 				confidenceImpact -= 15 // -15% for negative keywords in the same line
 			} else {
 				confidenceImpact -= 8 // -8% for negative keywords in surrounding context
@@ -327,7 +395,7 @@ func (v *Validator) validateSSNByDomain(ssn, context string) float64 {
 
 	// HR/Payroll context
 	for _, keyword := range v.hrKeywords {
-		if strings.Contains(context, keyword) {
+		if containsKeyword(context, keyword) {
 			boost += 20
 			break // Only apply once per domain
 		}
@@ -335,7 +403,7 @@ func (v *Validator) validateSSNByDomain(ssn, context string) float64 {
 
 	// Tax document context
 	for _, keyword := range v.taxKeywords {
-		if strings.Contains(context, keyword) {
+		if containsKeyword(context, keyword) {
 			boost += 25
 			break // Only apply once per domain
 		}
@@ -343,7 +411,7 @@ func (v *Validator) validateSSNByDomain(ssn, context string) float64 {
 
 	// Healthcare context
 	for _, keyword := range v.healthcareKeywords {
-		if strings.Contains(context, keyword) {
+		if containsKeyword(context, keyword) {
 			boost += 18
 			break // Only apply once per domain
 		}
@@ -399,9 +467,20 @@ func (v *Validator) isEnhancedTestPattern(value, context string) bool {
 	lowerValue := strings.ToLower(value)
 	lowerContext := strings.ToLower(context)
 
-	// Check global test patterns
+	// Check global test patterns. The list mixes numeric patterns (e.g.
+	// "111111111") with generic doc/config words ("demo", "default", "readme").
+	// Match numeric/value patterns against the value itself, but match WORD
+	// patterns against the context on whole-word boundaries only — the previous
+	// raw substring scan over the whole line meant an unrelated word like "demo"
+	// inside "demographic" (or simply present on a config line) applied the -40
+	// test penalty and pushed real SSNs under the surfacing threshold.
 	for _, pattern := range v.globalTestPatterns {
-		if strings.Contains(lowerValue, pattern) || strings.Contains(lowerContext, pattern) {
+		// Value match: an actual test value embedded in the candidate.
+		if strings.Contains(lowerValue, pattern) {
+			return true
+		}
+		// Context match: require the pattern to appear as a whole word.
+		if containsKeyword(lowerContext, pattern) {
 			return true
 		}
 	}
@@ -456,11 +535,11 @@ func (v *Validator) isObviousTestSequence(value string) bool {
 // findKeywords returns a list of keywords found in the context
 func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string) []string {
 	// Only check the current line to avoid cross-line contamination
-	fullContext := strings.ToLower(context.FullLine)
+	fullLine := context.FullLine
 
 	var found []string
 	for _, keyword := range keywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if containsKeyword(fullLine, keyword) {
 			found = append(found, keyword)
 		}
 	}
@@ -508,6 +587,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	}
 
 	// Boost confidence for properly formatted SSNs (XXX-XX-XXXX pattern)
+	hasSeparator := strings.ContainsAny(match, "- ")
 	if strings.Contains(match, "-") && len(strings.Split(match, "-")) == 3 {
 		parts := strings.Split(match, "-")
 		if len(parts[0]) == 3 && len(parts[1]) == 2 && len(parts[2]) == 4 {
@@ -515,7 +595,19 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		}
 	}
 
-	// Check for test numbers
+	// Penalize the separator-less 9-digit form. Any standalone 9-digit token
+	// (order/serial/ZIP9/product IDs) matches \d{9}, so on its own it is much
+	// weaker evidence of an SSN than the dashed/spaced forms. It still surfaces
+	// (lower base + context can lift it), but a bare 9-digit number no longer
+	// reaches HIGH without corroboration. The dashed form is unaffected.
+	if !hasSeparator {
+		confidence -= 15
+	}
+
+	// Check for test numbers. ValidateContent drops known test SSNs outright
+	// (after context analysis); here we record the failed check and apply the
+	// historical penalty so CalculateConfidence remains meaningful for callers
+	// that score a value directly.
 	if v.isTestSSN(cleanMatch) {
 		confidence -= 25
 		checks["not_test_number"] = false
@@ -548,6 +640,18 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 // Helper methods
 func (v *Validator) cleanSSN(ssn string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(ssn, "-", ""), " ", "")
+}
+
+// isStrongHyphenatedSSN reports whether match is the canonical hyphenated
+// XXX-XX-XXXX form with a valid area number — the highest-quality SSN shape.
+// Such a value is strong enough evidence to reach MEDIUM without a nearby
+// keyword (L45), unlike the riskier bare/space-separated forms.
+func (v *Validator) isStrongHyphenatedSSN(match string) bool {
+	parts := strings.Split(match, "-")
+	if len(parts) != 3 || len(parts[0]) != 3 || len(parts[1]) != 2 || len(parts[2]) != 4 {
+		return false
+	}
+	return v.isValidAreaNumber(parts[0])
 }
 
 func (v *Validator) isValidSSN(ssn string) bool {
@@ -736,8 +840,20 @@ func (v *Validator) isEncodedData(line, match string) bool {
 		return false
 	}
 
-	// If more than 85% of the line is numbers and spaces (and no tabs), it's likely encoded
+	// If more than 85% of the line is numbers and spaces (and no tabs), it's likely encoded.
 	if totalChars > 0 && float64(numericChars+spaceChars)/float64(totalChars) > 0.85 {
+		// Guard against dropping a line that IS essentially a single SSN. A bare
+		// SSN ("219099999" = 9/9 chars) or a space-separated one ("219 09 9999"
+		// = 11/11) trivially exceeds 85% numeric, so the heuristic was silently
+		// discarding two of the three SSN formats the validator advertises
+		// whenever they appeared alone (CSV cell, log column, one value per line).
+		// The 85% rule is meant to catch dense multi-number blobs; the caller has
+		// already confirmed `match` is a valid SSN on this line, so a line with
+		// only a few distinct number groups is that SSN, not encoded data. A
+		// space-separated SSN tokenizes into 3 groups, so allow up to 3.
+		if len(numbers) <= 3 {
+			return false
+		}
 		return true
 	}
 

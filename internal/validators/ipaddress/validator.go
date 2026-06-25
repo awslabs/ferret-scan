@@ -13,6 +13,47 @@ import (
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
+// Structural signals that a dotted-decimal token is being used as a network
+// address rather than (say) a software version: a trailing port (":8080") or
+// CIDR suffix ("/24").
+var (
+	rePortSuffix = regexp.MustCompile(`^:\d{1,5}\b`)
+	reCIDRSuffix = regexp.MustCompile(`^/\d{1,2}\b`)
+)
+
+// ipContainsKeyword reports whether text contains keyword as a whole word,
+// case-insensitively. Whole-word matching avoids "ip"/"nat" firing inside
+// unrelated words. Implemented as a plain string scan (not a regex) to keep the
+// per-match context check cheap; a word byte is [a-z0-9].
+func ipContainsKeyword(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	lt := strings.ToLower(text)
+	lk := strings.ToLower(keyword)
+	for from := 0; from+len(lk) <= len(lt); {
+		i := strings.Index(lt[from:], lk)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isIPWordByte(lt[i-1])
+		right := i + len(lk)
+		rightOK := right >= len(lt) || !isIPWordByte(lt[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// isIPWordByte reports whether b is a word character ([a-z0-9]) for keyword
+// boundary detection. text is already lowercased by the caller.
+func isIPWordByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
 // Validator implements the detector.Validator interface for detecting
 // IP addresses using regex patterns and contextual analysis.
 type Validator struct {
@@ -37,6 +78,11 @@ type Validator struct {
 	privateNetworks  []*net.IPNet
 	reservedNetworks []*net.IPNet
 	multicastNetwork *net.IPNet
+	// nonSensitiveNets holds ranges that should never be reported (documentation,
+	// link-local, ULA, loopback, APIPA). Membership is tested via net.IPNet so
+	// that zero-padding and "::" compression are normalized — a textual prefix
+	// check missed the canonical RFC 3849 form 2001:0db8:... written zero-padded.
+	nonSensitiveNets []*net.IPNet
 
 	// Observability
 	observer *observability.StandardObserver
@@ -110,8 +156,31 @@ func NewValidator() *Validator {
 			description: "Full IPv6 address",
 		},
 		{
-			name:        "IPv6_Compressed",
-			regex:       regexp.MustCompile(`\b(?:[0-9a-fA-F]{1,4}:)*::(?:[0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}\b`),
+			name: "IPv6_Compressed",
+			// Compressed IPv6 (with a "::" run). The previous pattern
+			// `\b(?:hex:)*::(?:hex:)*hex\b` was broken for FindString: the
+			// leading \b plus a greedy prefix meant that for an address like
+			// "2606:4700:4700::1111" RE2's leftmost-first matcher anchored at
+			// the "::" and captured only the "::1111" fragment, which the
+			// isEmbeddedInString guard (alnum char immediately before "::")
+			// then discarded — so virtually all real public IPv6 was missed.
+			//
+			// This is the canonical compressed-form alternation, ordered by
+			// POST-"::" group count DESCENDING so leftmost-first selects the
+			// form capturing the most trailing groups (otherwise a
+			// 1-trailing-group form truncates "2001:db8::ff00:42:8329"). No
+			// surrounding \b: the boundary is handled by isEmbeddedInString,
+			// and any over-match is rejected downstream by net.ParseIP in
+			// isSensitiveIP (unparseable IPs are dropped), so the broader
+			// pattern cannot introduce false positives.
+			regex: regexp.MustCompile(`(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}` +
+				`|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}` +
+				`|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}` +
+				`|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}` +
+				`|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}` +
+				`|[0-9A-Fa-f]{1,4}:(?::[0-9A-Fa-f]{1,4}){1,6}` +
+				`|(?:[0-9A-Fa-f]{1,4}:){1,7}:` +
+				`|:(?::[0-9A-Fa-f]{1,4}){1,7}`),
 			version:     "IPv6",
 			description: "Compressed IPv6 address with ::",
 		},
@@ -143,6 +212,25 @@ func NewValidator() *Validator {
 		}
 	}
 	_, v.multicastNetwork, _ = net.ParseCIDR("224.0.0.0/4")
+
+	// Non-sensitive ranges, parsed so zero-padded / compressed forms are matched.
+	for _, cidr := range []string{
+		"2001:db8::/32",   // RFC 3849 IPv6 documentation
+		"fe80::/10",       // IPv6 link-local
+		"fc00::/7",        // IPv6 unique local (ULA)
+		"::1/128",         // IPv6 loopback
+		"169.254.0.0/16",  // IPv4 APIPA / link-local
+		"192.0.2.0/24",    // RFC 5737 TEST-NET-1
+		"198.51.100.0/24", // RFC 5737 TEST-NET-2
+		"203.0.113.0/24",  // RFC 5737 TEST-NET-3
+		"100.64.0.0/10",   // RFC 6598 carrier-grade NAT shared space (not end-user identifying)
+		"198.18.0.0/15",   // RFC 2544 benchmarking
+		"192.0.0.0/24",    // RFC 7335 IETF protocol assignments
+	} {
+		if _, network, err := net.ParseCIDR(cidr); err == nil {
+			v.nonSensitiveNets = append(v.nonSensitiveNets, network)
+		}
+	}
 
 	return v
 }
@@ -188,7 +276,24 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 	// Process each pattern type
 	for lineNum, line := range lines {
+		// Cheap per-line fast paths: every IPv6 form needs a ":" and the
+		// compressed form additionally needs a "::". Skipping the (multi-branch)
+		// IPv6 regexes on lines that cannot possibly contain such an address
+		// avoids the bulk of their cost on ordinary text without changing any
+		// match result.
+		hasColon := strings.Contains(line, ":")
+		hasDoubleColon := strings.Contains(line, "::")
+
 		for _, pattern := range v.patterns {
+			if pattern.version == "IPv6" {
+				if !hasColon {
+					continue
+				}
+				if pattern.name == "IPv6_Compressed" && !hasDoubleColon {
+					continue
+				}
+			}
+
 			foundMatches := pattern.regex.FindAllString(line, -1)
 
 			for _, match := range foundMatches {
@@ -232,6 +337,23 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				// Analyze context and adjust confidence
 				contextImpact := v.AnalyzeContext(match, contextInfo)
 				confidence += contextImpact
+
+				// A bare dotted-decimal IPv4 with no corroborating signal is
+				// ambiguous: software versions (5.4.36.180), pi digits
+				// (3.14.15.92) and arbitrary numeric tuples are structurally
+				// identical to a routable IP, and previously scored 100 (HIGH)
+				// because the base is 100 + a +10 public boost. The same applies
+				// to a FULL-form 8-group IPv6 with no "::" — a MAC-like or random
+				// hex tuple (12:34:56:78:90:ab:cd:ef) parses as valid IPv6 and
+				// scored 100. Cap such context-free matches below HIGH so they
+				// surface as MEDIUM unless an IP keyword or structural signal
+				// (port, CIDR) is present. A compressed IPv6 (contains "::") is
+				// unambiguous and is left untouched.
+				ambiguousShape := pattern.version == "IPv4" ||
+					(pattern.name == "IPv6_Full" && !strings.Contains(match, "::"))
+				if ambiguousShape && confidence >= 90 && !v.hasIPContextSignal(match, contextInfo.FullLine) {
+					confidence = 75
+				}
 
 				// Ensure confidence stays within bounds
 				if confidence > 100 {
@@ -319,11 +441,12 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	var confidenceImpact float64 = 0
 
-	// Check for positive keywords (increase confidence)
+	// Check for positive keywords (increase confidence). Whole-word matching only,
+	// so short keywords ("ip"/"nat") don't fire inside "description"/"signature".
 	for _, keyword := range v.positiveKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if ipContainsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if ipContainsKeyword(context.FullLine, keyword) {
 				confidenceImpact += 12 // +12% for keywords in the same line
 			} else {
 				confidenceImpact += 6 // +6% for keywords in surrounding context
@@ -331,11 +454,12 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		}
 	}
 
-	// Check for negative keywords (decrease confidence)
+	// Check for negative keywords (decrease confidence). Whole-word matching, so
+	// "null"/"bar"/"baz"/"temp" don't fire inside nullable/barometer/bazaar/template.
 	for _, keyword := range v.negativeKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if ipContainsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if ipContainsKeyword(context.FullLine, keyword) {
 				confidenceImpact -= 30 // -30% for negative keywords in the same line
 			} else {
 				confidenceImpact -= 15 // -15% for negative keywords in surrounding context
@@ -365,7 +489,7 @@ func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string
 
 	var found []string
 	for _, keyword := range keywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if ipContainsKeyword(fullContext, keyword) {
 			found = append(found, keyword)
 		}
 	}
@@ -511,14 +635,21 @@ func (v *Validator) cleanIPAddress(ip string) string {
 func (v *Validator) isTestIP(ip string) bool {
 	cleanIP := v.cleanIPAddress(ip)
 
-	// Check against known test patterns
+	// Single-host test/example addresses are matched by EXACT equality, not
+	// HasPrefix: a prefix test made "1.1.1.1" also match real public IPs like
+	// "1.1.1.10".."1.1.1.199" and "8.8.8.8" match "8.8.8.88", silently dropping
+	// genuine addresses (L15). Multi-host /24 prefixes keep HasPrefix below.
 	for _, pattern := range v.knownTestPatterns {
-		if strings.HasPrefix(cleanIP, pattern) {
+		if strings.HasSuffix(pattern, ".") {
+			if strings.HasPrefix(cleanIP, pattern) {
+				return true
+			}
+		} else if cleanIP == pattern {
 			return true
 		}
 	}
 
-	// RFC 5737 test ranges
+	// RFC 5737 test ranges (/24 prefixes)
 	testRanges := []string{
 		"192.0.2.",    // TEST-NET-1
 		"198.51.100.", // TEST-NET-2
@@ -629,22 +760,14 @@ func (v *Validator) isSensitiveIP(ip string) bool {
 		return false
 	}
 
-	// Skip documentation IP ranges (RFC 5737)
-	documentationRanges := []string{
-		"192.0.2.",    // TEST-NET-1
-		"198.51.100.", // TEST-NET-2
-		"203.0.113.",  // TEST-NET-3
-	}
-
-	for _, docRange := range documentationRanges {
-		if strings.HasPrefix(ip, docRange) {
+	// Skip documentation / link-local / ULA / loopback / APIPA ranges. Tested via
+	// pre-parsed net.IPNet membership so zero-padded ("2001:0db8:...") and
+	// "::"-compressed forms are normalized — a textual prefix check missed the
+	// canonical zero-padded RFC 3849 documentation address.
+	for _, network := range v.nonSensitiveNets {
+		if network.Contains(parsedIP) {
 			return false
 		}
-	}
-
-	// Skip IPv6 documentation prefix (RFC 3849)
-	if strings.HasPrefix(strings.ToLower(ip), "2001:db8:") {
-		return false
 	}
 
 	// Skip localhost variations
@@ -652,23 +775,8 @@ func (v *Validator) isSensitiveIP(ip string) bool {
 		return false
 	}
 
-	// Skip link-local addresses
-	if strings.HasPrefix(ip, "169.254.") {
-		return false
-	}
-
-	// Skip APIPA (Automatic Private IP Addressing) range
-	_, apipaNet, _ := net.ParseCIDR("169.254.0.0/16")
-	if apipaNet != nil && apipaNet.Contains(parsedIP) {
-		return false
-	}
-
-	// Skip IPv6 link-local addresses (fe80::/10)
-	if strings.HasPrefix(strings.ToLower(ip), "fe80:") {
-		return false
-	}
-
-	// Skip IPv6 unique local addresses (fc00::/7)
+	// Skip IPv6 unique local addresses written fd.. (covered by fc00::/7 above,
+	// but keep the textual guard for any non-parsing edge form)
 	if strings.HasPrefix(strings.ToLower(ip), "fc") || strings.HasPrefix(strings.ToLower(ip), "fd") {
 		return false
 	}
@@ -681,6 +789,26 @@ func (v *Validator) isSensitiveIP(ip string) bool {
 	// At this point, the IP appears to be a public, routable IP address
 	// that could potentially be sensitive/identifying
 	return true
+}
+
+// hasIPContextSignal reports whether the line carries a corroborating signal
+// that `match` is a network address rather than an incidental dotted-decimal
+// number (a version, build tag, or numeric tuple). A signal is either an IP
+// context keyword on the line (host/server/endpoint/...) or a structural suffix
+// immediately after the address — a port (":8080") or CIDR ("/24").
+func (v *Validator) hasIPContextSignal(match, line string) bool {
+	for _, kw := range v.positiveKeywords {
+		if ipContainsKeyword(line, kw) {
+			return true
+		}
+	}
+	if idx := strings.Index(line, match); idx >= 0 {
+		after := line[idx+len(match):]
+		if rePortSuffix.MatchString(after) || reCIDRSuffix.MatchString(after) {
+			return true
+		}
+	}
+	return false
 }
 
 // isEmbeddedInString checks if an IP address match is embedded within a longer alphanumeric string
@@ -710,6 +838,19 @@ func (v *Validator) isEmbeddedInString(match, line string) bool {
 		if (charAfter >= 'a' && charAfter <= 'z') ||
 			(charAfter >= 'A' && charAfter <= 'Z') ||
 			(charAfter >= '0' && charAfter <= '9') {
+			return true
+		}
+	}
+
+	// For a dotted-decimal IPv4 match, a '.' immediately before or after means the
+	// match is the leading/trailing four octets of a LONGER dotted sequence (e.g.
+	// "40.71.74.0" extracted from "40.71.74.0.99") — not a standalone IP. The
+	// previous alnum-only check missed this because '.' is not alphanumeric.
+	if strings.Contains(match, ".") && !strings.Contains(match, ":") {
+		if matchIndex > 0 && line[matchIndex-1] == '.' {
+			return true
+		}
+		if matchEnd < len(line) && line[matchEnd] == '.' {
 			return true
 		}
 	}

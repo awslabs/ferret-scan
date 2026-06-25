@@ -20,6 +20,32 @@ import (
 // on every call.
 var copyrightYearPattern = regexp.MustCompile(`\d{4}(-\d{4})?`)
 
+// openSourceLicenseMarkers are unambiguous indicators that a line/file is
+// openly licensed (or public domain), and therefore not a trade secret.
+var openSourceLicenseMarkers = []string{
+	"open source", "open-source", "public domain", "creative commons",
+	"mit license", "apache license", "apache-2.0", "bsd license",
+	"gpl", "lgpl", "mpl", "mozilla public license", "spdx-license-identifier",
+}
+
+// containsOpenSourceLicense reports whether the line carries a recognized
+// open-source / public-domain license marker (case-insensitive).
+func containsOpenSourceLicense(line string) bool {
+	lower := strings.ToLower(line)
+	for _, m := range openSourceLicenseMarkers {
+		if strings.Contains(lower, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// leadingFlagGroup matches a genuine inline-flag group at the start of a regex —
+// (?i), (?im), (?-i), (?s:...) — but NOT a non-capturing group "(?:..." or a
+// named group "(?P<...". Used by ensureCaseInsensitive to decide whether a
+// user-supplied pattern already carries case flags.
+var leadingFlagGroup = regexp.MustCompile(`^\(\?[imsU-]+[):]`)
+
 // Validator implements the detector.Validator interface for detecting
 // intellectual property identifiers and references using regex patterns and contextual analysis.
 // Internal URL detection is configuration-driven and requires explicit pattern configuration.
@@ -172,14 +198,30 @@ func NewValidator() *Validator {
 	// #nosec G101 -- detector definitions: regex patterns and keyword lists
 	// for detecting IP markers (patents, trademarks, copyrights). Not credentials.
 	v := &Validator{
-		// Patent pattern: US patent numbers (e.g., US9123456, US 9,123,456) - case insensitive
-		patternPatent: `(?i)\b(US|EP|JP|CN|WO)[ -]?(\d{1,3}[,.]?\d{3}[,.]?\d{3}|\d{1,3}[,.]?\d{3}[,.]?\d{2}[A-Z]\d?)\b`,
+		// Patent pattern: patent-office numbers (e.g. US9123456, US 9,123,456).
+		// The prefix is CASE-SENSITIVE (office codes are uppercase): with the old
+		// (?i) flag, ordinary comma-grouped figures preceded by a lowercase
+		// "cn"/"jp"/"ep" token ("cn 100,000,000 yuan", "jp 123,456,789 yen")
+		// matched as patents. Dropping (?i) keeps real uppercase patents while
+		// excluding currency/quantity prose.
+		patternPatent: `\b(US|EP|JP|CN|WO)[ -]?(\d{1,3}[,.]?\d{3}[,.]?\d{3}|\d{1,3}[,.]?\d{3}[,.]?\d{2}[A-Z]\d?)\b`,
 
-		// Trademark pattern: ™, ®, or phrases like "TM" or "Registered Trademark" - case insensitive
-		patternTrademark: `(?i)\b(\w+\s*[™®]|\w+\s*\(TM\)|\w+\s*\(R\)|\w+\s+Trademark|\w+\s+Registered\s+Trademark)\b`,
+		// Trademark pattern: ™, ®, or phrases like "TM" or "Registered Trademark" - case insensitive.
+		// NOTE: the symbol/paren alternatives (™, ®, (TM), (R)) end in a non-word character,
+		// so a trailing \b can NEVER be satisfied after them (a word boundary needs a word char
+		// on one side). The previous pattern ended the whole group in \b, which made the symbol
+		// forms — the dominant real-world trademark markers — match nothing. The trailing \b is
+		// kept only on the "...Trademark" word forms so "Trademarked" can't partial-match.
+		patternTrademark: `(?i)\b(\w+\s*\(TM\)|\w+\s*\(R\)|\w+\s*[™®]|\w+\s+Registered\s+Trademark\b|\w+\s+Trademark\b)`,
 
-		// Copyright pattern: © or (c) followed by year and name - case insensitive
-		patternCopyright: `(?i)(©|\(c\)|\(C\)|Copyright|\bCopyright\b)\s*\d{4}[-,]?(\d{4})?\s+[A-Za-z0-9\s\.,]+`,
+		// Copyright pattern: © / (c) / "Copyright" marker, optionally followed by
+		// a year (or year range) and an entity. The year is now OPTIONAL and the
+		// entity class is broadened to include parentheses, ampersands,
+		// apostrophes, en/em dashes and Unicode letters. The previous pattern
+		// REQUIRED a 4-digit year + an ASCII-only name, so common real footers
+		// ("© 2024", "© 2024 — Acme", "© 2024 (Acme)", "© Acme Corporation",
+		// year-less "Copyright Acme Inc.") were all missed.
+		patternCopyright: `(?i)(©|\(c\)|Copyright)\s*(\d{4}([-,–—]\s?\d{4})?)?[\s,–—-]*[\p{L}0-9][\p{L}0-9\s\.,&'()\-–—]*`,
 
 		// Trade secret pattern: confidential markings and classifications - case insensitive
 		patternTradeSecret: `(?i)\b(Confidential|Trade\s+Secret|Proprietary|Company\s+Confidential|Internal\s+Use\s+Only|Restricted|Classified)\b`, // pragma: allowlist secret
@@ -463,14 +505,16 @@ func (v *Validator) applyIPPatternOverride(
 // ensureCaseInsensitive adds the case-insensitive flag (?i) to a regex pattern
 // if it doesn't already have case sensitivity flags
 func (v *Validator) ensureCaseInsensitive(pattern string) string {
-	// Check if pattern already has case sensitivity flags
-	// Look for (?i), (?-i), (?s), (?m), etc. at the beginning
-	if len(pattern) >= 4 && pattern[0] == '(' && pattern[1] == '?' {
-		// Pattern already has flags, don't modify
+	// Only treat the pattern as already-flagged when it begins with a genuine
+	// inline-flag group: (?flags) or (?flags:...) where flags are i/m/s/U (with
+	// an optional '-'). The previous check was just pattern[0]=='(' &&
+	// pattern[1]=='?', which also matched non-capturing groups "(?:..." and named
+	// groups "(?P<...", so a user override starting with one of those was left
+	// case-SENSITIVE despite the documented (?i) default — silently missing
+	// matches. Otherwise prepend (?i).
+	if leadingFlagGroup.MatchString(pattern) {
 		return pattern
 	}
-
-	// Add case-insensitive flag
 	return "(?i)" + pattern
 }
 
@@ -919,6 +963,17 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 				contextImpact := v.AnalyzeContext(match, contextInfo)
 				confidence += contextImpact
 
+				// A recognized open-source / public-domain license marker on the
+				// line is decisive evidence the content is NOT a trade secret (L12):
+				// hard-cap a trade_secret finding below the 60 MEDIUM threshold so a
+				// file clearly marked MIT/Apache/GPL/"open source"/"public domain"
+				// does not emit a MEDIUM "Proprietary"/"Confidential" finding. The
+				// matched word and "license" are themselves positive keywords, so
+				// the per-keyword penalty alone could not reliably suppress these.
+				if ipType == "trade_secret" && containsOpenSourceLicense(line) && confidence > 45 {
+					confidence = 45
+				}
+
 				// Ensure confidence stays within bounds
 				if confidence > 100 {
 					confidence = 100
@@ -1136,15 +1191,23 @@ func (v *Validator) calculateCopyrightConfidence(match string, checks map[string
 	return confidence, checks
 }
 
-// calculateTradeSecretConfidence calculates confidence for trade secret matches
+// calculateTradeSecretConfidence calculates confidence for trade secret matches.
+//
+// Trade-secret markers split into two tiers. "Explicit" phrases are unambiguous
+// confidentiality statements (e.g. "Trade Secret", "Internal Use Only") and earn
+// a MEDIUM-capable base. The bare single generic words "Restricted", "Classified"
+// and "Proprietary" are common in ordinary English ("restricted area", "the data
+// is classified", "proprietary blend") and previously scored 70-80 (MEDIUM) with
+// no corroboration, a significant false-positive source. They now start below the
+// 60 MEDIUM threshold, so they only surface as MEDIUM when nearby positive context
+// keywords (added by AnalyzeContext) push them up.
 func (v *Validator) calculateTradeSecretConfidence(match string, checks map[string]bool) (float64, map[string]bool) {
-	confidence := 70.0 // Start slightly lower for trade secrets as they're more context-dependent
-
-	// Check for strong confidentiality markers
-	strongMarkers := []string{"Confidential", "Trade Secret", "Proprietary", "Company Confidential", "Privileged"}
-	for _, marker := range strongMarkers {
+	// Explicit, unambiguous confidentiality phrases keep a MEDIUM base.
+	explicitMarkers := []string{"Company Confidential", "Trade Secret", "Internal Use Only", "Confidential", "Privileged"}
+	confidence := 45.0 // bare generic words (Restricted/Classified/Proprietary) start below MEDIUM
+	for _, marker := range explicitMarkers {
 		if strings.Contains(match, marker) {
-			confidence += 10
+			confidence = 70.0
 			break
 		}
 	}

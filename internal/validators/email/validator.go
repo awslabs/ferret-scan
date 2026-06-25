@@ -12,6 +12,42 @@ import (
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
+// containsKeyword reports whether text contains keyword as a whole word/phrase,
+// case-insensitively. The previous code used strings.Contains, so short negative
+// keywords matched inside ordinary words — "bar" in "barack", "baz" in "bazaar",
+// "temp" in "temptation" — suppressing real emails (and short positives like
+// "to"/"info" spuriously boosting). Implemented as a plain string scan (a word
+// byte is [a-z0-9]) rather than a per-keyword regex to keep context analysis
+// cheap in the hot path.
+func containsKeyword(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	lt := strings.ToLower(text)
+	lk := strings.ToLower(keyword)
+	for from := 0; from+len(lk) <= len(lt); {
+		i := strings.Index(lt[from:], lk)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isEmailWordByte(lt[i-1])
+		right := i + len(lk)
+		rightOK := right >= len(lt) || !isEmailWordByte(lt[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// isEmailWordByte reports whether b is a word character ([a-z0-9]) for keyword
+// boundary detection. text is already lowercased by the caller.
+func isEmailWordByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
 // Pre-compiled regex patterns to avoid repeated compilation in hot paths.
 var (
 	validCharsPattern      = regexp.MustCompile(`^[A-Za-z0-9._%+-]+$`)
@@ -136,9 +172,16 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	re := v.regex
 
 	for lineNum, line := range lines {
-		foundMatches := re.FindAllString(line, -1)
+		// Use match offsets (not just the strings) so that when the same email
+		// text appears more than once on a line, each occurrence is analyzed with
+		// ITS OWN surrounding context. The previous code re-ran strings.Index,
+		// which always returned the first occurrence and mis-scored duplicates.
+		matchLocs := re.FindAllStringIndex(line, -1)
 
-		for _, match := range foundMatches {
+		for _, loc := range matchLocs {
+			matchIndex, matchEnd := loc[0], loc[1]
+			match := line[matchIndex:matchEnd]
+
 			// Calculate confidence
 			confidence, checks := v.CalculateConfidence(match)
 
@@ -150,24 +193,21 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				FullLine: line,
 			}
 
-			// Extract context around the match in the line
-			matchIndex := strings.Index(line, match)
-			if matchIndex >= 0 {
-				start := matchIndex - 50
-				if start < 0 {
-					start = 0
-				}
-				end := matchIndex + len(match) + 50
-				if end > len(line) {
-					end = len(line)
-				}
-
-				contextInfo.BeforeText = line[start:matchIndex]
-				contextInfo.AfterText = line[matchIndex+len(match) : end]
+			// Extract context around THIS occurrence of the match.
+			start := matchIndex - 50
+			if start < 0 {
+				start = 0
 			}
+			end := matchEnd + 50
+			if end > len(line) {
+				end = len(line)
+			}
+			contextInfo.BeforeText = line[start:matchIndex]
+			contextInfo.AfterText = line[matchEnd:end]
 
-			// Analyze context and adjust confidence
-			contextImpact := v.AnalyzeContext(match, contextInfo)
+			// Analyze context and adjust confidence. The true after-match text is
+			// passed so the URL-structure check inspects this occurrence.
+			contextImpact := v.analyzeContextAt(match, contextInfo, line[matchEnd:])
 
 			// Check for tabular data and boost confidence
 			if v.isTabularData(contextInfo.FullLine, match) {
@@ -227,8 +267,22 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	return matches, nil
 }
 
-// AnalyzeContext analyzes the context around a match and returns a confidence adjustment
+// AnalyzeContext analyzes the context around a match and returns a confidence
+// adjustment. It satisfies the detector.Validator interface; it derives the
+// after-match text from the first occurrence on the line (back-compat for
+// external callers). The scan loop calls analyzeContextAt directly with the
+// exact occurrence offset so duplicate matches are scored correctly.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
+	afterMatch := ""
+	if idx := strings.Index(context.FullLine, match); idx >= 0 {
+		afterMatch = context.FullLine[idx+len(match):]
+	}
+	return v.analyzeContextAt(match, context, afterMatch)
+}
+
+// analyzeContextAt is AnalyzeContext with the exact post-match text supplied by
+// the caller, so the URL-structure check inspects the correct occurrence.
+func (v *Validator) analyzeContextAt(match string, context detector.ContextInfo, afterMatch string) float64 {
 	// Combine all context text for analysis
 	var sb strings.Builder
 	sb.WriteString(context.BeforeText)
@@ -242,16 +296,16 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	// CRITICAL: Check for URL/URI structure first (highest priority)
 	// Any user@host pattern followed by :, /, or :// is a URL/URI, not an email
-	if v.hasURLStructure(match, context.FullLine) {
+	if hasURLStructureAfter(afterMatch) {
 		// This is a URL/URI (git@host:path, user@host/path, etc.), not an email
 		return -100 // Zero out confidence completely
 	}
 
-	// Check for positive keywords (increase confidence)
+	// Check for positive keywords (increase confidence). Whole-word matching only.
 	for _, keyword := range v.positiveKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if containsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if containsKeyword(context.FullLine, keyword) {
 				confidenceImpact += 8 // +8% for keywords in the same line
 			} else {
 				confidenceImpact += 4 // +4% for keywords in surrounding context
@@ -259,11 +313,12 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		}
 	}
 
-	// Check for negative keywords (decrease confidence)
+	// Check for negative keywords (decrease confidence). Whole-word matching only,
+	// so "bar"/"baz"/"foo"/"temp" no longer fire inside barack/bazaar/temptation.
 	for _, keyword := range v.negativeKeywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if containsKeyword(fullContext, keyword) {
 			// Give more weight to keywords that are closer to the match
-			if strings.Contains(context.FullLine, strings.ToLower(keyword)) {
+			if containsKeyword(context.FullLine, keyword) {
 				confidenceImpact -= 20 // -20% for negative keywords in the same line
 			} else {
 				confidenceImpact -= 10 // -10% for negative keywords in surrounding context
@@ -293,7 +348,7 @@ func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string
 
 	var found []string
 	for _, keyword := range keywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
+		if containsKeyword(fullContext, keyword) {
 			found = append(found, keyword)
 		}
 	}
@@ -343,9 +398,14 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 			checks["not_test_email"] = false
 		}
 
-		// Check TLD validity - invalid TLDs should zero out confidence
+		// TLD recognition. The hardcoded list is incomplete (it omits many
+		// delegated gTLDs such as .amazon/.google/.aws/.phd), so a -100
+		// "zero it out" penalty silently dropped real emails on those TLDs.
+		// The regex already requires a 2+ alphabetic TLD, so an unrecognized
+		// TLD is only weak evidence of a fake address: apply a small penalty
+		// instead of suppressing the finding entirely.
 		if !v.hasValidTLD(domain) {
-			confidence -= 100 // Zero out confidence for fake TLDs
+			confidence -= 10
 			checks["valid_tld"] = false
 		}
 	}
@@ -652,6 +712,14 @@ func (v *Validator) isTestDomain(domain string) bool {
 			return true
 		}
 	}
+	// Non-routable / reserved pseudo-TLD suffixes (RFC 2606/6761) are dev-only
+	// and not real deliverable addresses (L8): treat them as test domains so
+	// user@host.local / .localhost / .test / .invalid don't surface at HIGH.
+	for _, suffix := range []string{".local", ".localhost", ".test", ".invalid", ".example"} {
+		if strings.HasSuffix(domain, suffix) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -807,8 +875,11 @@ func (v *Validator) hasValidTLD(domain string) bool {
 		"wf": true, "ws": true, "ye": true, "yt": true, "za": true, "zm": true,
 		"zw": true,
 
-		// Special/testing domains (keep for compatibility)
-		"local": true, "localhost": true, "test": true,
+		// NOTE: the pseudo-TLDs "local", "localhost" and "test" are deliberately
+		// NOT in this set (L8). They are dev/non-routable suffixes (k8s manifests,
+		// /etc/hosts, .env files) and treating them as valid TLDs let
+		// user@host.local surface at HIGH. Excluding them routes such addresses
+		// through the small unknown-TLD penalty instead of full TLD validity.
 	}
 
 	parts := strings.Split(domain, ".")
@@ -875,17 +946,11 @@ func (v *Validator) isDebugEnabled() bool {
 	return os.Getenv("FERRET_DEBUG") != ""
 }
 
-// hasURLStructure checks if the match is actually a URL/URI, not an email
-// This uses structural analysis (what comes AFTER the match) rather than
-// keyword matching, making it future-proof and protocol-agnostic.
-func (v *Validator) hasURLStructure(match string, line string) bool {
-	matchIndex := strings.Index(line, match)
-	if matchIndex < 0 || matchIndex+len(match) >= len(line) {
-		return false // Can't analyze structure at end of line
-	}
-
-	// Get the characters immediately after the match
-	afterMatch := line[matchIndex+len(match):]
+// hasURLStructureAfter checks if the match is actually a URL/URI, not an email,
+// from the text that immediately follows the match. Taking afterMatch directly
+// (rather than re-running strings.Index on the line) ensures the correct
+// occurrence is analyzed when the same email text appears more than once.
+func hasURLStructureAfter(afterMatch string) bool {
 	if len(afterMatch) == 0 {
 		return false
 	}
