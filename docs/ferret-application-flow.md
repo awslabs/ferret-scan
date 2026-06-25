@@ -170,7 +170,7 @@ sequenceDiagram
             EnhancedMgr->>EnhancedMgr: ValidateWithContext(content, filePath, contextInsights)
             EnhancedMgr->>EnhancedMgr: Entropy analysis + API key patterns + environment context
         and Other Validators with Context
-            Note over EnhancedMgr: SSN, Passport, Phone, IP, Person Name, Metadata, Intellectual Property
+            Note over EnhancedMgr: SSN, Passport, Phone, IP, Person Name, Metadata, Intellectual Property, Cloud Resources
             Note over EnhancedMgr: All validators receive context insights for enhanced accuracy
         end
 
@@ -292,6 +292,7 @@ sequenceDiagram
 - **JUnit**: JUnit XML format for CI/CD integration and test reporting
 
 ### 10. **Available Validators** (Non-GenAI)
+- **Cloud Resources**: AWS ARN, Azure Resource ID, GCP Resource Name, OCI OCID, IBM CRN, Alibaba ARN detection with account/subscription ID extraction
 - **Credit Card**: Luhn algorithm + 15+ card brands + test pattern filtering
 - **Email**: Domain validation + context analysis
 - **Intellectual Property**: Patents, trademarks, copyrights + internal URL detection

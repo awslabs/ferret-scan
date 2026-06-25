@@ -72,6 +72,7 @@ For complete documentation, see the [Documentation Index](docs/README.md).
 - **Person Name Detection**: Pattern matching with embedded name databases for first/last names, titles, and cultural variations
 - **Phone Number Recognition**: International and domestic formats with country code support
 - **Social Media Detection**: Configurable platform detection for handles, profiles, and usernames
+- **Cloud Resource Detection**: Identifies cloud provider resource identifiers (AWS ARNs, Azure Resource IDs, GCP Resource Names, OCI OCIDs, IBM Cloud CRNs, Alibaba Cloud ARNs)
 - **Sophisticated Secrets Detection**: Entropy analysis + 40+ API key patterns (AWS, GitHub, Google Cloud, Stripe, etc.)
 
 ### Advanced Intelligence Features 🚀
@@ -224,7 +225,7 @@ echo "secret: 4532-0151-1283-0366" | ./ferret-scan --file -
 - `--format`: Output format: "text", "json", "csv", "yaml", "junit", "gitlab-sast" (default: "text")
   - **gitlab-sast**: GitLab Security Report format for integration with GitLab Security Dashboard and merge request widgets
 - `--confidence`: Confidence levels to display, comma-separated: "high", "medium", "low", or "all" (default: "all")
-- `--checks`: Specific checks to run, comma-separated: "CREDIT_CARD", "EMAIL", "INTELLECTUAL_PROPERTY", "IP_ADDRESS", "METADATA", "PASSPORT", "PERSON_NAME", "PHONE", "SECRETS", "SOCIAL_MEDIA", "SSN", "VIN"<!-- GENAI_DISABLED: , "COMPREHEND_PII" -->, or "all" (default: "all")
+- `--checks`: Specific checks to run, comma-separated: "CLOUD_RESOURCES", "CREDIT_CARD", "EMAIL", "INTELLECTUAL_PROPERTY", "IP_ADDRESS", "METADATA", "PASSPORT", "PERSON_NAME", "PHONE", "SECRETS", "SOCIAL_MEDIA", "SSN", "VIN"<!-- GENAI_DISABLED: , "COMPREHEND_PII" -->, or "all" (default: "all")
   - **SOCIAL_MEDIA**: Requires configuration - see [Social Media Configuration Guide](docs/social-media-configuration.md)
 
 #### Output and Display Options
@@ -432,6 +433,12 @@ Scan for intellectual property (requires configuration):
 
 ```bash
 ./ferret-scan --file document.txt --config ferret.yaml --checks INTELLECTUAL_PROPERTY
+```
+
+Scan for cloud resource identifiers (AWS ARNs, Azure Resource IDs, GCP names, etc.):
+
+```bash
+./ferret-scan --file infrastructure.tf --checks CLOUD_RESOURCES
 ```
 
 Scan for social media profiles and handles (requires configuration):
@@ -1381,6 +1388,7 @@ Ferret Scan includes multiple validators for different types of sensitive data:
 - [Social Media Validator](internal/validators/socialmedia/README.md) - Detects social media profiles, usernames, and handles across major platforms (LinkedIn, Twitter/X, Facebook, GitHub, Instagram, YouTube, TikTok, etc.)
 - [Intellectual Property Validator](internal/validators/intellectualproperty/README.md) - Detects patents, trademarks, copyrights, and trade secrets
 - [VIN Validator](internal/validators/vin/README.md) - Detects Vehicle Identification Numbers with check digit validation and manufacturer identification
+- [Cloud Resource Validator](internal/validators/cloudresources/README.md) - Detects cloud provider resource identifiers across AWS, Azure, GCP, OCI, IBM Cloud, and Alibaba Cloud
 - [🆕 Enhanced Metadata Validator](internal/validators/metadata/README.md) - Preprocessor-aware metadata validation with intelligent file type filtering and type-specific patterns
 <!-- GENAI_DISABLED: - [Comprehend PII Validator](internal/validators/comprehend/README.md) - AI-powered PII detection using Amazon Comprehend (GenAI mode) -->
 

@@ -230,7 +230,7 @@ flowchart TD
         end
 
         %% VALIDATION: Enhanced Validators
-        ValidatorBridges["🌉 All Validator Bridges<br/>11 Context-Enhanced Validators:<br/>💳 Credit Card • 📧 Email • ⚖️ Intellectual Property<br/>🌐 IP Address • 📋 Metadata • 🛂 Passport<br/>👤 Person Name • 📞 Phone • 🔐 Secrets<br/>📱 Social Media • 🆔 SSN<br/>🤖 Comprehend PII (GENAI_DISABLED)"]
+        ValidatorBridges["🌉 All Validator Bridges<br/>12 Context-Enhanced Validators:<br/>💳 Credit Card • 📧 Email • ⚖️ Intellectual Property<br/>🌐 IP Address • 📋 Metadata • 🛂 Passport<br/>👤 Person Name • 📞 Phone • 🔐 Secrets<br/>📱 Social Media • 🆔 SSN • ☁️ Cloud Resources<br/>🤖 Comprehend PII (GENAI_DISABLED)"]
 
         %% POST-VALIDATION: Result Enhancement
         subgraph PostValidation["📈 POST-VALIDATION ENHANCEMENT"]
@@ -318,6 +318,7 @@ flowchart TD
             SecretsBridge["🔐 Secrets<br/>ValidateWithContext()"]
             SocialMediaBridge["📱 Social Media<br/>ValidateWithContext()"]
             SSNBridge["🆔 SSN<br/>ValidateWithContext()"]
+            CloudResourcesBridge["☁️ Cloud Resources<br/>ValidateWithContext()"]
             ComprehendBridge["🤖 Comprehend PII<br/>GENAI_DISABLED"]
         end
 
@@ -364,6 +365,7 @@ flowchart TD
     ContextAnalyzer --> SecretsBridge
     ContextAnalyzer --> SocialMediaBridge
     ContextAnalyzer --> SSNBridge
+    ContextAnalyzer --> CloudResourcesBridge
     ContextAnalyzer --> ComprehendBridge
 
     %% STEP 3: POST-VALIDATION ENHANCEMENT
@@ -378,6 +380,7 @@ flowchart TD
     SecretsBridge --> CrossValidatorProcessor
     SocialMediaBridge --> CrossValidatorProcessor
     SSNBridge --> CrossValidatorProcessor
+    CloudResourcesBridge --> CrossValidatorProcessor
 
     CrossValidatorProcessor --> ConfidenceCalibrator
 
@@ -410,7 +413,7 @@ flowchart TD
     class EnhancedWrapper,ValidateMethod validation
     class LanguageDetector,ContextAnalyzer prevalidation
     class CrossValidatorProcessor,ConfidenceCalibrator postvalidation
-    class CreditCardBridge,EmailBridge,IPropBridge,IPBridge,MetadataBridge,PassportBridge,PersonNameBridge,PhoneBridge,SecretsBridge,SocialMediaBridge,SSNBridge validators
+    class CreditCardBridge,EmailBridge,IPropBridge,IPBridge,MetadataBridge,PassportBridge,PersonNameBridge,PhoneBridge,SecretsBridge,SocialMediaBridge,SSNBridge,CloudResourcesBridge validators
     class RedactionManager,PlainTextRedactor,PDFRedactor,OfficeRedactor,ImageRedactor redaction
     class ValidationMatches,RedactionResults output
     class ComprehendBridge disabled

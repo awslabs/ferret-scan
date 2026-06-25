@@ -591,6 +591,128 @@ validators:
 
 The same escaping rules apply to every regex-valued config key (secrets patterns, internal URLs, future custom patterns).
 
+### Cloud Resources Validator Configuration
+
+The cloud resources validator detects cloud provider resource identifiers (ARNs, Resource IDs, OCIDs, CRNs) that may expose sensitive information such as account numbers, subscription IDs, and internal resource naming conventions.
+
+#### Supported Cloud Providers
+
+The validator supports six cloud providers, all enabled by default:
+
+| Provider | Identifier Format | Example |
+|----------|------------------|---------|
+| AWS | Amazon Resource Names (ARNs) | `arn:aws:iam::123456789012:role/MyRole` |
+| Azure | Resource IDs with subscription UUIDs | `/subscriptions/{uuid}/resourceGroups/{name}/...` |
+| GCP | Resource names with project IDs | `projects/my-project/zones/us-central1-a/instances/vm` |
+| OCI | Oracle Cloud Identifiers (OCIDs) | `ocid1.instance.oc1.us-phoenix-1.abcdef` |
+| IBM Cloud | Cloud Resource Names (CRNs) | `crn:v1:bluemix:public:cos:us-south:a/abc123:...` |
+| Alibaba Cloud | Alibaba Resource Names | `acs:ecs:cn-hangzhou:123456789:instance/i-abc` |
+
+#### Complete Configuration Example
+
+```yaml
+validators:
+  cloud_resources:
+    # Enable/disable specific providers (all enabled by default)
+    enabled_providers:
+      aws: true
+      azure: true
+      gcp: true
+      oci: true
+      ibm: true
+      alibaba: true
+
+    # Custom regex patterns for additional resource detection (Go regex syntax)
+    custom_patterns:
+      - "arn:aws:custom-service:[a-zA-Z0-9-]*:[0-9]{12}:[a-zA-Z0-9:/_-]+"
+      - "/subscriptions/[0-9a-f-]{36}/resourceGroups/[^/]+/providers/Custom\\.[^/]+/[^/]+/[^/]+"
+```
+
+#### Provider Enable/Disable Options
+
+Use the `enabled_providers` map to selectively enable or disable detection for specific cloud platforms. When a provider is disabled, its patterns are skipped entirely during scanning.
+
+To scan only for AWS and Azure resources:
+
+```yaml
+validators:
+  cloud_resources:
+    enabled_providers:
+      aws: true
+      azure: true
+      gcp: false
+      oci: false
+      ibm: false
+      alibaba: false
+```
+
+**Behavior notes:**
+- If `enabled_providers` is not specified, all providers are enabled by default
+- If an invalid provider name is configured, it is logged as a warning and ignored
+- Disabled providers contribute zero overhead to scan time
+
+#### Custom Pattern Configuration
+
+You can extend the built-in detection by adding custom regex patterns. This is useful for detecting organization-specific cloud services or new resource formats not yet covered by the built-in patterns.
+
+```yaml
+validators:
+  cloud_resources:
+    custom_patterns:
+      # Detect a custom AWS service ARN format
+      - "arn:aws:myservice:[a-zA-Z0-9-]*:[0-9]{12}:[a-zA-Z0-9:/_-]+"
+
+      # Detect a custom Azure resource provider
+      - "/subscriptions/[0-9a-f-]{36}/resourceGroups/[^/]+/providers/MyCompany\\.[^/]+/[^/]+/[^/]+"
+
+      # Detect internal GCP project naming convention
+      - "projects/myorg-[a-zA-Z0-9-]+/(?:zones|regions)/[a-zA-Z0-9-]+/[a-zA-Z0-9]+/[a-zA-Z0-9-]+"
+```
+
+**Custom pattern rules:**
+- Patterns must be valid Go regular expressions
+- Invalid patterns are logged as errors and skipped (scanning continues with valid patterns)
+- Custom patterns are applied in addition to built-in patterns (not as replacements)
+- Custom pattern matches receive the same confidence scoring as built-in pattern matches
+
+#### Confidence Scoring
+
+Each detection receives a confidence score (0–100) based on multiple factors:
+
+| Factor | Effect | Description |
+|--------|--------|-------------|
+| Base Match | +85 | Pattern matches a known cloud resource format |
+| Valid Account ID | +10 | Contains a properly formatted account/subscription ID |
+| Config Context | +5 | Content appears to be from a configuration file |
+| Short Match | -10 | Match shorter than 20 chars (potential false positive) |
+| Long Match | -15 | Match longer than 500 chars (potential false positive) |
+| Test Context | -20 | Surrounding content contains test/example keywords |
+
+Keywords that reduce confidence: `example`, `test`, `demo`, `sample`, `fake`, `mock`, `dummy`, `placeholder`, `template`, `tutorial`, `documentation`
+
+Custom patterns follow the same confidence scoring rules as built-in patterns.
+
+#### Profile-Specific Cloud Resources Configuration
+
+You can override cloud resources configuration per profile:
+
+```yaml
+profiles:
+  aws-only:
+    checks: CLOUD_RESOURCES
+    recursive: true
+    description: "Scan for AWS resource identifiers only"
+    validators:
+      cloud_resources:
+        enabled_providers:
+          aws: true
+          azure: false
+          gcp: false
+          oci: false
+          ibm: false
+          alibaba: false
+```
+
 ## Profile-Specific Validator Configuration
 
 You can override the global validator configuration for specific profiles:
