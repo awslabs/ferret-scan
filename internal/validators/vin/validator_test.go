@@ -423,6 +423,13 @@ func TestVINValidator_SingleLineDoSGuard(t *testing.T) {
 	if len(matches) != n {
 		t.Errorf("expected %d matches on packed single line, got %d", n, len(matches))
 	}
+	if raceEnabled {
+		// -race inflates wall-clock 5-20x; the scan ran above (so -race checks
+		// the per-line cached state for data races), but the timing ceiling is
+		// meaningless and skipped.
+		t.Logf("packed single line: %d bytes, %d matches (timing assertion skipped under -race)", len(line), len(matches))
+		return
+	}
 	const ceiling = 5 * time.Second
 	if elapsed > ceiling {
 		t.Fatalf("ValidateContent on a ~1MB single line took %s, exceeding %s "+

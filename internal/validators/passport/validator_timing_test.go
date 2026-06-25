@@ -55,6 +55,12 @@ func TestPassportValidator_NoQuadraticBlowup(t *testing.T) {
 
 	t.Logf("worst-case single line: len=%d bytes, matches=%d, elapsed=%s", len(line), len(matches), elapsed)
 
+	if raceEnabled {
+		// -race inflates wall-clock 5-20x; the scan ran above (so -race checks
+		// the per-line cached state for data races), but the timing ceiling is
+		// meaningless and skipped.
+		return
+	}
 	const ceiling = 5 * time.Second
 	if elapsed > ceiling {
 		t.Fatalf("ValidateContent on %d-byte single line took %s, exceeds %s ceiling (possible O(n^2) regression)", len(line), elapsed, ceiling)

@@ -479,7 +479,14 @@ func TestEmailValidator_LongLineDoS(t *testing.T) {
 		t.Fatal("worst-case input must be a single line (no newlines)")
 	}
 
-	const ceiling = 5 * time.Second
+	// The race detector inflates wall-clock 5-20x, so both the elapsed-time
+	// assertion and the watchdog timeout below use a much larger ceiling under
+	// -race. The scan still runs (so -race exercises the per-line cached state
+	// for data races); only the timing bound is relaxed.
+	ceiling := 5 * time.Second
+	if raceEnabled {
+		ceiling = 90 * time.Second
+	}
 	done := make(chan int, 1)
 	start := time.Now()
 	go func() {

@@ -52,7 +52,13 @@ func TestSSNValidator_SingleLineDoSRegression(t *testing.T) {
 		done <- len(matches)
 	}()
 
-	const ceiling = 30 * time.Second
+	// -race inflates wall-clock 5-20x, so relax both the assertion and the
+	// watchdog timeout under the race detector. The scan still runs (so -race
+	// exercises the per-line cached state); only the timing bound is relaxed.
+	ceiling := 30 * time.Second
+	if raceEnabled {
+		ceiling = 180 * time.Second
+	}
 	select {
 	case n := <-done:
 		elapsed := time.Since(start)
