@@ -40,6 +40,10 @@ type TestCase struct {
 	ClassName string   `xml:"classname,attr"`
 	Time      string   `xml:"time,attr"`
 	Failure   *Failure `xml:"failure,omitempty"`
+	// SystemOut carries informational, non-failing detail (the standard JUnit
+	// <system-out> element). Suppressed findings use it so they convey their
+	// detail without being reported as failures.
+	SystemOut string `xml:"system-out,omitempty"`
 }
 
 type Failure struct {
@@ -201,11 +205,37 @@ func (f *Formatter) createTestCaseForFile(filename string, matches []detector.Ma
 func (f *Formatter) createTestCaseForSuppressedFile(filename string, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) TestCase {
 	basename := filepath.Base(filename)
 
+	// Suppressed findings don't create failures - they're informational - so
+	// their detail goes in <system-out> rather than <failure>. We still honor
+	// --show-match here so the matched value surfaces exactly when the operator
+	// opts in, matching the active-finding path and every other formatter; the
+	// default (no --show-match) emits type/line/confidence only, never the value.
+	var out strings.Builder
+	for i, suppressed := range suppressedMatches {
+		if i > 0 {
+			out.WriteString("\n")
+		}
+		match := suppressed.Match
+		out.WriteString(fmt.Sprintf("Line %d: %s suppressed by %s (%.1f%%)",
+			match.LineNumber, match.Type, suppressed.SuppressedBy, match.Confidence))
+		if suppressed.RuleReason != "" {
+			out.WriteString(fmt.Sprintf(" - %s", suppressed.RuleReason))
+		}
+		if options.ShowMatch {
+			out.WriteString(fmt.Sprintf("\nMatch: %s", match.Text))
+			// FullLine carries the raw value; gate on ShowMatch too (consistent
+			// with the active path) so --verbose never re-leaks when hidden.
+			if options.Verbose && match.Context.FullLine != "" {
+				out.WriteString(fmt.Sprintf("\nContext: %s", match.Context.FullLine))
+			}
+		}
+	}
+
 	return TestCase{
 		Name:      basename + " (suppressed)",
 		ClassName: "suppressed-findings",
 		Time:      "0.001",
-		// Suppressed findings don't create failures - they're informational
+		SystemOut: out.String(),
 	}
 }
 
