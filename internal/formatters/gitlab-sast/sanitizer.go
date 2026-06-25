@@ -42,7 +42,7 @@ func (s *DataSanitizer) SanitizeMessage(match detector.Match) string {
 }
 
 // SanitizeDescription creates a detailed but safe description for GitLab vulnerability reports
-func (s *DataSanitizer) SanitizeDescription(match detector.Match) string {
+func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool) string {
 	var description strings.Builder
 
 	// Start with check type description
@@ -61,11 +61,17 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match) string {
 		description.WriteString(fmt.Sprintf("**Detected by:** %s validator\n", match.Validator))
 	}
 
-	// Add context information if available and safe
+	// Add the raw context line ONLY when the operator opted in with --show-match.
+	// The previous code always embedded EnsureNoSensitiveData(FullLine), but that
+	// pattern-based scrub is fail-open: it masked the card-shaped substring yet
+	// left names and SSN-shaped values in the line. Deny-by-default: omit the
+	// surrounding line entirely unless ShowMatch, so no unrecognized PII leaks.
 	if match.Context.FullLine != "" {
-		// Always sanitize the full line context
-		sanitizedLine := s.EnsureNoSensitiveData(match.Context.FullLine)
-		description.WriteString(fmt.Sprintf("\n**Context:**\n```\n%s\n```\n", sanitizedLine))
+		if showMatch {
+			description.WriteString(fmt.Sprintf("\n**Context:**\n```\n%s\n```\n", match.Context.FullLine))
+		} else {
+			description.WriteString("\n**Context:** [HIDDEN] (use --show-match to include the surrounding line)\n")
+		}
 	}
 
 	// Add metadata information if available

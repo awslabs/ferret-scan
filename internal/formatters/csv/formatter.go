@@ -109,13 +109,19 @@ func (f *Formatter) createCSVRow(match detector.Match, options formatters.Format
 			f.escapeCSVField(displayText),
 		}
 
-		// Add metadata if verbose mode is enabled
-		if options.Verbose && match.Metadata != nil {
-			metadataJSON, err := json.Marshal(match.Metadata)
-			if err != nil {
-				row = append(row, f.escapeCSVField("Error serializing metadata"))
-			} else {
-				row = append(row, f.escapeCSVField(string(metadataJSON)))
+		// Add metadata if verbose mode is enabled. Run it through the shared
+		// sanitizer first: when ShowMatch is false this redacts any metadata
+		// value that embeds the raw matched text (e.g. name_components,
+		// full_field), so --verbose CSV can't leak what displayText hid.
+		if options.Verbose {
+			sanitized := shared.SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch)
+			if sanitized != nil {
+				metadataJSON, err := json.Marshal(sanitized)
+				if err != nil {
+					row = append(row, f.escapeCSVField("Error serializing metadata"))
+				} else {
+					row = append(row, f.escapeCSVField(string(metadataJSON)))
+				}
 			}
 		}
 	}
