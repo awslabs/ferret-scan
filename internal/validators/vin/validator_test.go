@@ -4,7 +4,9 @@
 package vin
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
 )
@@ -388,4 +390,43 @@ func TestVINValidator_HexDumpHeuristic(t *testing.T) {
 	if looksLikeHexDump("VIN 1HGBH41JXMN109186 colors 0xFF0000 0x00FF00 0x0000FF") {
 		t.Error("L47: a VIN line with a few hex literals is not a hex dump")
 	}
+}
+
+// TestVINValidator_SingleLineDoSGuard is a performance regression test for the
+// O(n^2) blowup that occurred on a SINGLE very long line packed with candidate
+// VINs. The original ValidateContent recomputed per-line-global work (the
+// match offset via strings.Index, the hex-dump heuristics, and a ~60-keyword
+// case-insensitive scan of the WHOLE line — twice, for AnalyzeContext and
+// findKeywords) once PER MATCH, making one line O(M*L) and a ~1MB line take
+// many minutes (it would not complete within the package test timeout). After
+// hoisting per-line work and using regex offsets the cost is linear. We assert
+// a ~1MB single line of valid VINs validates well within a generous ceiling so
+// any reintroduced quadratic behavior is caught (the fixed implementation runs
+// in well under a second; the 5s ceiling tolerates slow/loaded CI hosts).
+func TestVINValidator_SingleLineDoSGuard(t *testing.T) {
+	const vin = "1HGBH41JXMN109186" // valid check digit, known WMI (Honda)
+	const n = 60000                 // ~1MB on a single line, no newlines
+
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = vin
+	}
+	line := strings.Join(parts, " ") // single line: contains no '\n'
+
+	v := NewValidator()
+	start := time.Now()
+	matches, err := v.ValidateContent(line, "worstcase.txt")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	if len(matches) != n {
+		t.Errorf("expected %d matches on packed single line, got %d", n, len(matches))
+	}
+	const ceiling = 5 * time.Second
+	if elapsed > ceiling {
+		t.Fatalf("ValidateContent on a ~1MB single line took %s, exceeding %s "+
+			"ceiling: the per-line O(n^2) DoS may have regressed", elapsed, ceiling)
+	}
+	t.Logf("packed single line: %d bytes, %d matches, validated in %s", len(line), len(matches), elapsed)
 }

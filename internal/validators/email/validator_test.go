@@ -3,6 +3,7 @@ package email
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
 )
@@ -448,5 +449,57 @@ func TestEmailValidator_PseudoTLDsGated(t *testing.T) {
 	// A real email on a routable TLD must still be HIGH.
 	if c := best("contact alice@realcompany.com"); c < 90 {
 		t.Errorf("L8: real email should stay HIGH, got %.1f", c)
+	}
+}
+
+// TestEmailValidator_LongLineDoS is a performance regression guard for the
+// O(n^2) blowup that previously lived in ValidateContent. The worst case for
+// this validator is a SINGLE very long line (no newlines) packed with email
+// matches: every match re-lowercased the whole line and re-scanned every
+// keyword across it, so a ~1MB line of N matches cost O(N * lineLen * keywords)
+// and took minutes (a 100KB line already took ~65s before the fix).
+//
+// The per-line keyword/tabular state is now computed once per line and the
+// per-match keyword scan only touches bounded context windows, so this must
+// complete near-instantly. The 5s ceiling is deliberately generous to avoid
+// flakiness on slow/loaded CI while still catching any reintroduced quadratic
+// behavior (which would blow far past it).
+func TestEmailValidator_LongLineDoS(t *testing.T) {
+	v := NewValidator()
+
+	// Build a single ~1MB line with no newlines, densely packed with emails and
+	// keyword-bearing context (the shape that triggered the DoS).
+	var sb strings.Builder
+	const target = 1 << 20 // ~1MB
+	for sb.Len() < target {
+		sb.WriteString("contact support user@company.com please email ")
+	}
+	content := sb.String()
+	if strings.Contains(content, "\n") {
+		t.Fatal("worst-case input must be a single line (no newlines)")
+	}
+
+	const ceiling = 5 * time.Second
+	done := make(chan int, 1)
+	start := time.Now()
+	go func() {
+		matches, err := v.ValidateContent(content, "huge.txt")
+		if err != nil {
+			t.Errorf("ValidateContent error: %v", err)
+		}
+		done <- len(matches)
+	}()
+
+	select {
+	case n := <-done:
+		elapsed := time.Since(start)
+		t.Logf("ValidateContent on %d-byte single line: %v (%d matches)", len(content), elapsed, n)
+		if elapsed > ceiling {
+			t.Errorf("ValidateContent took %v on a %d-byte single line; exceeds %v ceiling (possible reintroduced O(n^2))",
+				elapsed, len(content), ceiling)
+		}
+	case <-time.After(ceiling):
+		t.Fatalf("ValidateContent did not finish within %v on a %d-byte single line (likely reintroduced O(n^2))",
+			ceiling, len(content))
 	}
 }

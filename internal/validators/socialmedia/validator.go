@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -28,6 +29,38 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// contextWindowBounds returns a [lo, hi) byte window of width up to maxWidth
+// centered on a match (at matchOffset, matchLen long) within a string of
+// lineLen bytes. Used only when a line exceeds the context cap, so that
+// per-match keyword scanning stays bounded near the match instead of rescanning
+// a hostile multi-hundred-KB line. The window is clamped to [0, lineLen].
+func contextWindowBounds(lineLen, matchOffset, matchLen, maxWidth int) (int, int) {
+	if lineLen <= maxWidth {
+		return 0, lineLen
+	}
+	if matchOffset < 0 {
+		matchOffset = 0
+	}
+	// Center the window on the match, with the remaining budget split as margin.
+	margin := (maxWidth - matchLen) / 2
+	if margin < 0 {
+		margin = 0
+	}
+	lo := matchOffset - margin
+	if lo < 0 {
+		lo = 0
+	}
+	hi := lo + maxWidth
+	if hi > lineLen {
+		hi = lineLen
+		lo = hi - maxWidth
+		if lo < 0 {
+			lo = 0
+		}
+	}
+	return lo, hi
 }
 
 // Validator implements the detector.Validator interface for detecting
@@ -110,6 +143,37 @@ type SocialMediaClusteringConfig struct {
 	// SameUserIndicators defines patterns that suggest the same user across platforms
 	SameUserIndicators []string
 }
+
+// Performance bounds to prevent pathological / hostile inputs from triggering
+// quadratic behavior. These do not affect detection on normal input: real
+// source lines and documents are far smaller than these caps.
+const (
+	// maxContextLineLen bounds how much of a single line is scanned for keyword
+	// context per match. Without a cap, a single multi-hundred-KB line packed
+	// with matches makes per-match context analysis O(matches × lineLen) (i.e.
+	// O(n^2)). Keyword context only needs the text near the match. Real source,
+	// config, and prose lines sit well under 2 KB, so this cap leaves normal
+	// lines fully analyzed (identical behavior) while bounding the hostile case
+	// where one absurdly long line holds thousands of matches.
+	maxContextLineLen = 2048
+
+	// maxClusterMatches caps how many matches are fed into the O(M^2) clustering
+	// stage. Beyond this, matches are returned individually (clustering is a
+	// best-effort enrichment, never the reason a finding is or isn't reported).
+	// Real documents carry a handful of social profiles; reaching four digits of
+	// matches means the input is degenerate, where clustering them adds no value
+	// and only burns CPU. Kept comfortably above any realistic document so
+	// legitimate clustering behavior is unchanged.
+	maxClusterMatches = 1000
+
+	// clusterProximityLineWindow bounds the clustering neighbor search. Match
+	// distance is computed purely from line numbers (|Δline| × 80 chars), and
+	// the default proximity threshold is 500 chars, so only matches within
+	// ceil(500/80)=7 lines can ever cluster. Matches are grouped by line so the
+	// neighbor search stays local instead of comparing all M×M pairs. A margin
+	// is added so a future threshold bump degrades gracefully.
+	clusterProximityLineWindow = 16
+)
 
 // Internal configuration constants for social media profile clustering
 // These are sensible defaults based on real-world social media patterns
@@ -674,6 +738,19 @@ func (v *Validator) processLineMatchesWithClustering(lineMatches map[int][]detec
 
 	// If we only have one match, no clustering needed
 	if len(allMatches) == 1 {
+		return allMatches
+	}
+
+	// Clustering is an O(M^2) best-effort enrichment. On a degenerate input with
+	// thousands of matches it dominates runtime without changing whether a
+	// finding is reported, so above the cap we return matches individually.
+	// Real documents stay far below this bound, so behavior is unchanged there.
+	if len(allMatches) > maxClusterMatches {
+		if v.observer != nil && v.observer.DebugObserver != nil {
+			v.observer.DebugObserver.LogDetail("socialmedia",
+				fmt.Sprintf("Skipping clustering for %s: %d matches exceeds cap %d; returning individual matches",
+					originalPath, len(allMatches), maxClusterMatches))
+		}
 		return allMatches
 	}
 
@@ -2527,20 +2604,31 @@ func (v *Validator) detectPatternsByLineBatch(content string, originalPath strin
 func (v *Validator) processLineForAllPatterns(line string, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor) []detector.Match {
 	var matches []detector.Match
 
+	// Precompute the line-global lowercase form ONCE per line. analyzeContext...
+	// previously recomputed strings.ToLower(line) for every keyword of every
+	// match, which on a long packed line is O(matches × keywords × lineLen).
+	lineLower := strings.ToLower(line)
+
 	// Check each platform's patterns
 	for platform, patterns := range v.compiledPatterns {
 		for patternIndex, regex := range patterns {
-			// Find all matches for this pattern on this line
-			foundMatches := regex.FindAllString(line, -1)
+			// Find all match spans for this pattern on this line. Using
+			// FindAllStringIndex gives each match's byte offset directly, so we
+			// no longer rescan the line with strings.Index(line, match) per match
+			// (which was O(matches × lineLen)). It also fixes the latent bug
+			// where strings.Index returns the FIRST occurrence of a repeated
+			// token rather than this specific one.
+			locs := regex.FindAllStringIndex(line, -1)
 
-			for _, match := range foundMatches {
+			for _, loc := range locs {
+				match := line[loc[0]:loc[1]]
 				// Skip empty matches
 				if len(strings.TrimSpace(match)) == 0 {
 					continue
 				}
 
 				// Process match with optimized confidence calculation
-				processedMatch := v.processMatchOptimized(match, platform, patternIndex, line, lineNum, originalPath, contextExtractor)
+				processedMatch := v.processMatchOptimized(match, platform, patternIndex, line, lineLower, loc[0], lineNum, originalPath, contextExtractor)
 				if processedMatch != nil {
 					matches = append(matches, *processedMatch)
 				}
@@ -2551,47 +2639,71 @@ func (v *Validator) processLineForAllPatterns(line string, lineNum int, original
 	return matches
 }
 
-// processMatchOptimized processes a single match with performance optimizations
-func (v *Validator) processMatchOptimized(match, platform string, patternIndex int, line string, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor) *detector.Match {
+// processMatchOptimized processes a single match with performance optimizations.
+//
+// matchOffset is the byte offset of this match within line (known from
+// FindAllStringIndex), which removes the per-match strings.Index(line, match)
+// rescan and pins the context window to this specific occurrence. lineLower is
+// the line lowercased once per line, reused for keyword context analysis.
+func (v *Validator) processMatchOptimized(match, platform string, patternIndex int, line, lineLower string, matchOffset int, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor) *detector.Match {
 	// Filter out false positives from email addresses
 	if v.isPartOfEmailAddress(match, line) {
 		return nil
 	}
 
 	// Filter out other common false positive patterns
-	if v.isFalsePositiveHandle(match, line) {
+	if v.isFalsePositiveHandle(match, line, matchOffset) {
 		return nil
 	}
 
 	// Calculate confidence for this match
 	confidence, checks := v.CalculateConfidence(match)
 
-	// Extract context around the match for enhanced analysis
-	contextInfo, err := contextExtractor.ExtractContext(originalPath, lineNum, match)
-	if err != nil {
-		// Fallback to basic context info if extraction fails
-		contextInfo = detector.ContextInfo{
-			FullLine: line,
-		}
+	// Build context from the in-memory line. The previous code called
+	// contextExtractor.ExtractContext, which re-opens and re-reads the file from
+	// disk on EVERY match (O(matches) syscalls, and O(matches × file size) of
+	// reading in the real pipeline). Its BeforeText/AfterText were then
+	// unconditionally overwritten below with the ±50 single-line window, and its
+	// FullLine equals the line we already hold — so its output never survived.
+	// Constructing the context directly is behavior-identical and removes the
+	// per-match file I/O. contextExtractor is retained for interface symmetry.
+	_ = contextExtractor
+	contextInfo := detector.ContextInfo{
+		FullLine: line,
+	}
 
-		// Log context extraction failure for debugging (only in debug mode to reduce overhead)
-		if os.Getenv("FERRET_DEBUG") == "1" && v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Context extraction failed for match '%s' at line %d: %v", match, lineNum+1, err))
+	// Extract the ±50 char context window directly from the known match offset
+	// instead of rescanning the line with strings.Index (O(lineLen) per match).
+	if matchOffset >= 0 {
+		start := max(0, matchOffset-50)
+		end := min(len(line), matchOffset+len(match)+50)
+
+		contextInfo.BeforeText = line[start:matchOffset]
+		contextInfo.AfterText = line[matchOffset+len(match) : end]
+	}
+
+	// Bound the FullLine used for all per-match context analysis on
+	// pathologically long lines. Every downstream consumer
+	// (analyzeContextWithPlatformLine, analyzeContextWindow,
+	// detectKeywordsInContext) lowercases and substring-scans FullLine, which is
+	// O(lineLen) per match — quadratic when one huge line holds many matches.
+	// Normal lines are far below the cap and are left completely unchanged, so
+	// detection behavior is identical for real input.
+	lineLowerForCtx := lineLower
+	if len(contextInfo.FullLine) > maxContextLineLen {
+		lo, hi := contextWindowBounds(len(contextInfo.FullLine), matchOffset, len(match), maxContextLineLen)
+		contextInfo.FullLine = contextInfo.FullLine[lo:hi]
+		if len(lineLowerForCtx) >= hi {
+			lineLowerForCtx = lineLowerForCtx[lo:hi]
+		} else {
+			lineLowerForCtx = strings.ToLower(contextInfo.FullLine)
 		}
 	}
 
-	// Extract context around the match in the line with optimized string operations
-	matchIndex := strings.Index(line, match)
-	if matchIndex >= 0 {
-		start := max(0, matchIndex-50)
-		end := min(len(line), matchIndex+len(match)+50)
-
-		contextInfo.BeforeText = line[start:matchIndex]
-		contextInfo.AfterText = line[matchIndex+len(match) : end]
-	}
-
-	// Analyze context and adjust confidence with platform-specific analysis
-	contextImpact := v.analyzeContextWithPlatform(match, platform, contextInfo)
+	// Analyze context and adjust confidence with platform-specific analysis.
+	// Pass the pre-lowered line so the per-keyword "same line" check no longer
+	// recomputes strings.ToLower(line) for every keyword.
+	contextImpact := v.analyzeContextWithPlatformLine(match, platform, contextInfo, lineLowerForCtx)
 	confidence += contextImpact
 
 	// Ensure confidence stays within bounds
@@ -2670,9 +2782,23 @@ func (v *Validator) processMatchOptimized(match, platform string, patternIndex i
 }
 
 // analyzeContextWithPlatform analyzes the context around a match with platform-specific analysis
-// and returns a confidence adjustment following the intellectual property validator's pattern
+// and returns a confidence adjustment following the intellectual property validator's pattern.
+//
+// This is the interface-facing entry point (used by AnalyzeContext). It derives
+// the lowercased line from the context and delegates to the line-aware core.
 func (v *Validator) analyzeContextWithPlatform(match string, platform string, context detector.ContextInfo) float64 {
-	// Combine all context text for analysis following IP validator pattern
+	return v.analyzeContextWithPlatformLine(match, platform, context, strings.ToLower(context.FullLine))
+}
+
+// analyzeContextWithPlatformLine is the performance-bounded core of context
+// analysis. lineLower is context.FullLine pre-lowered ONCE (so the per-keyword
+// "same line" check no longer recomputes strings.ToLower(line) for every
+// keyword). The caller is responsible for bounding context.FullLine (and the
+// matching lineLower) on pathologically long lines; for normal lines both are
+// the full line unchanged, so detection behavior is identical for real input.
+func (v *Validator) analyzeContextWithPlatformLine(match string, platform string, context detector.ContextInfo, lineLower string) float64 {
+	// Combine all context text for analysis following IP validator pattern.
+	// BeforeText/AfterText are already bounded (±50 chars) by the caller.
 	var sb strings.Builder
 	sb.WriteString(context.BeforeText)
 	sb.WriteString(" ")
@@ -2697,7 +2823,7 @@ func (v *Validator) analyzeContextWithPlatform(match string, platform string, co
 
 			// Give more weight to keywords that are closer to the match
 			// Following IP validator's weighting: 7% same line, 3% surrounding
-			if strings.Contains(strings.ToLower(context.FullLine), keywordLower) {
+			if strings.Contains(lineLower, keywordLower) {
 				confidenceImpact += 7 // +7% for keywords in the same line
 			} else {
 				confidenceImpact += 3 // +3% for keywords in surrounding context
@@ -2715,7 +2841,7 @@ func (v *Validator) analyzeContextWithPlatform(match string, platform string, co
 
 				// Platform-specific keywords get higher weight than general keywords
 				// This helps distinguish between different social media contexts
-				if strings.Contains(strings.ToLower(context.FullLine), keywordLower) {
+				if strings.Contains(lineLower, keywordLower) {
 					confidenceImpact += 10 // +10% for platform keywords in the same line
 				} else {
 					confidenceImpact += 5 // +5% for platform keywords in surrounding context
@@ -2733,7 +2859,7 @@ func (v *Validator) analyzeContextWithPlatform(match string, platform string, co
 
 			// Give more weight to keywords that are closer to the match
 			// Following IP validator's pattern: -15% same line, -7% surrounding
-			if strings.Contains(strings.ToLower(context.FullLine), keywordLower) {
+			if strings.Contains(lineLower, keywordLower) {
 				confidenceImpact -= 15 // -15% for negative keywords in the same line
 			} else {
 				confidenceImpact -= 7 // -7% for negative keywords in surrounding context
@@ -3531,7 +3657,15 @@ func (v *Validator) getPlatformNames(platformMap any) []string {
 }
 
 // identifyProfileClusters groups matches into potential profile clusters
-// This method identifies matches that might belong to the same user or related profiles
+// This method identifies matches that might belong to the same user or related profiles.
+//
+// Performance: matches can only be related if they are within the proximity
+// threshold, which calculateMatchDistance derives purely from line numbers
+// (|Δline| × 80 vs the 500-char threshold ⇒ at most ~6 lines apart). Rather than
+// compare all M² pairs, candidates are indexed by line number and the inner
+// search is bounded to the line window around each match. This yields the
+// identical grouping (matches outside the window always fail the proximity
+// gate) while keeping the work linear in the number of nearby matches.
 func (v *Validator) identifyProfileClusters(matches []detector.Match) [][]detector.Match {
 	if len(matches) <= 1 {
 		// Single or no matches - return as individual clusters
@@ -3542,28 +3676,44 @@ func (v *Validator) identifyProfileClusters(matches []detector.Match) [][]detect
 		return clusters
 	}
 
+	// Index match indices by line number so the neighbor search stays local.
+	byLine := make(map[int][]int, len(matches))
+	for i, m := range matches {
+		byLine[m.LineNumber] = append(byLine[m.LineNumber], i)
+	}
+
 	// Group matches by proximity and similarity
 	var clusters [][]detector.Match
 	processed := make(map[int]bool)
 
-	for i, match := range matches {
+	for i := range matches {
 		if processed[i] {
 			continue
 		}
+		match := matches[i]
 
 		// Start a new cluster with this match
 		cluster := []detector.Match{match}
 		processed[i] = true
 
-		// Find related matches within proximity threshold
-		for j, otherMatch := range matches {
+		// Gather candidate indices from the bounded line window and process them
+		// in ascending original-index order, preserving the original slice-order
+		// cluster membership for any matches that are actually related.
+		baseLine := match.LineNumber
+		var candidates []int
+		for ln := baseLine - clusterProximityLineWindow; ln <= baseLine+clusterProximityLineWindow; ln++ {
+			candidates = append(candidates, byLine[ln]...)
+		}
+		sort.Ints(candidates)
+
+		for _, j := range candidates {
 			if processed[j] || i == j {
 				continue
 			}
 
 			// Check if matches are related (same user, similar usernames, etc.)
-			if v.areMatchesRelated(match, otherMatch) {
-				cluster = append(cluster, otherMatch)
+			if v.areMatchesRelated(match, matches[j]) {
+				cluster = append(cluster, matches[j])
 				processed[j] = true
 			}
 		}
@@ -4581,8 +4731,10 @@ func (v *Validator) isPartOfEmailAddress(match, line string) bool {
 	return false
 }
 
-// isFalsePositiveHandle checks for common false positive patterns that shouldn't be detected as social media
-func (v *Validator) isFalsePositiveHandle(match, line string) bool {
+// isFalsePositiveHandle checks for common false positive patterns that shouldn't be detected as social media.
+// matchOffset is the byte offset of match within line (from FindAllStringIndex),
+// used for the immediately-following-character check without an extra rescan.
+func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) bool {
 	if !strings.HasPrefix(match, "@") {
 		return false
 	}
@@ -4631,7 +4783,7 @@ func (v *Validator) isFalsePositiveHandle(match, line string) bool {
 
 	// Partial domain matches (e.g., @my from contact@my-company.com)
 	// Look for patterns where the handle is immediately followed by a hyphen or dot
-	matchIndex := strings.Index(line, match)
+	matchIndex := matchOffset
 	if matchIndex >= 0 && matchIndex+len(match) < len(line) {
 		nextChar := line[matchIndex+len(match)]
 		if nextChar == '-' || nextChar == '.' {

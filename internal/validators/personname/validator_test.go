@@ -6,6 +6,7 @@ package personname
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
@@ -1108,5 +1109,68 @@ func TestPersonNameValidator_ContextKeywordWordBoundary(t *testing.T) {
 	// A real geographic keyword still penalizes.
 	if imp := v.AnalyzeContext("John Smith", detector.ContextInfo{FullLine: "John Smith visited park today"}); imp >= 0 {
 		t.Errorf("L25: a real 'park' keyword should still penalize, got %.1f", imp)
+	}
+}
+
+// TestPersonNameValidator_PerformanceWorstCase is a regression guard against the
+// O(n^2) DoS that previously lived in ValidateContent: deduplicateMatches compared
+// every match against every other match across the whole file, and AnalyzeContext /
+// analyzeContext recomputed all per-line work (lowercasing, keyword scans, regexes)
+// once per match. On the two worst-case shapes below this took tens of seconds to
+// minutes for ~1MB of input (a single 200KB line took ~6 minutes; 1MB timed out).
+//
+// After hoisting the per-line work out of the per-match loop and making dedup
+// per-line, both shapes are linear and finish in ~1s. We assert a generous 5s
+// ceiling so the test is not flaky on slow/loaded CI while still catching any
+// reintroduction of quadratic behavior (which would blow far past 5s).
+func TestPersonNameValidator_PerformanceWorstCase(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping performance regression test in -short mode")
+	}
+
+	const ceiling = 5 * time.Second
+	const targetBytes = 1_000_000
+
+	build := func(unit string) string {
+		var b strings.Builder
+		for b.Len() < targetBytes {
+			b.WriteString(unit)
+		}
+		return b.String()
+	}
+
+	cases := []struct {
+		name    string
+		content string
+	}{
+		// One very long line packed with (mostly duplicate) name matches: this is
+		// what made deduplicateMatches and the per-match line scans quadratic.
+		{name: "single_long_line", content: build("John Smith ")},
+		// Many lines with one match each (tens of thousands of lines): this is what
+		// made the cross-line dedup comparison quadratic.
+		{name: "many_lines", content: build("John Smith\n")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := NewValidator()
+			start := time.Now()
+			if _, err := v.ValidateContent(tc.content, "perf.txt"); err != nil {
+				t.Fatalf("ValidateContent returned error: %v", err)
+			}
+			elapsed := time.Since(start)
+			t.Logf("%s: %d bytes processed in %s", tc.name, len(tc.content), elapsed)
+			if raceEnabled {
+				// The race detector adds large, variable wall-clock overhead, so the
+				// ceiling would be meaningless. We still run the scan above (so -race
+				// can detect any data race in the cached/shared per-line state) but
+				// skip the timing assertion.
+				return
+			}
+			if elapsed > ceiling {
+				t.Errorf("%s: ValidateContent took %s, exceeding %s ceiling (possible O(n^2) regression)",
+					tc.name, elapsed, ceiling)
+			}
+		})
 	}
 }

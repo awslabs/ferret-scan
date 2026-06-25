@@ -6,6 +6,7 @@ package creditcard
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
 )
@@ -925,4 +926,68 @@ func TestCreditCardValidator_LongDigitRunNotCapped(t *testing.T) {
 	if !v.hasRepeatingPatterns("4444444444444444") {
 		t.Error("all-same-digit number should still be flagged as repeating")
 	}
+}
+
+// TestCreditCardValidator_SingleLineDoSPerformance is a regression test for the
+// O(n^2) denial-of-service on a SINGLE very long line. The credit card pattern
+// can match many PANs on one line, and several context operations
+// (strings.ToLower(line), keyword regex scans, isTabularData, and the
+// strings.Index rescan in buildContextInfo) used to be re-run per match over the
+// WHOLE line — O(matches * lineLength) work. A ~1MB single line packed with
+// PANs took minutes/hours; before the fix this same input took multiple seconds
+// at only ~40KB and grew quadratically. These per-line operations are now
+// hoisted out of the per-match loop (computed once per line) and buildContextInfo
+// uses the known match offset instead of rescanning, so the work is ~linear.
+//
+// The bound is intentionally generous (5s) so it asserts the algorithmic class
+// changed (no longer quadratic) without being flaky on slow/loaded CI hosts.
+func TestCreditCardValidator_SingleLineDoSPerformance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DoS performance test in -short mode")
+	}
+
+	v := NewValidator()
+
+	// Build a single line (NO newlines) of ~1MB packed with a Luhn-valid,
+	// space-separated PAN. Space-separation keeps every PAN matchable (shared
+	// delimiter) and maximises the number of matches per line — the worst case.
+	const card = "4532015112830366"
+	const targetBytes = 1 << 20 // ~1MB
+	var b strings.Builder
+	b.Grow(targetBytes + len(card) + 1)
+	for b.Len() < targetBytes {
+		b.WriteString(card)
+		b.WriteByte(' ')
+	}
+	line := b.String()
+	if strings.Contains(line, "\n") {
+		t.Fatal("worst-case input must be a single line")
+	}
+
+	start := time.Now()
+	matches, err := v.ValidateContent(line, "dos.txt")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+
+	// Sanity: the packed line must actually produce many matches, otherwise the
+	// test would pass trivially without exercising the hot path.
+	if len(matches) < 1000 {
+		t.Fatalf("expected the packed line to yield many matches, got %d", len(matches))
+	}
+
+	const budget = 5 * time.Second
+	if raceEnabled {
+		// -race inflates wall-clock 5-20x, making the budget meaningless. The
+		// scan above still ran (so -race checks the per-line cached state for
+		// data races); we skip only the timing assertion.
+		t.Logf("processed %d-byte single line with %d matches in %s (timing assertion skipped under -race)", len(line), len(matches), elapsed)
+		return
+	}
+	if elapsed > budget {
+		t.Fatalf("ValidateContent on a ~%dKB single line took %s (> %s budget) — O(n^2) regression?",
+			len(line)/1024, elapsed, budget)
+	}
+	t.Logf("processed %d-byte single line with %d matches in %s", len(line), len(matches), elapsed)
 }
