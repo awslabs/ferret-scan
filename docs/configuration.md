@@ -241,13 +241,20 @@ Profiles now support all command-line options and include specialized configurat
 - `respect_gitignore`: Honor `.gitignore` files when scanning (opt-in; see [File Exclusion Patterns](#file-exclusion-patterns))
 - `generate_suppressions`: Auto-generate suppression rules
 
+### CLI-Only Options (Not Configurable in YAML)
+
+- `--explain`: Annotates each finding with a plain-language rationale, a verdict (likely real / test / uncertain), and a drafted suppression reason. Fully offline; no data leaves the host. Web mode always runs explain automatically.
+
 ### Output Format Support
-Profiles now support all output formats:
+
+Profiles support all output formats:
 - `text`: Human-readable text output (default)
 - `json`: Structured JSON for APIs and programmatic processing
 - `csv`: Spreadsheet-friendly format for analysis
 - `yaml`: Detailed YAML output for debugging
 - `junit`: JUnit XML for CI/CD test result integration
+- `gitlab-sast`: GitLab Security Dashboard compatible JSON
+- `sarif`: SARIF for GitHub Advanced Security, Azure DevOps, and other SARIF-compatible tools
 
 ## Validator-Specific Configuration
 
@@ -618,283 +625,187 @@ This means that profile-specific configurations will override global configurati
 
 ## Pre-Configured Profiles
 
-Ferret Scan includes comprehensive pre-configured profiles for different use cases:
+Ferret Scan ships with five streamlined profiles covering the most common workflows. Use them with `--profile <name>`.
 
-### Development and Testing Profiles
+### Interactive Use
 
-#### `quick` - Fast Security Check
-- **Purpose**: Rapid scan focusing on critical data types
-- **Features**: High confidence only, minimal processing, disabled preprocessors
-- **Use Case**: Quick development checks, pre-commit hooks
-- **Output**: Text format with minimal verbosity
+#### `cli` - Default Terminal Output
 
-#### `debug` - Troubleshooting and Analysis
-- **Purpose**: Comprehensive debugging with detailed output
-- **Features**: YAML output, show matches, show suppressed findings
-- **Use Case**: Troubleshooting false positives, validator development
-- **Output**: YAML format with full metadata
+- **Purpose**: Standard interactive scanning for developers
+- **Features**: Text output, high+medium confidence, all checks, recursive, respects `.gitignore`
+- **Use Case**: Day-to-day scanning from a terminal
+- **Output**: Human-readable text
 
-### CI/CD and Automation Profiles
+### Web Interface
+
+#### `web` - Web UI Mode
+
+- **Purpose**: Powers the `ferret-scan --web` interface
+- **Features**: JSON output, all confidence levels, all checks, verbose, `show_match: true` (the web UI handles client-side redaction), respects `.gitignore`
+- **Use Case**: Browser-based scanning and triage
+- **Output**: JSON with full finding detail
+- **Note**: Web mode always runs `--explain` automatically
+
+### CI/CD and Automation
 
 #### `ci` - CI/CD Pipeline Integration
-- **Purpose**: Automated testing with JUnit XML output
-- **Features**: JUnit format, quiet mode, medium/high confidence
-- **Use Case**: GitLab CI, Jenkins, automated testing pipelines
-- **Output**: JUnit XML for test result integration
 
-#### `silent` - Automated Systems
-- **Purpose**: Minimal output for scripts and automation
-- **Features**: JSON output, quiet mode, high confidence only
-- **Use Case**: Automated scanning, monitoring systems
-- **Output**: JSON format with minimal verbosity
+- **Purpose**: Machine-readable output for pipelines
+- **Features**: gitlab-sast format (change to `junit` or `sarif` as needed), high+medium confidence, all checks, quiet, no color, respects `.gitignore`
+- **Use Case**: GitLab Security Dashboard, Jenkins, GitHub Advanced Security, Azure DevOps
+- **Output**: gitlab-sast JSON (or junit/sarif depending on format override)
 
-### Security and Compliance Profiles
+#### `precommit` - Git Pre-Commit Hook
 
-#### `security-audit` - Security Team Scanning
-- **Purpose**: Security-focused analysis for audit purposes
-- **Features**: Medium/high confidence, security-sensitive data types, no match display
-- **Use Case**: Security audits, compliance scanning
-- **Output**: JSON format without exposing sensitive data
+- **Purpose**: Fast, focused scan of staged files before commit
+- **Features**: Text output, high+medium confidence, focused checks (CREDIT_CARD, SECRETS, SSN, PASSPORT, EMAIL, PERSON_NAME), non-recursive (only staged files), quiet, no color, respects `.gitignore`
+- **Use Case**: Git pre-commit hooks to prevent accidental PII commits
+- **Output**: Text (exit code non-zero on findings)
 
-#### `comprehensive` - Complete Analysis
-- **Purpose**: Full-featured scanning with all capabilities
-- **Features**: All confidence levels, show matches, suppression support
-- **Use Case**: Thorough analysis, forensic investigation
-- **Output**: YAML format with complete metadata
+### Data Protection
 
-### Data Export and Analysis Profiles
+#### `redaction` - Scan and Redact
 
-#### `csv-export` - Spreadsheet Analysis
-- **Purpose**: Export results for spreadsheet analysis
-- **Features**: CSV format, quiet mode, all confidence levels
-- **Use Case**: Data analysis, reporting, trend analysis
-- **Output**: CSV format with headers
-
-#### `json-api` - Programmatic Processing
-- **Purpose**: Structured data for APIs and applications
-- **Features**: JSON format, show matches, full metadata
-- **Use Case**: API integration, custom processing
-- **Output**: JSON format with complete data
-
-<!-- GENAI_DISABLED: GenAI and Cost Management Profiles
-
-#### `cost-estimate` - Cost Estimation
-- **Purpose**: Show GenAI cost estimates without processing
-- **Features**: Estimate-only mode, GenAI enabled
-- **Use Case**: Budget planning, cost analysis
-- **Output**: Cost breakdown without file processing
-
-#### `cost-aware-genai` - Budget-Controlled GenAI
-- **Purpose**: GenAI scanning with spending limits
-- **Features**: $5 cost limit, JSON output, GenAI enabled
-- **Use Case**: Controlled AI-powered analysis
-- **Output**: JSON format with cost controls
-
-#### `genai` - Full AI-Powered Analysis
-- **Purpose**: Complete GenAI capabilities with higher budget
-- **Features**: $10 cost limit, all GenAI services
-- **Use Case**: Advanced document analysis, OCR processing
-- **Output**: Text format with AI enhancements
--->
-
-### Specialized Scanning Profiles
-
-#### `credit-card` - Payment Card Focus
-- **Purpose**: Dedicated credit card number detection
-- **Features**: Credit card validator only, all confidence levels
-- **Use Case**: PCI compliance, payment processing security
-- **Output**: Text format with card-specific details
-
-#### `passport` - Travel Document Focus
-- **Purpose**: Passport number detection
-- **Features**: Passport validator only, all confidence levels
-- **Use Case**: Travel industry, identity verification
-- **Output**: Text format with passport details
-
-#### `intellectual-property` - IP Protection
-- **Purpose**: Intellectual property detection
-- **Features**: IP validator only, custom patterns
-- **Use Case**: Corporate security, IP protection
-- **Output**: Text format with IP-specific analysis
+- **Purpose**: Detect and redact sensitive data, writing sanitized copies to an output directory
+- **Features**: Text output, high+medium confidence, all checks, verbose, format-preserving redaction strategy enabled, respects `.gitignore`
+- **Use Case**: Preparing documents for external sharing, data sanitization pipelines
+- **Output**: Text summary of findings + redacted file copies in `./redacted/`
 
 ## Example Configuration
 
-Here's a complete example configuration file with the new features:
+Here is a concise example configuration file showing the main sections and profiles. See [`examples/ferret.yaml`](../examples/ferret.yaml) for the full annotated version.
 
 ```yaml
-# Default settings applied when no profile is specified
+# Default settings (applied when no --profile is specified)
 defaults:
-  format: text                # Output format: text, json, csv, yaml, junit, gitlab-sast
-  confidence_levels: all      # Confidence levels to display: high, medium, low, or combinations
-  checks: all                 # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN<!-- GENAI_DISABLED: , COMPREHEND_PII -->, or combinations
-  verbose: false              # Display detailed information for each finding
-  debug: false                # Enable debug logging to show preprocessing and validation flow
-  no_color: false             # Disable colored output
-  recursive: false            # Recursively scan directories
-  enable_preprocessors: true  # Enable text extraction from documents (PDF, Office files) (default: true)
-  show_match: false           # Display the actual matched text in findings
-  quiet: false                # Suppress progress output (useful for scripts and CI/CD)
-  show_suppressed: false      # Include suppressed findings in output with suppression details
-  generate_suppressions: false # Generate suppression rules for all findings
-  exclude_patterns:           # Patterns to exclude from scanning (supports glob patterns)
-    - ".git"                  # Exclude .git directory
-    - "*.log"                 # Exclude all .log files
-    - "node_modules"          # Exclude node_modules directory
-    - "target"                # Exclude target directory (common in Java projects)
-    - "*.tmp"                 # Exclude temporary files
-  respect_gitignore: false    # Honor .gitignore, .git/info/exclude, and global git excludes (opt-in; .git always skipped when enabled)
-  <!-- GENAI_DISABLED: max_cost: 0                 # Maximum cost limit for GenAI services (0 = no limit) -->
-  <!-- GENAI_DISABLED: estimate_only: false        # Show cost estimate and exit without processing -->
+  format: text                    # Output format: text, json, csv, yaml, junit, gitlab-sast, sarif
+  confidence_levels: high,medium  # high, medium, low, or "all"
+  checks: all                     # CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA,
+                                  # PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or "all"
+  verbose: false
+  debug: false
+  no_color: false
+  recursive: true
+  enable_preprocessors: true      # Text extraction from PDF/Office documents
+  show_match: false               # Display matched text (redacted by default)
+  quiet: false
+  show_suppressed: false
+  generate_suppressions: false
+  respect_gitignore: true         # Honor .gitignore, .git/info/exclude, global git excludes
+
+  exclude_patterns:
+    - .git
+    - .svn
+    - node_modules
+    - vendor
+    - dist
+    - "*.log"
+    - "*.tmp"
+    - __pycache__
+    - .DS_Store
 
 # Preprocessor configurations
 preprocessors:
-  # Text extraction from documents
   text_extraction:
-    enabled: true             # Enable text extraction preprocessor
-    types:                    # Types of text extraction to perform
-      - pdf                   # Extract text from PDF documents
-      - office                # Extract text from Office documents (DOCX, XLSX, PPTX, ODT, ODS, ODP)
-
-  <!-- GENAI_DISABLED: Amazon Textract OCR (requires --enable-genai flag)
-  # WARNING: Using Textract will send your files to AWS and incur costs
-  textract:
-    enabled: false            # Disabled by default, enabled with --enable-genai flag
-    region: us-east-1         # AWS region for Textract service
-
-  # Amazon Transcribe for audio file transcription (requires --enable-genai flag)
-  # WARNING: Using Transcribe will send your files to AWS and incur costs
-  transcribe:
-    enabled: false            # Disabled by default, enabled with --enable-genai flag
-    region: us-east-1         # AWS region for Transcribe service
-    bucket: ""                # S3 bucket name for audio uploads (optional, creates temporary bucket if not specified)
-
-  # Amazon Comprehend for PII detection (requires --enable-genai flag)
-  # WARNING: Using Comprehend will send your text to AWS and incur costs
-  comprehend:
-    enabled: false            # Disabled by default, enabled with --enable-genai flag
-    region: us-east-1         # AWS region for Comprehend service
-  -->
+    enabled: true
+    types:
+      - pdf
+      - office
 
 # Validator-specific configurations
 validators:
-  # Intellectual property validator configuration
   intellectual_property:
-    # Internal company URL patterns to detect
     internal_urls:
       - "http[s]?:\\/\\/s3\\.amazonaws\\.com"
-      - "http[s]?:\\/\\/w\\.amazon"
-      - "http[s]?:\\/\\/t\\.amazon"
-      - "http[s]?:\\/\\/.*corp\\.amazon"
+      - "http[s]?:\\/\\/.*\\.s3\\.amazonaws\\.com"
+      - "http[s]?:\\/\\/.*\\.s3-.*\\.amazonaws\\.com"
       - "http[s]?:\\/\\/.*\\.internal\\..*"
       - "http[s]?:\\/\\/.*\\.corp\\..*"
       - "http[s]?:\\/\\/.*-internal\\..*"
       - "http[s]?:\\/\\/.*internal-.*"
 
-    # Custom intellectual property patterns
     intellectual_property_patterns:
       patent: "\\b(US|EP|JP|CN|WO)[ -]?(\\d{1,3}[,.]?\\d{3}[,.]?\\d{3}|\\d{1,3}[,.]?\\d{3}[,.]?\\d{2}[A-Z]\\d?)\\b"
       trademark: "\\b(\\w+\\s*[™®]|\\w+\\s*\\(TM\\)|\\w+\\s*\\(R\\)|\\w+\\s+Trademark|\\w+\\s+Registered\\s+Trademark)\\b"
       copyright: "(©|\\(c\\)|\\(C\\)|Copyright|\\bCopyright\\b)\\s*\\d{4}[-,]?(\\d{4})?\\s+[A-Za-z0-9\\s\\.,]+"
-      trade_secret: "\\b(Confidential|Trade\\s+Secret|Proprietary|Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted|Classified)\\b"
+      trade_secret: "\\b(Trade\\s+Secret|Company\\s+Confidential|Internal\\s+Use\\s+Only|CONFIDENTIAL\\s*[-–—:]\\s*(DO\\s+NOT|NOT\\s+FOR)|RESTRICTED\\s*[-–—:]\\s*(DO\\s+NOT|NOT\\s+FOR)|PROPRIETARY\\s+AND\\s+CONFIDENTIAL)\\b"
 
 # Suppression configuration
 suppressions:
-  file: ".ferret-scan-suppressions.yaml"  # Path to suppression configuration file
-  generate_on_scan: false                 # Generate suppression rules for all findings during scan
-  show_suppressed: false                  # Include suppressed findings in output
+  file: .ferret-scan-suppressions.yaml
+  generate_on_scan: false
+  show_suppressed: false
 
-<!-- GENAI_DISABLED: Cost control settings for GenAI services
-# NOTE: These settings only apply when --enable-genai flag is used
-cost_control:
-  max_cost: 0                            # Maximum cost limit for GenAI services (0 = no limit)
-  estimate_only: false                   # Show cost estimate and exit without processing
-  prompt_for_costs: true                 # Prompt user before incurring any GenAI costs
+# Redaction (activated with --enable-redaction or via a profile)
+redaction:
+  enabled: false
+  output_dir: ./redacted
+  strategy: format_preserving
+  audit_log_file: ""
+  memory_scrub: true
+  audit_trail: true
+  strategies:
+    simple:
+      replacement: "[REDACTED]"
+    format_preserving:
+      preserve_length: true
+      preserve_format: true
+    synthetic:
+      secure: true
 
-# GenAI service configuration
-genai:
-  services: "all"                        # Comma-separated list: textract, transcribe, comprehend, or 'all'
-  region: "us-east-1"                    # Default AWS region for all GenAI services
--->
-
-# Profiles for different scanning scenarios
+# Profiles — use with: ferret-scan --profile <name> --file <target>
 profiles:
-  # Quick scan profile - only high confidence matches, minimal output
-  quick:
+  cli:
     format: text
-    confidence_levels: high
-    checks: CREDIT_CARD,SECRETS,SSN,EMAIL  # Focus on most critical data types
-    verbose: false
-    no_color: false
-    recursive: false
+    confidence_levels: high,medium
+    checks: all
+    recursive: true
+    respect_gitignore: true
+    description: "Default CLI scan — human-readable text output"
+
+  web:
+    format: json
+    confidence_levels: all
+    checks: all
+    verbose: true
+    show_match: true
+    no_color: true
+    respect_gitignore: true
+    description: "Web UI mode — JSON output; UI handles client-side redaction"
+
+  ci:
+    format: gitlab-sast
+    confidence_levels: high,medium
+    checks: all
+    no_color: true
+    recursive: true
     quiet: true
     show_match: false
-    enable_preprocessors: false  # Skip document processing for speed
-    exclude_patterns:
-      - ".git"
-      - "*.log"
-    description: "Quick scan focusing on critical data types with minimal processing"
+    respect_gitignore: true
+    description: "CI/CD pipeline — change format to junit or sarif as needed"
 
-  # CI/CD pipeline profile - JUnit XML output for integration with CI/CD systems
-  ci:
-    format: junit
+  precommit:
+    format: text
+    confidence_levels: high,medium
+    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT,EMAIL,PERSON_NAME
+    no_color: true
+    recursive: false
+    quiet: true
+    respect_gitignore: true
+    description: "Pre-commit hook — fast scan of staged files"
+
+  redaction:
+    format: text
     confidence_levels: high,medium
     checks: all
     verbose: true
-    no_color: true
     recursive: true
-    enable_preprocessors: true
-    quiet: true
-    show_suppressed: false
-    generate_suppressions: false
-    exclude_patterns:
-      - ".git"
-      - "node_modules"
-      - "target"
-      - "build"
-      - "dist"
-      - "*.log"
-      - "*.tmp"
-    description: "CI/CD pipeline profile with JUnit XML output for test result integration"
-
-  # Security audit profile - focused on security-sensitive data types
-  security-audit:
-    format: json
-    confidence_levels: medium,high  # Exclude low confidence to reduce noise
-    checks: SECRETS,CREDIT_CARD,SSN,PASSPORT,INTELLECTUAL_PROPERTY
-    verbose: true
-    no_color: true
-    recursive: true
-    enable_preprocessors: true
-    show_match: false  # Don't show actual sensitive data in logs
-    quiet: false
-    description: "Security-focused scan for audit and compliance purposes"
-
-  # Cost estimation profile - shows costs without processing
-  cost-estimate:
-    format: text
-    confidence_levels: all
-    checks: all
-    verbose: false
-    no_color: false
-    recursive: true
-    enable_preprocessors: true
-    enable_genai: true
-    estimate_only: true
-    description: "Show GenAI cost estimates without processing files"
-
-  # Comprehensive profile - all features enabled with suppression support
-  comprehensive:
-    format: yaml
-    confidence_levels: all
-    checks: all
-    verbose: true
-    no_color: false
-    recursive: true
-    enable_preprocessors: true
-    show_match: true
-    show_suppressed: true
-    generate_suppressions: false
-    description: "Comprehensive scan with all features and suppression support"
+    respect_gitignore: true
+    redaction:
+      enabled: true
+      output_dir: ./redacted
+      strategy: format_preserving
+    description: "Scan and redact sensitive data with format-preserving replacement"
 ```
 
 ## Redaction Configuration

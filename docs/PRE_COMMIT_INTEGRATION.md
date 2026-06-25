@@ -14,7 +14,20 @@ pip install pre-commit
 pre-commit --version
 ```
 
-### 2. Direct Binary Integration (Recommended)
+### 2. Remote Repository Hook (Recommended)
+
+Use the hook directly from GitHub without building locally:
+
+```yaml
+repos:
+  - repo: https://github.com/awslabs/ferret-scan
+    rev: v1.8.4
+    hooks:
+      - id: ferret-scan
+        args: [--pre-commit-mode, --profile, precommit, --respect-gitignore]
+```
+
+### 3. Direct Binary Integration
 
 First, build the ferret-scan binary:
 ```bash
@@ -30,26 +43,29 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode
+        entry: ./bin/ferret-scan --pre-commit-mode --profile precommit --respect-gitignore
         language: system
         files: \.(txt|py|js|ts|go|java|json|yaml|yml|env|conf)$
+        exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)\.?ferret-scan-suppressions\.ya?ml$)|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)'
         pass_filenames: true
 ```
 
 **Alternative: Build from source (if binary not available):**
+
 ```yaml
 repos:
   - repo: local
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: go run ./cmd --config ferret.yaml --pre-commit-mode
+        entry: go run ./cmd --pre-commit-mode --profile precommit --respect-gitignore
         language: system
         files: \.(txt|py|js|ts|go|java|json|yaml|yml|env|conf)$
+        exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)\.?ferret-scan-suppressions\.ya?ml$)|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)'
         pass_filenames: true
 ```
 
-### 3. Python Package Integration (Recommended)
+### 4. Python Package Integration
 
 Using the PyPI package:
 
@@ -64,13 +80,14 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: ferret-scan --config ferret.yaml --pre-commit-mode
+        entry: ferret-scan --pre-commit-mode --profile precommit --respect-gitignore
         language: python
         files: \.(txt|py|js|ts|go|java|json|yaml|yml|env|conf)$
+        exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)\.?ferret-scan-suppressions\.ya?ml$)|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)'
         pass_filenames: true
 ```
 
-### 4. Install and Test
+### 5. Install and Test
 
 ```bash
 # Build the binary (if using direct binary integration)
@@ -116,7 +133,7 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode
+        entry: ./bin/ferret-scan --pre-commit-mode
         language: system
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
@@ -164,7 +181,7 @@ repos:
     hooks:
       - id: ferret-scan-strict
         name: Ferret Scan - High Security
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --confidence high,medium --verbose
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium --verbose
         language: system
         files: \.(py|js|ts|go|java|json|yaml|yml|env|conf)$
         exclude: (test_|_test\.|spec_|_spec\.)
@@ -181,7 +198,7 @@ repos:
     hooks:
       - id: ferret-scan-advisory
         name: Ferret Scan - Advisory
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --confidence high,medium,low
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium,low
         language: system
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
@@ -197,7 +214,7 @@ repos:
     hooks:
       - id: ferret-scan-balanced
         name: Ferret Scan - Balanced
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --confidence high,medium
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium
         language: system
         files: \.(py|js|ts|go|java|json|yaml|yml)$
         exclude: (test_|_test\.|docs/|README)
@@ -246,11 +263,17 @@ defaults:
 
 profiles:
   precommit:
-    description: "Pre-commit optimized profile"
-    confidence_levels: "high"
-    checks: "CREDIT_CARD,SECRETS,SSN"
-    quiet: true
+    format: text
+    confidence_levels: high,medium
+    checks: CREDIT_CARD,SECRETS,SSN,PASSPORT,EMAIL,PERSON_NAME
+    verbose: false
     no_color: true
+    recursive: false
+    quiet: true
+    show_match: false
+    enable_preprocessors: true
+    respect_gitignore: true
+    description: "Pre-commit hook — fast scan of staged files for critical PII types"
 ```
 
 Reference the profile in your pre-commit config:
@@ -261,7 +284,7 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: ./bin/ferret-scan --pre-commit-mode --profile precommit
+        entry: ./bin/ferret-scan --pre-commit-mode --profile precommit --respect-gitignore
         language: system
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
@@ -278,7 +301,7 @@ repos:
       # Strict scanning for configuration files
       - id: ferret-scan-config
         name: Ferret Scan - Config Files
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --checks SECRETS,EMAIL
+        entry: ./bin/ferret-scan --pre-commit-mode --checks SECRETS,EMAIL
         language: system
         files: \.(env|conf|config|ini|yaml|yml)$
         pass_filenames: true
@@ -288,7 +311,7 @@ repos:
       # Standard scanning for source code
       - id: ferret-scan-source
         name: Ferret Scan - Source Code
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --confidence high
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high
         language: system
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
@@ -329,6 +352,10 @@ rules:
       line_number: "42"
 ```
 
+### Excluding the Suppressions File from Scanning
+
+The suppressions file itself contains hashes and metadata that can trigger false positives. The recommended `exclude` regex in the pre-commit hook entry already handles this by matching `.ferret-scan-suppressions.yaml` and `.ferret-scan-suppressions.yml`. If you write a custom exclude pattern, make sure to include the suppressions file.
+
 ### Using Suppressions with Pre-commit
 
 ```yaml
@@ -337,7 +364,7 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --show-suppressed
+        entry: ./bin/ferret-scan --pre-commit-mode --show-suppressed
         language: system
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
@@ -378,7 +405,7 @@ env:
 Use specific checks instead of scanning everything:
 
 ```yaml
-entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --checks CREDIT_CARD,SECRETS,SSN
+entry: ./bin/ferret-scan --pre-commit-mode --checks CREDIT_CARD,SECRETS,SSN
 ```
 
 ## Troubleshooting
@@ -391,7 +418,7 @@ entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --checks CREDIT_
 make build
 
 # Then use the binary in your config:
-entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode
+entry: ./bin/ferret-scan --pre-commit-mode
 
 # Or use go run as fallback:
 entry: go run ./cmd --pre-commit-mode
@@ -403,10 +430,10 @@ entry: go run ./cmd --pre-commit-mode
 ./bin/ferret-scan --file . --recursive --generate-suppressions
 
 # Or adjust confidence levels
-entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --confidence high
+entry: ./bin/ferret-scan --pre-commit-mode --confidence high
 
 # Disable noisy IP sub-types (e.g., copyright notices on all source files)
-entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --disable-ip-types copyright
+entry: ./bin/ferret-scan --pre-commit-mode --disable-ip-types copyright
 ```
 
 **3. "Scans are too slow"**
@@ -419,7 +446,7 @@ env:
   FERRET_PRECOMMIT_BATCH_SIZE: "100"
 
 # Use specific checks
-entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --checks CREDIT_CARD,SECRETS
+entry: ./bin/ferret-scan --pre-commit-mode --checks CREDIT_CARD,SECRETS
 ```
 
 **4. "Different results between local and CI"**
@@ -436,7 +463,7 @@ entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --checks CREDIT_
 Enable debug output for troubleshooting:
 
 ```yaml
-entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --debug --verbose
+entry: ./bin/ferret-scan --pre-commit-mode --debug --verbose
 ```
 
 ### Testing Configuration
@@ -538,7 +565,7 @@ ferret-scan:
   stage: security
   image: ferret-scan:latest
   script:
-    - ferret-scan --config ferret.yaml --file . --recursive --format gitlab-sast --output ferret-sast-report.json
+    - ferret-scan --file . --recursive --format gitlab-sast --output ferret-sast-report.json
   artifacts:
     reports:
       sast: ferret-sast-report.json
@@ -640,7 +667,7 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode
+        entry: ./bin/ferret-scan --pre-commit-mode --profile precommit --respect-gitignore
         language: system
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
@@ -669,7 +696,7 @@ repos:
     hooks:
       - id: ferret-scan-ci
         name: Ferret Scan - CI
-        entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --format junit --output ferret-results.xml
+        entry: ./bin/ferret-scan --pre-commit-mode --format junit --output ferret-results.xml
         language: system
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
@@ -680,27 +707,38 @@ repos:
 ## Best Practices
 
 ### 1. Start Gradually
+
 - Begin with advisory mode (`FERRET_PRECOMMIT_EXIT_ON: "none"`)
 - Let the team learn what sensitive data looks like
 - Gradually increase strictness
 
 ### 2. Use Appropriate Scope
+
 - Focus on files that could contain real sensitive data
 - Exclude test files, documentation, and generated code
 - Use specific file patterns for better performance
 
 ### 3. Team Alignment
+
 - Create a shared `ferret.yaml` configuration file
 - Document your configuration choices in README
 - Train team on using `--no-verify` when appropriate
 - Set up suppressions for known false positives
 
 ### 4. Performance Optimization
+
 - Use specific file patterns instead of scanning everything
 - Adjust batch size based on repository size
 - Consider using specific check types instead of "all"
 
-### 5. Suppression Strategy
+### 5. Always Use `--respect-gitignore`
+
+- Pre-commit hooks only scan tracked/staged files, so use `--respect-gitignore` to ensure ferret-scan skips files matching `.gitignore` patterns
+- This avoids false positives from build artifacts, vendored dependencies, and generated files that happen to be passed by pre-commit's file filter
+- The `precommit` profile already sets `respect_gitignore: true`, but pass the flag explicitly for clarity
+
+### 6. Suppression Strategy
+
 - Keep suppressions local to each developer (recommended)
 - Or use shared suppressions for team consistency
 - Regular review of suppressions to ensure they're still valid
@@ -711,6 +749,7 @@ repos:
 If you're migrating from wrapper scripts or other pre-commit integrations:
 
 ### Remove Old Files
+
 ```bash
 # Remove old wrapper scripts
 rm -f scripts/enhanced-pre-commit-wrapper.sh
@@ -721,6 +760,7 @@ rm -f .pre-commit-config-advisory.yaml
 ```
 
 ### Update Configuration
+
 Replace old wrapper-based configurations with direct integration:
 
 ```yaml
@@ -731,12 +771,13 @@ env:
   FERRET_FAIL_ON: "high"
 
 # NEW (use this)
-entry: ./bin/ferret-scan --config ferret.yaml --pre-commit-mode --confidence high
+entry: ./bin/ferret-scan --pre-commit-mode --confidence high
 env:
   FERRET_PRECOMMIT_EXIT_ON: "high"
 ```
 
 ### Test Migration
+
 ```bash
 # Test the new configuration
 pre-commit run ferret-scan --all-files
