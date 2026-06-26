@@ -72,6 +72,7 @@ If you prefer to run the components separately:
 - **Social Media**: Platform handles, profiles, and URLs
 - **API Keys & Secrets**: API keys, tokens, credentials (40+ patterns)
 - **Intellectual Property**: Patents, trademarks, copyrights, trade secrets
+- **Cloud Resources**: Cloud resource identifiers (AWS ARNs incl. GovCloud/China, Azure resource IDs, GCP resource names, OCI OCIDs, IBM CRNs, Alibaba ARNs)
 - **Metadata**: EXIF, GPS, document properties extraction
 <!-- GENAI_DISABLED: AI PII Detection with Amazon Comprehend -->
 

@@ -82,6 +82,7 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 | PASSPORT | ✅ | ✅ Asterisk mask | ✅ Same country format |
 | SOCIAL_MEDIA | ✅ | ✅ Asterisk mask | ✅ Fake profile URL |
 | INTELLECTUAL_PROPERTY | ✅ | ✅ Asterisk mask | ✅ Fake copyright/patent/trademark |
+| CLOUD_RESOURCES | ✅ | ✅ Generic mask | ✅ Length-matched random token (no provider-specific format) |
 
 ## Document Type Support
 

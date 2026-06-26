@@ -114,6 +114,23 @@ var RuleDescriptions = map[string]RuleDescription{
 		Full:  "A Vehicle Identification Number (VIN) was detected in the scanned content. VINs can be used to identify vehicle owners and access personal information such as registration, insurance, and accident history.",
 		Help:  "VINs are linked to vehicle owner identity and can reveal personal information through public databases. They should not be stored in source code or logs. Remove VINs and use anonymized identifiers for testing. For production systems, store VINs in encrypted databases with appropriate access controls.",
 	},
+	"AWS_ARN":           cloudResourceDescription,
+	"AZURE_RESOURCE_ID": cloudResourceDescription,
+	"GCP_RESOURCE_NAME": cloudResourceDescription,
+	"OCI_OCID":          cloudResourceDescription,
+	"IBM_CRN":           cloudResourceDescription,
+	"ALIBABA_ARN":       cloudResourceDescription,
+	"CLOUD_RESOURCE_ID": cloudResourceDescription,
+}
+
+// cloudResourceDescription is the shared rule description for every cloud
+// provider resource identifier type emitted by the CLOUD_RESOURCES validator
+// (AWS ARN incl. GovCloud/China, Azure resource ID, GCP resource name, OCI
+// OCID, IBM CRN, Alibaba ARN).
+var cloudResourceDescription = RuleDescription{
+	Short: "Cloud Resource Identifier Detected",
+	Full:  "A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resource name, OCI OCID, IBM CRN, or Alibaba ARN) was detected in the scanned content. These identifiers can expose account, subscription, project, or tenant identity and infrastructure layout.",
+	Help:  "Cloud resource identifiers embed account/subscription/project anchors that reveal ownership and infrastructure topology. Avoid hardcoding them in source, logs, or shared documents. Use variables, parameters, or service discovery instead, and scrub identifiers from artifacts shared outside your organization.",
 }
 
 // GetRuleDescription returns the rule description for a given detection type

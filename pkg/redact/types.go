@@ -322,9 +322,9 @@ type EngineOptions struct {
 	// Checks names the validators to enable. Empty (default) or
 	// containing "all" enables every default validator. Case-sensitive;
 	// names match the project's internal validator IDs (e.g.
-	// "CREDIT_CARD", "EMAIL", "SSN", "PHONE", "PASSPORT", "VIN",
-	// "SECRETS", "INTELLECTUAL_PROPERTY", "SOCIAL_MEDIA", "IP_ADDRESS",
-	// "PERSON_NAME"). The METADATA validator requires filesystem access
+	// "CLOUD_RESOURCES", "CREDIT_CARD", "EMAIL", "SSN", "PHONE",
+	// "PASSPORT", "VIN", "SECRETS", "INTELLECTUAL_PROPERTY",
+	// "SOCIAL_MEDIA", "IP_ADDRESS", "PERSON_NAME"). The METADATA validator requires filesystem access
 	// and is not available on this in-memory path; passing it is a no-op.
 	Checks []string
 

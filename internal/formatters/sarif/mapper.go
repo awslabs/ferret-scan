@@ -322,6 +322,13 @@ func (m *VulnerabilityMapper) calculateRank(match detector.Match) float64 {
 		"METADATA":              3.0,
 		"SOCIAL_MEDIA":          3.0,
 		"VIN":                   6.0,
+		"AWS_ARN":               7.0,
+		"AZURE_RESOURCE_ID":     7.0,
+		"GCP_RESOURCE_NAME":     7.0,
+		"OCI_OCID":              7.0,
+		"IBM_CRN":               7.0,
+		"ALIBABA_ARN":           7.0,
+		"CLOUD_RESOURCE_ID":     7.0,
 	}
 
 	// Get sensitivity weight for this type, default to 5.0 for unknown types

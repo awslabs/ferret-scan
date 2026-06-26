@@ -47,6 +47,7 @@
 - **Passport**: Travel context analysis
 - **Secrets**: Entropy analysis + API pattern detection
 - **Intellectual Property**: Legal context analysis
+- **Cloud Resources**: Multi-cloud resource identifier detection (AWS/Azure/GCP/OCI/IBM/Alibaba)
 - **Metadata**: Context-aware metadata validation
 <!-- GENAI_DISABLED: - **Comprehend PII**: AWS AI-powered detection -->
 

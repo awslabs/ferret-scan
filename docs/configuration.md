@@ -802,8 +802,8 @@ Here is a concise example configuration file showing the main sections and profi
 defaults:
   format: text                    # Output format: text, json, csv, yaml, junit, gitlab-sast, sarif
   confidence_levels: high,medium  # high, medium, low, or "all"
-  checks: all                     # CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA,
-                                  # PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or "all"
+  checks: all                     # CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS,
+                                  # METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or "all"
   verbose: false
   debug: false
   no_color: false
