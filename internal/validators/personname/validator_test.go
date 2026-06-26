@@ -1174,3 +1174,32 @@ func TestPersonNameValidator_PerformanceWorstCase(t *testing.T) {
 		})
 	}
 }
+
+// TestAnalyzeContextCached_OffsetEquivalence guards the single-long-line DoS
+// fix in analyzeLineContextForMatch: the hot path passes the match's known byte
+// offset (instead of re-running strings.Index over the whole line per match).
+// The result MUST be identical to the fallback (-1) path that locates the match
+// itself — otherwise the optimization would change confidence/behavior. This is
+// the behavior-equivalence the fix relies on; the perf guard is
+// TestPersonNameValidator_PerformanceWorstCase.
+func TestAnalyzeContextCached_OffsetEquivalence(t *testing.T) {
+	v := NewValidator()
+	lines := []string{
+		"employee John Smith started today",
+		"company Tech Solutions corporation announced", // negative keyword present
+		"contact Emily Davis (emily.davis@example.com) for details",
+		"Raw Data Detected At Location Details Secret Keyword account id reference",
+		"Robert Johnson account manager, invoice prepared by Maria Garcia",
+	}
+	for _, line := range lines {
+		cache := v.newLineContextCache(line)
+		for _, pm := range v.patternManager.FindMatches(line) {
+			withOffset := v.analyzeContextCached(pm.Text, pm.StartIndex, cache)
+			withFallback := v.analyzeContextCached(pm.Text, -1, cache)
+			if withOffset != withFallback {
+				t.Errorf("offset vs fallback mismatch for %q in %q: %.2f != %.2f",
+					pm.Text, line, withOffset, withFallback)
+			}
+		}
+	}
+}

@@ -175,8 +175,11 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 		confidence, validationChecks := v.CalculateConfidenceWithComponents(nameText, nameComponents)
 
 		// Apply basic context analysis (cached per-line; identical to AnalyzeContext
-		// for ContextInfo{FullLine: line}).
-		contextImpact := v.analyzeContextCached(nameText, lineCache)
+		// for ContextInfo{FullLine: line}). The match's known byte offset is passed
+		// so the proximity check is a bounded window lookup rather than a full-line
+		// strings.Index per match (which is O(matches x lineLen) on a single very
+		// long line, e.g. minified JSON).
+		contextImpact := v.analyzeContextCached(nameText, patternMatch.StartIndex, lineCache)
 		confidence += contextImpact
 
 		// Ensure final confidence is within bounds
@@ -238,8 +241,9 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 		confidence, validationChecks := v.CalculateConfidenceWithComponents(nameText, nameComponents)
 
 		// Apply basic context analysis (cached per-line; identical to AnalyzeContext
-		// for ContextInfo{FullLine: line}).
-		contextImpact := v.analyzeContextCached(nameText, lineCache)
+		// for ContextInfo{FullLine: line}). Pass the match offset so proximity is a
+		// bounded window lookup (avoids O(matches x lineLen) on a single long line).
+		contextImpact := v.analyzeContextCached(nameText, patternMatch.StartIndex, lineCache)
 		confidence += contextImpact
 
 		// Apply enhanced context insights
@@ -858,6 +862,12 @@ type lineContextCache struct {
 	// hasNegativeKeyword is true when at least one negative keyword matched the
 	// line (whole-word), gating the per-match proximity penalty exactly as before.
 	hasNegativeKeyword bool
+	// negativeKeywordIndices holds the first-occurrence byte offset of each
+	// negative keyword present on the line that ALSO passes the email/URL guard.
+	// This is line-global (independent of the match), so it is computed once here
+	// instead of re-scanning the whole line per match — the source of the
+	// O(matches x lineLen) blowup on a single very long line (minified JSON/JS).
+	negativeKeywordIndices []int
 	// specificLineAdjustment is the line-global portion of analyzeSpecificPatterns
 	// (everything except the per-match signature boost).
 	specificLineAdjustment float64
@@ -892,6 +902,34 @@ func (v *Validator) newLineContextCache(line string) *lineContextCache {
 	}
 	c.hasNegativeKeyword = negativeMatches > 0
 
+	// Precompute, once per line, the first-occurrence offset of each negative
+	// keyword that survives the email/URL guard. The original code recomputed
+	// this (strings.Index + the ±10-char guard) for every match; it is
+	// match-independent, so hoisting it makes the per-match proximity check O(1)
+	// per keyword instead of O(lineLen). Preserves behavior: same keywords, same
+	// first-occurrence index, same guard.
+	if c.hasNegativeKeyword {
+		for _, keyword := range v.negativeKeywords {
+			keywordIndex := strings.Index(lowerLine, keyword)
+			if keywordIndex < 0 {
+				continue
+			}
+			beforeKeyword := ""
+			afterKeyword := ""
+			if keywordIndex > 10 {
+				beforeKeyword = lowerLine[keywordIndex-10 : keywordIndex]
+			}
+			if keywordIndex+len(keyword)+10 < len(lowerLine) {
+				afterKeyword = lowerLine[keywordIndex+len(keyword) : keywordIndex+len(keyword)+10]
+			}
+			if strings.Contains(beforeKeyword, "@") || strings.Contains(afterKeyword, "@") ||
+				strings.Contains(beforeKeyword, "http") || strings.Contains(afterKeyword, ".com") {
+				continue
+			}
+			c.negativeKeywordIndices = append(c.negativeKeywordIndices, keywordIndex)
+		}
+	}
+
 	c.specificLineAdjustment = v.analyzeSpecificPatternsLineGlobal(lowerLine)
 	return c
 }
@@ -908,7 +946,11 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	// Analyze the context line for keywords
 	if context.FullLine != "" {
 		cache := v.newLineContextCache(context.FullLine)
-		adjustment += v.analyzeLineContextForMatch(match, cache)
+		// Public single-match path: locate the match once (the hot scanning path
+		// passes the known offset instead). -1 is fine — analyzeLineContextForMatch
+		// falls back to a full-line scan when the offset is unknown.
+		matchStart := strings.Index(cache.lowerLine, strings.ToLower(match))
+		adjustment += v.analyzeLineContextForMatch(match, matchStart, cache)
 	}
 
 	// Analyze surrounding context if available
@@ -931,8 +973,8 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 // analyzeContextCached returns the same value AnalyzeContext returns for
 // ContextInfo{FullLine: line} (the only shape the scanning path uses), reusing the
 // precomputed per-line cache. The hot loop calls this once per match.
-func (v *Validator) analyzeContextCached(match string, cache *lineContextCache) float64 {
-	adjustment := v.analyzeLineContextForMatch(match, cache)
+func (v *Validator) analyzeContextCached(match string, matchStart int, cache *lineContextCache) float64 {
+	adjustment := v.analyzeLineContextForMatch(match, matchStart, cache)
 
 	// Ensure adjustment is within reasonable bounds (matches AnalyzeContext).
 	if adjustment > 25.0 {
@@ -947,7 +989,12 @@ func (v *Validator) analyzeContextCached(match string, cache *lineContextCache) 
 // analyzeLineContextForMatch combines the cached line-global signals with the two
 // match-specific signals (negative-keyword proximity penalty, signature boost) to
 // reproduce the pre-clamp adjustment computed by the original AnalyzeContext body.
-func (v *Validator) analyzeLineContextForMatch(match string, cache *lineContextCache) float64 {
+// matchStart is the byte offset of the match within cache.lowerLine (as found by
+// the pattern engine). Pass -1 if unknown, in which case the name position is
+// located with a single strings.Index (the directly-tested public AnalyzeContext
+// path). The hot scanning path always passes the real offset, so the per-match
+// full-line scans are eliminated.
+func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cache *lineContextCache) float64 {
 	// Mirror AnalyzeContext's `if context.FullLine != ""` guard: an empty line
 	// contributes nothing (no signature boost either).
 	if cache.emptyLine {
@@ -958,40 +1005,26 @@ func (v *Validator) analyzeLineContextForMatch(match string, cache *lineContextC
 	adjustment := cache.positiveAdjustment
 
 	if cache.hasNegativeKeyword {
-		// Only apply business context penalty if the negative keywords are close to
-		// the name. This depends on the match position so it stays per-match.
+		// Apply the business-context penalty only when guard-passing negative
+		// keywords sit close (<15 chars) to the name. The keyword positions and
+		// their email/URL guard are line-global and precomputed once in the cache;
+		// here we just compare each against the name's offset. nameIndex uses the
+		// known matchStart (or a single fallback lookup) instead of re-scanning the
+		// whole line per match.
+		nameIndex := matchStart
+		if nameIndex < 0 {
+			nameIndex = strings.Index(lowerLine, strings.ToLower(match))
+		}
+
 		closeNegativeMatches := 0
-		lowerMatch := strings.ToLower(match)
-		nameIndex := strings.Index(lowerLine, lowerMatch)
-
-		for _, keyword := range v.negativeKeywords {
-			if strings.Contains(lowerLine, keyword) {
-				// Skip keywords that appear in email addresses or URLs
-				keywordIndex := strings.Index(lowerLine, keyword)
-				if keywordIndex >= 0 {
-					beforeKeyword := ""
-					afterKeyword := ""
-					if keywordIndex > 10 {
-						beforeKeyword = lowerLine[keywordIndex-10 : keywordIndex]
-					}
-					if keywordIndex+len(keyword)+10 < len(lowerLine) {
-						afterKeyword = lowerLine[keywordIndex+len(keyword) : keywordIndex+len(keyword)+10]
-					}
-
-					if strings.Contains(beforeKeyword, "@") || strings.Contains(afterKeyword, "@") ||
-						strings.Contains(beforeKeyword, "http") || strings.Contains(afterKeyword, ".com") {
-						continue
-					}
+		if nameIndex >= 0 {
+			for _, keywordIndex := range cache.negativeKeywordIndices {
+				distance := keywordIndex - nameIndex
+				if distance < 0 {
+					distance = -distance
 				}
-
-				if keywordIndex >= 0 && nameIndex >= 0 {
-					distance := keywordIndex - nameIndex
-					if distance < 0 {
-						distance = -distance
-					}
-					if distance < 15 {
-						closeNegativeMatches++
-					}
+				if distance < 15 {
+					closeNegativeMatches++
 				}
 			}
 		}
