@@ -101,14 +101,16 @@ jobs:
 
       - name: Verify GHCR access
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        env:
+          ACTOR: ${{ github.actor }}
         run: |
           echo "🔍 Verifying GHCR access..."
-          echo "Actor: ${{ github.actor }}"
+          echo "Actor: $ACTOR"
           echo "Repository: ${{ github.repository }}"
           echo "Repository owner: ${{ github.repository_owner }}"
 
           # Test if we can access the repository
-          if docker manifest inspect ghcr.io/${{ env.GHCR_REPOSITORY }}:latest >/dev/null 2>&1; then
+          if docker manifest inspect "ghcr.io/${GHCR_REPOSITORY}:latest" >/dev/null 2>&1; then
             echo "✅ Can access existing images"
           else
             echo "ℹ️ No existing images found (this is normal for first push)"
@@ -139,15 +141,21 @@ jobs:
 
       - name: Determine platforms
         id: platforms
+        # The platforms input is free-text workflow_dispatch input; pass via env
+        # and reference as "$VAR" so it cannot inject shell commands (GitHub
+        # Actions script-injection hardening).
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PLATFORMS: ${{ github.event.inputs.platforms }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "platforms=${{ github.event.inputs.platforms }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "platforms=$INPUT_PLATFORMS" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
             # Only build for amd64 on PRs for faster feedback
-            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
           else
             # Full multi-arch build for main branch and tags
-            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push Docker image
@@ -204,55 +212,68 @@ jobs:
 
       - name: Test multi-arch images
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        # PLATFORMS derives from the untrusted platforms input and IMAGE_VERSION
+        # from the metadata action; pass via env and reference as "$VAR" so
+        # neither can inject shell commands.
+        env:
+          PLATFORMS: ${{ steps.platforms.outputs.platforms }}
+          IMAGE_VERSION: ${{ steps.meta.outputs.version }}
         run: |
           echo "🧪 Testing built images..."
 
           # Test each platform
-          for platform in $(echo "${{ steps.platforms.outputs.platforms }}" | tr ',' ' '); do
+          for platform in $(echo "$PLATFORMS" | tr ',' ' '); do
             echo "Testing $platform..."
 
             # Test GHCR image
-            docker run --rm --platform=$platform \
-              ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:${{ steps.meta.outputs.version }} \
+            docker run --rm --platform="$platform" \
+              "${GHCR_REGISTRY}/${GHCR_REPOSITORY}:${IMAGE_VERSION}" \
               --version || echo "⚠️ GHCR version check failed for $platform"
 
-            docker run --rm --platform=$platform \
-              ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:${{ steps.meta.outputs.version }} \
+            docker run --rm --platform="$platform" \
+              "${GHCR_REGISTRY}/${GHCR_REPOSITORY}:${IMAGE_VERSION}" \
               --help | head -5 || echo "⚠️ GHCR help check failed for $platform"
           done
 
       - name: Create release summary
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        # IMAGE_TAGS/PLATFORMS derive from the metadata action and the untrusted
+        # platforms input; pass via env and reference as "$VAR" so they cannot
+        # inject shell commands. The registry/repository names are workflow-level
+        # env constants, referenced directly as shell vars.
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          PLATFORMS: ${{ steps.platforms.outputs.platforms }}
         run: |
-          echo "## 🐳 Multi-Architecture Docker Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Container Registries" >> $GITHUB_STEP_SUMMARY
-          echo "#### Amazon ECR Public" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Gallery:** https://gallery.ecr.aws/g4m5x5s3/ferret-scan" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### GitHub Container Registry" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Packages:** https://github.com/awslabs/ferret-scan/pkgs/container/ferret-scan" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:** ${{ steps.meta.outputs.tags }}" | tr ',' '\n' | sed 's/^/- `/' | sed 's/$/`/' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Platforms:** ${{ steps.platforms.outputs.platforms }}" | tr ',' '\n' | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Usage Examples:" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "# Pull from GitHub Container Registry" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# Pull from Amazon ECR Public" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# Run CLI mode" >> $GITHUB_STEP_SUMMARY
-          echo "docker run --rm -v \$(pwd):/data ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:latest --file /data/sample.txt" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# Run web mode" >> $GITHUB_STEP_SUMMARY
-          echo "docker run --rm -p 8080:8080 ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:latest --web --port 8080" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 Multi-Architecture Docker Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Container Registries" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### Amazon ECR Public" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Image:** \`${ECR_REGISTRY}/${ECR_REPOSITORY}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Gallery:** https://gallery.ecr.aws/g4m5x5s3/ferret-scan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### GitHub Container Registry" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Image:** \`${GHCR_REGISTRY}/${GHCR_REPOSITORY}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Packages:** https://github.com/awslabs/ferret-scan/pkgs/container/ferret-scan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Tags:** $IMAGE_TAGS" | tr ',' '\n' | sed 's/^/- `/' | sed 's/$/`/' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms:** $PLATFORMS" | tr ',' '\n' | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Usage Examples:" >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "# Pull from GitHub Container Registry" >> "$GITHUB_STEP_SUMMARY"
+          echo "docker pull ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "# Pull from Amazon ECR Public" >> "$GITHUB_STEP_SUMMARY"
+          echo "docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "# Run CLI mode" >> "$GITHUB_STEP_SUMMARY"
+          echo "docker run --rm -v \$(pwd):/data ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --file /data/sample.txt" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "# Run web mode" >> "$GITHUB_STEP_SUMMARY"
+          echo "docker run --rm -p 8080:8080 ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --web --port 8080" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   security-scan:
     runs-on: ubuntu-latest

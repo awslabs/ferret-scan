@@ -87,27 +87,40 @@ jobs:
 
       - name: Determine scan scope
         id: scope
+        # Event/input context is passed via env and referenced as "$VAR" so a
+        # crafted input value cannot inject shell commands (GitHub Actions
+        # script-injection hardening).
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_SCAN_SCOPE: ${{ github.event.inputs.scan_scope }}
+          INPUT_CONFIDENCE_LEVEL: ${{ github.event.inputs.confidence_level }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "scope=${{ github.event.inputs.scan_scope }}" >> $GITHUB_OUTPUT
-            echo "confidence=${{ github.event.inputs.confidence_level }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "scope=changed-files" >> $GITHUB_OUTPUT
-            echo "confidence=high,medium" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "scope=$INPUT_SCAN_SCOPE" >> "$GITHUB_OUTPUT"
+            echo "confidence=$INPUT_CONFIDENCE_LEVEL" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "scope=changed-files" >> "$GITHUB_OUTPUT"
+            echo "confidence=high,medium" >> "$GITHUB_OUTPUT"
           else
-            echo "scope=full-repository" >> $GITHUB_OUTPUT
-            echo "confidence=high,medium" >> $GITHUB_OUTPUT
+            echo "scope=full-repository" >> "$GITHUB_OUTPUT"
+            echo "confidence=high,medium" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Get changed files (PR only)
         if: steps.scope.outputs.scope == 'changed-files'
         id: changed-files
+        # SHAs come from the (untrusted) pull_request event; pass via env and
+        # reference as "$VAR" so they cannot inject shell commands.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # Get list of changed files in the PR
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             # For pull requests, compare against the base branch
             git diff --name-only --diff-filter=ACM \
-              ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} \
+              "$BASE_SHA".."$HEAD_SHA" \
               | grep -E '\.(py|js|ts|go|java|json|yaml|yml|env|conf|config)$' \
               | grep -v -E '(test_|_test\.|spec_|_spec\.|mock_|_mock\.)' \
               > changed_files.txt || true
@@ -120,16 +133,18 @@ jobs:
           fi
 
           if [ -s changed_files.txt ]; then
-            echo "has_files=true" >> $GITHUB_OUTPUT
+            echo "has_files=true" >> "$GITHUB_OUTPUT"
             echo "Changed files to scan:"
             cat changed_files.txt
           else
-            echo "has_files=false" >> $GITHUB_OUTPUT
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
             echo "No relevant files changed"
           fi
 
       - name: Run Ferret Scan on changed files
         if: steps.scope.outputs.scope == 'changed-files' && steps.changed-files.outputs.has_files == 'true'
+        env:
+          CONFIDENCE: ${{ steps.scope.outputs.confidence }}
         run: |
           echo "🔍 Scanning changed files for sensitive data..."
 
@@ -148,7 +163,7 @@ jobs:
               # Run scan and capture results in JSON (for PR comments)
               if ./bin/ferret-scan \
                 --file "$file" \
-                --confidence "${{ steps.scope.outputs.confidence }}" \
+                --confidence "$CONFIDENCE" \
                 --format json \
                 --no-color \
                 --quiet > "results/${file//\//_}.json" 2>/dev/null; then
@@ -194,9 +209,9 @@ jobs:
           # CodeQL (actual vulnerability scanners).
 
           # Generate summary
-          echo "high_findings=$high_findings" >> $GITHUB_ENV
-          echo "medium_findings=$medium_findings" >> $GITHUB_ENV
-          echo "scan_exit_code=$exit_code" >> $GITHUB_ENV
+          echo "high_findings=$high_findings" >> "$GITHUB_ENV"
+          echo "medium_findings=$medium_findings" >> "$GITHUB_ENV"
+          echo "scan_exit_code=$exit_code" >> "$GITHUB_ENV"
 
           echo "📊 Scan Summary:"
           echo "   High confidence findings: $high_findings"
@@ -204,6 +219,8 @@ jobs:
 
       - name: Run Ferret Scan on full repository
         if: steps.scope.outputs.scope == 'full-repository'
+        env:
+          CONFIDENCE: ${{ steps.scope.outputs.confidence }}
         run: |
           echo "🔍 Scanning full repository for sensitive data..."
 
@@ -221,7 +238,7 @@ jobs:
             "--exclude" "results/**"
             "--exclude" ".git/**"
             "--exclude" "node_modules/**"
-            "--confidence" "${{ steps.scope.outputs.confidence }}"
+            "--confidence" "$CONFIDENCE"
             "--format" "json"
             "--output" "results/full-scan.json"
             "--no-color"
@@ -242,15 +259,15 @@ jobs:
             high_findings=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "HIGH") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
             medium_findings=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "MEDIUM") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
 
-            echo "high_findings=$high_findings" >> $GITHUB_ENV
-            echo "medium_findings=$medium_findings" >> $GITHUB_ENV
-            echo "scan_exit_code=0" >> $GITHUB_ENV
+            echo "high_findings=$high_findings" >> "$GITHUB_ENV"
+            echo "medium_findings=$medium_findings" >> "$GITHUB_ENV"
+            echo "scan_exit_code=0" >> "$GITHUB_ENV"
 
             echo "📊 Full Repository Scan Summary:"
             echo "   High confidence findings: $high_findings"
             echo "   Medium confidence findings: $medium_findings"
           else
-            echo "scan_exit_code=1" >> $GITHUB_ENV
+            echo "scan_exit_code=1" >> "$GITHUB_ENV"
             echo "❌ Full repository scan failed"
           fi
 
@@ -342,7 +359,9 @@ jobs:
 
       - name: Fail on high confidence findings
         if: env.high_findings != '0'
+        env:
+          HIGH_FINDINGS: ${{ env.high_findings }}
         run: |
-          echo "❌ Blocking merge: ${{ env.high_findings }} high confidence sensitive data findings detected"
+          echo "❌ Blocking merge: $HIGH_FINDINGS high confidence sensitive data findings detected"
           echo "Please review and address the findings before merging this PR"
           exit 1

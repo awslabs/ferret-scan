@@ -80,54 +80,73 @@ jobs:
           pip install build twine setuptools_scm
 
       - name: Validate context
+        # Untrusted/event context values are passed via env vars and referenced
+        # as "$VAR" rather than interpolated directly into the script, so a value
+        # containing shell metacharacters cannot inject commands (GitHub Actions
+        # script-injection hardening).
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          INPUT_ACTION: ${{ github.event.inputs.action }}
+          INPUT_REASON: ${{ github.event.inputs.reason }}
         run: |
-          echo "## Build & Publish Context" >> $GITHUB_STEP_SUMMARY
-          echo "- **Event**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Actor**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Build & Publish Context" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Event**: $EVENT_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Actor**: $ACTOR" >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "- **Action**: Automatic production release" >> $GITHUB_STEP_SUMMARY
-            echo "- **Target**: Production PyPI" >> $GITHUB_STEP_SUMMARY
-            echo "- **Version Source**: GitHub release tag" >> $GITHUB_STEP_SUMMARY
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            echo "- **Action**: Automatic production release" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Target**: Production PyPI" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Version Source**: GitHub release tag" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- **Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Reason**: ${{ github.event.inputs.reason || 'Manual action' }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Action**: $INPUT_ACTION" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Reason**: ${INPUT_REASON:-Manual action}" >> "$GITHUB_STEP_SUMMARY"
 
-            case "${{ github.event.inputs.action }}" in
+            case "$INPUT_ACTION" in
               "test-only")
-                echo "- **Target**: Build and test only (no publishing)" >> $GITHUB_STEP_SUMMARY
+                echo "- **Target**: Build and test only (no publishing)" >> "$GITHUB_STEP_SUMMARY"
                 ;;
               "publish-testpypi")
-                echo "- **Target**: Test PyPI" >> $GITHUB_STEP_SUMMARY
+                echo "- **Target**: Test PyPI" >> "$GITHUB_STEP_SUMMARY"
                 ;;
               "publish-pypi")
-                echo "- **Target**: Production PyPI" >> $GITHUB_STEP_SUMMARY
-                echo "⚠️ **WARNING**: Manual production PyPI publishing!" >> $GITHUB_STEP_SUMMARY
+                echo "- **Target**: Production PyPI" >> "$GITHUB_STEP_SUMMARY"
+                echo "⚠️ **WARNING**: Manual production PyPI publishing!" >> "$GITHUB_STEP_SUMMARY"
                 ;;
             esac
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Determine version
         id: version
+        # Event/input context (ref name, inputs.version, action) is passed via env
+        # and referenced as "$VAR" so a crafted tag name or input value cannot
+        # inject shell commands. Git metadata such as a tag/branch name is
+        # attacker-influenceable and must be treated as untrusted.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          CALL_VERSION: ${{ inputs.version }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_ACTION: ${{ github.event.inputs.action }}
         run: |
           echo "🔍 Git repository state:"
           echo "Current HEAD: $(git rev-parse HEAD)"
-          echo "Current branch/tag: ${{ github.ref_name }}"
+          echo "Current branch/tag: $REF_NAME"
           echo "Git describe: $(git describe --tags 2>/dev/null || echo 'no tags found')"
           echo "Available tags: $(git tag --sort=-version:refname | head -5 | tr '\n' ' ')"
           echo ""
 
-          if [[ "${{ github.event_name }}" == "workflow_call" && -n "${{ inputs.version }}" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_call" && -n "$CALL_VERSION" ]]; then
             # Use version passed from calling workflow
-            VERSION="${{ inputs.version }}"
+            VERSION="$CALL_VERSION"
             echo "✅ Using workflow_call version: $VERSION"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "source=workflow-call" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "source=workflow-call" >> "$GITHUB_OUTPUT"
 
-          elif [[ "${{ github.event_name }}" == "release" ]]; then
+          elif [[ "$EVENT_NAME" == "release" ]]; then
             # Use GitHub release tag, remove 'v' prefix if present
-            VERSION="${{ github.ref_name }}"
+            VERSION="$REF_NAME"
             VERSION="${VERSION#v}"
 
             # Validate it's a proper release version (no dev/alpha/beta for production)
@@ -138,26 +157,26 @@ jobs:
             fi
 
             echo "✅ Using GitHub release version: $VERSION"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "source=github-release" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "source=github-release" >> "$GITHUB_OUTPUT"
 
             # Verify Git tag exists and matches
             ACTUAL_VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || echo "no-exact-match")
-            if [[ "$ACTUAL_VERSION" != "${{ github.ref_name }}" ]]; then
+            if [[ "$ACTUAL_VERSION" != "$REF_NAME" ]]; then
               echo "⚠️ Warning: Git tag mismatch"
-              echo "Expected: ${{ github.ref_name }}"
+              echo "Expected: $REF_NAME"
               echo "Actual: $ACTUAL_VERSION"
               echo "This may indicate a workflow trigger issue"
             else
               echo "✅ Git tag matches release: $ACTUAL_VERSION"
             fi
 
-          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+          elif [[ -n "$INPUT_VERSION" ]]; then
             # Use manually specified version
-            VERSION="${{ github.event.inputs.version }}"
+            VERSION="$INPUT_VERSION"
             echo "✅ Using manual version: $VERSION"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "source=manual-input" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "source=manual-input" >> "$GITHUB_OUTPUT"
           else
             # Use setuptools_scm for development versions
             cd python-package
@@ -167,13 +186,13 @@ jobs:
 
             VERSION=$(python -m setuptools_scm)
             echo "✅ Setuptools_scm result: $VERSION"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "source=setuptools_scm" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "source=setuptools_scm" >> "$GITHUB_OUTPUT"
             cd ..
           fi
 
           # Additional validation for production PyPI
-          if [[ "${{ github.event_name }}" == "release" || "${{ github.event.inputs.action }}" == "publish-pypi" ]]; then
+          if [[ "$EVENT_NAME" == "release" || "$INPUT_ACTION" == "publish-pypi" ]]; then
             # Ensure version doesn't contain local identifiers
             if [[ "$VERSION" == *"+"* ]]; then
               echo "❌ Error: Production versions cannot contain local identifiers (+)"
@@ -185,14 +204,17 @@ jobs:
           fi
 
       - name: Build Python package with Go binaries
+        env:
+          VERSION_SOURCE: ${{ steps.version.outputs.source }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           echo "🔨 Building Python package with embedded Go binaries"
           cd python-package
 
           # Set the version explicitly if we have one
-          if [[ "${{ steps.version.outputs.source }}" != "setuptools_scm" ]]; then
-            export SETUPTOOLS_SCM_PRETEND_VERSION="${{ steps.version.outputs.version }}"
-            echo "Building with explicit version: ${{ steps.version.outputs.version }}"
+          if [[ "$VERSION_SOURCE" != "setuptools_scm" ]]; then
+            export SETUPTOOLS_SCM_PRETEND_VERSION="$VERSION"
+            echo "Building with explicit version: $VERSION"
           else
             echo "Building with setuptools_scm auto-detection"
           fi
@@ -209,6 +231,8 @@ jobs:
           ls -la python-package/ferret_scan/binaries/ || echo "No binaries directory found"
 
       - name: Test package installation
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           cd python-package
           echo "🧪 Testing package installation..."
@@ -216,7 +240,7 @@ jobs:
 
           # Test version matches expected
           INSTALLED_VERSION=$(ferret-scan --version | head -1)
-          EXPECTED_VERSION="${{ steps.version.outputs.version }}"
+          EXPECTED_VERSION="$VERSION"
 
           echo "Expected version: $EXPECTED_VERSION"
           echo "Installed version: $INSTALLED_VERSION"
@@ -270,26 +294,30 @@ jobs:
 
       - name: Check if should publish to PyPI
         id: should_publish
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_TAG_PUSH: ${{ inputs.is_tag_push }}
+          INPUT_ACTION: ${{ github.event.inputs.action }}
         run: |
           SHOULD_PUBLISH="false"
 
-          if [[ "${{ github.event_name }}" == "release" ]]; then
+          if [[ "$EVENT_NAME" == "release" ]]; then
             echo "✅ Should publish: GitHub release event"
             SHOULD_PUBLISH="true"
-          elif [[ "${{ inputs.is_tag_push }}" == "true" ]]; then
+          elif [[ "$IS_TAG_PUSH" == "true" ]]; then
             echo "✅ Should publish: Tag push detected (is_tag_push=true)"
             SHOULD_PUBLISH="true"
-          elif [[ "${{ github.event.inputs.action }}" == "publish-pypi" ]]; then
+          elif [[ "$INPUT_ACTION" == "publish-pypi" ]]; then
             echo "✅ Should publish: Manual publish action"
             SHOULD_PUBLISH="true"
           else
             echo "❌ Should NOT publish: Conditions not met"
-            echo "  - Event: ${{ github.event_name }}"
-            echo "  - is_tag_push: ${{ inputs.is_tag_push }}"
-            echo "  - Manual action: ${{ github.event.inputs.action }}"
+            echo "  - Event: $EVENT_NAME"
+            echo "  - is_tag_push: $IS_TAG_PUSH"
+            echo "  - Manual action: $INPUT_ACTION"
           fi
 
-          echo "should_publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
+          echo "should_publish=$SHOULD_PUBLISH" >> "$GITHUB_OUTPUT"
 
       - name: Publish to PyPI
         if: steps.should_publish.outputs.should_publish == 'true'
@@ -299,37 +327,43 @@ jobs:
           verbose: true
 
       - name: Create summary
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ACTION: ${{ github.event.inputs.action }}
+          IS_TAG_PUSH: ${{ inputs.is_tag_push }}
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_SOURCE: ${{ steps.version.outputs.source }}
         run: |
-          echo "## 📦 Build & Publish Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Version Source**: ${{ steps.version.outputs.source }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Package built successfully" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Installation test passed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Package validation passed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Build artifacts uploaded" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 Build & Publish Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version**: $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version Source**: $VERSION_SOURCE" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Package built successfully" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Installation test passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Package validation passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Build artifacts uploaded" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Publishing results
-          if [[ "${{ github.event_name }}" == "release" || "${{ github.event.inputs.action }}" == "publish-pypi" || ("${{ github.event_name }}" == "workflow_call" && "${{ inputs.is_tag_push }}" == "true") ]]; then
-            echo "✅ **Published to PyPI**: https://pypi.org/p/ferret-scan" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Installation" >> $GITHUB_STEP_SUMMARY
-            echo '```bash' >> $GITHUB_STEP_SUMMARY
-            echo 'pip install ferret-scan' >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          elif [[ "${{ github.event.inputs.action }}" == "publish-testpypi" ]]; then
-            echo "✅ **Published to Test PyPI**: https://test.pypi.org/p/ferret-scan" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Test Installation" >> $GITHUB_STEP_SUMMARY
-            echo '```bash' >> $GITHUB_STEP_SUMMARY
-            echo 'pip install --index-url https://test.pypi.org/simple/ ferret-scan' >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+          if [[ "$EVENT_NAME" == "release" || "$INPUT_ACTION" == "publish-pypi" || ("$EVENT_NAME" == "workflow_call" && "$IS_TAG_PUSH" == "true") ]]; then
+            echo "✅ **Published to PyPI**: https://pypi.org/p/ferret-scan" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Installation" >> "$GITHUB_STEP_SUMMARY"
+            echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+            echo 'pip install ferret-scan' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$INPUT_ACTION" == "publish-testpypi" ]]; then
+            echo "✅ **Published to Test PyPI**: https://test.pypi.org/p/ferret-scan" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Test Installation" >> "$GITHUB_STEP_SUMMARY"
+            echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+            echo 'pip install --index-url https://test.pypi.org/simple/ ferret-scan' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "📦 **Test build completed** (not published)" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Ready for publishing:" >> $GITHUB_STEP_SUMMARY
-            echo "- Create a GitHub release for automatic PyPI publishing" >> $GITHUB_STEP_SUMMARY
-            echo "- Or use workflow dispatch for manual publishing" >> $GITHUB_STEP_SUMMARY
+            echo "📦 **Test build completed** (not published)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Ready for publishing:" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Create a GitHub release for automatic PyPI publishing" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Or use workflow dispatch for manual publishing" >> "$GITHUB_STEP_SUMMARY"
           fi
