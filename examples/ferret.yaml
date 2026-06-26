@@ -8,8 +8,8 @@
 # Web mode: ferret-scan --web [--port 8080] [--bind 0.0.0.0]
 #
 # Available checks:
-#   CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA,
-#   PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN
+#   CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS,
+#   METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN
 #   Use "all" to enable every check.
 #
 # Output formats: text, json, csv, yaml, junit, gitlab-sast, sarif

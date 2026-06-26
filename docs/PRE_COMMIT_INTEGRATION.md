@@ -247,7 +247,7 @@ The configuration file includes:
 - **IP detection patterns** - Internal URLs, cloud infrastructure, corporate networks
 - **IP sub-type control** - Disable specific IP types (e.g., `disabled_types: [copyright]`) to avoid noise from standard copyright headers
 - **Validation rules** - Confidence scoring and pattern matching
-- **Check types** - CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN
+- **Check types** - CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN
 - **Preprocessor settings** - Document text extraction and metadata analysis
 
 **Important for CI/CD:** The `ferret.yaml` file must be committed to your repository and available in the working directory where ferret-scan runs. All CI/CD examples above assume this file exists in the project root.

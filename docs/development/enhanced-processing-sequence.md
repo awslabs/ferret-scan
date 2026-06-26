@@ -75,6 +75,8 @@ sequenceDiagram
             Validators->>Validators: Secrets Validator
         and
             Validators->>Validators: Passport Validator
+        and
+            Validators->>Validators: Cloud Resources Validator
         end
 
         Validators-->>DocumentBridge: Document validation results

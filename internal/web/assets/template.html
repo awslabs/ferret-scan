@@ -780,6 +780,10 @@
                                                     <label>All Checks</label>
                                                 </div>
                                                 <div class="checkbox-item">
+                                                    <input type="checkbox" id="cloudResources" checked>
+                                                    <label>Cloud Resources (ARNs, Resource IDs, OCIDs)</label>
+                                                </div>
+                                                <div class="checkbox-item">
                                                     <input type="checkbox" id="secrets" checked>
                                                     <label>API Keys & Secrets</label>
                                                 </div>
@@ -1599,6 +1603,7 @@
 
                             <h3 style="color: #0972d3; margin: 16px 0 8px 0;">🎯 Detection Types</h3>
                             <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                                <li><strong>CLOUD_RESOURCES:</strong> AWS ARNs, Azure Resource IDs, GCP names, OCIDs, IBM CRNs, Alibaba ARNs</li>
                                 <li><strong>CREDIT_CARD:</strong> Vendor validation, Luhn algorithm (15+ card brands)
                                 </li>
                                 <li><strong>EMAIL:</strong> RFC-compliant validation with domain checks</li>
@@ -2230,16 +2235,22 @@
         function getValidatorFromType(type) {
             // Map types to their validator modules based on CLI output patterns
             const typeToValidator = {
+                'ALIBABA_ARN': 'cloud_resources',
                 'AMEX': 'creditcard',
                 'API Key': 'secrets',
+                'AWS_ARN': 'cloud_resources',
+                'AZURE_RESOURCE_ID': 'cloud_resources',
                 'Canadian Passport': 'passport',
                 'Copyright': 'intellectualproperty',
                 'Credit Card': 'creditcard',
                 'DISCOVER': 'creditcard',
                 'Document Properties': 'metadata',
                 'EXIF': 'metadata',
+                'GCP_RESOURCE_NAME': 'cloud_resources',
                 'GPS': 'metadata',
+                'IBM_CRN': 'cloud_resources',
                 'MASTERCARD': 'creditcard',
+                'OCI_OCID': 'cloud_resources',
                 'PERSON_NAME': 'personname',
                 'Password': 'secrets', // pragma: allowlist secret
                 'Passport': 'passport',
@@ -2397,6 +2408,7 @@
 
             const checks = [];
             if (document.getElementById('secrets').checked) checks.push('SECRETS');
+            if (document.getElementById('cloudResources').checked) checks.push('CLOUD_RESOURCES');
             if (document.getElementById('creditCard').checked) checks.push('CREDIT_CARD');
             if (document.getElementById('email').checked) checks.push('EMAIL');
             if (document.getElementById('intellectualProperty').checked) checks.push('INTELLECTUAL_PROPERTY');
@@ -2429,7 +2441,7 @@
 
         function toggleAllChecks() {
             const allChecked = document.getElementById('allChecks').checked;
-            const checkboxes = ['secrets', 'creditCard', 'email', 'intellectualProperty', 'ipAddress', 'metadata', 'passport', 'personName', 'phone', 'socialMedia', 'ssn', 'comprehendPii'];
+            const checkboxes = ['secrets', 'cloudResources', 'creditCard', 'email', 'intellectualProperty', 'ipAddress', 'metadata', 'passport', 'personName', 'phone', 'socialMedia', 'ssn', 'comprehendPii'];
 
             checkboxes.forEach(id => {
                 const element = document.getElementById(id);
@@ -2473,7 +2485,7 @@
         // Update CLI command when form changes
         document.getElementById('confidenceSelect').addEventListener('change', updateCliCommand);
         /* GENAI_DISABLED: comprehendPii event listener removed from array */
-        ['creditCard', 'passport', 'ssn', 'metadata', 'intellectualProperty', 'email', 'phone', 'ipAddress', 'socialMedia', 'secrets'].forEach(id => {
+        ['cloudResources', 'creditCard', 'passport', 'ssn', 'metadata', 'intellectualProperty', 'email', 'phone', 'ipAddress', 'socialMedia', 'secrets'].forEach(id => {
             document.getElementById(id).addEventListener('change', updateCliCommand);
         });
         /* GENAI_DISABLED: GenAI service event listeners

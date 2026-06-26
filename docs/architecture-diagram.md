@@ -230,7 +230,7 @@ flowchart TD
         end
 
         %% VALIDATION: Enhanced Validators
-        ValidatorBridges["🌉 All Validator Bridges<br/>11 Context-Enhanced Validators:<br/>💳 Credit Card • 📧 Email • ⚖️ Intellectual Property<br/>🌐 IP Address • 📋 Metadata • 🛂 Passport<br/>👤 Person Name • 📞 Phone • 🔐 Secrets<br/>📱 Social Media • 🆔 SSN<br/>🤖 Comprehend PII (GENAI_DISABLED)"]
+        ValidatorBridges["🌉 All Validator Bridges<br/>13 Context-Enhanced Validators:<br/>☁️ Cloud Resources • 💳 Credit Card • 📧 Email<br/>⚖️ Intellectual Property • 🌐 IP Address • 📋 Metadata<br/>🛂 Passport • 👤 Person Name • 📞 Phone<br/>🔐 Secrets • 📱 Social Media • 🆔 SSN • 🚗 VIN<br/>🤖 Comprehend PII (GENAI_DISABLED)"]
 
         %% POST-VALIDATION: Result Enhancement
         subgraph PostValidation["📈 POST-VALIDATION ENHANCEMENT"]
@@ -318,6 +318,8 @@ flowchart TD
             SecretsBridge["🔐 Secrets<br/>ValidateWithContext()"]
             SocialMediaBridge["📱 Social Media<br/>ValidateWithContext()"]
             SSNBridge["🆔 SSN<br/>ValidateWithContext()"]
+            CloudResourcesBridge["☁️ Cloud Resources<br/>ValidateWithContext()"]
+            VINBridge["🚗 VIN<br/>ValidateWithContext()"]
             ComprehendBridge["🤖 Comprehend PII<br/>GENAI_DISABLED"]
         end
 
@@ -364,6 +366,8 @@ flowchart TD
     ContextAnalyzer --> SecretsBridge
     ContextAnalyzer --> SocialMediaBridge
     ContextAnalyzer --> SSNBridge
+    ContextAnalyzer --> CloudResourcesBridge
+    ContextAnalyzer --> VINBridge
     ContextAnalyzer --> ComprehendBridge
 
     %% STEP 3: POST-VALIDATION ENHANCEMENT
@@ -378,6 +382,8 @@ flowchart TD
     SecretsBridge --> CrossValidatorProcessor
     SocialMediaBridge --> CrossValidatorProcessor
     SSNBridge --> CrossValidatorProcessor
+    CloudResourcesBridge --> CrossValidatorProcessor
+    VINBridge --> CrossValidatorProcessor
 
     CrossValidatorProcessor --> ConfidenceCalibrator
 
@@ -410,7 +416,7 @@ flowchart TD
     class EnhancedWrapper,ValidateMethod validation
     class LanguageDetector,ContextAnalyzer prevalidation
     class CrossValidatorProcessor,ConfidenceCalibrator postvalidation
-    class CreditCardBridge,EmailBridge,IPropBridge,IPBridge,MetadataBridge,PassportBridge,PersonNameBridge,PhoneBridge,SecretsBridge,SocialMediaBridge,SSNBridge validators
+    class CreditCardBridge,EmailBridge,IPropBridge,IPBridge,MetadataBridge,PassportBridge,PersonNameBridge,PhoneBridge,SecretsBridge,SocialMediaBridge,SSNBridge,CloudResourcesBridge,VINBridge validators
     class RedactionManager,PlainTextRedactor,PDFRedactor,OfficeRedactor,ImageRedactor redaction
     class ValidationMatches,RedactionResults output
     class ComprehendBridge disabled
@@ -610,7 +616,7 @@ The Context Analyzer performs domain classification (Financial, HR, Legal), stru
 
 **File Type Aware Validation**: The ContentRouter now integrates with FileRouter's file type detection to implement intelligent routing. For plain text files, metadata validation is skipped entirely, routing only document body content to appropriate validators. For metadata-capable files, the system creates separate metadata content items with preprocessor type information, enabling the enhanced metadata validator to apply type-specific validation rules.
 
-Ten specialized validator bridges handle different data types (credit cards, SSNs, emails, etc.), each enhanced with context awareness. The bridges wrap standard validators with additional intelligence, adjusting confidence scores based on contextual insights. For example, a credit card number found in a financial document receives higher confidence than one found in test data.
+Thirteen specialized validator bridges handle different data types (cloud resources, credit cards, SSNs, emails, VINs, etc.), each enhanced with context awareness. The bridges wrap standard validators with additional intelligence, adjusting confidence scores based on contextual insights. For example, a credit card number found in a financial document receives higher confidence than one found in test data.
 
 ### **Integrated Redaction & Efficiency**
 

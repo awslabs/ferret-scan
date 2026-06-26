@@ -818,7 +818,7 @@ func main() {
 	listProfiles := flag.Bool("list-profiles", false, "List available profiles in config file")
 	outputFormat := flag.String("format", "", "Output format: text, json, csv, yaml, junit, gitlab-sast, sarif (default: text)")
 	confidenceLevels := flag.String("confidence", "", "Confidence levels to display: high, medium, low, or combinations like 'high,medium'")
-	checksToRun := flag.String("checks", "", "Specific checks to run: CREDIT_CARD, PASSPORT, METADATA, VIN, or combinations like 'CREDIT_CARD,METADATA'")
+	checksToRun := flag.String("checks", "", "Specific checks to run: CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, all (default: all)")
 	verbose := flag.Bool("verbose", false, "Display detailed information for each finding")
 	debug := flag.Bool("debug", false, "Enable debug logging to show preprocessing and validation flow")
 	outputFile := flag.String("output", "", "Path to output file (if not specified, output to stdout)")
@@ -2298,7 +2298,7 @@ func isFlagSet(name string) bool {
 func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 	// Define available checks
 	availableChecks := []string{
-		"CREDIT_CARD", "EMAIL", "PHONE", "IP_ADDRESS", "PASSPORT",
+		"CLOUD_RESOURCES", "CREDIT_CARD", "EMAIL", "PHONE", "IP_ADDRESS", "PASSPORT",
 		"PERSON_NAME", "METADATA", "INTELLECTUAL_PROPERTY",
 		"SOCIAL_MEDIA", "SSN", "SECRETS", "VIN",
 	}
@@ -2330,7 +2330,7 @@ func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 		} else if checkStr != "" {
 			// GENAI_DISABLED: Reject unknown checks including COMPREHEND_PII
 			fmt.Fprintf(os.Stderr, "Error: Unknown check type '%s'\n", checkStr)
-			fmt.Fprintf(os.Stderr, "Available checks: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN\n")
+			fmt.Fprintf(os.Stderr, "Available checks: CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN\n")
 			os.Exit(1)
 		}
 	}

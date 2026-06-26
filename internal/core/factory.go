@@ -8,6 +8,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/validators/cloudresources"
 	"github.com/awslabs/ferret-scan/internal/validators/creditcard"
 	"github.com/awslabs/ferret-scan/internal/validators/email"
 	"github.com/awslabs/ferret-scan/internal/validators/intellectualproperty"
@@ -28,6 +29,7 @@ import (
 // or renaming a validator is a one-line change here rather than several
 // parallel lists that can silently drift apart.
 var validatorConstructors = map[string]func() detector.Validator{
+	"CLOUD_RESOURCES":       func() detector.Validator { return cloudresources.NewValidator() },
 	"CREDIT_CARD":           func() detector.Validator { return creditcard.NewValidator() },
 	"EMAIL":                 func() detector.Validator { return email.NewValidator() },
 	"PHONE":                 func() detector.Validator { return phone.NewValidator() },
@@ -71,6 +73,9 @@ func BuildValidatorSet(enabledChecks map[string]bool, cfg *config.Config, profil
 
 	// Apply global config-level validator settings
 	if cfg != nil {
+		if v, ok := result["CLOUD_RESOURCES"].(*cloudresources.Validator); ok {
+			v.Configure(cfg)
+		}
 		if v, ok := result["INTELLECTUAL_PROPERTY"].(*intellectualproperty.Validator); ok {
 			v.Configure(cfg)
 		}
