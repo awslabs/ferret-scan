@@ -334,6 +334,16 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 	return []detector.Match{}, nil
 }
 
+// maxMatchesPerLinePerPattern bounds how many regex hits we will fully process
+// for a single (line, pattern) pair. A single pathologically long line packed
+// with thousands of passport-shaped tokens would otherwise drive the validator
+// into multi-minute (effectively unbounded) processing — a denial-of-service
+// surface. A line with this many distinct passport-shaped tokens is not
+// realistic source/document content; the cap protects against adversarial
+// input while leaving all normal inputs (which have a handful of matches per
+// line at most) completely unaffected.
+const maxMatchesPerLinePerPattern = 2000
+
 // ValidateContent validates preprocessed content for passport numbers
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	var matches []detector.Match
@@ -342,12 +352,36 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
+		// Per-LINE work hoisted OUT of the per-match loop. These values depend
+		// only on the line (not on the individual match), so computing them once
+		// per line instead of once per match removes the dominant
+		// O(matches * lineLength) cost on lines packed with many matches.
+		lineLower := strings.ToLower(line)
+		// One lineContext per line: it memoizes "keyword present in the full
+		// line" so the line-length scan for each distinct keyword happens at
+		// most once per line, not once per match.
+		lc := newLineContext(lineLower)
+		// Tabular and form-context detection are pure functions of the line
+		// (the match argument was never used in their bodies), so precompute.
+		lineIsTabular := v.isTabularDataLine(line)
+		lineIsForm := v.isInFormContextLine(lineLower)
+
 		// Check each pattern against the line
 		for country := range v.patterns {
 			re := v.compiledPatterns[country]
-			foundMatches := re.FindAllString(line, -1)
+			// Use FindAllStringIndex so each match's byte offset is known up
+			// front. This eliminates the per-match strings.Index(line, match)
+			// rescan (O(lineLength) each) AND fixes a latent correctness bug:
+			// strings.Index returns the FIRST occurrence of a token, so a line
+			// containing the same token more than once previously computed the
+			// context window around the wrong (first) occurrence for every
+			// later duplicate.
+			foundIdx := re.FindAllStringIndex(line, maxMatchesPerLinePerPattern)
 
-			for _, match := range foundMatches {
+			for _, loc := range foundIdx {
+				matchIndex := loc[0]
+				match := line[loc[0]:loc[1]]
+
 				// Skip if it's a common word or test pattern
 				if v.isCommonWord(match) || v.isTestPattern(match) {
 					continue
@@ -366,27 +400,28 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 					FullLine: line,
 				}
 
-				// Extract some context around the match in the line
-				matchIndex := strings.Index(line, match)
-				if matchIndex >= 0 {
-					start := matchIndex - 50
-					if start < 0 {
-						start = 0
-					}
-					end := matchIndex + len(match) + 50
-					if end > len(line) {
-						end = len(line)
-					}
-
-					contextInfo.BeforeText = line[start:matchIndex]
-					contextInfo.AfterText = line[matchIndex+len(match) : end]
+				// Extract some context around the match in the line using the
+				// known byte offset (no rescan).
+				start := matchIndex - 50
+				if start < 0 {
+					start = 0
+				}
+				end := matchIndex + len(match) + 50
+				if end > len(line) {
+					end = len(line)
 				}
 
-				// Analyze context and adjust confidence
-				contextImpact := v.AnalyzeContext(match, contextInfo)
+				contextInfo.BeforeText = line[start:matchIndex]
+				contextInfo.AfterText = line[matchIndex+len(match) : end]
 
-				// Check for tabular data and boost confidence
-				if v.isTabularData(contextInfo.FullLine, match) {
+				// Analyze context and adjust confidence. Pass the shared per-line
+				// lineContext and the per-line form-context flag so the proximity
+				// / keyword scan does not re-lower-case or re-scan the whole line
+				// per match.
+				contextImpact := v.analyzeContext(match, contextInfo, lc, lineIsForm)
+
+				// Check for tabular data and boost confidence (per-line property).
+				if lineIsTabular {
 					contextImpact += 15 // Boost for tabular data
 				}
 
@@ -401,8 +436,10 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 				contextInfo.ConfidenceImpact = contextImpact
 
-				// Require strong context for passport matches
-				hasStrongContext := v.hasStrongPassportContext(match, &contextInfo)
+				// Require strong context for passport matches. Pass the shared
+				// per-line lineContext and per-line form flag so this does not
+				// re-lower-case or re-scan the whole line per match.
+				hasStrongContext := v.hasStrongPassportContextWith(match, &contextInfo, lc, lineIsForm)
 
 				// Skip matches with 0% confidence - they are false positives
 				if confidence <= 0 {
@@ -483,26 +520,115 @@ func (v *Validator) getLetterDigitPattern(text string) string {
 	return pattern.String()
 }
 
-// AnalyzeContext analyzes the context around a match and returns a confidence adjustment
+// edgeWindow is the number of bytes of the line head/tail included when testing
+// whether a keyword straddles the boundary between the ±50-char context window
+// and the (potentially very long) full line. It must be >= the longest keyword
+// (22 chars) so no boundary-spanning keyword is missed. See lineContext.
+const edgeWindow = 64
+
+// lineContext caches the per-line work needed to test, in amortized O(1) per
+// match, whether a keyword occurs in the lowercased combined context
+//
+//	beforeLower + " " + lineLower + " " + afterLower
+//
+// without re-lower-casing or re-scanning the full (possibly huge) line for
+// every match. lineLower is computed once per line; only the small ±50-char
+// before/after windows change per match.
+//
+// The crucial optimization for very long lines: whether a keyword appears in
+// the line BODY (c.lineLower) is a per-line property — identical for every
+// match on the line — so it is computed at most once per distinct keyword and
+// memoized in inLineCache. Across the (potentially thousands of) matches on a
+// single packed line this turns the O(matches * keywords * lineLength) blowup
+// into O(distinctKeywords * lineLength) per line plus O(1) per match.
+type lineContext struct {
+	lineLower   string          // lower-cased full line (computed once per line)
+	inLineCache map[string]bool // memoized "keyword present in lineLower"
+}
+
+func newLineContext(lineLower string) *lineContext {
+	return &lineContext{lineLower: lineLower}
+}
+
+// inLine reports whether kw is present in the full lower-cased line, memoizing
+// the (line-length) scan so it runs at most once per distinct keyword per line.
+func (c *lineContext) inLine(kw string) bool {
+	if c.inLineCache == nil {
+		c.inLineCache = make(map[string]bool, 16)
+	}
+	if hit, ok := c.inLineCache[kw]; ok {
+		return hit
+	}
+	hit := strings.Contains(c.lineLower, kw)
+	c.inLineCache[kw] = hit
+	return hit
+}
+
+// contains reports whether kw (already lower-case) appears in the lowercased
+// concatenation beforeLower + " " + c.lineLower + " " + afterLower. This is
+// byte-for-byte equivalent to
+//
+//	strings.Contains(strings.ToLower(before+" "+line+" "+after), kw)
+//
+// because ToLower is per-rune and the joiners are spaces. For short lines we
+// build the concatenation directly (cheap); for long lines we test the line
+// body via the memoized inLine() and use bounded head/tail edge windows to
+// catch any keyword that straddles a context boundary — making the per-match
+// cost independent of the line length.
+func (c *lineContext) contains(kw, beforeLower, afterLower string) bool {
+	if len(c.lineLower) <= 256 {
+		return strings.Contains(beforeLower+" "+c.lineLower+" "+afterLower, kw)
+	}
+	if c.inLine(kw) {
+		return true
+	}
+	head := c.lineLower
+	if len(head) > edgeWindow {
+		head = head[:edgeWindow]
+	}
+	if strings.Contains(beforeLower+" "+head, kw) {
+		return true
+	}
+	tail := c.lineLower
+	if len(tail) > edgeWindow {
+		tail = tail[len(tail)-edgeWindow:]
+	}
+	return strings.Contains(tail+" "+afterLower, kw)
+}
+
+// AnalyzeContext analyzes the context around a match and returns a confidence
+// adjustment. It is retained for external callers/tests; it derives the
+// per-line values that the hot path supplies directly via analyzeContext.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
-	// Combine all context text for analysis
-	fullContext := context.BeforeText + " " + context.FullLine + " " + context.AfterText
-	fullContext = strings.ToLower(fullContext)
+	lineLower := strings.ToLower(context.FullLine)
+	lineIsForm := v.isInFormContextLine(lineLower)
+	return v.analyzeContext(match, context, newLineContext(lineLower), lineIsForm)
+}
+
+// analyzeContext is the per-match context analysis used by the hot path. It
+// takes the shared per-line lineContext and a per-line form-context flag so
+// that no per-match work scales with the line length. Behavior is identical to
+// the original AnalyzeContext on all inputs.
+func (v *Validator) analyzeContext(match string, context detector.ContextInfo, lc *lineContext, lineIsForm bool) float64 {
+	beforeLower := strings.ToLower(context.BeforeText)
+	afterLower := strings.ToLower(context.AfterText)
 
 	var confidenceImpact float64 = 0
 
 	// Check proximity to "passport" specifically - this is the strongest indicator
-	passportProximity := v.calculatePassportProximity(match, context)
+	passportProximity := v.calculatePassportProximityWith(match, context, lc)
 	confidenceImpact += passportProximity
 
 	// Check for positive keywords with weighted scoring
 	for _, keyword := range v.positiveKeywords {
 		keywordLower := strings.ToLower(keyword)
-		if strings.Contains(fullContext, keywordLower) {
+		if lc.contains(keywordLower, beforeLower, afterLower) {
 			// Weight keywords by their specificity to passports
 			weight := v.getKeywordWeight(keyword)
 
-			// Give more weight to keywords that are closer to the match
+			// Give more weight to keywords that are closer to the match.
+			// NOTE: preserves the original semantics of checking the
+			// ORIGINAL-CASE full line against the lower-cased keyword.
 			if strings.Contains(context.FullLine, keywordLower) {
 				confidenceImpact += weight * 1.5 // Boost for same-line keywords
 			} else {
@@ -514,7 +640,7 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	// Check for negative keywords (decrease confidence)
 	for _, keyword := range v.negativeKeywords {
 		keywordLower := strings.ToLower(keyword)
-		if strings.Contains(fullContext, keywordLower) {
+		if lc.contains(keywordLower, beforeLower, afterLower) {
 			// Give more weight to keywords that are closer to the match
 			if strings.Contains(context.FullLine, keywordLower) {
 				confidenceImpact -= 20 // Strong penalty for negative keywords in same line
@@ -525,7 +651,7 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	}
 
 	// Check for form-like structure (labels followed by values)
-	if v.isInFormContext(match, context) {
+	if lineIsForm {
 		confidenceImpact += 15 // Boost for form-like contexts
 	}
 
@@ -539,9 +665,24 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	return confidenceImpact
 }
 
-// calculatePassportProximity calculates confidence boost based on proximity to "passport" keyword
+// calculatePassportProximity calculates confidence boost based on proximity to
+// "passport" keyword. Retained with its original signature for external
+// callers/tests; it builds a lineContext and delegates.
 func (v *Validator) calculatePassportProximity(match string, context detector.ContextInfo) float64 {
-	fullLine := strings.ToLower(context.FullLine)
+	return v.calculatePassportProximityWith(match, context, newLineContext(strings.ToLower(context.FullLine)))
+}
+
+// calculatePassportProximityWith is the per-match proximity calculation used by
+// the hot path. lc carries the pre-lower-cased line (computed once per line)
+// and memoizes the per-line "variant present in line" scans. To stay
+// byte-for-byte identical with the original implementation, the match position
+// used for the distance calculation is strings.Index(lineLower, match) — i.e.
+// the first occurrence of the (original-case) match within the LOWER-CASED
+// line, which is what the original code computed. That index is only ever
+// needed when a passport variant is actually present on the line, so the
+// (line-length) scan is skipped entirely for the common case.
+func (v *Validator) calculatePassportProximityWith(match string, context detector.ContextInfo, lc *lineContext) float64 {
+	lineLower := lc.lineLower
 	beforeText := strings.ToLower(context.BeforeText)
 	afterText := strings.ToLower(context.AfterText)
 
@@ -549,11 +690,12 @@ func (v *Validator) calculatePassportProximity(match string, context detector.Co
 	passportVariants := []string{"passport", "passport number", "passport no", "passport #"}
 
 	for _, variant := range passportVariants {
-		// Same line - highest boost
-		if strings.Contains(fullLine, variant) {
-			// Check if it's very close (within 20 characters)
-			matchIndex := strings.Index(fullLine, match)
-			variantIndex := strings.Index(fullLine, variant)
+		// Same line - highest boost (memoized per-line scan).
+		if lc.inLine(variant) {
+			// Check if it's very close (within 20 characters). Only now do we
+			// pay for locating the match within the line.
+			matchIndex := strings.Index(lineLower, match)
+			variantIndex := strings.Index(lineLower, variant)
 
 			if matchIndex >= 0 && variantIndex >= 0 {
 				distance := matchIndex - variantIndex
@@ -616,27 +758,47 @@ func (v *Validator) getKeywordWeight(keyword string) float64 {
 	return 2 // Default weight for unlisted keywords
 }
 
-// isInFormContext checks if the match appears to be in a form-like context
+// isInFormContext checks if the match appears to be in a form-like context.
+// The match argument is unused (form detection is a property of the line); it
+// is kept for API compatibility with existing callers/tests.
 func (v *Validator) isInFormContext(match string, context detector.ContextInfo) bool {
-	line := strings.ToLower(context.FullLine)
+	return v.isInFormContextLine(strings.ToLower(context.FullLine))
+}
 
+// isInFormContextLine is the per-line form-context check operating on the
+// already-lower-cased line. Computed once per line in the hot path.
+func (v *Validator) isInFormContextLine(lineLower string) bool {
 	// Look for form-like patterns: "label: value" or "label = value" or "label value"
 	for _, re := range reFormPatterns {
-		if re.MatchString(line) {
+		if re.MatchString(lineLower) {
 			return true
 		}
 	}
 
 	// Check for table-like structure (multiple values separated by tabs or multiple spaces)
-	if strings.Count(line, "\t") >= 2 || reMultiSpace.MatchString(line) {
+	if strings.Count(lineLower, "\t") >= 2 || reMultiSpace.MatchString(lineLower) {
 		return true
 	}
 
 	return false
 }
 
-// hasStrongPassportContext checks if there's strong contextual evidence this is actually a passport
+// hasStrongPassportContext checks if there's strong contextual evidence this is
+// actually a passport. Retained for external callers/tests; derives the
+// per-line values and delegates to hasStrongPassportContextWith.
 func (v *Validator) hasStrongPassportContext(match string, context *detector.ContextInfo) bool {
+	if context == nil {
+		return false
+	}
+	lineLower := strings.ToLower(context.FullLine)
+	return v.hasStrongPassportContextWith(match, context, newLineContext(lineLower), v.isInFormContextLine(lineLower))
+}
+
+// hasStrongPassportContextWith is the per-match strong-context check used by the
+// hot path. It takes the shared per-line lineContext and per-line form flag so
+// it does not re-lower-case or re-scan the full line per match. Behavior is
+// identical to hasStrongPassportContext on all inputs.
+func (v *Validator) hasStrongPassportContextWith(match string, context *detector.ContextInfo, lc *lineContext, lineIsForm bool) bool {
 	if context == nil {
 		return false
 	}
@@ -655,7 +817,8 @@ func (v *Validator) hasStrongPassportContext(match string, context *detector.Con
 		}
 	}
 
-	fullContext := strings.ToLower(context.BeforeText + " " + context.FullLine + " " + context.AfterText)
+	beforeLower := strings.ToLower(context.BeforeText)
+	afterLower := strings.ToLower(context.AfterText)
 
 	// Strong indicators - any of these is sufficient
 	strongIndicators := []string{
@@ -665,7 +828,7 @@ func (v *Validator) hasStrongPassportContext(match string, context *detector.Con
 	}
 
 	for _, indicator := range strongIndicators {
-		if strings.Contains(fullContext, indicator) {
+		if lc.contains(indicator, beforeLower, afterLower) {
 			return true
 		}
 	}
@@ -679,7 +842,7 @@ func (v *Validator) hasStrongPassportContext(match string, context *detector.Con
 
 	mediumCount := 0
 	for _, indicator := range mediumIndicators {
-		if strings.Contains(fullContext, indicator) {
+		if lc.contains(indicator, beforeLower, afterLower) {
 			mediumCount++
 			if mediumCount >= 2 {
 				return true
@@ -688,10 +851,10 @@ func (v *Validator) hasStrongPassportContext(match string, context *detector.Con
 	}
 
 	// Form context can also be strong evidence if combined with any travel-related keyword
-	if v.isInFormContext(match, *context) {
+	if lineIsForm {
 		travelKeywords := []string{"travel", "document", "identification", "identity", "international"}
 		for _, keyword := range travelKeywords {
-			if strings.Contains(fullContext, keyword) {
+			if lc.contains(keyword, beforeLower, afterLower) {
 				return true
 			}
 		}
@@ -1064,8 +1227,16 @@ func (v *Validator) isCommonWord(match string) bool {
 	return false
 }
 
-// isTabularData checks if the passport appears to be in a tabular format
+// isTabularData checks if the passport appears to be in a tabular format. The
+// match argument is unused (tabular structure is a property of the line); it is
+// kept for API compatibility with existing callers/tests.
 func (v *Validator) isTabularData(line, match string) bool {
+	return v.isTabularDataLine(line)
+}
+
+// isTabularDataLine is the per-line tabular-structure check. Computed once per
+// line in the hot path instead of once per match.
+func (v *Validator) isTabularDataLine(line string) bool {
 	// Check for common tabular delimiters
 	tabCount := strings.Count(line, "\t")
 	commaCount := strings.Count(line, ",")

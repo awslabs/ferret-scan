@@ -20,11 +20,18 @@ import (
 // byte is [a-z0-9]) rather than a per-keyword regex to keep context analysis
 // cheap in the hot path.
 func containsKeyword(text, keyword string) bool {
-	if keyword == "" {
+	return containsKeywordLower(strings.ToLower(text), strings.ToLower(keyword))
+}
+
+// containsKeywordLower is containsKeyword for callers that have already
+// lowercased both arguments. The whole-word scan is identical; only the
+// redundant strings.ToLower allocations are skipped. Hoisting the lowercasing
+// out of the hot path matters because the previous code re-lowercased the
+// (potentially huge) line text once per keyword per match.
+func containsKeywordLower(lt, lk string) bool {
+	if lk == "" {
 		return false
 	}
-	lt := strings.ToLower(text)
-	lk := strings.ToLower(keyword)
 	for from := 0; from+len(lk) <= len(lt); {
 		i := strings.Index(lt[from:], lk)
 		if i < 0 {
@@ -46,6 +53,56 @@ func containsKeyword(text, keyword string) bool {
 // boundary detection. text is already lowercased by the caller.
 func isEmailWordByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// maxKeywordLen bounds how far past a context-window/full-line junction a
+// keyword could reach. Any positive/negative keyword that spans the single
+// space inserted between BeforeText and the line (or the line and AfterText)
+// occupies at most len(keyword)-1 bytes on the line side of that space. This
+// must be >= the longest keyword (currently "documentation", 13); 32 leaves
+// headroom. It lets the per-match keyword scan touch only a bounded slice of
+// the line instead of the whole line.
+const maxKeywordLen = 32
+
+// lineKeywordCache holds the per-LINE-global state that the previous code
+// recomputed for every match on the line. For a single very long line packed
+// with N email matches the old path was O(N * lineLen * keywordCount): each
+// match re-lowercased the whole line, re-scanned every positive and negative
+// keyword across it (twice — once for analyzeContextAt, once for findKeywords),
+// and re-ran isTabularData over the whole line. None of that depends on the
+// match's byte offset, so it is computed exactly once per line here and reused,
+// dropping the per-line cost to O(lineLen * keywordCount).
+type lineKeywordCache struct {
+	lowerLine string
+	posInLine []bool // containsKeyword(line, positiveKeywords[i])
+	negInLine []bool // containsKeyword(line, negativeKeywords[i])
+	tabular   bool   // isTabularData(line, ...) — the match arg is unused
+	posFound  []string
+	negFound  []string
+}
+
+// buildLineCache computes the per-line-global keyword/tabular state once.
+func (v *Validator) buildLineCache(line string) *lineKeywordCache {
+	lc := &lineKeywordCache{
+		lowerLine: strings.ToLower(line),
+		posInLine: make([]bool, len(v.positiveKeywords)),
+		negInLine: make([]bool, len(v.negativeKeywords)),
+	}
+	for i, kw := range v.positiveKeywords {
+		if containsKeywordLower(lc.lowerLine, strings.ToLower(kw)) {
+			lc.posInLine[i] = true
+			lc.posFound = append(lc.posFound, kw)
+		}
+	}
+	for i, kw := range v.negativeKeywords {
+		if containsKeywordLower(lc.lowerLine, strings.ToLower(kw)) {
+			lc.negInLine[i] = true
+			lc.negFound = append(lc.negFound, kw)
+		}
+	}
+	// isTabularData ignores its match argument; it is purely line-dependent.
+	lc.tabular = v.isTabularData(line, "")
+	return lc
 }
 
 // Pre-compiled regex patterns to avoid repeated compilation in hot paths.
@@ -177,6 +234,15 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 		// ITS OWN surrounding context. The previous code re-ran strings.Index,
 		// which always returned the first occurrence and mis-scored duplicates.
 		matchLocs := re.FindAllStringIndex(line, -1)
+		if len(matchLocs) == 0 {
+			continue
+		}
+
+		// Compute the per-line-global keyword/tabular state exactly once, then
+		// reuse it for every match on this line. Previously each match
+		// re-lowercased the whole line and re-scanned every keyword across it,
+		// which made a single very long line packed with matches quadratic.
+		lc := v.buildLineCache(line)
 
 		for _, loc := range matchLocs {
 			matchIndex, matchEnd := loc[0], loc[1]
@@ -207,10 +273,12 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 			// Analyze context and adjust confidence. The true after-match text is
 			// passed so the URL-structure check inspects this occurrence.
-			contextImpact := v.analyzeContextAt(match, contextInfo, line[matchEnd:])
+			contextImpact := v.analyzeContextAt(match, contextInfo, line[matchEnd:], lc)
 
-			// Check for tabular data and boost confidence
-			if v.isTabularData(contextInfo.FullLine, match) {
+			// Check for tabular data and boost confidence. Tabular detection is
+			// line-global (its match argument is unused) so it is taken from the
+			// per-line cache instead of recomputed for every match.
+			if lc.tabular {
 				contextImpact += 15 // Boost for tabular data
 			}
 
@@ -229,8 +297,8 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			}
 
 			// Store keywords found in context
-			contextInfo.PositiveKeywords = v.findKeywords(contextInfo, v.positiveKeywords)
-			contextInfo.NegativeKeywords = v.findKeywords(contextInfo, v.negativeKeywords)
+			contextInfo.PositiveKeywords = v.findKeywordsCached(contextInfo, v.positiveKeywords, lc.posInLine, lc)
+			contextInfo.NegativeKeywords = v.findKeywordsCached(contextInfo, v.negativeKeywords, lc.negInLine, lc)
 			contextInfo.ConfidenceImpact = contextImpact
 
 			emailType := v.getEmailProviderType(match)
@@ -259,7 +327,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	if finishTiming != nil {
 		finishTiming(true, map[string]interface{}{
 			"match_count":     len(matches),
-			"lines_processed": len(strings.Split(content, "\n")),
+			"lines_processed": len(lines),
 			"content_length":  len(content),
 		})
 	}
@@ -277,21 +345,112 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	if idx := strings.Index(context.FullLine, match); idx >= 0 {
 		afterMatch = context.FullLine[idx+len(match):]
 	}
-	return v.analyzeContextAt(match, context, afterMatch)
+	// Back-compat path for external callers: build the per-line cache on demand.
+	return v.analyzeContextAt(match, context, afterMatch, v.buildLineCache(context.FullLine))
+}
+
+// junctionWindows holds the two bounded strings used to detect keyword matches
+// that the precomputed whole-line flags (lc.*InLine) cannot account for: matches
+// lying inside the BeforeText/AfterText context windows, and matches that cross
+// the single space the original code inserted between BeforeText and the full
+// line (and between the full line and AfterText). Matches that lie entirely
+// inside the line interior are reported by the *InLine flags instead.
+//
+// Each window includes a bounded slice of the adjacent line (length boundedLine)
+// so any junction-crossing match has its full body and word-boundary neighbours
+// present, while leaving the line's real neighbour bytes at the cut so the cut
+// itself never fabricates a false word boundary for an accepted match. junctPos
+// records the index of the junction space within the window; only occurrences
+// that touch the window/junction region are accepted (interior-line occurrences,
+// reachable only past the cut, are rejected — they are handled by *InLine).
+type junctionWindows struct {
+	before    string // lower(BeforeText) + " " + line head
+	beforePos int    // index of the space separating BeforeText from the line head
+	after     string // line tail + " " + lower(AfterText)
+	afterPos  int    // index of the space separating the line tail from AfterText
+}
+
+// boundedLine is how much of the line is included on the line side of each
+// junction. It must exceed maxKeywordLen so that an accepted (window or
+// junction-crossing) occurrence's word-boundary neighbour byte at the far end is
+// always a real line byte, never the artificial slice cut. 2*maxKeywordLen is
+// comfortably sufficient since an accepted occurrence reaches at most
+// maxKeywordLen bytes past the junction space.
+const boundedLine = 2 * maxKeywordLen
+
+func buildJunctionWindows(beforeText, lowerLine, afterText string) junctionWindows {
+	head := lowerLine
+	if len(head) > boundedLine {
+		head = head[:boundedLine]
+	}
+	tail := lowerLine
+	if len(tail) > boundedLine {
+		tail = tail[len(tail)-boundedLine:]
+	}
+	lb := strings.ToLower(beforeText)
+	la := strings.ToLower(afterText)
+	return junctionWindows{
+		before:    lb + " " + head,
+		beforePos: len(lb),
+		after:     tail + " " + la,
+		afterPos:  len(tail),
+	}
+}
+
+// containsKeywordCrossing reports whether lk occurs as a whole word in s such
+// that the occurrence touches the junction region. accept reports, given a
+// match's [start,end) range, whether that match is one the caller wants:
+//   - before window: start <= junctPos (match begins in BeforeText or at the
+//     junction space) — i.e. window-interior or junction-crossing matches.
+//   - after window:  end > junctPos (match ends in AfterText or crosses into it).
+//
+// Matches that fall entirely on the line side past the junction are interior
+// line matches and are intentionally skipped (covered by the *InLine flag), so
+// the bounded-line slice cut cannot fabricate them.
+func containsKeywordCrossing(s, lk string, accept func(start, end int) bool) bool {
+	if lk == "" {
+		return false
+	}
+	for from := 0; from+len(lk) <= len(s); {
+		i := strings.Index(s[from:], lk)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isEmailWordByte(s[i-1])
+		right := i + len(lk)
+		rightOK := right >= len(s) || !isEmailWordByte(s[right])
+		if leftOK && rightOK && accept(i, right) {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// keywordInContext reports whether keyword (lowercased as lowerKw) appears
+// whole-word in the original
+// fullContext = lower(BeforeText)+" "+lowerLine+" "+lower(AfterText),
+// using the precomputed in-line flag plus the bounded junction windows.
+func keywordInContext(inLine bool, lowerKw string, jw junctionWindows) bool {
+	if inLine {
+		return true
+	}
+	if containsKeywordCrossing(jw.before, lowerKw, func(start, end int) bool {
+		return start <= jw.beforePos
+	}) {
+		return true
+	}
+	return containsKeywordCrossing(jw.after, lowerKw, func(start, end int) bool {
+		return end > jw.afterPos
+	})
 }
 
 // analyzeContextAt is AnalyzeContext with the exact post-match text supplied by
-// the caller, so the URL-structure check inspects the correct occurrence.
-func (v *Validator) analyzeContextAt(match string, context detector.ContextInfo, afterMatch string) float64 {
-	// Combine all context text for analysis
-	var sb strings.Builder
-	sb.WriteString(context.BeforeText)
-	sb.WriteString(" ")
-	sb.WriteString(context.FullLine)
-	sb.WriteString(" ")
-	sb.WriteString(context.AfterText)
-	fullContext := strings.ToLower(sb.String())
-
+// the caller, so the URL-structure check inspects the correct occurrence. The
+// per-line keyword cache supplies the line-global keyword presence so this is
+// O(keywordCount * windowLen) per match rather than O(keywordCount * lineLen).
+func (v *Validator) analyzeContextAt(match string, context detector.ContextInfo, afterMatch string, lc *lineKeywordCache) float64 {
 	var confidenceImpact float64 = 0
 
 	// CRITICAL: Check for URL/URI structure first (highest priority)
@@ -301,11 +460,15 @@ func (v *Validator) analyzeContextAt(match string, context detector.ContextInfo,
 		return -100 // Zero out confidence completely
 	}
 
+	jw := buildJunctionWindows(context.BeforeText, lc.lowerLine, context.AfterText)
+
 	// Check for positive keywords (increase confidence). Whole-word matching only.
-	for _, keyword := range v.positiveKeywords {
-		if containsKeyword(fullContext, keyword) {
-			// Give more weight to keywords that are closer to the match
-			if containsKeyword(context.FullLine, keyword) {
+	for i, keyword := range v.positiveKeywords {
+		lowerKw := strings.ToLower(keyword)
+		if keywordInContext(lc.posInLine[i], lowerKw, jw) {
+			// Give more weight to keywords that are closer to the match.
+			// lc.posInLine[i] == containsKeyword(context.FullLine, keyword).
+			if lc.posInLine[i] {
 				confidenceImpact += 8 // +8% for keywords in the same line
 			} else {
 				confidenceImpact += 4 // +4% for keywords in surrounding context
@@ -315,10 +478,11 @@ func (v *Validator) analyzeContextAt(match string, context detector.ContextInfo,
 
 	// Check for negative keywords (decrease confidence). Whole-word matching only,
 	// so "bar"/"baz"/"foo"/"temp" no longer fire inside barack/bazaar/temptation.
-	for _, keyword := range v.negativeKeywords {
-		if containsKeyword(fullContext, keyword) {
-			// Give more weight to keywords that are closer to the match
-			if containsKeyword(context.FullLine, keyword) {
+	for i, keyword := range v.negativeKeywords {
+		lowerKw := strings.ToLower(keyword)
+		if keywordInContext(lc.negInLine[i], lowerKw, jw) {
+			// Give more weight to keywords that are closer to the match.
+			if lc.negInLine[i] {
 				confidenceImpact -= 20 // -20% for negative keywords in the same line
 			} else {
 				confidenceImpact -= 10 // -10% for negative keywords in surrounding context
@@ -336,19 +500,18 @@ func (v *Validator) analyzeContextAt(match string, context detector.ContextInfo,
 	return confidenceImpact
 }
 
-// findKeywords returns a list of keywords found in the context
-func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string) []string {
-	var sb strings.Builder
-	sb.WriteString(context.BeforeText)
-	sb.WriteString(" ")
-	sb.WriteString(context.FullLine)
-	sb.WriteString(" ")
-	sb.WriteString(context.AfterText)
-	fullContext := strings.ToLower(sb.String())
+// findKeywordsCached returns the keywords found in the per-match context, in the
+// same order as the keywords slice. It is the cached equivalent of the previous
+// findKeywords: inLine[i] is the precomputed whole-line presence of keywords[i],
+// and the two bounded junction strings cover the BeforeText/AfterText windows.
+// This reproduces containsKeyword(fullContext, keyword) exactly without
+// re-scanning the whole line per match.
+func (v *Validator) findKeywordsCached(context detector.ContextInfo, keywords []string, inLine []bool, lc *lineKeywordCache) []string {
+	jw := buildJunctionWindows(context.BeforeText, lc.lowerLine, context.AfterText)
 
 	var found []string
-	for _, keyword := range keywords {
-		if containsKeyword(fullContext, keyword) {
+	for i, keyword := range keywords {
+		if keywordInContext(inLine[i], strings.ToLower(keyword), jw) {
 			found = append(found, keyword)
 		}
 	}

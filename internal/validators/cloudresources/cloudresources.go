@@ -16,6 +16,7 @@ package cloudresources
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/internal/config"
@@ -158,28 +159,52 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 		}
 	}
 
-	// Drop any span fully contained within a different span (the longer one wins).
-	contained := func(i int) bool {
-		a := raws[i]
-		for j := range raws {
-			if j == i {
-				continue
-			}
-			b := raws[j]
-			// b strictly contains a (and a is the shorter of the two).
-			if b.start <= a.start && b.end >= a.end && (b.end-b.start) > (a.end-a.start) {
-				return true
-			}
+	// Drop any span fully contained within a longer span (the longer one wins),
+	// via an O(n log n) sort-and-sweep instead of an O(n^2) all-pairs scan. The
+	// previous all-pairs comparison was itself a DoS vector: on single-line input
+	// n = total matches across all patterns (tens of thousands), so n^2 reached
+	// ~10^9. Sort by (start asc, end desc); processing in that order, a span is
+	// contained in an earlier, longer span iff its end <= the maximal end seen so
+	// far from a strictly-longer span. Equal spans are kept (handled by the
+	// length check) so identical matches from different patterns still dedupe via
+	// the earlier seenSpan map.
+	sort.Slice(raws, func(i, j int) bool {
+		if raws[i].start != raws[j].start {
+			return raws[i].start < raws[j].start
 		}
-		return false
+		return raws[i].end > raws[j].end // longer first at the same start
+	})
+	containedFlag := make([]bool, len(raws))
+	maxEnd := -1
+	maxLen := 0
+	for i := range raws {
+		span := raws[i]
+		spanLen := span.end - span.start
+		// Contained iff a previously-seen span starts at/before this one (true by
+		// sort order) and ends at/after it while being strictly longer.
+		if span.end <= maxEnd && spanLen < maxLen {
+			containedFlag[i] = true
+			continue
+		}
+		if span.end > maxEnd {
+			maxEnd = span.end
+			maxLen = spanLen
+		}
 	}
 
 	var matches []detector.Match
 	providerCounts := make(map[string]int)
 	var suppressedKeyword, suppressedLowConf int
 
+	// Per-line cache: matches on the same line share the same line text and its
+	// lowercase, so compute each once per distinct line-start offset rather than
+	// per match. On single-line input every match shares one line, so this turns
+	// the per-match O(content) ToLower/line-extraction into O(content) total.
+	cachedLineStart := -1
+	var cachedLine, cachedLineLower string
+
 	for i := range raws {
-		if contained(i) {
+		if containedFlag[i] {
 			continue
 		}
 		start, end, isCustom := raws[i].start, raws[i].end, raws[i].isCustom
@@ -199,14 +224,19 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			continue
 		}
 
+		lineStart, lineEnd := lineIndex.lineBounds(content, start)
+		if lineStart != cachedLineStart {
+			cachedLineStart = lineStart
+			cachedLine = content[lineStart:lineEnd]
+			cachedLineLower = strings.ToLower(cachedLine)
+		}
 		lineNo := lineIndex.lineAt(start)
-		line := lineIndex.lineText(content, start)
 
-		confidence, factors := v.scoreMatch(text, resourceType, line, isCustom)
+		confidence, factors := v.scoreMatch(text, resourceType, cachedLineLower, isCustom)
 
 		// Below the sanity floor: too weak to surface at any confidence level.
 		if confidence < acceptThreshold {
-			if hasKeywordToken(strings.ToLower(line), v.negativeKeywords) {
+			if hasKeywordToken(cachedLineLower, v.negativeKeywords) {
 				suppressedKeyword++
 			} else {
 				suppressedLowConf++
@@ -305,16 +335,40 @@ func (li *lineIndex) lineAt(pos int) int {
 	return lo + 1
 }
 
+// lineBounds returns the [start,end) byte range of the line containing offset
+// pos, via binary search over the precomputed newline offsets — O(log n) with no
+// content rescan. The previous lineText scanned backward/forward to the nearest
+// newline with LastIndexByte/IndexByte, which is O(content) per call and, on a
+// single-line input (no newlines), made the per-match loop O(matches × content).
+func (li *lineIndex) lineBounds(content string, pos int) (int, int) {
+	offs := li.newlineOffsets
+	// Find the first newline at or after pos (line end), and the newline just
+	// before pos (line start). Binary search the sorted offsets once.
+	lo, hi := 0, len(offs)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if offs[mid] < pos {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	// offs[lo] is the first newline >= pos (line end); offs[lo-1] is the newline
+	// before pos (so the line starts after it).
+	start := 0
+	if lo > 0 {
+		start = offs[lo-1] + 1
+	}
+	end := len(content)
+	if lo < len(offs) {
+		end = offs[lo]
+	}
+	return start, end
+}
+
 // lineText returns the full text of the line containing byte offset pos.
 func (li *lineIndex) lineText(content string, pos int) string {
-	start := 0
-	end := len(content)
-	if i := strings.LastIndexByte(content[:pos], '\n'); i >= 0 {
-		start = i + 1
-	}
-	if i := strings.IndexByte(content[pos:], '\n'); i >= 0 {
-		end = pos + i
-	}
+	start, end := li.lineBounds(content, pos)
 	return content[start:end]
 }
 
@@ -362,7 +416,9 @@ func typeBaseConfidence(resourceType, match string) float64 {
 
 // scoreMatch computes the confidence and the list of contributing factors for a
 // match, using only the match text and its OWN line (never the whole document).
-func (v *Validator) scoreMatch(match, resourceType, line string, isCustom bool) (float64, []string) {
+// lineLower is the match's line, already lowercased by the caller (cached per
+// line) so this is not re-lowercased per match.
+func (v *Validator) scoreMatch(match, resourceType, lineLower string, isCustom bool) (float64, []string) {
 	base := typeBaseConfidence(resourceType, match)
 	if isCustom {
 		base = 75.0
@@ -392,7 +448,7 @@ func (v *Validator) scoreMatch(match, resourceType, line string, isCustom bool) 
 	// LOCAL test-context penalty: only the match's own line is considered, so a
 	// stray "example" elsewhere in the document cannot suppress a real finding.
 	// Whole-token match avoids dropping names like "company-templates".
-	if hasKeywordToken(strings.ToLower(line), v.negativeKeywords) {
+	if hasKeywordToken(lineLower, v.negativeKeywords) {
 		confidence -= 20.0
 		factors = append(factors, "test_context:-20")
 	}

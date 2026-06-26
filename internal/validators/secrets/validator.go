@@ -290,14 +290,14 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 		// Process entropy matches
 		entropyMatches := v.findHighEntropyStrings(line)
 		if len(entropyMatches) > 0 {
-			entropyResults := v.processMatches(entropyMatches, line, lineNum, originalPath, content, contextInsights, "high_entropy", 50, lineHasShellVars, envType)
+			entropyResults := v.processMatches(entropyMatches, line, lineNum, originalPath, content, contextInsights, "high_entropy", 50, lineHasShellVars, envType, isShellScript)
 			matches = append(matches, entropyResults...)
 		}
 
 		// Process keyword matches
 		keywordMatches := v.findKeywordSecrets(line)
 		if len(keywordMatches) > 0 {
-			keywordResults := v.processMatches(keywordMatches, line, lineNum, originalPath, content, contextInsights, "keyword_pattern", 60, lineHasShellVars, envType)
+			keywordResults := v.processMatches(keywordMatches, line, lineNum, originalPath, content, contextInsights, "keyword_pattern", 60, lineHasShellVars, envType, isShellScript)
 			matches = append(matches, keywordResults...)
 		}
 	}
@@ -1056,11 +1056,8 @@ func (v *Validator) isObviousPlaceholderPattern(pattern string) bool {
 
 // processMatches is a unified method for processing both entropy and keyword matches
 // This eliminates code duplication between the two detection methods
-func (v *Validator) processMatches(matches []string, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, detectionMethod string, confidenceThreshold float64, lineHasShellVars bool, envType string) []detector.Match {
+func (v *Validator) processMatches(matches []string, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, detectionMethod string, confidenceThreshold float64, lineHasShellVars bool, envType string, isShellScript bool) []detector.Match {
 	var results []detector.Match
-
-	// Cache expensive computations to avoid redundant processing (performance optimization)
-	isShellScript := v.IsShellScriptContext(content)
 
 	for _, match := range matches {
 		// Skip shell variable references that aren't actual secret values
@@ -1069,7 +1066,13 @@ func (v *Validator) processMatches(matches []string, line string, lineNum int, o
 			continue
 		}
 
-		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnv(match, content, contextInsights, isShellScript, envType)
+		// PERFORMANCE: pass the known line as the nearby-keyword hint so the
+		// confidence calculation does not rescan the whole content per match
+		// (strings.Index over fullContent). For per-line matches the match
+		// always originates from this exact line, so this is behavior-preserving
+		// and additionally avoids the latent first-occurrence bug where a
+		// duplicated token resolves to a different line's context.
+		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, contextInsights, isShellScript, envType)
 
 		// Skip matches with 0% confidence - they are false positives
 		if confidence <= 0 {
@@ -1284,8 +1287,21 @@ func (v *Validator) calculateEnhancedConfidenceWithCache(match, fullContent stri
 }
 
 // calculateEnhancedConfidenceWithCacheAndEnv is the fully optimized confidence calculation
-// that accepts all pre-computed context values to maximize performance
+// that accepts all pre-computed context values to maximize performance.
+// It is used by the multi-line detection path, which never reaches the
+// nearby-keyword check (those matches are always specific_pattern=true), so it
+// passes an empty line hint.
 func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullContent string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
+	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", contextInsights, isShellScript, envType)
+}
+
+// calculateEnhancedConfidenceWithCacheAndEnvAndLine is identical to
+// calculateEnhancedConfidenceWithCacheAndEnv but additionally accepts the known
+// line containing the match. When non-empty, the nearby-keyword corroboration
+// check inspects that line directly instead of rescanning the whole content via
+// strings.Index — eliminating an O(content) scan per match (the O(n^2) hot path)
+// and the latent first-occurrence bug for duplicated tokens.
+func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
 	// Start with base confidence calculation
 	confidence, checks := v.CalculateConfidence(match)
 
@@ -1367,7 +1383,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 	// (AWS/JWT/GitHub/...) and there is no corroborating secret keyword nearby,
 	// cap it just below the MEDIUM threshold so it does not surface as MEDIUM/HIGH
 	// on shape alone. A specific pattern, or a nearby secret keyword, lifts it.
-	if !checks["specific_pattern"] && !v.hasNearbySecretKeyword(fullContent, match) {
+	if !checks["specific_pattern"] && !v.hasNearbySecretKeyword(fullContent, match, lineHint) {
 		if confidence > 55 {
 			confidence = 55
 		}
@@ -1386,17 +1402,26 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 // hasNearbySecretKeyword reports whether a positive secret keyword appears on the
 // same line as the match — corroboration that a generic high-entropy string is a
 // credential rather than an incidental hash/UUID/blob.
-func (v *Validator) hasNearbySecretKeyword(fullContent, match string) bool {
-	line := match
-	if idx := strings.Index(fullContent, match); idx >= 0 {
-		start := strings.LastIndexByte(fullContent[:idx], '\n') + 1
-		end := idx + len(match)
-		if nl := strings.IndexByte(fullContent[end:], '\n'); nl >= 0 {
-			end += nl
-		} else {
-			end = len(fullContent)
+//
+// When lineHint is non-empty it is the already-known line containing the match
+// (the per-line detection path), so we inspect it directly and skip the
+// O(content) strings.Index rescan. The empty-hint fallback (used by the
+// multi-line path, which in practice never reaches this check) reconstructs the
+// line from the full content exactly as before.
+func (v *Validator) hasNearbySecretKeyword(fullContent, match, lineHint string) bool {
+	line := lineHint
+	if line == "" {
+		line = match
+		if idx := strings.Index(fullContent, match); idx >= 0 {
+			start := strings.LastIndexByte(fullContent[:idx], '\n') + 1
+			end := idx + len(match)
+			if nl := strings.IndexByte(fullContent[end:], '\n'); nl >= 0 {
+				end += nl
+			} else {
+				end = len(fullContent)
+			}
+			line = fullContent[start:end]
 		}
-		line = fullContent[start:end]
 	}
 	lower := strings.ToLower(line)
 	for _, kw := range v.positiveKeywords {

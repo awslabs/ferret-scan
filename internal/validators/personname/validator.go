@@ -161,17 +161,25 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 	// Use pattern manager to find matches
 	patternMatches := v.patternManager.FindMatches(line)
 
+	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
+	// scans, context-keyword list) is identical for every match on this line, so
+	// compute it once instead of recomputing the O(line) work per match.
+	lineCache := v.newLineContextCache(line)
+	var contextKeywords []string
+	keywordsComputed := false
+
 	for _, patternMatch := range patternMatches {
 		nameText := patternMatch.Text
 		nameComponents := ParseNameComponents(nameText, patternMatch.Pattern)
 
 		confidence, validationChecks := v.CalculateConfidenceWithComponents(nameText, nameComponents)
 
-		// Apply basic context analysis
-		contextInfo := detector.ContextInfo{
-			FullLine: line,
-		}
-		contextImpact := v.AnalyzeContext(nameText, contextInfo)
+		// Apply basic context analysis (cached per-line; identical to AnalyzeContext
+		// for ContextInfo{FullLine: line}). The match's known byte offset is passed
+		// so the proximity check is a bounded window lookup rather than a full-line
+		// strings.Index per match (which is O(matches x lineLen) on a single very
+		// long line, e.g. minified JSON).
+		contextImpact := v.analyzeContextCached(nameText, patternMatch.StartIndex, lineCache)
 		confidence += contextImpact
 
 		// Ensure final confidence is within bounds
@@ -184,6 +192,10 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 
 		// Only include matches with reasonable confidence
 		if confidence >= 50.0 {
+			if !keywordsComputed {
+				contextKeywords = v.analyzeContext(line)
+				keywordsComputed = true
+			}
 			detectorMatch := detector.Match{
 				Text:       nameText,
 				Confidence: confidence,
@@ -196,7 +208,7 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 					"pattern_priority":  patternMatch.Pattern.Priority,
 					"cultural_context":  patternMatch.Pattern.Cultural,
 					"validation_checks": validationChecks,
-					"context_keywords":  v.analyzeContext(line),
+					"context_keywords":  contextKeywords,
 					"context_impact":    contextImpact,
 					"name_components":   nameComponents,
 				},
@@ -215,17 +227,23 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 	// Use pattern manager to find matches
 	patternMatches := v.patternManager.FindMatches(line)
 
+	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
+	// scans, context-keyword list) is identical for every match on this line, so
+	// compute it once instead of recomputing the O(line) work per match.
+	lineCache := v.newLineContextCache(line)
+	var contextKeywords []string
+	keywordsComputed := false
+
 	for _, patternMatch := range patternMatches {
 		nameText := patternMatch.Text
 		nameComponents := ParseNameComponents(nameText, patternMatch.Pattern)
 
 		confidence, validationChecks := v.CalculateConfidenceWithComponents(nameText, nameComponents)
 
-		// Apply basic context analysis
-		contextInfo := detector.ContextInfo{
-			FullLine: line,
-		}
-		contextImpact := v.AnalyzeContext(nameText, contextInfo)
+		// Apply basic context analysis (cached per-line; identical to AnalyzeContext
+		// for ContextInfo{FullLine: line}). Pass the match offset so proximity is a
+		// bounded window lookup (avoids O(matches x lineLen) on a single long line).
+		contextImpact := v.analyzeContextCached(nameText, patternMatch.StartIndex, lineCache)
 		confidence += contextImpact
 
 		// Apply enhanced context insights
@@ -246,6 +264,10 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 
 		// Only include matches with reasonable confidence
 		if confidence >= 50.0 {
+			if !keywordsComputed {
+				contextKeywords = v.analyzeContext(line)
+				keywordsComputed = true
+			}
 			detectorMatch := detector.Match{
 				Text:       nameText,
 				Confidence: confidence,
@@ -258,7 +280,7 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 					"pattern_priority":        patternMatch.Pattern.Priority,
 					"cultural_context":        patternMatch.Pattern.Cultural,
 					"validation_checks":       validationChecks,
-					"context_keywords":        v.analyzeContext(line),
+					"context_keywords":        contextKeywords,
 					"context_impact":          contextImpact,
 					"enhanced_context_impact": enhancedImpact,
 					"cross_validator_impact":  crossValidatorImpact,
@@ -820,98 +842,115 @@ func isNameWordByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
-// AnalyzeContext implements the detector.Validator interface for contextual analysis
+// lineContextCache holds the per-line work shared by every name match found on a
+// single line. The original AnalyzeContext recomputed all of this (lowercasing the
+// line, scanning every positive/negative keyword, running the email/business/
+// product/geo pattern scans and the email/phone regexes) once *per match*, which
+// is O(line) per match and quadratic on a line packed with matches. We compute it
+// once per line in newLineContextCache and reuse it via analyzeContextCached, which
+// reproduces AnalyzeContext's arithmetic exactly. Only the two genuinely
+// match-specific signals (the negative-keyword proximity penalty and the
+// "line is just the name" signature boost) are recomputed per match.
+type lineContextCache struct {
+	lowerLine string
+
+	// emptyLine mirrors the original `context.FullLine != ""` guard: when the raw
+	// line is empty, AnalyzeContext skips all line processing and returns 0.
+	emptyLine bool
+	// positiveAdjustment is the fully line-global positive-keyword contribution.
+	positiveAdjustment float64
+	// hasNegativeKeyword is true when at least one negative keyword matched the
+	// line (whole-word), gating the per-match proximity penalty exactly as before.
+	hasNegativeKeyword bool
+	// negativeKeywordIndices holds the first-occurrence byte offset of each
+	// negative keyword present on the line that ALSO passes the email/URL guard.
+	// This is line-global (independent of the match), so it is computed once here
+	// instead of re-scanning the whole line per match — the source of the
+	// O(matches x lineLen) blowup on a single very long line (minified JSON/JS).
+	negativeKeywordIndices []int
+	// specificLineAdjustment is the line-global portion of analyzeSpecificPatterns
+	// (everything except the per-match signature boost).
+	specificLineAdjustment float64
+}
+
+// newLineContextCache precomputes the line-global context signals for line.
+func (v *Validator) newLineContextCache(line string) *lineContextCache {
+	c := &lineContextCache{lowerLine: strings.ToLower(line), emptyLine: line == ""}
+	if c.emptyLine {
+		return c
+	}
+	lowerLine := c.lowerLine
+
+	positiveMatches := 0
+	negativeMatches := 0
+	for _, keyword := range v.positiveKeywords {
+		if containsWordKeyword(lowerLine, keyword) {
+			positiveMatches++
+		}
+	}
+	for _, keyword := range v.negativeKeywords {
+		if containsWordKeyword(lowerLine, keyword) {
+			negativeMatches++
+		}
+	}
+
+	if positiveMatches > 0 {
+		c.positiveAdjustment += float64(positiveMatches) * 12.0
+		if positiveMatches > 2 {
+			c.positiveAdjustment = 25.0 // Cap at +25% for multiple positive keywords
+		}
+	}
+	c.hasNegativeKeyword = negativeMatches > 0
+
+	// Precompute, once per line, the first-occurrence offset of each negative
+	// keyword that survives the email/URL guard. The original code recomputed
+	// this (strings.Index + the ±10-char guard) for every match; it is
+	// match-independent, so hoisting it makes the per-match proximity check O(1)
+	// per keyword instead of O(lineLen). Preserves behavior: same keywords, same
+	// first-occurrence index, same guard.
+	if c.hasNegativeKeyword {
+		for _, keyword := range v.negativeKeywords {
+			keywordIndex := strings.Index(lowerLine, keyword)
+			if keywordIndex < 0 {
+				continue
+			}
+			beforeKeyword := ""
+			afterKeyword := ""
+			if keywordIndex > 10 {
+				beforeKeyword = lowerLine[keywordIndex-10 : keywordIndex]
+			}
+			if keywordIndex+len(keyword)+10 < len(lowerLine) {
+				afterKeyword = lowerLine[keywordIndex+len(keyword) : keywordIndex+len(keyword)+10]
+			}
+			if strings.Contains(beforeKeyword, "@") || strings.Contains(afterKeyword, "@") ||
+				strings.Contains(beforeKeyword, "http") || strings.Contains(afterKeyword, ".com") {
+				continue
+			}
+			c.negativeKeywordIndices = append(c.negativeKeywordIndices, keywordIndex)
+		}
+	}
+
+	c.specificLineAdjustment = v.analyzeSpecificPatternsLineGlobal(lowerLine)
+	return c
+}
+
+// AnalyzeContext implements the detector.Validator interface for contextual analysis.
+//
+// This is the public, directly-tested entry point. For the hot scanning path
+// (findNamesInLine / findNamesInLineWithContext) we instead use
+// newLineContextCache + analyzeContextCached, which produce identical results while
+// hoisting the line-global work out of the per-match loop.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
 	adjustment := 0.0
 
 	// Analyze the context line for keywords
 	if context.FullLine != "" {
-		lowerLine := strings.ToLower(context.FullLine)
-
-		// Count positive and negative keyword matches
-		positiveMatches := 0
-		negativeMatches := 0
-
-		// Check for positive keywords (boost confidence). Whole-word matching so
-		// "name" doesn't fire inside "username"/"filename".
-		for _, keyword := range v.positiveKeywords {
-			if containsWordKeyword(lowerLine, keyword) {
-				positiveMatches++
-			}
-		}
-
-		// Check for negative keywords (reduce confidence). Whole-word matching so
-		// "inc"/"corp"/"drive" don't fire inside "incident"/"corporate"/"driver".
-		for _, keyword := range v.negativeKeywords {
-			if containsWordKeyword(lowerLine, keyword) {
-				negativeMatches++
-			}
-		}
-
-		// Apply adjustments based on keyword matches
-		if positiveMatches > 0 {
-			// Boost confidence, with diminishing returns for multiple matches
-			adjustment += float64(positiveMatches) * 12.0
-			if positiveMatches > 2 {
-				adjustment = 25.0 // Cap at +25% for multiple positive keywords
-			}
-		}
-
-		if negativeMatches > 0 {
-			// Only apply business context penalty if the negative keywords are close to the name
-			// This prevents penalizing names in employee directories or business contexts
-			closeNegativeMatches := 0
-
-			for _, keyword := range v.negativeKeywords {
-				if strings.Contains(lowerLine, keyword) {
-					// Skip keywords that appear in email addresses or URLs
-					keywordIndex := strings.Index(lowerLine, keyword)
-					if keywordIndex >= 0 {
-						// Check if keyword is part of an email address (has @ nearby)
-						beforeKeyword := ""
-						afterKeyword := ""
-						if keywordIndex > 10 {
-							beforeKeyword = lowerLine[keywordIndex-10 : keywordIndex]
-						}
-						if keywordIndex+len(keyword)+10 < len(lowerLine) {
-							afterKeyword = lowerLine[keywordIndex+len(keyword) : keywordIndex+len(keyword)+10]
-						}
-
-						// Skip if keyword is in email address or URL
-						if strings.Contains(beforeKeyword, "@") || strings.Contains(afterKeyword, "@") ||
-							strings.Contains(beforeKeyword, "http") || strings.Contains(afterKeyword, ".com") {
-							continue
-						}
-					}
-
-					// Check if the keyword is within close proximity to the name
-					nameIndex := strings.Index(lowerLine, strings.ToLower(match))
-
-					if keywordIndex >= 0 && nameIndex >= 0 {
-						distance := keywordIndex - nameIndex
-						if distance < 0 {
-							distance = -distance
-						}
-
-						// If keyword is very close to the name (within 15 characters), apply penalty
-						if distance < 15 {
-							closeNegativeMatches++
-						}
-					}
-				}
-			}
-
-			if closeNegativeMatches > 0 {
-				// Reduce confidence only for close business context matches
-				adjustment -= float64(closeNegativeMatches) * 15.0
-				if closeNegativeMatches > 1 {
-					adjustment = -25.0 // Moderate penalty for multiple close negative keywords
-				}
-			}
-		}
-
-		// Check for specific contextual patterns
-		adjustment += v.analyzeSpecificPatterns(lowerLine, match)
+		cache := v.newLineContextCache(context.FullLine)
+		// Public single-match path: locate the match once (the hot scanning path
+		// passes the known offset instead). -1 is fine — analyzeLineContextForMatch
+		// falls back to a full-line scan when the offset is unknown.
+		matchStart := strings.Index(cache.lowerLine, strings.ToLower(match))
+		adjustment += v.analyzeLineContextForMatch(match, matchStart, cache)
 	}
 
 	// Analyze surrounding context if available
@@ -931,38 +970,139 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	return adjustment
 }
 
+// analyzeContextCached returns the same value AnalyzeContext returns for
+// ContextInfo{FullLine: line} (the only shape the scanning path uses), reusing the
+// precomputed per-line cache. The hot loop calls this once per match.
+func (v *Validator) analyzeContextCached(match string, matchStart int, cache *lineContextCache) float64 {
+	adjustment := v.analyzeLineContextForMatch(match, matchStart, cache)
+
+	// Ensure adjustment is within reasonable bounds (matches AnalyzeContext).
+	if adjustment > 25.0 {
+		adjustment = 25.0
+	}
+	if adjustment < -50.0 {
+		adjustment = -50.0
+	}
+	return adjustment
+}
+
+// analyzeLineContextForMatch combines the cached line-global signals with the two
+// match-specific signals (negative-keyword proximity penalty, signature boost) to
+// reproduce the pre-clamp adjustment computed by the original AnalyzeContext body.
+// matchStart is the byte offset of the match within cache.lowerLine (as found by
+// the pattern engine). Pass -1 if unknown, in which case the name position is
+// located with a single strings.Index (the directly-tested public AnalyzeContext
+// path). The hot scanning path always passes the real offset, so the per-match
+// full-line scans are eliminated.
+func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cache *lineContextCache) float64 {
+	// Mirror AnalyzeContext's `if context.FullLine != ""` guard: an empty line
+	// contributes nothing (no signature boost either).
+	if cache.emptyLine {
+		return 0.0
+	}
+
+	lowerLine := cache.lowerLine
+	adjustment := cache.positiveAdjustment
+
+	if cache.hasNegativeKeyword {
+		// Apply the business-context penalty only when guard-passing negative
+		// keywords sit close (<15 chars) to the name. The keyword positions and
+		// their email/URL guard are line-global and precomputed once in the cache;
+		// here we just compare each against the name's offset. nameIndex uses the
+		// known matchStart (or a single fallback lookup) instead of re-scanning the
+		// whole line per match.
+		nameIndex := matchStart
+		if nameIndex < 0 {
+			nameIndex = strings.Index(lowerLine, strings.ToLower(match))
+		}
+
+		closeNegativeMatches := 0
+		if nameIndex >= 0 {
+			for _, keywordIndex := range cache.negativeKeywordIndices {
+				distance := keywordIndex - nameIndex
+				if distance < 0 {
+					distance = -distance
+				}
+				if distance < 15 {
+					closeNegativeMatches++
+				}
+			}
+		}
+
+		if closeNegativeMatches > 0 {
+			adjustment -= float64(closeNegativeMatches) * 15.0
+			if closeNegativeMatches > 1 {
+				adjustment = -25.0 // Moderate penalty for multiple close negative keywords
+			}
+		}
+	}
+
+	// Line-global specific patterns plus the match-specific signature boost.
+	adjustment += cache.specificLineAdjustment
+	trimmedLine := strings.TrimSpace(lowerLine)
+	trimmedMatch := strings.TrimSpace(match)
+	if len(trimmedLine) == len(trimmedMatch) {
+		// This is likely a signature line - boost confidence for email signatures.
+		adjustment += 13.0
+	}
+
+	return adjustment
+}
+
+// Sorted pattern slices are derived solely from the package-level maps, so they
+// are constant for the lifetime of the process. The originals rebuilt and sorted
+// them on every call (once per match); we now build them lazily exactly once and
+// reuse the cached slices. Iteration order and contents are unchanged.
+var (
+	sortedEmailPatterns    []string
+	sortedBusinessPatterns []string
+	sortedProductPatterns  []string
+	sortedPatternsOnce     sync.Once
+)
+
+func initSortedPatterns() {
+	sortedEmailPatterns = make([]string, 0, len(emailPatternsMap))
+	for pattern := range emailPatternsMap {
+		sortedEmailPatterns = append(sortedEmailPatterns, pattern)
+	}
+	slices.Sort(sortedEmailPatterns)
+
+	sortedBusinessPatterns = make([]string, 0, len(businessPatternsMap))
+	for pattern := range businessPatternsMap {
+		sortedBusinessPatterns = append(sortedBusinessPatterns, pattern)
+	}
+	slices.Sort(sortedBusinessPatterns)
+
+	sortedProductPatterns = make([]string, 0, len(productPatternsMap))
+	for pattern := range productPatternsMap {
+		sortedProductPatterns = append(sortedProductPatterns, pattern)
+	}
+	slices.Sort(sortedProductPatterns)
+}
+
 // getSortedEmailPatterns returns sorted email patterns for deterministic iteration
 func (v *Validator) getSortedEmailPatterns() []string {
-	patterns := make([]string, 0, len(emailPatternsMap))
-	for pattern := range emailPatternsMap {
-		patterns = append(patterns, pattern)
-	}
-	slices.Sort(patterns)
-	return patterns
+	sortedPatternsOnce.Do(initSortedPatterns)
+	return sortedEmailPatterns
 }
 
 // getSortedBusinessPatterns returns sorted business patterns for deterministic iteration
 func (v *Validator) getSortedBusinessPatterns() []string {
-	patterns := make([]string, 0, len(businessPatternsMap))
-	for pattern := range businessPatternsMap {
-		patterns = append(patterns, pattern)
-	}
-	slices.Sort(patterns)
-	return patterns
+	sortedPatternsOnce.Do(initSortedPatterns)
+	return sortedBusinessPatterns
 }
 
 // getSortedProductPatterns returns sorted product patterns for deterministic iteration
 func (v *Validator) getSortedProductPatterns() []string {
-	patterns := make([]string, 0, len(productPatternsMap))
-	for pattern := range productPatternsMap {
-		patterns = append(patterns, pattern)
-	}
-	slices.Sort(patterns)
-	return patterns
+	sortedPatternsOnce.Do(initSortedPatterns)
+	return sortedProductPatterns
 }
 
-// analyzeSpecificPatterns looks for specific contextual patterns
-func (v *Validator) analyzeSpecificPatterns(contextLine, match string) float64 {
+// analyzeSpecificPatternsLineGlobal computes the line-global portion of the
+// original analyzeSpecificPatterns: everything except the match-specific
+// "line is just the name" signature boost, which is applied per match in
+// analyzeLineContextForMatch. contextLine is the already-lowercased line.
+func (v *Validator) analyzeSpecificPatternsLineGlobal(contextLine string) float64 {
 	adjustment := 0.0
 
 	// Check for email signature patterns (positive indicators)
@@ -997,14 +1137,6 @@ func (v *Validator) analyzeSpecificPatterns(contextLine, match string) float64 {
 			adjustment -= 35.0 // Strong penalty for geographic contexts
 			break
 		}
-	}
-
-	// Check if this appears to be a standalone name (common in email signatures)
-	trimmedLine := strings.TrimSpace(contextLine)
-	trimmedMatch := strings.TrimSpace(match)
-	if len(trimmedLine) == len(trimmedMatch) {
-		// This is likely a signature line - boost confidence more for email signatures
-		adjustment += 13.0
 	}
 
 	// Most pattern-based filtering is now handled by name database validation
@@ -1190,45 +1322,76 @@ func (v *Validator) ensureNamesLoaded() {
 	})
 }
 
-// deduplicateMatches removes duplicate and overlapping matches, preferring longer/more specific ones
+// dedupKey identifies an exact match by line and text for O(1) duplicate lookup.
+type dedupKey struct {
+	line int
+	text string
+}
+
+// deduplicateMatches removes duplicate and overlapping matches, preferring longer/more specific ones.
+//
+// The original implementation was O(M^2) over the full match list: for every match it
+// rescanned every other match for a containing/longer one, then rescanned the growing
+// output for an exact duplicate. On a single long line packed with many (often identical)
+// matches this is a quadratic DoS. This version preserves the exact same behavior while
+// avoiding the quadratic blow-ups:
+//
+//   - Exact duplicates (same line + same text) are collapsed first via a map. Because the
+//     containment check only ever compares matches with *different* text on the same line,
+//     identical duplicates never influence anyone's keep/drop decision, so collapsing them
+//     up front is behavior-preserving. The map keeps the highest-confidence copy and the
+//     first-seen position, exactly as the old in-place overwrite did.
+//   - The "is there a longer same-line match that contains me" check is then evaluated only
+//     against the distinct texts present on the *same line* (grouped via a per-line index),
+//     instead of every match in the whole file. This removes the cross-line comparisons that
+//     made the many-line case quadratic, and shrinks the single-line case from O(k^2) over
+//     all raw matches to O(u^2) over the far smaller set of distinct texts on that line.
+//
+// Output ordering matches the original: kept matches are emitted in order of first appearance.
 func (v *Validator) deduplicateMatches(matches []detector.Match) []detector.Match {
 	if len(matches) <= 1 {
 		return matches
 	}
 
-	var deduplicated []detector.Match
-
+	// Collapse exact duplicates (same line + same text), keeping the highest-confidence
+	// copy and the first-seen position. unique holds one representative per distinct
+	// (line, text) in first-appearance order.
+	indexByKey := make(map[dedupKey]int, len(matches))
+	unique := make([]detector.Match, 0, len(matches))
 	for _, match := range matches {
-		shouldKeep := true
+		key := dedupKey{line: match.LineNumber, text: match.Text}
+		if i, ok := indexByKey[key]; ok {
+			if match.Confidence > unique[i].Confidence {
+				unique[i] = match
+			}
+			continue
+		}
+		indexByKey[key] = len(unique)
+		unique = append(unique, match)
+	}
 
-		// Check if this match should be replaced by a better one
-		for _, other := range matches {
-			if match.LineNumber == other.LineNumber && match.Text != other.Text {
-				// If the other match contains this match and is longer, skip this one
-				if strings.Contains(other.Text, match.Text) && len(other.Text) > len(match.Text) {
-					shouldKeep = false
-					break
-				}
+	// Group the distinct texts by line so the containment check only compares within a line.
+	textsByLine := make(map[int][]string, len(unique))
+	for _, m := range unique {
+		textsByLine[m.LineNumber] = append(textsByLine[m.LineNumber], m.Text)
+	}
+
+	deduplicated := make([]detector.Match, 0, len(unique))
+	for _, match := range unique {
+		shouldKeep := true
+		// Drop this match if another distinct match on the same line is strictly
+		// longer and contains it (same semantics as the original inner loop).
+		for _, otherText := range textsByLine[match.LineNumber] {
+			if otherText != match.Text &&
+				len(otherText) > len(match.Text) &&
+				strings.Contains(otherText, match.Text) {
+				shouldKeep = false
+				break
 			}
 		}
 
 		if shouldKeep {
-			// Check if we already have this exact match (same text, same line)
-			duplicate := false
-			for i, existing := range deduplicated {
-				if existing.LineNumber == match.LineNumber && existing.Text == match.Text {
-					// Keep the one with higher confidence
-					if match.Confidence > existing.Confidence {
-						deduplicated[i] = match
-					}
-					duplicate = true
-					break
-				}
-			}
-
-			if !duplicate {
-				deduplicated = append(deduplicated, match)
-			}
+			deduplicated = append(deduplicated, match)
 		}
 	}
 

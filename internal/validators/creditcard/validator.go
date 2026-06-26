@@ -177,6 +177,22 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
+		// PERFORMANCE: several context operations are a function of the LINE
+		// (not the individual match), so a single very long line packed with N
+		// PANs previously recomputed each of them O(N) times, giving O(N * len)
+		// = O(n^2) behavior and a DoS on a single ~1MB line. These are computed
+		// ONCE per line here and reused for every match on the line; the values
+		// are identical to what the per-match calls produced, so detection
+		// behavior is unchanged.
+		//   - lowerLine: case-folded line for keyword matching (analyzeContext)
+		//   - contextImpact: keyword-context impact is purely a function of the
+		//     line (analyzeContext never inspects the match text), so it is the
+		//     same for every match on the line.
+		//   - tabular: isTabularData inspects only the line, never the match.
+		lowerLine := strings.ToLower(line)
+		contextImpact := v.analyzeContextLower(lowerLine)
+		tabular := v.isTabularData(line, "")
+
 		// Find potential matches. The pattern requires a delimiter on BOTH sides
 		// of the number, so a naive FindAllStringSubmatch (non-overlapping over
 		// the FULL match, delimiters included) consumes the single space/comma
@@ -233,13 +249,16 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				checks["not_test"] = false
 			}
 
-			// Context analysis (expensive, so do it last)
-			contextInfo := v.buildContextInfo(line, match)
-			contextImpact := v.analyzeContext(match, contextInfo)
+			// Context analysis. The window slice uses the KNOWN match offset
+			// (matchStart/matchEnd) rather than re-running strings.Index over the
+			// whole line for every match — both faster and free of the latent
+			// first-occurrence bug when a token repeats on the line. The
+			// per-line contextImpact/tabular values are reused (see above).
+			contextInfo := v.buildContextInfoAt(line, matchStart, matchEnd)
 			confidence += contextImpact
 
 			// Check for tabular data and boost confidence
-			if v.isTabularData(contextInfo.FullLine, match) {
+			if tabular {
 				confidence += 10 // Boost for tabular data
 			}
 
@@ -530,41 +549,66 @@ func buildKeywordRegex(keywords []string) *regexp.Regexp {
 // change can only RECOVER cards that were wrongly dropped — it can never newly
 // drop a card or surface one that carries a genuine negative keyword.
 func (v *Validator) analyzeContext(match string, context detector.ContextInfo) float64 {
-	fullContext := strings.ToLower(context.FullLine)
+	return v.analyzeContextLower(strings.ToLower(context.FullLine))
+}
 
+// analyzeContextLower is the keyword-scoring core of analyzeContext, taking an
+// ALREADY-lowercased line. analyzeContext never inspects the match text, so the
+// result depends only on the line — the per-line hot loop lowercases the line
+// ONCE and calls this directly, instead of lowercasing the whole line again for
+// every match on the line. Behavior is identical to analyzeContext.
+func (v *Validator) analyzeContextLower(lowerLine string) float64 {
 	// Quick negative keyword check (more important for false positive reduction)
-	if v.negativeKeywordRegex != nil && v.negativeKeywordRegex.MatchString(fullContext) {
+	if v.negativeKeywordRegex != nil && v.negativeKeywordRegex.MatchString(lowerLine) {
 		return -100 // Very strong negative impact to ensure rejection
 	}
 
 	// Quick positive keyword check
-	if v.positiveKeywordRegex != nil && v.positiveKeywordRegex.MatchString(fullContext) {
+	if v.positiveKeywordRegex != nil && v.positiveKeywordRegex.MatchString(lowerLine) {
 		return 15 // Boost for positive context (single boost; avoid over-boosting)
 	}
 
 	return 0.0
 }
 
-// buildContextInfo efficiently builds context information
+// buildContextInfo efficiently builds context information by locating the match
+// in the line. Retained for callers that only know the match text; the hot path
+// uses buildContextInfoAt with the already-known offset instead.
 func (v *Validator) buildContextInfo(line, match string) detector.ContextInfo {
 	matchIndex := strings.Index(line, match)
+	if matchIndex < 0 {
+		return detector.ContextInfo{FullLine: line}
+	}
+	return v.buildContextInfoAt(line, matchIndex, matchIndex+len(match))
+}
+
+// buildContextInfoAt builds context information from the KNOWN byte offset of the
+// match within the line (matchStart:matchEnd), avoiding a per-match
+// strings.Index rescan of the whole line (the O(n^2) hot-path cost on a single
+// long line) and the latent first-occurrence bug when the same token repeats on
+// the line. The ±30-char window and clamping are unchanged from the previous
+// strings.Index-based implementation, so BeforeText/AfterText are identical on
+// normal input.
+func (v *Validator) buildContextInfoAt(line string, matchStart, matchEnd int) detector.ContextInfo {
 	contextInfo := detector.ContextInfo{
 		FullLine: line,
 	}
 
-	if matchIndex >= 0 {
-		start := matchIndex - 30 // Smaller context window for performance
-		if start < 0 {
-			start = 0
-		}
-		end := matchIndex + len(match) + 30
-		if end > len(line) {
-			end = len(line)
-		}
-
-		contextInfo.BeforeText = line[start:matchIndex]
-		contextInfo.AfterText = line[matchIndex+len(match) : end]
+	if matchStart < 0 || matchEnd > len(line) || matchStart > matchEnd {
+		return contextInfo
 	}
+
+	start := matchStart - 30 // Smaller context window for performance
+	if start < 0 {
+		start = 0
+	}
+	end := matchEnd + 30
+	if end > len(line) {
+		end = len(line)
+	}
+
+	contextInfo.BeforeText = line[start:matchStart]
+	contextInfo.AfterText = line[matchEnd:end]
 
 	return contextInfo
 }

@@ -848,12 +848,33 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
+		// PERFORMANCE: keyword context impact and the open-source-license check
+		// are LINE-GLOBAL — they depend only on the line text, not on the
+		// individual match or its position. The previous code recomputed them
+		// per match via AnalyzeContext(match, {FullLine: line}), and each call
+		// rebuilt and lowercased the entire (potentially multi-MB) line. On a
+		// single huge line packed with matches that is O(matches × line_len ×
+		// keywords) — the source of the O(n^2) DoS. Hoist them OUT of the
+		// per-match loops and compute once per line. The BeforeText/AfterText
+		// windows (±50 chars) are slices of the line and introduce no keyword
+		// not already present in the line, and the "same line" branch in
+		// AnalyzeContext always wins for these per-line ContextInfos, so the
+		// hoisted value is byte-for-byte identical to the old per-match result.
+		lineKeywordImpact := v.analyzeLineKeywordImpact(line)
+		lineHasOpenSourceLicense := containsOpenSourceLicense(line)
+
 		// Check for internal URLs using pre-compiled regex patterns
 		if !v.disabledTypes["internal_url"] {
 			for _, regex := range v.regexInternalURLs {
-				foundMatches := regex.FindAllString(line, -1)
+				// FindAllStringIndex gives the byte offset of each match so we
+				// never rescan the line with strings.Index (O(line_len) per
+				// match). It also fixes the latent bug where strings.Index would
+				// return the FIRST occurrence of a duplicated token rather than
+				// the actual match's position.
+				for _, loc := range regex.FindAllStringIndex(line, -1) {
+					matchStart, matchEnd := loc[0], loc[1]
+					match := line[matchStart:matchEnd]
 
-				for _, match := range foundMatches {
 					// Debug logging to verify this code path is reached
 					if v.observer != nil && v.observer.DebugObserver != nil {
 						v.observer.DebugObserver.LogDetail("intellectualproperty",
@@ -869,23 +890,16 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 						"not_example":        true,
 					}
 
-					// Create context info for the line
+					// Create context info for the line, slicing the ±50 char
+					// window from the known offset instead of re-scanning.
 					contextInfo := detector.ContextInfo{
-						FullLine: line,
+						FullLine:   line,
+						BeforeText: line[max(0, matchStart-50):matchStart],
+						AfterText:  line[matchEnd:min(len(line), matchEnd+50)],
 					}
 
-					// Extract some context around the match in the line
-					matchIndex := strings.Index(line, match)
-					if matchIndex >= 0 {
-						start := max(0, matchIndex-50)
-						end := min(len(line), matchIndex+len(match)+50)
-
-						contextInfo.BeforeText = line[start:matchIndex]
-						contextInfo.AfterText = line[matchIndex+len(match) : end]
-					}
-
-					// Analyze context and adjust confidence
-					contextImpact := v.AnalyzeContext(match, contextInfo)
+					// Context impact is the line-global value computed once above.
+					contextImpact := lineKeywordImpact
 
 					// For configured internal URLs, only apply positive context impact
 					// Skip negative context since the user explicitly configured this pattern
@@ -938,29 +952,25 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 			if regex == nil {
 				continue
 			}
-			foundMatches := regex.FindAllString(line, -1)
 
-			for _, match := range foundMatches {
+			// Offset-based iteration: see the internal-URL block above for why we
+			// use FindAllStringIndex instead of FindAllString + strings.Index.
+			for _, loc := range regex.FindAllStringIndex(line, -1) {
+				matchStart, matchEnd := loc[0], loc[1]
+				match := line[matchStart:matchEnd]
 
 				confidence, checks := v.CalculateConfidence(match)
 
-				// Create context info for the line
+				// Create context info for the line, slicing the ±50 char window
+				// from the known offset instead of re-scanning with strings.Index.
 				contextInfo := detector.ContextInfo{
-					FullLine: line,
+					FullLine:   line,
+					BeforeText: line[max(0, matchStart-50):matchStart],
+					AfterText:  line[matchEnd:min(len(line), matchEnd+50)],
 				}
 
-				// Extract some context around the match in the line
-				matchIndex := strings.Index(line, match)
-				if matchIndex >= 0 {
-					start := max(0, matchIndex-50)
-					end := min(len(line), matchIndex+len(match)+50)
-
-					contextInfo.BeforeText = line[start:matchIndex]
-					contextInfo.AfterText = line[matchIndex+len(match) : end]
-				}
-
-				// Analyze context and adjust confidence
-				contextImpact := v.AnalyzeContext(match, contextInfo)
+				// Context impact is the line-global value computed once above.
+				contextImpact := lineKeywordImpact
 				confidence += contextImpact
 
 				// A recognized open-source / public-domain license marker on the
@@ -970,7 +980,9 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 				// does not emit a MEDIUM "Proprietary"/"Confidential" finding. The
 				// matched word and "license" are themselves positive keywords, so
 				// the per-keyword penalty alone could not reliably suppress these.
-				if ipType == "trade_secret" && containsOpenSourceLicense(line) && confidence > 45 {
+				// lineHasOpenSourceLicense is the line-global
+				// containsOpenSourceLicense result, hoisted out of the per-match loop.
+				if ipType == "trade_secret" && lineHasOpenSourceLicense && confidence > 45 {
 					confidence = 45
 				}
 
@@ -1004,6 +1016,61 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 	}
 
 	return lineMatches
+}
+
+// analyzeLineKeywordImpact computes the positive/negative keyword confidence
+// adjustment for a single line, ONCE. It is the line-global equivalent of
+// AnalyzeContext(match, ContextInfo{FullLine: line, BeforeText/AfterText:
+// ±50-char slices of the line}).
+//
+// AnalyzeContext lowercases (BeforeText + " " + FullLine + " " + AfterText)
+// and, for each keyword, adds the "same line" weight when the keyword is also
+// found in FullLine. Because BeforeText/AfterText are always slices of the line
+// (they introduce no keyword not already in the line) and FullLine is the line
+// itself, the combined-context presence test is equivalent to a presence test
+// against the lowercased line, and the "same line" branch is taken whenever the
+// original-case line contains the lowercased keyword. This function reproduces
+// that branch logic byte-for-byte (note the original-case line check, mirroring
+// AnalyzeContext) so the hoisted result is identical to the old per-match value,
+// while computing strings.ToLower(line) only once per line instead of once per
+// match.
+func (v *Validator) analyzeLineKeywordImpact(line string) float64 {
+	lowerLine := strings.ToLower(line)
+
+	var confidenceImpact float64 = 0
+
+	// Positive keywords (increase confidence).
+	for _, keyword := range v.positiveKeywords {
+		lkw := strings.ToLower(keyword)
+		if strings.Contains(lowerLine, lkw) {
+			if strings.Contains(line, lkw) {
+				confidenceImpact += 7 // +7% for keywords in the same line
+			} else {
+				confidenceImpact += 3 // +3% for keywords in surrounding context
+			}
+		}
+	}
+
+	// Negative keywords (decrease confidence).
+	for _, keyword := range v.negativeKeywords {
+		lkw := strings.ToLower(keyword)
+		if strings.Contains(lowerLine, lkw) {
+			if strings.Contains(line, lkw) {
+				confidenceImpact -= 15 // -15% for negative keywords in the same line
+			} else {
+				confidenceImpact -= 7 // -7% for negative keywords in surrounding context
+			}
+		}
+	}
+
+	// Cap the impact to reasonable bounds (mirrors AnalyzeContext).
+	if confidenceImpact > 25 {
+		confidenceImpact = 25 // Maximum +25% boost
+	} else if confidenceImpact < -50 {
+		confidenceImpact = -50 // Maximum -50% reduction
+	}
+
+	return confidenceImpact
 }
 
 // AnalyzeContext analyzes the context around a match and returns a confidence adjustment
@@ -1239,34 +1306,54 @@ func (v *Validator) calculateProximityScore(matches []detector.Match) float64 {
 		return 1.0 // Single match has perfect proximity
 	}
 
-	// Performance optimization: pre-allocate slices with known capacity
-	positions := make([]int, 0, len(matches))
-
 	// Special case: if all matches are on the same line, they're likely part of the same legal notice
 	allSameLine := true
 	firstLineNum := matches[0].LineNumber
 
-	// Single pass to check same line and collect positions
+	// Single cheap pass to check same line (O(M), no per-match line rescans).
 	for _, match := range matches {
 		if match.LineNumber != firstLineNum {
 			allSameLine = false
+			break
 		}
-
-		// Calculate position with error handling
-		pos := v.calculateCharacterPositionSafe(match)
-		positions = append(positions, pos)
 	}
 
 	if allSameLine {
-		// Performance optimization: check for overlapping matches first (fastest check)
-		for i, match1 := range matches {
-			for j := i + 1; j < len(matches); j++ { // Avoid duplicate comparisons
-				match2 := matches[j]
-				if strings.Contains(match1.Text, match2.Text) || strings.Contains(match2.Text, match1.Text) {
+		// PERFORMANCE: the original overlap check was an O(M^2) nested loop of
+		// strings.Contains over every pair of match texts. On a single line
+		// packed with thousands of (often repeated) matches that is quadratic
+		// and a DoS vector. Dedup the texts first: if any text appears more than
+		// once, the original loop would hit strings.Contains(t, t) == true and
+		// return 0.9, so we can detect that in O(M) via a set. Then run the
+		// containment check only over the UNIQUE texts. This is behavior-
+		// equivalent (duplicates still yield 0.9; the first containing pair among
+		// distinct texts still yields 0.9) while collapsing the common packed-line
+		// case to O(U^2) where U is the small number of distinct markers.
+		seen := make(map[string]struct{}, len(matches))
+		uniqueTexts := make([]string, 0, len(matches))
+		for _, match := range matches {
+			if _, dup := seen[match.Text]; dup {
+				// A duplicate text contains itself → original returns 0.9.
+				return 0.9
+			}
+			seen[match.Text] = struct{}{}
+			uniqueTexts = append(uniqueTexts, match.Text)
+		}
+		for i := 0; i < len(uniqueTexts); i++ {
+			for j := i + 1; j < len(uniqueTexts); j++ {
+				if strings.Contains(uniqueTexts[i], uniqueTexts[j]) || strings.Contains(uniqueTexts[j], uniqueTexts[i]) {
 					// One match contains another - they're definitely related
 					return 0.9 // High proximity for overlapping matches
 				}
 			}
+		}
+
+		// Reaching here means no duplicate or containing texts. Compute
+		// positions now (deferred until needed so the early returns above avoid
+		// the per-match strings.Index in calculateCharacterPositionSafe).
+		positions := make([]int, 0, len(matches))
+		for _, match := range matches {
+			positions = append(positions, v.calculateCharacterPositionSafe(match))
 		}
 
 		// Calculate positions within the line with bounds checking
@@ -1315,7 +1402,14 @@ func (v *Validator) calculateProximityScore(matches []detector.Match) float64 {
 		return proximityScore
 	}
 
-	// For multi-line matches, use optimized calculation
+	// For multi-line matches, use optimized calculation. Positions are computed
+	// here (rather than up front) so the same-line fast paths above never pay for
+	// them; in the multi-line case each match's position is resolved against its
+	// own line, not one shared huge line.
+	positions := make([]int, 0, len(matches))
+	for _, match := range matches {
+		positions = append(positions, v.calculateCharacterPositionSafe(match))
+	}
 	if len(positions) == 0 {
 		return 0.0 // Fallback for edge case
 	}
@@ -1452,9 +1546,27 @@ func (v *Validator) identifySemanticGroups(matches []detector.Match) []string {
 	semanticGroups := make([]string, 0, 5)
 	ipTypes := make(map[string]bool, 4) // Expect at most 4 IP types
 
-	// Build combined context with bounds checking and performance optimization
+	// Build combined context with bounds checking and performance optimization.
+	//
+	// PERFORMANCE: fullContext feeds only strings.Contains / regexp.MatchString
+	// phrase-presence checks below. The original appended strings.ToLower of
+	// EVERY match's FullLine; on a single line packed with thousands of matches
+	// that concatenated thousands of copies of the SAME (potentially multi-MB)
+	// line — O(M × line_len) memory plus an enormous string for the regex passes
+	// (a DoS vector). Each appended segment is separated by a space, and adding a
+	// duplicate copy of a line cannot introduce any substring the single copy
+	// lacked, so appending each line's text at most once yields byte-identical
+	// Contains/MatchString outcomes while keeping the context bounded by the
+	// number of DISTINCT lines.
+	//
+	// Dedup by LineNumber (an int) rather than by the FullLine string: within a
+	// single detection pass every match sharing a LineNumber carries the SAME
+	// FullLine, so the int key collapses identical lines just as a string key
+	// would — but without hashing a multi-MB string per match (the prior dedup
+	// map keyed on the full line was itself O(M × line_len) in map hashing).
 	var contextBuilder strings.Builder
 	contextBuilder.Grow(len(matches) * 50) // Pre-allocate reasonable capacity
+	seenLines := make(map[int]struct{}, len(matches))
 
 	// Extract IP types and build combined context with error handling
 	for _, match := range matches {
@@ -1465,10 +1577,13 @@ func (v *Validator) identifySemanticGroups(matches []detector.Match) []string {
 			}
 		}
 
-		// Safely combine context with bounds checking
+		// Safely combine context with bounds checking (dedup identical lines).
 		if match.Context.FullLine != "" {
-			contextBuilder.WriteString(strings.ToLower(match.Context.FullLine))
-			contextBuilder.WriteString(" ")
+			if _, dup := seenLines[match.LineNumber]; !dup {
+				seenLines[match.LineNumber] = struct{}{}
+				contextBuilder.WriteString(strings.ToLower(match.Context.FullLine))
+				contextBuilder.WriteString(" ")
+			}
 		}
 	}
 
@@ -1576,21 +1691,30 @@ func (v *Validator) identifySemanticGroups(matches []detector.Match) []string {
 
 	// Pattern 10: Patent with confidentiality (distinct items, not legal notice)
 	if ipTypes["patent"] && ipTypes["trade_secret"] {
-		// Check if they appear to be related or distinct
-		patentContext := ""
-		confidentialContext := ""
-
+		// Check if they appear to be related or distinct.
+		//
+		// PERFORMANCE: the original called strings.ToLower(match.Context.FullLine)
+		// on EVERY match inside this loop, but only the final patent and final
+		// trade_secret assignment survive. With a single huge line packed with
+		// matches that is O(M × line_len) of pure lowercasing (the dominant cost
+		// in the reconstruction path). Capture the raw FullLine of the last
+		// patent / last trade_secret match here (cheap string copies) and
+		// lowercase each exactly once after the loop. The downstream comparison
+		// still operates on the lowercased values, so behavior is identical.
+		var patentRaw, confidentialRaw string
 		for _, match := range matches {
 			if match.Metadata != nil {
 				if ipType, ok := match.Metadata["ip_type"].(string); ok {
 					if ipType == "patent" {
-						patentContext = strings.ToLower(match.Context.FullLine)
+						patentRaw = match.Context.FullLine
 					} else if ipType == "trade_secret" {
-						confidentialContext = strings.ToLower(match.Context.FullLine)
+						confidentialRaw = match.Context.FullLine
 					}
 				}
 			}
 		}
+		patentContext := strings.ToLower(patentRaw)
+		confidentialContext := strings.ToLower(confidentialRaw)
 
 		// If patent and confidential appear in different contexts, they're likely distinct
 		// Also check for clear separation indicators in the full context

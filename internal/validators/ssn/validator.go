@@ -187,6 +187,51 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 	return []detector.Match{}, nil
 }
 
+// lineContext holds per-line analysis results that are identical for every match
+// on the same line. Computing these once per line (instead of once per match)
+// turns the previous O(matches * lineLength) hot path into O(lineLength + matches):
+// none of these values depend on the individual match, so recomputing them for
+// every match on a long, match-dense line was the source of the O(n^2) blowup.
+type lineContext struct {
+	lower         string          // strings.ToLower(line), reused for all keyword scans
+	isTabular     bool            // v.isTabularData(line, ...) — match arg is unused
+	isEnhancedTab bool            // v.isEnhancedTabularData(line, ...) — value arg is unused
+	isEncoded     bool            // v.isEncodedData(line, ...) — match arg is unused
+	keywordOnLine map[string]bool // containsKeyword(line, kw) for every keyword we test
+}
+
+// newLineContext precomputes the per-line-global analysis values once. Every map
+// entry and boolean below is a pure function of the line text alone, so a match's
+// position on the line never changes the result.
+func (v *Validator) newLineContext(line string) *lineContext {
+	lc := &lineContext{
+		lower:         strings.ToLower(line),
+		isTabular:     v.isTabularData(line, ""),
+		isEnhancedTab: v.isEnhancedTabularData(line, ""),
+		isEncoded:     v.isEncodedData(line, ""),
+		keywordOnLine: make(map[string]bool),
+	}
+
+	// Cache whole-line keyword presence for every keyword the per-match analysis
+	// consults. containsKeyword lowercases internally, so we pass the original
+	// line here to keep results byte-for-byte identical to the previous code.
+	cache := func(keywords []string) {
+		for _, kw := range keywords {
+			if _, ok := lc.keywordOnLine[kw]; !ok {
+				lc.keywordOnLine[kw] = containsKeyword(line, kw)
+			}
+		}
+	}
+	cache(v.positiveKeywords)
+	cache(v.negativeKeywords)
+	cache(v.hrKeywords)
+	cache(v.taxKeywords)
+	cache(v.healthcareKeywords)
+	cache(v.globalTestPatterns)
+
+	return lc
+}
+
 // ValidateContent validates preprocessed content for SSNs
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	var matches []detector.Match
@@ -194,16 +239,56 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
-	for lineNum, line := range lines {
-		foundMatches := v.regex.FindAllString(line, -1)
+	isDocx := strings.Contains(originalPath, ".docx")
 
-		// For preprocessed content, also look for SSN patterns in concatenated number sequences
-		if len(foundMatches) == 0 && strings.Contains(originalPath, ".docx") {
-			// This handles cases where text extraction concatenates SSNs with other data
-			foundMatches = v.findSSNsInConcatenatedNumbers(line)
+	for lineNum, line := range lines {
+		// Use FindAllStringIndex so we enumerate matches with their byte offsets in a
+		// single regex pass (FindAllString already did one pass; this is equivalent).
+		// We deliberately compute the context window from the FIRST occurrence of each
+		// distinct token (cached below), preserving the exact behavior of the previous
+		// strings.Index(line, match) call while removing its O(lineLength)-per-match
+		// rescan — the source of the O(n^2) blowup on a long, match-dense single line.
+		idxMatches := v.regex.FindAllStringIndex(line, -1)
+
+		type matchSpan struct {
+			text  string
+			start int // first-occurrence offset of text on the line (matches old strings.Index)
+		}
+		var foundMatches []matchSpan
+		var firstIndex map[string]int
+		if len(idxMatches) > 0 {
+			firstIndex = make(map[string]int)
+			for _, loc := range idxMatches {
+				txt := line[loc[0]:loc[1]]
+				if _, seen := firstIndex[txt]; !seen {
+					firstIndex[txt] = loc[0]
+				}
+				foundMatches = append(foundMatches, matchSpan{
+					text:  txt,
+					start: firstIndex[txt],
+				})
+			}
 		}
 
-		for _, match := range foundMatches {
+		// For preprocessed content, also look for SSN patterns in concatenated number sequences
+		if len(foundMatches) == 0 && isDocx {
+			// This handles cases where text extraction concatenates SSNs with other data.
+			// These synthesized candidates have no real offset on the line; mark with
+			// start = -1 so the context window falls back to strings.Index (the prior
+			// behavior for this branch).
+			for _, m := range v.findSSNsInConcatenatedNumbers(line) {
+				foundMatches = append(foundMatches, matchSpan{text: m, start: -1})
+			}
+		}
+
+		// Precompute the per-line-global analysis once; reused for every match below.
+		var lc *lineContext
+		if len(foundMatches) > 0 {
+			lc = v.newLineContext(line)
+		}
+
+		for _, ms := range foundMatches {
+			match := ms.text
 			// Clean the SSN for validation
 			cleanMatch := v.cleanSSN(match)
 
@@ -216,7 +301,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			confidence, checks := v.CalculateConfidence(match)
 
 			// Skip if this looks like encoded data or numeric sequences
-			if v.isEncodedData(line, match) {
+			if lc.isEncoded {
 				continue
 			}
 
@@ -225,8 +310,13 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				FullLine: line,
 			}
 
-			// Extract some context around the match in the line
-			matchIndex := strings.Index(line, match)
+			// Extract some context around the match in the line. Prefer the known
+			// offset from FindAllStringIndex; fall back to strings.Index only for the
+			// synthesized docx-concatenation candidates (start == -1).
+			matchIndex := ms.start
+			if matchIndex < 0 {
+				matchIndex = strings.Index(line, match)
+			}
 			if matchIndex >= 0 {
 				start := matchIndex - 50
 				if start < 0 {
@@ -242,16 +332,16 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			}
 
 			// Analyze context and adjust confidence
-			contextImpact := v.AnalyzeContext(match, contextInfo)
+			contextImpact := v.analyzeContextWithLine(match, contextInfo, lc)
 			confidence += contextImpact
 
 			// Store keywords found in context
-			contextInfo.PositiveKeywords = v.findKeywords(contextInfo, v.positiveKeywords)
-			contextInfo.NegativeKeywords = v.findKeywords(contextInfo, v.negativeKeywords)
+			contextInfo.PositiveKeywords = v.findKeywordsCached(lc, v.positiveKeywords)
+			contextInfo.NegativeKeywords = v.findKeywordsCached(lc, v.negativeKeywords)
 			contextInfo.ConfidenceImpact = contextImpact
 
 			// Check if this is tabular data first - this is more reliable than keyword detection
-			isTabular := v.isTabularData(contextInfo.FullLine, match)
+			isTabular := lc.isTabular
 
 			// Adjust confidence based on context, prioritizing tabular data detection
 			if isTabular {
@@ -326,28 +416,75 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	return matches, nil
 }
 
-// AnalyzeContext analyzes the context around a match and returns a confidence adjustment
+// AnalyzeContext analyzes the context around a match and returns a confidence
+// adjustment. It is retained for external callers and computes a fresh per-line
+// context on each call; ValidateContent uses analyzeContextWithLine to share that
+// work across all matches on a line.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
-	// Combine all context text for analysis
-	var sb strings.Builder
-	sb.WriteString(context.BeforeText)
-	sb.WriteString(" ")
-	sb.WriteString(context.FullLine)
-	sb.WriteString(" ")
-	sb.WriteString(context.AfterText)
-	fullContext := strings.ToLower(sb.String())
+	return v.analyzeContextWithLine(match, context, v.newLineContext(context.FullLine))
+}
+
+// junctionWindowLen bounds how far a multi-word keyword can reach across the
+// synthetic " " joins that AnalyzeContext inserts between BeforeText/FullLine and
+// FullLine/AfterText. The longest keyword/test pattern is "social security
+// number" (22 bytes); 64 is a comfortable upper bound so junction scanning stays
+// O(1) per match instead of O(lineLength).
+const junctionWindowLen = 64
+
+// keywordInFullContext reports whether keyword appears in the lowercased
+// concatenation BeforeText + " " + FullLine + " " + AfterText, exactly matching
+// the original AnalyzeContext behavior — but without rescanning the whole line per
+// match. Because BeforeText and AfterText are substrings of FullLine, a keyword is
+// present in the full context iff it is present on the line (precomputed in lc) OR
+// it straddles one of the two synthetic spaces. Only those bounded junction
+// regions need scanning here.
+func (v *Validator) keywordInFullContext(keyword, before, after string, lc *lineContext) bool {
+	if lc.keywordOnLine[keyword] {
+		return true
+	}
+	// Scan the tiny regions around each synthetic space join. before/after are
+	// already substrings of the line, so any match not already covered above must
+	// span "before + ' ' + line" or "line + ' ' + after".
+	tail := func(s string) string {
+		if len(s) > junctionWindowLen {
+			return s[len(s)-junctionWindowLen:]
+		}
+		return s
+	}
+	head := func(s string) string {
+		if len(s) > junctionWindowLen {
+			return s[:junctionWindowLen]
+		}
+		return s
+	}
+	// junction 1: end-of-before + " " + start-of-line
+	j1 := tail(before) + " " + head(lc.lower)
+	if containsKeyword(j1, keyword) {
+		return true
+	}
+	// junction 2: end-of-line + " " + start-of-after
+	j2 := tail(lc.lower) + " " + head(after)
+	return containsKeyword(j2, keyword)
+}
+
+// analyzeContextWithLine is the per-match context analysis that reuses the shared
+// per-line context lc, eliminating the per-match whole-line rescans that caused the
+// O(n^2) blowup. Its result is identical to the original AnalyzeContext.
+func (v *Validator) analyzeContextWithLine(match string, context detector.ContextInfo, lc *lineContext) float64 {
+	before := strings.ToLower(context.BeforeText)
+	after := strings.ToLower(context.AfterText)
 
 	var confidenceImpact float64 = 0
 
-	// Enhanced domain-specific analysis
-	domainBoost := v.validateSSNByDomain(match, fullContext)
-	confidenceImpact += domainBoost
+	// Enhanced domain-specific analysis (domain keywords are checked against the
+	// full context; reuse the cached line/junction logic).
+	confidenceImpact += v.validateSSNByDomainCached(before, after, lc)
 
 	// Check for positive keywords (increase confidence)
 	for _, keyword := range v.positiveKeywords {
-		if containsKeyword(fullContext, keyword) {
+		if v.keywordInFullContext(keyword, before, after, lc) {
 			// Give more weight to keywords that are closer to the match
-			if containsKeyword(context.FullLine, keyword) {
+			if lc.keywordOnLine[keyword] {
 				confidenceImpact += 25 // +25% for keywords in the same line
 			} else {
 				confidenceImpact += 10 // +10% for keywords in surrounding context
@@ -357,9 +494,9 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	// Check for negative keywords (decrease confidence)
 	for _, keyword := range v.negativeKeywords {
-		if containsKeyword(fullContext, keyword) {
+		if v.keywordInFullContext(keyword, before, after, lc) {
 			// Give more weight to keywords that are closer to the match
-			if containsKeyword(context.FullLine, keyword) {
+			if lc.keywordOnLine[keyword] {
 				confidenceImpact -= 15 // -15% for negative keywords in the same line
 			} else {
 				confidenceImpact -= 8 // -8% for negative keywords in surrounding context
@@ -367,15 +504,15 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		}
 	}
 
-	// Enhanced tabular data detection
-	if v.isEnhancedTabularData(context.FullLine, match) {
+	// Enhanced tabular data detection (line-global; precomputed once per line)
+	if lc.isEnhancedTab {
 		confidenceImpact += 25 // Higher boost for enhanced tabular detection
-	} else if v.isTabularData(context.FullLine, match) {
+	} else if lc.isTabular {
 		confidenceImpact += 15 // Standard boost for basic tabular detection
 	}
 
 	// Check for global test patterns
-	if v.isEnhancedTestPattern(match, fullContext) {
+	if v.isEnhancedTestPatternCached(match, before, after, lc) {
 		confidenceImpact -= 40 // Strong penalty for test patterns
 	}
 
@@ -414,6 +551,36 @@ func (v *Validator) validateSSNByDomain(ssn, context string) float64 {
 		if containsKeyword(context, keyword) {
 			boost += 18
 			break // Only apply once per domain
+		}
+	}
+
+	return boost
+}
+
+// validateSSNByDomainCached mirrors validateSSNByDomain but evaluates each domain
+// keyword against the full context via the cached per-line context instead of
+// rescanning the whole line for every match. Result is identical.
+func (v *Validator) validateSSNByDomainCached(before, after string, lc *lineContext) float64 {
+	boost := 0.0
+
+	for _, keyword := range v.hrKeywords {
+		if v.keywordInFullContext(keyword, before, after, lc) {
+			boost += 20
+			break
+		}
+	}
+
+	for _, keyword := range v.taxKeywords {
+		if v.keywordInFullContext(keyword, before, after, lc) {
+			boost += 25
+			break
+		}
+	}
+
+	for _, keyword := range v.healthcareKeywords {
+		if v.keywordInFullContext(keyword, before, after, lc) {
+			boost += 18
+			break
 		}
 	}
 
@@ -494,6 +661,34 @@ func (v *Validator) isEnhancedTestPattern(value, context string) bool {
 	return false
 }
 
+// isEnhancedTestPatternCached mirrors isEnhancedTestPattern but uses the cached
+// per-line context for the whole-word context check, avoiding a per-match
+// whole-line rescan. The value-based checks remain O(len(value)) per match.
+// Result is identical to isEnhancedTestPattern.
+func (v *Validator) isEnhancedTestPatternCached(value, before, after string, lc *lineContext) bool {
+	lowerValue := strings.ToLower(value)
+
+	for _, pattern := range v.globalTestPatterns {
+		// Value match: an actual test value embedded in the candidate.
+		if strings.Contains(lowerValue, pattern) {
+			return true
+		}
+		// Context match: require the pattern to appear as a whole word in the
+		// full context (line + bounded before/after windows).
+		if v.keywordInFullContext(pattern, before, after, lc) {
+			return true
+		}
+	}
+
+	// Check for obvious test sequences
+	cleanValue := v.cleanSSN(value)
+	if v.isObviousTestSequence(cleanValue) {
+		return true
+	}
+
+	return false
+}
+
 // isObviousTestSequence checks for obvious test number sequences
 func (v *Validator) isObviousTestSequence(value string) bool {
 	if len(value) != 9 {
@@ -544,6 +739,19 @@ func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string
 		}
 	}
 
+	return found
+}
+
+// findKeywordsCached mirrors findKeywords (whole-line, whole-word keyword
+// presence) but reads the precomputed per-line cache instead of rescanning the
+// line for each keyword on every match. Result is identical.
+func (v *Validator) findKeywordsCached(lc *lineContext, keywords []string) []string {
+	var found []string
+	for _, keyword := range keywords {
+		if lc.keywordOnLine[keyword] {
+			found = append(found, keyword)
+		}
+	}
 	return found
 }
 

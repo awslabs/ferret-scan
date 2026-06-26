@@ -1,8 +1,74 @@
 package phone
 
 import (
+	"strings"
 	"testing"
+	"time"
 )
+
+// TestPhoneValidator_SingleLineDoSRegression guards against the O(n^2) blowup
+// that previously made ValidateContent take minutes on a single very long line
+// densely packed with phone-like matches (no newlines). The pathological costs
+// were: a per-match strings.Index(line, match) rescan, an O(M^2) dedup that
+// re-ran the clean regex over every accepted match, and a per-match
+// strings.ToLower(line) + whole-line keyword scan. The fix makes the work linear
+// in the input size.
+//
+// The bound is intentionally generous (well above the observed ~1s on this
+// machine) so it catches an algorithmic regression without being flaky on slow
+// CI. Before the fix this same input did not finish within 600s.
+func TestPhoneValidator_SingleLineDoSRegression(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DoS timing regression in -short mode")
+	}
+
+	v := NewValidator()
+
+	// Build a single ~1MB line (no '\n') packed with many distinct dashed phone
+	// numbers separated by spaces. Distinct numbers force the dedup path to do
+	// real comparison work, and the absence of newlines is the worst case (all
+	// matches land on one line).
+	const targetBytes = 1 << 20
+	var b strings.Builder
+	b.Grow(targetBytes + 32)
+	b.WriteString("contact ")
+	for i := 0; b.Len() < targetBytes; i++ {
+		a := 200 + (i % 700)
+		b.WriteString("555-")
+		b.WriteByte(byte('0' + (a/100)%10))
+		b.WriteByte(byte('0' + (a/10)%10))
+		b.WriteByte(byte('0' + a%10))
+		b.WriteByte('-')
+		b.WriteByte(byte('0' + (i/1000)%10))
+		b.WriteByte(byte('0' + (i/100)%10))
+		b.WriteByte(byte('0' + (i/10)%10))
+		b.WriteByte(byte('0' + i%10))
+		b.WriteByte(' ')
+	}
+	content := b.String()
+	if strings.Contains(content, "\n") {
+		t.Fatalf("worst-case input must be a single line")
+	}
+
+	const ceiling = 5 * time.Second
+	start := time.Now()
+	matches, err := v.ValidateContent(content, "worstcase.txt")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	if raceEnabled {
+		// -race inflates wall-clock 5-20x; the scan ran above (so -race checks
+		// for data races), but the timing ceiling is skipped.
+		t.Logf("processed %d-byte single line, found %d matches (timing assertion skipped under -race)", len(content), len(matches))
+		return
+	}
+	if elapsed > ceiling {
+		t.Fatalf("ValidateContent on a %d-byte single line took %s, exceeding the %s ceiling (likely an O(n^2) regression)",
+			len(content), elapsed, ceiling)
+	}
+	t.Logf("processed %d-byte single line in %s, found %d matches", len(content), elapsed, len(matches))
+}
 
 // TestPhoneValidator_BeforeStructuralAnalysis documents current behavior
 // These tests show what the validator currently does (including false positives)

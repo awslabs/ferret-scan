@@ -38,6 +38,17 @@ type Validator struct {
 	// Keywords that suggest this is not a real phone
 	negativeKeywords []string
 
+	// Lowercased copies of the keyword lists, precomputed once so the per-match
+	// context analysis does not call strings.ToLower(keyword) repeatedly. The
+	// source lists are already lowercase, so these are equal in value; caching
+	// them just removes per-match allocation/work.
+	positiveKeywordsLower []string
+	negativeKeywordsLower []string
+
+	// maxKeywordLen is the byte length of the longest keyword across both lists.
+	// It bounds the boundary-probe windows used by the long-line context path.
+	maxKeywordLen int
+
 	// Known test patterns that indicate test data
 	knownTestPatterns []string
 
@@ -113,6 +124,22 @@ func NewValidator() *Validator {
 
 	// Initialize sorted country codes for optimized lookup
 	v.sortedCountryCodes = initSortedCountryCodes(v.countryCodeMap)
+
+	// Precompute lowercased keyword lists and the longest keyword length so the
+	// per-match context analysis avoids repeated strings.ToLower(keyword) work and
+	// can bound its boundary-probe windows.
+	v.positiveKeywordsLower = lowerAll(v.positiveKeywords)
+	v.negativeKeywordsLower = lowerAll(v.negativeKeywords)
+	for _, kw := range v.positiveKeywordsLower {
+		if len(kw) > v.maxKeywordLen {
+			v.maxKeywordLen = len(kw)
+		}
+	}
+	for _, kw := range v.negativeKeywordsLower {
+		if len(kw) > v.maxKeywordLen {
+			v.maxKeywordLen = len(kw)
+		}
+	}
 
 	// Initialize phone patterns
 	// NOTE: Patterns starting with non-word chars like ( or + use (?:^|\s|[,;|"'<>])
@@ -271,20 +298,56 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 	// Process each pattern type
 	for lineNum, line := range lines {
+		// Per-line state hoisted out of the per-match loop:
+		//   - dedup indexes the cleaned-digit form of every match already accepted
+		//     on THIS line so duplicate detection is O(1)-amortized per candidate
+		//     instead of re-running the clean regex and a full containment scan over
+		//     the whole accumulated match list (this O(M^2) churn was the single-line
+		//     DoS). Semantics are identical to the original isDuplicateMatch.
+		//   - lineIsTabular is a line-level property (delimiters / name-phone
+		//     shape); isTabularData never inspected the individual match, so it is
+		//     computed once per line rather than once per match.
+		dedup := newLineDedup()
+		lineIsTabular := v.isTabularDataLine(line)
+
+		// For long lines, the original per-match context analysis re-lowercased
+		// and re-scanned the WHOLE line for every match (O(matches x line length),
+		// the dominant cost of the single-line DoS). Build the per-line keyword
+		// cache once and use the hoisted, boundary-probe context path instead.
+		// Short lines keep the original per-match construction so normal input is
+		// byte-for-byte unchanged.
+		lineLong := len(line) > hoistContextLineThreshold
+		var lineCtx *lineKeywordCtx
+		if lineLong {
+			lineCtx = v.buildLineKeywordCtx(line, strings.ToLower(line))
+		}
+
 		for _, pattern := range v.patterns {
-			foundMatches := pattern.regex.FindAllString(line, -1)
+			// FindAllStringIndex yields each match's byte offset within the line, so
+			// we no longer call strings.Index(line, match) per match (O(M*L) -> O(M))
+			// and we avoid the latent bug where strings.Index returns the FIRST
+			// occurrence of a duplicated token rather than the actual one.
+			locs := pattern.regex.FindAllStringIndex(line, -1)
 
-			for _, rawMatch := range foundMatches {
-				// Trim leading delimiter captured by boundary group (?:^|[\s,;|"'<>])
+			for _, loc := range locs {
+				rawMatch := line[loc[0]:loc[1]]
+				// Trim leading delimiter captured by boundary group (?:^|[\s,;|"'<>]).
+				// Advance the start offset past trimmed bytes so it still points at
+				// the real match.
 				match := strings.TrimLeft(rawMatch, " \t,;|\"'<>\r\n")
+				matchIndex := loc[0] + (len(rawMatch) - len(match))
+				matchEnd := matchIndex + len(match)
 
-				// Skip if this match was already found by another pattern
-				if v.isDuplicateMatch(matches, match, lineNum+1) {
+				// Skip if this match was already found by another pattern on this
+				// line. Same containment semantics as isDuplicateMatch, evaluated in
+				// O(1)-amortized time against the per-line dedup index.
+				cleanNew := v.cleanPhoneNumber(match)
+				if dedup.isDuplicate(cleanNew) {
 					continue
 				}
 
 				// Skip if this phone number is embedded within an identifier or resource ID
-				if v.isEmbeddedInIdentifier(match, line) {
+				if v.isEmbeddedInIdentifierAt(match, line, matchIndex) {
 					continue
 				}
 
@@ -299,27 +362,31 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 					FullLine: line,
 				}
 
-				// Extract context around the match in the line
-				matchIndex := strings.Index(line, match)
-				if matchIndex >= 0 {
-					start := matchIndex - 50
-					if start < 0 {
-						start = 0
-					}
-					end := matchIndex + len(match) + 50
-					if end > len(line) {
-						end = len(line)
-					}
+				// Extract context around the match in the line using the known
+				// offset (no rescan).
+				start := matchIndex - 50
+				if start < 0 {
+					start = 0
+				}
+				end := matchEnd + 50
+				if end > len(line) {
+					end = len(line)
+				}
+				contextInfo.BeforeText = line[start:matchIndex]
+				contextInfo.AfterText = line[matchEnd:end]
 
-					contextInfo.BeforeText = line[start:matchIndex]
-					contextInfo.AfterText = line[matchIndex+len(match) : end]
+				// Analyze context and adjust confidence. Long lines use the hoisted
+				// path (per-line keyword cache + per-match boundary probes); short
+				// lines use the original whole-line construction unchanged.
+				var contextImpact float64
+				if lineLong {
+					contextImpact = v.analyzeContextHoisted(match, contextInfo.BeforeText, contextInfo.AfterText, line, matchIndex, lineCtx)
+				} else {
+					contextImpact = v.AnalyzeContextAt(match, contextInfo, line, matchIndex)
 				}
 
-				// Analyze context and adjust confidence
-				contextImpact := v.AnalyzeContext(match, contextInfo)
-
-				// Check for tabular data and boost confidence
-				if v.isTabularData(contextInfo.FullLine, match) {
+				// Check for tabular data and boost confidence (line-level flag)
+				if lineIsTabular {
 					contextImpact += 15 // Boost for tabular data
 				}
 
@@ -337,9 +404,17 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 					continue
 				}
 
-				// Store keywords found in context
-				contextInfo.PositiveKeywords = v.findKeywords(contextInfo, v.positiveKeywords)
-				contextInfo.NegativeKeywords = v.findKeywords(contextInfo, v.negativeKeywords)
+				// Store keywords found in context (hoisted for long lines).
+				if lineLong {
+					lowerBefore := strings.ToLower(contextInfo.BeforeText)
+					lowerAfter := strings.ToLower(contextInfo.AfterText)
+					probeBefore, probeAfter := boundaryProbes(lowerBefore, lowerAfter, lineCtx)
+					contextInfo.PositiveKeywords = findKeywordsHoisted(v.positiveKeywords, v.positiveKeywordsLower, lineCtx.posInLowerLine, probeBefore, probeAfter)
+					contextInfo.NegativeKeywords = findKeywordsHoisted(v.negativeKeywords, v.negativeKeywordsLower, lineCtx.negInLowerLine, probeBefore, probeAfter)
+				} else {
+					contextInfo.PositiveKeywords = v.findKeywords(contextInfo, v.positiveKeywords)
+					contextInfo.NegativeKeywords = v.findKeywords(contextInfo, v.negativeKeywords)
+				}
 				contextInfo.ConfidenceImpact = contextImpact
 
 				matches = append(matches, detector.Match{
@@ -361,6 +436,11 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 						"original_file":     originalPath,
 					},
 				})
+				// Record the accepted match's cleaned digits for subsequent dedup
+				// on this line. Only matches that actually land in `matches`
+				// participate in dedup, exactly as before (isDuplicateMatch scanned
+				// the accumulated `matches`).
+				dedup.add(cleanNew)
 			}
 		}
 	}
@@ -405,11 +485,193 @@ func (v *Validator) isDuplicateMatch(existing []detector.Match, newMatch string,
 	return false
 }
 
-// AnalyzeContext analyzes the context around a match and returns a confidence adjustment
+// dedupMaxCleanLen bounds the cleaned-digit length for which the substring index
+// is maintained. Phone-pattern matches clean to well under this many digits, so
+// in practice every accepted match is indexed; the cap only guards against a
+// pathological match cleaning to an enormous digit run (which would make the
+// O(L^2) substring enumeration costly). Longer strings fall back to the linear
+// scan in isDuplicateAgainst, which is still O(remaining) and rare.
+const dedupMaxCleanLen = 32
+
+// lineDedup reproduces isDuplicateMatch's per-line containment semantics — a new
+// cleaned-digit string s is a duplicate of an accepted string e when
+// e == s, s is a substring of e, or e is a substring of s — but in
+// O(len(s)^2)-amortized time per candidate instead of scanning every accepted
+// match. Because cleaned phone numbers are short and bounded (dedupMaxCleanLen),
+// that per-candidate cost is effectively constant, removing the O(M^2) blowup on
+// a single match-dense line.
+//
+// It maintains two indexes over the accepted strings:
+//   - exact: the set of accepted strings (used to test "some accepted e is a
+//     substring of s" by enumerating substrings of s).
+//   - subOfAccepted: the set of ALL substrings of every accepted string (used to
+//     test "s is a substring of some accepted e", which includes s == e).
+//
+// A small linear fallback list holds any accepted string longer than
+// dedupMaxCleanLen so semantics stay exact without enumerating huge substring
+// sets.
+type lineDedup struct {
+	exact         map[string]struct{}
+	subOfAccepted map[string]struct{}
+	longFallback  []string
+}
+
+func newLineDedup() *lineDedup {
+	return &lineDedup{
+		exact:         make(map[string]struct{}, 16),
+		subOfAccepted: make(map[string]struct{}, 64),
+	}
+}
+
+// isDuplicate reports whether cleanNew duplicates an already-accepted string,
+// matching isDuplicateMatch exactly. Empty strings are never duplicates (the
+// original skipped empty cleaned values on both sides).
+func (d *lineDedup) isDuplicate(cleanNew string) bool {
+	if cleanNew == "" {
+		return false
+	}
+
+	// "cleanNew is a substring of (or equal to) some accepted string."
+	if _, ok := d.subOfAccepted[cleanNew]; ok {
+		return true
+	}
+
+	// "some accepted string is a substring of (or equal to) cleanNew": every
+	// accepted string is shorter than or equal to cleanNew in this branch, so it
+	// must appear as one of cleanNew's substrings, which are all present in the
+	// exact set if it is a duplicate.
+	if len(cleanNew) <= dedupMaxCleanLen {
+		n := len(cleanNew)
+		for i := 0; i < n; i++ {
+			for j := i + 1; j <= n; j++ {
+				if _, ok := d.exact[cleanNew[i:j]]; ok {
+					return true
+				}
+			}
+		}
+	} else {
+		// cleanNew is too long to enumerate cheaply; fall back to direct
+		// containment against the exact accepted strings.
+		for e := range d.exact {
+			if strings.Contains(cleanNew, e) {
+				return true
+			}
+		}
+	}
+
+	// Compare against any over-long accepted strings kept out of the indexes.
+	for _, e := range d.longFallback {
+		if e == cleanNew ||
+			strings.Contains(e, cleanNew) ||
+			strings.Contains(cleanNew, e) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// add records an accepted match's cleaned-digit string. Empty strings are not
+// stored (the original isDuplicateMatch skipped matches whose cleaned form was
+// empty), so they never participate in dedup.
+func (d *lineDedup) add(cleanStr string) {
+	if cleanStr == "" {
+		return
+	}
+	d.exact[cleanStr] = struct{}{}
+	if len(cleanStr) <= dedupMaxCleanLen {
+		n := len(cleanStr)
+		for i := 0; i < n; i++ {
+			for j := i + 1; j <= n; j++ {
+				d.subOfAccepted[cleanStr[i:j]] = struct{}{}
+			}
+		}
+	} else {
+		d.longFallback = append(d.longFallback, cleanStr)
+	}
+}
+
+// lowerAll returns a slice of the lowercased forms of the input strings.
+func lowerAll(in []string) []string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = strings.ToLower(s)
+	}
+	return out
+}
+
+// hoistContextLineThreshold is the line length (bytes) above which the per-match
+// context analysis switches from the original whole-line construction to the
+// hoisted path. Below it, lines are short enough that the original code runs as
+// before (so all normal input is byte-for-byte unchanged); above it, the
+// whole-line scans would otherwise be O(matches x line length) and cause the
+// single-line DoS. It is a var (not a const) only so equivalence tests can force
+// either path; production never mutates it.
+var hoistContextLineThreshold = 4096
+
+// lineKeywordCtx caches, once per line, the keyword presence facts that the
+// original per-match AnalyzeContext/findKeywords recomputed for every match by
+// scanning the entire line. For each keyword it records:
+//   - inLowerLine: keyword present in strings.ToLower(line) — i.e. present in the
+//     line portion of the lowercased fullContext.
+//   - inRawLine: keyword present in the raw (non-lowercased) line — this mirrors
+//     the original "same line" check strings.Contains(context.FullLine,
+//     strings.ToLower(keyword)), which compared against the un-lowercased line.
+//
+// It also stores lowercased head/tail windows of the line so per-match boundary
+// probes (BeforeText|line and line|AfterText junctions introduced by the
+// fullContext concatenation) can be evaluated in O(maxKeywordLen) time.
+type lineKeywordCtx struct {
+	posInLowerLine []bool
+	posInRawLine   []bool
+	negInLowerLine []bool
+	negInRawLine   []bool
+
+	lowerHead string // lowercased prefix of the line, length up to maxKeywordLen
+	lowerTail string // lowercased suffix of the line, length up to maxKeywordLen
+}
+
+// buildLineKeywordCtx precomputes per-line keyword presence for the hoisted
+// context path. line is the raw line; lowerLine is strings.ToLower(line).
+func (v *Validator) buildLineKeywordCtx(line, lowerLine string) *lineKeywordCtx {
+	lc := &lineKeywordCtx{
+		posInLowerLine: make([]bool, len(v.positiveKeywordsLower)),
+		posInRawLine:   make([]bool, len(v.positiveKeywordsLower)),
+		negInLowerLine: make([]bool, len(v.negativeKeywordsLower)),
+		negInRawLine:   make([]bool, len(v.negativeKeywordsLower)),
+	}
+	for i, kw := range v.positiveKeywordsLower {
+		lc.posInLowerLine[i] = strings.Contains(lowerLine, kw)
+		lc.posInRawLine[i] = strings.Contains(line, kw)
+	}
+	for i, kw := range v.negativeKeywordsLower {
+		lc.negInLowerLine[i] = strings.Contains(lowerLine, kw)
+		lc.negInRawLine[i] = strings.Contains(line, kw)
+	}
+
+	w := v.maxKeywordLen
+	if w > len(lowerLine) {
+		w = len(lowerLine)
+	}
+	lc.lowerHead = lowerLine[:w]
+	lc.lowerTail = lowerLine[len(lowerLine)-w:]
+	return lc
+}
+
+// AnalyzeContext analyzes the context around a match and returns a confidence
+// adjustment. It locates the match within the line; callers on the hot path
+// should use AnalyzeContextAt to pass a precomputed offset instead.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
+	return v.AnalyzeContextAt(match, context, context.FullLine, strings.Index(context.FullLine, match))
+}
+
+// AnalyzeContextAt is the offset-aware form of AnalyzeContext. matchIndex is the
+// byte offset of match within line (matchIndex < 0 means "not found"), which lets
+// hasPhoneStructure skip its own strings.Index rescan.
+func (v *Validator) AnalyzeContextAt(match string, context detector.ContextInfo, line string, matchIndex int) float64 {
 	// CRITICAL: Check for structural indicators first (highest priority)
 	// This uses what comes BEFORE/AFTER the match rather than keywords
-	if !v.hasPhoneStructure(match, context.FullLine) {
+	if !v.hasPhoneStructureAt(match, line, matchIndex) {
 		// This is NOT a phone number (resource ID, timestamp, etc.)
 		return -100 // Zero out confidence completely
 	}
@@ -484,6 +746,94 @@ func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string
 		}
 	}
 
+	return found
+}
+
+// boundaryProbes builds the two short lowercased probe strings that reproduce the
+// only keyword matches the fullContext concatenation can introduce beyond those
+// already present in the line: a keyword spanning the
+// BeforeText|" "|line junction or the line|" "|AfterText junction. Because the
+// hoisted path only runs when the line is far longer than any keyword, no keyword
+// can span the entire line, so these two probes are exhaustive.
+func boundaryProbes(lowerBefore, lowerAfter string, lc *lineKeywordCtx) (string, string) {
+	return lowerBefore + " " + lc.lowerHead, lc.lowerTail + " " + lowerAfter
+}
+
+// keywordInFullContext reports whether the i-th keyword (already lowercased,
+// value lowerKw) is present in the lowercased fullContext, using the per-line
+// cache plus the per-match boundary probes. This is exactly
+// strings.Contains(fullContext, lowerKw) for the hoisted path.
+func keywordInFullContext(inLowerLine bool, lowerKw, probeBefore, probeAfter string) bool {
+	if inLowerLine {
+		return true
+	}
+	return strings.Contains(probeBefore, lowerKw) || strings.Contains(probeAfter, lowerKw)
+}
+
+// analyzeContextHoisted reproduces AnalyzeContextAt's keyword scoring for long
+// lines using the per-line keyword cache and per-match boundary probes, avoiding
+// the O(matches x line length) whole-line rescans. The structural gate
+// (hasPhoneStructureAt) and the arithmetic/caps are identical to AnalyzeContextAt.
+func (v *Validator) analyzeContextHoisted(match string, before, after, line string, matchIndex int, lc *lineKeywordCtx) float64 {
+	if !v.hasPhoneStructureAt(match, line, matchIndex) {
+		return -100
+	}
+
+	lowerBefore := strings.ToLower(before)
+	lowerAfter := strings.ToLower(after)
+	probeBefore, probeAfter := boundaryProbes(lowerBefore, lowerAfter, lc)
+
+	var confidenceImpact float64
+	var hasPositiveKeywords bool
+
+	for i, kw := range v.positiveKeywordsLower {
+		if keywordInFullContext(lc.posInLowerLine[i], kw, probeBefore, probeAfter) {
+			hasPositiveKeywords = true
+			// Same-line bonus mirrors the original strings.Contains(FullLine,
+			// lowerKw) against the RAW (un-lowercased) line.
+			if lc.posInRawLine[i] {
+				confidenceImpact += 15
+			} else {
+				confidenceImpact += 8
+			}
+		}
+	}
+
+	if !hasPositiveKeywords {
+		confidenceImpact -= 20
+	}
+
+	for i, kw := range v.negativeKeywordsLower {
+		if keywordInFullContext(lc.negInLowerLine[i], kw, probeBefore, probeAfter) {
+			if lc.negInRawLine[i] {
+				confidenceImpact -= 35
+			} else {
+				confidenceImpact -= 18
+			}
+		}
+	}
+
+	if confidenceImpact > 40 {
+		confidenceImpact = 40
+	} else if confidenceImpact < -80 {
+		confidenceImpact = -80
+	}
+
+	return confidenceImpact
+}
+
+// findKeywordsHoisted is the long-line equivalent of findKeywords: it returns the
+// original (source-cased) keywords present in the lowercased fullContext, using
+// the per-line cache plus per-match boundary probes. keywords is the source list
+// and lowerKeywords/inLowerLine are its precomputed lowercased forms and per-line
+// presence flags (parallel slices).
+func findKeywordsHoisted(keywords, lowerKeywords []string, inLowerLine []bool, probeBefore, probeAfter string) []string {
+	var found []string
+	for i, lowerKw := range lowerKeywords {
+		if keywordInFullContext(inLowerLine[i], lowerKw, probeBefore, probeAfter) {
+			found = append(found, keywords[i])
+		}
+	}
 	return found
 }
 
@@ -634,9 +984,36 @@ func (v *Validator) AnalyzePhoneStructure(phone string, pattern phonePattern) ma
 
 // Helper methods
 func (v *Validator) cleanPhoneNumber(phone string) string {
-	// Remove all non-digit characters except +
-	cleaned := phoneCleanPattern.ReplaceAllString(phone, "")
-	return cleaned
+	// Remove all non-digit characters except '+'. This is the byte-scan
+	// equivalent of phoneCleanPattern.ReplaceAllString(phone, "") (regex
+	// `[^\d+]`), kept inline because cleanPhoneNumber is called many times per
+	// match on the hot path and the regex engine dominated those calls. ASCII
+	// digits and '+' are single-byte, and every other byte (including the lead
+	// bytes of multi-byte runes) is dropped — matching the regex's behavior of
+	// removing any rune that is not an ASCII digit or '+'.
+	if !needsClean(phone) {
+		return phone
+	}
+	b := make([]byte, 0, len(phone))
+	for i := 0; i < len(phone); i++ {
+		c := phone[i]
+		if (c >= '0' && c <= '9') || c == '+' {
+			b = append(b, c)
+		}
+	}
+	return string(b)
+}
+
+// needsClean reports whether phone contains any byte that cleanPhoneNumber would
+// strip, letting the common already-clean case avoid an allocation.
+func needsClean(phone string) bool {
+	for i := 0; i < len(phone); i++ {
+		c := phone[i]
+		if !((c >= '0' && c <= '9') || c == '+') {
+			return true
+		}
+	}
+	return false
 }
 
 // hasPhoneSeparators reports whether the raw match is formatted like a phone
@@ -941,8 +1318,19 @@ func (v *Validator) looksLikeInvalidNumber(match string) bool {
 	return false
 }
 
-// isTabularData checks if the phone number appears to be in a tabular format
+// isTabularData checks if the phone number appears to be in a tabular format.
+// The match argument is unused (the heuristic is purely line-level); it is kept
+// for API compatibility and delegates to isTabularDataLine.
 func (v *Validator) isTabularData(line, match string) bool {
+	return v.isTabularDataLine(line)
+}
+
+// isTabularDataLine is the line-level tabular check, computed once per line on
+// the hot path. It inspects only the line's delimiters / fixed-width spacing /
+// name-phone shape — identical logic to the original isTabularData, with the
+// regex scans (FindAllString / MatchString) run once per line instead of once
+// per match.
+func (v *Validator) isTabularDataLine(line string) bool {
 	// Check for common tabular delimiters
 	tabCount := strings.Count(line, "\t")
 	commaCount := strings.Count(line, ",")
@@ -970,8 +1358,14 @@ func (v *Validator) isTabularData(line, match string) bool {
 // isEmbeddedInIdentifier checks if a phone number match is embedded within an identifier or resource ID
 // This helps filter out false positives like "i-057034242931", "ami-050451375729", "vpc-1234567890"
 func (v *Validator) isEmbeddedInIdentifier(match, line string) bool {
-	matchIndex := strings.Index(line, match)
-	if matchIndex == -1 {
+	return v.isEmbeddedInIdentifierAt(match, line, strings.Index(line, match))
+}
+
+// isEmbeddedInIdentifierAt is the offset-aware form of isEmbeddedInIdentifier.
+// matchIndex is the byte offset of match within line (a negative value means the
+// match was not located, in which case it is treated as not embedded).
+func (v *Validator) isEmbeddedInIdentifierAt(match, line string, matchIndex int) bool {
+	if matchIndex < 0 {
 		return false
 	}
 
@@ -1073,7 +1467,14 @@ func (v *Validator) isEmbeddedInIdentifier(match, line string) bool {
 // This uses structural analysis (what comes BEFORE/AFTER the match) rather than
 // keyword matching, making it future-proof and context-agnostic.
 func (v *Validator) hasPhoneStructure(match string, line string) bool {
-	matchIndex := strings.Index(line, match)
+	return v.hasPhoneStructureAt(match, line, strings.Index(line, match))
+}
+
+// hasPhoneStructureAt is the offset-aware form of hasPhoneStructure. matchIndex
+// is the byte offset of match within line; a negative value means the match was
+// not located and is treated as "not a phone structure" (same as the original
+// strings.Index(line, match) < 0 guard).
+func (v *Validator) hasPhoneStructureAt(match string, line string, matchIndex int) bool {
 	if matchIndex < 0 {
 		return false
 	}

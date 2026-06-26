@@ -284,6 +284,36 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 		hasColon := strings.Contains(line, ":")
 		hasDoubleColon := strings.Contains(line, "::")
 
+		// PERF: hoist per-line work out of the per-match loop. The context
+		// analysis only ever inspects the matched line (BeforeText/AfterText are
+		// the ±50 window around the match, both substrings of `line`), so the
+		// set of keywords present in the analysis context is exactly the set
+		// present in the lowercased line. Lowercasing the line ONCE here and
+		// reusing it avoids re-lowercasing a megabyte-long line for every match,
+		// which was the O(n^2) DoS (a single long line dense with IPs).
+		lowerLine := strings.ToLower(line)
+
+		// PERF: the keyword-derived quantities below depend ONLY on the line, not
+		// on the individual match, so compute them ONCE per line. Previously each
+		// match re-scanned the whole (possibly megabyte-long) line for all ~35
+		// positive + ~25 negative keywords — the dominant O(n^2) cost. Hoisting
+		// them here makes the per-match work bounded by the local context window.
+		//   - lineContextImpact: the AnalyzeContext result for this line (same for
+		//     every match, since BeforeText/AfterText are substrings of the line).
+		//   - linePositiveKeywords / lineNegativeKeywords: the findKeywords result.
+		//   - lineHasPositiveKeyword: the keyword half of hasIPContextSignal.
+		lineContextImpact := v.analyzeContextLower(lowerLine)
+		linePositiveKeywords := v.findKeywordsLower(lowerLine, v.positiveKeywords)
+		lineNegativeKeywords := v.findKeywordsLower(lowerLine, v.negativeKeywords)
+		lineHasPositiveKeyword := len(linePositiveKeywords) > 0
+
+		// PERF: dedup per line via a map keyed by the cleaned IP instead of the
+		// previous O(M^2) scan of all prior matches. Behavior is identical: the
+		// original isDuplicateMatch only compared against matches on the SAME
+		// line number, and emission order is unchanged (first pattern to produce
+		// a given cleaned IP on a line wins, exactly as before).
+		seenOnLine := make(map[string]struct{})
+
 		for _, pattern := range v.patterns {
 			if pattern.version == "IPv6" {
 				if !hasColon {
@@ -294,16 +324,27 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				}
 			}
 
-			foundMatches := pattern.regex.FindAllString(line, -1)
+			// PERF: FindAllStringIndex gives each match's byte offset directly,
+			// eliminating the per-match strings.Index(line, match) rescans (which
+			// were O(line length) each and quadratic in aggregate). It also fixes
+			// a latent correctness bug: strings.Index finds the FIRST occurrence
+			// of a duplicated token, not the actual match position.
+			foundIdx := pattern.regex.FindAllStringIndex(line, -1)
 
-			for _, match := range foundMatches {
-				// Skip if this match was already found by another pattern
-				if v.isDuplicateMatch(matches, match, lineNum+1) {
+			for _, loc := range foundIdx {
+				matchIndex, matchEnd := loc[0], loc[1]
+				match := line[matchIndex:matchEnd]
+
+				// Skip if this match was already found by another pattern on this
+				// line (same cleaned IP, same line). Map lookup is O(1).
+				cleanForDedup := v.cleanIPAddress(match)
+				if _, dup := seenOnLine[cleanForDedup]; dup {
 					continue
 				}
 
-				// Skip if this IP is embedded within a longer alphanumeric string
-				if v.isEmbeddedInString(match, line) {
+				// Skip if this IP is embedded within a longer alphanumeric string.
+				// Offset-based check avoids a fresh strings.Index scan of the line.
+				if v.isEmbeddedInStringAt(match, line, matchIndex, matchEnd) {
 					continue
 				}
 
@@ -318,24 +359,25 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 					FullLine: line,
 				}
 
-				// Extract context around the match in the line
-				matchIndex := strings.Index(line, match)
-				if matchIndex >= 0 {
-					start := matchIndex - 50
-					if start < 0 {
-						start = 0
-					}
-					end := matchIndex + len(match) + 50
-					if end > len(line) {
-						end = len(line)
-					}
-
-					contextInfo.BeforeText = line[start:matchIndex]
-					contextInfo.AfterText = line[matchIndex+len(match) : end]
+				// Extract context around the match in the line using the known
+				// offset (no rescan). The ±50-char window is unchanged.
+				start := matchIndex - 50
+				if start < 0 {
+					start = 0
 				}
+				end := matchEnd + 50
+				if end > len(line) {
+					end = len(line)
+				}
+				contextInfo.BeforeText = line[start:matchIndex]
+				contextInfo.AfterText = line[matchEnd:end]
 
-				// Analyze context and adjust confidence
-				contextImpact := v.AnalyzeContext(match, contextInfo)
+				// Analyze context and adjust confidence. The keyword-derived
+				// impact is line-global (BeforeText/AfterText are substrings of
+				// `line`, so the "same line" weighting branch of AnalyzeContext
+				// always applies for this call site), so it was computed once per
+				// line above and is reused here unchanged.
+				contextImpact := lineContextImpact
 				confidence += contextImpact
 
 				// A bare dotted-decimal IPv4 with no corroborating signal is
@@ -351,7 +393,8 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				// unambiguous and is left untouched.
 				ambiguousShape := pattern.version == "IPv4" ||
 					(pattern.name == "IPv6_Full" && !strings.Contains(match, "::"))
-				if ambiguousShape && confidence >= 90 && !v.hasIPContextSignal(match, contextInfo.FullLine) {
+				if ambiguousShape && confidence >= 90 &&
+					!v.hasIPContextSignalAt(lineHasPositiveKeyword, line, matchEnd) {
 					confidence = 75
 				}
 
@@ -372,10 +415,16 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 					continue
 				}
 
-				// Store keywords found in context
-				contextInfo.PositiveKeywords = v.findKeywords(contextInfo, v.positiveKeywords)
-				contextInfo.NegativeKeywords = v.findKeywords(contextInfo, v.negativeKeywords)
+				// Store keywords found in context. These are line-global (the
+				// keyword set over the analysis context equals the set over the
+				// line, as argued above), so they were computed once per line and
+				// are reused here — identical result to the per-match findKeywords.
+				contextInfo.PositiveKeywords = linePositiveKeywords
+				contextInfo.NegativeKeywords = lineNegativeKeywords
 				contextInfo.ConfidenceImpact = contextImpact
+
+				// Record this cleaned IP so later patterns on the same line dedup.
+				seenOnLine[cleanForDedup] = struct{}{}
 
 				matches = append(matches, detector.Match{
 					Text:       match,
@@ -475,6 +524,58 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	}
 
 	return confidenceImpact
+}
+
+// analyzeContextLower is the hot-path equivalent of AnalyzeContext for the
+// ValidateContent call site, taking an already-lowercased line.
+//
+// In ValidateContent the analysis context is BeforeText + " " + FullLine + " " +
+// AfterText, where BeforeText and AfterText are the ±50-char window around the
+// match and are therefore substrings of FullLine. The two join points are spaces,
+// so no whole word spans a boundary; hence every keyword present in the
+// concatenated context is also present in FullLine. AnalyzeContext's "surrounding
+// context only" branch (+6 / -15) can never be reached for this call site — the
+// "same line" branch (+12 / -30) always applies. This function reproduces exactly
+// that branch (and the same +40 / -80 caps), so the returned impact is identical
+// to AnalyzeContext for ValidateContent, while lowercasing the line only ONCE per
+// line instead of once per match.
+func (v *Validator) analyzeContextLower(lowerLine string) float64 {
+	var confidenceImpact float64 = 0
+
+	for _, keyword := range v.positiveKeywords {
+		if ipContainsKeyword(lowerLine, keyword) {
+			confidenceImpact += 12
+		}
+	}
+	for _, keyword := range v.negativeKeywords {
+		if ipContainsKeyword(lowerLine, keyword) {
+			confidenceImpact -= 30
+		}
+	}
+
+	if confidenceImpact > 40 {
+		confidenceImpact = 40
+	} else if confidenceImpact < -80 {
+		confidenceImpact = -80
+	}
+
+	return confidenceImpact
+}
+
+// findKeywordsLower is the hot-path equivalent of findKeywords for the
+// ValidateContent call site. As argued in analyzeContextLower, the keyword set
+// present in the concatenated analysis context equals the set present in the
+// (lowercased) line, so iterating the keyword list over lowerLine yields the
+// same slice (same order, same membership) as findKeywords — without
+// re-lowercasing the line per match.
+func (v *Validator) findKeywordsLower(lowerLine string, keywords []string) []string {
+	var found []string
+	for _, keyword := range keywords {
+		if ipContainsKeyword(lowerLine, keyword) {
+			found = append(found, keyword)
+		}
+	}
+	return found
 }
 
 // findKeywords returns a list of keywords found in the context
@@ -811,6 +912,39 @@ func (v *Validator) hasIPContextSignal(match, line string) bool {
 	return false
 }
 
+// hasIPContextSignalAt is the hot-path equivalent of hasIPContextSignal.
+//
+// The keyword half of the signal (does the line contain ANY positive IP
+// keyword?) is line-global, so the caller computes it ONCE per line and passes
+// it as lineHasPositiveKeyword — this avoids re-scanning a megabyte line for all
+// positive keywords on every match, which was the dominant O(n^2) cost. The
+// remaining half — a port (":8080") or CIDR ("/24") suffix immediately after the
+// address — is match-specific and is tested against the bounded slice starting
+// at the match's real end offset (the original used strings.Index's first
+// occurrence; the true offset is identical on normal input and strictly more
+// correct on duplicated tokens). The suffix regexes are ^-anchored, so the
+// MatchString call only inspects the start of the slice, not its whole length.
+func (v *Validator) hasIPContextSignalAt(lineHasPositiveKeyword bool, line string, matchEnd int) bool {
+	if lineHasPositiveKeyword {
+		return true
+	}
+	if matchEnd <= len(line) {
+		// Both suffix patterns are ^-anchored and match at most a few bytes
+		// (":" + up to 5 digits, or "/" + up to 2 digits). Cap the slice to a
+		// short prefix so MatchString is O(1) regardless of how long the rest of
+		// the line is — this cannot change the result, since neither pattern can
+		// match beyond the first ~8 bytes.
+		after := line[matchEnd:]
+		if len(after) > 16 {
+			after = after[:16]
+		}
+		if rePortSuffix.MatchString(after) || reCIDRSuffix.MatchString(after) {
+			return true
+		}
+	}
+	return false
+}
+
 // isEmbeddedInString checks if an IP address match is embedded within a longer alphanumeric string
 // This helps filter out false positives like "AWS::EC2::Instance" where "::EC2" matches IPv6 pattern
 func (v *Validator) isEmbeddedInString(match, line string) bool {
@@ -846,6 +980,48 @@ func (v *Validator) isEmbeddedInString(match, line string) bool {
 	// match is the leading/trailing four octets of a LONGER dotted sequence (e.g.
 	// "40.71.74.0" extracted from "40.71.74.0.99") — not a standalone IP. The
 	// previous alnum-only check missed this because '.' is not alphanumeric.
+	if strings.Contains(match, ".") && !strings.Contains(match, ":") {
+		if matchIndex > 0 && line[matchIndex-1] == '.' {
+			return true
+		}
+		if matchEnd < len(line) && line[matchEnd] == '.' {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isEmbeddedInStringAt is the hot-path equivalent of isEmbeddedInString that
+// uses the match's known byte offsets instead of re-scanning the line with
+// strings.Index. The neighbor-character logic is identical; on normal input the
+// result is the same, and on a duplicated token it inspects the ACTUAL match's
+// neighbors (the strings.Index version inspected the first occurrence's
+// neighbors, a latent bug).
+func (v *Validator) isEmbeddedInStringAt(match, line string, matchIndex, matchEnd int) bool {
+	// Check character before the match
+	if matchIndex > 0 {
+		charBefore := line[matchIndex-1]
+		if (charBefore >= 'a' && charBefore <= 'z') ||
+			(charBefore >= 'A' && charBefore <= 'Z') ||
+			(charBefore >= '0' && charBefore <= '9') {
+			return true
+		}
+	}
+
+	// Check character after the match
+	if matchEnd < len(line) {
+		charAfter := line[matchEnd]
+		if (charAfter >= 'a' && charAfter <= 'z') ||
+			(charAfter >= 'A' && charAfter <= 'Z') ||
+			(charAfter >= '0' && charAfter <= '9') {
+			return true
+		}
+	}
+
+	// For a dotted-decimal IPv4 match, a '.' immediately before or after means the
+	// match is the leading/trailing four octets of a LONGER dotted sequence (e.g.
+	// "40.71.74.0" extracted from "40.71.74.0.99") — not a standalone IP.
 	if strings.Contains(match, ".") && !strings.Contains(match, ":") {
 		if matchIndex > 0 && line[matchIndex-1] == '.' {
 			return true

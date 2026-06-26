@@ -6,6 +6,7 @@ package secrets
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
@@ -1554,4 +1555,60 @@ func TestSecretsValidator_GenericEntropyNotHighWithoutContext(t *testing.T) {
 	if confKw < 60 {
 		t.Errorf("entropy string with a secret keyword should reach MEDIUM/HIGH, got %.1f", confKw)
 	}
+}
+
+// TestSecretsValidator_ValidateContentScalesLinearly is a performance regression
+// guard for the O(n^2) DoS that previously lived in ValidateContent: per matching
+// line, processMatches recomputed IsShellScriptContext(content) (a full-content
+// strings.ToLower + many Contains scans) and the per-match confidence calculation
+// rescanned the whole content via strings.Index in hasNearbySecretKeyword. On a
+// many-matching-line file (one secret per line, tens of thousands of lines) that
+// is quadratic in the file size.
+//
+// The worst-case shape is MULTI-LINE: ~1MB of identical "api_key = \"<entropy>\""
+// lines, so every line yields both an entropy and a keyword candidate. Before the
+// fix this took minutes; after the fix it is sub-second. The ceiling is generous
+// (5s) so the test only fires on a genuine quadratic regression, not on slow CI.
+func TestSecretsValidator_ValidateContentScalesLinearly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping performance regression test in -short mode")
+	}
+
+	v := NewValidator()
+
+	// Build ~1MB of worst-case multi-line content: every line is a keyword secret
+	// whose quoted value is also a high-entropy string.
+	const targetBytes = 1024 * 1024
+	line := `api_key = "aB3xK9mZ1qW7eR4tY6uI8oP0sD2fG5hJ"` + "\n"
+	var b strings.Builder
+	b.Grow(targetBytes + len(line))
+	for b.Len() < targetBytes {
+		b.WriteString(line)
+	}
+	content := b.String()
+
+	start := time.Now()
+	matches, err := v.ValidateContent(content, "config.json")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("ValidateContent returned error: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatalf("expected matches on worst-case input, got 0 (test corpus invalid)")
+	}
+
+	// Generous ceiling: linear behavior completes in well under a second; the
+	// pre-fix quadratic behavior took minutes on this 1MB input.
+	const maxDuration = 5 * time.Second
+	if raceEnabled {
+		// -race inflates wall-clock 5-20x; the scan ran above (so -race checks
+		// for data races), but the timing ceiling is skipped.
+		t.Logf("ValidateContent on ~1MB worst-case input: %d matches (timing assertion skipped under -race)", len(matches))
+		return
+	}
+	if elapsed > maxDuration {
+		t.Fatalf("ValidateContent on ~1MB many-match input took %s (limit %s) — likely an O(n^2) regression", elapsed, maxDuration)
+	}
+	t.Logf("ValidateContent on ~1MB worst-case input: %d matches in %s", len(matches), elapsed)
 }

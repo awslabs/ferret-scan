@@ -4,9 +4,12 @@
 package intellectualproperty
 
 import (
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
-	"testing"
 )
 
 // helper to create a validator with specific disabled types
@@ -739,4 +742,58 @@ func TestTradeSecretSuppressedByOpenSourceLicense(t *testing.T) {
 			t.Errorf("L12: %q should be capped below MEDIUM with an OSS license present, got %.1f", line, c)
 		}
 	}
+}
+
+// TestValidateContentSingleLineDoSBound is a performance regression test for the
+// O(n^2) DoS in detectPatternsByLine / the legal-notice reconstruction path. The
+// blowup shape for INTELLECTUAL_PROPERTY is a SINGLE very long line (no newlines)
+// packed with IP matches. Before the fix, a ~1MB single line did not complete in
+// 10 minutes (a 50KB line already took ~32s); the per-match strings.Index rescan,
+// the per-match AnalyzeContext full-line lowercasing, an O(M^2) proximity overlap
+// loop, and the per-match strings.ToLower(FullLine) in identifySemanticGroups were
+// all quadratic in the single line. After the fix this completes in well under a
+// second.
+//
+// The ceiling is intentionally generous (5s) so the test asserts "not quadratic"
+// without being flaky on slow/loaded CI hardware — a genuine regression reintroduces
+// many-second-to-minute behavior and trips it; normal variation will not.
+func TestValidateContentSingleLineDoSBound(t *testing.T) {
+	// Build a ~1MB single line (no newlines) packed with copyright, patent,
+	// trade-secret and trademark markers — every IP sub-type, so the full
+	// reconstruction path (the most expensive code) is exercised.
+	const targetBytes = 1 << 20 // ~1MB
+	unit := "Copyright 2024 Acme Inc. US9123456 Confidential Proprietary Acme(TM) "
+	var sb strings.Builder
+	sb.Grow(targetBytes + len(unit))
+	for sb.Len() < targetBytes {
+		sb.WriteString(unit)
+	}
+	content := sb.String() // no trailing newline => a single line
+
+	v := NewValidator()
+
+	const ceiling = 5 * time.Second
+	start := time.Now()
+	matches, err := v.ValidateContent(content, "dos_bound.txt")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Sanity: the packed line must still yield a finding (guards against a future
+	// change that makes it "fast" by dropping detection entirely).
+	if len(matches) == 0 {
+		t.Fatalf("expected at least one finding on the packed worst-case line, got none")
+	}
+	if raceEnabled {
+		// -race inflates wall-clock 5-20x; the scan still ran above (so -race
+		// checks for data races), but the timing ceiling is skipped.
+		t.Logf("worst-case ~1MB single line validated in %s (%d findings) (timing assertion skipped under -race)", elapsed, len(matches))
+		return
+	}
+	if elapsed > ceiling {
+		t.Fatalf("ValidateContent on a ~1MB single line took %s, exceeding the %s ceiling; "+
+			"the O(n^2) per-line behavior may have regressed", elapsed, ceiling)
+	}
+	t.Logf("worst-case ~1MB single line validated in %s (%d findings)", elapsed, len(matches))
 }

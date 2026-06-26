@@ -179,12 +179,33 @@ func (sm *SuppressionManager) rebuildHashIndexLocked() {
 }
 
 // generateFindingHash creates a unique hash for a finding
+// maxHashLineLen bounds how much of Context.FullLine is folded into a finding
+// hash. The hash is computed once per match, so embedding the raw FullLine makes
+// IsSuppressed O(matches × lineLen) — catastrophic when the input is a single
+// very long line (minified JS/JSON, a one-line CSV, a packed log line) where
+// FullLine is the entire file: 60k matches × a 1 MB line took ~24s in the
+// suppression layer alone, independent of any validator. Capping the
+// FullLine contribution makes it O(matches × cap). The cap is far larger than
+// any real source line, so the composite — and therefore the hash — is
+// byte-identical for every realistic finding, preserving existing suppression
+// files; only pathological multi-KB single lines (which no one has hand-written
+// a suppression rule against) are truncated.
+const maxHashLineLen = 8192
+
 func (sm *SuppressionManager) generateFindingHash(match detector.Match) string {
+	// Bound the FullLine contribution (see maxHashLineLen). TrimSpace first so a
+	// short line padded with whitespace still hashes identically; the cap only
+	// engages for genuinely long lines.
+	fullLine := strings.TrimSpace(match.Context.FullLine)
+	if len(fullLine) > maxHashLineLen {
+		fullLine = fullLine[:maxHashLineLen]
+	}
+
 	// Create a composite string with all relevant identifying information
 	components := []string{
 		match.Type,
 		fmt.Sprintf("%.2f", match.Confidence),
-		strings.TrimSpace(match.Context.FullLine),
+		fullLine,
 		filepath.Base(match.Filename), // Use basename to avoid path sensitivity
 		fmt.Sprintf("%d", match.LineNumber),
 	}

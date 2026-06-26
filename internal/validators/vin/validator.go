@@ -92,6 +92,12 @@ type Validator struct {
 	positiveKeywords []string
 	negativeKeywords []string
 
+	// maxKeywordLen is the length of the longest positive/negative keyword.
+	// It bounds the line prefix/suffix a keyword can straddle at an injected
+	// context boundary, letting analyzeContextHoisted scan only a small window
+	// per match instead of the whole line.
+	maxKeywordLen int
+
 	testPatterns []string
 
 	observer *observability.StandardObserver
@@ -131,6 +137,16 @@ func NewValidator() *Validator {
 		},
 	}
 	v.regex = regexp.MustCompile(v.pattern)
+	for _, kw := range v.positiveKeywords {
+		if len(kw) > v.maxKeywordLen {
+			v.maxKeywordLen = len(kw)
+		}
+	}
+	for _, kw := range v.negativeKeywords {
+		if len(kw) > v.maxKeywordLen {
+			v.maxKeywordLen = len(kw)
+		}
+	}
 	return v
 }
 
@@ -160,6 +176,22 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 }
 
 // ValidateContent validates preprocessed content for VINs.
+//
+// Performance: a single very long line can carry thousands of candidate
+// matches. The naive shape recomputed per-LINE-global work (strings.Index
+// rescans for each match's offset, the hex-dump heuristics, and a ~60-keyword
+// case-insensitive scan of the whole line for context, plus the same scan a
+// second time for findKeywords) once PER MATCH, making the line O(M·L) —
+// quadratic in line length. We now (1) get each match's byte offset from the
+// regex (FindAllStringIndex) so no strings.Index rescan is needed (this also
+// fixes the latent bug where strings.Index returned the FIRST occurrence of a
+// duplicated token rather than the actual match), (2) hoist all per-line-global
+// work out of the per-match loop — the lowercased line, the hex-dump verdict,
+// and the per-keyword "present in line" verdict are each computed ONCE per
+// line, and (3) restrict the per-match context scan to a bounded ±50-char
+// window. Behavior is unchanged: the per-line keyword verdict plus the bounded
+// boundary check reproduce the original fullContext/fullLine distinction
+// exactly (see analyzeContextHoisted).
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if v.observer != nil {
@@ -170,9 +202,24 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
-		foundMatches := v.regex.FindAllString(line, -1)
+		locs := v.regex.FindAllStringIndex(line, -1)
+		if len(locs) == 0 {
+			continue
+		}
 
-		for _, match := range foundMatches {
+		// --- Per-LINE-global work, computed once and reused by every match on
+		// this line (was previously recomputed per match -> O(M·L)). ---
+		lineLower := strings.ToLower(line)
+		lineIsHexDump := v.lineLooksEncoded(line)
+		// Whether each keyword is present (as a whole word) anywhere in the
+		// line. This is the dominant cost and is identical for all matches on
+		// the line, so it is hoisted here.
+		posInLine := keywordPresence(lineLower, v.positiveKeywords)
+		negInLine := keywordPresence(lineLower, v.negativeKeywords)
+
+		for _, loc := range locs {
+			start, end := loc[0], loc[1]
+			match := line[start:end]
 			upper := strings.ToUpper(match)
 
 			// --- Early rejection cascade ---
@@ -210,7 +257,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 				}
 			}
 
-			if v.isEncodedData(line, match) {
+			if v.isEncodedDataAt(line, start, end, lineIsHexDump) {
 				continue
 			}
 
@@ -218,12 +265,13 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 			confidence, checks := v.calculateConfidence(upper, checkDigitOK)
 
-			contextInfo := v.buildContext(line, match)
-			contextImpact := v.AnalyzeContext(match, contextInfo)
+			contextInfo := v.buildContextAt(line, start, end)
+			contextImpact, posFound, negFound := v.analyzeContextHoisted(
+				line, lineLower, start, end, posInLine, negInLine)
 			confidence += contextImpact
 
-			contextInfo.PositiveKeywords = v.findKeywords(contextInfo, v.positiveKeywords)
-			contextInfo.NegativeKeywords = v.findKeywords(contextInfo, v.negativeKeywords)
+			contextInfo.PositiveKeywords = posFound
+			contextInfo.NegativeKeywords = negFound
 			contextInfo.ConfidenceImpact = contextImpact
 
 			if confidence > 100 {
@@ -379,6 +427,152 @@ func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string
 	return found
 }
 
+// keywordPresence returns, parallel to keywords, whether each keyword occurs as
+// a whole word in lineLower. lineLower MUST already be lowercased. This is the
+// per-LINE-global keyword scan, computed once per line and reused by every
+// match on the line (it is the dominant cost the per-match loop used to repeat).
+func keywordPresence(lineLower string, keywords []string) []bool {
+	present := make([]bool, len(keywords))
+	for i, kw := range keywords {
+		present[i] = containsKeyword(lineLower, kw)
+	}
+	return present
+}
+
+// analyzeContextHoisted reproduces AnalyzeContext + findKeywords for a match at
+// byte offsets [start,end) on line, but without re-scanning the whole line per
+// match. It is mathematically identical to calling, with the ContextInfo that
+// buildContextAt(line, start, end) produces:
+//
+//	impact = AnalyzeContext(match, ctx)
+//	posFound = findKeywords(ctx, positiveKeywords)
+//	negFound = findKeywords(ctx, negativeKeywords)
+//
+// The original computes fullContext = lower(before + " " + line + " " + after)
+// and asks, per keyword, "present in fullContext?" (drives findKeywords and the
+// +/- impact) and "present in line?" (drives the in-line vs in-context weight).
+// Because before/after are slices of line and fullContext ⊇ line, a keyword is
+// in fullContext iff it is in the line (precomputed in posInLine/negInLine) OR
+// it straddles one of the two injected " " boundaries. A straddling match uses
+// at most maxKeywordLen chars on each side of a boundary, so it is fully
+// captured by a bounded boundary string. The '\x00' separator below cannot
+// appear in any keyword, so it never fabricates a cross-region match.
+func (v *Validator) analyzeContextHoisted(
+	line, lineLower string, start, end int,
+	posInLine, negInLine []bool,
+) (impact float64, posFound, negFound []string) {
+
+	boundary := v.boundaryContext(lineLower, start, end)
+
+	for i, kw := range v.positiveKeywords {
+		inLine := posInLine[i]
+		if inLine {
+			impact += 25
+			posFound = append(posFound, kw)
+		} else if containsKeyword(boundary, kw) {
+			impact += 10
+			posFound = append(posFound, kw)
+		}
+	}
+
+	for i, kw := range v.negativeKeywords {
+		inLine := negInLine[i]
+		if inLine {
+			impact -= 15
+			negFound = append(negFound, kw)
+		} else if containsKeyword(boundary, kw) {
+			impact -= 8
+			negFound = append(negFound, kw)
+		}
+	}
+
+	if impact > 50 {
+		impact = 50
+	} else if impact < -50 {
+		impact = -50
+	}
+
+	return impact, posFound, negFound
+}
+
+// boundaryContext builds the small string needed to detect keywords that occur
+// in the original fullContext (before + " " + line + " " + after) but NOT in
+// the line itself — i.e. matches that straddle one of the two injected " "
+// boundaries, plus matches living entirely in the ±contextWindow before/after
+// slices. It mirrors fullContext at both junctions using only a bounded line
+// prefix/suffix, so the per-match cost is O(window) rather than O(line).
+//
+// Correctness of the truncation: any keyword that straddles an injected " "
+// spans at most maxKeywordLen bytes, so it reaches at most maxKeywordLen bytes
+// into the line from each junction. We therefore take 2*maxKeywordLen bytes of
+// line on each side, guaranteeing every straddling match lies wholly within the
+// reproduced region and at least maxKeywordLen bytes away from the truncation
+// seam. To stop the seam itself from fabricating a word boundary (which would
+// mis-credit a keyword that is interior to the real line), each seam is guarded
+// with a word byte ('0'): a keyword abutting the seam then gets a non-boundary
+// there. Such a keyword is necessarily interior to the line — never straddling,
+// since straddling matches are >= maxKeywordLen from the seam — so whenever it
+// truly is a whole word in the line it is already credited via the per-line
+// keywordPresence scan (inLine), and the boundaryContext result is only ever
+// consulted when inLine is false. The '\x01' between the two junction regions
+// (also a non-keyword, non-word byte) keeps them from forming a cross match.
+func (v *Validator) boundaryContext(lineLower string, start, end int) string {
+	k := 2 * v.maxKeywordLen
+
+	bStart := start - contextWindow
+	if bStart < 0 {
+		bStart = 0
+	}
+	before := lineLower[bStart:start]
+
+	aEnd := end + contextWindow
+	if aEnd > len(lineLower) {
+		aEnd = len(lineLower)
+	}
+	after := lineLower[end:aEnd]
+
+	// linePrefix mirrors the start of the line (left side of the after|line and
+	// before|line junctions); its tail seam is guarded so it cannot fabricate a
+	// right word boundary for an interior keyword.
+	linePrefix := lineLower
+	prefixTruncated := false
+	if len(linePrefix) > k {
+		linePrefix = linePrefix[:k]
+		prefixTruncated = true
+	}
+	// lineSuffix mirrors the end of the line; its head seam is guarded so it
+	// cannot fabricate a left word boundary for an interior keyword.
+	lineSuffix := lineLower
+	suffixTruncated := false
+	if len(lineSuffix) > k {
+		lineSuffix = lineSuffix[len(lineSuffix)-k:]
+		suffixTruncated = true
+	}
+
+	var b strings.Builder
+	b.Grow(len(before) + len(after) + len(linePrefix) + len(lineSuffix) + 8)
+
+	// before + " " + linePrefix reproduces the before|line junction.
+	b.WriteString(before)
+	b.WriteByte(' ')
+	b.WriteString(linePrefix)
+	if prefixTruncated {
+		b.WriteByte('0') // guard: real line continues with a byte here
+	}
+
+	b.WriteByte('\x01') // separates the two junction regions (non-word, non-keyword)
+
+	// lineSuffix + " " + after reproduces the line|after junction.
+	if suffixTruncated {
+		b.WriteByte('0') // guard: real line precedes lineSuffix with a byte here
+	}
+	b.WriteString(lineSuffix)
+	b.WriteByte(' ')
+	b.WriteString(after)
+
+	return b.String()
+}
+
 // checkDigitValid validates the VIN check digit (position 9) using the standard
 // weighted transliteration algorithm. Returns true if the check digit is correct.
 func (v *Validator) checkDigitValid(vin string) bool {
@@ -460,34 +654,63 @@ func (v *Validator) isTestPattern(vin string) bool {
 	return false
 }
 
-// isEncodedData detects if the match is likely part of encoded data (base64, hex dumps, etc.).
-func (v *Validator) isEncodedData(line, match string) bool {
-	// Hex dump patterns. The previous `Count(line,"0x") >= 3` rule dropped the
-	// whole line — and the valid VIN on it — whenever it mentioned three hex
-	// literals, e.g. "VIN 1HGBH41JXMN109186 colors 0xFF0000 0x00FF00 0x0000FF"
-	// (L47). A genuine hex dump is DOMINATED by 0x tokens, so we instead require
-	// a strict majority of whitespace tokens to be 0x-prefixed hex words.
+// lineLooksEncoded reports whether the LINE as a whole looks like encoded data
+// (a hex dump). This verdict is identical for every match on the line, so the
+// scan path computes it once per line and passes it to isEncodedDataAt rather
+// than recomputing it per match (it walks the whole line twice).
+//
+// Hex dump patterns. The previous `Count(line,"0x") >= 3` rule dropped the
+// whole line — and the valid VIN on it — whenever it mentioned three hex
+// literals, e.g. "VIN 1HGBH41JXMN109186 colors 0xFF0000 0x00FF00 0x0000FF"
+// (L47). A genuine hex dump is DOMINATED by 0x tokens, so we instead require
+// a strict majority of whitespace tokens to be 0x-prefixed hex words.
+func (v *Validator) lineLooksEncoded(line string) bool {
 	if looksLikeHexDump(line) {
 		return true
 	}
 	if strings.Count(line, " ") > 10 && isHexDump(line) {
 		return true
 	}
+	return false
+}
 
-	// Base64-like context (long unbroken alphanumeric strings)
-	idx := strings.Index(line, match)
-	if idx >= 0 {
-		before := idx - 1
-		after := idx + len(match)
-		if before >= 0 && isAlphanumeric(line[before]) {
-			return true
-		}
-		if after < len(line) && isAlphanumeric(line[after]) {
-			return true
-		}
+// isEncodedDataAt is the offset-based form of isEncodedData. lineIsHexDump is
+// the precomputed per-line lineLooksEncoded verdict; start/end are the match's
+// byte offsets within line, so the base64-adjacency check needs no
+// strings.Index rescan (which would also have found the FIRST occurrence of a
+// duplicated token rather than this match).
+func (v *Validator) isEncodedDataAt(line string, start, end int, lineIsHexDump bool) bool {
+	if lineIsHexDump {
+		return true
+	}
+
+	// Base64-like context (long unbroken alphanumeric strings): a match flanked
+	// by an alphanumeric byte is part of a longer token, not a standalone VIN.
+	before := start - 1
+	if before >= 0 && isAlphanumeric(line[before]) {
+		return true
+	}
+	if end < len(line) && isAlphanumeric(line[end]) {
+		return true
 	}
 
 	return false
+}
+
+// isEncodedData detects if the match is likely part of encoded data (base64,
+// hex dumps, etc.). Retained for the detector.Validator interface and external
+// callers; the internal scan path uses isEncodedDataAt with precomputed offsets
+// and a hoisted per-line hex-dump verdict. Behavior is identical to the
+// historical implementation, including using the FIRST occurrence of match.
+func (v *Validator) isEncodedData(line, match string) bool {
+	idx := strings.Index(line, match)
+	start := idx
+	end := idx + len(match)
+	if idx < 0 {
+		// No occurrence: only the per-line hex-dump verdict can apply.
+		return v.lineLooksEncoded(line)
+	}
+	return v.isEncodedDataAt(line, start, end, v.lineLooksEncoded(line))
 }
 
 func isAlphanumeric(b byte) bool {
@@ -524,26 +747,41 @@ func looksLikeHexDump(line string) bool {
 	return hex >= 3 && hex*2 > len(toks)
 }
 
-// buildContext extracts context information around a match within the current line.
-func (v *Validator) buildContext(line, match string) detector.ContextInfo {
+// contextWindow is the number of characters captured before and after a match
+// for BeforeText/AfterText context.
+const contextWindow = 50
+
+// buildContextAt builds context information around a match given its byte
+// offsets within line, slicing a bounded ±contextWindow window instead of
+// re-scanning the whole line with strings.Index (which is the offset-based
+// equivalent of buildContext).
+func (v *Validator) buildContextAt(line string, start, end int) detector.ContextInfo {
 	ctx := detector.ContextInfo{
 		FullLine: line,
 	}
 
-	idx := strings.Index(line, match)
-	if idx >= 0 {
-		start := idx - 50
-		if start < 0 {
-			start = 0
-		}
-		ctx.BeforeText = line[start:idx]
-
-		end := idx + len(match) + 50
-		if end > len(line) {
-			end = len(line)
-		}
-		ctx.AfterText = line[idx+len(match) : end]
+	bStart := start - contextWindow
+	if bStart < 0 {
+		bStart = 0
 	}
+	ctx.BeforeText = line[bStart:start]
+
+	aEnd := end + contextWindow
+	if aEnd > len(line) {
+		aEnd = len(line)
+	}
+	ctx.AfterText = line[end:aEnd]
 
 	return ctx
+}
+
+// buildContext extracts context information around a match within the current
+// line. Retained for the detector.Validator interface and external callers; the
+// internal scan path uses buildContextAt with the match's known offsets.
+func (v *Validator) buildContext(line, match string) detector.ContextInfo {
+	idx := strings.Index(line, match)
+	if idx < 0 {
+		return detector.ContextInfo{FullLine: line}
+	}
+	return v.buildContextAt(line, idx, idx+len(match))
 }
