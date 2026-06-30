@@ -44,17 +44,6 @@ func NewParallelProcessor(observer *observability.StandardObserver) *ParallelPro
 	}
 }
 
-// NewAdaptiveParallelProcessor creates a parallel processor with adaptive resource management
-func NewAdaptiveParallelProcessor(config AdaptiveConfig, observer *observability.StandardObserver) *ParallelProcessor {
-	// Use adaptive processor instead of fixed worker pool
-	adaptiveProcessor := NewAdaptiveProcessor(config, observer)
-
-	return &ParallelProcessor{
-		workerPool: adaptiveProcessor.workerPool, // Use the adaptive processor's worker pool
-		observer:   observer,
-	}
-}
-
 // ProgressCallback is called when a file is completed
 type ProgressCallback func(completed, total int, currentFile string)
 
