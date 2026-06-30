@@ -1,0 +1,4 @@
+=== REDACTED ===
+The quick brown fox jumps over the lazy dog.
+Meeting at 3pm to discuss the roadmap for version 2.
+=== FINDINGS (sorted) ===

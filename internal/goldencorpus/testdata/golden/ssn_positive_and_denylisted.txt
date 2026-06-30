@@ -1,0 +1,3 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH       FILE
+-------------------------------------------------------------------------------------
+[HIGH  ] ssn          SSN                   100.00% line     1 449-87-4100 <golden:ssn_positive_and_denylisted>

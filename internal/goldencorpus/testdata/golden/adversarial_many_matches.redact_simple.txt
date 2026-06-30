@@ -1,0 +1,26 @@
+=== REDACTED ===
+[EMAIL-REDACTED] line 0
+[EMAIL-REDACTED] line 1
+[EMAIL-REDACTED] line 2
+[EMAIL-REDACTED] line 3
+[EMAIL-REDACTED] line 4
+[EMAIL-REDACTED] line 5
+[EMAIL-REDACTED] line 6
+[EMAIL-REDACTED] line 7
+[EMAIL-REDACTED] line 8
+[EMAIL-REDACTED] line 9
+[EMAIL-REDACTED] line 10
+[EMAIL-REDACTED] line 11
+=== FINDINGS (sorted) ===
+type=BUSINESS line=1 conf=low match=user00@example.com
+type=BUSINESS line=2 conf=low match=user01@example.com
+type=BUSINESS line=3 conf=low match=user02@example.com
+type=BUSINESS line=4 conf=low match=user03@example.com
+type=BUSINESS line=5 conf=low match=user04@example.com
+type=BUSINESS line=6 conf=low match=user05@example.com
+type=BUSINESS line=7 conf=low match=user06@example.com
+type=BUSINESS line=8 conf=low match=user07@example.com
+type=BUSINESS line=9 conf=low match=user08@example.com
+type=BUSINESS line=10 conf=low match=user09@example.com
+type=BUSINESS line=11 conf=low match=user10@example.com
+type=BUSINESS line=12 conf=low match=user11@example.com

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="people.csv" classname="security-scan" time="0.001">
+      <failure message="6 security findings detected" type="SECURITY_FINDINGS">Line 2: BUSINESS detected with 75.0% confidence (MEDIUM)&#xA;Match: alice@example.com&#xA;Validator: email&#xA;Line 3: BUSINESS detected with 75.0% confidence (MEDIUM)&#xA;Match: bob@example.org&#xA;Validator: email&#xA;Line 2: SSN detected with 75.0% confidence (MEDIUM)&#xA;Match: 449-87-4100&#xA;Validator: ssn&#xA;Line 3: SSN detected with 75.0% confidence (MEDIUM)&#xA;Match: 529-11-2233&#xA;Validator: ssn&#xA;Line 3: MASTERCARD detected with 25.0% confidence (LOW)&#xA;Match: 5425233430109903&#xA;Validator: creditcard&#xA;Line 2: VISA detected with 25.0% confidence (LOW)&#xA;Match: 4532015112830366&#xA;Validator: creditcard</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -6,96 +6,20 @@ package validators
 import (
 	"fmt"
 
-	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
 	"github.com/awslabs/ferret-scan/internal/observability"
-	"github.com/awslabs/ferret-scan/internal/preprocessors"
 	"github.com/awslabs/ferret-scan/internal/router"
 )
 
-// DualPathIntegration provides integration between the main application and dual-path bridge
-type DualPathIntegration struct {
-	enhancedBridge  *EnhancedValidatorBridge
-	observer        *observability.StandardObserver
-	contextAnalyzer *context.ContextAnalyzer
-	fileRouter      *router.FileRouter
-}
-
-// NewDualPathIntegration creates a new dual-path integration component
-func NewDualPathIntegration(observer *observability.StandardObserver) *DualPathIntegration {
-	config := &DualPathConfig{
-		EnableContextIntegration: true,
-		EnableFallbackMode:       true,
-		EnableMetrics:            true,
-		EnableDebugLogging:       observer != nil && observer.DebugObserver != nil,
-		MaxRetries:               3,
-	}
-
-	integration := &DualPathIntegration{
-		enhancedBridge:  NewEnhancedValidatorBridge(config),
-		observer:        observer,
-		contextAnalyzer: context.NewContextAnalyzer(),
-	}
-
-	// Set observer on the bridge
-	if observer != nil {
-		integration.enhancedBridge.SetObserver(observer)
-	}
-
-	return integration
-}
-
-// RegisterDocumentValidators registers all non-metadata validators for document body content
-func (dpi *DualPathIntegration) RegisterDocumentValidators(validators map[string]detector.Validator) {
-	for name, validator := range validators {
-		// Skip metadata validator - it will be handled separately
-		if name == "METADATA" {
-			continue
-		}
-		dpi.enhancedBridge.RegisterDocumentValidator(validator)
-	}
-}
-
-// SetFileRouter sets the file router for metadata capability detection
-func (dpi *DualPathIntegration) SetFileRouter(fileRouter *router.FileRouter) {
-	if fileRouter == nil {
-		return
-	}
-	dpi.fileRouter = fileRouter
-	// Set the file router on the content router in the enhanced bridge
-	if dpi.enhancedBridge != nil && dpi.enhancedBridge.contentRouter != nil {
-		dpi.enhancedBridge.contentRouter.SetFileRouter(fileRouter)
-	}
-}
-
-// SetMetadataValidator sets the metadata validator for metadata content
-func (dpi *DualPathIntegration) SetMetadataValidator(validator detector.Validator) error {
-	// Check if the validator implements PreprocessorAwareValidator
-	if metadataValidator, ok := validator.(PreprocessorAwareValidator); ok {
-		dpi.enhancedBridge.SetMetadataValidator(metadataValidator)
-		return nil
-	}
-
-	// If not, wrap it with a compatibility adapter
-	adapter := &MetadataValidatorAdapter{
-		validator: validator,
-		observer:  dpi.observer,
-	}
-	dpi.enhancedBridge.SetMetadataValidator(adapter)
-	return nil
-}
-
-// ProcessContent processes content using the dual-path validation system
-func (dpi *DualPathIntegration) ProcessContent(content *preprocessors.ProcessedContent) ([]detector.Match, error) {
-	return dpi.enhancedBridge.ProcessContent(content)
-}
-
-// GetMetrics returns current metrics for monitoring
-func (dpi *DualPathIntegration) GetMetrics() *DualPathMetrics {
-	return dpi.enhancedBridge.GetMetrics()
-}
-
-// MetadataValidatorAdapter adapts a standard validator to work with the metadata bridge
+// MetadataValidatorAdapter adapts a standard detector.Validator into the
+// PreprocessorAwareValidator interface the metadata path expects. It is used by
+// Detector.SetupValidators when the configured METADATA validator does not
+// itself implement PreprocessorAwareValidator.
+//
+// (This is the only surviving type from the former dual-path integration layer;
+// the EnhancedManagerWrapper / EnhancedValidatorManager / ValidatorIntegrationHelper /
+// DualPathIntegration pass-through chain was collapsed into Detector in v2
+// Phase 2, Move B — see detector.go and docs/proposals/V2_ARCHITECTURE.md.)
 type MetadataValidatorAdapter struct {
 	validator detector.Validator
 	observer  *observability.StandardObserver
@@ -167,46 +91,4 @@ func (mva *MetadataValidatorAdapter) SetPreprocessorValidationRules(rules map[st
 		mva.observer.DebugObserver.LogDetail("metadata_adapter",
 			fmt.Sprintf("SetPreprocessorValidationRules called with %d rules (no-op for standard validator)", len(rules)))
 	}
-}
-
-// ValidatorIntegrationHelper provides helper methods for integrating with existing code
-type ValidatorIntegrationHelper struct {
-	dualPathIntegration *DualPathIntegration
-}
-
-// NewValidatorIntegrationHelper creates a new integration helper
-func NewValidatorIntegrationHelper(observer *observability.StandardObserver) *ValidatorIntegrationHelper {
-	return &ValidatorIntegrationHelper{
-		dualPathIntegration: NewDualPathIntegration(observer),
-	}
-}
-
-// SetFileRouter sets the file router for the dual path integration
-func (vih *ValidatorIntegrationHelper) SetFileRouter(fileRouter *router.FileRouter) {
-	vih.dualPathIntegration.SetFileRouter(fileRouter)
-}
-
-// SetupDualPathValidation sets up dual-path validation with existing validators
-func (vih *ValidatorIntegrationHelper) SetupDualPathValidation(validators map[string]detector.Validator) error {
-	// Register document validators (all except metadata)
-	vih.dualPathIntegration.RegisterDocumentValidators(validators)
-
-	// Set metadata validator if it exists
-	if metadataValidator, exists := validators["METADATA"]; exists {
-		if err := vih.dualPathIntegration.SetMetadataValidator(metadataValidator); err != nil {
-			return fmt.Errorf("failed to set metadata validator: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// ProcessContentWithDualPath processes content using dual-path validation
-func (vih *ValidatorIntegrationHelper) ProcessContentWithDualPath(content *preprocessors.ProcessedContent) ([]detector.Match, error) {
-	return vih.dualPathIntegration.ProcessContent(content)
-}
-
-// GetDualPathMetrics returns metrics from the dual-path system
-func (vih *ValidatorIntegrationHelper) GetDualPathMetrics() *DualPathMetrics {
-	return vih.dualPathIntegration.GetMetrics()
 }

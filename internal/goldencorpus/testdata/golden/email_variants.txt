@@ -1,0 +1,5 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                         FILE
+-------------------------------------------------------------------------------------------------------
+[HIGH  ] email        BUSINESS              100.00% line     1 support@acme-corp.com         <golden:email_variants>
+[HIGH  ] email        GMAIL                 100.00% line     2 alice@gmail.com               <golden:email_variants>
+[MEDIUM] email        BUSINESS               88.00% line     3 no-reply@internal.example.org <golden:email_variants>

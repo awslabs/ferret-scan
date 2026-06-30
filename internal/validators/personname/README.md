@@ -184,28 +184,29 @@ internal/validators/personname/
 
 ### Interface Implementation
 
-The validator implements both required interfaces:
+The validator implements the core `detector.Validator` interface:
 
 ```go
-// Core validation interface
+// Core validation interface (the live contract)
 type Validator interface {
     Validate(filePath string) ([]Match, error)
     ValidateContent(content string, originalPath string) ([]Match, error)
     CalculateConfidence(match string) (float64, map[string]bool)
     AnalyzeContext(match string, context ContextInfo) float64
 }
+```
 
-// Enhanced validation interface
-type EnhancedValidator interface {
-    ValidateWithContext(content string, filePath string, contextInsights ContextInsights) ([]Match, error)
-    SetLanguage(lang string) error
-    GetSupportedLanguages() []string
-}
+It also provides additional concrete methods used by the help system and
+context-aware tests:
 
-// Help provider interface
-type HelpProvider interface {
-    GetCheckInfo() CheckInfo
-}
+```go
+// Concrete helper methods (not a named interface as of v2 Phase 2, which
+// removed the dead EnhancedValidator interface — see
+// docs/proposals/V2_ARCHITECTURE.md gap 3.1)
+func (v *Validator) ValidateWithContext(content, filePath string, contextInsights ContextInsights) ([]Match, error)
+func (v *Validator) SetLanguage(lang string) error
+func (v *Validator) GetSupportedLanguages() []string
+func (v *Validator) GetCheckInfo() CheckInfo // HelpProvider
 ```
 
 ### Cross-Validator Integration

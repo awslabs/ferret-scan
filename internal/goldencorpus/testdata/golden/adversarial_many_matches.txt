@@ -1,0 +1,14 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH              FILE
+--------------------------------------------------------------------------------------------
+[LOW   ] email        BUSINESS               40.00% line     1 user00@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     2 user01@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     3 user02@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     4 user03@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     5 user04@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     6 user05@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     7 user06@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     8 user07@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line     9 user08@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line    10 user09@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line    11 user10@example.com <golden:adversarial_many_matches>
+[LOW   ] email        BUSINESS               40.00% line    12 user11@example.com <golden:adversarial_many_matches>

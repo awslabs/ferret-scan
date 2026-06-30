@@ -1,0 +1,82 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 6)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nArtist: john.doe@example.com\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AUTHOR_INFO"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "metadata"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "clip.wav",
+        "start_line": 6
+      },
+      "message": "Author information detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Author Info Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected document comments in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** HIGH (100.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- context_impact: -0.04999999999999999\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DOCUMENT_COMMENTS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "metadata"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "clip.wav",
+        "start_line": 7
+      },
+      "message": "Document comments detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Document Comments Detected",
+      "severity": "Critical"
+    }
+  ]
+}

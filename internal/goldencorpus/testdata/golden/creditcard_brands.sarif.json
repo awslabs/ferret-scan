@@ -1,0 +1,263 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_brands>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "amex \namex 374245455400126"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 21,
+                  "snippet": {
+                    "text": "amex 374245455400126"
+                  },
+                  "startColumn": 6,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "AMERICAN_EXPRESS Detected in <golden:creditcard_brands> at line 3 (confidence: 100.0% - HIGH). Matched text: '374245455400126'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "card_type": "AMERICAN_EXPRESS",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:creditcard_brands>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "American Express"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 75,
+          "ruleId": "AMERICAN_EXPRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_brands>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "mastercard \nmastercard 5425233430109903"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 28,
+                  "snippet": {
+                    "text": "mastercard 5425233430109903"
+                  },
+                  "startColumn": 12,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "MASTERCARD Detected in <golden:creditcard_brands> at line 2 (confidence: 100.0% - HIGH). Matched text: '5425233430109903'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "card_type": "MASTERCARD",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:creditcard_brands>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "MasterCard"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 75,
+          "ruleId": "MASTERCARD"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_brands>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "visa \nvisa 4532015112830366"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 22,
+                  "snippet": {
+                    "text": "visa 4532015112830366"
+                  },
+                  "startColumn": 6,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "VISA Detected in <golden:creditcard_brands> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532015112830366'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:creditcard_brands>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 75,
+          "ruleId": "VISA"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type AMERICAN_EXPRESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/AMERICAN_EXPRESS.md",
+              "id": "AMERICAN_EXPRESS",
+              "shortDescription": {
+                "text": "AMERICAN_EXPRESS Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type MASTERCARD was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/MASTERCARD.md",
+              "id": "MASTERCARD",
+              "shortDescription": {
+                "text": "MASTERCARD Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type VISA was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "id": "VISA",
+              "shortDescription": {
+                "text": "VISA Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

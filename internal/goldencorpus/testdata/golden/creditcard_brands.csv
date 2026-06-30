@@ -1,0 +1,4 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:creditcard_brands>,AMERICAN_EXPRESS,HIGH,100.0,3,374245455400126
+<golden:creditcard_brands>,MASTERCARD,HIGH,100.0,2,5425233430109903
+<golden:creditcard_brands>,VISA,HIGH,100.0,1,4532015112830366

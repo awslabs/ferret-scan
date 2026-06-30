@@ -1,0 +1,496 @@
+{
+  "results": [
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user00",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user00@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user01",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user01@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user02",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user02@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 4,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user03",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user03@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 5,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user04",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user04@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 6,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user05",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user05@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 7,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user06",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user06@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 8,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user07",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user07@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 9,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user08",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user08@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 10,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user09",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user09@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 11,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user10",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user10@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:adversarial_many_matches>",
+      "line_number": 12,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": -20,
+        "domain": "example.com",
+        "email_provider": "BUSINESS",
+        "original_confidence": 40,
+        "original_file": "<golden:adversarial_many_matches>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "tld": "com",
+        "username": "user11",
+        "validation_checks": {
+          "business_pattern": false,
+          "no_consecutive_dots": true,
+          "not_test_email": false,
+          "reasonable_length": true,
+          "valid_domain": true,
+          "valid_format": true,
+          "valid_tld": true,
+          "valid_username": true
+        },
+        "validation_path": "document"
+      },
+      "text": "user11@example.com",
+      "type": "BUSINESS",
+      "validator": "email"
+    }
+  ]
+}

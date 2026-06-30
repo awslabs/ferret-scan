@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                          FILE
+--------------------------------------------------------------------------------------------------------
+[HIGH  ] metadata     DOCUMENT_COMMENTS     100.00% line     7 contact 212-555-0142 or AKI... clip.wav
+[MEDIUM] metadata     AUTHOR_INFO            80.00% line     6 john.doe@example.com           clip.wav

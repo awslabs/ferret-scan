@@ -1,0 +1,485 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "b,bob@example.org,529-11-2233,\nBob,bob@example.org,529-11-2233,5425233430109903"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 49,
+                  "snippet": {
+                    "text": "Bob,bob@example.org,529-11-2233,5425233430109903"
+                  },
+                  "startColumn": 33,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "MASTERCARD Detected in people.csv at line 3 (confidence: 25.0% - LOW). Matched text: '5425233430109903'"
+          },
+          "properties": {
+            "confidence": 25,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "MASTERCARD",
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -100,
+              "original_confidence": 5,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "MasterCard"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 37.5,
+          "ruleId": "MASTERCARD"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "alice@example.com,449-87-4100,\nAlice,alice@example.com,449-87-4100,4532015112830366"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 53,
+                  "snippet": {
+                    "text": "Alice,alice@example.com,449-87-4100,4532015112830366"
+                  },
+                  "startColumn": 37,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "VISA Detected in people.csv at line 2 (confidence: 25.0% - LOW). Matched text: '4532015112830366'"
+          },
+          "properties": {
+            "confidence": 25,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -100,
+              "original_confidence": 5,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 37.5,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Alice,\nAlice,alice@example.com,449-87-4100,4532015112830366\n,449-87-4100,4532015112830366"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "Alice,alice@example.com,449-87-4100,4532015112830366"
+                  },
+                  "startColumn": 7,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in people.csv at line 2 (confidence: 75.0% - MEDIUM). Matched text: 'alice@example.com'"
+          },
+          "properties": {
+            "confidence": 75,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -5,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 55,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "alice",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 62.5,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Bob,\nBob,bob@example.org,529-11-2233,5425233430109903\n,529-11-2233,5425233430109903"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 20,
+                  "snippet": {
+                    "text": "Bob,bob@example.org,529-11-2233,5425233430109903"
+                  },
+                  "startColumn": 5,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in people.csv at line 3 (confidence: 75.0% - MEDIUM). Matched text: 'bob@example.org'"
+          },
+          "properties": {
+            "confidence": 75,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -5,
+              "domain": "example.org",
+              "email_provider": "BUSINESS",
+              "original_confidence": 55,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "org",
+              "username": "bob",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 62.5,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Alice,alice@example.com,\nAlice,alice@example.com,449-87-4100,4532015112830366\n,4532015112830366"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 36,
+                  "snippet": {
+                    "text": "Alice,alice@example.com,449-87-4100,4532015112830366"
+                  },
+                  "startColumn": 25,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in people.csv at line 2 (confidence: 75.0% - MEDIUM). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 75,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -30,
+              "original_confidence": 55,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 87.5,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Bob,bob@example.org,\nBob,bob@example.org,529-11-2233,5425233430109903\n,5425233430109903"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 32,
+                  "snippet": {
+                    "text": "Bob,bob@example.org,529-11-2233,5425233430109903"
+                  },
+                  "startColumn": 21,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in people.csv at line 3 (confidence: 75.0% - MEDIUM). Matched text: '529-11-2233'"
+          },
+          "properties": {
+            "confidence": 75,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -30,
+              "original_confidence": 55,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 87.5,
+          "ruleId": "SSN"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/BUSINESS.md",
+              "id": "BUSINESS",
+              "shortDescription": {
+                "text": "BUSINESS Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type MASTERCARD was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/MASTERCARD.md",
+              "id": "MASTERCARD",
+              "shortDescription": {
+                "text": "MASTERCARD Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations."
+              },
+              "help": {
+                "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/SSN.md",
+              "id": "SSN",
+              "shortDescription": {
+                "text": "Social Security Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type VISA was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "id": "VISA",
+              "shortDescription": {
+                "text": "VISA Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

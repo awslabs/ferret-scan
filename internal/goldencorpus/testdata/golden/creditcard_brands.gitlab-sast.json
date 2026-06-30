@@ -1,0 +1,108 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected american express credit card in this file.\n\n**Location:** <golden:creditcard_brands> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\namex 374245455400126\n```\n\n**Additional Information:**\n- card_type: AMERICAN_EXPRESS\n- context_impact: 15\n- source: preprocessed_content\n- vendor: American Express\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AMERICAN_EXPRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:creditcard_brands>",
+        "start_line": 3
+      },
+      "message": "American Express credit card detected: [HIDDEN] (confidence: HIGH)",
+      "name": "American Express Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected mastercard credit card in this file.\n\n**Location:** <golden:creditcard_brands> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nmastercard 5425233430109903\n```\n\n**Additional Information:**\n- card_type: MASTERCARD\n- context_impact: 15\n- source: preprocessed_content\n- vendor: MasterCard\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "MASTERCARD"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:creditcard_brands>",
+        "start_line": 2
+      },
+      "message": "Mastercard credit card detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Mastercard Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** <golden:creditcard_brands> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nvisa 4532015112830366\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 15\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "VISA"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:creditcard_brands>",
+        "start_line": 1
+      },
+      "message": "Visa credit card detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Visa Detected",
+      "severity": "Critical"
+    }
+  ]
+}

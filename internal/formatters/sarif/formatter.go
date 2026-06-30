@@ -12,19 +12,22 @@ import (
 	"github.com/awslabs/ferret-scan/internal/version"
 )
 
-// Formatter implements the formatters.Formatter interface for SARIF output
-type Formatter struct {
-	mapper      *VulnerabilityMapper
-	ruleManager *RuleManager
-}
+// Formatter implements the formatters.Formatter interface for SARIF output.
+//
+// It is intentionally stateless: the per-call rule set is built fresh inside
+// each Format() call (see below). Earlier versions cached a RuleManager on the
+// Formatter, which — because the formatter is registered as a process singleton
+// in formatters.DefaultRegistry — accumulated rules across Format() calls, so a
+// SARIF report's tool.driver.rules array depended on everything formatted
+// earlier in the same process. Harmless for the CLI (one Format per process)
+// but a real cross-invocation contamination bug for long-lived embedders (the
+// web server formats repeatedly). Building the RuleManager per call makes each
+// report depend only on its own matches and is concurrency-safe.
+type Formatter struct{}
 
-// NewFormatter creates a new SARIF formatter instance
+// NewFormatter creates a new SARIF formatter instance.
 func NewFormatter() *Formatter {
-	ruleManager := NewRuleManager()
-	return &Formatter{
-		mapper:      NewVulnerabilityMapper(ruleManager),
-		ruleManager: ruleManager,
-	}
+	return &Formatter{}
 }
 
 // Name returns the name of the formatter
@@ -55,8 +58,13 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Apply confidence filtering before conversion
 	filteredMatches := shared.FilterMatchesByConfidence(matches, options)
 
+	// Fresh per-call rule manager + mapper so the rules array derives only from
+	// THIS call's matches (no cross-call accumulation).
+	ruleManager := NewRuleManager()
+	mapper := NewVulnerabilityMapper(ruleManager)
+
 	// Build the SARIF report
-	report := f.buildReport(filteredMatches, suppressedMatches, options)
+	report := f.buildReport(mapper, ruleManager, filteredMatches, suppressedMatches, options)
 
 	// Marshal to JSON with indentation for readability
 	jsonBytes, err := json.MarshalIndent(report, "", "  ")
@@ -67,14 +75,16 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	return string(jsonBytes), nil
 }
 
-// buildReport constructs the complete SARIF report structure
-func (f *Formatter) buildReport(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) *SARIFReport {
+// buildReport constructs the complete SARIF report structure. The mapper and
+// ruleManager are per-call (constructed in Format) so the rules array reflects
+// only this report's matches.
+func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleManager, matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) *SARIFReport {
 	// Convert matches to SARIF results
 	var results []SARIFResult
 
 	// Process active matches
 	for _, match := range matches {
-		result, err := f.mapper.MapToSARIFResult(match, options)
+		result, err := mapper.MapToSARIFResult(match, options)
 		if err != nil {
 			// Log error but continue processing other matches
 			// In production, you might want to use a proper logger here
@@ -85,7 +95,7 @@ func (f *Formatter) buildReport(matches []detector.Match, suppressedMatches []de
 
 	// Process suppressed matches
 	for _, suppressed := range suppressedMatches {
-		result, err := f.mapper.MapSuppressedMatch(suppressed, options)
+		result, err := mapper.MapSuppressedMatch(suppressed, options)
 		if err != nil {
 			// Log error but continue processing other matches
 			continue
@@ -94,7 +104,7 @@ func (f *Formatter) buildReport(matches []detector.Match, suppressedMatches []de
 	}
 
 	// Build tool driver with metadata and rules
-	driver := f.buildDriver()
+	driver := f.buildDriver(ruleManager)
 
 	// Create the SARIF run with version control provenance
 	run := SARIFRun{
@@ -115,13 +125,14 @@ func (f *Formatter) buildReport(matches []detector.Match, suppressedMatches []de
 	return report
 }
 
-// buildDriver constructs the SARIF tool driver with metadata and rules
-func (f *Formatter) buildDriver() SARIFDriver {
+// buildDriver constructs the SARIF tool driver with metadata and rules from the
+// per-call ruleManager.
+func (f *Formatter) buildDriver(ruleManager *RuleManager) SARIFDriver {
 	// Get version information
 	versionStr := version.Short()
 
 	// Collect all rules that were encountered during processing
-	rules := f.ruleManager.GetAllRules()
+	rules := ruleManager.GetAllRules()
 
 	driver := SARIFDriver{
 		Name:            ToolName,

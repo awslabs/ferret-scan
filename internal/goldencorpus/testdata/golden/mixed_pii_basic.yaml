@@ -1,0 +1,171 @@
+results:
+    - text: 4532-0151-1283-0366
+      line_number: 4
+      type: VISA
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:mixed_pii_basic>
+      validator: creditcard
+      metadata:
+        card_type: VISA
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: 15
+        original_confidence: 100
+        original_file: <golden:mixed_pii_basic>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: true
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: true
+            vendor: true
+        validation_path: document
+        vendor: Visa
+    - text: john.doe@example.com
+      line_number: 1
+      type: BUSINESS
+      confidence: 33
+      confidence_level: LOW
+      filename: <golden:mixed_pii_basic>
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 33
+        original_file: <golden:mixed_pii_basic>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: john.doe
+        validation_checks:
+            business_pattern: true
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: 212-555-0142
+      line_number: 1
+      type: PHONE
+      confidence: 73
+      confidence_level: MEDIUM
+      filename: <golden:mixed_pii_basic>
+      validator: phone
+      metadata:
+        clean_number: "2125550142"
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        country: US/CA
+        format: XXX-XXX-XXXX
+        original_confidence: 73
+        original_file: <golden:mixed_pii_basic>
+        pattern_name: US_Dashed
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            not_repeating: true
+            not_sequential: true
+            not_ssn_pattern: true
+            not_test_number: false
+            not_timestamp: true
+            reasonable_length: true
+            valid_country: true
+            valid_digits: true
+            valid_format: true
+        validation_path: document
+    - text: AKIAIOSFODNN7EXAMPLE
+      line_number: 2
+      type: AWS_ACCESS_KEY
+      confidence: 69
+      confidence_level: MEDIUM
+      filename: <golden:mixed_pii_basic>
+      validator: secrets
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doc_type: Unknown
+        context_doctype: Unknown
+        context_domain: Unknown
+        detection_method: keyword_pattern
+        environment_type: test
+        original_confidence: 69
+        secret_type: AWS_ACCESS_KEY
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            has_entropy: true
+            min_length: true
+            not_common_word: true
+            not_test_data: true
+            specific_pattern: true
+            test_environment_penalty: true
+            valid_format: true
+        validation_path: document
+    - text: 449-87-4100
+      line_number: 3
+      type: SSN
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:mixed_pii_basic>
+      validator: ssn
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: 40
+        original_confidence: 100
+        original_file: <golden:mixed_pii_basic>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            format: true
+            not_common_pattern: true
+            not_repeating: true
+            not_sequential: true
+            not_test_number: true
+            valid_area: true
+        validation_path: document

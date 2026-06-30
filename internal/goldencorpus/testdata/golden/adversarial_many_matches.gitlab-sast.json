@@ -1,0 +1,342 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 1)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser00@example.com line 0\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 1
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 2)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser01@example.com line 1\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 2
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 3)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser02@example.com line 2\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 3
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 4)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser03@example.com line 3\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 4
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 5)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser04@example.com line 4\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 5
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 6)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser05@example.com line 5\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 6
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 7)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser06@example.com line 6\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 7
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 8)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser07@example.com line 7\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 8,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 8
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 9)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser08@example.com line 8\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 9,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 9
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 10)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser09@example.com line 9\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 10,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 10
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 11)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser10@example.com line 10\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 11,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 11
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:adversarial_many_matches> (line 12)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nuser11@example.com line 11\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 12,
+        "file": "<golden:adversarial_many_matches>",
+        "start_line": 12
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    }
+  ]
+}

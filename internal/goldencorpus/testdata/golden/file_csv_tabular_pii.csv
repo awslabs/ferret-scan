@@ -1,0 +1,7 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<TMPDIR>/people.csv,MASTERCARD,LOW,25.0,3,5425233430109903
+<TMPDIR>/people.csv,VISA,LOW,25.0,2,4532015112830366
+<TMPDIR>/people.csv,BUSINESS,MEDIUM,75.0,2,alice@example.com
+<TMPDIR>/people.csv,BUSINESS,MEDIUM,75.0,3,bob@example.org
+<TMPDIR>/people.csv,SSN,MEDIUM,75.0,2,449-87-4100
+<TMPDIR>/people.csv,SSN,MEDIUM,75.0,3,529-11-2233

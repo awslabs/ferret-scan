@@ -1,0 +1,117 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/settings.json"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "  \"admin_email\": \"\n  \"admin_email\": \"admin@example.com\",\n\","
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 36,
+                  "snippet": {
+                    "text": "  \"admin_email\": \"admin@example.com\","
+                  },
+                  "startColumn": 19,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in settings.json at line 2 (confidence: 36.0% - LOW). Matched text: 'admin@example.com'"
+          },
+          "properties": {
+            "confidence": 36,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "JSON",
+              "context_domain": "Unknown",
+              "context_impact": -4,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 36,
+              "original_file": "<TMPDIR>/settings.json",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "admin",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "positiveKeywords": [
+              "email",
+              "admin"
+            ],
+            "validator": "email"
+          },
+          "rank": 43,
+          "ruleId": "BUSINESS"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/BUSINESS.md",
+              "id": "BUSINESS",
+              "shortDescription": {
+                "text": "BUSINESS Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

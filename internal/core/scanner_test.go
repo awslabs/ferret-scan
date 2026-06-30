@@ -212,6 +212,28 @@ func TestScanContent_DetectsCommonPII(t *testing.T) {
 	}
 }
 
+func TestScanContent_CompleteScanNotFlaggedIncomplete(t *testing.T) {
+	// A normal scan that finishes within the deadline must report
+	// Incomplete=false / empty reason. This guards the happy-path default of
+	// the v2 Phase 1 degraded-coverage signal: only timed-out/cancelled scans
+	// are flagged, never a clean run. (The positive case — a stalled validator
+	// setting Incomplete=true — is covered end-to-end through the real wrapper
+	// stack in internal/validators/execguard_e2e_test.go, where a stub
+	// validator can be injected.)
+	result, err := ScanContent("contact: alice@example.com", ContentScanConfig{
+		Checks: []string{"EMAIL"},
+	})
+	if err != nil {
+		t.Fatalf("ScanContent returned error: %v", err)
+	}
+	if result.Incomplete {
+		t.Errorf("a completed scan must not be flagged Incomplete; reason=%q", result.IncompleteReason)
+	}
+	if result.IncompleteReason != "" {
+		t.Errorf("expected empty IncompleteReason on a clean scan, got %q", result.IncompleteReason)
+	}
+}
+
 func TestScanContent_StampsVirtualSourceKind(t *testing.T) {
 	result, err := ScanContent("contact: alice@example.com", ContentScanConfig{
 		Checks: []string{"EMAIL"},

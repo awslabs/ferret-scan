@@ -1,0 +1,160 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** <golden:mixed_pii_basic> (line 4)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nCard 4532-0151-1283-0366 expires soon.\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 15\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "VISA"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:mixed_pii_basic>",
+        "start_line": 4
+      },
+      "message": "Visa credit card detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Visa Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:mixed_pii_basic> (line 1)\n**Confidence:** LOW (33.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact john.doe@example.com or call 212-555-0142.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:mixed_pii_basic>",
+        "start_line": 1
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <golden:mixed_pii_basic> (line 1)\n**Confidence:** MEDIUM (73.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\nContact john.doe@example.com or call 212-555-0142.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PHONE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "phone"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:mixed_pii_basic>",
+        "start_line": 1
+      },
+      "message": "Phone number detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Phone Number Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <golden:mixed_pii_basic> (line 2)\n**Confidence:** MEDIUM (69.0%)\n**Detected by:** secrets validator\n\n**Matched value:**\n```\nAKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AWS_ACCESS_KEY"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "secrets"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:mixed_pii_basic>",
+        "start_line": 2
+      },
+      "message": "AWS access key detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Aws Access Key Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:mixed_pii_basic> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nSSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 40\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "SSN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "ssn"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:mixed_pii_basic>",
+        "start_line": 3
+      },
+      "message": "Social Security Number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Social Security Number Detected",
+      "severity": "Critical"
+    }
+  ]
+}

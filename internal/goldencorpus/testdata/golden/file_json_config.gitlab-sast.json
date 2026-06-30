@@ -1,0 +1,56 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <TMPDIR>/settings.json (line 2)\n**Confidence:** LOW (36.0%)\n**Detected by:** email validator\n\n**Context:**\n```\n  \"admin_email\": \"admin@example.com\",\n```\n\n**Additional Information:**\n- context_impact: -4\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "settings.json",
+        "start_line": 2
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Business Detected",
+      "severity": "Medium"
+    }
+  ]
+}

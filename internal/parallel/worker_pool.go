@@ -28,7 +28,6 @@ type WorkerPool struct {
 	observer       *observability.StandardObserver
 	retryManager   *resilience.RetryManager
 	circuitBreaker *resilience.CircuitBreakerManager
-	dualPathWorker *DualPathWorker // Add dual-path worker support
 }
 
 // Job represents a file processing task
@@ -91,7 +90,6 @@ func NewWorkerPool(workers int, observer *observability.StandardObserver) *Worke
 		observer:       observer,
 		retryManager:   retryManager,
 		circuitBreaker: circuitBreakerManager,
-		dualPathWorker: NewDualPathWorker(observer), // Initialize dual-path worker
 	}
 }
 

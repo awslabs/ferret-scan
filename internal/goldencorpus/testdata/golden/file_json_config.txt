@@ -1,0 +1,3 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH             FILE
+-------------------------------------------------------------------------------------------
+[LOW   ] email        BUSINESS               36.00% line     2 admin@example.com settings.json

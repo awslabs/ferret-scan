@@ -1,0 +1,9 @@
+=== REDACTED ===
+visa [CREDIT-CARD-REDACTED]
+mastercard [CREDIT-CARD-REDACTED]
+amex [CREDIT-CARD-REDACTED]
+invalid-luhn 4532015112830367
+=== FINDINGS (sorted) ===
+type=AMERICAN_EXPRESS line=3 conf=high match=374245455400126
+type=MASTERCARD line=2 conf=high match=5425233430109903
+type=VISA line=1 conf=high match=4532015112830366

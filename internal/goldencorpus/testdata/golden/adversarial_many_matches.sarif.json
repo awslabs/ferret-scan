@@ -1,0 +1,894 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user00@example.com line 0\n line 0"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user00@example.com line 0"
+                  },
+                  "startColumn": 1,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 1 (confidence: 40.0% - LOW). Matched text: 'user00@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user00",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user01@example.com line 1\n line 1"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user01@example.com line 1"
+                  },
+                  "startColumn": 1,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 2 (confidence: 40.0% - LOW). Matched text: 'user01@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user01",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user02@example.com line 2\n line 2"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user02@example.com line 2"
+                  },
+                  "startColumn": 1,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 3 (confidence: 40.0% - LOW). Matched text: 'user02@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user02",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user03@example.com line 3\n line 3"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user03@example.com line 3"
+                  },
+                  "startColumn": 1,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 4 (confidence: 40.0% - LOW). Matched text: 'user03@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user03",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user04@example.com line 4\n line 4"
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user04@example.com line 4"
+                  },
+                  "startColumn": 1,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 5 (confidence: 40.0% - LOW). Matched text: 'user04@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user04",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user05@example.com line 5\n line 5"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user05@example.com line 5"
+                  },
+                  "startColumn": 1,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 6 (confidence: 40.0% - LOW). Matched text: 'user05@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user05",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user06@example.com line 6\n line 6"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user06@example.com line 6"
+                  },
+                  "startColumn": 1,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 7 (confidence: 40.0% - LOW). Matched text: 'user06@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user06",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user07@example.com line 7\n line 7"
+                  },
+                  "startLine": 8
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user07@example.com line 7"
+                  },
+                  "startColumn": 1,
+                  "startLine": 8
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 8 (confidence: 40.0% - LOW). Matched text: 'user07@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user07",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user08@example.com line 8\n line 8"
+                  },
+                  "startLine": 9
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user08@example.com line 8"
+                  },
+                  "startColumn": 1,
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 9 (confidence: 40.0% - LOW). Matched text: 'user08@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user08",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user09@example.com line 9\n line 9"
+                  },
+                  "startLine": 10
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user09@example.com line 9"
+                  },
+                  "startColumn": 1,
+                  "startLine": 10
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 10 (confidence: 40.0% - LOW). Matched text: 'user09@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user09",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user10@example.com line 10\n line 10"
+                  },
+                  "startLine": 11
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user10@example.com line 10"
+                  },
+                  "startColumn": 1,
+                  "startLine": 11
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 11 (confidence: 40.0% - LOW). Matched text: 'user10@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user10",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:adversarial_many_matches>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "user11@example.com line 11\n line 11"
+                  },
+                  "startLine": 12
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "user11@example.com line 11"
+                  },
+                  "startColumn": 1,
+                  "startLine": 12
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 12 (confidence: 40.0% - LOW). Matched text: 'user11@example.com'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:adversarial_many_matches>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "user11",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/BUSINESS.md",
+              "id": "BUSINESS",
+              "shortDescription": {
+                "text": "BUSINESS Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}
