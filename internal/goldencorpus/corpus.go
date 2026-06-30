@@ -524,20 +524,37 @@ func itoa(n int) string { return strconv.Itoa(n) }
 func formatConf(c float64) string { return strconv.FormatFloat(c, 'f', 2, 64) }
 
 // NormalizePaths replaces the per-run temp directory (which varies by machine,
-// run, and OS) with a stable sentinel so file-mode snapshots are portable. The
-// FileRouter stamps the absolute file path into Match.Filename and into metadata
-// keys like "source_file"/"original_file"; without this every file-mode snapshot
-// would change on every run. tmpDir is the t.TempDir() the fixture was written
-// into. Applied BEFORE NormalizeOutput (which canonicalizes JSON), so the
-// sentinel survives JSON round-tripping.
+// run, and OS) with a stable sentinel so file-mode snapshots are portable —
+// including ACROSS OPERATING SYSTEMS. The FileRouter stamps the absolute file
+// path into Match.Filename and metadata keys ("source_file"/"original_file");
+// without this every file-mode snapshot would change on every run, and on
+// Windows the path separator (`\`) and JSON-escaped form (`\\`) would diverge
+// from snapshots generated on Unix. tmpDir is the t.TempDir() the fixture was
+// written into. Applied BEFORE NormalizeOutput (which canonicalizes JSON), so
+// the sentinel survives JSON round-tripping.
+//
+// Cross-platform strategy: replace the temp dir in BOTH its native form and a
+// forward-slash form (covers raw text/csv/yaml and unescaped JSON values), then
+// collapse any path separator that immediately follows the <TMPDIR> sentinel to
+// "/" so a fixture's basename renders identically on every OS. We only rewrite
+// separators adjacent to the sentinel, never globally, so JSON string escaping
+// elsewhere is untouched.
 func NormalizePaths(s, tmpDir string) string {
 	if tmpDir == "" {
 		return s
 	}
-	// Replace the longest form first. JSON encoding may escape path separators
-	// or wrap the path, but the raw substring replacement covers text/csv/yaml
-	// and the unescaped JSON string values. Trailing separator handled too.
-	s = strings.ReplaceAll(s, tmpDir+string('/'), "<TMPDIR>/")
-	s = strings.ReplaceAll(s, tmpDir, "<TMPDIR>")
+	// Forms the temp dir can appear in: native (filepath separators), forward-
+	// slash (Unix / some renderers), and JSON-escaped backslashes (`\\`, Windows
+	// inside JSON string values). Replace longest/most-specific first.
+	fwd := strings.ReplaceAll(tmpDir, "\\", "/")
+	jsonEsc := strings.ReplaceAll(tmpDir, "\\", "\\\\")
+	for _, form := range []string{jsonEsc, tmpDir, fwd} {
+		s = strings.ReplaceAll(s, form, "<TMPDIR>")
+	}
+	// Collapse the separator immediately after the sentinel to "/" so
+	// "<TMPDIR>\notes.txt", "<TMPDIR>\\notes.txt", and "<TMPDIR>/notes.txt" all
+	// normalize to "<TMPDIR>/notes.txt".
+	s = strings.ReplaceAll(s, `<TMPDIR>\\`, "<TMPDIR>/")
+	s = strings.ReplaceAll(s, `<TMPDIR>\`, "<TMPDIR>/")
 	return s
 }
