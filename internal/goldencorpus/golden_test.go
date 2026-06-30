@@ -211,11 +211,18 @@ func checkGolden(t *testing.T, name, got string) {
 	if err != nil {
 		t.Fatalf("read golden %s: %v\n(hint: run `UPDATE_GOLDEN=1 go test ./internal/goldencorpus/...` to create it)", name, err)
 	}
-	if string(want) != got {
+	// CRLF-tolerant comparison. The fixtures are LF-committed and pinned to LF
+	// via .gitattributes, but defensively strip CR so a stray CRLF checkout (or a
+	// formatter emitting CRLF on Windows) cannot make every snapshot diverge on
+	// line endings alone. We lock detection/format content, not EOL bytes.
+	if stripCR(string(want)) != stripCR(got) {
 		t.Errorf("golden mismatch for %s\n--- want (committed) ---\n%s\n--- got (current) ---\n%s\n(if this change is intentional, regenerate with UPDATE_GOLDEN=1)",
 			name, truncate(string(want)), truncate(got))
 	}
 }
+
+// stripCR removes carriage returns so comparisons are line-ending-agnostic.
+func stripCR(s string) string { return strings.ReplaceAll(s, "\r", "") }
 
 // formatExt maps a format name to the golden file extension.
 func formatExt(format string) string {
