@@ -76,6 +76,16 @@ type Result struct {
 	Error    error
 	Duration time.Duration
 
+	// ValidationError is the error returned by the validator run for this file,
+	// if any (e.g. a validator timed out or the scan context was cancelled). It
+	// is ALWAYS captured — unlike the historical behavior where the validator
+	// error was only retained under --debug — so callers can report degraded
+	// coverage on every run (v2 Phase 4). It is kept SEPARATE from Error: a
+	// validator error does not make the file's matches invalid (the file was
+	// read and partially scanned), so it must not trip the matches-discard path
+	// that Error drives in parallel_processor. Nil when validation completed.
+	ValidationError error
+
 	// Redaction results
 	RedactionResult *redactors.RedactionResult
 	RedactedPath    string
@@ -177,6 +187,7 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 
 	var allMatches []detector.Match
 	var lastError error
+	var validationErr error // captured for Result.ValidationError, always (not just --debug)
 	var processedContent *preprocessors.ProcessedContent
 
 	// Wrap file processing with resilience
@@ -221,13 +232,15 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 			return resilience.NewTransientError("no content processed", nil)
 		}
 
-		// Run validators with error isolation
-		matches, validationErr := RunValidators(ctx, job.Validators, processedContent, DefaultValidatorRetryStrategy())
-		if validationErr != nil {
-			// Don't fail entire job for validator errors, just log them
-			if job.Config.Debug {
-				lastError = validationErr
-			}
+		// Run validators with error isolation. Capture the validator error
+		// unconditionally into validationErr (surfaced via Result.ValidationError
+		// regardless of --debug) so callers can report degraded coverage. We do
+		// NOT promote it to lastError: a validator error/timeout does not make
+		// this file's already-gathered matches invalid, so it must not trip the
+		// fatal-error path (which discards the file's matches downstream).
+		matches, verr := RunValidators(ctx, job.Validators, processedContent, DefaultValidatorRetryStrategy())
+		if verr != nil {
+			validationErr = verr
 		}
 
 		allMatches = matches
@@ -288,6 +301,7 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		FilePath:        job.FilePath,
 		Matches:         allMatches,
 		Error:           lastError,
+		ValidationError: validationErr,
 		Duration:        duration,
 		RedactionResult: redactionResult,
 		RedactedPath:    redactedPath,
