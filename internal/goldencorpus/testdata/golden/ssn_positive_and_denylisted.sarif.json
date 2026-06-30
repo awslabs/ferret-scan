@@ -1,0 +1,105 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:ssn_positive_and_denylisted>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "real: \nreal: 449-87-4100"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 18,
+                  "snippet": {
+                    "text": "real: 449-87-4100"
+                  },
+                  "startColumn": 7,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in <golden:ssn_positive_and_denylisted> at line 1 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:ssn_positive_and_denylisted>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations."
+              },
+              "help": {
+                "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/SSN.md",
+              "id": "SSN",
+              "shortDescription": {
+                "text": "Social Security Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

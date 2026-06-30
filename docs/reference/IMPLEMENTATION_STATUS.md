@@ -2,6 +2,18 @@
 
 [← Back to Documentation Index](../README.md)
 
+> ⚠️ **OUTDATED — superseded by the v2 consolidation.** Several subsystems listed
+> below as "✅ COMPLETE" (notably **Phase 3: Cross-Validator Intelligence** —
+> cross-validator signal analysis, statistical confidence calibration, session
+> analytics — and the `EnhancedValidatorManager`'s "advanced features" /
+> `generateRecommendations` code shown in snippets) were **never wired into a
+> production entry point** and were **removed** in v2 Phase 2 as dead code. The
+> live pipeline is the dual-path `Detector` (`internal/validators/detector.go`)
+> with context-based cross-path confidence adjustment in the bridge. See
+> [docs/proposals/V2_ARCHITECTURE.md](../proposals/V2_ARCHITECTURE.md) (gaps 3.1 /
+> 3.3) for what actually ships. Treat the ✅ markers below as historical intent,
+> not current state.
+
 ## 📊 **IMPLEMENTATION COMPLETION: 100%**
 
 ### ✅ **FULLY IMPLEMENTED & WORKING**

@@ -1,0 +1,13 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,1,user00@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,2,user01@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,3,user02@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,4,user03@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,5,user04@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,6,user05@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,7,user06@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,8,user07@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,9,user08@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,10,user09@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,11,user10@example.com
+<golden:adversarial_many_matches>,BUSINESS,LOW,40.0,12,user11@example.com

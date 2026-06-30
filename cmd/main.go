@@ -818,7 +818,7 @@ func main() {
 	listProfiles := flag.Bool("list-profiles", false, "List available profiles in config file")
 	outputFormat := flag.String("format", "", "Output format: text, json, csv, yaml, junit, gitlab-sast, sarif (default: text)")
 	confidenceLevels := flag.String("confidence", "", "Confidence levels to display: high, medium, low, or combinations like 'high,medium'")
-	checksToRun := flag.String("checks", "", "Specific checks to run: CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, all (default: all)")
+	checksToRun := flag.String("checks", "", "Specific checks to run: "+strings.Join(core.CheckNames(), ", ")+", all (default: all)")
 	verbose := flag.Bool("verbose", false, "Display detailed information for each finding")
 	debug := flag.Bool("debug", false, "Enable debug logging to show preprocessing and validation flow")
 	outputFile := flag.String("output", "", "Path to output file (if not specified, output to stdout)")
@@ -1109,19 +1109,7 @@ func main() {
 
 	// Context analyzer is now integrated into the enhanced validator pipeline
 
-	// STREAMLINED IMPLEMENTATION: Context-aware validation optimized for CLI
-	enhancedManagerCfg := validators.DefaultEnhancedValidatorConfig()
-	enhancedManagerCfg.EnableRealTimeMetrics = finalConfig.debug
-	enhancedManager := validators.NewEnhancedValidatorManager(enhancedManagerCfg)
-
-	if mainDebugObs != nil {
-		mainDebugObs.LogDetail("enhanced", "Enhanced Validator Manager configured with:")
-		mainDebugObs.LogDetail("enhanced", "  - In-memory pattern caching enabled (10K patterns)")
-		mainDebugObs.LogDetail("enhanced", "  - Cross-validator analysis enabled")
-		mainDebugObs.LogDetail("enhanced", "  - Pattern learning enabled")
-		mainDebugObs.LogDetail("enhanced", "  - Confidence calibration enabled")
-		mainDebugObs.LogDetail("enhanced", "  - Batch processing (100 items/batch)")
-	}
+	// Context-aware dual-path validation, optimized for CLI.
 
 	// Parse which checks should be run based on --checks parameter
 	// GENAI_DISABLED: Pass false for enableGenAI parameter
@@ -1169,39 +1157,20 @@ func main() {
 		dualPathObserver = observability.NewStandardObserver(observability.ObservabilityMetrics, os.Stderr)
 	}
 
-	dualPathHelper := validators.NewValidatorIntegrationHelper(dualPathObserver)
-	err := dualPathHelper.SetupDualPathValidation(standardValidators)
+	detectorFacade := validators.NewDetector(dualPathObserver)
+	err := detectorFacade.SetupValidators(standardValidators)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to setup dual path validation: %v\n", err)
 	} else if mainDebugObs != nil {
 		mainDebugObs.LogDetail("enhanced", "Set up dual path validation system")
 	}
 
-	// Connect dual path helper to enhanced manager
-	enhancedManager.SetDualPathHelper(dualPathHelper)
-
-	// Register enhanced validators with the manager (excluding metadata validator)
-	for name, validator := range standardValidators {
-		if name == "METADATA" {
-			if mainDebugObs != nil {
-				mainDebugObs.LogDetail("enhanced", "Metadata validator handled by dual path system")
-			}
-			continue
-		}
-		bridge := validators.NewValidatorBridge(name, validator)
-		if err := enhancedManager.RegisterValidator(name, bridge); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to register enhanced validator %s: %v\n", name, err)
-		} else if mainDebugObs != nil {
-			mainDebugObs.LogDetail("enhanced", fmt.Sprintf("Registered enhanced validator: %s", name))
-		}
-	}
-
 	// Keep reference to standard validators for backward compatibility (e.g. help system)
 	allValidators := standardValidators
 
-	// Use enhanced manager wrapper instead of individual validators
-	enhancedWrapper := validators.NewEnhancedManagerWrapper(enhancedManager)
-	validatorsList := []detector.Validator{enhancedWrapper}
+	// The detection facade is the single validator handed to the runner; it
+	// fans out to the document/metadata bridges internally.
+	validatorsList := []detector.Validator{detectorFacade}
 
 	// Handle version command
 	if *showVersion {
@@ -1456,10 +1425,10 @@ func main() {
 		mainDebugObs.LogDetail("main", fmt.Sprintf("File router initialized with %d preprocessors", fileRouter.GetPreprocessorCount()))
 	}
 
-	// Connect FileRouter to dual path helper for metadata capability detection
-	dualPathHelper.SetFileRouter(fileRouter)
+	// Connect FileRouter to the detection facade for metadata capability detection
+	detectorFacade.SetFileRouter(fileRouter)
 	if mainDebugObs != nil {
-		mainDebugObs.LogDetail("main", "Connected FileRouter to dual path helper for metadata filtering")
+		mainDebugObs.LogDetail("main", "Connected FileRouter to detection facade for metadata filtering")
 	}
 
 	// Initialize redaction manager if redaction is enabled
@@ -2296,12 +2265,12 @@ func isFlagSet(name string) bool {
 // parseChecksToRun converts a comma-separated string of check names
 // into a map of enabled checks
 func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
-	// Define available checks
-	availableChecks := []string{
-		"CLOUD_RESOURCES", "CREDIT_CARD", "EMAIL", "PHONE", "IP_ADDRESS", "PASSPORT",
-		"PERSON_NAME", "METADATA", "INTELLECTUAL_PROPERTY",
-		"SOCIAL_MEDIA", "SSN", "SECRETS", "VIN",
-	}
+	// Available checks come from the single source of truth (core.CheckNames,
+	// derived from validatorConstructors) so this list cannot drift from the
+	// validators that actually exist. Order is irrelevant here — it only seeds
+	// a presence map. The validate-and-exit-on-unknown semantics below are
+	// intentionally kept (distinct from core.ParseChecksToRun's fail-open).
+	availableChecks := core.CheckNames()
 
 	result := make(map[string]bool)
 	for _, check := range availableChecks {
@@ -2330,7 +2299,7 @@ func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 		} else if checkStr != "" {
 			// GENAI_DISABLED: Reject unknown checks including COMPREHEND_PII
 			fmt.Fprintf(os.Stderr, "Error: Unknown check type '%s'\n", checkStr)
-			fmt.Fprintf(os.Stderr, "Available checks: CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN\n")
+			fmt.Fprintf(os.Stderr, "Available checks: %s\n", strings.Join(core.CheckNames(), ", "))
 			os.Exit(1)
 		}
 	}

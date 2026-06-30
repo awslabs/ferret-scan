@@ -1,0 +1,108 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:email_variants> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nsupport@acme-corp.com\n```\n\n**Additional Information:**\n- context_impact: 8\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:email_variants>",
+        "start_line": 1
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Business Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:email_variants> (line 3)\n**Confidence:** MEDIUM (88.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nno-reply@internal.example.org\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:email_variants>",
+        "start_line": 3
+      },
+      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Business Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (gmail) in this file.\n\n**Location:** <golden:email_variants> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nalice@gmail.com\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "GMAIL"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:email_variants>",
+        "start_line": 2
+      },
+      "message": "Sensitive data (gmail) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Gmail Detected",
+      "severity": "Critical"
+    }
+  ]
+}

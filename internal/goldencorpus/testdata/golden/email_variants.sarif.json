@@ -1,0 +1,250 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:email_variants>"
+                },
+                "region": {
+                  "endColumn": 22,
+                  "snippet": {
+                    "text": "support@acme-corp.com"
+                  },
+                  "startColumn": 1,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:email_variants> at line 1 (confidence: 100.0% - HIGH). Matched text: 'support@acme-corp.com'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 8,
+              "domain": "acme-corp.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 100,
+              "original_file": "<golden:email_variants>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "support",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": true,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "support"
+            ],
+            "validator": "email"
+          },
+          "rank": 75,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:email_variants>"
+                },
+                "region": {
+                  "endColumn": 30,
+                  "snippet": {
+                    "text": "no-reply@internal.example.org"
+                  },
+                  "startColumn": 1,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in <golden:email_variants> at line 3 (confidence: 88.0% - MEDIUM). Matched text: 'no-reply@internal.example.org'"
+          },
+          "properties": {
+            "confidence": 88,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -12,
+              "domain": "internal.example.org",
+              "email_provider": "BUSINESS",
+              "original_confidence": 88,
+              "original_file": "<golden:email_variants>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "org",
+              "username": "no-reply",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": true,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "positiveKeywords": [
+              "reply"
+            ],
+            "validator": "email"
+          },
+          "rank": 69,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:email_variants>"
+                },
+                "region": {
+                  "endColumn": 16,
+                  "snippet": {
+                    "text": "alice@gmail.com"
+                  },
+                  "startColumn": 1,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "GMAIL Detected in <golden:email_variants> at line 2 (confidence: 100.0% - HIGH). Matched text: 'alice@gmail.com'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 0,
+              "domain": "gmail.com",
+              "email_provider": "GMAIL",
+              "original_confidence": 100,
+              "original_file": "<golden:email_variants>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "alice",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": true,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "email"
+          },
+          "rank": 75,
+          "ruleId": "GMAIL"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/BUSINESS.md",
+              "id": "BUSINESS",
+              "shortDescription": {
+                "text": "BUSINESS Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type GMAIL was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/GMAIL.md",
+              "id": "GMAIL",
+              "shortDescription": {
+                "text": "GMAIL Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

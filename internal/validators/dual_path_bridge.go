@@ -4,6 +4,7 @@
 package validators
 
 import (
+	stdctx "context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 	"github.com/awslabs/ferret-scan/internal/performance"
 	"github.com/awslabs/ferret-scan/internal/preprocessors"
@@ -215,8 +217,16 @@ func (evb *EnhancedValidatorBridge) SetMetadataValidator(validator PreprocessorA
 	evb.metadataBridge.SetValidator(validator)
 }
 
-// ProcessContent processes content using the dual-path validation system
+// ProcessContent processes content using the dual-path validation system. It is
+// a backward-compatible shim that runs with a background context.
 func (evb *EnhancedValidatorBridge) ProcessContent(content *preprocessors.ProcessedContent) ([]detector.Match, error) {
+	return evb.ProcessContentCtx(stdctx.Background(), content)
+}
+
+// ProcessContentCtx is the context-aware form of ProcessContent. The ctx is
+// threaded down to the per-validator dispatch chokepoint so a deadline or
+// cancellation can stop new validator work and recover panics.
+func (evb *EnhancedValidatorBridge) ProcessContentCtx(ctx stdctx.Context, content *preprocessors.ProcessedContent) ([]detector.Match, error) {
 	if content == nil {
 		return nil, fmt.Errorf("processed content is nil")
 	}
@@ -313,7 +323,7 @@ func (evb *EnhancedValidatorBridge) ProcessContent(content *preprocessors.Proces
 			evb.metrics.FallbackActivations++
 			evb.metrics.mu.Unlock()
 
-			return evb.processContentLegacy(content, contextInsights)
+			return evb.processContentLegacy(ctx, content, contextInsights)
 		}
 
 		if finishTiming != nil {
@@ -326,8 +336,23 @@ func (evb *EnhancedValidatorBridge) ProcessContent(content *preprocessors.Proces
 	}
 
 	// Process content through dual paths
-	result, err := evb.processDualPath(routedContent, contextInsights)
+	result, err := evb.processDualPath(ctx, routedContent, contextInsights)
 	if err != nil {
+		// A context cancellation/timeout is terminal: do NOT fall back to a
+		// legacy re-run (it would re-invoke the same runaway validator and
+		// stall again). Return the partial matches gathered so far along with
+		// the context error so callers can report incomplete coverage.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			var partial []detector.Match
+			if result != nil {
+				partial = result.AllMatches
+			}
+			if finishTiming != nil {
+				finishTiming(false, map[string]interface{}{"error": err.Error(), "cancelled": true})
+			}
+			return partial, err
+		}
+
 		// Try fallback if dual path processing fails
 		if evb.config.EnableFallbackMode {
 			if evb.observer != nil {
@@ -347,7 +372,7 @@ func (evb *EnhancedValidatorBridge) ProcessContent(content *preprocessors.Proces
 			// Record fallback activation
 			evb.recordFallbackActivation(fmt.Sprintf("dual_path_processing_failed: %v", err))
 
-			return evb.processContentLegacy(content, contextInsights)
+			return evb.processContentLegacy(ctx, content, contextInsights)
 		}
 
 		if finishTiming != nil {
@@ -380,8 +405,9 @@ func (evb *EnhancedValidatorBridge) ProcessContent(content *preprocessors.Proces
 	return result.AllMatches, nil
 }
 
-// processDualPath processes content through both validation paths
-func (evb *EnhancedValidatorBridge) processDualPath(routedContent *router.RoutedContent, contextInsights context.ContextInsights) (*DualPathValidationResult, error) {
+// processDualPath processes content through both validation paths. ctx is
+// threaded to the document-path dispatch chokepoint.
+func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedContent *router.RoutedContent, contextInsights context.ContextInsights) (*DualPathValidationResult, error) {
 	startTime := time.Now()
 
 	result := &DualPathValidationResult{
@@ -404,7 +430,7 @@ func (evb *EnhancedValidatorBridge) processDualPath(routedContent *router.Routed
 		go func() {
 			defer wg.Done()
 			docStartTime := time.Now()
-			matches, err := evb.documentBridge.ProcessDocumentContent(routedContent.DocumentBody, routedContent.OriginalPath, contextInsights)
+			matches, err := evb.documentBridge.ProcessDocumentContentCtx(ctx, routedContent.DocumentBody, routedContent.OriginalPath, contextInsights)
 			documentProcessingTime = time.Since(docStartTime)
 
 			// Record performance metrics for document path
@@ -456,7 +482,7 @@ func (evb *EnhancedValidatorBridge) processDualPath(routedContent *router.Routed
 		go func() {
 			defer wg.Done()
 			metaStartTime := time.Now()
-			matches, err := evb.metadataBridge.ProcessMetadataContent(routedContent.Metadata, contextInsights)
+			matches, err := evb.metadataBridge.ProcessMetadataContentCtx(ctx, routedContent.Metadata, contextInsights)
 			metadataProcessingTime = time.Since(metaStartTime)
 
 			// Record performance metrics for metadata path
@@ -533,6 +559,17 @@ func (evb *EnhancedValidatorBridge) processDualPath(routedContent *router.Routed
 	result.AllMatches = make([]detector.Match, 0, len(result.DocumentMatches)+len(result.MetadataMatches))
 	result.AllMatches = append(result.AllMatches, result.DocumentMatches...)
 	result.AllMatches = append(result.AllMatches, result.MetadataMatches...)
+
+	// If the run was cancelled/timed out, surface that as a scan-level error
+	// carrying whatever partial matches we gathered. This is NOT a per-validator
+	// "partial failure" to absorb — coverage is incomplete, and the caller must
+	// propagate it (and must NOT fall back to a re-run, which would re-stall on
+	// the same runaway validator). Checked before cross-path adjustments since
+	// those assume a complete result set.
+	if cerr := ctx.Err(); cerr != nil {
+		result.ProcessingTime = time.Since(startTime)
+		return result, cerr
+	}
 
 	// Apply cross-path confidence adjustments based on context
 	result.AllMatches = evb.applyCrossPathConfidenceAdjustments(result.AllMatches, contextInsights)
@@ -630,8 +667,9 @@ func (evb *EnhancedValidatorBridge) routeContentWithRetry(content *preprocessors
 	return nil, fmt.Errorf("content routing failed after %d attempts: %w", maxRetries, lastErr)
 }
 
-// processContentLegacy provides fallback to legacy aggregation behavior
-func (evb *EnhancedValidatorBridge) processContentLegacy(content *preprocessors.ProcessedContent, contextInsights context.ContextInsights) ([]detector.Match, error) {
+// processContentLegacy provides fallback to legacy aggregation behavior. ctx is
+// threaded to the document-path dispatch chokepoint.
+func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, content *preprocessors.ProcessedContent, contextInsights context.ContextInsights) ([]detector.Match, error) {
 	if evb.observer != nil && evb.observer.DebugObserver != nil {
 		evb.observer.DebugObserver.LogDetail("fallback", "Using legacy content aggregation")
 	}
@@ -641,7 +679,7 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(content *preprocessors.
 	var processingErrors []error
 
 	// Process with document validators
-	documentMatches, err := evb.documentBridge.ProcessDocumentContent(content.Text, content.OriginalPath, contextInsights)
+	documentMatches, err := evb.documentBridge.ProcessDocumentContentCtx(ctx, content.Text, content.OriginalPath, contextInsights)
 	if err != nil {
 		processingErrors = append(processingErrors, fmt.Errorf("document validation failed: %w", err))
 		if evb.observer != nil {
@@ -657,9 +695,12 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(content *preprocessors.
 		allMatches = append(allMatches, documentMatches...)
 	}
 
-	// Process with metadata validator if available
+	// Process with metadata validator if available. Dispatch through execguard
+	// so a panic in the metadata validator is recovered rather than crashing
+	// the process (v2 gap 1.3), matching the document path.
 	if evb.metadataBridge.metadataValidator != nil {
-		metadataMatches, err := evb.metadataBridge.metadataValidator.ValidateContent(content.Text, content.OriginalPath)
+		mv := evb.metadataBridge.metadataValidator
+		metadataMatches, err := execguard.ValidateContent(ctx, fmt.Sprintf("%T", mv), mv, content.Text, content.OriginalPath)
 		if err != nil {
 			processingErrors = append(processingErrors, fmt.Errorf("metadata validation failed: %w", err))
 			if evb.observer != nil {
@@ -704,8 +745,28 @@ type validatorResult struct {
 	err     error
 }
 
-// ProcessDocumentContent processes document body content with non-metadata validators
+// validatorName derives a stable, payload-free label for a validator from its
+// concrete type, used only for diagnostics in execguard errors/logs. The
+// detector.Validator interface exposes no name, so the type name is the best
+// stable identifier available without changing the interface in Phase 1.
+func validatorName(v detector.Validator) string {
+	return fmt.Sprintf("%T", v)
+}
+
+// ProcessDocumentContent processes document body content with non-metadata
+// validators. It is a backward-compatible shim that runs with a background
+// context; new callers should use ProcessDocumentContentCtx so a deadline or
+// cancellation can reach the dispatch boundary.
 func (dvb *DocumentValidatorBridge) ProcessDocumentContent(content, filePath string, contextInsights context.ContextInsights) ([]detector.Match, error) {
+	return dvb.ProcessDocumentContentCtx(stdctx.Background(), content, filePath, contextInsights)
+}
+
+// ProcessDocumentContentCtx is the context-aware form of ProcessDocumentContent.
+// The ctx is threaded to the per-validator dispatch chokepoint (execguard), which
+// (a) recovers panics so one validator cannot crash the process and (b) skips
+// launching a validator once ctx is cancelled/expired. Validators that implement
+// execguard.ContextAwareValidator additionally receive ctx to poll mid-run.
+func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context, content, filePath string, contextInsights context.ContextInsights) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if dvb.observer != nil {
 		finishTiming = dvb.observer.StartTiming("document_validator_bridge", "process_content", filePath)
@@ -738,7 +799,12 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContent(content, filePath str
 		go func(v detector.Validator) {
 			defer wg.Done()
 
-			matches, err := v.ValidateContent(content, filePath)
+			// Dispatch through the execguard chokepoint: recovers panics
+			// (so one validator cannot crash the whole process — v2 gap 1.3)
+			// and threads ctx to context-aware validators / skips launch once
+			// ctx is cancelled (v2 gap 1.1). Behavior is unchanged for the
+			// common success path.
+			matches, err := execguard.ValidateContent(ctx, validatorName(v), v, content, filePath)
 			if err != nil {
 				errorsMu.Lock()
 				validationErrors = append(validationErrors, err)
@@ -807,15 +873,48 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContent(content, filePath str
 		}(validator)
 	}
 
-	// Wait for all goroutines to complete
-	wg.Wait()
-	close(resultsChan)
+	// Wait for all goroutines to complete, but do not block indefinitely on a
+	// stalled validator: if ctx is cancelled/expired first, drain what has
+	// arrived and return so the nested validation stack can unwind. This bounds
+	// the goroutine/content leak from a runaway validator to the single
+	// still-running leaf goroutine, instead of holding this join (and every
+	// frame above it) forever. resultsChan is buffered to len(validators), so a
+	// late goroutine can still send without blocking — we therefore do NOT
+	// close it on the cancellation path, and we avoid reading the
+	// mutex-guarded validationErrors slice there (a late append would race).
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	// Collect results from channel
-	for result := range resultsChan {
-		if result.err == nil && result.matches != nil {
-			allMatches = append(allMatches, result.matches...)
+	select {
+	case <-done:
+		close(resultsChan)
+		for result := range resultsChan {
+			if result.err == nil && result.matches != nil {
+				allMatches = append(allMatches, result.matches...)
+			}
 		}
+	case <-ctx.Done():
+		for draining := true; draining; {
+			select {
+			case result := <-resultsChan:
+				if result.err == nil && result.matches != nil {
+					allMatches = append(allMatches, result.matches...)
+				}
+			default:
+				draining = false
+			}
+		}
+		if finishTiming != nil {
+			finishTiming(false, map[string]interface{}{
+				"match_count":     len(allMatches),
+				"validator_count": len(validators),
+				"cancelled":       true,
+			})
+		}
+		return allMatches, ctx.Err()
 	}
 
 	// Log validation errors but don't fail completely if some validators succeeded
@@ -851,8 +950,19 @@ func (mvb *MetadataValidatorBridge) SetObserver(observer *observability.Standard
 	mvb.observer = observer
 }
 
-// ProcessMetadataContent processes metadata content exclusively with metadata validator
+// ProcessMetadataContent processes metadata content exclusively with the
+// metadata validator. Backward-compatible shim that runs with a background
+// context; new callers should use ProcessMetadataContentCtx.
 func (mvb *MetadataValidatorBridge) ProcessMetadataContent(metadataItems []router.MetadataContent, contextInsights context.ContextInsights) ([]detector.Match, error) {
+	return mvb.ProcessMetadataContentCtx(stdctx.Background(), metadataItems, contextInsights)
+}
+
+// ProcessMetadataContentCtx is the context-aware form of ProcessMetadataContent.
+// Each metadata validator invocation is dispatched through the execguard
+// chokepoint so a panic in the (large, complex) metadata validator is recovered
+// rather than crashing the process (v2 gap 1.3), and the per-item loop stops
+// early once ctx is cancelled/expired (v2 gap 1.1).
+func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context, metadataItems []router.MetadataContent, contextInsights context.ContextInsights) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if mvb.observer != nil {
 		finishTiming = mvb.observer.StartTiming("metadata_validator_bridge", "process_content", "metadata")
@@ -898,7 +1008,21 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContent(metadataItems []route
 
 	// Process each metadata item
 	for _, metadataItem := range metadataItems {
-		matches, err := validator.ValidateMetadataContent(metadataItem)
+		// Stop early if the deadline/cancellation has fired; surface ctx.Err()
+		// so the caller can report incomplete coverage rather than a clean run.
+		if cerr := ctx.Err(); cerr != nil {
+			if finishTiming != nil {
+				finishTiming(false, map[string]interface{}{"match_count": len(allMatches), "cancelled": true})
+			}
+			return allMatches, cerr
+		}
+
+		// Dispatch through execguard so a panic in the metadata validator is
+		// recovered into a non-retryable error instead of crashing the process.
+		item := metadataItem
+		matches, err := execguard.SafeRun(ctx, fmt.Sprintf("%T", validator), func() ([]detector.Match, error) {
+			return validator.ValidateMetadataContent(item)
+		})
 		if err != nil {
 			validationErrors = append(validationErrors, err)
 			if mvb.observer != nil {

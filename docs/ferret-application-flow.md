@@ -73,24 +73,16 @@ sequenceDiagram
         CLI->>CLI: resolveConfiguration(cfg, profile, flags)
     end
 
-    Note over CLI: 2. Initialize Enhanced Validator Manager with integrated context analysis
-    CLI->>EnhancedMgr: NewEnhancedValidatorManager(config)
-    EnhancedMgr->>EnhancedMgr: Initialize integrated context analyzer
-    EnhancedMgr->>EnhancedMgr: Configure batch processing (100 items/batch)
-    EnhancedMgr->>EnhancedMgr: Configure parallel processing (8 workers)
-    EnhancedMgr->>EnhancedMgr: Enable context analysis integration
-    EnhancedMgr->>EnhancedMgr: Enable cross-validator analysis
-    EnhancedMgr->>EnhancedMgr: Enable confidence calibration
+    Note over CLI: 2. Initialize the detection facade (dual-path: document body + metadata)
+    CLI->>EnhancedMgr: NewDetector(observer)
+    EnhancedMgr->>EnhancedMgr: Build EnhancedValidatorBridge + content router + context analyzer
 
-    Note over CLI: 3. Register standard validators with enhanced capabilities
-    loop For each validator type
-        CLI->>EnhancedMgr: RegisterValidator(name, ValidatorBridge)
-        Note over EnhancedMgr: Wrap standard validators with enhanced features
-    end
+    Note over CLI: 3. Register standard validators with the facade
+    CLI->>EnhancedMgr: SetupValidators(standardValidators)
+    Note over EnhancedMgr: Document validators fan out via the bridge; METADATA routed to the metadata bridge
 
-    Note over CLI: 4. Create Enhanced Manager Wrapper for unified processing
-    CLI->>CLI: Create EnhancedManagerWrapper(enhancedManager)
-    Note over CLI: Wrapper provides unified validator interface for parallel processing
+    Note over CLI: 4. The Detector is the single validator handed to the parallel runner
+    Note over CLI: (v2 Phase 2 Move B collapsed the former 5-hop wrapper/manager chain into Detector)
 
     Note over CLI: 5. Initialize File Router and register preprocessors
     CLI->>FileRouter: NewFileRouter(debug)
@@ -115,7 +107,7 @@ sequenceDiagram
     ParallelProc->>WorkerPool: NewWorkerPool(workers, observer)
 
     Note over CLI: 9. Process all files using parallel processing with enhanced manager
-    CLI->>ParallelProc: ProcessFilesWithProgress(files, [enhancedWrapper], router, config, redactionMgr, progressCallback)
+    CLI->>ParallelProc: ProcessFilesWithProgress(files, [detector], router, config, redactionMgr, progressCallback)
 
     Note over ParallelProc: Start worker pool and submit jobs
     ParallelProc->>WorkerPool: Start()
@@ -153,31 +145,30 @@ sequenceDiagram
             ContentRouter-->>WorkerPool: RoutedContent{DocumentBody, Metadata=[...]}
         end
 
-        WorkerPool->>EnhancedMgr: ValidateWithAdvancedFeatures(routedContent, filePath)
+        WorkerPool->>EnhancedMgr: ValidateProcessedContentCtx(ctx, routedContent)
 
-        Note over EnhancedMgr: Integrated context analysis and validation
+        Note over EnhancedMgr: Detector delegates to the dual-path bridge (one hop)
         EnhancedMgr->>EnhancedMgr: AnalyzeContext(content, filePath)
         Note over EnhancedMgr: Context analysis active: Domain=Financial, DocType=PDF, DomainConf=1.00
-        EnhancedMgr->>EnhancedMgr: PrepareValidationItems(routedContent, filePath, contextInsights)
+        Note over EnhancedMgr: Each validator dispatched through execguard (panic recovery + ctx deadline)
 
-        par Credit Card Validation with Context
-            EnhancedMgr->>EnhancedMgr: ValidateWithContext(content, filePath, contextInsights)
-            EnhancedMgr->>EnhancedMgr: Apply Luhn algorithm + Financial domain context
-        and Email Validation with Context
-            EnhancedMgr->>EnhancedMgr: ValidateWithContext(content, filePath, contextInsights)
-            EnhancedMgr->>EnhancedMgr: Domain validation + document type context
-        and Secrets Validation with Context
-            EnhancedMgr->>EnhancedMgr: ValidateWithContext(content, filePath, contextInsights)
-            EnhancedMgr->>EnhancedMgr: Entropy analysis + API key patterns + environment context
-        and Other Validators with Context
+        par Credit Card Validation
+            EnhancedMgr->>EnhancedMgr: ValidateContent(documentBody, filePath)
+            EnhancedMgr->>EnhancedMgr: Apply Luhn algorithm + brand detection
+        and Email Validation
+            EnhancedMgr->>EnhancedMgr: ValidateContent(documentBody, filePath)
+            EnhancedMgr->>EnhancedMgr: Domain/structure validation
+        and Secrets Validation
+            EnhancedMgr->>EnhancedMgr: ValidateContent(documentBody, filePath)
+            EnhancedMgr->>EnhancedMgr: Entropy analysis + API key patterns
+        and Other Validators
             Note over EnhancedMgr: SSN, Passport, Phone, IP, Person Name, Metadata, Intellectual Property, Cloud Resources
-            Note over EnhancedMgr: All validators receive context insights for enhanced accuracy
+            Note over EnhancedMgr: Document validators run concurrently via the bridge fan-out
         end
 
-        Note over EnhancedMgr: Apply cross-validator analysis and confidence calibration
-        EnhancedMgr->>EnhancedMgr: AnalyzeCrossValidatorSignals(results, contextInsights)
-        EnhancedMgr->>EnhancedMgr: CalibrateConfidenceScores(results)
-        EnhancedMgr-->>WorkerPool: AdvancedValidationResult with context-enhanced matches
+        Note over EnhancedMgr: Apply context-based cross-path confidence adjustment
+        EnhancedMgr->>EnhancedMgr: applyCrossPathConfidenceAdjustments(matches, contextInsights)
+        EnhancedMgr-->>WorkerPool: Context-enhanced matches
 
         alt Redaction enabled
             WorkerPool->>RedactionMgr: ProcessMatches(filePath, matches, strategy)
@@ -249,49 +240,45 @@ sequenceDiagram
 - Supports all command-line options in configuration files
 - Profile-based configuration for different scanning scenarios
 
-### 3. **Enhanced Validator Manager** (`internal/validators`)
+### 3. **Detection Facade** (`internal/validators`, `Detector`)
+
+- **Single Entry Point**: One `Detector` (created via `NewDetector`) is the sole validator handed to the parallel runner; it implements `detector.Validator` + the ctx-aware `ValidateProcessedContentCtx` the runner uses
 - **Integrated Context Analysis**: Built-in context analyzer for document type and domain detection
-- **Batch Processing**: Processes validation items in optimized batches (100 items/batch)
-- **Parallel Execution**: Coordinates parallel validation across 8 workers
-- **Context-Aware Analysis**: All validators receive context insights for enhanced accuracy
-- **Cross-Validator Intelligence**: Identifies patterns spanning multiple validator types
-- **Confidence Calibration**: Applies domain-specific confidence adjustments and statistical calibration
-- **Pattern Learning**: Session-based pattern discovery and correlation analysis
+- **Dual-Path Routing**: Document body fans out to the registered validators; file metadata is routed to the metadata validator (via the dual-path bridge)
+- **Cross-Path Confidence Adjustment**: Match confidence is re-weighted from the detected domain/document type and document-vs-metadata context (`applyCrossPathConfidenceAdjustments`)
+- **Bounded, Fault-Isolated Dispatch**: Each validator invocation runs through `internal/execguard` (panic recovery + context deadline), so one validator cannot crash or hang the scan
+- **Result Aggregation**: Collects results from all validators into the standard `detector.Match` format
 
-### 4. **Enhanced Manager Wrapper** (`internal/validators`)
-- **Unified Validation Interface**: Provides single entry point for all validation compatible with existing parallel processing
-- **Context Integration**: Seamlessly integrates context analysis into the validation pipeline
-- **Result Aggregation**: Collects and formats results from all validators into standard detector.Match format
-- **Backward Compatibility**: Maintains compatibility with existing parallel processing architecture
+> Note (v2 Phase 2, Move B): the former `EnhancedValidatorManager` / `EnhancedManagerWrapper` / `ValidatorIntegrationHelper` / `DualPathIntegration` pass-through chain and the never-wired "advanced features" subsystem (batch processing, cross-validator signal correlation, statistical confidence calibration, pattern learning) were removed — see [proposals/V2_ARCHITECTURE.md](proposals/V2_ARCHITECTURE.md). The single live confidence adjustment is the context-based cross-path logic above.
 
-### 5. **File Router** (`internal/router`)
+### 4. **File Router** (`internal/router`)
 - Central orchestration system for preprocessor management
 - Handles file type detection and routing to appropriate preprocessors
 - Supports plain text, PDF, Office documents, and image metadata extraction
 
-### 6. **Parallel Processor** (`internal/parallel`)
+### 5. **Parallel Processor** (`internal/parallel`)
 - Unified parallel processing system for all files
 - Worker pool management with adaptive resource allocation
 - Progress tracking and performance metrics
 
-### 7. **Redaction System** (`internal/redactors`)
+### 6. **Redaction System** (`internal/redactors`)
 - Multi-format document redaction (text, PDF, Office, images)
 - Multiple strategies: simple, format-preserving, synthetic data
 - Maintains original document structure and creates audit trails
 
-### 8. **Suppression Manager** (`internal/suppressions`)
+### 7. **Suppression Manager** (`internal/suppressions`)
 - Rule-based filtering system to reduce false positives
 - Hash-based matching for precise finding identification
 - Support for temporary and permanent suppressions
 
-### 9. **Output Formatters** (`internal/formatters`)
+### 8. **Output Formatters** (`internal/formatters`)
 - **Text**: Human-readable format with colors and confidence levels
 - **JSON**: Structured data for APIs and programmatic processing
 - **CSV**: Spreadsheet-friendly format for analysis
 - **YAML**: YAML format, 100% compatible with JSON structure
 - **JUnit**: JUnit XML format for CI/CD integration and test reporting
 
-### 10. **Available Validators** (Non-GenAI)
+### 9. **Available Validators** (Non-GenAI)
 - **Cloud Resources**: AWS ARN, Azure Resource ID, GCP Resource Name, OCI OCID, IBM CRN, Alibaba ARN detection with account/subscription ID extraction
 - **Credit Card**: Luhn algorithm + 15+ card brands + test pattern filtering
 - **Email**: Domain validation + context analysis
@@ -300,7 +287,7 @@ sequenceDiagram
 - **Metadata**: EXIF and document metadata analysis with intelligent file type filtering
 - **Passport**: Multi-country formats + travel context analysis
 - **Person Name**: Pattern matching with embedded name databases, context-aware confidence scoring
-- **Phone**: International format support + cross-validator analysis
+- **Phone**: International format support + context-aware confidence scoring
 - **Secrets**: 40+ API key patterns + entropy analysis + environment detection
 - **Social Media**: Profile detection across major platforms (LinkedIn, Twitter/X, GitHub, etc.)
 - **SSN**: Domain-aware validation + HR/Tax/Healthcare context
@@ -346,13 +333,12 @@ sequenceDiagram
 ### Enhanced Validation
 - **Context-Aware Analysis**: All validators use document and domain context
 - **Zero Confidence Filtering**: Automatically excludes matches with 0% confidence
-- **Cross-Validator Intelligence**: Pattern correlation analysis across validators
-- **Confidence Calibration**: Statistical confidence scoring based on historical performance
+- **Cross-Path Confidence Adjustment**: Confidence re-weighted from domain/document-type and document-vs-metadata context
 - **Environment Detection**: Automatic detection of dev/test/prod environments
 
 ### Unified Parallel Processing
 - **Consistent Architecture**: Same processing pipeline for single files or large collections
-- **Adaptive Resource Management**: Dynamic worker pool sizing based on system resources
+- **Worker Pool**: File-level workers capped at min(NumCPU, 8)
 - **Progress Tracking**: Real-time progress updates with ETA calculations
 - **Performance Metrics**: Comprehensive statistics on processing performance
 

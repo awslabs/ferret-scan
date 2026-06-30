@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/awslabs/ferret-scan/internal/core"
 	"github.com/awslabs/ferret-scan/internal/detector"
 	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/formatters"
@@ -307,34 +308,13 @@ func (m *VulnerabilityMapper) buildPropertiesForSuppressed(suppressed detector.S
 // Returns a value between 0.0 and 100.0 as required by SARIF specification
 // Higher rank values indicate higher priority findings
 func (m *VulnerabilityMapper) calculateRank(match detector.Match) float64 {
-	// Define sensitivity weights for different data types (0-10 scale)
-	// Higher values indicate more sensitive data
-	sensitivityWeights := map[string]float64{
-		"SSN":                   10.0, // Highest sensitivity
-		"CREDIT_CARD":           10.0,
-		"PASSPORT":              10.0,
-		"SECRETS":               9.0,
-		"INTELLECTUAL_PROPERTY": 7.0,
-		"PERSON_NAME":           6.0,
-		"EMAIL":                 5.0,
-		"PHONE":                 5.0,
-		"IP_ADDRESS":            4.0,
-		"METADATA":              3.0,
-		"SOCIAL_MEDIA":          3.0,
-		"VIN":                   6.0,
-		"AWS_ARN":               7.0,
-		"AZURE_RESOURCE_ID":     7.0,
-		"GCP_RESOURCE_NAME":     7.0,
-		"OCI_OCID":              7.0,
-		"IBM_CRN":               7.0,
-		"ALIBABA_ARN":           7.0,
-		"CLOUD_RESOURCE_ID":     7.0,
-	}
-
-	// Get sensitivity weight for this type, default to 5.0 for unknown types
-	sensitivity := sensitivityWeights[match.Type]
-	if sensitivity == 0 {
-		sensitivity = 5.0
+	// Sensitivity weight (0-10 scale) comes from the central type-metadata
+	// registry (core.TypeMeta — v2 gap 3.3). Preserve the historical quirk: a
+	// missing/zero weight defaults to 5.0 (byte-identical to the prior map-miss
+	// behavior).
+	sensitivity := 5.0
+	if d, ok := core.TypeMeta(match.Type); ok && d.SARIFSensitivityWeight != 0 {
+		sensitivity = d.SARIFSensitivityWeight
 	}
 
 	// Normalize confidence to 0-10 scale (confidence is 0-100)

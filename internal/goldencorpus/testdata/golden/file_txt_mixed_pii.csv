@@ -1,0 +1,6 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<TMPDIR>/notes.txt,VISA,HIGH,100.0,4,4532-0151-1283-0366
+<TMPDIR>/notes.txt,BUSINESS,LOW,33.0,1,john.doe@example.com
+<TMPDIR>/notes.txt,PHONE,MEDIUM,73.0,1,212-555-0142
+<TMPDIR>/notes.txt,AWS_ACCESS_KEY,MEDIUM,69.0,2,AKIAIOSFODNN7EXAMPLE
+<TMPDIR>/notes.txt,SSN,HIGH,100.0,3,449-87-4100

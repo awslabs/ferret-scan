@@ -1,0 +1,8 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH             FILE
+-------------------------------------------------------------------------------------------
+[MEDIUM] email        BUSINESS               75.00% line     2 alice@example.com people.csv
+[MEDIUM] email        BUSINESS               75.00% line     3 bob@example.org   people.csv
+[MEDIUM] ssn          SSN                    75.00% line     2 449-87-4100       people.csv
+[MEDIUM] ssn          SSN                    75.00% line     3 529-11-2233       people.csv
+[LOW   ] creditcard   MASTERCARD             25.00% line     3 5425233430109903  people.csv
+[LOW   ] creditcard   VISA                   25.00% line     2 4532015112830366  people.csv

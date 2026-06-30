@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="clip.wav" classname="security-scan" time="0.001">
+      <failure message="2 security findings detected" type="SECURITY_FINDINGS">Line 7: DOCUMENT_COMMENTS detected with 100.0% confidence (HIGH)&#xA;Match: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE&#xA;Validator: metadata&#xA;Line 6: AUTHOR_INFO detected with 80.0% confidence (MEDIUM)&#xA;Match: john.doe@example.com&#xA;Validator: metadata</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

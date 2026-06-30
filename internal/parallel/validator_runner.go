@@ -76,6 +76,41 @@ func RunValidators(
 	errorChan := make(chan error, len(validators))
 
 	for _, validator := range validators {
+		// Prefer the context-aware ProcessedContent path when available: it
+		// threads ctx all the way to the per-validator dispatch chokepoint so
+		// a deadline/cancellation can stop new validator work and panics are
+		// recovered (v2 Phase 1). Falls back to the legacy ctx-less method.
+		if pccv, ok := validator.(interface {
+			ValidateProcessedContentCtx(ctx context.Context, content *preprocessors.ProcessedContent) ([]detector.Match, error)
+		}); ok {
+			wg.Add(1)
+			go func(pccv interface {
+				ValidateProcessedContentCtx(ctx context.Context, content *preprocessors.ProcessedContent) ([]detector.Match, error)
+			}) {
+				defer wg.Done()
+
+				// Capture the result in the closure and send to the channels
+				// exactly once, AFTER runOne returns. Sending inside op would
+				// push once per retry attempt; with the channels buffered to
+				// len(validators) (one send budgeted per validator) a retried
+				// validator would block on its 2nd send and never finish.
+				var matches []detector.Match
+				op := func(ctx context.Context) error {
+					m, err := pccv.ValidateProcessedContentCtx(ctx, processedContent)
+					matches = m
+					return err
+				}
+
+				if err := runOne(ctx, op); err != nil {
+					matchesChan <- []detector.Match{}
+					errorChan <- err
+					return
+				}
+				matchesChan <- matches
+			}(pccv)
+			continue
+		}
+
 		if processedContentValidator, ok := validator.(interface {
 			ValidateProcessedContent(content *preprocessors.ProcessedContent) ([]detector.Match, error)
 		}); ok {
@@ -85,19 +120,21 @@ func RunValidators(
 			}) {
 				defer wg.Done()
 
+				// Send once, after runOne (see the ctx-aware branch above for
+				// why sending inside a retried op would deadlock).
+				var matches []detector.Match
 				op := func(ctx context.Context) error {
-					matches, err := pcv.ValidateProcessedContent(processedContent)
-					if err == nil {
-						matchesChan <- matches
-						return nil
-					}
-					matchesChan <- []detector.Match{}
+					m, err := pcv.ValidateProcessedContent(processedContent)
+					matches = m
 					return err
 				}
 
 				if err := runOne(ctx, op); err != nil {
+					matchesChan <- []detector.Match{}
 					errorChan <- err
+					return
 				}
+				matchesChan <- matches
 			}(processedContentValidator)
 			continue
 		}
@@ -116,43 +153,84 @@ func RunValidators(
 			}) {
 				defer wg.Done()
 
+				// Send once, after runOne (see the ctx-aware branch above for
+				// why sending inside a retried op would deadlock).
+				var matches []detector.Match
 				op := func(ctx context.Context) error {
 					filename := processedContent.OriginalPath
 					if filename == "" {
 						filename = processedContent.Filename
 					}
 
-					matches, err := cv.ValidateContent(processedContent.Text, filename)
-					if err == nil {
-						matchesChan <- matches
-						return nil
-					}
-					matchesChan <- []detector.Match{}
+					m, err := cv.ValidateContent(processedContent.Text, filename)
+					matches = m
 					return err
 				}
 
 				if err := runOne(ctx, op); err != nil {
+					matchesChan <- []detector.Match{}
 					errorChan <- err
+					return
 				}
+				matchesChan <- matches
 			}(contentValidator)
 		}
 	}
 
-	wg.Wait()
-	close(matchesChan)
-	close(errorChan)
+	// Wait for all validators to finish, but do not block indefinitely on a
+	// stalled one: if ctx is cancelled/expired first, return promptly with
+	// whatever results have arrived (v2 Phase 1, gap 1.1). The matches/error
+	// channels are buffered to len(validators), so a goroutine that finishes
+	// AFTER an early return can still send without blocking or panicking — we
+	// must therefore NOT close the channels on the cancellation path. The
+	// stalled goroutine itself cannot be killed in Phase 1 (Go has no
+	// goroutine kill); honoring ctx in the validator body is Phase 3. What
+	// changes now is that the SCAN no longer hangs waiting for it.
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
 	var allMatches []detector.Match
-	for matches := range matchesChan {
-		allMatches = append(allMatches, matches...)
-	}
-
 	var firstErr error
-	for err := range errorChan {
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
 
-	return allMatches, firstErr
+	select {
+	case <-done:
+		// All validators completed: safe to close and drain fully (the
+		// pre-existing behavior, byte-for-byte).
+		close(matchesChan)
+		close(errorChan)
+		for matches := range matchesChan {
+			allMatches = append(allMatches, matches...)
+		}
+		for err := range errorChan {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+		return allMatches, firstErr
+
+	case <-ctx.Done():
+		// Deadline/cancellation tripped while at least one validator is still
+		// running. Drain what is buffered without closing (a late goroutine may
+		// still send), and surface the context error so callers can report
+		// degraded/incomplete coverage rather than a silent clean result.
+		for draining := true; draining; {
+			select {
+			case matches := <-matchesChan:
+				allMatches = append(allMatches, matches...)
+			case err := <-errorChan:
+				if firstErr == nil {
+					firstErr = err
+				}
+			default:
+				draining = false
+			}
+		}
+		if firstErr == nil {
+			firstErr = ctx.Err()
+		}
+		return allMatches, firstErr
+	}
 }

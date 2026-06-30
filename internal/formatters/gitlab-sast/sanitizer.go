@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/awslabs/ferret-scan/internal/core"
 	"github.com/awslabs/ferret-scan/internal/detector"
 	"github.com/awslabs/ferret-scan/internal/explain"
 )
@@ -167,37 +168,11 @@ func (s *DataSanitizer) EnsureNoSensitiveData(text string) string {
 // GetCheckTypeDescription returns a human-readable description for check types
 // Made public for testing
 func (s *DataSanitizer) GetCheckTypeDescription(checkType string) string {
-	descriptions := map[string]string{
-		"CREDIT_CARD":           "Credit card number",
-		"VISA":                  "Visa credit card",
-		"MASTERCARD":            "Mastercard credit card",
-		"AMERICAN_EXPRESS":      "American Express credit card",
-		"DISCOVER":              "Discover credit card",
-		"JCB":                   "JCB credit card",
-		"DINERS_CLUB":           "Diners Club credit card",
-		"SSN":                   "Social Security Number",
-		"PHONE":                 "Phone number",
-		"EMAIL":                 "Email address",
-		"IP_ADDRESS":            "IP address",
-		"API_KEY":               "API key",
-		"AWS_ACCESS_KEY":        "AWS access key",
-		"GITHUB_TOKEN":          "GitHub token",
-		"SLACK_TOKEN":           "Slack token",
-		"GPS":                   "GPS coordinates",
-		"INTELLECTUAL_PROPERTY": "Intellectual property",
-		"SOCIAL_MEDIA_CLUSTER":  "Social media information",
-		"PII_PERSON":            "Personal information",
-		"PII_LOCATION":          "Location information",
-		"PII_ORGANIZATION":      "Organization information",
-		"METADATA":              "Sensitive metadata",
-		"VIN":                   "Vehicle Identification Number",
-		"DOCUMENT_COMMENTS":     "Document comments",
-		"AUTHOR_INFO":           "Author information",
-		"COMPANY_INFO":          "Company information",
-	}
-
-	if description, exists := descriptions[checkType]; exists {
-		return description
+	// Human-readable per-type description from the central type-metadata
+	// registry (core.TypeMeta — v2 gap 3.3). Types without an entry fall back to
+	// the readable-format conversion below, unchanged.
+	if d, ok := core.TypeMeta(checkType); ok && d.GitLabCheckDesc != "" {
+		return d.GitLabCheckDesc
 	}
 
 	// Fallback: convert check type to readable format
@@ -259,30 +234,14 @@ func (s *DataSanitizer) IsSafeMetadataKey(key string) bool {
 func (s *DataSanitizer) getRemediationGuidance(checkType string) string {
 	// #nosec G101 -- human-readable remediation strings shown in GitLab
 	// SAST output. No credentials.
-	guidance := map[string]string{
-		"CREDIT_CARD":           "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
-		"VISA":                  "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
-		"MASTERCARD":            "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
-		"AMERICAN_EXPRESS":      "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
-		"DISCOVER":              "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
-		"JCB":                   "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
-		"DINERS_CLUB":           "Remove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
-		"SSN":                   "Remove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
-		"PHONE":                 "Remove phone numbers or replace with example numbers (e.g., 555-0123).",
-		"EMAIL":                 "Remove email addresses or replace with example addresses (e.g., user@domain.example).",
-		"IP_ADDRESS":            "Remove IP addresses or replace with example addresses (e.g., 192.0.2.1).",
-		"API_KEY":               "Remove API keys and store them securely using environment variables or secret management systems.",
-		"AWS_ACCESS_KEY":        "Remove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
-		"GITHUB_TOKEN":          "Remove GitHub tokens and regenerate them. Use GitHub Actions secrets or environment variables instead.",
-		"GPS":                   "Remove GPS coordinates or replace with approximate/example coordinates if location data is needed for testing.",
-		"INTELLECTUAL_PROPERTY": "Review and remove proprietary information. Ensure compliance with intellectual property policies.",
-		"PII_PERSON":            "Remove personal information or replace with anonymized test data.",
-		"METADATA":              "Review and remove sensitive metadata from files before committing to version control.",
-		"VIN":                   "Remove Vehicle Identification Numbers from code and documentation. VINs can be used to identify vehicle owners and their personal information.",
-	}
-
-	if remediation, exists := guidance[checkType]; exists {
-		return remediation
+	//
+	// Per-type remediation from the central type-metadata registry
+	// (core.TypeMeta — v2 gap 3.3). Note this map historically had FEWER keys
+	// than GetCheckTypeDescription (e.g. no SLACK_TOKEN/AUTHOR_INFO), so those
+	// types correctly fall through to the generic guidance below — the registry
+	// leaves GitLabRemediation empty for them, preserving that behavior.
+	if d, ok := core.TypeMeta(checkType); ok && d.GitLabRemediation != "" {
+		return d.GitLabRemediation
 	}
 
 	return "Review the detected sensitive data and remove or replace it with appropriate test data or placeholders."

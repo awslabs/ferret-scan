@@ -1,0 +1,6 @@
+=== REDACTED ===
+real: ***-**-4100
+fake-should-not-match: 123-45-6789
+sequential-should-not-match: 111-11-1111
+=== FINDINGS (sorted) ===
+type=SSN line=1 conf=high match=449-87-4100

@@ -603,6 +603,11 @@ func (evb *EnhancedValidatorBridge) processWithValidatorRecovery(
 }
 ```
 
+> **Note (v2 Phase 1 — illustrative pseudocode above).** The snippet shows *error* recovery (one validator returning an `error` does not stop the others). The live code adds two further protections at the actual per-validator dispatch boundary in `internal/validators/dual_path_bridge.go`, both routed through `internal/execguard`:
+>
+> - **Panic isolation:** each validator (document *and* metadata path) is invoked via `execguard.ValidateContent` / `execguard.SafeRun`, which `recover()`s a panic and converts it into a non-retryable per-validator error — a single validator panic no longer crashes the process. (Plain `error` returns alone do not panic, so the loop above wouldn't have caught a panic.)
+> - **Cancellation:** the document fan-out join and the metadata loop honor a `context.Context`, so a stalled validator no longer blocks the scan past its deadline; the scan returns partial matches and surfaces `ctx.Err()`. See [docs/proposals/V2_ARCHITECTURE.md](../proposals/V2_ARCHITECTURE.md) ("Phase 1 Prototype (landed)").
+
 ### Performance Monitoring
 
 #### Processing Time Tracking

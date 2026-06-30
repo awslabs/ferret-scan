@@ -1,0 +1,6 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:mixed_pii_basic>,VISA,HIGH,100.0,4,4532-0151-1283-0366
+<golden:mixed_pii_basic>,BUSINESS,LOW,33.0,1,john.doe@example.com
+<golden:mixed_pii_basic>,PHONE,MEDIUM,73.0,1,212-555-0142
+<golden:mixed_pii_basic>,AWS_ACCESS_KEY,MEDIUM,69.0,2,AKIAIOSFODNN7EXAMPLE
+<golden:mixed_pii_basic>,SSN,HIGH,100.0,3,449-87-4100

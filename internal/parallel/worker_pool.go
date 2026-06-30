@@ -28,7 +28,6 @@ type WorkerPool struct {
 	observer       *observability.StandardObserver
 	retryManager   *resilience.RetryManager
 	circuitBreaker *resilience.CircuitBreakerManager
-	dualPathWorker *DualPathWorker // Add dual-path worker support
 }
 
 // Job represents a file processing task
@@ -55,7 +54,19 @@ type JobConfig struct {
 	EnableRedaction    bool
 	RedactionStrategy  string
 	RedactionOutputDir string
+
+	// JobTimeout bounds the per-file processing time (preprocessing +
+	// validation). The zero value falls back to DefaultJobTimeout (5 minutes),
+	// preserving historical behavior. A long-running embedder (e.g. the web
+	// server) can tighten this so a single pathological file cannot delay batch
+	// completion for the full default window.
+	JobTimeout time.Duration
 }
+
+// DefaultJobTimeout is the per-file processing ceiling used when
+// JobConfig.JobTimeout is unset. A stalled validator on one file cannot block
+// the whole batch beyond this (the scan returns partial results for that file).
+const DefaultJobTimeout = 5 * time.Minute
 
 // Result represents processing results
 type Result struct {
@@ -91,7 +102,6 @@ func NewWorkerPool(workers int, observer *observability.StandardObserver) *Worke
 		observer:       observer,
 		retryManager:   retryManager,
 		circuitBreaker: circuitBreakerManager,
-		dualPathWorker: NewDualPathWorker(observer), // Initialize dual-path worker
 	}
 }
 
@@ -224,8 +234,13 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		return nil
 	}
 
-	// Execute with timeout context
-	jobCtx, cancel := context.WithTimeout(wp.ctx, 5*time.Minute)
+	// Execute with timeout context. Per-file budget is configurable; the zero
+	// value preserves the historical 5-minute ceiling.
+	jobTimeout := DefaultJobTimeout
+	if job.Config != nil && job.Config.JobTimeout > 0 {
+		jobTimeout = job.Config.JobTimeout
+	}
+	jobCtx, cancel := context.WithTimeout(wp.ctx, jobTimeout)
 	defer cancel()
 
 	err := processWithResilience(jobCtx)

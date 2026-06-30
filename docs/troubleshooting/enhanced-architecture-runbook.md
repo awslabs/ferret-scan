@@ -222,6 +222,8 @@ ferret-scan --debug --preprocessor-only your-file.pdf
 - Identify slow validators
 - Look for resource contention
 
+> **Note:** validator execution now runs under a `context.Context` deadline (the per-job/per-scan timeout) routed through `internal/execguard`, so a single stalled or runaway validator no longer hangs the whole scan — it is abandoned past the deadline and the scan returns partial results (surfaced via `ScanResult.Incomplete` on the in-memory path). If you see repeated incomplete scans, identify the offending validator rather than assuming a process-wide deadlock. Making the validator hot-loops themselves interrupt promptly mid-run is tracked as v2 Phase 3 in [docs/proposals/V2_ARCHITECTURE.md](../proposals/V2_ARCHITECTURE.md).
+
 **Solutions:**
 1. Optimize validator algorithms
 2. Implement parallel processing

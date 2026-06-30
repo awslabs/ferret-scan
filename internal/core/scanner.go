@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -67,6 +68,21 @@ type ScanResult struct {
 	SuppressedCount   int
 	ProcessedFiles    int
 	Error             error
+
+	// Incomplete reports that validator coverage was cut short — e.g. a
+	// validator timed out or the scan context was cancelled — so Matches may be
+	// a partial result. It defaults to false, preserving existing behavior for
+	// callers that ignore it. For a DLP tool this distinguishes "scanned clean"
+	// from "did not finish scanning", which must never look the same.
+	// IncompleteReason carries a short, payload-free explanation when set.
+	//
+	// NOTE (v2 Phase 1 scope): this is currently populated only on the
+	// ScanContent (stdin / in-memory / library) path, which calls the validator
+	// runner directly. The file/worker-pool path (ScanFile) does not yet thread
+	// per-file diagnostics through to ScanResult — that is Phase 4
+	// (ScanResult.Diagnostics in docs/proposals/V2_ARCHITECTURE.md).
+	Incomplete       bool
+	IncompleteReason string
 }
 
 // resolveLogWriter returns the writer to use for observability output:
@@ -92,41 +108,22 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		observer.DebugObserver = debugObs
 	}
 
-	// Initialize enhanced validator manager from shared defaults
-	evCfg := validators.DefaultEnhancedValidatorConfig()
-	evCfg.EnableRealTimeMetrics = scanConfig.Debug
-	enhancedManager := validators.NewEnhancedValidatorManager(evCfg)
-
 	// Build the filtered validator set via the shared factory
 	enabledChecks := ParseChecksToRun(scanConfig.Checks)
 	standardValidators := BuildValidatorSet(enabledChecks, scanConfig.Config, scanConfig.Profile)
 
-	// Set up dual-path validation (separates document body from metadata)
-	dualPathHelper := validators.NewValidatorIntegrationHelper(observer)
-	if err := dualPathHelper.SetupDualPathValidation(standardValidators); err != nil {
+	// Set up the detection facade (dual-path: document body + metadata).
+	detectorFacade := validators.NewDetector(observer)
+	if err := detectorFacade.SetupValidators(standardValidators); err != nil {
 		return nil, fmt.Errorf("failed to setup dual path validation: %w", err)
 	}
-	enhancedManager.SetDualPathHelper(dualPathHelper)
-
-	// Register all non-metadata validators with the enhanced manager
-	for name, validator := range standardValidators {
-		if name == "METADATA" {
-			continue // handled by the dual-path system
-		}
-		bridge := validators.NewValidatorBridge(name, validator)
-		if err := enhancedManager.RegisterValidator(name, bridge); err != nil {
-			return nil, fmt.Errorf("failed to register enhanced validator %s: %w", name, err)
-		}
-	}
-
-	enhancedWrapper := validators.NewEnhancedManagerWrapper(enhancedManager)
-	validatorsList := []detector.Validator{enhancedWrapper}
+	validatorsList := []detector.Validator{detectorFacade}
 
 	// Initialize file router
 	fileRouter := router.NewFileRouter(scanConfig.Debug)
 	router.RegisterDefaultPreprocessors(fileRouter)
 	fileRouter.InitializePreprocessors(router.CreateRouterConfig(false, nil, "", scanConfig.EnableRedaction))
-	dualPathHelper.SetFileRouter(fileRouter)
+	detectorFacade.SetFileRouter(fileRouter)
 
 	// Validate the target file is processable
 	canProcess, _ := fileRouter.CanProcessFile(scanConfig.FilePath, scanConfig.EnablePreprocessors, false)
@@ -261,28 +258,14 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 	// Callers that need it can scan a file instead.
 	delete(standardValidators, "METADATA")
 
-	// Set up the enhanced manager + dual-path bridge so contextual analysis
-	// behaves identically to ScanFile. The dual-path helper is configured
-	// without a FileRouter; for plaintext (ProcessorType="plaintext") it
-	// never reaches the metadata extraction path.
-	evCfg := validators.DefaultEnhancedValidatorConfig()
-	evCfg.EnableRealTimeMetrics = cfg.Debug
-	enhancedManager := validators.NewEnhancedValidatorManager(evCfg)
-
-	dualPathHelper := validators.NewValidatorIntegrationHelper(observer)
-	if err := dualPathHelper.SetupDualPathValidation(standardValidators); err != nil {
+	// Set up the detection facade so contextual analysis behaves identically to
+	// ScanFile. No FileRouter is configured; for plaintext
+	// (ProcessorType="plaintext") it never reaches the metadata extraction path.
+	detectorFacade := validators.NewDetector(observer)
+	if err := detectorFacade.SetupValidators(standardValidators); err != nil {
 		return nil, fmt.Errorf("failed to setup dual path validation: %w", err)
 	}
-	enhancedManager.SetDualPathHelper(dualPathHelper)
-
-	for name, validator := range standardValidators {
-		bridge := validators.NewValidatorBridge(name, validator)
-		if err := enhancedManager.RegisterValidator(name, bridge); err != nil {
-			return nil, fmt.Errorf("failed to register enhanced validator %s: %w", name, err)
-		}
-	}
-	enhancedWrapper := validators.NewEnhancedManagerWrapper(enhancedManager)
-	validatorsList := []detector.Validator{enhancedWrapper}
+	validatorsList := []detector.Validator{detectorFacade}
 
 	// Synthesize ProcessedContent. Position tracking is not enabled for
 	// virtual content (no source document to map back to).
@@ -304,6 +287,19 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 	matches, validationErr := parallel.RunValidators(ctx, validatorsList, processed, nil)
 	if validationErr != nil && cfg.Debug {
 		fmt.Fprintf(logWriter, "validator error during ScanContent: %v\n", validationErr)
+	}
+
+	// A context cancellation/timeout means validator coverage was cut short and
+	// Matches may be partial. Surface that explicitly so a timed-out scan is
+	// never mistaken for a clean one (see ScanResult.Incomplete). Non-context
+	// validator errors keep the prior behavior (logged in debug, not flagged),
+	// because a single validator returning an ordinary error does not by itself
+	// make the overall result partial in the same load-bearing way.
+	incomplete := false
+	incompleteReason := ""
+	if validationErr != nil && (errors.Is(validationErr, context.DeadlineExceeded) || errors.Is(validationErr, context.Canceled)) {
+		incomplete = true
+		incompleteReason = "validator execution did not complete: " + validationErr.Error()
 	}
 
 	// Stamp every match as virtual and ensure the filename is the synthetic
@@ -346,6 +342,8 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 		SuppressedMatches: suppressed,
 		SuppressedCount:   len(suppressed),
 		ProcessedFiles:    1,
+		Incomplete:        incomplete,
+		IncompleteReason:  incompleteReason,
 	}, nil
 }
 

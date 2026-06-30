@@ -3,6 +3,8 @@
 
 package sarif
 
+import "github.com/awslabs/ferret-scan/internal/core"
+
 // SARIF specification constants
 const (
 	// SARIFSchemaURL is the URL to the SARIF 2.1.0 JSON schema
@@ -52,92 +54,15 @@ type RuleDescription struct {
 	Help  string
 }
 
-// RuleDescriptions maps detection types to their rule descriptions
-var RuleDescriptions = map[string]RuleDescription{
-	"EMAIL": {
-		Short: "Email Address Detected",
-		Full:  "An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.",
-		Help:  "Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.",
-	},
-	"SSN": {
-		Short: "Social Security Number Detected",
-		Full:  "A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations.",
-		Help:  "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms.",
-	},
-	"CREDIT_CARD": {
-		Short: "Credit Card Number Detected",
-		Full:  "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.",
-		Help:  "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.",
-	},
-	"PHONE": {
-		Short: "Phone Number Detected",
-		Full:  "A phone number was detected in the scanned content. Phone numbers can be considered personally identifiable information (PII) depending on context and jurisdiction.",
-		Help:  "Phone numbers may be considered PII under various privacy regulations. Evaluate whether this phone number should be present in the code. If it's for testing purposes, use clearly fake numbers (e.g., 555-0100 to 555-0199 in North America). For production use, store phone numbers in secure configuration systems with appropriate access controls.",
-	},
-	"IP_ADDRESS": {
-		Short: "IP Address Detected",
-		Full:  "An IP address was detected in the scanned content. IP addresses can be considered personally identifiable information under GDPR and other privacy regulations.",
-		Help:  "IP addresses are considered personal data under GDPR and similar regulations. Evaluate whether this IP address should be hardcoded. Consider using configuration files, environment variables, or service discovery mechanisms instead. If this is for testing, clearly document it as test data.",
-	},
-	"PASSPORT": {
-		Short: "Passport Number Detected",
-		Full:  "A passport number pattern was detected in the scanned content. Passport numbers are highly sensitive personally identifiable information that must be protected.",
-		Help:  "Passport numbers are protected under various privacy and identity theft prevention regulations. They should never be stored in source code or logs. Remove this passport number immediately and ensure it is stored in a secure, encrypted system with strict access controls and audit logging.",
-	},
-	"PERSON_NAME": {
-		Short: "Person Name Detected",
-		Full:  "A person's name was detected in the scanned content. Names are considered personally identifiable information (PII) under various privacy regulations.",
-		Help:  "Person names are considered PII under GDPR, CCPA, and other privacy regulations. Evaluate whether this name should be present in the code. If it's test data, use clearly fictional names or anonymized identifiers. For production use, ensure names are stored securely with appropriate access controls and data retention policies.",
-	},
-	"SECRETS": {
-		Short: "Secret or API Key Detected",
-		Full:  "A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.",
-		Help:  "Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.",
-	},
-	"INTELLECTUAL_PROPERTY": {
-		Short: "Potential Intellectual Property Detected",
-		Full:  "Content that may contain intellectual property markers (copyright notices, trademarks, patents) was detected. This could indicate third-party IP that requires proper attribution or licensing.",
-		Help:  "Ensure that any third-party intellectual property is properly licensed and attributed. Review your organization's policies on using external code and content. If this is your organization's IP, ensure proper copyright notices are in place. For third-party content, verify compliance with license terms.",
-	},
-	"METADATA": {
-		Short: "Sensitive Metadata Detected",
-		Full:  "Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.",
-		Help:  "File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.",
-	},
-	"SOCIAL_MEDIA": {
-		Short: "Social Media Handle Detected",
-		Full:  "A social media handle or username was detected in the scanned content. Social media identifiers can be used to link to personal profiles and may be considered PII in some contexts.",
-		Help:  "Social media handles can be used to identify individuals and may be considered personal information. Evaluate whether these handles should be present in the code. If they're for testing, use clearly fake handles. For production use, consider whether this information should be stored in a configuration system with appropriate access controls.",
-	},
-	"VIN": {
-		Short: "Vehicle Identification Number Detected",
-		Full:  "A Vehicle Identification Number (VIN) was detected in the scanned content. VINs can be used to identify vehicle owners and access personal information such as registration, insurance, and accident history.",
-		Help:  "VINs are linked to vehicle owner identity and can reveal personal information through public databases. They should not be stored in source code or logs. Remove VINs and use anonymized identifiers for testing. For production systems, store VINs in encrypted databases with appropriate access controls.",
-	},
-	"AWS_ARN":           cloudResourceDescription,
-	"AZURE_RESOURCE_ID": cloudResourceDescription,
-	"GCP_RESOURCE_NAME": cloudResourceDescription,
-	"OCI_OCID":          cloudResourceDescription,
-	"IBM_CRN":           cloudResourceDescription,
-	"ALIBABA_ARN":       cloudResourceDescription,
-	"CLOUD_RESOURCE_ID": cloudResourceDescription,
-}
-
-// cloudResourceDescription is the shared rule description for every cloud
-// provider resource identifier type emitted by the CLOUD_RESOURCES validator
-// (AWS ARN incl. GovCloud/China, Azure resource ID, GCP resource name, OCI
-// OCID, IBM CRN, Alibaba ARN).
-var cloudResourceDescription = RuleDescription{
-	Short: "Cloud Resource Identifier Detected",
-	Full:  "A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resource name, OCI OCID, IBM CRN, or Alibaba ARN) was detected in the scanned content. These identifiers can expose account, subscription, project, or tenant identity and infrastructure layout.",
-	Help:  "Cloud resource identifiers embed account/subscription/project anchors that reveal ownership and infrastructure topology. Avoid hardcoding them in source, logs, or shared documents. Use variables, parameters, or service discovery instead, and scrub identifiers from artifacts shared outside your organization.",
-}
-
-// GetRuleDescription returns the rule description for a given detection type
-// If the type is not found, it returns a generic description
+// GetRuleDescription returns the rule description for a given detection type.
+// Descriptions are sourced from the central type-metadata registry
+// (core.TypeMeta, the single source of truth — v2 gap 3.3); when a type has no
+// SARIF description there, the generic fallback below is used (unchanged
+// behavior: every sub-type that lacked an entry before still gets the generic
+// description now).
 func GetRuleDescription(detectionType string) RuleDescription {
-	if desc, exists := RuleDescriptions[detectionType]; exists {
-		return desc
+	if d, ok := core.TypeMeta(detectionType); ok && d.SARIFShort != "" {
+		return RuleDescription{Short: d.SARIFShort, Full: d.SARIFFull, Help: d.SARIFHelp}
 	}
 
 	// Return generic description for unknown types

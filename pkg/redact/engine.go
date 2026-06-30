@@ -33,11 +33,11 @@ type Engine struct {
 	debug           bool
 
 	// validators is the slice passed into parallel.RunValidators on
-	// each Redact call. It contains exactly one entry — the
-	// EnhancedManagerWrapper that fans out to the registered
-	// validators. Reusing this graph is the entire point of the
-	// Engine: constructing it costs roughly an order of magnitude
-	// more than running it on a small payload.
+	// each Redact call. It contains exactly one entry — the Detector
+	// facade that fans out to the registered validators. Reusing this
+	// graph is the entire point of the Engine: constructing it costs
+	// roughly an order of magnitude more than running it on a small
+	// payload.
 	validatorsList []detector.Validator
 
 	// observer is the package-internal observer that EnhancedManager
@@ -103,27 +103,14 @@ func NewEngine(opts EngineOptions) (*Engine, error) {
 		return nil, fmt.Errorf("redact: no validators enabled (Checks=%v)", opts.Checks)
 	}
 
-	// Wire up the enhanced manager + dual-path bridge so contextual
+	// Wire up the detection facade (dual-path bridge) so contextual
 	// analysis behaves identically to ScanContent. Constructing this
 	// once is the entire reason Engine exists — the CLI rebuilds it
 	// every call.
-	evCfg := validators.DefaultEnhancedValidatorConfig()
-	evCfg.EnableRealTimeMetrics = opts.Debug
-	enhancedManager := validators.NewEnhancedValidatorManager(evCfg)
-
-	dualPathHelper := validators.NewValidatorIntegrationHelper(observer)
-	if err := dualPathHelper.SetupDualPathValidation(standardValidators); err != nil {
+	detectorFacade := validators.NewDetector(observer)
+	if err := detectorFacade.SetupValidators(standardValidators); err != nil {
 		return nil, fmt.Errorf("redact: failed to setup dual path validation: %w", err)
 	}
-	enhancedManager.SetDualPathHelper(dualPathHelper)
-
-	for name, validator := range standardValidators {
-		bridge := validators.NewValidatorBridge(name, validator)
-		if err := enhancedManager.RegisterValidator(name, bridge); err != nil {
-			return nil, fmt.Errorf("redact: failed to register validator %s: %w", name, err)
-		}
-	}
-	enhancedWrapper := validators.NewEnhancedManagerWrapper(enhancedManager)
 
 	// nil output manager + nil observer is fine for in-memory redaction —
 	// RedactString uses neither. Position correlation is unnecessary for
@@ -137,7 +124,7 @@ func NewEngine(opts EngineOptions) (*Engine, error) {
 		defaultStrategy: strategy,
 		logWriter:       opts.LogWriter,
 		debug:           opts.Debug,
-		validatorsList:  []detector.Validator{enhancedWrapper},
+		validatorsList:  []detector.Validator{detectorFacade},
 		observer:        observer,
 		redactor:        redactor,
 	}

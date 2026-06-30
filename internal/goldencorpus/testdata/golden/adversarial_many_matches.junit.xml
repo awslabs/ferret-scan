@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:adversarial_many_matches&gt;" classname="security-scan" time="0.001">
+      <failure message="12 security findings detected" type="SECURITY_FINDINGS">Line 1: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user00@example.com&#xA;Validator: email&#xA;Line 2: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user01@example.com&#xA;Validator: email&#xA;Line 3: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user02@example.com&#xA;Validator: email&#xA;Line 4: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user03@example.com&#xA;Validator: email&#xA;Line 5: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user04@example.com&#xA;Validator: email&#xA;Line 6: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user05@example.com&#xA;Validator: email&#xA;Line 7: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user06@example.com&#xA;Validator: email&#xA;Line 8: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user07@example.com&#xA;Validator: email&#xA;Line 9: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user08@example.com&#xA;Validator: email&#xA;Line 10: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user09@example.com&#xA;Validator: email&#xA;Line 11: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user10@example.com&#xA;Validator: email&#xA;Line 12: BUSINESS detected with 40.0% confidence (LOW)&#xA;Match: user11@example.com&#xA;Validator: email</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

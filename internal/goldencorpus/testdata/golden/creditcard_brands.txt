@@ -1,0 +1,5 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            FILE
+------------------------------------------------------------------------------------------
+[HIGH  ] creditcard   AMERICAN_EXPRESS      100.00% line     3 374245455400126  <golden:creditcard_brands>
+[HIGH  ] creditcard   MASTERCARD            100.00% line     2 5425233430109903 <golden:creditcard_brands>
+[HIGH  ] creditcard   VISA                  100.00% line     1 4532015112830366 <golden:creditcard_brands>

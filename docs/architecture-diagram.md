@@ -210,6 +210,21 @@ flowchart TD
 **Input**: Combined and routed content
 **Output**: Validation matches with confidence scores and context metadata
 
+> **⚠️ Stale-diagram note (v2 Phase 2).** The diagrams below depict
+> `ValidateWithAdvancedFeatures()` as the "Main orchestration method" and show a
+> standalone **Cross-Validator Signals** processor, **Confidence Calibrator**,
+> and **Language Detector** as active post-validation stages. **None of those
+> were ever wired into a production entry point** — they were dead code and have
+> been removed (see [docs/proposals/V2_ARCHITECTURE.md](proposals/V2_ARCHITECTURE.md)
+> gap 3.1). The live pipeline is: `EnhancedManagerWrapper` →
+> `EnhancedValidatorManager.ValidateContentWithDualPathCtx` → dual-path helper →
+> `EnhancedValidatorBridge` → document/metadata bridges → validators, with
+> confidence adjustment performed by the bridge's context-based
+> `applyCrossPathConfidenceAdjustments` (NOT the deleted statistical calibrator).
+> The boxes below are retained for historical context but should be read as
+> "intended design that never shipped," pending a diagram rewrite in the Move-B
+> facade work.
+
 ### 4a. Simplified Overview
 
 ```mermaid
@@ -628,7 +643,9 @@ The **Results Processing & Output Generation** stage demonstrates the system's a
 
 ### **Resilience & Observability**
 
-Throughout the architecture, resilience patterns are embedded at multiple levels. The worker pool provides fault isolation, preventing single file processing errors from affecting the entire scan. The system includes observability hooks for timing, error tracking, and performance monitoring, essential for enterprise deployment and troubleshooting.
+Throughout the architecture, resilience patterns are embedded at multiple levels. The worker pool provides file-level fault isolation, preventing a single file's processing error from aborting the entire scan. Validator-level fault isolation is enforced at the per-validator dispatch chokepoint (`internal/execguard`): each validator invocation runs under panic recovery — so a panic in one validator is converted to a per-validator error rather than crashing the process — and is handed a `context.Context` so a stalled or runaway validator can no longer block the whole scan past its deadline. When a scan's validator coverage is cut short by a timeout or cancellation, that is surfaced explicitly (e.g. `ScanResult.Incomplete` on the in-memory `ScanContent` path) so an incomplete scan is never mistaken for a clean one. The system also includes observability hooks for timing, error tracking, and performance monitoring, essential for enterprise deployment and troubleshooting.
+
+> **Implementation note (v2 Phase 1):** the context-aware, panic-isolated execution contract described above landed via `internal/execguard` and the `...Ctx` method variants threaded through the validator bridge stack. The remaining structural moves (collapsing the bridge layers, shared scanning primitives, a promoted public engine API) are tracked in [docs/proposals/V2_ARCHITECTURE.md](proposals/V2_ARCHITECTURE.md).
 
 ### **File Type Filtering & Intelligent Routing**
 

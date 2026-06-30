@@ -1,0 +1,9 @@
+=== REDACTED ===
+s******@acme-corp.com
+a****@gmail.com
+n*******@internal.example.org
+not.an.email.at.all
+=== FINDINGS (sorted) ===
+type=BUSINESS line=1 conf=high match=support@acme-corp.com
+type=BUSINESS line=3 conf=medium match=no-reply@internal.example.org
+type=GMAIL line=2 conf=high match=alice@gmail.com
