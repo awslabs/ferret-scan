@@ -24,7 +24,7 @@ func TestGoldenFileScanFormats(t *testing.T) {
 		fc := fc
 		t.Run(fc.Name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			path := writeFixture(t, tmpDir, fc)
+			path := writeFixture(t, tmpDir, fc) // forward-slash scan path
 
 			res, err := core.ScanFile(core.ScanConfig{
 				FilePath:            path,
@@ -50,8 +50,9 @@ func TestGoldenFileScanFormats(t *testing.T) {
 					t.Fatalf("format(%s) for case %q: %v", format, fc.Name, err)
 				}
 				// Path-normalize FIRST (raw temp path → <TMPDIR>), then the
-				// generic timestamp/JSON canonicalization.
-				got := NormalizeOutput(format, NormalizePaths(out, tmpDir))
+				// generic timestamp/JSON canonicalization. Use the forward-slash
+				// form of tmpDir to match the "/"-normalized scan path.
+				got := NormalizeOutput(format, NormalizePaths(out, filepath.ToSlash(tmpDir)))
 				checkGolden(t, fc.Name+"."+formatExt(format), got)
 			}
 		})
@@ -108,14 +109,23 @@ func TestFileContentParity(t *testing.T) {
 }
 
 // writeFixture writes a FileCase's content into tmpDir under its basename and
-// returns the full path.
+// returns the path to scan, FORWARD-SLASH normalized (filepath.ToSlash).
+//
+// Why forward slashes: the text formatter's getSmartFilename and the path
+// rendering in several formatters split on "/" only, so a native Windows path
+// (with "\") renders differently than a Unix path — which would make the
+// committed golden snapshots OS-dependent. Go's file APIs accept "/" on Windows
+// too, so scanning a forward-slash path reads the same file while giving every
+// OS identical formatter output. (This sidesteps a real getSmartFilename
+// Windows-path quirk in product code; fixing that formatter is out of scope for
+// the golden harness.)
 func writeFixture(t *testing.T, tmpDir string, fc FileCase) string {
 	t.Helper()
-	path := filepath.Join(tmpDir, fc.Filename)
-	if err := os.WriteFile(path, fc.Content, 0o644); err != nil {
+	nativePath := filepath.Join(tmpDir, fc.Filename) // native separators for the write
+	if err := os.WriteFile(nativePath, fc.Content, 0o644); err != nil {
 		t.Fatalf("write fixture %q: %v", fc.Filename, err)
 	}
-	return path
+	return filepath.ToSlash(nativePath) // "/"-normalized path for the scan
 }
 
 // matchKeys reduces a match slice to a sorted, path-independent identity list
