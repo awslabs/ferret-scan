@@ -79,16 +79,12 @@ For complete documentation, see the [Documentation Index](docs/README.md).
 
 - **Context-Aware Analysis**: Domain and document type understanding (Healthcare, Financial, HR, etc.)
 - **Environment Detection**: Automatic dev/test/production environment recognition with confidence adjustments
-- **Cross-Validator Signals**: Pattern correlation analysis across different validator types
-- **Confidence Calibration**: Historical performance-based confidence scoring
-- **Pattern Learning**: Automatic discovery of new patterns from operational feedback
-- **Multi-Language Support**: Content validation in 9+ languages with locale-specific patterns
+- **Cross-Path Confidence Adjustment**: Findings are re-weighted using the detected domain/document type and document-vs-metadata context (e.g. a card number in a financial document scores higher than one in test data)
 
 ### Performance & Integration
 
-- **Batch Processing**: Optimized parallel processing with worker pools and pattern caching
-- **Memory Optimization**: Efficient resource management with memory pools and garbage collection
-- **Real-Time Analytics**: Performance metrics, accuracy tracking, and predictive insights
+- **Parallel Processing**: Multi-worker file processing with per-validator fan-out
+- **Memory Optimization**: Secure-wipe of matched sensitive data after use
 - **Docker Support**: Containerized deployment for easy integration
 - **CI/CD Integration**: Pre-commit hooks and pipeline integration
 - **GitLab Security Scanner**: Native GitLab SAST report format for Security Dashboard integration
