@@ -356,6 +356,16 @@ Phase 4). All without touching detection logic.
   killed (Go has no goroutine kill) — but the **scan** is no longer held hostage to it, the leak is bounded
   to that one goroutine, and new validator work is skipped once the deadline passes. Making the hot loops
   interruptible is Phase 3.
+- **File-level isolation vs. batch-completion delay (worker-pool path).** Files are processed concurrently
+  across `min(NumCPU, 8)` workers and each file is panic-recovered (`safeProcessJob`), so a validator that
+  *fails or panics* on one file does not affect the others (locked by `TestBatch_FailedFileDoesNotBlockOthers`).
+  A validator that *stalls* on one file occupies one worker; the other workers keep going, but the batch's
+  result collector waits for every file to report, so **overall batch completion is delayed until the stalled
+  file hits its per-file timeout** (it can never hang forever). The per-file timeout is now configurable via
+  `parallel.JobConfig.JobTimeout` (zero value = the historical 5-minute `DefaultJobTimeout`), so a long-lived
+  embedder can tighten it. Locked by `TestBatch_StalledFileDoesNotBlockOthers` (a stalled file with a 300ms
+  budget lets the good files finish in well under a second; verified to fail if the batch blocks). Reclaiming
+  the stalled worker *immediately* (rather than at timeout) still requires Phase 3 ctx-polling.
 - **The file/worker-pool path (`ScanFile`) does not yet surface `Incomplete` in `ScanResult`.** That path
   runs through the worker pool, whose per-file `Result.Error`/diagnostics are only retained under `--debug`
   and (pre-existing behavior) cause a file's matches to be dropped on error. Threading per-file diagnostics
