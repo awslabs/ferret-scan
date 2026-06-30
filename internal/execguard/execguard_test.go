@@ -150,22 +150,29 @@ func TestValidateContent_PrefersContextAwarePath(t *testing.T) {
 	}
 }
 
-// Guards the timing claim: SafeRun returns immediately on an already-expired
-// deadline rather than invoking work.
+// Guards the claim: when the context is already done, SafeRun returns its work
+// function WITHOUT invoking it (so an expired budget never starts new work).
+//
+// Determinism note: this used a time.Nanosecond timeout + a 1ms sleep to force
+// an "expired" deadline, which is flaky on Windows — its timer granularity
+// (~15ms) means the deadline may not have fired when SafeRun checks ctx.Err(),
+// so the work runs and the test sees the full sleep. We instead use a
+// pre-cancelled context: ctx.Err() is non-nil immediately on every OS, with no
+// clock-granularity race. A bool flag (not wall-clock time) proves fn never ran.
 func TestSafeRun_ExpiredDeadlineReturnsFast(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
-	defer cancel()
-	time.Sleep(time.Millisecond) // ensure the deadline has passed
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // deadline/cancellation already tripped, deterministically
 
-	start := time.Now()
+	ran := false
 	_, err := SafeRun(ctx, "ok", func() ([]detector.Match, error) {
-		time.Sleep(2 * time.Second) // would dominate if it ran
+		ran = true
+		time.Sleep(2 * time.Second) // would dominate if SafeRun wrongly invoked fn
 		return nil, nil
 	})
-	if time.Since(start) > 500*time.Millisecond {
-		t.Errorf("SafeRun should skip work on an expired deadline, took %v", time.Since(start))
+	if ran {
+		t.Error("SafeRun must NOT invoke fn when the context is already done")
 	}
 	if err == nil {
-		t.Error("expected a context deadline error")
+		t.Error("expected a context cancellation error")
 	}
 }
