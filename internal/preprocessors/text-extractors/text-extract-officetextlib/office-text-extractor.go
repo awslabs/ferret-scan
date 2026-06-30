@@ -14,6 +14,37 @@ import (
 	"strings"
 )
 
+// Decompression-amplification bounds. Office files are zip archives; a small
+// archive can expand to gigabytes of XML ("zip bomb" shape), which would then be
+// concatenated and fed whole into every regex validator. We cap BOTH the size of
+// any single decompressed zip entry and the total decompressed text accumulated
+// from one document. These mirror the bounds the metadata office extractor
+// already enforces (meta-extract-officelib MaxXMLSize); the text extractor was
+// the unprotected sibling (v2 gap 2.4).
+//
+// The caps are generous — far above any realistic document — so legitimate files
+// are unaffected; only hostile decompression amplification is bounded. When a
+// bound is hit, extraction returns the text gathered so far (best-effort) rather
+// than erroring, consistent with the extractor's existing partial-content
+// behavior.
+const (
+	// MaxZipEntryBytes bounds a single decompressed entry (e.g. document.xml,
+	// one sheet's sharedStrings.xml).
+	MaxZipEntryBytes = 50 * 1024 * 1024 // 50MB
+)
+
+// readZipEntryLimited reads a decompressed zip entry, capped at MaxZipEntryBytes,
+// regardless of the entry's claimed/actual uncompressed size. It is a
+// drop-in replacement for readZipEntryLimited(rc) (same (content, err) signature) used at
+// every zip-entry read in this file. Capping each entry closes the
+// decompression-amplification ("zip bomb") vector at the source: a small archive
+// can no longer expand to gigabytes of validator text. A capped read returns
+// valid (if truncated) content, which is still safe to scan; truncation is not
+// an error.
+func readZipEntryLimited(rc io.Reader) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(rc, MaxZipEntryBytes))
+}
+
 // TextContent represents the extracted text content from a document
 type TextContent struct {
 	Filename   string
@@ -100,7 +131,7 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 	if err != nil {
 		return content, err
 	}
-	docContent, err := io.ReadAll(rc)
+	docContent, err := readZipEntryLimited(rc)
 	rc.Close()
 	if err != nil {
 		return content, err
@@ -523,7 +554,7 @@ func extractTextFromXML(file *zip.File, pattern string) (string, error) {
 	defer rc.Close()
 
 	// Read the content
-	content, err := io.ReadAll(rc)
+	content, err := readZipEntryLimited(rc)
 	if err != nil {
 		return "", err
 	}
@@ -619,7 +650,7 @@ func extractSharedStringsSimple(file *zip.File) []string {
 	defer rc.Close()
 
 	// Read the content
-	content, err := io.ReadAll(rc)
+	content, err := readZipEntryLimited(rc)
 	if err != nil {
 		return nil
 	}
@@ -675,7 +706,7 @@ func extractWorksheetText(file *zip.File, sharedStrings []string) string {
 	defer rc.Close()
 
 	// Read the content
-	content, err := io.ReadAll(rc)
+	content, err := readZipEntryLimited(rc)
 	if err != nil {
 		return ""
 	}
@@ -799,7 +830,7 @@ func extractCoreProps(file *zip.File, content *TextContent) {
 	defer rc.Close()
 
 	// Read the content
-	xmlContent, err := io.ReadAll(rc)
+	xmlContent, err := readZipEntryLimited(rc)
 	if err != nil {
 		return
 	}
@@ -842,7 +873,7 @@ func extractOdfMeta(file *zip.File, content *TextContent) {
 	defer rc.Close()
 
 	// Read the content
-	xmlContent, err := io.ReadAll(rc)
+	xmlContent, err := readZipEntryLimited(rc)
 	if err != nil {
 		return
 	}
@@ -883,7 +914,7 @@ func extractWordXMLText(file *zip.File) (string, error) {
 	}
 	defer rc.Close()
 
-	docContent, err := io.ReadAll(rc)
+	docContent, err := readZipEntryLimited(rc)
 	if err != nil {
 		return "", err
 	}
