@@ -35,6 +35,15 @@ type TypeDescriptor struct {
 	GitLabCheckDesc string
 	// Empty GitLabRemediation → gitlab generic "Review the detected…" fallback.
 	GitLabRemediation string
+
+	// GitLabName is the gitlab-sast vulnerability display name (origin:
+	// gitlab-sast/mapper.go generateVulnerabilityName/nameMap). It is keyed by
+	// VALIDATOR NAME (e.g. CREDIT_CARD), not sub-type, so sub-types like VISA
+	// have no entry and fall back to the mapper's strings.Title("…")+" Detected"
+	// rule. Empty GitLabName → that fallback. Note this is NOT always equal to
+	// SARIFShort (e.g. SECRETS differs: "Secret/API Key Detected" vs "Secret or
+	// API Key Detected"), so it is a distinct field.
+	GitLabName string
 }
 
 // sarifCloudDesc is the shared SARIF rule description for every cloud-provider
@@ -183,6 +192,31 @@ var typeDescriptors = func() map[string]TypeDescriptor {
 	m["DOCUMENT_COMMENTS"] = TypeDescriptor{GitLabCheckDesc: "Document comments"}
 	m["AUTHOR_INFO"] = TypeDescriptor{GitLabCheckDesc: "Author information"}
 	m["COMPANY_INFO"] = TypeDescriptor{GitLabCheckDesc: "Company information"}
+
+	// --- gitlab-sast vulnerability display names (name tier, gap 3.3) ---
+	// Verbatim from gitlab-sast/mapper.go generateVulnerabilityName's nameMap,
+	// keyed by validator name. Applied as an overlay so a key can carry both a
+	// GitLabCheckDesc (above) and a GitLabName without re-listing. Keys absent
+	// here (incl. all sub-types) keep the mapper's strings.Title fallback.
+	gitlabNames := map[string]string{
+		"CREDIT_CARD":           "Credit Card Number Detected",
+		"SSN":                   "Social Security Number Detected",
+		"PASSPORT":              "Passport Number Detected",
+		"EMAIL":                 "Email Address Detected",
+		"PHONE":                 "Phone Number Detected",
+		"IP_ADDRESS":            "IP Address Detected",
+		"SECRETS":               "Secret/API Key Detected",
+		"INTELLECTUAL_PROPERTY": "Intellectual Property Detected",
+		"SOCIAL_MEDIA":          "Social Media Handle Detected",
+		"VIN":                   "Vehicle Identification Number Detected",
+		"METADATA":              "Sensitive Metadata Detected",
+		"COMPREHEND":            "AWS Comprehend PII Detected",
+	}
+	for k, name := range gitlabNames {
+		d := m[k] // zero value if k had no SARIF/sensitivity entry (e.g. COMPREHEND)
+		d.GitLabName = name
+		m[k] = d
+	}
 
 	return m
 }()
