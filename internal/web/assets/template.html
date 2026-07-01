@@ -1803,6 +1803,7 @@
             currentResults = [];
             window.suppressedCount = 0;
             window.suppressedFindings = [];
+            window.incompleteReasons = [];
             const totalFiles = queue.length;
 
             for (let i = 0; i < totalFiles; i++) {
@@ -1869,6 +1870,14 @@
                 window.suppressedCount = (window.suppressedCount || 0) + data.suppressed.length;
             }
 
+            // Track degraded coverage (v2 Phase 4): if the backend reports the scan
+            // was incomplete for this file, remember the reason so displayResults
+            // can warn that findings may be missing rather than imply a clean scan.
+            if (data.incomplete) {
+                window.incompleteReasons = (window.incompleteReasons || []);
+                window.incompleteReasons.push(data.incomplete_reason || 'coverage incomplete');
+            }
+
             return data.results || [];
         }
 
@@ -1897,6 +1906,17 @@
                 showAlert(`Scan complete: ${currentResults.length} findings detected`, 'success');
             } else {
                 showAlert('Scan complete: No sensitive data found', 'success');
+            }
+
+            // Degraded-coverage warning (v2 Phase 4): a timed-out / budget-limited
+            // scan may be MISSING findings, so a clean-looking result must not be
+            // trusted as complete. Surface it as a persistent warning alert.
+            const incompleteReasons = window.incompleteReasons || [];
+            if (incompleteReasons.length > 0) {
+                const detail = incompleteReasons.length === 1
+                    ? incompleteReasons[0]
+                    : `${incompleteReasons.length} files were not fully scanned`;
+                showAlert(`⚠ Scan coverage incomplete — findings may be missing: ${detail}`, 'warning');
             }
         }
 
