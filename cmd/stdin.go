@@ -18,6 +18,7 @@ import (
 	"github.com/awslabs/ferret-scan/internal/core"
 	"github.com/awslabs/ferret-scan/internal/detector"
 	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/internal/parallel"
 	"github.com/awslabs/ferret-scan/internal/precommit"
 	"github.com/awslabs/ferret-scan/internal/redactors"
 	plaintextredactor "github.com/awslabs/ferret-scan/internal/redactors/plaintext"
@@ -180,6 +181,16 @@ func runStdinScan(in stdinScanInputs) int {
 	elapsed := time.Since(start)
 
 	allMatches := result.Matches // not yet suppressed since we passed nil manager
+
+	// Incomplete-coverage warning (v2 Phase 4): if the stdin scan's validator
+	// coverage was cut short (a per-validator timeout, cancellation, or match
+	// budget), findings may be MISSING. Uses the same helper/format as the file
+	// path (a single virtual "file"); suppressed only in pre-commit mode. Exit
+	// code is deliberately unchanged — advisory warning only.
+	if precommitConfig == nil && result.Incomplete {
+		writeIncompleteCoverageWarning(os.Stderr,
+			[]parallel.FileDiagnostic{{FilePath: scanCfg.VirtualPath, Reason: result.IncompleteReason}}, 1)
+	}
 
 	// --generate-suppressions writes against raw matches before suppression.
 	if finalCfg.generateSuppressions {

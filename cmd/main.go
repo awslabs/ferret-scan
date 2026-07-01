@@ -6,6 +6,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -683,6 +684,25 @@ func shouldSuppressProgressOutput(finalConfig *finalConfiguration, precommitConf
 		suppress = true
 	}
 	return suppress
+}
+
+// writeIncompleteCoverageWarning emits the v2 Phase 4 incomplete-coverage warning
+// to w when any file's validator coverage was cut short (per-file/per-validator
+// timeout, cancellation, or match budget). It returns true if a warning was
+// written. The warning goes to stderr (never stdout/JSON, so scripts parsing
+// results are unaffected) and is a CORRECTNESS signal — callers gate it only on
+// pre-commit mode, not on quiet/non-interactive, because CI is exactly where a
+// silently-partial scan is most dangerous. It never changes the exit code.
+func writeIncompleteCoverageWarning(w io.Writer, incompleteFiles []parallel.FileDiagnostic, totalFiles int) bool {
+	if len(incompleteFiles) == 0 {
+		return false
+	}
+	fmt.Fprintf(w, "WARNING: scan coverage incomplete — %d of %d file(s) were not fully scanned; findings may be missing:\n",
+		len(incompleteFiles), totalFiles)
+	for _, fd := range incompleteFiles {
+		fmt.Fprintf(w, "  %s: %s\n", fd.FilePath, fd.Reason)
+	}
+	return true
 }
 
 // extractedFlags holds safely extracted flag values to avoid repeated nil checks
@@ -1544,6 +1564,11 @@ func main() {
 	var allMatches []detector.Match
 	processedFiles := 0
 	skippedFiles := 0
+	// incompleteFiles captures files whose validator coverage was cut short (a
+	// per-file/per-validator timeout, cancellation, or match budget — v2 Phase 4).
+	// Populated from ProcessingStats.IncompleteFiles below and surfaced as a
+	// stderr warning so a partially-scanned run is never silently reported clean.
+	var incompleteFiles []parallel.FileDiagnostic
 
 	// Suppress progress messages in pre-commit mode or quiet mode
 	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
@@ -1661,6 +1686,7 @@ func main() {
 
 			allMatches = append(allMatches, parallelMatches...)
 			processedFiles = stats.ProcessedFiles
+			incompleteFiles = stats.IncompleteFiles
 
 			// Handle inline redaction results if redaction was enabled
 			if finalConfig.enableRedaction && redactionManager != nil {
@@ -1714,6 +1740,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Scan complete: %d files processed in %s\n",
 				processedFiles, elapsed.Round(time.Millisecond))
 		}
+	}
+
+	// Incomplete-coverage warning (v2 Phase 4): a file whose validator coverage
+	// was cut short (per-file/per-validator timeout, cancellation, or match
+	// budget) means findings may be MISSING — the run must not be reported as a
+	// clean, complete scan. Suppressed only in pre-commit mode, which owns a
+	// strict machine-readable output contract. Exit code is deliberately
+	// unchanged (default still 0) — this is an advisory warning.
+	if precommitConfig == nil {
+		writeIncompleteCoverageWarning(os.Stderr, incompleteFiles, len(supportedFiles))
 	}
 
 	// Advisory explanation pass (opt-in via --explain). Annotate the full
