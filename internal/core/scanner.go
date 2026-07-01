@@ -76,11 +76,11 @@ type ScanResult struct {
 	// from "did not finish scanning", which must never look the same.
 	// IncompleteReason carries a short, payload-free explanation when set.
 	//
-	// NOTE (v2 Phase 1 scope): this is currently populated only on the
-	// ScanContent (stdin / in-memory / library) path, which calls the validator
-	// runner directly. The file/worker-pool path (ScanFile) does not yet thread
-	// per-file diagnostics through to ScanResult — that is Phase 4
-	// (ScanResult.Diagnostics in docs/proposals/V2_ARCHITECTURE.md).
+	// Populated on BOTH the in-memory path (ScanContent) and the file/worker-pool
+	// path (ScanFile): ScanFile aggregates per-file validator-completion status
+	// from ProcessingStats.IncompleteFiles (v2 Phase 4). On the file path,
+	// IncompleteReason names the single offending file or counts them when more
+	// than one did not complete.
 	Incomplete       bool
 	IncompleteReason string
 }
@@ -179,11 +179,31 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		explain.Annotate(unsuppressed, explain.NewSignalSynthesizer())
 	}
 
+	// Surface degraded validator coverage (v2 Phase 4): if any file's validation
+	// did not complete (timeout/cancel/validator error), flag the result as
+	// Incomplete so a partially-scanned run is never mistaken for a clean one.
+	// Matches are still returned (the worker pool keeps the partial results);
+	// this only adds the signal. Defaults false when every file completed.
+	incomplete := false
+	incompleteReason := ""
+	if stats != nil && len(stats.IncompleteFiles) > 0 {
+		incomplete = true
+		if len(stats.IncompleteFiles) == 1 {
+			incompleteReason = fmt.Sprintf("validation did not complete for %s: %s",
+				stats.IncompleteFiles[0].FilePath, stats.IncompleteFiles[0].Reason)
+		} else {
+			incompleteReason = fmt.Sprintf("validation did not complete for %d of %d files",
+				len(stats.IncompleteFiles), stats.TotalFiles)
+		}
+	}
+
 	return &ScanResult{
 		Matches:           unsuppressed,
 		SuppressedMatches: suppressed,
 		SuppressedCount:   len(suppressed),
 		ProcessedFiles:    stats.ProcessedFiles,
+		Incomplete:        incomplete,
+		IncompleteReason:  incompleteReason,
 	}, nil
 }
 

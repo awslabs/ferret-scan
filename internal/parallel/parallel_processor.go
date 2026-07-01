@@ -29,6 +29,21 @@ type ProcessingStats struct {
 	TotalDuration  time.Duration `json:"total_duration_ms"`
 	WorkerCount    int           `json:"worker_count"`
 	AvgFileTime    time.Duration `json:"avg_file_time_ms"`
+
+	// IncompleteFiles lists files whose validator coverage was cut short (a
+	// validator errored or the scan was cancelled/timed out). It is populated
+	// from each Result.ValidationError and is empty on a fully-clean run, so
+	// callers that ignore it see no behavior change (v2 Phase 4). Callers use it
+	// to set ScanResult.Incomplete — distinguishing "scanned clean" from "did
+	// not finish scanning".
+	IncompleteFiles []FileDiagnostic `json:"incomplete_files,omitempty"`
+}
+
+// FileDiagnostic records that a single file's validation did not complete
+// cleanly. It carries no payload bytes — only the path and a short reason.
+type FileDiagnostic struct {
+	FilePath string `json:"file_path"`
+	Reason   string `json:"reason"`
 }
 
 // NewParallelProcessor creates a new parallel processor
@@ -87,11 +102,21 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 	var mu sync.Mutex
 	processedCount := 0
 	totalDuration := time.Duration(0)
+	var incompleteFiles []FileDiagnostic
 
 	for i := 0; i < jobCount; i++ {
 		result := <-pp.workerPool.Results()
 
 		mu.Lock()
+		// Record degraded validator coverage (timeout/cancel/validator error)
+		// independently of the fatal-error path below, so a partially-scanned
+		// file still contributes its matches AND is flagged as incomplete.
+		if result.ValidationError != nil {
+			incompleteFiles = append(incompleteFiles, FileDiagnostic{
+				FilePath: result.FilePath,
+				Reason:   result.ValidationError.Error(),
+			})
+		}
 		if result.Error != nil {
 			if pp.observer != nil {
 				pp.observer.LogOperation(observability.StandardObservabilityData{
@@ -118,12 +143,13 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 	overallDuration := time.Since(start)
 
 	stats := &ProcessingStats{
-		TotalFiles:     jobCount,
-		ProcessedFiles: processedCount,
-		TotalMatches:   len(allMatches),
-		TotalDuration:  overallDuration,
-		WorkerCount:    pp.workerPool.workers,
-		AvgFileTime:    totalDuration / time.Duration(max(processedCount, 1)),
+		TotalFiles:      jobCount,
+		ProcessedFiles:  processedCount,
+		TotalMatches:    len(allMatches),
+		TotalDuration:   overallDuration,
+		WorkerCount:     pp.workerPool.workers,
+		AvgFileTime:     totalDuration / time.Duration(max(processedCount, 1)),
+		IncompleteFiles: incompleteFiles,
 	}
 
 	if finishTiming != nil {
