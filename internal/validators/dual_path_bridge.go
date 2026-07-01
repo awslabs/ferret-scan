@@ -799,12 +799,28 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 		go func(v detector.Validator) {
 			defer wg.Done()
 
+			// Bound process-wide concurrent validator work (v2 gap 2.1): file
+			// workers each fan out here, so without a shared cap the live
+			// goroutine count is workers × validators. Acquire a token before
+			// running; if ctx is cancelled while waiting, skip this validator
+			// (no Release) and record the error — same outcome as the execguard
+			// skip-on-cancel path. The token is held only for the validate call,
+			// then released, so a stalled validator holds at most one slot.
+			if lerr := execguard.DefaultLimiter.Acquire(ctx); lerr != nil {
+				errorsMu.Lock()
+				validationErrors = append(validationErrors, lerr)
+				errorsMu.Unlock()
+				resultsChan <- validatorResult{matches: nil, err: lerr}
+				return
+			}
+
 			// Dispatch through the execguard chokepoint: recovers panics
 			// (so one validator cannot crash the whole process — v2 gap 1.3)
 			// and threads ctx to context-aware validators / skips launch once
 			// ctx is cancelled (v2 gap 1.1). Behavior is unchanged for the
 			// common success path.
 			matches, err := execguard.ValidateContent(ctx, validatorName(v), v, content, filePath)
+			execguard.DefaultLimiter.Release()
 			if err != nil {
 				errorsMu.Lock()
 				validationErrors = append(validationErrors, err)
