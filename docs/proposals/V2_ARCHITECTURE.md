@@ -356,6 +356,19 @@ polling inside validators, the concurrency limiter, the per-validator budget, an
 (Moves A, C). Behavior changes *only* on over-deadline/over-budget inputs (today: hang or crash; v2:
 bounded partial + explicit incomplete signal).
 
+> **Phase 3, slice 1 — per-line ctx polling in the three worst offenders — LANDED (PR #107).** The
+> audit-measured worst offenders (SSN, IP, phone) now implement `execguard.ContextAwareValidator` via a
+> new `ValidateContentCtx` that polls a shared `execguard.LineLoopCancelled(ctx, i)` primitive (reads
+> `ctx.Err()` every 256 lines, and on `i==0`) once per line; on deadline/cancel each returns the matches
+> gathered so far plus `ctx.Err()`. `ValidateContent` becomes a `context.Background()` shim, so the common
+> uncancelled path is byte-identical (golden corpus passes with zero `UPDATE_GOLDEN`). Because
+> `execguard.ValidateContent` already dispatches to `ContextAwareValidator` when implemented, the live scan
+> path routes through the ctx-aware form automatically: a runaway **multi-line** scan is reclaimed
+> promptly (SSN 0.01s vs 53.68s; IP 0.01s vs 5.18s; phone 0.01s vs 16.16s — negative-controlled).
+> **Still open in Phase 3:** the O(n²) **single-long-line** case (fixed by the shared `LineScan` primitive,
+> 4.1 — slice 2); adopting the ctx-poll in the remaining line-loop validators; and the concurrency
+> limiter + per-validator/extraction budgets (Move C).
+
 **Phase 4 — Surface and consolidate.** Add `ScanResult.Diagnostics` + opt-in degraded-coverage exit (1.4);
 the shared `LineScan` primitive (4.1); structured provenance (5.1); `Descriptor()` + data-driven routing
 (3.3, 5.3); the `Observer` seam and typed config schema (6.2, 6.4).
