@@ -6,6 +6,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -685,6 +686,25 @@ func shouldSuppressProgressOutput(finalConfig *finalConfiguration, precommitConf
 	return suppress
 }
 
+// writeIncompleteCoverageWarning emits the v2 Phase 4 incomplete-coverage warning
+// to w when any file's validator coverage was cut short (per-file/per-validator
+// timeout, cancellation, or match budget). It returns true if a warning was
+// written. The warning goes to stderr (never stdout/JSON, so scripts parsing
+// results are unaffected) and is a CORRECTNESS signal — callers gate it only on
+// pre-commit mode, not on quiet/non-interactive, because CI is exactly where a
+// silently-partial scan is most dangerous. It never changes the exit code.
+func writeIncompleteCoverageWarning(w io.Writer, incompleteFiles []parallel.FileDiagnostic, totalFiles int) bool {
+	if len(incompleteFiles) == 0 {
+		return false
+	}
+	fmt.Fprintf(w, "WARNING: scan coverage incomplete — %d of %d file(s) were not fully scanned; findings may be missing:\n",
+		len(incompleteFiles), totalFiles)
+	for _, fd := range incompleteFiles {
+		fmt.Fprintf(w, "  %s: %s\n", fd.FilePath, fd.Reason)
+	}
+	return true
+}
+
 // extractedFlags holds safely extracted flag values to avoid repeated nil checks
 type extractedFlags struct {
 	webMode              bool
@@ -861,6 +881,7 @@ func main() {
 
 	// IP sub-type control flag
 	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
+	validatorBudget := flag.String("validator-budget", "", "Per-validator time budget as NAME=DURATION pairs (e.g. 'SSN=30s,IP_ADDRESS=10s'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. Default: no budget.")
 
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
@@ -874,6 +895,15 @@ func main() {
 	stdinName := flag.String("stdin-name", "<stdin>", "Synthetic label used as the filename in findings when scanning stdin")
 
 	flag.Parse()
+
+	// Parse --validator-budget once, up front, so a malformed spec fails fast with
+	// a clear message before any scanning (and before the stdin/file split). A nil
+	// map means no budgets (byte-identical default behavior).
+	validatorBudgets, budgetErr := parseValidatorBudgets(*validatorBudget)
+	if budgetErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", budgetErr)
+		os.Exit(1)
+	}
 
 	// Extract all flag values once for performance and consistency
 	flags := extractAllFlags(flagPointers{
@@ -932,10 +962,11 @@ func main() {
 	stdinFromFile := flags.inputFile == "-"
 	if (*stdinMode || stdinFromFile) && !*showHelp && !*showVersion {
 		exitCode := runStdinScan(stdinScanInputs{
-			flags:          flags,
-			positionalArgs: flag.Args(),
-			stdinName:      *stdinName,
-			outputFile:     *outputFile,
+			flags:            flags,
+			positionalArgs:   flag.Args(),
+			stdinName:        *stdinName,
+			outputFile:       *outputFile,
+			validatorBudgets: validatorBudgets,
 		})
 		os.Exit(exitCode)
 	}
@@ -1544,6 +1575,11 @@ func main() {
 	var allMatches []detector.Match
 	processedFiles := 0
 	skippedFiles := 0
+	// incompleteFiles captures files whose validator coverage was cut short (a
+	// per-file/per-validator timeout, cancellation, or match budget — v2 Phase 4).
+	// Populated from ProcessingStats.IncompleteFiles below and surfaced as a
+	// stderr warning so a partially-scanned run is never silently reported clean.
+	var incompleteFiles []parallel.FileDiagnostic
 
 	// Suppress progress messages in pre-commit mode or quiet mode
 	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
@@ -1640,6 +1676,7 @@ func main() {
 			EnableRedaction:    finalConfig.enableRedaction,
 			RedactionStrategy:  finalConfig.redactionStrategy,
 			RedactionOutputDir: finalConfig.redactionOutputDir,
+			ValidatorBudgets:   validatorBudgets,
 		}
 
 		// Show initial progress
@@ -1661,6 +1698,7 @@ func main() {
 
 			allMatches = append(allMatches, parallelMatches...)
 			processedFiles = stats.ProcessedFiles
+			incompleteFiles = stats.IncompleteFiles
 
 			// Handle inline redaction results if redaction was enabled
 			if finalConfig.enableRedaction && redactionManager != nil {
@@ -1714,6 +1752,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Scan complete: %d files processed in %s\n",
 				processedFiles, elapsed.Round(time.Millisecond))
 		}
+	}
+
+	// Incomplete-coverage warning (v2 Phase 4): a file whose validator coverage
+	// was cut short (per-file/per-validator timeout, cancellation, or match
+	// budget) means findings may be MISSING — the run must not be reported as a
+	// clean, complete scan. Suppressed only in pre-commit mode, which owns a
+	// strict machine-readable output contract. Exit code is deliberately
+	// unchanged (default still 0) — this is an advisory warning.
+	if precommitConfig == nil {
+		writeIncompleteCoverageWarning(os.Stderr, incompleteFiles, len(supportedFiles))
 	}
 
 	// Advisory explanation pass (opt-in via --explain). Annotate the full
@@ -2456,6 +2504,11 @@ func validateWebModeFlags() error {
 	if isFlagSet("show-suppressed") {
 		incompatibleFlags = append(incompatibleFlags, "--show-suppressed")
 		troubleshooting = append(troubleshooting, "Web mode has its own suppressed findings display")
+	}
+
+	if isFlagSet("validator-budget") {
+		incompatibleFlags = append(incompatibleFlags, "--validator-budget")
+		troubleshooting = append(troubleshooting, "Web mode does not apply per-validator CLI budgets; it runs with the default per-file timeout")
 	}
 
 	// If any incompatible flags were found, return an error
