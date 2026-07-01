@@ -5,6 +5,7 @@ package validators
 
 import (
 	stdctx "context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -41,9 +42,17 @@ type EnhancedValidatorBridge struct {
 	mu sync.RWMutex
 }
 
+// namedValidator pairs a document validator with its logical check name (e.g.
+// "SSN", "IP_ADDRESS") so the dispatch chokepoint can key per-validator budgets
+// and diagnostics by the operator-facing name rather than the Go type.
+type namedValidator struct {
+	name string
+	v    detector.Validator
+}
+
 // DocumentValidatorBridge routes document body content to non-metadata validators
 type DocumentValidatorBridge struct {
-	validators      []detector.Validator
+	validators      []namedValidator
 	contextAnalyzer *context.ContextAnalyzer
 	observer        *observability.StandardObserver
 	metrics         *DocumentValidationMetrics
@@ -172,7 +181,7 @@ func NewEnhancedValidatorBridge(config *DualPathConfig) *EnhancedValidatorBridge
 // NewDocumentValidatorBridge creates a new document validator bridge
 func NewDocumentValidatorBridge() *DocumentValidatorBridge {
 	return &DocumentValidatorBridge{
-		validators:      make([]detector.Validator, 0),
+		validators:      make([]namedValidator, 0),
 		contextAnalyzer: context.NewContextAnalyzer(),
 		metrics:         &DocumentValidationMetrics{},
 	}
@@ -207,9 +216,11 @@ func (evb *EnhancedValidatorBridge) SetObservabilityHooks(hooks *performance.Obs
 	evb.observabilityHooks = hooks
 }
 
-// RegisterDocumentValidator registers a validator for document body content
-func (evb *EnhancedValidatorBridge) RegisterDocumentValidator(validator detector.Validator) {
-	evb.documentBridge.RegisterValidator(validator)
+// RegisterDocumentValidator registers a validator for document body content under
+// its logical check name (e.g. "SSN"), used for per-validator budget keying and
+// diagnostics at the dispatch chokepoint.
+func (evb *EnhancedValidatorBridge) RegisterDocumentValidator(name string, validator detector.Validator) {
+	evb.documentBridge.RegisterValidator(name, validator)
 }
 
 // SetMetadataValidator sets the metadata validator
@@ -338,11 +349,13 @@ func (evb *EnhancedValidatorBridge) ProcessContentCtx(ctx stdctx.Context, conten
 	// Process content through dual paths
 	result, err := evb.processDualPath(ctx, routedContent, contextInsights)
 	if err != nil {
-		// A context cancellation/timeout is terminal: do NOT fall back to a
-		// legacy re-run (it would re-invoke the same runaway validator and
-		// stall again). Return the partial matches gathered so far along with
-		// the context error so callers can report incomplete coverage.
-		if ctxErr := ctx.Err(); ctxErr != nil {
+		// A context cancellation/timeout OR a per-validator budget outcome (v2 Move
+		// C: time/match budget) is terminal: do NOT fall back to a legacy re-run —
+		// for a cancel it would re-invoke the same runaway validator and stall
+		// again; for a budget it would wastefully re-scan and double-count. Return
+		// the partial matches gathered so far with the error so callers can report
+		// incomplete coverage.
+		if ctxErr := ctx.Err(); ctxErr != nil || firstBudgetError([]error{err}) != nil {
 			var partial []detector.Match
 			if result != nil {
 				partial = result.AllMatches
@@ -467,6 +480,14 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 						Error:     err.Error(),
 					})
 				}
+				// A per-validator budget outcome (v2 Move C: match cap or time
+				// budget) still carries the genuine matches gathered before the
+				// budget fired — keep them (the error is recorded in documentErr so
+				// the scan is flagged incomplete). Other errors discard the slice,
+				// preserving historical behavior.
+				if firstBudgetError([]error{err}) != nil {
+					result.DocumentMatches = matches
+				}
 				return
 			}
 			result.DocumentMatches = matches
@@ -581,6 +602,16 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 	}
 
 	result.ProcessingTime = time.Since(startTime)
+
+	// Surface a per-validator BUDGET outcome (v2 Move C) that occurred on a single
+	// path: the matches gathered so far are complete and returned in result, but the
+	// caller must flag ScanResult.Incomplete because a validator's time/match budget
+	// cut its coverage short. (Full cancellation is handled at ctx.Err() above; both
+	// paths failing is handled earlier.) No budgets configured => budgetErr nil =>
+	// byte-identical return.
+	if budgetErr := firstBudgetError([]error{documentErr, metadataErr}); budgetErr != nil {
+		return result, budgetErr
+	}
 	return result, nil
 }
 
@@ -727,11 +758,12 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, con
 	return allMatches, nil
 }
 
-// RegisterValidator registers a validator for document body content (legacy compatibility)
-func (dvb *DocumentValidatorBridge) RegisterValidator(validator detector.Validator) {
+// RegisterValidator registers a validator for document body content under its
+// logical check name (e.g. "SSN"), preserved for budget keying and diagnostics.
+func (dvb *DocumentValidatorBridge) RegisterValidator(name string, validator detector.Validator) {
 	dvb.mu.Lock()
 	defer dvb.mu.Unlock()
-	dvb.validators = append(dvb.validators, validator)
+	dvb.validators = append(dvb.validators, namedValidator{name: name, v: validator})
 }
 
 // SetObserver sets the observability component
@@ -751,6 +783,22 @@ type validatorResult struct {
 // stable identifier available without changing the interface in Phase 1.
 func validatorName(v detector.Validator) string {
 	return fmt.Sprintf("%T", v)
+}
+
+// firstBudgetError returns the first error that represents a per-validator budget
+// outcome — a time budget (context.DeadlineExceeded/Canceled) or a match-count cap
+// (execguard.ErrMatchBudgetExceeded) — or nil if none. These are the errors that
+// mean "coverage was cut short" and should surface as ScanResult.Incomplete;
+// ordinary validator errors are deliberately excluded (historical behavior).
+func firstBudgetError(errs []error) error {
+	for _, err := range errs {
+		if errors.Is(err, stdctx.DeadlineExceeded) ||
+			errors.Is(err, stdctx.Canceled) ||
+			errors.Is(err, execguard.ErrMatchBudgetExceeded) {
+			return err
+		}
+	}
+	return nil
 }
 
 // ProcessDocumentContent processes document body content with non-metadata
@@ -776,7 +824,7 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 	startTime := time.Now()
 
 	dvb.mu.RLock()
-	validators := make([]detector.Validator, len(dvb.validators))
+	validators := make([]namedValidator, len(dvb.validators))
 	copy(validators, dvb.validators)
 	dvb.mu.RUnlock()
 
@@ -796,7 +844,7 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 	// Launch goroutines for each validator
 	for _, validator := range validators {
 		wg.Add(1)
-		go func(v detector.Validator) {
+		go func(nv namedValidator) {
 			defer wg.Done()
 
 			// Bound process-wide concurrent validator work (v2 gap 2.1): file
@@ -815,11 +863,16 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 			}
 
 			// Dispatch through the execguard chokepoint: recovers panics
-			// (so one validator cannot crash the whole process — v2 gap 1.3)
-			// and threads ctx to context-aware validators / skips launch once
-			// ctx is cancelled (v2 gap 1.1). Behavior is unchanged for the
+			// (so one validator cannot crash the whole process — v2 gap 1.3),
+			// threads ctx to context-aware validators / skips launch once ctx is
+			// cancelled (v2 gap 1.1), and enforces the per-validator budget keyed
+			// by the logical check name (v2 Move C). Behavior is unchanged for the
 			// common success path.
-			matches, err := execguard.ValidateContent(ctx, validatorName(v), v, content, filePath)
+			name := nv.name
+			if name == "" {
+				name = validatorName(nv.v) // fallback: Go type (unnamed registration)
+			}
+			matches, err := execguard.ValidateContent(ctx, name, nv.v, content, filePath)
 			execguard.DefaultLimiter.Release()
 			if err != nil {
 				errorsMu.Lock()
@@ -834,6 +887,14 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 						Success:   false,
 						Error:     err.Error(),
 					})
+				}
+				// A match-budget hit is a "soft" outcome (v2 Move C): the truncated
+				// matches are genuine findings and must be kept, unlike a real
+				// validator error (which discards its partial slice). The error is
+				// still recorded above so the scan is flagged incomplete.
+				if errors.Is(err, execguard.ErrMatchBudgetExceeded) {
+					resultsChan <- validatorResult{matches: matches, err: err}
+					return
 				}
 				resultsChan <- validatorResult{matches: nil, err: err}
 				return
@@ -904,11 +965,18 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 		close(done)
 	}()
 
+	// keepMatches reports whether a validator result's matches should be collected:
+	// on success, or on a match-budget hit (the truncated matches are real findings
+	// — v2 Move C). A real validator error still discards its partial slice.
+	keepMatches := func(r validatorResult) bool {
+		return r.matches != nil && (r.err == nil || errors.Is(r.err, execguard.ErrMatchBudgetExceeded))
+	}
+
 	select {
 	case <-done:
 		close(resultsChan)
 		for result := range resultsChan {
-			if result.err == nil && result.matches != nil {
+			if keepMatches(result) {
 				allMatches = append(allMatches, result.matches...)
 			}
 		}
@@ -916,7 +984,7 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 		for draining := true; draining; {
 			select {
 			case result := <-resultsChan:
-				if result.err == nil && result.matches != nil {
+				if keepMatches(result) {
 					allMatches = append(allMatches, result.matches...)
 				}
 			default:
@@ -937,6 +1005,17 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 	if len(validationErrors) > 0 && dvb.observer != nil && dvb.observer.DebugObserver != nil {
 		dvb.observer.DebugObserver.LogDetail("document_validation_errors",
 			fmt.Sprintf("%d out of %d validators failed", len(validationErrors), len(validators)))
+	}
+
+	// Surface a per-validator BUDGET or DEADLINE outcome (v2 Move C) so the caller
+	// can flag ScanResult.Incomplete: a validator's own time budget (child
+	// context.DeadlineExceeded) or match-count cap (ErrMatchBudgetExceeded) means
+	// coverage was cut short even though the overall scan completed. Ordinary
+	// validator errors keep the historical behavior (logged, not surfaced) so a
+	// single failing validator does not by itself mark the scan incomplete. When
+	// no budgets are configured there are no such errors — byte-identical path.
+	if budgetErr := firstBudgetError(validationErrors); budgetErr != nil {
+		return allMatches, budgetErr
 	}
 
 	// Update metrics

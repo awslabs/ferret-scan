@@ -5,14 +5,28 @@ package parallel
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/preprocessors"
 	"github.com/awslabs/ferret-scan/internal/resilience"
 	"github.com/awslabs/ferret-scan/internal/validators/metadata"
 )
+
+// partialMatchesSurvive reports whether an error is a per-validator BUDGET or
+// DEADLINE outcome (v2 Move C / Phase 3) rather than a hard validator failure.
+// For these, the matches gathered before the budget fired are genuine findings
+// and must be preserved (the error is still propagated so the scan is flagged
+// incomplete). A hard error keeps the historical behavior of discarding its
+// partial slice.
+func partialMatchesSurvive(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, execguard.ErrMatchBudgetExceeded)
+}
 
 // ValidatorStrategy controls how a single validator invocation is executed.
 // A nil strategy invokes the operation once with no wrapping; the worker pool
@@ -102,7 +116,13 @@ func RunValidators(
 				}
 
 				if err := runOne(ctx, op); err != nil {
-					matchesChan <- []detector.Match{}
+					// Preserve partial matches on a budget/deadline outcome; drop
+					// them on a hard error (historical behavior).
+					if partialMatchesSurvive(err) {
+						matchesChan <- matches
+					} else {
+						matchesChan <- []detector.Match{}
+					}
 					errorChan <- err
 					return
 				}
@@ -130,7 +150,11 @@ func RunValidators(
 				}
 
 				if err := runOne(ctx, op); err != nil {
-					matchesChan <- []detector.Match{}
+					if partialMatchesSurvive(err) {
+						matchesChan <- matches
+					} else {
+						matchesChan <- []detector.Match{}
+					}
 					errorChan <- err
 					return
 				}
@@ -168,7 +192,11 @@ func RunValidators(
 				}
 
 				if err := runOne(ctx, op); err != nil {
-					matchesChan <- []detector.Match{}
+					if partialMatchesSurvive(err) {
+						matchesChan <- matches
+					} else {
+						matchesChan <- []detector.Match{}
+					}
 					errorChan <- err
 					return
 				}
