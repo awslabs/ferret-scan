@@ -4,6 +4,7 @@
 package phone
 
 import (
+	stdctx "context"
 	"os"
 	"regexp"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -286,6 +288,15 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent validates preprocessed content for phone numbers
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line so a runaway multi-line scan
+// is reclaimed promptly (v2 Phase 3). Returns partial matches + ctx.Err() on
+// cancellation.
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("phone_validator", "validate_content", originalPath)
@@ -298,6 +309,13 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 	// Process each pattern type
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			if finishTiming != nil {
+				finishTiming(false, map[string]interface{}{"cancelled": true, "match_count": len(matches)})
+			}
+			return matches, ctx.Err()
+		}
 		// Per-line state hoisted out of the per-match loop:
 		//   - dedup indexes the cleaned-digit form of every match already accepted
 		//     on THIS line so duplicate detection is O(1)-amortized per candidate
