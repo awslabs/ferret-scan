@@ -4,6 +4,7 @@
 package socialmedia
 
 import (
+	stdctx "context"
 	"fmt"
 	"os"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -558,6 +560,16 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent validates preprocessed content for social media references
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line (inside detectPatternsByLine)
+// so a runaway multi-line scan is reclaimed promptly (v2 Phase 3). On cancellation
+// the line loop stops and the partial per-line matches gathered so far are
+// clustered and returned along with ctx.Err().
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]any)
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("social_media_validator", "validate_content", originalPath)
@@ -605,7 +617,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	}
 
 	// Use line-based processing for social media pattern detection with error handling
-	lineMatches, err := v.detectPatternsByLineWithErrorHandling(content, originalPath)
+	lineMatches, err := v.detectPatternsByLineWithErrorHandling(ctx, content, originalPath)
 	if err != nil {
 		// Log error but continue with empty results for graceful degradation
 		if v.observer != nil && v.observer.DebugObserver != nil {
@@ -656,11 +668,19 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 		}
 	}
 
+	// If the scan was cancelled/timed out mid-line-loop, the detection above
+	// returned only the lines processed before the deadline. Surface ctx.Err() so
+	// the caller records incomplete coverage (v2 Phase 3); the clustered partial
+	// matches are still returned.
+	if ctx.Err() != nil {
+		return processedMatches, ctx.Err()
+	}
+
 	return processedMatches, nil
 }
 
 // detectPatternsByLineWithErrorHandling wraps detectPatternsByLine with comprehensive error handling
-func (v *Validator) detectPatternsByLineWithErrorHandling(content string, originalPath string) (map[int][]detector.Match, error) {
+func (v *Validator) detectPatternsByLineWithErrorHandling(ctx stdctx.Context, content string, originalPath string) (map[int][]detector.Match, error) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery for debugging
@@ -690,7 +710,7 @@ func (v *Validator) detectPatternsByLineWithErrorHandling(content string, origin
 	}
 
 	// Call the original method with error handling
-	lineMatches := v.detectPatternsByLine(content, originalPath)
+	lineMatches := v.detectPatternsByLine(ctx, content, originalPath)
 	return lineMatches, nil
 }
 
@@ -2521,7 +2541,7 @@ func (v *Validator) compileWhitelistPatterns() {
 
 // detectPatternsByLine detects social media patterns and groups matches by line number
 // with platform categorization, metadata tagging, and batch processing optimizations
-func (v *Validator) detectPatternsByLine(content string, originalPath string) map[int][]detector.Match {
+func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, originalPath string) map[int][]detector.Match {
 	lineMatches := make(map[int][]detector.Match)
 
 	// If no patterns are configured, return empty results
@@ -2537,7 +2557,7 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 	useBatchProcessing := contentLength > 1024*1024 // 1MB threshold
 
 	if useBatchProcessing {
-		return v.detectPatternsByLineBatch(content, originalPath)
+		return v.detectPatternsByLineBatch(ctx, content, originalPath)
 	}
 
 	// Split content into lines for processing
@@ -2548,6 +2568,11 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 
 	// Process each line for social media patterns with optimizations
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): stop promptly on deadline/cancel,
+		// returning the per-line matches gathered so far.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			return lineMatches
+		}
 		// Skip empty lines early
 		if len(strings.TrimSpace(line)) == 0 {
 			continue
@@ -2561,7 +2586,7 @@ func (v *Validator) detectPatternsByLine(content string, originalPath string) ma
 }
 
 // detectPatternsByLineBatch processes large files using batch processing for better performance
-func (v *Validator) detectPatternsByLineBatch(content string, originalPath string) map[int][]detector.Match {
+func (v *Validator) detectPatternsByLineBatch(ctx stdctx.Context, content string, originalPath string) map[int][]detector.Match {
 	lineMatches := make(map[int][]detector.Match)
 
 	// Split content into lines
@@ -2576,6 +2601,11 @@ func (v *Validator) detectPatternsByLineBatch(content string, originalPath strin
 
 		// Process batch
 		for lineNum := i; lineNum < end; lineNum++ {
+			// Cooperative cancellation (v2 Phase 3): stop promptly on
+			// deadline/cancel, returning the per-line matches gathered so far.
+			if execguard.LineLoopCancelled(ctx, lineNum) {
+				return lineMatches
+			}
 			line := lines[lineNum]
 
 			// Skip empty lines early

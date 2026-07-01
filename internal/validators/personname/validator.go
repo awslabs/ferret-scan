@@ -4,6 +4,7 @@
 package personname
 
 import (
+	stdctx "context"
 	"regexp"
 	"slices"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -105,6 +107,15 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent implements the detector.Validator interface for preprocessed content
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line so a runaway multi-line scan
+// is reclaimed promptly (v2 Phase 3). On cancellation it returns the (pre-dedup)
+// matches gathered so far plus ctx.Err().
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var matches []detector.Match
 
 	// Ensure name databases are loaded
@@ -112,6 +123,10 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 	lines := strings.Split(content, "\n")
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			return matches, ctx.Err()
+		}
 		lineMatches := v.findNamesInLine(line, lineNum+1, originalPath)
 		matches = append(matches, lineMatches...)
 	}
