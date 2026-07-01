@@ -20,6 +20,7 @@ defaults:
   quiet: false # Suppress progress output (useful for scripts and CI/CD)
   show_suppressed: false # Include suppressed findings in output with [SUPP] marker
   generate_suppressions: false # Generate suppression rules for all findings
+  fail_on_incomplete: false # Exit code 3 if any file's validator coverage was cut short (timeout/cancellation/budget)
 
   # File exclusion patterns — glob syntax, applied in addition to --exclude on CLI
   # Uncomment and customize for your repo. Paths are matched against both the

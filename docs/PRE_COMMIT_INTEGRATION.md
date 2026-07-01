@@ -113,6 +113,13 @@ When `--pre-commit-mode` is enabled, Ferret Scan automatically:
 - **Optimizes performance** - Uses efficient batch processing for multiple files
 - **Respects file filtering** - Only processes files passed by pre-commit's file filtering
 
+> **Tip — fail on incomplete coverage.** Add `--fail-on-incomplete` to make the
+> hook exit `3` when any file's validator coverage was cut short (a timeout,
+> cancellation, or per-validator budget), so a partially-scanned file blocks the
+> commit instead of passing silently. Without the flag, incomplete coverage only
+> prints a warning to stderr. It escalates an otherwise-clean pre-commit result to
+> `3` and never downgrades a findings-based non-zero exit.
+
 ## Environment Detection
 
 Ferret Scan automatically detects pre-commit environments by checking for:

@@ -57,6 +57,25 @@ import (
 	// "github.com/awslabs/ferret-scan/internal/validators/comprehend"
 )
 
+// exitCodeIncompleteCoverage is returned when --fail-on-incomplete is set and at
+// least one file's validator coverage was cut short (timeout, cancellation, or a
+// per-validator budget). It is distinct from the other CLI exit codes — 0 (clean),
+// 1 (system/usage error), and 2 (no files to process) — so CI can tell degraded
+// coverage apart from a genuinely clean scan.
+const exitCodeIncompleteCoverage = 3
+
+// resolveIncompleteExitCode applies the --fail-on-incomplete policy on top of a
+// base exit code: when enabled and coverage was incomplete, an otherwise-clean
+// result (base 0) escalates to exitCodeIncompleteCoverage, but a non-zero base
+// (findings/errors the caller already fails on) is never downgraded. It is a pure
+// function so both the file and stdin paths share one tested decision.
+func resolveIncompleteExitCode(base int, failOnIncomplete bool, incompleteCount int) int {
+	if failOnIncomplete && incompleteCount > 0 && base == 0 {
+		return exitCodeIncompleteCoverage
+	}
+	return base
+}
+
 // loadConfiguration loads the configuration file or returns default config.
 //
 // When the user passes an explicit --config <path> flag, parse errors and
@@ -105,6 +124,7 @@ type configFlags struct {
 	quiet                bool
 	showSuppressed       bool
 	generateSuppressions bool
+	failOnIncomplete     bool
 	// GENAI_DISABLED: GenAI-related configuration flags
 	// enableGenAI         bool
 	// genaiServices       string
@@ -146,6 +166,7 @@ type finalConfiguration struct {
 	quiet                bool
 	showSuppressed       bool
 	generateSuppressions bool
+	failOnIncomplete     bool
 	disableIPTypes       string
 }
 
@@ -409,6 +430,18 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 	}
 	if isFlagSet("generate-suppressions") {
 		final.generateSuppressions = flags.generateSuppressions
+	}
+
+	// Fail on incomplete coverage: config default -> profile -> flag (flag wins).
+	final.failOnIncomplete = false // default fallback
+	if cfg != nil {
+		final.failOnIncomplete = cfg.Defaults.FailOnIncomplete
+	}
+	if activeProfile != nil {
+		final.failOnIncomplete = activeProfile.FailOnIncomplete
+	}
+	if isFlagSet("fail-on-incomplete") {
+		final.failOnIncomplete = flags.failOnIncomplete
 	}
 
 	// Disable IP types
@@ -729,6 +762,7 @@ type extractedFlags struct {
 	showMatch            bool
 	showSuppressed       bool
 	generateSuppressions bool
+	failOnIncomplete     bool
 	enableRedaction      bool
 	redactionOutputDir   string
 	redactionStrategy    string
@@ -755,6 +789,7 @@ type flagPointers struct {
 	showMatch            *bool
 	showSuppressed       *bool
 	generateSuppressions *bool
+	failOnIncomplete     *bool
 	enableRedaction      *bool
 	listProfiles         *bool
 	respectGitignore     *bool
@@ -801,6 +836,7 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 		showMatch:            getBoolFlag(flags.showMatch),
 		showSuppressed:       getBoolFlag(flags.showSuppressed),
 		generateSuppressions: getBoolFlag(flags.generateSuppressions),
+		failOnIncomplete:     getBoolFlag(flags.failOnIncomplete),
 		enableRedaction:      getBoolFlag(flags.enableRedaction),
 		redactionOutputDir:   getStringFlag(flags.redactionOutputDir),
 		redactionStrategy:    getStringFlag(flags.redactionStrategy),
@@ -865,6 +901,7 @@ func main() {
 	// estimateOnly := flag.Bool("estimate-only", false, "Show cost estimate and exit without processing")
 	quiet := flag.Bool("quiet", false, "Suppress progress output (useful for scripts and CI/CD)")
 	precommitMode := flag.Bool("pre-commit-mode", false, "Enable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
+	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file's validator coverage was cut short (timeout, cancellation, or budget). Default off: incomplete coverage only warns on stderr.")
 
 	// Redaction flags
 	enableRedaction := flag.Bool("enable-redaction", false, "Enable redaction of sensitive data found in documents")
@@ -911,6 +948,7 @@ func main() {
 		showMatch:            showMatch,
 		showSuppressed:       showSuppressed,
 		generateSuppressions: generateSuppressions,
+		failOnIncomplete:     failOnIncomplete,
 		enableRedaction:      enableRedaction,
 		listProfiles:         listProfiles,
 		respectGitignore:     respectGitignore,
@@ -1028,6 +1066,7 @@ func main() {
 		quiet:                flags.quiet,
 		showSuppressed:       flags.showSuppressed,
 		generateSuppressions: flags.generateSuppressions,
+		failOnIncomplete:     flags.failOnIncomplete,
 		disableIPTypes:       flags.disableIPTypes,
 	})
 
@@ -1103,6 +1142,16 @@ func main() {
 		if finalConfig.showSuppressed {
 			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --show-suppressed\n")
 			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not perform validation.\n")
+			os.Exit(1)
+		}
+
+		// --fail-on-incomplete gates on validator COVERAGE, which preprocess-only
+		// never produces (it exits before validation). Only reject when the flag
+		// was passed EXPLICITLY — a global config/profile default (fail_on_incomplete:
+		// true) must not break every --preprocess-only run.
+		if isFlagSet("fail-on-incomplete") {
+			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --fail-on-incomplete\n")
+			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not perform validation, so coverage is never incomplete.\n")
 			os.Exit(1)
 		}
 
@@ -1910,14 +1959,19 @@ func main() {
 		}
 	}
 
-	// Use pre-commit exit code logic if in pre-commit mode
+	// Use pre-commit exit code logic if in pre-commit mode. --fail-on-incomplete
+	// (flag OR config/profile default) then escalates a clean result to the
+	// incomplete-coverage code without downgrading a findings/error verdict.
 	if precommitConfig != nil {
 		exitCode := precommit.GetExitCode(hasFindings, hasErrors, highestConfidence, precommitConfig)
-		os.Exit(exitCode)
+		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, len(incompleteFiles)))
 	}
 
-	// Default behavior: always exit with code 0 (traditional behavior)
-	os.Exit(0)
+	// Default behavior: exit 0 (findings are reported in output, not via exit code)
+	// unless --fail-on-incomplete escalates a cut-short scan to code 3. Distinct
+	// code lets CI tell "incomplete coverage" apart from clean (0), error (1), and
+	// no-files (2). Settable via --fail-on-incomplete or config fail_on_incomplete.
+	os.Exit(resolveIncompleteExitCode(0, finalConfig.failOnIncomplete, len(incompleteFiles)))
 }
 
 // parseConfidenceLevels delegates to core.ParseConfidenceLevels to avoid code duplication between CLI and web modes.
@@ -2481,6 +2535,14 @@ func validateWebModeFlags() error {
 	if isFlagSet("list-profiles") {
 		incompatibleFlags = append(incompatibleFlags, "--list-profiles")
 		troubleshooting = append(troubleshooting, "Web mode does not currently support configuration profiles")
+	}
+
+	// --fail-on-incomplete controls the CLI process exit code; the web server is a
+	// long-running process with no scan-level exit code to influence (it reports
+	// incomplete coverage per-scan in the response instead).
+	if isFlagSet("fail-on-incomplete") {
+		incompatibleFlags = append(incompatibleFlags, "--fail-on-incomplete")
+		troubleshooting = append(troubleshooting, "Web mode reports incomplete coverage per scan in its response, not via a process exit code")
 	}
 
 	// Check for CLI-specific suppression flags

@@ -32,6 +32,7 @@ defaults:
   quiet: false                 # Suppress progress output
   show_suppressed: false       # Include suppressed findings in output
   generate_suppressions: false # Generate suppression rules for all findings
+  fail_on_incomplete: false    # Exit code 3 if a file's validator coverage was cut short (timeout/budget)
   respect_gitignore: true      # Honor .gitignore, .git/info/exclude, global git excludes
 
   # --explain (CLI flag only; not a YAML option)

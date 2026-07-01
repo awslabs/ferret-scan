@@ -124,6 +124,7 @@ func runStdinScan(in stdinScanInputs) int {
 		showMatch:            in.flags.showMatch,
 		showSuppressed:       in.flags.showSuppressed,
 		generateSuppressions: in.flags.generateSuppressions,
+		failOnIncomplete:     in.flags.failOnIncomplete,
 		enableRedaction:      in.flags.enableRedaction,
 		redactionOutputDir:   "",
 		redactionStrategy:    in.flags.redactionStrategy,
@@ -301,13 +302,20 @@ func runStdinScan(in stdinScanInputs) int {
 	}
 
 	// Exit-code parity with file mode: default mode always 0, pre-commit
-	// uses precommit.GetExitCode based on findings/confidence.
+	// uses precommit.GetExitCode based on findings/confidence. --fail-on-incomplete
+	// escalates an otherwise-clean exit to exitCodeIncompleteCoverage (3) when the
+	// scan's coverage was cut short, but never downgrades a non-zero verdict.
 	hasFindings := len(unsuppressedMatches) > 0
+	incompleteCount := 0
+	if result.Incomplete {
+		incompleteCount = 1
+	}
 	if precommitConfig != nil {
 		highest := highestConfidenceLevel(unsuppressedMatches)
-		return precommit.GetExitCode(hasFindings, false, highest, precommitConfig)
+		exitCode := precommit.GetExitCode(hasFindings, false, highest, precommitConfig)
+		return resolveIncompleteExitCode(exitCode, finalCfg.failOnIncomplete, incompleteCount)
 	}
-	return 0
+	return resolveIncompleteExitCode(0, finalCfg.failOnIncomplete, incompleteCount)
 }
 
 // runStdinPreprocessOnly emits the stdin buffer in the same format
