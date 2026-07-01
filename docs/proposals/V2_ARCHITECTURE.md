@@ -1,8 +1,14 @@
 # Ferret-Scan v2: Architectural Analysis & Overhaul Proposal
 
-> Status: **Proposal / Decision Document**
+> Status: **Proposal / Decision Document — partially IMPLEMENTED.**
 > Audience: maintainers
 > Scope: internal architecture only — **no change to core functions** (detection accuracy, output formats, redaction behavior, or the CLI / stdin / web / `pkg/redact` library contracts).
+>
+> **Reading guide:** the *Analysis* and *Confirmed Gaps* below are written in the present tense as of the
+> original audit — several are now fixed. For the authoritative record of what has shipped vs. what remains,
+> see the **[Status Ledger](#status-ledger-authoritative)** in Migration / Sequencing. Highest-value
+> remaining work: **Phase 3** (ctx-polling in validator hot loops + shared `LineScan`), which is *not* the
+> final phase — Move C and Move D follow.
 
 ## Executive Summary & Verdict
 
@@ -246,6 +252,59 @@ source of truth with warn-only unknown-key validation.
 
 The ordering front-loads behavior-preserving, low-risk work and defers any observable change until a
 regression net exists.
+
+> **⚠️ Status note (kept current).** Execution has run *opportunistically as small PRs*, not strictly in the
+> original Phase 0→4 numbering, so the phase labels below have drifted from what actually shipped. The
+> **Status Ledger** immediately below is the authoritative record; the per-phase prose that follows is
+> retained for the original design rationale. When the open PRs merge, the phase prose should be
+> re-narrated to match the ledger.
+
+### Status Ledger (authoritative)
+
+Everything landed so far is **behavior-preserving on legitimate input** (golden corpus byte-identical, zero
+`UPDATE_GOLDEN`); the only intended behavioral change is the opt-in bounded-partial + incomplete signal on
+over-budget inputs, which requires Phase 3 (not yet done).
+
+| Item | Gap(s) | Status | PR |
+|---|---|---|---|
+| Golden regression net (`internal/goldencorpus`) | Phase 0 | **merged** | #98 |
+| Bounded/cancellable/panic-isolated execution (`execguard`, cancellable joins) | 1.1, 1.3 | **merged** | #98 |
+| `ScanResult.Incomplete` on the in-memory (`ScanContent`) path | 1.4 (partial) | **merged** | #98 |
+| Detector facade — collapse the 5-hop wrapper chain; delete advanced-features subsystem/`ValidatorBridge`/dead worker | 3.1 (structural), 1.2 | **merged** | #98, #100 |
+| Type-metadata source-of-truth `core.TypeMeta` (SARIF + gitlab sub-type + name tier); check-name unification | 3.3 (core) | **merged** + **open** | #98, #103 |
+| SARIF stateless-formatter fix (rule-accumulation) | (found by net) | **merged** | #98 |
+| Decompression-amplification bound (Office text extractor) | 2.4 | **merged** | #99 |
+| Remove dead adaptive processor + resource monitor | 2.2 | **merged** | #100 |
+| Windows CI cross-platform fixes (CRLF/paths/timer) | (test infra) | **merged** | #98, #101 |
+| Global concurrency governor (`execguard.Limiter`) | 2.1 | **open** | #102 |
+| gitlab name-tier metadata → `core.TypeMeta` | 3.3 (remainder) | **open** | #103 |
+| `ScanResult.Incomplete` on the file/worker-pool path | 1.4 (file path) | **open** | #104 |
+| Performance baseline (docs) | — | **open** | #105 |
+
+**Not yet started (the real remaining work, roughly two phases):**
+
+| Item | Gap(s) | Notes |
+|---|---|---|
+| **ctx-polling inside validator hot loops + shared `LineScan` primitive + per-validator/extraction budgets** | 1.1 (tail), 4.1, 4.2 | **Phase 3** — the marquee remaining item; fixes the single-long-line O(n²) (see Performance Baseline: 256 KB line ~9.6s → target sub-second). First *observable* behavior change (bounded-partial on over-budget input). Highest value; needs its own review on merged base. |
+| Structured provenance through preprocessing | 5.1 | Move C leftover (HIGH — lossy position round-trip) |
+| Data-driven file-type routing (collapse 4 drifting extension maps) | 5.3 | Move C leftover |
+| Structured `Observer`/telemetry seam | 6.2 | Move D |
+| Typed config schema | 6.4 | Move D |
+| Delete dead `internal/monitoring` + `internal/performance` (~4.4K LOC) | 6.3 | Move D — pure excision |
+| Delete dead `redactors/strategies` (keep `replacement/`) | 6.1 | Move D — pure excision |
+| Collapse dual `Validate`/`ValidateContent` interface surface | 3.2 | Exported-interface breaking change |
+| CLI/web *consumption* of `ScanResult.Incomplete` (exit code / response) | 1.4 (surface) | Separate behavior-changing decision |
+| NAME-tier: gitlab category `AddCategoryMapping` fully gone / text+csv pre-commit switches | 3.3 (tail) | Deliberately deferred; low value |
+
+**Is Phase 3 the last phase?** No. After Phase 3 there is still Move C (provenance/routing) and Move D
+(telemetry/config/dead-code excision), plus the smaller items above. Phase 3 is the highest-*value*
+remaining chunk (it closes the founding "runaway validator" concern at the algorithmic level), but it is
+roughly the program midpoint. A reasonable milestone is to declare the **security-and-correctness** goal met
+after Phase 3 and treat Move C/D as lower-urgency cleanup.
+
+---
+
+### Original phase prose (design rationale; see ledger above for actual status)
 
 **Phase 0 — Build the regression net (prerequisite; do this first). — LANDED.** The current test
 architecture was too weak to refactor against safely: ~70 `_test.go` files for 252 Go files; no
