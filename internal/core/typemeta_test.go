@@ -76,3 +76,33 @@ func TestTypeMeta_CloudSubTypesShareDescriptionDistinctWeight(t *testing.T) {
 		}
 	}
 }
+
+// TestTypeMeta_GitLabName locks the name-tier (gap 3.3 remainder): gitlab-sast
+// vulnerability display names, keyed by validator name. Captures the nuances
+// that (a) GitLabName is NOT always == SARIFShort (SECRETS differs), (b)
+// sub-types like VISA have no GitLabName so the mapper's title-case fallback
+// applies, and (c) COMPREHEND carries a GitLabName despite having no SARIF entry.
+func TestTypeMeta_GitLabName(t *testing.T) {
+	cases := []struct {
+		typ  string
+		want string // expected GitLabName ("" = none → mapper fallback)
+	}{
+		{"CREDIT_CARD", "Credit Card Number Detected"},
+		{"SECRETS", "Secret/API Key Detected"}, // differs from SARIFShort "Secret or API Key Detected"
+		{"COMPREHEND", "AWS Comprehend PII Detected"},
+		{"VIN", "Vehicle Identification Number Detected"},
+		{"VISA", ""},           // sub-type: no name-tier entry → mapper title-case fallback
+		{"AWS_ACCESS_KEY", ""}, // sub-type
+	}
+	for _, c := range cases {
+		d, _ := TypeMeta(c.typ)
+		if d.GitLabName != c.want {
+			t.Errorf("TypeMeta(%q).GitLabName = %q, want %q", c.typ, d.GitLabName, c.want)
+		}
+	}
+	// Guard the SECRETS != SARIFShort invariant explicitly (the reason GitLabName
+	// is a distinct field, not an alias of SARIFShort).
+	if d, _ := TypeMeta("SECRETS"); d.GitLabName == d.SARIFShort {
+		t.Errorf("SECRETS GitLabName and SARIFShort must differ; both = %q", d.GitLabName)
+	}
+}

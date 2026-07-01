@@ -9,36 +9,16 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/awslabs/ferret-scan/internal/core"
 	"github.com/awslabs/ferret-scan/internal/detector"
 )
 
 // VulnerabilityMapper handles mapping Ferret Scan matches to GitLab vulnerabilities
-type VulnerabilityMapper struct {
-	// Configuration for mapping behavior
-	categoryMappings map[string]string
-}
+type VulnerabilityMapper struct{}
 
-// NewVulnerabilityMapper creates a new vulnerability mapper with default configuration
+// NewVulnerabilityMapper creates a new vulnerability mapper.
 func NewVulnerabilityMapper() *VulnerabilityMapper {
-	return &VulnerabilityMapper{
-		categoryMappings: map[string]string{
-			// All Ferret Scan check types map to SAST category
-			"CREDIT_CARD":           "sast",
-			"SSN":                   "sast",
-			"PASSPORT":              "sast",
-			"EMAIL":                 "sast",
-			"PHONE":                 "sast",
-			"IP_ADDRESS":            "sast",
-			"SECRETS":               "sast",
-			"INTELLECTUAL_PROPERTY": "sast",
-			"SOCIAL_MEDIA":          "sast",
-			"VIN":                   "sast",
-			"METADATA":              "sast",
-			"COMPREHEND":            "sast",
-			// Default fallback
-			"DEFAULT": "sast",
-		},
-	}
+	return &VulnerabilityMapper{}
 }
 
 // MapToGitLabVulnerability converts a Ferret Scan match to GitLab vulnerability format
@@ -143,38 +123,20 @@ func (m *VulnerabilityMapper) MapConfidenceLevelToSeverity(confidenceLevel strin
 
 // mapCheckTypeToCategory maps Ferret Scan check types to GitLab categories
 func (m *VulnerabilityMapper) mapCheckTypeToCategory(checkType string) string {
-	// Normalize check type to uppercase
-	normalizedType := strings.ToUpper(checkType)
-
-	if category, exists := m.categoryMappings[normalizedType]; exists {
-		return category
-	}
-
-	// Default to SAST category for all Ferret Scan findings
-	return m.categoryMappings["DEFAULT"]
+	// Every Ferret Scan finding is a SAST-category vulnerability in GitLab. The
+	// former per-type categoryMappings map (and its DEFAULT) mapped every key to
+	// "sast", so this is byte-identical and removes a redundant table (gap 3.3).
+	return "sast"
 }
 
 // generateVulnerabilityName creates a human-readable name for the vulnerability
 func (m *VulnerabilityMapper) generateVulnerabilityName(checkType string) string {
-	// #nosec G101 -- display-name dictionary for finding categories. No credentials.
-	nameMap := map[string]string{
-		"CREDIT_CARD":           "Credit Card Number Detected",
-		"SSN":                   "Social Security Number Detected",
-		"PASSPORT":              "Passport Number Detected",
-		"EMAIL":                 "Email Address Detected",
-		"PHONE":                 "Phone Number Detected",
-		"IP_ADDRESS":            "IP Address Detected",
-		"SECRETS":               "Secret/API Key Detected",
-		"INTELLECTUAL_PROPERTY": "Intellectual Property Detected",
-		"SOCIAL_MEDIA":          "Social Media Handle Detected",
-		"VIN":                   "Vehicle Identification Number Detected",
-		"METADATA":              "Sensitive Metadata Detected",
-		"COMPREHEND":            "AWS Comprehend PII Detected",
-	}
-
-	normalizedType := strings.ToUpper(checkType)
-	if name, exists := nameMap[normalizedType]; exists {
-		return name
+	// Display name from the central type-metadata registry (core.TypeMeta — gap
+	// 3.3, name tier). Keyed by validator name (CREDIT_CARD, …); sub-types like
+	// VISA have no GitLabName entry and hit the title-case fallback below,
+	// byte-identical to the former local nameMap behavior.
+	if d, ok := core.TypeMeta(strings.ToUpper(checkType)); ok && d.GitLabName != "" {
+		return d.GitLabName
 	}
 
 	// Fallback: convert underscores to spaces and title case
@@ -313,9 +275,4 @@ func (m *VulnerabilityMapper) ValidateMapping(match detector.Match) error {
 	}
 
 	return nil
-}
-
-// AddCategoryMapping adds or updates a check type to category mapping
-func (m *VulnerabilityMapper) AddCategoryMapping(checkType, category string) {
-	m.categoryMappings[strings.ToUpper(checkType)] = category
 }
