@@ -4,6 +4,7 @@
 package creditcard
 
 import (
+	stdctx "context"
 	"fmt"
 	"os"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -168,6 +170,15 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent validates preprocessed content with optimized performance
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line so a runaway multi-line scan
+// is reclaimed promptly (v2 Phase 3). Returns partial matches + ctx.Err() on
+// cancellation.
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("creditcard_validator_optimized", "validate_content", originalPath)
@@ -177,6 +188,13 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			if finishTiming != nil {
+				finishTiming(false, map[string]interface{}{"cancelled": true, "match_count": len(matches)})
+			}
+			return matches, ctx.Err()
+		}
 		// PERFORMANCE: several context operations are a function of the LINE
 		// (not the individual match), so a single very long line packed with N
 		// PANs previously recomputed each of them O(N) times, giving O(N * len)

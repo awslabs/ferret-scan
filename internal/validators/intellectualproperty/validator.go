@@ -4,6 +4,7 @@
 package intellectualproperty
 
 import (
+	stdctx "context"
 	"fmt"
 	"os"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -697,12 +699,25 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent validates preprocessed content for intellectual property references
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line (inside detectPatternsByLine)
+// so a runaway multi-line scan is reclaimed promptly (v2 Phase 3). On cancellation
+// the line loop stops; the partial per-line matches gathered so far are still run
+// through legal-notice reconstruction and returned along with ctx.Err().
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	// Use line-based grouping for legal notice reconstruction
-	lineMatches := v.detectPatternsByLine(content, originalPath)
+	lineMatches := v.detectPatternsByLine(ctx, content, originalPath)
 
 	// Process line matches with legal notice reconstruction logic
 	processedMatches := v.processLineMatches(lineMatches)
 
+	if ctx.Err() != nil {
+		return processedMatches, ctx.Err()
+	}
 	return processedMatches, nil
 }
 
@@ -841,13 +856,18 @@ func (v *Validator) processLineMatches(lineMatches map[int][]detector.Match) []d
 }
 
 // detectPatternsByLine detects IP patterns and groups matches by line number
-func (v *Validator) detectPatternsByLine(content string, originalPath string) map[int][]detector.Match {
+func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, originalPath string) map[int][]detector.Match {
 	lineMatches := make(map[int][]detector.Match)
 
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): stop promptly on deadline/cancel,
+		// returning the per-line matches gathered so far.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			return lineMatches
+		}
 		// PERFORMANCE: keyword context impact and the open-source-license check
 		// are LINE-GLOBAL — they depend only on the line text, not on the
 		// individual match or its position. The previous code recomputed them
