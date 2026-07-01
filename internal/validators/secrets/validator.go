@@ -4,6 +4,7 @@
 package secrets
 
 import (
+	stdctx "context"
 	"encoding/base64"
 	"math"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/help"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
@@ -267,7 +269,24 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent validates preprocessed content with enhanced context analysis
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line so a runaway multi-line scan
+// (SECRETS' DoS shape is many dense lines) is reclaimed promptly (v2 Phase 3). On
+// cancellation it returns the matches gathered so far plus ctx.Err().
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var matches []detector.Match
+
+	// Entry-level cancellation check (v2 Phase 3): the whole-content passes below
+	// (context analysis, multi-line secret scan) run before the polled per-line
+	// loop, so an already-cancelled/expired scan bails here rather than paying for
+	// them. LineLoopCancelled at i==0 reduces to ctx.Err() != nil.
+	if execguard.LineLoopCancelled(ctx, 0) {
+		return matches, ctx.Err()
+	}
 
 	// Perform context analysis for the entire content
 	contextInsights := v.contextAnalyzer.AnalyzeContext(content, originalPath)
@@ -284,6 +303,10 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			return matches, ctx.Err()
+		}
 		// Pre-check if this line contains shell variable references to optimize performance
 		lineHasShellVars := v.LineContainsShellVariableReferences(line)
 
