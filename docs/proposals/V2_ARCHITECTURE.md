@@ -303,6 +303,46 @@ the shared `LineScan` primitive (4.1); structured provenance (5.1); `Descriptor(
 
 ---
 
+## Performance Baseline (measured)
+
+Empirical comparison of a **pre-v2 binary** (commit `75be0e6`, before PR #98) vs a **v2 binary**
+(post #98–#104), built from the same toolchain and run on the same machine (macOS, `--checks all`,
+output to `/dev/null`). This grounds the phase plan: it shows the landed orchestration work is
+behavior-neutral-to-faster, and it isolates exactly what Phase 3 still has to fix.
+
+| Workload | pre-v2 | v2 | Read |
+|---|---|---|---|
+| 3.9 MB normal text file | 4.85s | **3.20s** | v2 ~34% faster (collapsed bridge/cleaner path) |
+| 200-file directory | 0.35s | 0.35s | identical — the concurrency governor (#102) adds no measurable overhead |
+| 256 KB **single dense line** | 9.71s | 9.56s | **identical** — per-validator O(n²) cost is unchanged |
+| 2 MB single dense line | did not finish (killed >90s) | did not finish (killed >90s) | both runaway |
+| Peak RSS (3.9 MB file, v2) | — | ~65 MB | — |
+
+**What this confirms about the design boundary (important):**
+
+- The merged v2 work made a runaway validator **terminable and bounded at the ORCHESTRATION layer** —
+  Phase 1's context-cancellable join, the configurable per-file `JobTimeout` (default 5 min), and #102's
+  process-wide concurrency governor — so the *scan* can no longer hang forever and one pathological file
+  cannot starve the worker pool. On normal inputs the consolidation is a net speedup.
+- It did **not** touch the **per-validator O(n²) inner scanning cost** on a single very long line. The
+  256 KB-single-line case is ~9.6s on *both* binaries, and 2 MB single-line runs away on both. This is the
+  exact hot path **Phase 3** targets (ctx-polling in the validator loops + the Move-C shared `LineScan`
+  primitive that removes the per-match full-line rescan). The complexity guard in `internal/goldencorpus`
+  measures *linear* scaling on multi-line dense input; the single-very-long-line pathology is a distinct
+  hot path still pending.
+
+**Phase 3 success criteria, anchored to these numbers:** after Phase 3, the 256 KB single-line scan should
+drop from ~9.6s toward sub-second (linear, not quadratic), and the 2 MB single-line scan should complete
+within the per-file budget (today it must be killed). Detection output on normal inputs must remain
+byte-identical (golden net), with the only behavioral change being bounded-partial + an explicit incomplete
+signal on inputs that exceed the budget.
+
+> Method caveat: macOS lacks `timeout`/`gtimeout`; "did not finish" runs were wall-clock-capped and killed
+> manually. Numbers are best-of-small-N on one machine — directional, not a benchmark suite. A repeatable
+> Go benchmark for the single-long-line path is worth adding alongside Phase 3.
+
+---
+
 ## Phase 1 Prototype (landed)
 
 This branch (`feat/v2-phase1-bounded-execution`) implements the behavior-preserving slice of Move A. It
