@@ -1,0 +1,82 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** cloud_resources validator\n\n**Matched value:**\n```\narn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AWS_ARN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "cloud_resources"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:cloud_resources_test_context>",
+        "start_line": 1
+      },
+      "message": "Sensitive data (aws arn) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Aws Arn Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** cloud_resources validator\n\n**Matched value:**\n```\narn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AWS_ARN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "cloud_resources"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:cloud_resources_test_context>",
+        "start_line": 2
+      },
+      "message": "Sensitive data (aws arn) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Aws Arn Detected",
+      "severity": "High"
+    }
+  ]
+}

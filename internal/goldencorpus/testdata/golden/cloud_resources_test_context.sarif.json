@@ -1,0 +1,139 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:cloud_resources_test_context>"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 1 (confidence: 95.0% - HIGH). Matched text: 'arn:aws:iam::123456789012:role/PaymentsAdmin'"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "account_id": "123456789012",
+              "confidence_adjustment": 0,
+              "confidence_factors": [
+                "base_match:+85",
+                "valid_account_id:+10"
+              ],
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "original_confidence": 95,
+              "provider": "aws",
+              "resource_type": "AWS_ARN",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "service": "iam",
+              "validation_path": "document"
+            },
+            "validator": "cloud_resources"
+          },
+          "rank": 82.5,
+          "ruleId": "AWS_ARN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:cloud_resources_test_context>"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 2 (confidence: 75.0% - MEDIUM). Matched text: 'arn:aws:iam::123456789012:role/PaymentsAdmin'"
+          },
+          "properties": {
+            "confidence": 75,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "account_id": "123456789012",
+              "confidence_adjustment": 0,
+              "confidence_factors": [
+                "base_match:+85",
+                "valid_account_id:+10",
+                "test_context:-20"
+              ],
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "original_confidence": 75,
+              "provider": "aws",
+              "resource_type": "AWS_ARN",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "service": "iam",
+              "validation_path": "document"
+            },
+            "validator": "cloud_resources"
+          },
+          "rank": 72.5,
+          "ruleId": "AWS_ARN"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resource name, OCI OCID, IBM CRN, or Alibaba ARN) was detected in the scanned content. These identifiers can expose account, subscription, project, or tenant identity and infrastructure layout."
+              },
+              "help": {
+                "text": "Cloud resource identifiers embed account/subscription/project anchors that reveal ownership and infrastructure topology. Avoid hardcoding them in source, logs, or shared documents. Use variables, parameters, or service discovery instead, and scrub identifiers from artifacts shared outside your organization."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/AWS_ARN.md",
+              "id": "AWS_ARN",
+              "shortDescription": {
+                "text": "Cloud Resource Identifier Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}
