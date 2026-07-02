@@ -4,12 +4,14 @@
 package ipaddress
 
 import (
+	stdctx "context"
 	"net"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -264,6 +266,15 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent validates preprocessed content for IP addresses
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line so a runaway multi-line scan
+// is reclaimed promptly (v2 Phase 3). Returns partial matches + ctx.Err() on
+// cancellation.
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("ipaddress_validator", "validate_content", originalPath)
@@ -276,6 +287,13 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 
 	// Process each pattern type
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			if finishTiming != nil {
+				finishTiming(false, map[string]interface{}{"cancelled": true, "match_count": len(matches)})
+			}
+			return matches, ctx.Err()
+		}
 		// Cheap per-line fast paths: every IPv6 form needs a ":" and the
 		// compressed form additionally needs a "::". Skipping the (multi-branch)
 		// IPv6 regexes on lines that cannot possibly contain such an address

@@ -4,11 +4,13 @@
 package ssn
 
 import (
+	stdctx "context"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -234,6 +236,16 @@ func (v *Validator) newLineContext(line string) *lineContext {
 
 // ValidateContent validates preprocessed content for SSNs
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: it is the
+// context-aware form of ValidateContent, polling ctx once per line so a runaway
+// scan of a large multi-line input is reclaimed promptly (v2 Phase 3). On
+// cancellation it returns the matches gathered so far plus ctx.Err(), so a
+// timed-out scan surfaces partial findings rather than discarding them.
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var matches []detector.Match
 
 	// Split content into lines for processing
@@ -242,6 +254,11 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	isDocx := strings.Contains(originalPath, ".docx")
 
 	for lineNum, line := range lines {
+		// Cooperative cancellation: stop promptly if the scan's deadline fired
+		// or it was cancelled, returning what we have plus the reason.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			return matches, ctx.Err()
+		}
 		// Use FindAllStringIndex so we enumerate matches with their byte offsets in a
 		// single regex pass (FindAllString already did one pass; this is equivalent).
 		// We deliberately compute the context window from the FIRST occurrence of each
