@@ -4,11 +4,13 @@
 package email
 
 import (
+	stdctx "context"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -215,6 +217,15 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 
 // ValidateContent validates preprocessed content for email addresses
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line so a runaway multi-line scan
+// is reclaimed promptly (v2 Phase 3). Returns partial matches + ctx.Err() on
+// cancellation.
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("email_validator", "validate_content", originalPath)
@@ -229,6 +240,13 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	re := v.regex
 
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			if finishTiming != nil {
+				finishTiming(false, map[string]interface{}{"cancelled": true, "match_count": len(matches)})
+			}
+			return matches, ctx.Err()
+		}
 		// Use match offsets (not just the strings) so that when the same email
 		// text appears more than once on a line, each occurrence is analyzed with
 		// ITS OWN surrounding context. The previous code re-ran strings.Index,

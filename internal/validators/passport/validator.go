@@ -4,12 +4,14 @@
 package passport
 
 import (
+	stdctx "context"
 	"regexp"
 	"strings"
 	"unicode"
 
 	"github.com/awslabs/ferret-scan/internal/context"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -346,12 +348,25 @@ const maxMatchesPerLinePerPattern = 2000
 
 // ValidateContent validates preprocessed content for passport numbers
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per line so a runaway multi-line scan
+// is reclaimed promptly (v2 Phase 3). On cancellation it returns the matches
+// gathered so far plus ctx.Err().
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var matches []detector.Match
 
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
 	for lineNum, line := range lines {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			return matches, ctx.Err()
+		}
 		// Per-LINE work hoisted OUT of the per-match loop. These values depend
 		// only on the line (not on the individual match), so computing them once
 		// per line instead of once per match removes the dominant
