@@ -39,7 +39,9 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add docs/metrics/downloads.csv
-            git commit -m "chore(metrics): weekly download snapshot"
+            # [skip ci]: this is a data-only commit; no need to trigger the
+            # push-triggered build/test/scan workflows (matches repo convention).
+            git commit -m "chore(metrics): weekly download snapshot [skip ci]"
             git push
           else
             echo "No metrics change to commit."
