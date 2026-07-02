@@ -1528,27 +1528,6 @@ func (v *Validator) calculateCharacterPositionSafe(match detector.Match) int {
 	return fallbackPosition
 }
 
-// determineProximityRelationship analyzes the proximity between matches and determines
-// if they are close enough to be part of the same legal notice
-func (v *Validator) determineProximityRelationship(matches []detector.Match) (bool, string) {
-	if len(matches) <= 1 {
-		return false, "single_match" // Single matches don't need proximity analysis
-	}
-
-	proximityScore := v.calculateProximityScore(matches)
-
-	// Use internal configuration constants for proximity thresholds
-	if proximityScore >= ProximityCloseThreshold {
-		return true, "close_proximity"
-	} else if proximityScore >= ProximityMediumThreshold {
-		return true, "medium_proximity" // Still consider for reconstruction based on semantics
-	} else if proximityScore >= ProximityFarThreshold {
-		return false, "far_proximity"
-	} else {
-		return false, "very_far_proximity"
-	}
-}
-
 // identifySemanticGroups analyzes matches to recognize common legal notice combinations
 // and patterns that indicate they should be reconstructed into a single finding
 // Optimized with bounds checking and error handling

@@ -6,7 +6,6 @@ package ipaddress
 import (
 	stdctx "context"
 	"net"
-	"os"
 	"regexp"
 	"strings"
 
@@ -478,21 +477,6 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	}
 
 	return matches, nil
-}
-
-// isDuplicateMatch checks if a match was already found (same IP, same line)
-func (v *Validator) isDuplicateMatch(existing []detector.Match, newMatch string, lineNum int) bool {
-	cleanNew := v.cleanIPAddress(newMatch)
-
-	for _, match := range existing {
-		if match.LineNumber == lineNum {
-			cleanExisting := v.cleanIPAddress(match.Text)
-			if cleanExisting == cleanNew {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // AnalyzeContext analyzes the context around a match and returns a confidence adjustment
@@ -1050,9 +1034,4 @@ func (v *Validator) isEmbeddedInStringAt(match, line string, matchIndex, matchEn
 	}
 
 	return false
-}
-
-// isDebugEnabled checks if debug mode is enabled
-func (v *Validator) isDebugEnabled() bool {
-	return os.Getenv("FERRET_DEBUG") != ""
 }

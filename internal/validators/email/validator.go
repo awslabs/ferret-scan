@@ -5,7 +5,6 @@ package email
 
 import (
 	stdctx "context"
-	"os"
 	"regexp"
 	"strings"
 
@@ -1120,11 +1119,6 @@ func (v *Validator) isTabularData(line, match string) bool {
 	}
 
 	return false
-}
-
-// isDebugEnabled checks if debug mode is enabled
-func (v *Validator) isDebugEnabled() bool {
-	return os.Getenv("FERRET_DEBUG") != ""
 }
 
 // hasURLStructureAfter checks if the match is actually a URL/URI, not an email,

@@ -5,7 +5,6 @@ package phone
 
 import (
 	stdctx "context"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -472,35 +471,6 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	}
 
 	return matches, nil
-}
-
-// isDuplicateMatch checks if a match was already found on the same line. Beyond
-// exact cleaned-digit equality, it also treats a match whose cleaned digits are
-// a prefix/substring of an already-found number (or vice versa) as a duplicate
-// (M11): overlapping patterns otherwise emit a truncated partial of the same
-// physical number (e.g. "+44 20 7946" alongside "+44 20 7946 0958"), inflating
-// finding counts with an incorrect partial value.
-func (v *Validator) isDuplicateMatch(existing []detector.Match, newMatch string, lineNum int) bool {
-	cleanNew := v.cleanPhoneNumber(newMatch)
-	if cleanNew == "" {
-		return false
-	}
-
-	for _, match := range existing {
-		if match.LineNumber != lineNum {
-			continue
-		}
-		cleanExisting := v.cleanPhoneNumber(match.Text)
-		if cleanExisting == "" {
-			continue
-		}
-		if cleanExisting == cleanNew ||
-			strings.Contains(cleanExisting, cleanNew) ||
-			strings.Contains(cleanNew, cleanExisting) {
-			return true
-		}
-	}
-	return false
 }
 
 // dedupMaxCleanLen bounds the cleaned-digit length for which the substring index
@@ -1631,9 +1601,4 @@ func (v *Validator) hasPhoneStructureAt(match string, line string, matchIndex in
 	hasFormatting := len(cleanMatch) < len(match) // Has separators
 
 	return hasFormatting
-}
-
-// isDebugEnabled checks if debug mode is enabled
-func (v *Validator) isDebugEnabled() bool {
-	return os.Getenv("FERRET_DEBUG") != ""
 }

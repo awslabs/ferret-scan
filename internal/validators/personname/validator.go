@@ -685,16 +685,6 @@ func (v *Validator) isProperlyCapitalized(name string) bool {
 	return true
 }
 
-// isVeryCommonName checks if a name is extremely common and might cause false positives
-func (v *Validator) isVeryCommonName(name string) bool {
-	if name == "" {
-		return false
-	}
-
-	lowerName := strings.ToLower(name)
-	return veryCommonNamesMap[lowerName]
-}
-
 // isCommonWordBigram reports whether BOTH the first and last name tokens are
 // ordinary English words that merely happen to also be in the name databases
 // (e.g. "Will Read", "Grace Hill"). Such a bigram is usually prose or a heading,

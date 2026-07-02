@@ -744,21 +744,6 @@ func (v *Validator) isObviousTestSequence(value string) bool {
 	return false
 }
 
-// findKeywords returns a list of keywords found in the context
-func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string) []string {
-	// Only check the current line to avoid cross-line contamination
-	fullLine := context.FullLine
-
-	var found []string
-	for _, keyword := range keywords {
-		if containsKeyword(fullLine, keyword) {
-			found = append(found, keyword)
-		}
-	}
-
-	return found
-}
-
 // findKeywordsCached mirrors findKeywords (whole-line, whole-word keyword
 // presence) but reads the precomputed per-line cache instead of rescanning the
 // line for each keyword on every match. Result is identical.
