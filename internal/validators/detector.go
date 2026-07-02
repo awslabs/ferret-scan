@@ -79,7 +79,7 @@ func (d *Detector) SetupValidators(validators map[string]detector.Validator) err
 		if name == "METADATA" {
 			continue // handled separately below
 		}
-		d.bridge.RegisterDocumentValidator(v)
+		d.bridge.RegisterDocumentValidator(name, v)
 	}
 
 	if mv, exists := validators["METADATA"]; exists {

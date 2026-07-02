@@ -14,6 +14,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/observability"
 	"github.com/awslabs/ferret-scan/internal/parallel"
@@ -241,6 +242,13 @@ type ContentScanConfig struct {
 	// writer to route the internal observer through a structured logger.
 	// See ScanConfig.LogWriter for the no-payload-bytes contract.
 	LogWriter io.Writer
+
+	// ValidatorBudgets optionally bounds per-validator execution (time and/or
+	// match count), keyed by validator name (e.g. "SSN", "IP_ADDRESS"). Nil/empty
+	// = disabled = historical behavior (byte-identical). When a budget fires, the
+	// scan returns partial matches and ScanResult.Incomplete is set. See
+	// execguard.ValidatorBudget.
+	ValidatorBudgets map[string]execguard.ValidatorBudget
 }
 
 // ScanContent scans an in-memory content buffer using the same validator
@@ -303,6 +311,8 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 	// transient failure mode worth retrying for.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+	// Attach per-validator budgets (no-op when nil/empty — byte-identical path).
+	ctx = execguard.WithBudgets(ctx, cfg.ValidatorBudgets)
 
 	matches, validationErr := parallel.RunValidators(ctx, validatorsList, processed, nil)
 	if validationErr != nil && cfg.Debug {
@@ -320,6 +330,11 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 	if validationErr != nil && (errors.Is(validationErr, context.DeadlineExceeded) || errors.Is(validationErr, context.Canceled)) {
 		incomplete = true
 		incompleteReason = "validator execution did not complete: " + validationErr.Error()
+	} else if validationErr != nil && errors.Is(validationErr, execguard.ErrMatchBudgetExceeded) {
+		// A per-validator match cap fired: results are truncated, so coverage is
+		// partial in the same load-bearing way as a timeout.
+		incomplete = true
+		incompleteReason = "validator match budget exceeded: " + validationErr.Error()
 	}
 
 	// Stamp every match as virtual and ensure the filename is the synthetic

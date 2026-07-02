@@ -28,11 +28,19 @@ package execguard
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
 	"github.com/awslabs/ferret-scan/internal/resilience"
 )
+
+// ErrMatchBudgetExceeded is returned (alongside the truncated, capped matches) by
+// ValidateContent when a validator emits more matches than its ValidatorBudget
+// MatchLimit allows. Callers can errors.Is-check it to record incomplete coverage
+// (see internal/core/scanner.go). It is distinct from context errors: a match-cap
+// hit is not a deadline/cancellation.
+var ErrMatchBudgetExceeded = errors.New("validator match budget exceeded")
 
 // ContextAwareValidator is an OPTIONAL extension of detector.Validator. A
 // validator that implements it receives the active context and is expected to
@@ -85,10 +93,36 @@ func SafeRun(ctx context.Context, name string, fn func() ([]detector.Match, erro
 // ContextAwareValidator, otherwise it calls the legacy ValidateContent. Either
 // way the call is wrapped by SafeRun (panic recovery + boundary cancellation).
 func ValidateContent(ctx context.Context, name string, v detector.Validator, content, originalPath string) ([]detector.Match, error) {
-	return SafeRun(ctx, name, func() ([]detector.Match, error) {
+	b := budgetFor(ctx, name)
+
+	// Per-validator TIME budget: derive a child deadline tighter than the parent
+	// (per-file/job) deadline. context.WithTimeout never extends a parent deadline,
+	// so the tighter of {parent, TimeLimit} always wins. The derived ctx is the one
+	// handed to a ContextAwareValidator, which polls it via LineLoopCancelled — so
+	// a runaway validator self-terminates at its own budget. Disabled (<=0) leaves
+	// ctx untouched: byte-identical to the no-budget path.
+	if b.TimeLimit > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, b.TimeLimit)
+		defer cancel()
+	}
+
+	matches, err := SafeRun(ctx, name, func() ([]detector.Match, error) {
 		if cav, ok := v.(ContextAwareValidator); ok {
 			return cav.ValidateContentCtx(ctx, content, originalPath)
 		}
 		return v.ValidateContent(content, originalPath)
 	})
+
+	// Per-validator MATCH budget: cap only a SUCCESSFUL result. Never truncate a
+	// partial slice returned alongside an error (e.g. ctx.Err() from a timed-out
+	// scan) — that path already carries its own incompleteness meaning, and
+	// dropping matches a timed-out scan did find would double-signal. When the
+	// count is at/under the cap (or the cap is disabled), matches is returned
+	// completely unmutated: byte-identical to the no-budget path.
+	if err == nil && b.MatchLimit > 0 && len(matches) > b.MatchLimit {
+		matches = matches[:b.MatchLimit]
+		err = fmt.Errorf("%w: validator %q emitted more than %d matches", ErrMatchBudgetExceeded, name, b.MatchLimit)
+	}
+	return matches, err
 }

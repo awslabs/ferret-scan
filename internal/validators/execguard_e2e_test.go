@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 	"github.com/awslabs/ferret-scan/internal/preprocessors"
 )
@@ -153,4 +154,87 @@ func (okDocValidator) CalculateConfidence(string) (float64, map[string]bool) { r
 func (okDocValidator) AnalyzeContext(string, detector.ContextInfo) float64   { return 0 }
 func (okDocValidator) ValidateContent(_, path string) ([]detector.Match, error) {
 	return []detector.Match{{Type: "OKTYPE", Text: "x", Validator: "OK", Filename: path}}, nil
+}
+
+// nMatchDocValidator emits n matches, ignoring ctx — for the match-budget e2e.
+type nMatchDocValidator struct{ n int }
+
+func (nMatchDocValidator) Validate(string) ([]detector.Match, error)             { return nil, nil }
+func (nMatchDocValidator) CalculateConfidence(string) (float64, map[string]bool) { return 0, nil }
+func (nMatchDocValidator) AnalyzeContext(string, detector.ContextInfo) float64   { return 0 }
+func (m nMatchDocValidator) ValidateContent(_, path string) ([]detector.Match, error) {
+	out := make([]detector.Match, m.n)
+	for i := range out {
+		out[i] = detector.Match{Type: "MANY", Text: "m", Validator: "MANY", Filename: path}
+	}
+	return out, nil
+}
+
+// TestE2E_MatchBudgetTruncatesThroughStack proves a per-validator MATCH budget
+// (Move C), attached via execguard.WithBudgets, is enforced at the dispatch
+// chokepoint inside the REAL nested stack — the emitting validator's result is
+// capped. Deterministic (no wall-clock).
+func TestE2E_MatchBudgetTruncatesThroughStack(t *testing.T) {
+	wrapper := buildWrapper(t, map[string]detector.Validator{"MANY": nMatchDocValidator{n: 50}})
+	ctx := execguard.WithBudgets(stdctx.Background(), map[string]execguard.ValidatorBudget{
+		"MANY": {MatchLimit: 5},
+	})
+
+	matches, _ := wrapper.ValidateProcessedContentCtx(ctx, processed("content"))
+	if len(matches) != 5 {
+		t.Fatalf("expected match budget to cap output at 5 through the full stack, got %d", len(matches))
+	}
+}
+
+// TestE2E_MatchBudgetUnderCapUnaffected confirms a generous budget leaves output
+// untouched through the stack (byte-identical behavior when under the cap).
+func TestE2E_MatchBudgetUnderCapUnaffected(t *testing.T) {
+	wrapper := buildWrapper(t, map[string]detector.Validator{"MANY": nMatchDocValidator{n: 3}})
+	ctx := execguard.WithBudgets(stdctx.Background(), map[string]execguard.ValidatorBudget{
+		"MANY": {MatchLimit: 100},
+	})
+
+	matches, err := wrapper.ValidateProcessedContentCtx(ctx, processed("content"))
+	if err != nil {
+		t.Fatalf("under-cap must not error through the stack: %v", err)
+	}
+	if len(matches) != 3 {
+		t.Fatalf("under-cap must return all 3 matches, got %d", len(matches))
+	}
+}
+
+// budgetBlockValidator is ctx-aware and blocks until its (per-validator) deadline
+// fires, then returns ctx.Err() — a runaway validator that a TIME budget must
+// reclaim. It waits on ctx.Done() rather than racing a sleep (anti-flake).
+type budgetBlockValidator struct{}
+
+func (budgetBlockValidator) Validate(string) ([]detector.Match, error)             { return nil, nil }
+func (budgetBlockValidator) CalculateConfidence(string) (float64, map[string]bool) { return 0, nil }
+func (budgetBlockValidator) AnalyzeContext(string, detector.ContextInfo) float64   { return 0 }
+func (budgetBlockValidator) ValidateContent(string, string) ([]detector.Match, error) {
+	return nil, nil
+}
+func (budgetBlockValidator) ValidateContentCtx(ctx stdctx.Context, _, _ string) ([]detector.Match, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// TestE2E_TimeBudgetReclaimsAndSurfaces proves a per-validator TIME budget (Move
+// C) reclaims a runaway validator promptly AND surfaces DeadlineExceeded through
+// the real stack (so the caller flags ScanResult.Incomplete), even though the
+// PARENT context never expired. The budget derives a tighter child deadline.
+func TestE2E_TimeBudgetReclaimsAndSurfaces(t *testing.T) {
+	wrapper := buildWrapper(t, map[string]detector.Validator{"BLOCK": budgetBlockValidator{}})
+	ctx := execguard.WithBudgets(stdctx.Background(), map[string]execguard.ValidatorBudget{
+		"BLOCK": {TimeLimit: 30 * time.Millisecond},
+	})
+
+	start := time.Now()
+	_, err := wrapper.ValidateProcessedContentCtx(ctx, processed("content"))
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("time budget did not reclaim the runaway validator: took %v", elapsed)
+	}
+	if !errors.Is(err, stdctx.DeadlineExceeded) {
+		t.Fatalf("per-validator time budget must surface DeadlineExceeded, got %v", err)
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 	"github.com/awslabs/ferret-scan/internal/preprocessors"
 	"github.com/awslabs/ferret-scan/internal/redactors"
@@ -61,6 +62,12 @@ type JobConfig struct {
 	// server) can tighten this so a single pathological file cannot delay batch
 	// completion for the full default window.
 	JobTimeout time.Duration
+
+	// ValidatorBudgets optionally bounds per-validator execution (time and/or
+	// match count), keyed by validator name. Nil/empty = disabled = historical
+	// behavior. Attached to the per-file job context so the dispatch chokepoint
+	// (execguard.ValidateContent) can enforce each validator's budget.
+	ValidatorBudgets map[string]execguard.ValidatorBudget
 }
 
 // DefaultJobTimeout is the per-file processing ceiling used when
@@ -255,6 +262,10 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	}
 	jobCtx, cancel := context.WithTimeout(wp.ctx, jobTimeout)
 	defer cancel()
+	// Attach per-validator budgets (no-op when nil/empty — byte-identical path).
+	if job.Config != nil {
+		jobCtx = execguard.WithBudgets(jobCtx, job.Config.ValidatorBudgets)
+	}
 
 	err := processWithResilience(jobCtx)
 	if err != nil {

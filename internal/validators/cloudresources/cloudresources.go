@@ -14,6 +14,7 @@
 package cloudresources
 
 import (
+	stdctx "context"
 	"fmt"
 	"regexp"
 	"sort"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
@@ -110,6 +112,15 @@ func (v *Validator) SetObserver(observer *observability.StandardObserver) {
 // per-match full-content ToLower + strings.Index made it O(matches × content),
 // which took ~84s on an 800 KB file.
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	// Backward-compatible shim: run with a background context (never cancels).
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements execguard.ContextAwareValidator: the context-aware
+// form of ValidateContent, polling ctx once per candidate span in the scoring loop
+// so a runaway scan over tens of thousands of matches is reclaimed promptly (v2
+// Phase 3). On cancellation it returns the matches gathered so far plus ctx.Err().
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("cloud_resources", "validate_content", originalPath)
@@ -122,6 +133,16 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			finishTiming(true, map[string]interface{}{"match_count": 0, "skipped_oversize": true})
 		}
 		return nil, nil
+	}
+
+	// Entry-level cancellation check (v2 Phase 3): the whole-content regex pass and
+	// containment dedup below run before the polled scoring loop, so an
+	// already-cancelled/expired scan bails here rather than paying for them.
+	if execguard.LineLoopCancelled(ctx, 0) {
+		if finishTiming != nil {
+			finishTiming(false, map[string]interface{}{"cancelled": true, "match_count": 0})
+		}
+		return nil, ctx.Err()
 	}
 
 	// Precompute document-level signals once.
@@ -208,6 +229,14 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	var cachedLineHasNegKw bool
 
 	for i := range raws {
+		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel,
+		// returning the matches gathered so far plus the reason.
+		if execguard.LineLoopCancelled(ctx, i) {
+			if finishTiming != nil {
+				finishTiming(false, map[string]interface{}{"cancelled": true, "match_count": len(matches)})
+			}
+			return matches, ctx.Err()
+		}
 		if containedFlag[i] {
 			continue
 		}
