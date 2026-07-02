@@ -129,6 +129,13 @@ var Cases = []Case{
 		Checks:      []string{"EMAIL"},
 		Input:       manyEmails(12),
 	},
+	{
+		Name:        "cloud_resources_test_context",
+		Description: "Same AWS IAM-role ARN on two lines: one clean, one carrying a same-line test-context keyword (\"example\"). Locks the CLOUD_RESOURCES negative-keyword penalty (-20, per-line/local), the behavior the per-line hasKeywordToken hoist must preserve.",
+		Checks:      []string{"CLOUD_RESOURCES"},
+		Input: "prod arn:aws:iam::123456789012:role/PaymentsAdmin\n" +
+			"example arn:aws:iam::123456789012:role/PaymentsAdmin\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

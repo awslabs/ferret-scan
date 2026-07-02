@@ -196,12 +196,16 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	providerCounts := make(map[string]int)
 	var suppressedKeyword, suppressedLowConf int
 
-	// Per-line cache: matches on the same line share the same line text and its
-	// lowercase, so compute each once per distinct line-start offset rather than
-	// per match. On single-line input every match shares one line, so this turns
-	// the per-match O(content) ToLower/line-extraction into O(content) total.
+	// Per-line cache: matches on the same line share the same line text, its
+	// lowercase, AND whether that line carries a negative (test-context) keyword,
+	// so compute each once per distinct line-start offset rather than per match.
+	// The negative-keyword scan in particular is O(lineLen × keywords); hoisting
+	// it here turns the per-match O(content) work into O(content) total. On
+	// single-line input every match shares one line, so all of this is computed
+	// exactly once instead of once per (potentially tens of thousands of) matches.
 	cachedLineStart := -1
 	var cachedLine, cachedLineLower string
+	var cachedLineHasNegKw bool
 
 	for i := range raws {
 		if containedFlag[i] {
@@ -229,14 +233,15 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 			cachedLineStart = lineStart
 			cachedLine = content[lineStart:lineEnd]
 			cachedLineLower = strings.ToLower(cachedLine)
+			cachedLineHasNegKw = hasKeywordToken(cachedLineLower, v.negativeKeywords)
 		}
 		lineNo := lineIndex.lineAt(start)
 
-		confidence, factors := v.scoreMatch(text, resourceType, cachedLineLower, isCustom)
+		confidence, factors := v.scoreMatch(text, resourceType, cachedLineHasNegKw, isCustom)
 
 		// Below the sanity floor: too weak to surface at any confidence level.
 		if confidence < acceptThreshold {
-			if hasKeywordToken(cachedLineLower, v.negativeKeywords) {
+			if cachedLineHasNegKw {
 				suppressedKeyword++
 			} else {
 				suppressedLowConf++
@@ -416,9 +421,11 @@ func typeBaseConfidence(resourceType, match string) float64 {
 
 // scoreMatch computes the confidence and the list of contributing factors for a
 // match, using only the match text and its OWN line (never the whole document).
-// lineLower is the match's line, already lowercased by the caller (cached per
-// line) so this is not re-lowercased per match.
-func (v *Validator) scoreMatch(match, resourceType, lineLower string, isCustom bool) (float64, []string) {
+// lineHasNegKeyword reports whether the match's line carries a negative
+// (test-context) keyword; the caller computes it once per line (cached) so the
+// scan is not repeated per match. The public CalculateConfidence path, which has
+// no line context, passes false.
+func (v *Validator) scoreMatch(match, resourceType string, lineHasNegKeyword, isCustom bool) (float64, []string) {
 	base := typeBaseConfidence(resourceType, match)
 	if isCustom {
 		base = 75.0
@@ -447,8 +454,11 @@ func (v *Validator) scoreMatch(match, resourceType, lineLower string, isCustom b
 
 	// LOCAL test-context penalty: only the match's own line is considered, so a
 	// stray "example" elsewhere in the document cannot suppress a real finding.
-	// Whole-token match avoids dropping names like "company-templates".
-	if hasKeywordToken(lineLower, v.negativeKeywords) {
+	// Whole-token match avoids dropping names like "company-templates". The scan
+	// is hoisted to the caller (computed once per line) so this stays O(1) even
+	// when thousands of matches share one line — see ValidateContent's per-line
+	// cache. The public CalculateConfidence path passes false (no line context).
+	if lineHasNegKeyword {
 		confidence -= 20.0
 		factors = append(factors, "test_context:-20")
 	}
@@ -498,7 +508,7 @@ func isWordByte(b byte) bool {
 // which requires surrounding text) so the two paths do not diverge.
 func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool) {
 	resourceType := getCloudResourceType(match)
-	confidence, _ := v.scoreMatch(match, resourceType, "", false)
+	confidence, _ := v.scoreMatch(match, resourceType, false, false)
 	checks := map[string]bool{
 		"valid_format":      true,
 		"valid_account_id":  extractAccountID(match) != "",
