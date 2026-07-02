@@ -12,11 +12,12 @@
 # Uses the "precommit" profile from your project's ferret.yaml config.
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.8.4  # pin to a release tag
+    rev: v1.10.0  # pin to a release tag
     hooks:
       - id: ferret-scan
         args: [--pre-commit-mode, --profile, precommit, --respect-gitignore]
 
+---
 # =============================================================================
 # OPTION B: LOCAL BINARY (Best performance)
 # =============================================================================
@@ -32,6 +33,7 @@ repos:
         exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)\.?ferret-scan-suppressions\.ya?ml$)|((^|/)(test_[^/]*|[^/]+_test)\.[^/]+$)'
         pass_filenames: true
 
+---
 # =============================================================================
 # OPTION C: DOCKER / FINCH
 # =============================================================================
@@ -41,12 +43,13 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan (Docker)
-        entry: docker run --rm -v "${PWD}:/data" -w /data ghcr.io/awslabs/ferret-scan:latest --pre-commit-mode --profile precommit --respect-gitignore
+        entry: docker run --rm -v "${PWD}:/data" -w /data public.ecr.aws/awslabs/ferret-scan:latest --pre-commit-mode --profile precommit --respect-gitignore
         language: system
         files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh|ts|jsx|tsx)$'
         exclude: '(^(\.git/|bin/|dist/|node_modules/|\.cache/|vendor/|\.venv/|__pycache__/))|((^|/)\.?ferret-scan-suppressions\.ya?ml$)'
         pass_filenames: true
 
+---
 # =============================================================================
 # OPTION D: ADVISORY MODE (never blocks commits)
 # =============================================================================

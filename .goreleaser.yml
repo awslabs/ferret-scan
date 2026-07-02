@@ -121,4 +121,6 @@ release:
 
     **Full Changelog**: https://github.com/awslabs/ferret-scan/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-# Docker builds disabled - focusing on binary releases only
+# Docker builds are handled by .github/workflows/docker-multiarch.yml
+# (multi-arch build + push to ECR Public and GHCR), not by GoReleaser.
+# GoReleaser here focuses on binary + PyPI releases only.

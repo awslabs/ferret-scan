@@ -1,6 +1,6 @@
 # Multi-Architecture Docker Build Guide
 
-This document explains how to build and use multi-architecture Docker images for Ferret Scan using GitHub Actions and GitHub Container Registry.
+This document explains how to build and use multi-architecture Docker images for Ferret Scan using GitHub Actions.
 
 ## Overview
 
@@ -20,21 +20,29 @@ The Docker build workflow (`docker-multiarch.yml`) runs on:
 
 ## Image Registry
 
-Images are published to GitHub Container Registry (GHCR):
+The public image is published to **Amazon ECR Public**:
+
 ```
-ghcr.io/[your-username]/[repository-name]
+public.ecr.aws/awslabs/ferret-scan
 ```
+
+Gallery: <https://gallery.ecr.aws/awslabs/ferret-scan>
+
+> **Note:** The workflow also pushes the same digest to GitHub Container Registry
+> (`ghcr.io/awslabs/ferret-scan`), but that package is **private** — public
+> package visibility is disabled at the organization level, so it is not
+> anonymously pullable. Use the ECR Public image for all external/public use.
+> The GHCR mirror is retained only for authenticated internal consumers.
 
 ## Image Tags
 
 The workflow automatically generates multiple tags:
 
-- `latest` - Latest main branch build
-- `v1.2.3` - Exact version tag
-- `v1.2` - Minor version tag
-- `v1` - Major version tag
-- `main-sha123456` - Branch with commit SHA
-- `pr-123` - Pull request builds
+- `latest` - Latest tagged release
+- `1.2.3` - Exact version tag
+- `1.2` - Minor version tag
+- `main` - Latest main branch (development) build
+- `pr-123` - Pull request builds (not pushed)
 
 ## Usage Examples
 
@@ -42,16 +50,16 @@ The workflow automatically generates multiple tags:
 
 ```bash
 # Pull the latest image
-docker pull ghcr.io/[your-username]/[repository-name]:latest
+docker pull public.ecr.aws/awslabs/ferret-scan:latest
 
 # Run in CLI mode
 docker run --rm -v $(pwd):/data \
-  ghcr.io/[your-username]/[repository-name]:latest \
+  public.ecr.aws/awslabs/ferret-scan:latest \
   --file /data/sample.txt
 
 # Run in web mode
 docker run --rm -p 8080:8080 \
-  ghcr.io/[your-username]/[repository-name]:latest \
+  public.ecr.aws/awslabs/ferret-scan:latest \
   --web --port 8080
 ```
 
@@ -60,11 +68,11 @@ docker run --rm -p 8080:8080 \
 ```bash
 # Force ARM64 on Apple Silicon
 docker pull --platform linux/arm64 \
-  ghcr.io/[your-username]/[repository-name]:latest
+  public.ecr.aws/awslabs/ferret-scan:latest
 
 # Force AMD64 on any system
 docker pull --platform linux/amd64 \
-  ghcr.io/[your-username]/[repository-name]:latest
+  public.ecr.aws/awslabs/ferret-scan:latest
 ```
 
 ### Local Development
@@ -144,19 +152,19 @@ The Dockerfile is optimized for minimal resource usage:
    RUN echo "Building for $TARGETPLATFORM"
    ```
 
-3. **Registry Authentication**: Check GitHub token permissions
-   - Ensure `packages: write` permission
-   - Verify GITHUB_TOKEN is available
+3. **Registry Authentication**: Check credentials
+   - ECR Public push uses AWS OIDC (`id-token: write` + the `AWS_ROLE_ARN` secret)
+   - GHCR push uses `GITHUB_TOKEN` with `packages: write`
 
 ### Testing Multi-Arch Images
 
 ```bash
 # Inspect image manifest
-docker buildx imagetools inspect ghcr.io/[your-username]/[repository-name]:latest
+docker buildx imagetools inspect public.ecr.aws/awslabs/ferret-scan:latest
 
 # Test specific architecture
 docker run --platform linux/arm64 --rm \
-  ghcr.io/[your-username]/[repository-name]:latest --version
+  public.ecr.aws/awslabs/ferret-scan:latest --version
 ```
 
 ## Configuration
@@ -170,8 +178,10 @@ When manually triggering the workflow:
 
 ### Environment Variables
 
-- `REGISTRY`: Container registry URL (default: ghcr.io)
-- `IMAGE_NAME`: Repository name (auto-detected)
+The registry targets are defined at the top of `docker-multiarch.yml`:
+
+- `ECR_REGISTRY` / `ECR_REPOSITORY` - the public ECR Public target
+- `GHCR_REGISTRY` / `GHCR_REPOSITORY` - the private GHCR mirror
 
 ## Best Practices
 
@@ -183,7 +193,7 @@ When manually triggering the workflow:
 2. **Use Specific Tags**
    ```bash
    # Prefer specific versions over 'latest'
-   docker pull ghcr.io/[your-username]/[repository-name]:v1.2.3
+   docker pull public.ecr.aws/awslabs/ferret-scan:1.2.3
    ```
 
 3. **Monitor Build Times**
@@ -206,7 +216,6 @@ The Docker workflow integrates with your existing CI/CD:
 ## Next Steps
 
 1. **Enable the workflow** by pushing to main branch
-2. **Configure repository secrets** if needed
-3. **Update documentation** with your specific registry URLs
-4. **Set up branch protection** to require successful builds
-5. **Configure Dependabot** for automated dependency updates
+2. **Configure repository secrets** if needed (`AWS_ROLE_ARN` for ECR Public)
+3. **Set up branch protection** to require successful builds
+4. **Configure Dependabot** for automated dependency updates

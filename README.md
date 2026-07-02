@@ -724,8 +724,11 @@ Ferret Scan is designed for seamless integration into modern development workflo
 Run Ferret Scan in a containerized environment using Docker or Finch:
 
 ```bash
-# Build container image (Docker or Finch)
-# Build container image (auto-detects Docker/Finch)
+# Pull the prebuilt multi-arch image from Amazon ECR Public (no build needed)
+docker pull public.ecr.aws/awslabs/ferret-scan:latest
+# Gallery: https://gallery.ecr.aws/awslabs/ferret-scan
+
+# Or build the container image yourself (auto-detects Docker/Finch)
 make container-build
 
 # Web UI mode with persistent data (recommended)

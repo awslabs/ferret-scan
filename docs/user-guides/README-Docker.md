@@ -4,7 +4,26 @@
 
 This guide covers running Ferret Scan in containers using either Docker or Finch.
 
+## Pulling the Prebuilt Image (Recommended)
+
+Multi-architecture images (linux/amd64 + linux/arm64) are published to **Amazon ECR Public** — no build required:
+
+```bash
+# Pull the latest release
+docker pull public.ecr.aws/awslabs/ferret-scan:latest   # or: finch pull ...
+
+# Pin to a specific version (recommended for CI)
+docker pull public.ecr.aws/awslabs/ferret-scan:1.10.0
+```
+
+Gallery: <https://gallery.ecr.aws/awslabs/ferret-scan>
+
+The examples below use the short `ferret-scan` tag; substitute
+`public.ecr.aws/awslabs/ferret-scan:latest` to run the prebuilt image directly.
+
 ## Building the Container Image
+
+Prefer the prebuilt image above unless you are developing Ferret Scan itself.
 
 ```bash
 # Build with auto-detection (recommended - includes version info)
