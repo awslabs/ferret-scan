@@ -918,6 +918,7 @@ func main() {
 
 	// IP sub-type control flag
 	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
+	validatorBudget := flag.String("validator-budget", "", "Per-validator time budget as NAME=DURATION pairs. DURATION takes any Go duration unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. Default: no budget.")
 
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
@@ -931,6 +932,15 @@ func main() {
 	stdinName := flag.String("stdin-name", "<stdin>", "Synthetic label used as the filename in findings when scanning stdin")
 
 	flag.Parse()
+
+	// Parse --validator-budget once, up front, so a malformed spec fails fast with
+	// a clear message before any scanning (and before the stdin/file split). A nil
+	// map means no budgets (byte-identical default behavior).
+	validatorBudgets, budgetErr := parseValidatorBudgets(*validatorBudget)
+	if budgetErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", budgetErr)
+		os.Exit(1)
+	}
 
 	// Extract all flag values once for performance and consistency
 	flags := extractAllFlags(flagPointers{
@@ -990,10 +1000,11 @@ func main() {
 	stdinFromFile := flags.inputFile == "-"
 	if (*stdinMode || stdinFromFile) && !*showHelp && !*showVersion {
 		exitCode := runStdinScan(stdinScanInputs{
-			flags:          flags,
-			positionalArgs: flag.Args(),
-			stdinName:      *stdinName,
-			outputFile:     *outputFile,
+			flags:            flags,
+			positionalArgs:   flag.Args(),
+			stdinName:        *stdinName,
+			outputFile:       *outputFile,
+			validatorBudgets: validatorBudgets,
 		})
 		os.Exit(exitCode)
 	}
@@ -1714,6 +1725,7 @@ func main() {
 			EnableRedaction:    finalConfig.enableRedaction,
 			RedactionStrategy:  finalConfig.redactionStrategy,
 			RedactionOutputDir: finalConfig.redactionOutputDir,
+			ValidatorBudgets:   validatorBudgets,
 		}
 
 		// Show initial progress
@@ -2554,6 +2566,11 @@ func validateWebModeFlags() error {
 	if isFlagSet("show-suppressed") {
 		incompatibleFlags = append(incompatibleFlags, "--show-suppressed")
 		troubleshooting = append(troubleshooting, "Web mode has its own suppressed findings display")
+	}
+
+	if isFlagSet("validator-budget") {
+		incompatibleFlags = append(incompatibleFlags, "--validator-budget")
+		troubleshooting = append(troubleshooting, "Web mode does not apply per-validator CLI budgets; it runs with the default per-file timeout")
 	}
 
 	// If any incompatible flags were found, return an error

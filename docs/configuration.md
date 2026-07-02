@@ -245,6 +245,7 @@ Profiles now support all command-line options and include specialized configurat
 ### CLI-Only Options (Not Configurable in YAML)
 
 - `--explain`: Annotates each finding with a plain-language rationale, a verdict (likely real / test / uncertain), and a drafted suppression reason. Fully offline; no data leaves the host. Web mode always runs explain automatically.
+- `--validator-budget`: Per-validator time budget as `NAME=DURATION` pairs. `DURATION` accepts any Go duration unit (`ms`, `s`, `m`, `h`, or combinations — e.g. `SSN=500ms,IP_ADDRESS=2m`); `all=<duration>` bounds every validator, specific names override it. A validator exceeding its budget is stopped and the scan is reported incomplete. Off by default. CI/hardening control against pathological inputs; not valid with `--web` or `--preprocess-only`.
 
 ### Output Format Support
 

@@ -141,6 +141,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --pre-commit-mode\t\tEnable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
 	fmt.Fprintln(w, "  --fail-on-incomplete\t\tExit non-zero (3) if any file's validator coverage was cut short (timeout, cancellation, or budget). Default off: incomplete coverage only warns on stderr.")
 	fmt.Fprintln(w, "  --disable-ip-types\t<types>\tComma-separated list of IP sub-types to skip: copyright,patent,trademark,trade_secret,internal_url")
+	fmt.Fprintln(w, "  --validator-budget\t<spec>\tPer-validator time budget as NAME=DURATION pairs; DURATION accepts any Go unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator, specific names override. Over-budget validators are stopped and the scan is marked incomplete. Default: none.")
 	fmt.Fprintln(w, "  --enable-redaction\t\tEnable redaction of sensitive data found in documents")
 	fmt.Fprintln(w, "  --redaction-output-dir\t<path>\tDirectory where redacted files will be stored (default: ./redacted)")
 	fmt.Fprintln(w, "  --redaction-strategy\t<strategy>\tDefault redaction strategy: simple, format_preserving, or synthetic (default: format_preserving)")

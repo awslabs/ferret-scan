@@ -257,6 +257,7 @@ In **pre-commit mode** (`--pre-commit-mode`) the exit code instead reflects find
 - `--exclude`: Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')
   - **Note**: Uses glob patterns, not regex - dots and other characters are literal (use '.git', not '\\.git')
 - `--respect-gitignore`: Honor `.gitignore`, `.git/info/exclude`, and the global git excludes file when scanning (opt-in; `.git` is always skipped when enabled). See [File Exclusion Patterns](docs/configuration.md#file-exclusion-patterns) for the security trade-offs — `.gitignore` often hides `.env`, `*.pem`, and other high-value files.
+- `--validator-budget`: Per-validator time budget as `NAME=DURATION` pairs. `DURATION` is any Go duration string, so you can specify the unit explicitly — `ms`, `s`, `m`, `h`, or a combination (e.g. `SSN=500ms,IP_ADDRESS=2m,PHONE=1m30s`). Use `all=<duration>` to bound every validator at once; specific names override the wildcard (`all=30s,SSN=5s`). A validator that exceeds its budget is stopped and the scan is reported as incomplete (findings may be missing). Off by default — no per-validator limit beyond the 5-minute per-file ceiling. Intended as a CI/hardening control against pathological inputs. Not valid with `--web` or `--preprocess-only`.
 
 #### Redaction Options
 - `--enable-redaction`: Enable redaction of sensitive data found in documents

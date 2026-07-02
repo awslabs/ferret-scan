@@ -17,6 +17,7 @@ import (
 	"github.com/awslabs/ferret-scan/internal/config"
 	"github.com/awslabs/ferret-scan/internal/core"
 	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/formatters"
 	"github.com/awslabs/ferret-scan/internal/parallel"
 	"github.com/awslabs/ferret-scan/internal/precommit"
@@ -35,6 +36,10 @@ type stdinScanInputs struct {
 	positionalArgs []string
 	stdinName      string
 	outputFile     string
+	// validatorBudgets is the parsed --validator-budget map (per-validator time
+	// limits), or nil when unset. Applied to the stdin ScanContent config so a
+	// runaway validator on piped input is bounded exactly as in file mode.
+	validatorBudgets map[string]execguard.ValidatorBudget
 }
 
 // runStdinScan is the entry point for stdin scanning. It mirrors the
@@ -169,6 +174,7 @@ func runStdinScan(in stdinScanInputs) int {
 		Config:             cfg,
 		Profile:            activeProfile,
 		SuppressionManager: nil, // applied below so we can run --generate-suppressions on raw matches
+		ValidatorBudgets:   in.validatorBudgets,
 	}
 
 	start := time.Now()
