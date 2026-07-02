@@ -881,7 +881,7 @@ func main() {
 
 	// IP sub-type control flag
 	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
-	validatorBudget := flag.String("validator-budget", "", "Per-validator time budget as NAME=DURATION pairs (e.g. 'SSN=30s,IP_ADDRESS=10s'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. Default: no budget.")
+	validatorBudget := flag.String("validator-budget", "", "Per-validator time budget as NAME=DURATION pairs. DURATION takes any Go duration unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. Default: no budget.")
 
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")

@@ -38,6 +38,31 @@ func TestParseValidatorBudgets_SingleAndMultiple(t *testing.T) {
 	}
 }
 
+// TestParseValidatorBudgets_DurationUnits locks the contract that DURATION is a
+// full Go duration string — the unit is caller-specifiable (ms/s/m/h and
+// combinations), NOT seconds-only. This is what the --help text and docs promise.
+// (A bare, unit-less number like "45" is rejected — see the error test — which is
+// intentional: it forces an explicit unit rather than guessing.)
+func TestParseValidatorBudgets_DurationUnits(t *testing.T) {
+	cases := map[string]time.Duration{
+		"SSN=500ms":  500 * time.Millisecond,
+		"SSN=2m":     2 * time.Minute,
+		"SSN=1h":     time.Hour,
+		"SSN=1m30s":  time.Minute + 30*time.Second,
+		"SSN=1500ms": 1500 * time.Millisecond,
+	}
+	for spec, want := range cases {
+		got, err := parseValidatorBudgets(spec)
+		if err != nil {
+			t.Errorf("%q: unexpected error: %v", spec, err)
+			continue
+		}
+		if got["SSN"].TimeLimit != want {
+			t.Errorf("%q: TimeLimit = %v, want %v", spec, got["SSN"].TimeLimit, want)
+		}
+	}
+}
+
 func TestParseValidatorBudgets_CaseInsensitiveName(t *testing.T) {
 	got, err := parseValidatorBudgets("ssn=1s")
 	if err != nil {
@@ -103,6 +128,7 @@ func TestParseValidatorBudgets_Errors(t *testing.T) {
 		{"duplicate name", "SSN=1s,SSN=2s"},
 		{"duplicate all", "all=1s,all=2s"},
 		{"empty duration", "SSN="},
+		{"unitless number", "SSN=45"}, // must specify a unit (ms/s/m/h), not a bare number
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
