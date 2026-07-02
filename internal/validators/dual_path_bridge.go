@@ -7,7 +7,6 @@ import (
 	stdctx "context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +15,6 @@ import (
 	"github.com/awslabs/ferret-scan/internal/detector"
 	"github.com/awslabs/ferret-scan/internal/execguard"
 	"github.com/awslabs/ferret-scan/internal/observability"
-	"github.com/awslabs/ferret-scan/internal/performance"
 	"github.com/awslabs/ferret-scan/internal/preprocessors"
 	"github.com/awslabs/ferret-scan/internal/router"
 )
@@ -33,10 +31,8 @@ type EnhancedValidatorBridge struct {
 	// Configuration
 	config *DualPathConfig
 
-	// Metrics and monitoring
-	metrics            *DualPathMetrics
-	performanceMonitor *performance.PerformanceMonitor
-	observabilityHooks *performance.ObservabilityHooks
+	// Metrics
+	metrics *DualPathMetrics
 
 	// Thread safety
 	mu sync.RWMutex
@@ -206,16 +202,6 @@ func (evb *EnhancedValidatorBridge) SetObserver(observer *observability.Standard
 	evb.metadataBridge.SetObserver(observer)
 }
 
-// SetPerformanceMonitor sets the performance monitor for the bridge
-func (evb *EnhancedValidatorBridge) SetPerformanceMonitor(monitor *performance.PerformanceMonitor) {
-	evb.performanceMonitor = monitor
-}
-
-// SetObservabilityHooks sets the observability hooks for the bridge
-func (evb *EnhancedValidatorBridge) SetObservabilityHooks(hooks *performance.ObservabilityHooks) {
-	evb.observabilityHooks = hooks
-}
-
 // RegisterDocumentValidator registers a validator for document body content under
 // its logical check name (e.g. "SSN"), used for per-validator budget keying and
 // diagnostics at the dispatch chokepoint.
@@ -271,51 +257,6 @@ func (evb *EnhancedValidatorBridge) ProcessContentCtx(ctx stdctx.Context, conten
 	routedContent, err := evb.routeContentWithRetry(content)
 	routingTime := time.Since(routingStartTime)
 	evb.updateRoutingMetrics(routingTime, err == nil)
-
-	// Record performance metrics for content routing
-	if evb.performanceMonitor != nil {
-		errorType := ""
-		if err != nil {
-			errorType = "routing_failure"
-		}
-		evb.performanceMonitor.RecordContentRoutingOperation(routingTime, err == nil, errorType)
-
-		if routedContent != nil {
-			evb.performanceMonitor.RecordContentSeparation(
-				routedContent.DocumentBody != "",
-				len(routedContent.Metadata) > 0,
-				len(routedContent.Metadata))
-		}
-	}
-
-	// Trigger observability hooks for content routing
-	if evb.observabilityHooks != nil && routedContent != nil {
-		// Extract file type filtering information
-		fileExt := strings.ToLower(filepath.Ext(content.OriginalPath))
-		metadataSkipped := len(routedContent.Metadata) == 0 && routedContent.DocumentBody != ""
-		skipReason := ""
-		if metadataSkipped {
-			skipReason = "file_type_no_metadata"
-		}
-
-		decision := &performance.ContentRoutingDecision{
-			FilePath:          content.OriginalPath,
-			DocumentBodyFound: routedContent.DocumentBody != "",
-			MetadataFound:     len(routedContent.Metadata) > 0,
-			PreprocessorTypes: evb.extractPreprocessorTypes(routedContent.Metadata),
-			RoutingTime:       routingTime,
-			ConfidenceScore:   evb.calculateRoutingConfidence(routedContent),
-			DecisionReasoning: evb.generateRoutingReasoning(routedContent),
-
-			// File type filtering information
-			FileExtension:      fileExt,
-			CanContainMetadata: len(routedContent.Metadata) > 0 || !metadataSkipped,
-			MetadataType:       evb.determineMetadataTypeFromContent(routedContent),
-			MetadataSkipped:    metadataSkipped,
-			SkipReason:         skipReason,
-		}
-		evb.observabilityHooks.TriggerContentRoutingHooks(decision)
-	}
 
 	if err != nil {
 		// Fallback to legacy aggregation behavior
@@ -382,9 +323,6 @@ func (evb *EnhancedValidatorBridge) ProcessContentCtx(ctx stdctx.Context, conten
 			evb.metrics.FallbackActivations++
 			evb.metrics.mu.Unlock()
 
-			// Record fallback activation
-			evb.recordFallbackActivation(fmt.Sprintf("dual_path_processing_failed: %v", err))
-
 			return evb.processContentLegacy(ctx, content, contextInsights)
 		}
 
@@ -436,38 +374,12 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 
 	// Process document body content in parallel
 	if routedContent.DocumentBody != "" {
-		// Trigger validation started hook for document path
-		evb.triggerValidationHooks("document", routedContent.OriginalPath, nil)
-
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			docStartTime := time.Now()
 			matches, err := evb.documentBridge.ProcessDocumentContentCtx(ctx, routedContent.DocumentBody, routedContent.OriginalPath, contextInsights)
 			documentProcessingTime = time.Since(docStartTime)
-
-			// Record performance metrics for document path
-			avgConfidence := 0.0
-			if len(matches) > 0 {
-				totalConfidence := 0.0
-				for _, match := range matches {
-					totalConfidence += match.Confidence
-				}
-				avgConfidence = totalConfidence / float64(len(matches))
-			}
-			evb.recordValidationPathPerformance(false, documentProcessingTime, err == nil, len(matches), avgConfidence)
-
-			// Trigger validation completed hook for document path
-			validationResult := &performance.ValidationResult{
-				ValidationType:    "document",
-				FilePath:          routedContent.OriginalPath,
-				MatchCount:        len(matches),
-				AverageConfidence: avgConfidence,
-				ProcessingTime:    documentProcessingTime,
-				Success:           err == nil,
-				Error:             err,
-			}
-			evb.triggerValidationHooks("document", routedContent.OriginalPath, validationResult)
 
 			if err != nil {
 				documentErr = err
@@ -496,38 +408,12 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 
 	// Process metadata content in parallel
 	if len(routedContent.Metadata) > 0 {
-		// Trigger validation started hook for metadata path
-		evb.triggerValidationHooks("metadata", routedContent.OriginalPath, nil)
-
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			metaStartTime := time.Now()
 			matches, err := evb.metadataBridge.ProcessMetadataContentCtx(ctx, routedContent.Metadata, contextInsights)
 			metadataProcessingTime = time.Since(metaStartTime)
-
-			// Record performance metrics for metadata path
-			avgConfidence := 0.0
-			if len(matches) > 0 {
-				totalConfidence := 0.0
-				for _, match := range matches {
-					totalConfidence += match.Confidence
-				}
-				avgConfidence = totalConfidence / float64(len(matches))
-			}
-			evb.recordValidationPathPerformance(true, metadataProcessingTime, err == nil, len(matches), avgConfidence)
-
-			// Trigger validation completed hook for metadata path
-			validationResult := &performance.ValidationResult{
-				ValidationType:    "metadata",
-				FilePath:          routedContent.OriginalPath,
-				MatchCount:        len(matches),
-				AverageConfidence: avgConfidence,
-				ProcessingTime:    metadataProcessingTime,
-				Success:           err == nil,
-				Error:             err,
-			}
-			evb.triggerValidationHooks("metadata", routedContent.OriginalPath, validationResult)
 
 			if err != nil {
 				metadataErr = err
@@ -594,12 +480,6 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 
 	// Apply cross-path confidence adjustments based on context
 	result.AllMatches = evb.applyCrossPathConfidenceAdjustments(result.AllMatches, contextInsights)
-
-	// Trigger cross-path correlation hooks if both paths found matches
-	if evb.observabilityHooks != nil && len(result.DocumentMatches) > 0 && len(result.MetadataMatches) > 0 {
-		correlationBoost := 5.0 // This should match the boost applied in applyCrossPathConfidenceAdjustments
-		evb.observabilityHooks.TriggerCrossPathCorrelationHooks(len(result.DocumentMatches), len(result.MetadataMatches), correlationBoost)
-	}
 
 	result.ProcessingTime = time.Since(startTime)
 
@@ -1489,112 +1369,3 @@ func getDefaultDualPathConfig() *DualPathConfig {
 }
 
 // Helper methods for performance monitoring and observability hooks
-
-// extractPreprocessorTypes extracts preprocessor types from metadata content
-func (evb *EnhancedValidatorBridge) extractPreprocessorTypes(metadata []router.MetadataContent) []string {
-	types := make([]string, 0, len(metadata))
-	for _, item := range metadata {
-		types = append(types, item.PreprocessorType)
-	}
-	return types
-}
-
-// determineMetadataTypeFromContent determines the metadata type from routed content
-func (evb *EnhancedValidatorBridge) determineMetadataTypeFromContent(routedContent *router.RoutedContent) string {
-	if len(routedContent.Metadata) == 0 {
-		return "none"
-	}
-
-	// Return the first metadata type found, or "mixed" if multiple types
-	if len(routedContent.Metadata) == 1 {
-		return routedContent.Metadata[0].PreprocessorType
-	}
-
-	// Check if all metadata items have the same type
-	firstType := routedContent.Metadata[0].PreprocessorType
-	for _, item := range routedContent.Metadata[1:] {
-		if item.PreprocessorType != firstType {
-			return "mixed"
-		}
-	}
-
-	return firstType
-}
-
-// calculateRoutingConfidence calculates a confidence score for routing decisions
-func (evb *EnhancedValidatorBridge) calculateRoutingConfidence(routedContent *router.RoutedContent) float64 {
-	confidence := 0.0
-
-	// Base confidence for successful routing
-	confidence += 50.0
-
-	// Boost for document body found
-	if routedContent.DocumentBody != "" {
-		confidence += 25.0
-	}
-
-	// Boost for metadata found
-	if len(routedContent.Metadata) > 0 {
-		confidence += 25.0
-
-		// Additional boost for multiple preprocessor types
-		if len(routedContent.Metadata) > 1 {
-			confidence += 10.0
-		}
-	}
-
-	// Ensure confidence is within bounds
-	if confidence > 100.0 {
-		confidence = 100.0
-	}
-
-	return confidence
-}
-
-// generateRoutingReasoning generates human-readable reasoning for routing decisions
-func (evb *EnhancedValidatorBridge) generateRoutingReasoning(routedContent *router.RoutedContent) string {
-	reasoning := "Content routing completed: "
-
-	if routedContent.DocumentBody != "" {
-		reasoning += "document body extracted, "
-	}
-
-	if len(routedContent.Metadata) > 0 {
-		reasoning += fmt.Sprintf("%d metadata items found (%v)",
-			len(routedContent.Metadata),
-			evb.extractPreprocessorTypes(routedContent.Metadata))
-	} else {
-		reasoning += "no metadata found"
-	}
-
-	return reasoning
-}
-
-// recordValidationPathPerformance records performance metrics for validation paths
-func (evb *EnhancedValidatorBridge) recordValidationPathPerformance(isMetadataPath bool, duration time.Duration, success bool, matchCount int, avgConfidence float64) {
-	if evb.performanceMonitor != nil {
-		evb.performanceMonitor.RecordValidationPathOperation(isMetadataPath, duration, success, matchCount, avgConfidence)
-	}
-}
-
-// triggerValidationHooks triggers validation observability hooks
-func (evb *EnhancedValidatorBridge) triggerValidationHooks(validationType, filePath string, result *performance.ValidationResult) {
-	if evb.observabilityHooks != nil {
-		if result == nil {
-			evb.observabilityHooks.TriggerValidationStartedHooks(validationType, filePath)
-		} else {
-			evb.observabilityHooks.TriggerValidationCompletedHooks(result)
-		}
-	}
-}
-
-// recordFallbackActivation records when fallback mode is activated
-func (evb *EnhancedValidatorBridge) recordFallbackActivation(reason string) {
-	if evb.performanceMonitor != nil {
-		evb.performanceMonitor.RecordFallbackActivation(reason)
-	}
-
-	if evb.observabilityHooks != nil {
-		evb.observabilityHooks.TriggerFallbackActivatedHooks(reason, "")
-	}
-}
