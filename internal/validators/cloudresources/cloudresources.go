@@ -400,12 +400,6 @@ func (li *lineIndex) lineBounds(content string, pos int) (int, int) {
 	return start, end
 }
 
-// lineText returns the full text of the line containing byte offset pos.
-func (li *lineIndex) lineText(content string, pos int) string {
-	start, end := li.lineBounds(content, pos)
-	return content[start:end]
-}
-
 // ---------------------------------------------------------------------------
 // Confidence scoring (account-gated tiering).
 // ---------------------------------------------------------------------------

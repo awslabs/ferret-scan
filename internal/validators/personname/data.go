@@ -9,7 +9,6 @@ import (
 	"compress/gzip"
 	_ "embed"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 )
@@ -108,29 +107,4 @@ func isValidName(name string) bool {
 	}
 
 	return true
-}
-
-// GetEmbeddedDataStats returns statistics about the embedded data
-func GetEmbeddedDataStats() map[string]interface{} {
-	return map[string]interface{}{
-		"first_names_compressed_size": len(firstNamesDataGZ),
-		"last_names_compressed_size":  len(lastNamesDataGZ),
-		"total_compressed_size":       len(firstNamesDataGZ) + len(lastNamesDataGZ),
-	}
-}
-
-// DecompressData is a utility function for testing decompression
-func DecompressData(compressedData []byte) (string, error) {
-	reader, err := gzip.NewReader(bytes.NewReader(compressedData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer reader.Close()
-
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, reader); err != nil {
-		return "", fmt.Errorf("failed to decompress data: %w", err)
-	}
-
-	return buf.String(), nil
 }
