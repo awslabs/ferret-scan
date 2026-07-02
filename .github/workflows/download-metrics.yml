@@ -1,0 +1,63 @@
+name: Download Metrics
+
+# Weekly snapshot of public download/pull counts across all distribution
+# channels (PyPI, ECR Public, GitHub release binaries). Passive only: queries
+# public APIs, makes NO change to the ferret-scan binary and generates NO
+# egress from the tool itself. Appends one row to docs/metrics/downloads.csv.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+# Least privilege: only needs to read releases and commit the CSV back.
+permissions:
+  contents: write
+
+concurrency:
+  group: download-metrics
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # Do not run on forks (no upstream data to commit; avoids failed cron noise).
+    if: github.repository == 'awslabs/ferret-scan'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Collect download metrics
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/collect-download-metrics.py
+
+      - name: Commit updated metrics
+        run: |
+          if [ -n "$(git status --porcelain docs/metrics/downloads.csv)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/metrics/downloads.csv
+            git commit -m "chore(metrics): weekly download snapshot"
+            git push
+          else
+            echo "No metrics change to commit."
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## 📊 Download metrics snapshot"
+            echo ""
+            echo "Latest row in \`docs/metrics/downloads.csv\`:"
+            echo ""
+            echo '```'
+            head -1 docs/metrics/downloads.csv
+            tail -1 docs/metrics/downloads.csv
+            echo '```'
+            echo ""
+            echo "> ECR and GitHub columns are lifetime-cumulative; week-over-week"
+            echo "> deltas give weekly pulls. PyPI columns are rolling windows."
+          } >> "$GITHUB_STEP_SUMMARY"

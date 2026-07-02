@@ -196,6 +196,10 @@ python-package/dist/
 python-package/ferret_scan/_version.py
 *.egg-info/
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+
 # Generated and analysis files
 .docs-build/
 .doc-cache/
