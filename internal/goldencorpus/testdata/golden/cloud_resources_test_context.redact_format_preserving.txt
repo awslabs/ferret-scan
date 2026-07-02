@@ -1,0 +1,6 @@
+=== REDACTED ===
+prod ********************************************
+example ********************************************
+=== FINDINGS (sorted) ===
+type=AWS_ARN line=1 conf=high match=arn:aws:iam::123456789012:role/PaymentsAdmin
+type=AWS_ARN line=2 conf=medium match=arn:aws:iam::123456789012:role/PaymentsAdmin

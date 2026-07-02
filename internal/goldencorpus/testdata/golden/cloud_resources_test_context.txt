@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                          FILE
+--------------------------------------------------------------------------------------------------------
+[HIGH  ] cloud_res... AWS_ARN                95.00% line     1 arn:aws:iam::123456789012:r... <golden:cloud_resources_test_context>
+[MEDIUM] cloud_res... AWS_ARN                75.00% line     2 arn:aws:iam::123456789012:r... <golden:cloud_resources_test_context>

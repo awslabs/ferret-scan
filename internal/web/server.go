@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ferret-scan/internal/explain"
 	"github.com/awslabs/ferret-scan/internal/formatters"
 	formatterShared "github.com/awslabs/ferret-scan/internal/formatters/shared"
+	"github.com/awslabs/ferret-scan/internal/parallel"
 	"github.com/awslabs/ferret-scan/internal/paths"
 	"github.com/awslabs/ferret-scan/internal/platform"
 	"github.com/awslabs/ferret-scan/internal/suppressions"
@@ -77,6 +78,14 @@ type ScanResponse struct {
 	Results    []formatterShared.JSONMatch `json:"results"`
 	Suppressed []detector.SuppressedMatch  `json:"suppressed,omitempty"`
 	Error      string                      `json:"error,omitempty"`
+	// Incomplete reports that validator coverage was cut short for at least one
+	// uploaded file (a per-file/per-validator timeout, cancellation, or match
+	// budget), so findings may be MISSING — the scan must not be presented as
+	// clean/complete (v2 Phase 4). Both fields are omitempty, so a fully-complete
+	// scan's JSON is byte-identical to before this field existed (older clients
+	// ignore unknown fields either way).
+	Incomplete       bool   `json:"incomplete,omitempty"`
+	IncompleteReason string `json:"incomplete_reason,omitempty"`
 }
 
 // NewWebServer creates a new web server instance bound to loopback. Used by
@@ -444,6 +453,7 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	var allMatches []detector.Match
 	var suppressedMatches []detector.SuppressedMatch
 	suppressedCount := 0
+	var incompleteFiles []parallel.FileDiagnostic
 
 	for i, fileHeader := range files {
 		displayName := fileHeader.Filename
@@ -452,7 +462,7 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		if relativePath != "" && len(files) == 1 {
 			displayName = relativePath
 		}
-		matches, suppressed, suppCount, err := ws.processUploadedFileWithCLILogic(fileHeader, i, confidence, checks, verbose, recursive, displayName)
+		matches, suppressed, suppCount, incomplete, err := ws.processUploadedFileWithCLILogic(fileHeader, i, confidence, checks, verbose, recursive, displayName)
 		if err != nil {
 			ws.sendError(responseWriter, err.Error())
 			return
@@ -460,6 +470,7 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		allMatches = append(allMatches, matches...)
 		suppressedMatches = append(suppressedMatches, suppressed...)
 		suppressedCount += suppCount
+		incompleteFiles = append(incompleteFiles, incomplete...)
 	}
 
 	// Use CLI's JSON formatter with CLI's confidence parsing.
@@ -505,17 +516,41 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		}
 	}
 
+	// Surface degraded coverage (v2 Phase 4): if any uploaded file's validator
+	// coverage was cut short, the results may be missing findings — flag it so the
+	// UI can warn rather than present a partial scan as clean. omitempty keeps a
+	// complete scan's JSON byte-identical to before.
+	incompleteReason := summarizeIncompleteFiles(incompleteFiles, len(files))
+
 	// Return the exact CLI structure wrapped in success response
 	responseWriter.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(responseWriter).Encode(ScanResponse{
-		Success:    true,
-		Results:    cliResponse.Results,
-		Suppressed: cliResponse.Suppressed,
+		Success:          true,
+		Results:          cliResponse.Results,
+		Suppressed:       cliResponse.Suppressed,
+		Incomplete:       len(incompleteFiles) > 0,
+		IncompleteReason: incompleteReason,
 	})
 }
 
+// summarizeIncompleteFiles builds a short, payload-free explanation of degraded
+// coverage for the scan response, or "" when coverage was complete. It names the
+// single offending file, or counts them when several were incomplete.
+func summarizeIncompleteFiles(incompleteFiles []parallel.FileDiagnostic, totalFiles int) string {
+	switch len(incompleteFiles) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf("coverage incomplete for %s: %s — findings may be missing",
+			incompleteFiles[0].FilePath, incompleteFiles[0].Reason)
+	default:
+		return fmt.Sprintf("coverage incomplete for %d of %d files — findings may be missing",
+			len(incompleteFiles), totalFiles)
+	}
+}
+
 // processUploadedFileWithCLILogic handles user file uploads using full CLI scanning logic
-func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.FileHeader, fileIndex int, confidence, checks string, verbose, recursive bool, displayName string) ([]detector.Match, []detector.SuppressedMatch, int, error) {
+func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.FileHeader, fileIndex int, confidence, checks string, verbose, recursive bool, displayName string) ([]detector.Match, []detector.SuppressedMatch, int, []parallel.FileDiagnostic, error) {
 	if displayName == "" {
 		displayName = uploadedFile.Filename
 	}
@@ -523,7 +558,7 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	// Open uploaded file
 	file, err := uploadedFile.Open()
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to open file %s: %v", displayName, err)
+		return nil, nil, 0, nil, fmt.Errorf("failed to open file %s: %v", displayName, err)
 	}
 	defer file.Close()
 
@@ -531,7 +566,7 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	tempDir := paths.GetTempDir()
 	tempFile, err := os.CreateTemp(tempDir, fmt.Sprintf("ferret_upload_%d_%d_*.%s", time.Now().Unix(), fileIndex, ws.getFileExtension(uploadedFile.Filename)))
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to create temporary file in %s: %v", tempDir, err)
+		return nil, nil, 0, nil, fmt.Errorf("failed to create temporary file in %s: %v", tempDir, err)
 	}
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
@@ -541,7 +576,7 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	limitedReader := io.LimitReader(file, maxFileSize)
 	_, err = io.Copy(tempFile, limitedReader)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to copy file content: %v", err)
+		return nil, nil, 0, nil, fmt.Errorf("failed to copy file content: %v", err)
 	}
 
 	// Normalize the temporary file path for the current platform
@@ -551,8 +586,11 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	return ws.runFullCLIScan(normalizedTempPath, displayName, confidence, checks, verbose, recursive)
 }
 
-// runFullCLIScan executes the full CLI scanning logic with configuration and suppression support
-func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, checks string, verbose, recursive bool) ([]detector.Match, []detector.SuppressedMatch, int, error) {
+// runFullCLIScan executes the full CLI scanning logic with configuration and
+// suppression support. The returned []parallel.FileDiagnostic is non-empty when
+// this file's validator coverage was cut short (v2 Phase 4 incomplete signal),
+// so the caller can surface degraded coverage to the operator.
+func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, checks string, verbose, recursive bool) ([]detector.Match, []detector.SuppressedMatch, int, []parallel.FileDiagnostic, error) {
 	cfg := ws.loadConfiguration(ws.configPath)
 
 	var checksSlice []string
@@ -562,7 +600,7 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 
 	suppressionManager, err := ws.initializeSuppressionManager(ws.suppressionsPath)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to initialize suppression manager: %v", err)
+		return nil, nil, 0, nil, fmt.Errorf("failed to initialize suppression manager: %v", err)
 	}
 
 	// Scan without applying suppressions — the filename on each match is the
@@ -584,7 +622,18 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 
 	result, err := core.ScanFile(scanConfig)
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("scanning failed: %v", err)
+		return nil, nil, 0, nil, fmt.Errorf("scanning failed: %v", err)
+	}
+
+	// Capture the v2 Phase 4 incomplete-coverage signal, keyed by the display
+	// filename (rewritten below for matches; here we use the original name the
+	// operator uploaded). Non-empty only when this file's coverage was cut short.
+	var incomplete []parallel.FileDiagnostic
+	if result.Incomplete {
+		incomplete = []parallel.FileDiagnostic{{
+			FilePath: ws.sanitizeFilenameForDisplay(originalFilename),
+			Reason:   result.IncompleteReason,
+		}}
 	}
 
 	// Rewrite each match's filename to the original upload name so hashes
@@ -618,7 +667,7 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 		}
 	}
 
-	return unsuppressed, suppressed, len(suppressed), nil
+	return unsuppressed, suppressed, len(suppressed), incomplete, nil
 }
 
 // handleExport exports scan results in the requested format

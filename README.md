@@ -232,8 +232,22 @@ echo "secret: 4532-0151-1283-0366" | ./ferret-scan --file -
 - `--no-color`: Disable colored output (useful for logging or non-terminal output)
 - `--show-match`: Display the actual matched text in findings (otherwise shows [HIDDEN])
 - `--quiet`: Suppress progress output (useful for scripts and CI/CD)
+- `--fail-on-incomplete`: Exit with code `3` if any file's validator coverage was cut short (a per-file/per-validator timeout, cancellation, or budget). Off by default — incomplete coverage otherwise only prints a warning to stderr and leaves the exit code unchanged. Useful in CI to fail a pipeline rather than trust a partial scan. See [Exit Codes](#exit-codes).
 - `--help`: Show help information
 - `--version`: Show version information
+
+#### Exit Codes
+
+`ferret-scan` uses these process exit codes so scripts and CI can branch on the outcome:
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Scan completed. In default mode this is returned even when findings exist (findings are reported in the output, not via exit code); pre-commit mode overrides this — see below. |
+| `1`  | A system or usage error (bad flags, unreadable input, internal failure). |
+| `2`  | No files to process (nothing matched the given paths/filters). |
+| `3`  | **Coverage was incomplete** and `--fail-on-incomplete` was set — at least one file was not fully scanned (timeout, cancellation, or a per-validator budget), so findings may be missing. Only ever returned when the flag is passed. |
+
+In **pre-commit mode** (`--pre-commit-mode`) the exit code instead reflects findings/confidence so a commit can be blocked; `--fail-on-incomplete` composes with it, escalating an otherwise-clean (`0`) pre-commit result to `3` without downgrading a findings-based non-zero result.
 
 #### File Processing Options
 - `--enable-preprocessors`: Enable text extraction from documents (PDF, Office files) (default: true, use `--enable-preprocessors=false` to disable)

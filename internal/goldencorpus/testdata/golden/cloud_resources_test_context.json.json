@@ -1,0 +1,69 @@
+{
+  "results": [
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:cloud_resources_test_context>",
+      "line_number": 1,
+      "metadata": {
+        "account_id": "123456789012",
+        "confidence_adjustment": 0,
+        "confidence_factors": [
+          "base_match:+85",
+          "valid_account_id:+10"
+        ],
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Financial",
+        "original_confidence": 95,
+        "provider": "aws",
+        "resource_type": "AWS_ARN",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "service": "iam",
+        "validation_path": "document"
+      },
+      "text": "arn:aws:iam::123456789012:role/PaymentsAdmin",
+      "type": "AWS_ARN",
+      "validator": "cloud_resources"
+    },
+    {
+      "confidence": 75,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:cloud_resources_test_context>",
+      "line_number": 2,
+      "metadata": {
+        "account_id": "123456789012",
+        "confidence_adjustment": 0,
+        "confidence_factors": [
+          "base_match:+85",
+          "valid_account_id:+10",
+          "test_context:-20"
+        ],
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Financial",
+        "original_confidence": 75,
+        "provider": "aws",
+        "resource_type": "AWS_ARN",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "service": "iam",
+        "validation_path": "document"
+      },
+      "text": "arn:aws:iam::123456789012:role/PaymentsAdmin",
+      "type": "AWS_ARN",
+      "validator": "cloud_resources"
+    }
+  ]
+}
