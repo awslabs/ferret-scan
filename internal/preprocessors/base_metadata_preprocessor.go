@@ -11,6 +11,13 @@ import (
 	"github.com/awslabs/ferret-scan/internal/observability"
 )
 
+// RouterInterface defines the router functionality the metadata preprocessors
+// need (set via SetRouter). Defined here alongside its only consumer,
+// BaseMetadataPreprocessor and the specialized preprocessors that embed it.
+type RouterInterface interface {
+	ProcessFile(filePath string, context interface{}) (*ProcessedContent, error)
+}
+
 // BaseMetadataPreprocessor provides common functionality for all specialized metadata preprocessors
 type BaseMetadataPreprocessor struct {
 	name            string
