@@ -32,6 +32,7 @@ type Config struct {
 		Quiet                bool     `yaml:"quiet"`
 		ShowSuppressed       bool     `yaml:"show_suppressed"`
 		GenerateSuppressions bool     `yaml:"generate_suppressions"`
+		FailOnIncomplete     bool     `yaml:"fail_on_incomplete"`
 	} `yaml:"defaults"`
 
 	// Global validator configurations
@@ -121,6 +122,7 @@ type Profile struct {
 	Quiet                bool     `yaml:"quiet"`
 	ShowSuppressed       bool     `yaml:"show_suppressed"`
 	GenerateSuppressions bool     `yaml:"generate_suppressions"`
+	FailOnIncomplete     bool     `yaml:"fail_on_incomplete"`
 	// GENAI_DISABLED: GenAI enablement flag for profiles
 	// EnableGenAI         bool                              `yaml:"enable_genai"`
 	// GENAI_DISABLED: Cost estimation only mode flag

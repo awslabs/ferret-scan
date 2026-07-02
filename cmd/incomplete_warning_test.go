@@ -11,6 +11,35 @@ import (
 	"github.com/awslabs/ferret-scan/internal/parallel"
 )
 
+// TestResolveIncompleteExitCode covers the --fail-on-incomplete exit policy: a
+// clean base escalates to 3 only when enabled AND coverage was incomplete; a
+// non-zero base (findings/error) is never downgraded; disabled is a pass-through.
+func TestResolveIncompleteExitCode(t *testing.T) {
+	cases := []struct {
+		name       string
+		base       int
+		failOn     bool
+		incomplete int
+		want       int
+	}{
+		{"disabled, clean, no incomplete", 0, false, 0, 0},
+		{"disabled, clean, incomplete ignored", 0, false, 2, 0},
+		{"enabled, clean, no incomplete", 0, true, 0, 0},
+		{"enabled, clean, incomplete -> 3", 0, true, 1, exitCodeIncompleteCoverage},
+		{"enabled, findings base 1, incomplete -> keep 1", 1, true, 1, 1},
+		{"enabled, precommit base 2, incomplete -> keep 2", 2, true, 3, 2},
+		{"disabled, findings base 1 -> keep 1", 1, false, 0, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveIncompleteExitCode(tc.base, tc.failOn, tc.incomplete); got != tc.want {
+				t.Errorf("resolveIncompleteExitCode(%d,%v,%d) = %d, want %d",
+					tc.base, tc.failOn, tc.incomplete, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestWriteIncompleteCoverageWarning_NoneIsSilent: a fully-complete scan (no
 // incomplete files) must write nothing and report that nothing was written —
 // this is the common path and must never emit a spurious warning.
