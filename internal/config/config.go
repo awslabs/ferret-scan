@@ -227,13 +227,19 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("error parsing config file: %w", err)
 	}
 
+	// Parse the raw YAML into a generic tree ONCE for all field-presence checks
+	// below (bool fields that unmarshal to false when omitted must be told apart
+	// from an explicit false). Reused by containsField and backfillProfileBools
+	// instead of each re-parsing the whole document.
+	yamlTree := parseYAMLTree(data)
+
 	// Restore defaults if not explicitly set in config file
 	// This handles the case where YAML unmarshaling sets bool fields to false
 	// when they're not present in the config file
-	if !containsField(data, "defaults", "enable_preprocessors") {
+	if !containsField(yamlTree, "defaults", "enable_preprocessors") {
 		config.Defaults.EnablePreprocessors = defaultEnablePreprocessors
 	}
-	if !containsField(data, "preprocessors", "text_extraction", "enabled") {
+	if !containsField(yamlTree, "preprocessors", "text_extraction", "enabled") {
 		config.Preprocessors.TextExtraction.Enabled = defaultTextExtractionEnabled
 	}
 
@@ -241,7 +247,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	// them. Without this, a profile that doesn't mention `verbose` would
 	// unmarshal with Verbose=false and silently override defaults.verbose=true.
 	// See backfillProfileBools for the list of fields this handles.
-	backfillProfileBools(data, config)
+	backfillProfileBools(yamlTree, config)
 
 	// Apply platform-specific defaults and path normalization
 	ApplyPlatformDefaults(config)
@@ -442,16 +448,29 @@ func (c *Config) GetPrecommitProfile() *Profile {
 	return &defaultProfile
 }
 
-// containsField checks if a nested field exists in the YAML data
-func containsField(data []byte, path ...string) bool {
-	var yamlData map[string]interface{}
-	err := yaml.Unmarshal(data, &yamlData)
-	if err != nil {
-		return false
+// parseYAMLTree unmarshals raw config bytes into a generic nested map ONCE, so
+// the many field-presence checks below (containsField) can walk it in memory
+// instead of re-parsing the whole (potentially 50KB+) document per lookup — the
+// old containsField re-ran yaml.Unmarshal on every call, and backfillProfileBools
+// calls it profiles×bool-fields times. Returns nil on parse error; callers treat
+// a nil tree as "no field present" (identical to the old error path).
+func parseYAMLTree(data []byte) map[string]interface{} {
+	var tree map[string]interface{}
+	if err := yaml.Unmarshal(data, &tree); err != nil {
+		return nil
 	}
+	return tree
+}
 
-	current := yamlData
+// containsField reports whether a nested field exists in the pre-parsed YAML
+// tree (see parseYAMLTree). A nil tree yields false, matching the old
+// re-parse-and-fail behavior.
+func containsField(tree map[string]interface{}, path ...string) bool {
+	current := tree
 	for i, key := range path {
+		if current == nil {
+			return false
+		}
 		if i == len(path)-1 {
 			// Last key - check if it exists
 			_, exists := current[key]
@@ -545,14 +564,14 @@ var profileBoolFields = []profileBoolField{
 //
 // Profiles that DO explicitly set a field (to either true or false) are left
 // alone — their explicit value wins.
-func backfillProfileBools(data []byte, config *Config) {
+func backfillProfileBools(yamlTree map[string]interface{}, config *Config) {
 	if config == nil || len(config.Profiles) == 0 {
 		return
 	}
 	for name, profile := range config.Profiles {
 		for _, f := range profileBoolFields {
 			path := append([]string{"profiles", name}, f.yamlPath...)
-			if containsField(data, path...) {
+			if containsField(yamlTree, path...) {
 				// Profile explicitly set this field; keep its value.
 				continue
 			}
