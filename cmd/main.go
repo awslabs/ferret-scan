@@ -1174,6 +1174,24 @@ func main() {
 			os.Exit(1)
 		}
 
+		// --validator-budget and --max-live-bytes bound validator execution and
+		// the concurrent-content memory envelope respectively; preprocess-only
+		// exits before any validation or worker-pool fan-out, so both are no-ops
+		// there. Reject them when passed EXPLICITLY (a config/profile default must
+		// not break preprocess-only) so the behavior matches the documented
+		// "not valid with --preprocess-only" contract instead of silently ignoring.
+		if isFlagSet("validator-budget") {
+			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --validator-budget\n")
+			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not run validators, so per-validator budgets do not apply.\n")
+			os.Exit(1)
+		}
+
+		if isFlagSet("max-live-bytes") {
+			fmt.Fprintf(os.Stderr, "Error: --preprocess-only cannot be used with --max-live-bytes\n")
+			fmt.Fprintf(os.Stderr, "Preprocess-only mode does not fan out across the worker pool, so the live-bytes cap does not apply.\n")
+			os.Exit(1)
+		}
+
 		// Warn about format flags that will be ignored
 		if finalConfig.format != "text" && isFlagSet("format") {
 			fmt.Fprintf(os.Stderr, "Warning: --format flag is ignored in preprocess-only mode\n")
