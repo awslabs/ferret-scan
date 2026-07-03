@@ -21,7 +21,7 @@ import (
 // PlainTextRedactor implements redaction for plain text files
 type PlainTextRedactor struct {
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// outputManager handles file system operations
 	outputManager *redactors.OutputStructureManager
@@ -40,7 +40,7 @@ type PlainTextRedactor struct {
 }
 
 // NewPlainTextRedactor creates a new PlainTextRedactor
-func NewPlainTextRedactor(outputManager *redactors.OutputStructureManager, observer *observability.StandardObserver) *PlainTextRedactor {
+func NewPlainTextRedactor(outputManager *redactors.OutputStructureManager, observer observability.Observer) *PlainTextRedactor {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}
@@ -56,7 +56,7 @@ func NewPlainTextRedactor(outputManager *redactors.OutputStructureManager, obser
 }
 
 // NewPlainTextRedactorWithPositionCorrelation creates a new PlainTextRedactor with custom position correlation settings
-func NewPlainTextRedactorWithPositionCorrelation(outputManager *redactors.OutputStructureManager, observer *observability.StandardObserver, correlator position.PositionCorrelator, confidenceThreshold float64) *PlainTextRedactor {
+func NewPlainTextRedactorWithPositionCorrelation(outputManager *redactors.OutputStructureManager, observer observability.Observer, correlator position.PositionCorrelator, confidenceThreshold float64) *PlainTextRedactor {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}

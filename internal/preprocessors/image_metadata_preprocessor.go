@@ -17,7 +17,7 @@ import (
 // ImageMetadataPreprocessor extracts metadata from image files
 type ImageMetadataPreprocessor struct {
 	name            string
-	observer        *observability.StandardObserver
+	observer        observability.Observer
 	resourceManager *MediaResourceManager
 	errorHandler    *GracefulDegradationHandler
 	errorLogger     *ErrorLogger
@@ -94,8 +94,8 @@ func (imp *ImageMetadataPreprocessor) processImageMetadataWithRetry(filePath str
 		// Check if we should retry
 		if imp.recoveryManager.ShouldRetry(errorType, attemptCount) {
 			// Log retry attempt
-			if imp.observer != nil && imp.observer.DebugObserver != nil {
-				imp.observer.DebugObserver.LogDetail("image_metadata_preprocessor",
+			if imp.observer != nil && imp.observer.Debug() != nil {
+				imp.observer.Debug().LogDetail("image_metadata_preprocessor",
 					fmt.Sprintf("Retrying image metadata extraction for %s (attempt %d)", filePath, attemptCount+1))
 			}
 
@@ -109,7 +109,7 @@ func (imp *ImageMetadataPreprocessor) processImageMetadataWithRetry(filePath str
 	}
 
 	// Log successful processing with detailed information
-	if imp.observer != nil && imp.observer.DebugObserver != nil {
+	if imp.observer != nil && imp.observer.Debug() != nil {
 		imp.logSuccessfulProcessing(filePath, exifData)
 	}
 
@@ -131,10 +131,10 @@ func (imp *ImageMetadataPreprocessor) formatImageMetadata(exifData *meta_extract
 	var metadataText strings.Builder
 
 	// Debug: Log all GPS-related tags
-	if imp.observer != nil && imp.observer.DebugObserver != nil {
+	if imp.observer != nil && imp.observer.Debug() != nil {
 		for key, value := range exifData.Tags {
 			if strings.Contains(strings.ToLower(key), "gps") {
-				imp.observer.DebugObserver.LogDetail("image_metadata_preprocessor",
+				imp.observer.Debug().LogDetail("image_metadata_preprocessor",
 					fmt.Sprintf("GPS tag found: %s = %s", key, value))
 			}
 		}
@@ -171,8 +171,8 @@ func (imp *ImageMetadataPreprocessor) formatImageMetadata(exifData *meta_extract
 			delete(exifData.Tags, "GPSSpeed")
 			delete(exifData.Tags, "GPSSpeedRef")
 
-			if imp.observer != nil && imp.observer.DebugObserver != nil {
-				imp.observer.DebugObserver.LogDetail("image_metadata_preprocessor",
+			if imp.observer != nil && imp.observer.Debug() != nil {
+				imp.observer.Debug().LogDetail("image_metadata_preprocessor",
 					fmt.Sprintf("Consolidated GPS coordinates: %s", consolidatedGPS))
 			}
 		}
@@ -199,7 +199,7 @@ func (imp *ImageMetadataPreprocessor) GetSupportedExtensions() []string {
 }
 
 // SetObserver sets the observability component
-func (imp *ImageMetadataPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (imp *ImageMetadataPreprocessor) SetObserver(observer observability.Observer) {
 	imp.observer = observer
 }
 
@@ -398,20 +398,20 @@ func (imp *ImageMetadataPreprocessor) logSuccessfulProcessing(filePath string, e
 	tagCount := len(exifData.Tags)
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
 
-	imp.observer.DebugObserver.LogDetail("image_metadata_preprocessor",
+	imp.observer.Debug().LogDetail("image_metadata_preprocessor",
 		fmt.Sprintf("Successfully extracted %d metadata tags from %s image: %s", tagCount, ext, filepath.Base(filePath)))
 
 	// Log interesting metadata if present
 	if camera, exists := exifData.Tags["Make"]; exists {
 		if model, exists := exifData.Tags["Model"]; exists {
-			imp.observer.DebugObserver.LogDetail("image_metadata_preprocessor",
+			imp.observer.Debug().LogDetail("image_metadata_preprocessor",
 				fmt.Sprintf("Camera info: %s %s", camera, model))
 		}
 	}
 
 	if gpsLat, hasLat := exifData.Tags["GPSLatitudeDecimal"]; hasLat {
 		if gpsLong, hasLong := exifData.Tags["GPSLongitudeDecimal"]; hasLong {
-			imp.observer.DebugObserver.LogDetail("image_metadata_preprocessor",
+			imp.observer.Debug().LogDetail("image_metadata_preprocessor",
 				fmt.Sprintf("GPS coordinates found: %s, %s", gpsLat, gpsLong))
 		}
 	}

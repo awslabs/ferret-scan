@@ -198,7 +198,7 @@ type ValidationManager struct {
 	validators map[string]DocumentValidator
 
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// config contains validation configuration
 	config *ValidationConfig
@@ -292,7 +292,7 @@ type ValidatorStats struct {
 }
 
 // NewValidationManager creates a new ValidationManager
-func NewValidationManager(observer *observability.StandardObserver) *ValidationManager {
+func NewValidationManager(observer observability.Observer) *ValidationManager {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}

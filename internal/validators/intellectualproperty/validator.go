@@ -84,7 +84,7 @@ type Validator struct {
 	legalNoticeConfig LegalNoticeConfig
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // LegalNoticeAnalysis contains the results of analyzing whether multiple IP patterns
@@ -294,7 +294,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
@@ -340,10 +340,10 @@ func (v *Validator) Configure(cfg *config.Config) {
 				// Validate regex pattern using regexp.Compile()
 				if _, err := regexp.Compile(processedPattern); err != nil {
 					// Log warning for invalid pattern but continue with valid ones
-					if v.observer != nil && v.observer.DebugObserver != nil {
-						v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Invalid internal URL pattern '%s': %v", urlStr, err))
+					if v.observer != nil && v.observer.Debug() != nil {
+						v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Invalid internal URL pattern '%s': %v", urlStr, err))
 						// Log specific invalid patterns with error details in debug mode
-						v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Skipping invalid regex pattern: '%s' - Error: %v", urlStr, err))
+						v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Skipping invalid regex pattern: '%s' - Error: %v", urlStr, err))
 					}
 
 					// Also log to stderr in debug mode for comprehensive logging
@@ -364,19 +364,19 @@ func (v *Validator) Configure(cfg *config.Config) {
 		v.internalURLPatterns = validPatterns
 
 		// Log number of successfully loaded patterns in debug mode (requirement 7.2)
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Internal URL pattern validation: %d valid, %d invalid patterns", len(validPatterns), invalidCount))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Internal URL pattern validation: %d valid, %d invalid patterns", len(validPatterns), invalidCount))
 			if len(validPatterns) > 0 {
 				// Requirement 7.2: Log the number of active patterns
-				v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Successfully loaded %d internal URL patterns", len(validPatterns)))
+				v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Successfully loaded %d internal URL patterns", len(validPatterns)))
 				// Requirement 7.1: Log the loaded internal URL patterns at startup
 				for i, pattern := range validPatterns {
-					v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("  Active pattern %d: %s", i+1, pattern))
+					v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("  Active pattern %d: %s", i+1, pattern))
 				}
 			}
 			// Requirement 7.3: Log any skipped invalid patterns
 			if invalidCount > 0 {
-				v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Skipped %d invalid internal URL patterns during configuration", invalidCount))
+				v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Skipped %d invalid internal URL patterns during configuration", invalidCount))
 			}
 		}
 
@@ -437,8 +437,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 				normalized := strings.ToLower(strings.TrimSpace(dtStr))
 				v.disabledTypes[normalized] = true
 
-				if v.observer != nil && v.observer.DebugObserver != nil {
-					v.observer.DebugObserver.LogDetail("intellectualproperty",
+				if v.observer != nil && v.observer.Debug() != nil {
+					v.observer.Debug().LogDetail("intellectualproperty",
 						fmt.Sprintf("Disabled IP sub-type: %s", normalized))
 				}
 			}
@@ -480,8 +480,8 @@ func (v *Validator) applyIPPatternOverride(
 		// Invalid regex from config: log and keep the built-in default.
 		// Mirror the internal_urls override path (see validator.go ~L297) so
 		// behavior is consistent across all configurable IP regex fields.
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("Invalid %s pattern %q: %v — keeping built-in default", patternKey, raw, err))
 		}
 		fmt.Fprintf(os.Stderr,
@@ -498,8 +498,8 @@ func (v *Validator) applyIPPatternOverride(
 	*patternStore = processed
 	*regexStore = compiled
 
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("Applied %s pattern override from config: %s", patternKey, processed))
 	}
 }
@@ -526,8 +526,8 @@ func (v *Validator) logNoInternalURLPatterns(reason string) {
 	message := "Internal URL detection disabled: " + reason + ". Configure 'validators.intellectual_property.internal_urls' to enable internal URL detection."
 
 	// Log to debug observer for detailed logging
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("intellectualproperty", message)
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("intellectualproperty", message)
 
 		// Include configuration guidance in verbose mode warnings (requirement 6.4)
 		guidance := "Example configuration:\n" +
@@ -543,7 +543,7 @@ func (v *Validator) logNoInternalURLPatterns(reason string) {
 			"  AWS: \"http[s]?:\\\\/\\\\/.*\\\\.amazonaws\\\\.com\", \"http[s]?:\\\\/\\\\/.*\\\\.s3\\\\..*\"\n" +
 			"  Azure: \"http[s]?:\\\\/\\\\/.*\\\\.azurewebsites\\\\.net\", \"http[s]?:\\\\/\\\\/.*\\\\.blob\\\\.core\\\\.windows\\\\.net\"\n" +
 			"  GCP: \"http[s]?:\\\\/\\\\/.*\\\\.googleapis\\\\.com\", \"http[s]?:\\\\/\\\\/.*\\\\.appspot\\\\.com\""
-		v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Configuration guidance for internal URL patterns:\n%s", guidance))
+		v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Configuration guidance for internal URL patterns:\n%s", guidance))
 
 		// Also log configuration guidance to stderr in verbose/debug mode
 		if os.Getenv("FERRET_DEBUG") == "1" {
@@ -592,8 +592,8 @@ func (v *Validator) compileInternalURLPatterns() {
 	// Handle empty pattern arrays gracefully (len() for nil slices is defined as zero)
 	if len(v.internalURLPatterns) == 0 {
 		v.regexInternalURLs = []*regexp.Regexp{}
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("intellectualproperty", "No internal URL patterns to compile - empty pattern array")
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("intellectualproperty", "No internal URL patterns to compile - empty pattern array")
 		}
 		return
 	}
@@ -607,8 +607,8 @@ func (v *Validator) compileInternalURLPatterns() {
 		// Skip empty patterns gracefully
 		if pattern == "" {
 			failedCount++
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Skipping empty internal URL pattern at index %d", i+1))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Skipping empty internal URL pattern at index %d", i+1))
 			}
 			if os.Getenv("FERRET_DEBUG") == "1" {
 				fmt.Fprintf(os.Stderr, "[WARNING] Intellectual Property Validator: Empty internal URL pattern at index %d - skipping\n", i+1)
@@ -623,11 +623,11 @@ func (v *Validator) compileInternalURLPatterns() {
 			failedCount++
 
 			// Log compilation errors for debugging with enhanced context
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Failed to compile internal URL pattern %d: '%s' - Error: %v", i+1, pattern, err))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Failed to compile internal URL pattern %d: '%s' - Error: %v", i+1, pattern, err))
 				// Provide additional context about the error type
 				if strings.Contains(err.Error(), "invalid") {
-					v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Pattern %d contains invalid regex syntax - check for unescaped special characters", i+1))
+					v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Pattern %d contains invalid regex syntax - check for unescaped special characters", i+1))
 				}
 			}
 
@@ -653,10 +653,10 @@ func (v *Validator) compileInternalURLPatterns() {
 	}
 
 	// Log compilation summary in debug mode
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Internal URL pattern compilation complete: %d successful, %d failed", compiledCount, failedCount))
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Internal URL pattern compilation complete: %d successful, %d failed", compiledCount, failedCount))
 		if compiledCount > 0 {
-			v.observer.DebugObserver.LogDetail("intellectualproperty", fmt.Sprintf("Successfully compiled %d internal URL regex patterns", compiledCount))
+			v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Successfully compiled %d internal URL regex patterns", compiledCount))
 		}
 	}
 
@@ -681,8 +681,8 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 	var finishStep func(bool, string)
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("ip_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("ip_validator", "validate_file", filePath)
+		if v.observer.Debug() != nil {
+			finishStep = v.observer.Debug().StartStep("ip_validator", "validate_file", filePath)
 		}
 	}
 
@@ -747,15 +747,15 @@ func (v *Validator) processLineMatches(lineMatches map[int][]detector.Match) []d
 					finalMatches = append(finalMatches, reconstructed)
 
 					// Log reconstruction decision in debug mode
-					if v.observer != nil && v.observer.DebugObserver != nil {
-						v.observer.DebugObserver.LogDetail("intellectualproperty",
+					if v.observer != nil && v.observer.Debug() != nil {
+						v.observer.Debug().LogDetail("intellectualproperty",
 							fmt.Sprintf("Line %d: Reconstructed %d matches into single legal notice (confidence: %.1f%%)",
 								lineNum+1, len(matches), reconstructed.Confidence))
 
 						// Log the reconstruction success with details
 						if reconstructed.Metadata != nil {
 							if boost, ok := reconstructed.Metadata["confidence_boost"].(float64); ok {
-								v.observer.DebugObserver.LogDetail("intellectualproperty",
+								v.observer.Debug().LogDetail("intellectualproperty",
 									fmt.Sprintf("  Confidence boost: +%.1f%%, Reconstruction type: %s",
 										boost, reconstructed.Metadata["reconstruction_type"]))
 							}
@@ -765,7 +765,7 @@ func (v *Validator) processLineMatches(lineMatches map[int][]detector.Match) []d
 					// Graceful degradation: if reconstruction failed, keep original matches
 					finalMatches = append(finalMatches, matches...)
 
-					if v.observer != nil && v.observer.DebugObserver != nil {
+					if v.observer != nil && v.observer.Debug() != nil {
 						errorMsg := "unknown error"
 						if reconstructionError != nil {
 							errorMsg = reconstructionError.Error()
@@ -775,10 +775,10 @@ func (v *Validator) processLineMatches(lineMatches map[int][]detector.Match) []d
 							errorMsg = "empty text"
 						}
 
-						v.observer.DebugObserver.LogDetail("intellectualproperty",
+						v.observer.Debug().LogDetail("intellectualproperty",
 							fmt.Sprintf("Line %d: Reconstruction failed (%s), keeping %d separate matches",
 								lineNum+1, errorMsg, len(matches)))
-						v.observer.DebugObserver.LogDetail("intellectualproperty",
+						v.observer.Debug().LogDetail("intellectualproperty",
 							fmt.Sprintf("  Graceful degradation applied: Falling back to original matches"))
 					}
 				}
@@ -787,13 +787,13 @@ func (v *Validator) processLineMatches(lineMatches map[int][]detector.Match) []d
 				finalMatches = append(finalMatches, matches...)
 
 				// Log decision to keep separate in debug mode
-				if v.observer != nil && v.observer.DebugObserver != nil {
-					v.observer.DebugObserver.LogDetail("intellectualproperty",
+				if v.observer != nil && v.observer.Debug() != nil {
+					v.observer.Debug().LogDetail("intellectualproperty",
 						fmt.Sprintf("Line %d: Keeping %d matches separate - %s",
 							lineNum+1, len(matches), analysis.ReconstructionReason))
 
 					// Log additional context for the decision
-					v.observer.DebugObserver.LogDetail("intellectualproperty",
+					v.observer.Debug().LogDetail("intellectualproperty",
 						fmt.Sprintf("  Analysis: proximity=%.2f, confidence=%.1f%%, legal_notice=%v",
 							analysis.ProximityScore, analysis.Confidence, analysis.IsLegalNotice))
 				}
@@ -802,7 +802,7 @@ func (v *Validator) processLineMatches(lineMatches map[int][]detector.Match) []d
 	}
 
 	// Log final processing summary with detailed statistics
-	if v.observer != nil && v.observer.DebugObserver != nil {
+	if v.observer != nil && v.observer.Debug() != nil {
 		totalOriginalMatches := 0
 		linesWithMultipleMatches := 0
 		reconstructedCount := 0
@@ -823,23 +823,23 @@ func (v *Validator) processLineMatches(lineMatches map[int][]detector.Match) []d
 			}
 		}
 
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("Legal notice processing complete: %d original matches → %d final matches",
 				totalOriginalMatches, len(finalMatches)))
 
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("  Lines with multiple matches: %d", linesWithMultipleMatches))
 
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("  Reconstructed legal notices: %d", reconstructedCount))
 
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("  Matches kept separate: %d", len(finalMatches)-reconstructedCount))
 
 		// Calculate reduction percentage
 		if totalOriginalMatches > 0 {
 			reductionPercent := float64(totalOriginalMatches-len(finalMatches)) / float64(totalOriginalMatches) * 100
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("  Match reduction: %.1f%% (%d fewer matches)", reductionPercent, totalOriginalMatches-len(finalMatches)))
 		}
 
@@ -896,8 +896,8 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 					match := line[matchStart:matchEnd]
 
 					// Debug logging to verify this code path is reached
-					if v.observer != nil && v.observer.DebugObserver != nil {
-						v.observer.DebugObserver.LogDetail("intellectualproperty",
+					if v.observer != nil && v.observer.Debug() != nil {
+						v.observer.Debug().LogDetail("intellectualproperty",
 							fmt.Sprintf("INTERNAL URL MATCH FOUND: '%s' - setting HIGH confidence", match))
 					}
 					// Configured internal URLs always start at HIGH confidence
@@ -1804,8 +1804,8 @@ func (v *Validator) analyzeLegalNoticeContext(matches []detector.Match) LegalNot
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery and provide safe fallback
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("intellectualproperty",
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("intellectualproperty",
 					fmt.Sprintf("Recovered from panic during legal notice analysis: %v", r))
 			}
 
@@ -1835,7 +1835,7 @@ func (v *Validator) analyzeLegalNoticeContext(matches []detector.Match) LegalNot
 	analysis.ShouldReconstruct, analysis.ReconstructionReason = v.makeReconstructionDecision(analysis)
 
 	// Log the analysis decision in debug mode
-	if v.observer != nil && v.observer.DebugObserver != nil {
+	if v.observer != nil && v.observer.Debug() != nil {
 		v.logLegalNoticeAnalysis(matches, analysis)
 	}
 
@@ -2157,8 +2157,8 @@ func (v *Validator) reconstructLegalNoticeWithFallback(matches []detector.Match)
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery in debug mode
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("intellectualproperty",
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("intellectualproperty",
 					fmt.Sprintf("Recovered from panic during legal notice reconstruction: %v", r))
 			}
 		}
@@ -2393,7 +2393,7 @@ func (v *Validator) reconstructLegalNotice(matches []detector.Match) detector.Ma
 	}
 
 	// Log reconstruction details in debug mode
-	if v.observer != nil && v.observer.DebugObserver != nil {
+	if v.observer != nil && v.observer.Debug() != nil {
 		v.logReconstructionDetails(matches, reconstructedMatch, analysis)
 	}
 
@@ -2669,7 +2669,7 @@ func (v *Validator) calculateReconstructedConfidence(matches []detector.Match, a
 	}
 
 	// Log detailed confidence boost calculation in debug mode
-	if v.observer != nil && v.observer.DebugObserver != nil {
+	if v.observer != nil && v.observer.Debug() != nil {
 		v.logConfidenceBoostCalculation(matches, analysis, baseConfidence, reconstructedConfidence)
 	}
 
@@ -2678,15 +2678,15 @@ func (v *Validator) calculateReconstructedConfidence(matches []detector.Match, a
 
 // logProximityCalculationDetails logs detailed proximity calculation information
 func (v *Validator) logProximityCalculationDetails(matches []detector.Match, proximityScore float64) {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Proximity Analysis:"))
 
 	if len(matches) <= 1 {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Single match - proximity score: %.2f (perfect)", proximityScore))
 		return
 	}
@@ -2702,7 +2702,7 @@ func (v *Validator) logProximityCalculationDetails(matches []detector.Match, pro
 	}
 
 	if allSameLine {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Same-line matches detected (line %d)", firstLineNum))
 
 		// Calculate positions within the line for same-line matches
@@ -2723,9 +2723,9 @@ func (v *Validator) logProximityCalculationDetails(matches []detector.Match, pro
 		}
 
 		span := maxPos - minPos
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Character span within line: %d (threshold: %.0f)", span, SameLineProximityThreshold))
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Same-line proximity score: %.2f", proximityScore))
 	} else {
 		// Multi-line proximity calculation
@@ -2748,12 +2748,12 @@ func (v *Validator) logProximityCalculationDetails(matches []detector.Match, pro
 		span := maxPos - minPos
 		threshold := float64(v.legalNoticeConfig.ProximityThreshold)
 
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Multi-line matches: lines %d-%d",
 				matches[0].LineNumber, matches[len(matches)-1].LineNumber))
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Character span: %d (threshold: %.0f)", span, threshold))
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Multi-line proximity score: %.2f", proximityScore))
 	}
 
@@ -2769,26 +2769,26 @@ func (v *Validator) logProximityCalculationDetails(matches []detector.Match, pro
 		proximityLevel = "VERY_FAR"
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Proximity classification: %s (score: %.2f)", proximityLevel, proximityScore))
 }
 
 // logSemanticGroupingDetails logs detailed semantic grouping analysis
 func (v *Validator) logSemanticGroupingDetails(matches []detector.Match, semanticGroups []string) {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Semantic Analysis:"))
 
 	if len(semanticGroups) == 0 {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    No semantic patterns detected"))
 		return
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Detected patterns: %v", semanticGroups))
 
 	// Log what each semantic group means
@@ -2823,7 +2823,7 @@ func (v *Validator) logSemanticGroupingDetails(matches []detector.Match, semanti
 			description = "Unknown pattern"
 		}
 
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("      %s: %s", group, description))
 	}
 
@@ -2838,43 +2838,43 @@ func (v *Validator) logSemanticGroupingDetails(matches []detector.Match, semanti
 	}
 
 	if len(ipTypes) > 0 {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    IP type distribution: %v", ipTypes))
 	}
 }
 
 // logDecisionTreeReasoning logs the decision-making process for reconstruction
 func (v *Validator) logDecisionTreeReasoning(analysis LegalNoticeAnalysis) {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Decision Tree Analysis:"))
 
 	// Log configuration status
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Legal notice reconstruction enabled: %v", v.legalNoticeConfig.Enabled))
 
 	if !v.legalNoticeConfig.Enabled {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    → Reconstruction disabled by configuration"))
 		return
 	}
 
 	// Log threshold checks
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Confidence threshold check: %.1f%% >= %.1f%% = %v",
 			analysis.Confidence, ReconstructionMinConfidence,
 			analysis.Confidence >= ReconstructionMinConfidence))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Proximity threshold check: %.2f >= %.2f = %v",
 			analysis.ProximityScore, ReconstructionMinProximity,
 			analysis.ProximityScore >= ReconstructionMinProximity))
 
 	// Log legal notice pattern check
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Legal notice pattern detected: %v", analysis.IsLegalNotice))
 
 	// Log specific decision factors
@@ -2888,7 +2888,7 @@ func (v *Validator) logDecisionTreeReasoning(analysis LegalNoticeAnalysis) {
 		for _, group := range analysis.SemanticGrouping {
 			if group == indicator {
 				hasStrongIndicator = true
-				v.observer.DebugObserver.LogDetail("intellectualproperty",
+				v.observer.Debug().LogDetail("intellectualproperty",
 					fmt.Sprintf("    Strong indicator found: %s", indicator))
 				break
 			}
@@ -2900,24 +2900,24 @@ func (v *Validator) logDecisionTreeReasoning(analysis LegalNoticeAnalysis) {
 
 	// Log final decision reasoning
 	if analysis.ShouldReconstruct {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    → DECISION: RECONSTRUCT (%s)", analysis.ReconstructionReason))
 	} else {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    → DECISION: KEEP SEPARATE (%s)", analysis.ReconstructionReason))
 	}
 }
 
 // logConfidenceBoostCalculation logs detailed confidence boost calculations
 func (v *Validator) logConfidenceBoostCalculation(matches []detector.Match, analysis LegalNoticeAnalysis, baseConfidence float64, finalConfidence float64) {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Confidence Boost Calculation:"))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Base confidence (highest individual): %.1f%%", baseConfidence))
 
 	totalBoost := 0.0
@@ -2940,14 +2940,14 @@ func (v *Validator) logConfidenceBoostCalculation(matches []detector.Match, anal
 	}
 
 	if noticeTypeBoost > 0 {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Notice type boost (%s): +%.1f%%", analysis.NoticeType, noticeTypeBoost))
 		totalBoost += noticeTypeBoost
 	}
 
 	// Log general legal notice boost
 	if boost, ok := v.legalNoticeConfig.ConfidenceBoosts["legal_notice"]; ok {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    General legal notice boost: +%.1f%%", boost))
 		totalBoost += boost
 	}
@@ -2955,7 +2955,7 @@ func (v *Validator) logConfidenceBoostCalculation(matches []detector.Match, anal
 	// Log proximity boost
 	proximityBoost := analysis.ProximityScore * MaxProximityBonus
 	if proximityBoost > 0 {
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Proximity boost (%.2f × %.1f%%): +%.1f%%",
 				analysis.ProximityScore, MaxProximityBonus, proximityBoost))
 		totalBoost += proximityBoost
@@ -2974,7 +2974,7 @@ func (v *Validator) logConfidenceBoostCalculation(matches []detector.Match, anal
 			groupBoost = 2.5
 		}
 		if groupBoost > 0 {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("    Semantic boost (%s): +%.1f%%", group, groupBoost))
 			semanticBoost += groupBoost
 		}
@@ -2986,60 +2986,60 @@ func (v *Validator) logConfidenceBoostCalculation(matches []detector.Match, anal
 	var ipTypeBoost float64
 	if len(ipTypes) >= 3 {
 		ipTypeBoost = 4.0
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    IP type diversity boost (3+ types): +%.1f%%", ipTypeBoost))
 	} else if len(ipTypes) >= 2 {
 		ipTypeBoost = 2.0
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    IP type diversity boost (2 types): +%.1f%%", ipTypeBoost))
 	}
 	totalBoost += ipTypeBoost
 
 	// Log total calculation
 	calculatedConfidence := baseConfidence + totalBoost
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Total boost applied: +%.1f%%", totalBoost))
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Calculated confidence: %.1f%% + %.1f%% = %.1f%%",
 			baseConfidence, totalBoost, calculatedConfidence))
 
 	// Log capping if applied
 	if calculatedConfidence != finalConfidence {
 		if finalConfidence == v.legalNoticeConfig.MaxConfidence {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("    Capped at maximum: %.1f%% → %.1f%%", calculatedConfidence, finalConfidence))
 		} else if finalConfidence == v.legalNoticeConfig.MinConfidenceThreshold {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("    Raised to minimum: %.1f%% → %.1f%%", calculatedConfidence, finalConfidence))
 		}
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("    Final confidence: %.1f%%", finalConfidence))
 }
 
 // logReconstructionDetails logs detailed information about the reconstruction process
 func (v *Validator) logReconstructionDetails(originalMatches []detector.Match, reconstructedMatch detector.Match, analysis LegalNoticeAnalysis) {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("Legal notice reconstruction completed:"))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Original matches: %d", len(originalMatches)))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Reconstructed text: '%s'", reconstructedMatch.Text))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Final confidence: %.1f%%", reconstructedMatch.Confidence))
 
 	// Log detailed confidence boost calculation
 	if reconstructedMatch.Metadata != nil {
 		if boost, ok := reconstructedMatch.Metadata["confidence_boost"].(float64); ok {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("  Confidence boost applied: +%.1f%%", boost))
 
 			// Find base confidence for detailed logging
@@ -3053,23 +3053,23 @@ func (v *Validator) logReconstructionDetails(originalMatches []detector.Match, r
 		}
 
 		if ipTypes, ok := reconstructedMatch.Metadata["ip_types"].([]string); ok {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("  IP types combined: %v", ipTypes))
 		}
 
 		if reconstructionType, ok := reconstructedMatch.Metadata["reconstruction_type"].(string); ok {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("  Reconstruction type: %s", reconstructionType))
 		}
 
 		if proximityScore, ok := reconstructedMatch.Metadata["proximity_score"].(float64); ok {
-			v.observer.DebugObserver.LogDetail("intellectualproperty",
+			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("  Proximity score: %.2f", proximityScore))
 		}
 	}
 
 	// Log original match details with enhanced information
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Original match breakdown:"))
 	for i, match := range originalMatches {
 		ipType := "unknown"
@@ -3078,7 +3078,7 @@ func (v *Validator) logReconstructionDetails(originalMatches []detector.Match, r
 				ipType = t
 			}
 		}
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("    Match %d: '%s' (type: %s, confidence: %.1f%%, line: %d)",
 				i+1, match.Text, ipType, match.Confidence, match.LineNumber))
 	}
@@ -3099,30 +3099,30 @@ func (v *Validator) logReconstructionDetails(originalMatches []detector.Match, r
 
 // logLegalNoticeAnalysis logs the analysis decision for debugging
 func (v *Validator) logLegalNoticeAnalysis(matches []detector.Match, analysis LegalNoticeAnalysis) {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
 
 	// Log basic analysis info
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("Legal notice analysis for %d matches:", len(matches)))
 
 	// Log detailed proximity calculation
 	v.logProximityCalculationDetails(matches, analysis.ProximityScore)
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Is Legal Notice: %v", analysis.IsLegalNotice))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Notice Type: %s", analysis.NoticeType))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Analysis Confidence: %.1f%%", analysis.Confidence))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Should Reconstruct: %v", analysis.ShouldReconstruct))
 
-	v.observer.DebugObserver.LogDetail("intellectualproperty",
+	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Reconstruction Reason: %s", analysis.ReconstructionReason))
 
 	// Log detailed semantic grouping analysis
@@ -3136,7 +3136,7 @@ func (v *Validator) logLegalNoticeAnalysis(matches []detector.Match, analysis Le
 				ipType = t
 			}
 		}
-		v.observer.DebugObserver.LogDetail("intellectualproperty",
+		v.observer.Debug().LogDetail("intellectualproperty",
 			fmt.Sprintf("  Match %d: '%s' (type: %s, line: %d, confidence: %.1f%%, position: %d)",
 				i+1, match.Text, ipType, match.LineNumber, match.Confidence, v.calculateCharacterPosition(match)))
 	}

@@ -17,7 +17,7 @@ import (
 type TextPreprocessor struct {
 	name                string
 	supportedExtensions []string
-	observer            *observability.StandardObserver
+	observer            observability.Observer
 }
 
 // NewTextPreprocessor creates a new text preprocessor
@@ -33,7 +33,7 @@ func NewTextPreprocessor() *TextPreprocessor {
 }
 
 // SetObserver sets the observability component
-func (tp *TextPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (tp *TextPreprocessor) SetObserver(observer observability.Observer) {
 	tp.observer = observer
 }
 
@@ -66,8 +66,8 @@ func (tp *TextPreprocessor) Process(filePath string) (*ProcessedContent, error) 
 	var finishStep func(bool, string)
 	if tp.observer != nil {
 		finishTiming = tp.observer.StartTiming("text_preprocessor", "process_file", filePath)
-		if tp.observer.DebugObserver != nil {
-			finishStep = tp.observer.DebugObserver.StartStep("text_preprocessor", "process_file", filePath)
+		if tp.observer.Debug() != nil {
+			finishStep = tp.observer.Debug().StartStep("text_preprocessor", "process_file", filePath)
 		}
 	}
 
@@ -188,8 +188,8 @@ func (tp *TextPreprocessor) createPDFPositionMappings(content *ProcessedContent,
 	content.AddPositionMetadata("page_count", content.PageCount)
 	content.AddPositionMetadata("confidence_reason", "pdf_text_layer_extraction")
 
-	if tp.observer != nil && tp.observer.DebugObserver != nil {
-		tp.observer.DebugObserver.LogDetail("text_preprocessor",
+	if tp.observer != nil && tp.observer.Debug() != nil {
+		tp.observer.Debug().LogDetail("text_preprocessor",
 			fmt.Sprintf("Created %d position mappings for PDF with %d pages",
 				len(content.PositionMappings), content.PageCount))
 	}
@@ -206,8 +206,8 @@ func (tp *TextPreprocessor) createOfficePositionMappings(content *ProcessedConte
 	content.AddPositionMetadata("document_format", content.Format)
 	content.AddPositionMetadata("confidence_reason", "office_xml_structure_extraction")
 
-	if tp.observer != nil && tp.observer.DebugObserver != nil {
-		tp.observer.DebugObserver.LogDetail("text_preprocessor",
+	if tp.observer != nil && tp.observer.Debug() != nil {
+		tp.observer.Debug().LogDetail("text_preprocessor",
 			fmt.Sprintf("Created %d position mappings for %s document",
 				len(content.PositionMappings), content.Format))
 	}

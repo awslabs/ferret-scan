@@ -50,7 +50,7 @@ type Validator struct {
 	negativeKeywords []string
 
 	// Performance monitoring
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// Thread safety for lazy loading
 	once sync.Once

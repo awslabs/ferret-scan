@@ -26,7 +26,7 @@ type WorkerPool struct {
 	wg             sync.WaitGroup
 	ctx            context.Context
 	cancel         context.CancelFunc
-	observer       *observability.StandardObserver
+	observer       observability.Observer
 	retryManager   *resilience.RetryManager
 	circuitBreaker *resilience.CircuitBreakerManager
 }
@@ -99,7 +99,7 @@ type Result struct {
 }
 
 // NewWorkerPool creates a new worker pool with resilience features
-func NewWorkerPool(workers int, observer *observability.StandardObserver) *WorkerPool {
+func NewWorkerPool(workers int, observer observability.Observer) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Initialize resilience components

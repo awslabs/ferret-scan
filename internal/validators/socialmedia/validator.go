@@ -91,7 +91,7 @@ type Validator struct {
 	clusteringConfig SocialMediaClusteringConfig
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // SocialMediaClusteringAnalysis contains the results of analyzing whether multiple social media matches
@@ -278,7 +278,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
@@ -351,9 +351,9 @@ func (v *Validator) Configure(cfg *config.Config) {
 						// Validate regex pattern using regexp.Compile()
 						if _, err := regexp.Compile(processedPattern); err != nil {
 							// Log warning for invalid pattern but continue with valid ones
-							if v.observer != nil && v.observer.DebugObserver != nil {
-								v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Invalid %s pattern '%s': %v", platform, patternStr, err))
-								v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Skipping invalid regex pattern for %s: '%s' - Error: %v", platform, patternStr, err))
+							if v.observer != nil && v.observer.Debug() != nil {
+								v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid %s pattern '%s': %v", platform, patternStr, err))
+								v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping invalid regex pattern for %s: '%s' - Error: %v", platform, patternStr, err))
 							}
 
 							// Log invalid pattern in debug mode
@@ -375,16 +375,16 @@ func (v *Validator) Configure(cfg *config.Config) {
 				}
 
 				// Log platform-specific pattern validation results
-				if v.observer != nil && v.observer.DebugObserver != nil {
-					v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Platform %s pattern validation: %d valid, %d invalid patterns", platform, len(validPatterns), invalidCount))
+				if v.observer != nil && v.observer.Debug() != nil {
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Platform %s pattern validation: %d valid, %d invalid patterns", platform, len(validPatterns), invalidCount))
 					if len(validPatterns) > 0 {
-						v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Successfully loaded %d patterns for platform %s", len(validPatterns), platform))
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully loaded %d patterns for platform %s", len(validPatterns), platform))
 						for i, pattern := range validPatterns {
-							v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("  %s pattern %d: %s", platform, i+1, pattern))
+							v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  %s pattern %d: %s", platform, i+1, pattern))
 						}
 					}
 					if invalidCount > 0 {
-						v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Skipped %d invalid patterns for platform %s", invalidCount, platform))
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipped %d invalid patterns for platform %s", invalidCount, platform))
 					}
 				}
 
@@ -399,13 +399,13 @@ func (v *Validator) Configure(cfg *config.Config) {
 		v.platformPatterns = validPlatforms
 
 		// Log overall pattern validation summary
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Social media pattern validation: %d total valid patterns across %d platforms, %d invalid patterns", totalPatterns, len(validPlatforms), totalInvalid))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Social media pattern validation: %d total valid patterns across %d platforms, %d invalid patterns", totalPatterns, len(validPlatforms), totalInvalid))
 			if len(validPlatforms) > 0 {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Successfully loaded patterns for platforms: %v", v.getPlatformNames(validPlatforms)))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully loaded patterns for platforms: %v", v.getPlatformNames(validPlatforms)))
 			}
 			if totalInvalid > 0 {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Skipped %d invalid social media patterns during configuration", totalInvalid))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipped %d invalid social media patterns during configuration", totalInvalid))
 			}
 		}
 
@@ -443,8 +443,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 		}
 		if len(customKeywords) > 0 {
 			v.positiveKeywords = customKeywords
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Loaded %d custom positive keywords", len(customKeywords)))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Loaded %d custom positive keywords", len(customKeywords)))
 			}
 		}
 	}
@@ -459,8 +459,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 		}
 		if len(customKeywords) > 0 {
 			v.negativeKeywords = customKeywords
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Loaded %d custom negative keywords", len(customKeywords)))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Loaded %d custom negative keywords", len(customKeywords)))
 			}
 		}
 	}
@@ -483,8 +483,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 		}
 		if len(customPlatformKeywords) > 0 {
 			v.platformKeywords = customPlatformKeywords
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Loaded custom platform keywords for %d platforms", len(customPlatformKeywords)))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Loaded custom platform keywords for %d platforms", len(customPlatformKeywords)))
 			}
 		}
 	}
@@ -503,8 +503,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 				// Validate regex pattern
 				if _, err := regexp.Compile(processedPattern); err != nil {
 					// Log warning for invalid whitelist pattern but continue with valid ones
-					if v.observer != nil && v.observer.DebugObserver != nil {
-						v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Invalid whitelist pattern '%s': %v", patternStr, err))
+					if v.observer != nil && v.observer.Debug() != nil {
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid whitelist pattern '%s': %v", patternStr, err))
 					}
 
 					// Log invalid whitelist pattern in debug mode
@@ -522,10 +522,10 @@ func (v *Validator) Configure(cfg *config.Config) {
 		if len(validWhitelistPatterns) > 0 {
 			v.whitelistPatterns = customWhitelistPatterns
 			v.compileWhitelistPatterns()
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Loaded %d valid whitelist patterns (%d invalid patterns skipped)", len(validWhitelistPatterns), invalidCount))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Loaded %d valid whitelist patterns (%d invalid patterns skipped)", len(validWhitelistPatterns), invalidCount))
 				for i, pattern := range customWhitelistPatterns {
-					v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("  Whitelist pattern %d: %s", i+1, pattern))
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Whitelist pattern %d: %s", i+1, pattern))
 				}
 			}
 
@@ -535,8 +535,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 			}
 		} else if invalidCount > 0 {
 			// All whitelist patterns were invalid
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("All %d configured whitelist patterns are invalid", invalidCount))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("All %d configured whitelist patterns are invalid", invalidCount))
 			}
 		}
 	}
@@ -579,8 +579,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery for debugging
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in ValidateContent for %s: %v", originalPath, r))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in ValidateContent for %s: %v", originalPath, r))
 			}
 			if os.Getenv("FERRET_DEBUG") == "1" {
 				fmt.Fprintf(os.Stderr, "[ERROR] Social Media: ValidateContent panic: %v\n", r)
@@ -591,8 +591,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Memory management and monitoring for large files
 	contentLength := len(content)
 	if contentLength > 50*1024*1024 { // 50MB threshold
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Processing large file %s (%d MB) - enabling memory optimization", originalPath, contentLength/(1024*1024)))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Processing large file %s (%d MB) - enabling memory optimization", originalPath, contentLength/(1024*1024)))
 		}
 		if os.Getenv("FERRET_DEBUG") == "1" {
 			fmt.Fprintf(os.Stderr, "[INFO] Social Media: Processing large file %d MB\n", contentLength/(1024*1024))
@@ -607,8 +607,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 	// Check if patterns are configured before processing
 	if !v.patternsConfigured || len(v.compiledPatterns) == 0 {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("No social media patterns configured for %s - returning empty results", originalPath))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("No social media patterns configured for %s - returning empty results", originalPath))
 		}
 		if finishTiming != nil {
 			finishTiming(true, map[string]any{"match_count": 0, "content_length": contentLength, "patterns_configured": false})
@@ -620,8 +620,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	lineMatches, err := v.detectPatternsByLineWithErrorHandling(ctx, content, originalPath)
 	if err != nil {
 		// Log error but continue with empty results for graceful degradation
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Pattern detection failed for %s: %v", originalPath, err))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Pattern detection failed for %s: %v", originalPath, err))
 		}
 		if os.Getenv("FERRET_DEBUG") == "1" {
 			fmt.Fprintf(os.Stderr, "[ERROR] Social Media: Pattern detection failed: %v\n", err)
@@ -636,8 +636,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	processedMatches, err := v.processLineMatchesWithClusteringAndErrorHandling(lineMatches, originalPath)
 	if err != nil {
 		// Log error but return individual matches for graceful degradation
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Clustering failed for %s, using individual matches: %v", originalPath, err))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Clustering failed for %s, using individual matches: %v", originalPath, err))
 		}
 		if os.Getenv("FERRET_DEBUG") == "1" {
 			fmt.Fprintf(os.Stderr, "[WARN] Social Media: Clustering failed: %v\n", err)
@@ -663,8 +663,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Memory cleanup for large files
 	if contentLength > 50*1024*1024 {
 		// Force garbage collection for large files to free memory
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Completed processing large file %s - memory cleanup initiated", originalPath))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Completed processing large file %s - memory cleanup initiated", originalPath))
 		}
 	}
 
@@ -684,8 +684,8 @@ func (v *Validator) detectPatternsByLineWithErrorHandling(ctx stdctx.Context, co
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery for debugging
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in detectPatternsByLine for %s: %v", originalPath, r))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in detectPatternsByLine for %s: %v", originalPath, r))
 			}
 			if os.Getenv("FERRET_DEBUG") == "1" {
 				fmt.Fprintf(os.Stderr, "[ERROR] Social Media: Pattern detection panic: %v\n", r)
@@ -695,16 +695,16 @@ func (v *Validator) detectPatternsByLineWithErrorHandling(ctx stdctx.Context, co
 
 	// Check for empty content
 	if len(content) == 0 {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Empty content for %s - returning empty results", originalPath))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Empty content for %s - returning empty results", originalPath))
 		}
 		return make(map[int][]detector.Match), nil
 	}
 
 	// Check if patterns are available
 	if len(v.compiledPatterns) == 0 {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("No compiled patterns available for %s", originalPath))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("No compiled patterns available for %s", originalPath))
 		}
 		return make(map[int][]detector.Match), nil
 	}
@@ -719,8 +719,8 @@ func (v *Validator) processLineMatchesWithClusteringAndErrorHandling(lineMatches
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery for debugging
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in clustering for %s: %v", originalPath, r))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in clustering for %s: %v", originalPath, r))
 			}
 			if os.Getenv("FERRET_DEBUG") == "1" {
 				fmt.Fprintf(os.Stderr, "[ERROR] Social Media: Clustering panic: %v\n", r)
@@ -730,8 +730,8 @@ func (v *Validator) processLineMatchesWithClusteringAndErrorHandling(lineMatches
 
 	// Check for empty line matches
 	if len(lineMatches) == 0 {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("No line matches for clustering in %s", originalPath))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("No line matches for clustering in %s", originalPath))
 		}
 		return []detector.Match{}, nil
 	}
@@ -766,8 +766,8 @@ func (v *Validator) processLineMatchesWithClustering(lineMatches map[int][]detec
 	// finding is reported, so above the cap we return matches individually.
 	// Real documents stay far below this bound, so behavior is unchanged there.
 	if len(allMatches) > maxClusterMatches {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia",
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Skipping clustering for %s: %d matches exceeds cap %d; returning individual matches",
 					originalPath, len(allMatches), maxClusterMatches))
 		}
@@ -793,8 +793,8 @@ func (v *Validator) processLineMatchesWithClustering(lineMatches map[int][]detec
 				reconstructedMatch, err := v.reconstructSocialMediaClusterWithFallback(clusterGroup)
 				if err != nil {
 					// Fallback: add individual matches if reconstruction fails
-					if v.observer != nil && v.observer.DebugObserver != nil {
-						v.observer.DebugObserver.LogDetail("socialmedia",
+					if v.observer != nil && v.observer.Debug() != nil {
+						v.observer.Debug().LogDetail("socialmedia",
 							fmt.Sprintf("Social media cluster reconstruction failed, using individual matches: %v", err))
 					}
 					processedMatches = append(processedMatches, clusterGroup...)
@@ -822,8 +822,8 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery for debugging
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in CalculateConfidence for match '%s': %v", match, r))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in CalculateConfidence for match '%s': %v", match, r))
 			}
 			if v.isDebugEnabled() {
 				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Panic in confidence calculation\n")
@@ -836,8 +836,8 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 
 	// Input validation
 	if match == "" {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", "Empty match provided to CalculateConfidence")
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", "Empty match provided to CalculateConfidence")
 		}
 		checks["valid_input"] = false
 		return 0.0, checks
@@ -848,8 +848,8 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	platform := v.identifyPlatform(match)
 	if platform == "" {
 		// Unknown platform - assign low confidence with enhanced logging
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Unknown platform for match: %s", match))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Unknown platform for match: %s", match))
 		}
 		if v.isDebugEnabled() {
 			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Unknown platform for match: %s\n", match)
@@ -2153,9 +2153,9 @@ func (v *Validator) ensureCaseInsensitive(pattern string) string {
 // logConfigurationError logs configuration loading errors with comprehensive context
 func (v *Validator) logConfigurationError(errorType string, reason string) {
 	// Log through observability system if available
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Configuration error: %s - %s", errorType, reason))
-		v.observer.DebugObserver.LogDetail("socialmedia", "Social media detection is disabled due to configuration error")
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Configuration error: %s - %s", errorType, reason))
+		v.observer.Debug().LogDetail("socialmedia", "Social media detection is disabled due to configuration error")
 	}
 
 	// Also log to stderr in debug mode for comprehensive error tracking
@@ -2178,8 +2178,8 @@ func (v *Validator) logNoSocialMediaPatterns(reason string) {
 	message := "Social media detection disabled: " + reason + ". Configure 'validators.social_media.platform_patterns' to enable social media detection."
 
 	// Log to debug observer for detailed logging
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", message)
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", message)
 	}
 
 	// Also log to stderr in debug mode for comprehensive audit trail
@@ -2191,7 +2191,7 @@ func (v *Validator) logNoSocialMediaPatterns(reason string) {
 	}
 
 	// Continue with existing detailed guidance logging
-	if v.observer != nil && v.observer.DebugObserver != nil {
+	if v.observer != nil && v.observer.Debug() != nil {
 
 		// Include configuration guidance in verbose mode warnings
 		guidance := "Example configuration:\n" +
@@ -2222,7 +2222,7 @@ func (v *Validator) logNoSocialMediaPatterns(reason string) {
 			"      - \"example\"\n" +
 			"      - \"test\"\n" +
 			"      - \"placeholder\""
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Configuration guidance for social media patterns:\n%s", guidance))
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Configuration guidance for social media patterns:\n%s", guidance))
 
 		// Also log configuration guidance to stderr in verbose/debug mode
 		if os.Getenv("FERRET_DEBUG") == "1" {
@@ -2276,8 +2276,8 @@ func (v *Validator) compilePlatformPatterns() {
 	// Handle empty pattern maps gracefully
 	if len(v.platformPatterns) == 0 {
 		v.compiledPatterns = make(map[string][]*regexp.Regexp)
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", "No social media patterns to compile - empty pattern map")
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", "No social media patterns to compile - empty pattern map")
 		}
 		return
 	}
@@ -2306,8 +2306,8 @@ func (v *Validator) compilePlatformPatterns() {
 			if pattern == "" {
 				failedCount++
 				totalFailed++
-				if v.observer != nil && v.observer.DebugObserver != nil {
-					v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Skipping empty %s pattern at index %d", platform, i+1))
+				if v.observer != nil && v.observer.Debug() != nil {
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping empty %s pattern at index %d", platform, i+1))
 				}
 				continue
 			}
@@ -2332,11 +2332,11 @@ func (v *Validator) compilePlatformPatterns() {
 				totalFailed++
 
 				// Log compilation errors for debugging with enhanced context
-				if v.observer != nil && v.observer.DebugObserver != nil {
-					v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Failed to compile %s pattern %d: '%s' - Error: %v", platform, i+1, pattern, err))
+				if v.observer != nil && v.observer.Debug() != nil {
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Failed to compile %s pattern %d: '%s' - Error: %v", platform, i+1, pattern, err))
 					// Provide additional context about the error type
 					if strings.Contains(err.Error(), "invalid") {
-						v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("%s pattern %d contains invalid regex syntax - check for unescaped special characters", platform, i+1))
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("%s pattern %d contains invalid regex syntax - check for unescaped special characters", platform, i+1))
 					}
 				}
 
@@ -2372,10 +2372,10 @@ func (v *Validator) compilePlatformPatterns() {
 		}
 
 		// Log platform-specific compilation summary in debug mode
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Platform %s pattern compilation: %d successful, %d failed", platform, compiledCount, failedCount))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Platform %s pattern compilation: %d successful, %d failed", platform, compiledCount, failedCount))
 			if compiledCount > 0 {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d regex patterns for platform %s", compiledCount, platform))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d regex patterns for platform %s", compiledCount, platform))
 			}
 		}
 
@@ -2389,10 +2389,10 @@ func (v *Validator) compilePlatformPatterns() {
 	}
 
 	// Log overall compilation summary in debug mode
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Social media pattern compilation complete: %d total successful, %d total failed across %d platforms", totalCompiled, totalFailed, len(v.compiledPatterns)))
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Social media pattern compilation complete: %d total successful, %d total failed across %d platforms", totalCompiled, totalFailed, len(v.compiledPatterns)))
 		if totalCompiled > 0 {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Successfully compiled patterns for platforms: %v", v.getPlatformNames(v.compiledPatterns)))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully compiled patterns for platforms: %v", v.getPlatformNames(v.compiledPatterns)))
 		}
 	}
 
@@ -2409,8 +2409,8 @@ func (v *Validator) compilePlatformPatterns() {
 	}
 
 	// Log performance metrics for pattern compilation
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Pattern compilation performance: %d cache hits, %d new compilations", cacheHits, totalCompiled-cacheHits))
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Pattern compilation performance: %d cache hits, %d new compilations", cacheHits, totalCompiled-cacheHits))
 	}
 
 	// If all patterns failed to compile, log a warning
@@ -2424,15 +2424,15 @@ func (v *Validator) compileOptimizedPattern(pattern string) (*regexp.Regexp, err
 	// Pre-validate pattern for common issues to fail fast
 	if strings.Contains(pattern, "(?P<") {
 		// Named capture groups can be slower - warn but allow
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Pattern contains named capture group which may impact performance: %s", pattern))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Pattern contains named capture group which may impact performance: %s", pattern))
 		}
 	}
 
 	// Check for potentially expensive patterns
 	if strings.Contains(pattern, ".*.*") || strings.Contains(pattern, ".+.+") {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Pattern contains potentially expensive nested quantifiers: %s", pattern))
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Pattern contains potentially expensive nested quantifiers: %s", pattern))
 		}
 	}
 
@@ -2453,12 +2453,12 @@ func (v *Validator) monitorMemoryUsage(operation string, metadata map[string]any
 	// In a production environment, this could integrate with runtime.MemStats
 	// or other memory profiling tools
 
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Memory monitoring: %s", operation))
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Memory monitoring: %s", operation))
 
 		// Log metadata if provided
 		for key, value := range metadata {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("  %s: %v", key, value))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  %s: %v", key, value))
 		}
 	}
 }
@@ -2469,8 +2469,8 @@ func (v *Validator) compileWhitelistPatterns() {
 	// Handle empty whitelist patterns gracefully
 	if len(v.whitelistPatterns) == 0 {
 		v.compiledWhitelistPatterns = []*regexp.Regexp{}
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", "No whitelist patterns to compile - empty pattern list")
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", "No whitelist patterns to compile - empty pattern list")
 		}
 		return
 	}
@@ -2484,8 +2484,8 @@ func (v *Validator) compileWhitelistPatterns() {
 		// Skip empty patterns gracefully
 		if pattern == "" {
 			failedCount++
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Skipping empty whitelist pattern at index %d", i+1))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping empty whitelist pattern at index %d", i+1))
 			}
 			if os.Getenv("FERRET_DEBUG") == "1" {
 				fmt.Fprintf(os.Stderr, "[WARNING] Social Media Validator: Empty whitelist pattern at index %d - skipping\n", i+1)
@@ -2503,8 +2503,8 @@ func (v *Validator) compileWhitelistPatterns() {
 			failedCount++
 
 			// Log compilation errors for debugging
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Failed to compile whitelist pattern %d: '%s' - Error: %v", i+1, pattern, err))
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Failed to compile whitelist pattern %d: '%s' - Error: %v", i+1, pattern, err))
 			}
 
 			// Also log to stderr in debug mode
@@ -2523,10 +2523,10 @@ func (v *Validator) compileWhitelistPatterns() {
 	}
 
 	// Log compilation summary
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Whitelist pattern compilation: %d successful, %d failed", compiledCount, failedCount))
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Whitelist pattern compilation: %d successful, %d failed", compiledCount, failedCount))
 		if compiledCount > 0 {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d whitelist regex patterns", compiledCount))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d whitelist regex patterns", compiledCount))
 		}
 	}
 
@@ -2546,8 +2546,8 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 
 	// If no patterns are configured, return empty results
 	if len(v.compiledPatterns) == 0 {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", "No compiled patterns available for social media detection")
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia", "No compiled patterns available for social media detection")
 		}
 		return lineMatches
 	}
@@ -2621,9 +2621,9 @@ func (v *Validator) detectPatternsByLineBatch(ctx stdctx.Context, content string
 		}
 
 		// Log progress for very large files
-		if v.observer != nil && v.observer.DebugObserver != nil && len(lines) > 10000 {
+		if v.observer != nil && v.observer.Debug() != nil && len(lines) > 10000 {
 			progress := float64(end) / float64(len(lines)) * 100
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Batch processing progress: %.1f%% (%d/%d lines)", progress, end, len(lines)))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Batch processing progress: %.1f%% (%d/%d lines)", progress, end, len(lines)))
 		}
 	}
 
@@ -2804,8 +2804,8 @@ func (v *Validator) processMatchOptimized(match, platform string, patternIndex i
 	}
 
 	// Log match details in debug mode (only for high-confidence matches to reduce overhead)
-	if os.Getenv("FERRET_DEBUG") == "1" && confidence > 70 && v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Found %s match: '%s' (confidence: %.1f%%, type: %s, username: %s)", platform, match, confidence, patternType, username))
+	if os.Getenv("FERRET_DEBUG") == "1" && confidence > 70 && v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Found %s match: '%s' (confidence: %.1f%%, type: %s, username: %s)", platform, match, confidence, patternType, username))
 	}
 
 	return &socialMediaMatch
@@ -2929,16 +2929,16 @@ func (v *Validator) analyzeContextWithPlatformLine(match string, platform string
 	}
 
 	// Log detailed context analysis in debug mode
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Context analysis for %s match '%s': impact=%.1f", platform, match, confidenceImpact))
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Context analysis for %s match '%s': impact=%.1f", platform, match, confidenceImpact))
 		if len(foundPositiveKeywords) > 0 {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("  Positive keywords found: %v", foundPositiveKeywords))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Positive keywords found: %v", foundPositiveKeywords))
 		}
 		if len(foundPlatformKeywords) > 0 {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("  Platform keywords found: %v", foundPlatformKeywords))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Platform keywords found: %v", foundPlatformKeywords))
 		}
 		if len(foundNegativeKeywords) > 0 {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("  Negative keywords found: %v", foundNegativeKeywords))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Negative keywords found: %v", foundNegativeKeywords))
 		}
 	}
 
@@ -4005,8 +4005,8 @@ func (v *Validator) analyzeSocialMediaClusteringContext(matches []detector.Match
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery and provide safe fallback
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia",
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia",
 					fmt.Sprintf("Recovered from panic during social media clustering analysis: %v", r))
 			}
 
@@ -4042,7 +4042,7 @@ func (v *Validator) analyzeSocialMediaClusteringContext(matches []detector.Match
 	analysis.ShouldReconstruct, analysis.ReconstructionReason = v.makeClusteringDecision(analysis)
 
 	// Log the analysis decision in debug mode
-	if v.observer != nil && v.observer.DebugObserver != nil {
+	if v.observer != nil && v.observer.Debug() != nil {
 		v.logClusteringAnalysis(matches, analysis)
 	}
 
@@ -4326,8 +4326,8 @@ func (v *Validator) reconstructSocialMediaClusterWithFallback(matches []detector
 	reconstructed, err := v.reconstructSocialMediaCluster(matches)
 	if err != nil {
 		// Log the error and return it for fallback handling
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia",
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Social media cluster reconstruction failed: %v", err))
 		}
 		return detector.Match{}, err
@@ -4335,8 +4335,8 @@ func (v *Validator) reconstructSocialMediaClusterWithFallback(matches []detector
 
 	// Validate the reconstructed match
 	if err := v.validateReconstructedCluster(reconstructed, matches); err != nil {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia",
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Reconstructed cluster validation failed: %v", err))
 		}
 		return detector.Match{}, err
@@ -4567,33 +4567,33 @@ func (v *Validator) validateReconstructedCluster(reconstructed detector.Match, o
 
 // logClusteringAnalysis logs detailed clustering analysis information
 func (v *Validator) logClusteringAnalysis(matches []detector.Match, analysis SocialMediaClusteringAnalysis) {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
 
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("Social media clustering analysis for %d matches:", len(matches)))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Cluster Type: %s", analysis.ClusterType))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Is Profile Cluster: %t", analysis.IsProfileCluster))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Confidence: %.2f", analysis.Confidence))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Proximity Score: %.2f", analysis.ProximityScore))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Platforms: %v", analysis.PlatformGrouping))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  User Identifiers: %v", analysis.UserIdentifiers))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Should Reconstruct: %t", analysis.ShouldReconstruct))
-	v.observer.DebugObserver.LogDetail("socialmedia",
+	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Reconstruction Reason: %s", analysis.ReconstructionReason))
 
 	// Log clustering factors
-	v.observer.DebugObserver.LogDetail("socialmedia", "  Clustering Factors:")
+	v.observer.Debug().LogDetail("socialmedia", "  Clustering Factors:")
 	for factor, score := range analysis.ClusteringFactors {
-		v.observer.DebugObserver.LogDetail("socialmedia",
+		v.observer.Debug().LogDetail("socialmedia",
 			fmt.Sprintf("    %s: %.2f", factor, score))
 	}
 }
@@ -4679,8 +4679,8 @@ func (v *Validator) isPartOfEmailAddress(match, line string) bool {
 	// If we find a complete email address that contains our match, it's a false positive
 	if emailRegex.MatchString(line) {
 		// Log the filtering for debugging
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia",
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Filtered social media false positive: '%s' is part of email address in line: %s",
 					match, line))
 		}
@@ -4713,8 +4713,8 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 	usernameLower := strings.ToLower(username)
 	for _, pattern := range docPatterns {
 		if usernameLower == pattern {
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia",
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia",
 					fmt.Sprintf("Filtered documentation annotation: '%s' in line: %s", match, line))
 			}
 			return true
@@ -4723,8 +4723,8 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 
 	// Code comment context (// @something or /* @something)
 	if strings.Contains(lineLower, "//") || strings.Contains(lineLower, "/*") || strings.Contains(lineLower, "*/") {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia",
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Filtered code comment annotation: '%s' in line: %s", match, line))
 		}
 		return true
@@ -4733,8 +4733,8 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 	// Invalid Twitter handle patterns
 	// Twitter handles cannot start with numbers, underscores, or be too short
 	if len(username) < 2 || strings.HasPrefix(username, "_") || regexp.MustCompile(`^\d`).MatchString(username) {
-		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia",
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Filtered invalid handle format: '%s' in line: %s", match, line))
 		}
 		return true
@@ -4746,8 +4746,8 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 	if matchIndex >= 0 && matchIndex+len(match) < len(line) {
 		nextChar := line[matchIndex+len(match)]
 		if nextChar == '-' || nextChar == '.' {
-			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia",
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia",
 					fmt.Sprintf("Filtered partial domain match: '%s' in line: %s", match, line))
 			}
 			return true

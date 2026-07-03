@@ -1562,7 +1562,7 @@ func main() {
 	// Set up observability for all components
 	for _, validator := range allValidators {
 		if observableValidator, ok := validator.(interface {
-			SetObserver(observer *observability.StandardObserver)
+			SetObserver(observer observability.Observer)
 		}); ok {
 			var observer *observability.StandardObserver
 			if finalConfig.debug {

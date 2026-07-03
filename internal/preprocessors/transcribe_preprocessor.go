@@ -141,7 +141,7 @@ func (tp *TranscribePreprocessor) SetBucket(bucket string) {
 }
 
 // SetObserver sets the observability component (minimal implementation)
-func (tp *TranscribePreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (tp *TranscribePreprocessor) SetObserver(observer observability.Observer) {
 	// Minimal implementation for interface compliance
 }
 */

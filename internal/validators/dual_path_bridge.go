@@ -26,7 +26,7 @@ type EnhancedValidatorBridge struct {
 	metadataBridge  *MetadataValidatorBridge
 	contentRouter   *router.ContentRouter
 	contextAnalyzer *context.ContextAnalyzer
-	observer        *observability.StandardObserver
+	observer        observability.Observer
 
 	// Configuration
 	config *DualPathConfig
@@ -50,7 +50,7 @@ type namedValidator struct {
 type DocumentValidatorBridge struct {
 	validators      []namedValidator
 	contextAnalyzer *context.ContextAnalyzer
-	observer        *observability.StandardObserver
+	observer        observability.Observer
 	metrics         *DocumentValidationMetrics
 	mu              sync.RWMutex
 }
@@ -59,7 +59,7 @@ type DocumentValidatorBridge struct {
 type MetadataValidatorBridge struct {
 	metadataValidator PreprocessorAwareValidator
 	contextAnalyzer   *context.ContextAnalyzer
-	observer          *observability.StandardObserver
+	observer          observability.Observer
 	metrics           *MetadataValidationMetrics
 	mu                sync.RWMutex
 }
@@ -195,7 +195,7 @@ func NewMetadataValidatorBridge() *MetadataValidatorBridge {
 }
 
 // SetObserver sets the observability component for all bridges
-func (evb *EnhancedValidatorBridge) SetObserver(observer *observability.StandardObserver) {
+func (evb *EnhancedValidatorBridge) SetObserver(observer observability.Observer) {
 	evb.observer = observer
 	evb.contentRouter.SetObserver(observer)
 	evb.documentBridge.SetObserver(observer)
@@ -234,8 +234,8 @@ func (evb *EnhancedValidatorBridge) ProcessContentCtx(ctx stdctx.Context, conten
 	var finishStep func(bool, string)
 	if evb.observer != nil {
 		finishTiming = evb.observer.StartTiming("enhanced_validator_bridge", "process_content", content.OriginalPath)
-		if evb.observer.DebugObserver != nil {
-			finishStep = evb.observer.DebugObserver.StartStep("enhanced_validator_bridge", "process_content", content.OriginalPath)
+		if evb.observer.Debug() != nil {
+			finishStep = evb.observer.Debug().StartStep("enhanced_validator_bridge", "process_content", content.OriginalPath)
 		}
 	}
 
@@ -246,8 +246,8 @@ func (evb *EnhancedValidatorBridge) ProcessContentCtx(ctx stdctx.Context, conten
 		contextInsights = evb.contextAnalyzer.AnalyzeContext(content.Text, content.OriginalPath)
 		evb.updateContextMetrics(time.Since(contextStartTime))
 
-		if evb.observer != nil && evb.observer.DebugObserver != nil {
-			evb.observer.DebugObserver.LogDetail("context_analysis", fmt.Sprintf("Domain: %s, DocumentType: %s, Confidence: %.2f",
+		if evb.observer != nil && evb.observer.Debug() != nil {
+			evb.observer.Debug().LogDetail("context_analysis", fmt.Sprintf("Domain: %s, DocumentType: %s, Confidence: %.2f",
 				contextInsights.Domain, contextInsights.DocumentType, contextInsights.DomainConfidence))
 		}
 	}
@@ -456,9 +456,9 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 	}
 
 	// Log partial failures but continue with successful results
-	if len(processingErrors) > 0 && evb.observer != nil && evb.observer.DebugObserver != nil {
+	if len(processingErrors) > 0 && evb.observer != nil && evb.observer.Debug() != nil {
 		for _, procErr := range processingErrors {
-			evb.observer.DebugObserver.LogDetail("partial_validation_failure", procErr.Error())
+			evb.observer.Debug().LogDetail("partial_validation_failure", procErr.Error())
 		}
 	}
 
@@ -540,8 +540,8 @@ func (evb *EnhancedValidatorBridge) applyCrossPathConfidenceAdjustments(matches 
 			matches[i].Metadata["original_confidence"] = originalConfidence
 		}
 
-		if evb.observer != nil && evb.observer.DebugObserver != nil {
-			evb.observer.DebugObserver.LogDetail("cross_path_correlation",
+		if evb.observer != nil && evb.observer.Debug() != nil {
+			evb.observer.Debug().LogDetail("cross_path_correlation",
 				fmt.Sprintf("Applied %.1f correlation boost to %d matches", correlationBoost, len(matches)))
 		}
 	}
@@ -564,8 +564,8 @@ func (evb *EnhancedValidatorBridge) routeContentWithRetry(content *preprocessors
 		}
 
 		lastErr = err
-		if evb.observer != nil && evb.observer.DebugObserver != nil {
-			evb.observer.DebugObserver.LogDetail("routing_retry",
+		if evb.observer != nil && evb.observer.Debug() != nil {
+			evb.observer.Debug().LogDetail("routing_retry",
 				fmt.Sprintf("Routing attempt %d/%d failed: %v", attempt, maxRetries, err))
 		}
 
@@ -581,8 +581,8 @@ func (evb *EnhancedValidatorBridge) routeContentWithRetry(content *preprocessors
 // processContentLegacy provides fallback to legacy aggregation behavior. ctx is
 // threaded to the document-path dispatch chokepoint.
 func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, content *preprocessors.ProcessedContent, contextInsights context.ContextInsights) ([]detector.Match, error) {
-	if evb.observer != nil && evb.observer.DebugObserver != nil {
-		evb.observer.DebugObserver.LogDetail("fallback", "Using legacy content aggregation")
+	if evb.observer != nil && evb.observer.Debug() != nil {
+		evb.observer.Debug().LogDetail("fallback", "Using legacy content aggregation")
 	}
 
 	// Process content with all validators using legacy approach
@@ -629,9 +629,9 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, con
 	}
 
 	// Log processing errors but don't fail completely
-	if len(processingErrors) > 0 && evb.observer != nil && evb.observer.DebugObserver != nil {
+	if len(processingErrors) > 0 && evb.observer != nil && evb.observer.Debug() != nil {
 		for _, procErr := range processingErrors {
-			evb.observer.DebugObserver.LogDetail("legacy_processing_errors", procErr.Error())
+			evb.observer.Debug().LogDetail("legacy_processing_errors", procErr.Error())
 		}
 	}
 
@@ -647,7 +647,7 @@ func (dvb *DocumentValidatorBridge) RegisterValidator(name string, validator det
 }
 
 // SetObserver sets the observability component
-func (dvb *DocumentValidatorBridge) SetObserver(observer *observability.StandardObserver) {
+func (dvb *DocumentValidatorBridge) SetObserver(observer observability.Observer) {
 	dvb.observer = observer
 }
 
@@ -709,8 +709,8 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 	dvb.mu.RUnlock()
 
 	if len(validators) == 0 {
-		if dvb.observer != nil && dvb.observer.DebugObserver != nil {
-			dvb.observer.DebugObserver.LogDetail("document_bridge", "No document validators registered")
+		if dvb.observer != nil && dvb.observer.Debug() != nil {
+			dvb.observer.Debug().LogDetail("document_bridge", "No document validators registered")
 		}
 		return allMatches, nil
 	}
@@ -882,8 +882,8 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 	}
 
 	// Log validation errors but don't fail completely if some validators succeeded
-	if len(validationErrors) > 0 && dvb.observer != nil && dvb.observer.DebugObserver != nil {
-		dvb.observer.DebugObserver.LogDetail("document_validation_errors",
+	if len(validationErrors) > 0 && dvb.observer != nil && dvb.observer.Debug() != nil {
+		dvb.observer.Debug().LogDetail("document_validation_errors",
 			fmt.Sprintf("%d out of %d validators failed", len(validationErrors), len(validators)))
 	}
 
@@ -921,7 +921,7 @@ func (mvb *MetadataValidatorBridge) SetValidator(validator PreprocessorAwareVali
 }
 
 // SetObserver sets the observability component
-func (mvb *MetadataValidatorBridge) SetObserver(observer *observability.StandardObserver) {
+func (mvb *MetadataValidatorBridge) SetObserver(observer observability.Observer) {
 	mvb.observer = observer
 }
 
@@ -948,8 +948,8 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 	mvb.mu.RUnlock()
 
 	if validator == nil {
-		if mvb.observer != nil && mvb.observer.DebugObserver != nil {
-			mvb.observer.DebugObserver.LogDetail("metadata_bridge", "No metadata validator configured")
+		if mvb.observer != nil && mvb.observer.Debug() != nil {
+			mvb.observer.Debug().LogDetail("metadata_bridge", "No metadata validator configured")
 		}
 		if finishTiming != nil {
 			finishTiming(false, map[string]interface{}{"error": "no metadata validator configured"})
@@ -958,9 +958,9 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 	}
 
 	if len(metadataItems) == 0 {
-		if mvb.observer != nil && mvb.observer.DebugObserver != nil {
-			mvb.observer.DebugObserver.LogDetail("metadata_bridge", "No metadata items to process - file type does not support metadata validation")
-			mvb.observer.DebugObserver.LogMetric("metadata_validator_skip", "files_skipped_no_metadata", 1)
+		if mvb.observer != nil && mvb.observer.Debug() != nil {
+			mvb.observer.Debug().LogDetail("metadata_bridge", "No metadata items to process - file type does not support metadata validation")
+			mvb.observer.Debug().LogMetric("metadata_validator_skip", "files_skipped_no_metadata", 1)
 		}
 
 		// Update skip metrics
@@ -1078,8 +1078,8 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 	}
 
 	// Log validation errors but don't fail completely if some items succeeded
-	if len(validationErrors) > 0 && mvb.observer != nil && mvb.observer.DebugObserver != nil {
-		mvb.observer.DebugObserver.LogDetail("metadata_validation_errors",
+	if len(validationErrors) > 0 && mvb.observer != nil && mvb.observer.Debug() != nil {
+		mvb.observer.Debug().LogDetail("metadata_validation_errors",
 			fmt.Sprintf("%d out of %d metadata items failed validation", len(validationErrors), len(metadataItems)))
 	}
 
@@ -1340,20 +1340,20 @@ func (evb *EnhancedValidatorBridge) ResetMetrics() {
 
 // LogOperationalStatus logs the current operational status for monitoring
 func (evb *EnhancedValidatorBridge) LogOperationalStatus() {
-	if evb.observer == nil || evb.observer.DebugObserver == nil {
+	if evb.observer == nil || evb.observer.Debug() == nil {
 		return
 	}
 
 	metrics := evb.GetDetailedMetrics()
 
-	evb.observer.DebugObserver.LogDetail("operational_status", "Enhanced Validator Bridge Status:")
-	evb.observer.DebugObserver.LogDetail("operational_status", fmt.Sprintf("  Total Validations: %v", metrics["total_validations"]))
-	evb.observer.DebugObserver.LogDetail("operational_status", fmt.Sprintf("  Success Rate: %.2f%%",
+	evb.observer.Debug().LogDetail("operational_status", "Enhanced Validator Bridge Status:")
+	evb.observer.Debug().LogDetail("operational_status", fmt.Sprintf("  Total Validations: %v", metrics["total_validations"]))
+	evb.observer.Debug().LogDetail("operational_status", fmt.Sprintf("  Success Rate: %.2f%%",
 		float64(metrics["successful_validations"].(int64))/float64(metrics["total_validations"].(int64))*100))
-	evb.observer.DebugObserver.LogDetail("operational_status", fmt.Sprintf("  Fallback Activations: %v", metrics["fallback_activations"]))
-	evb.observer.DebugObserver.LogDetail("operational_status", fmt.Sprintf("  Routing Success Rate: %.2f%%",
+	evb.observer.Debug().LogDetail("operational_status", fmt.Sprintf("  Fallback Activations: %v", metrics["fallback_activations"]))
+	evb.observer.Debug().LogDetail("operational_status", fmt.Sprintf("  Routing Success Rate: %.2f%%",
 		metrics["routing_success_rate"].(float64)*100))
-	evb.observer.DebugObserver.LogDetail("operational_status", fmt.Sprintf("  Average Processing Time: %vms", metrics["average_processing_time_ms"]))
+	evb.observer.Debug().LogDetail("operational_status", fmt.Sprintf("  Average Processing Time: %vms", metrics["average_processing_time_ms"]))
 }
 
 // getDefaultDualPathConfig returns default configuration

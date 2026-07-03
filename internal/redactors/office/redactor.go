@@ -23,7 +23,7 @@ import (
 // OfficeRedactor implements redaction for Microsoft Office documents using unified ZIP/XML approach
 type OfficeRedactor struct {
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// outputManager handles file system operations
 	outputManager *redactors.OutputStructureManager
@@ -70,7 +70,7 @@ func (dt OfficeDocumentType) String() string {
 }
 
 // NewOfficeRedactor creates a new OfficeRedactor
-func NewOfficeRedactor(outputManager *redactors.OutputStructureManager, observer *observability.StandardObserver) *OfficeRedactor {
+func NewOfficeRedactor(outputManager *redactors.OutputStructureManager, observer observability.Observer) *OfficeRedactor {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}
@@ -86,7 +86,7 @@ func NewOfficeRedactor(outputManager *redactors.OutputStructureManager, observer
 }
 
 // NewOfficeRedactorWithPositionCorrelation creates a new OfficeRedactor with custom position correlation settings
-func NewOfficeRedactorWithPositionCorrelation(outputManager *redactors.OutputStructureManager, observer *observability.StandardObserver, correlator position.PositionCorrelator, confidenceThreshold float64) *OfficeRedactor {
+func NewOfficeRedactorWithPositionCorrelation(outputManager *redactors.OutputStructureManager, observer observability.Observer, correlator position.PositionCorrelator, confidenceThreshold float64) *OfficeRedactor {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}

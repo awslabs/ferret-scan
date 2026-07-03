@@ -14,7 +14,7 @@ import (
 
 // ContentRouter intelligently separates metadata from document body content
 type ContentRouter struct {
-	observer   *observability.StandardObserver
+	observer   observability.Observer
 	fileRouter *FileRouter // Reference to FileRouter for file type detection
 }
 
@@ -75,7 +75,7 @@ func (cr *ContentRouter) SetFileRouter(fileRouter *FileRouter) {
 }
 
 // SetObserver sets the observability component
-func (cr *ContentRouter) SetObserver(observer *observability.StandardObserver) {
+func (cr *ContentRouter) SetObserver(observer observability.Observer) {
 	cr.observer = observer
 }
 
@@ -114,9 +114,9 @@ func (cr *ContentRouter) RouteContent(processedContent *preprocessors.ProcessedC
 		routedContent.DocumentBody = processedContent.Text
 
 		// Debug logging for file type filtering decision
-		if cr.observer != nil && cr.observer.DebugObserver != nil {
+		if cr.observer != nil && cr.observer.Debug() != nil {
 			ext := strings.ToLower(filepath.Ext(processedContent.OriginalPath))
-			cr.observer.DebugObserver.LogDetail("file_type_filtering",
+			cr.observer.Debug().LogDetail("file_type_filtering",
 				fmt.Sprintf("Metadata validation skipped - File: %s, Extension: %s, Reason: file type does not support metadata",
 					filepath.Base(processedContent.OriginalPath), ext))
 		}
