@@ -16,11 +16,12 @@ import (
 )
 
 // liveBytesProbeValidator records the peak concurrent in-flight content size it
-// observes. Because the worker pool acquires a file's bytes against the
-// live-bytes budget BEFORE calling ValidateContent and releases AFTER, the sum
-// of content lengths seen concurrently inside ValidateContent is exactly the
-// live-bytes the gate is bounding. The validator holds briefly so overlap is
-// observable when the gate permits it.
+// observes. The worker pool acquires a file's on-disk size against the
+// live-bytes budget BEFORE preprocessing and holds it through validation, so a
+// file whose validation is running has already reserved its bytes. The sum of
+// content lengths seen concurrently inside ValidateContent therefore never
+// exceeds the budget (for plaintext, content length ≈ on-disk size). The
+// validator holds briefly so overlap is observable when the gate permits it.
 type liveBytesProbeValidator struct {
 	inFlight int64
 	peak     int64

@@ -246,6 +246,27 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 			return resilience.ClassifyError(err)
 		}
 
+		// Live-bytes admission gate (v2 gap 2.3): reserve this file's bytes against
+		// the shared budget BEFORE reading/extracting it, and release after the
+		// whole job (preprocessing + validation). Acquiring here — rather than
+		// after ProcessFile — is what actually bounds peak memory: the dominant
+		// resident term is the extracted content ProcessFile materializes, so a
+		// worker must block before reading a large file when the budget is full,
+		// not after it is already in memory. Sized by the on-disk file size (the
+		// admission estimate available pre-read); extraction can expand text
+		// beyond this, but the per-file 100MB gate and the Office decompression
+		// bound (gap 2.4) cap that separately. When no budget is configured the
+		// limiter is disabled and Acquire/Release are no-ops, so the default path
+		// is byte-identical. If ctx is cancelled while waiting for budget, skip the
+		// file and record the context error so coverage is reported incomplete.
+		if bl := wp.liveBytesLimiter(job); bl != nil {
+			if aerr := bl.AcquireBytes(ctx, processingCtx.FileSize); aerr != nil {
+				validationErr = aerr
+				return nil
+			}
+			defer bl.ReleaseBytes(processingCtx.FileSize)
+		}
+
 		// GENAI_DISABLED: Process file with retry logic for GenAI operations
 		// if job.Config.EnableGenAI {
 		//	// Use AWS retry configuration for GenAI operations
@@ -269,21 +290,6 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 
 		if processedContent == nil {
 			return resilience.NewTransientError("no content processed", nil)
-		}
-
-		// Admission gate (v2 gap 2.3): reserve this file's content bytes against
-		// the shared live-bytes budget before validating, and release after. When
-		// no budget is configured the limiter is disabled and this is a no-op, so
-		// the default path is unchanged. If ctx is cancelled while waiting for
-		// budget, skip validation (no Release) and record the context error as the
-		// validation error so coverage is reported incomplete rather than clean.
-		contentBytes := int64(len(processedContent.Text))
-		if bl := wp.liveBytesLimiter(job); bl != nil {
-			if aerr := bl.AcquireBytes(ctx, contentBytes); aerr != nil {
-				validationErr = aerr
-				return nil
-			}
-			defer bl.ReleaseBytes(contentBytes)
 		}
 
 		// Run validators with error isolation. Capture the validator error
