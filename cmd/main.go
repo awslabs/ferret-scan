@@ -919,6 +919,7 @@ func main() {
 	// IP sub-type control flag
 	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
 	validatorBudget := flag.String("validator-budget", "", "Per-validator time budget as NAME=DURATION pairs. DURATION takes any Go duration unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. Default: no budget.")
+	maxLiveBytes := flag.String("max-live-bytes", "", "Cap total extracted content held in memory across concurrently scanned files, e.g. '256MB' or '1GB' (units: B, KB, MB, GB; bare number = bytes). Bounds peak memory on constrained hosts (e.g. Lambda) so many large files cannot multiply memory. Default: no cap (bounded only by the 100MB per-file limit × worker count).")
 
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
@@ -939,6 +940,13 @@ func main() {
 	validatorBudgets, budgetErr := parseValidatorBudgets(*validatorBudget)
 	if budgetErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", budgetErr)
+		os.Exit(1)
+	}
+
+	// Parse --max-live-bytes up front too. 0 means no cap (byte-identical default).
+	maxLiveBytesVal, mlbErr := parseByteSize(*maxLiveBytes)
+	if mlbErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", mlbErr)
 		os.Exit(1)
 	}
 
@@ -1726,6 +1734,7 @@ func main() {
 			RedactionStrategy:  finalConfig.redactionStrategy,
 			RedactionOutputDir: finalConfig.redactionOutputDir,
 			ValidatorBudgets:   validatorBudgets,
+			MaxLiveBytes:       maxLiveBytesVal,
 		}
 
 		// Show initial progress
@@ -2571,6 +2580,11 @@ func validateWebModeFlags() error {
 	if isFlagSet("validator-budget") {
 		incompatibleFlags = append(incompatibleFlags, "--validator-budget")
 		troubleshooting = append(troubleshooting, "Web mode does not apply per-validator CLI budgets; it runs with the default per-file timeout")
+	}
+
+	if isFlagSet("max-live-bytes") {
+		incompatibleFlags = append(incompatibleFlags, "--max-live-bytes")
+		troubleshooting = append(troubleshooting, "Web mode does not apply the CLI live-bytes memory cap")
 	}
 
 	// If any incompatible flags were found, return an error

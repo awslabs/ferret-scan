@@ -29,6 +29,14 @@ type WorkerPool struct {
 	observer       *observability.StandardObserver
 	retryManager   *resilience.RetryManager
 	circuitBreaker *resilience.CircuitBreakerManager
+
+	// bytesLimiter bounds total in-flight validator content across workers when
+	// a JobConfig sets MaxLiveBytes (v2 gap 2.3). It is built once from the first
+	// job's config (all jobs in a run share one config) and is nil until then; a
+	// nil/disabled limiter makes AcquireBytes/ReleaseBytes no-ops, so the default
+	// path is byte-identical.
+	bytesLimiterOnce sync.Once
+	bytesLimiter     *execguard.BytesLimiter
 }
 
 // Job represents a file processing task
@@ -68,6 +76,15 @@ type JobConfig struct {
 	// behavior. Attached to the per-file job context so the dispatch chokepoint
 	// (execguard.ValidateContent) can enforce each validator's budget.
 	ValidatorBudgets map[string]execguard.ValidatorBudget
+
+	// MaxLiveBytes optionally caps the total bytes of extracted content held in
+	// memory across concurrently validating files (v2 gap 2.3 "admission"
+	// slice). Zero/negative = disabled = historical behavior (bounded only by
+	// the per-file 100MB size gate × worker count). A memory-constrained
+	// embedder (e.g. Lambda) can set this so N concurrent large files cannot
+	// multiply memory past a fixed envelope. Enforced by the worker pool's
+	// shared execguard.BytesLimiter around the validation phase.
+	MaxLiveBytes int64
 }
 
 // DefaultJobTimeout is the per-file processing ceiling used when
@@ -183,6 +200,21 @@ func (wp *WorkerPool) safeProcessJob(job *Job, workerID int) (result *Result) {
 	return wp.processJob(job, workerID)
 }
 
+// liveBytesLimiter returns the shared live-bytes admission gate for this run,
+// building it once from the job's MaxLiveBytes (all jobs in a run share one
+// JobConfig). Returns nil when no budget is configured so callers skip the gate
+// entirely (byte-identical default path). A disabled BytesLimiter would also be
+// a no-op, but returning nil avoids the acquire/defer overhead on the hot path.
+func (wp *WorkerPool) liveBytesLimiter(job *Job) *execguard.BytesLimiter {
+	if job == nil || job.Config == nil || job.Config.MaxLiveBytes <= 0 {
+		return nil
+	}
+	wp.bytesLimiterOnce.Do(func() {
+		wp.bytesLimiter = execguard.NewBytesLimiter(job.Config.MaxLiveBytes)
+	})
+	return wp.bytesLimiter
+}
+
 // processJob executes a single job with resilience features
 func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	start := time.Now()
@@ -237,6 +269,21 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 
 		if processedContent == nil {
 			return resilience.NewTransientError("no content processed", nil)
+		}
+
+		// Admission gate (v2 gap 2.3): reserve this file's content bytes against
+		// the shared live-bytes budget before validating, and release after. When
+		// no budget is configured the limiter is disabled and this is a no-op, so
+		// the default path is unchanged. If ctx is cancelled while waiting for
+		// budget, skip validation (no Release) and record the context error as the
+		// validation error so coverage is reported incomplete rather than clean.
+		contentBytes := int64(len(processedContent.Text))
+		if bl := wp.liveBytesLimiter(job); bl != nil {
+			if aerr := bl.AcquireBytes(ctx, contentBytes); aerr != nil {
+				validationErr = aerr
+				return nil
+			}
+			defer bl.ReleaseBytes(contentBytes)
 		}
 
 		// Run validators with error isolation. Capture the validator error
