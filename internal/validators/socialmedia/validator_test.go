@@ -217,18 +217,6 @@ func TestSocialMediaValidator_UnconfiguredReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestSocialMediaValidator_Validate_ReturnsEmpty(t *testing.T) {
-	v := NewValidator()
-
-	matches, err := v.Validate("somefile.txt")
-	if err != nil {
-		t.Fatalf("Validate returned error: %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("Validate should return empty (direct file processing not supported), got %d", len(matches))
-	}
-}
-
 // --- CalculateConfidence Tests ---
 
 func TestSocialMediaValidator_CalculateConfidence(t *testing.T) {

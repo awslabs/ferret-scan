@@ -314,28 +314,6 @@ func hasMRZStructure(s string) bool {
 	return fillers >= 5
 }
 
-// Validate implements the detector.Validator interface
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	var finishTiming func(bool, map[string]interface{})
-	var finishStep func(bool, string)
-	if v.observer != nil {
-		finishTiming = v.observer.StartTiming("passport_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("passport_validator", "validate_file", filePath)
-		}
-	}
-
-	// Passport validator should not process files directly - only preprocessed content
-	// Return empty results to avoid processing file system data
-	if finishTiming != nil {
-		finishTiming(true, map[string]interface{}{"match_count": 0, "direct_file_processing": false})
-	}
-	if finishStep != nil {
-		finishStep(true, "Passport validator only processes preprocessed content")
-	}
-	return []detector.Match{}, nil
-}
-
 // maxMatchesPerLinePerPattern bounds how many regex hits we will fully process
 // for a single (line, pattern) pair. A single pathologically long line packed
 // with thousands of passport-shaped tokens would otherwise drive the validator

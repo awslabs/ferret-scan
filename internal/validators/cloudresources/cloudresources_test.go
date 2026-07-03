@@ -48,17 +48,6 @@ func TestNewValidator(t *testing.T) {
 	}
 }
 
-func TestValidate_ReturnsEmpty(t *testing.T) {
-	v := NewValidator()
-	ms, err := v.Validate("/some/file")
-	if err != nil {
-		t.Fatalf("Validate error: %v", err)
-	}
-	if len(ms) != 0 {
-		t.Errorf("Validate should return no matches (content-only validator), got %d", len(ms))
-	}
-}
-
 // --- Detection of canonical formats per provider ---
 
 func TestDetectsCanonicalFormats(t *testing.T) {

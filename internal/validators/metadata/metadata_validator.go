@@ -300,28 +300,6 @@ func (v *Validator) SetObserver(observer *observability.StandardObserver) {
 	v.observer = observer
 }
 
-// Validate scans file content for metadata-related sensitive information
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	var finishTiming func(bool, map[string]interface{})
-	var finishStep func(bool, string)
-	if v.observer != nil {
-		finishTiming = v.observer.StartTiming("metadata_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("metadata_validator", "validate_file", filePath)
-		}
-	}
-
-	// Metadata validator should not process files directly - only preprocessed content
-	// Return empty results to avoid processing file system metadata
-	if finishTiming != nil {
-		finishTiming(true, map[string]interface{}{"match_count": 0, "metadata_extracted": false})
-	}
-	if finishStep != nil {
-		finishStep(true, "Metadata validator only processes preprocessed content")
-	}
-	return []detector.Match{}, nil
-}
-
 // CalculateConfidence calculates the confidence score for a match
 func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool) {
 	// Start with medium-low confidence

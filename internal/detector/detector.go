@@ -25,9 +25,14 @@ type ContextInfo struct {
 	ConfidenceImpact float64
 }
 
-// Validator interface defines methods for validating sensitive data
+// Validator interface defines methods for validating sensitive data.
+//
+// Validators operate exclusively on pre-extracted content via ValidateContent;
+// the file-reading Validate(filePath) method that this interface used to carry
+// was a dead surface — every implementation was a no-op that returned no matches
+// without ever reading the file (production always routed extracted text through
+// ValidateContent), so it was removed in v2 (gap 3.2).
 type Validator interface {
-	Validate(filePath string) ([]Match, error)
 	CalculateConfidence(match string) (float64, map[string]bool)
 
 	// New method for contextual analysis

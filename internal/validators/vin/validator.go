@@ -157,26 +157,6 @@ func (v *Validator) SetObserver(observer *observability.StandardObserver) {
 	v.observer = observer
 }
 
-// Validate implements the detector.Validator interface (legacy file-based).
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	var finishTiming func(bool, map[string]interface{})
-	var finishStep func(bool, string)
-	if v.observer != nil {
-		finishTiming = v.observer.StartTiming("vin_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("vin_validator", "validate_file", filePath)
-		}
-	}
-
-	if finishTiming != nil {
-		finishTiming(true, map[string]interface{}{"match_count": 0, "direct_file_processing": false})
-	}
-	if finishStep != nil {
-		finishStep(true, "VIN validator only processes preprocessed content")
-	}
-	return []detector.Match{}, nil
-}
-
 // ValidateContent validates preprocessed content for VINs.
 //
 // Performance: a single very long line can carry thousands of candidate

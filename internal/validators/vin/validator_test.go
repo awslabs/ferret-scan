@@ -249,17 +249,6 @@ func TestVINValidator_MetadataFields(t *testing.T) {
 	}
 }
 
-func TestVINValidator_LegacyValidate(t *testing.T) {
-	validator := NewValidator()
-	matches, err := validator.Validate("nonexistent.txt")
-	if err != nil {
-		t.Fatalf("Validate() should not error: %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("Validate() should return empty matches, got %d", len(matches))
-	}
-}
-
 // TestVINValidator_NonNorthAmericanCheckDigit is a regression test for the
 // mandatory-check-digit gate that silently dropped most non-North-American
 // VINs. The ISO 3779 check digit is required only for WMI region 1-5 (North

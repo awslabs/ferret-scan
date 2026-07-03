@@ -616,18 +616,6 @@ func TestIPAddressValidator_IsEmbeddedInString(t *testing.T) {
 	}
 }
 
-func TestIPAddressValidator_Validate_ReturnsEmpty(t *testing.T) {
-	v := NewValidator()
-
-	matches, err := v.Validate("somefile.txt")
-	if err != nil {
-		t.Fatalf("Validate returned error: %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("Validate should return empty results (direct file processing not supported), got %d", len(matches))
-	}
-}
-
 func TestIPAddressValidator_CleanIPAddress(t *testing.T) {
 	v := NewValidator()
 

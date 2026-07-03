@@ -263,28 +263,6 @@ func (v *Validator) SetObserver(observer *observability.StandardObserver) {
 	v.observer = observer
 }
 
-// Validate implements the detector.Validator interface
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	var finishTiming func(bool, map[string]interface{})
-	var finishStep func(bool, string)
-	if v.observer != nil {
-		finishTiming = v.observer.StartTiming("phone_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("phone_validator", "validate_file", filePath)
-		}
-	}
-
-	// Phone validator should not process files directly - only preprocessed content
-	// Return empty results to avoid processing file system data
-	if finishTiming != nil {
-		finishTiming(true, map[string]interface{}{"match_count": 0, "direct_file_processing": false})
-	}
-	if finishStep != nil {
-		finishStep(true, "Phone validator only processes preprocessed content")
-	}
-	return []detector.Match{}, nil
-}
-
 // ValidateContent validates preprocessed content for phone numbers
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	// Backward-compatible shim: run with a background context (never cancels).

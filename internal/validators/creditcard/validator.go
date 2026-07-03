@@ -162,12 +162,6 @@ func (v *Validator) SetObserver(observer *observability.StandardObserver) {
 	v.observer = observer
 }
 
-// Validate implements the detector.Validator interface
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	// Credit card validator should not process files directly
-	return []detector.Match{}, nil
-}
-
 // ValidateContent validates preprocessed content with optimized performance
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	// Backward-compatible shim: run with a background context (never cancels).

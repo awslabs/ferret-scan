@@ -552,17 +552,6 @@ func TestSSNValidator_ValidateContentMethod(t *testing.T) {
 	})
 }
 
-func TestSSNValidator_LegacyValidate(t *testing.T) {
-	validator := NewValidator()
-	matches, err := validator.Validate("nonexistent.txt")
-	if err != nil {
-		t.Fatalf("Validate() should not error: %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("Validate() should return empty matches, got %d", len(matches))
-	}
-}
-
 func TestSSNValidator_IsValidSSN(t *testing.T) {
 	validator := NewValidator()
 

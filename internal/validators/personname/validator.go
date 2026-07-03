@@ -89,22 +89,6 @@ func NewValidator() *Validator {
 	return v
 }
 
-// Validate implements the detector.Validator interface for direct file processing
-// Returns empty results as this validator only works with preprocessed content
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	// Log operation for observability
-	v.observer.LogOperation(observability.StandardObservabilityData{
-		Component: "personname",
-		Operation: "validate_file",
-		FilePath:  filePath,
-		Success:   true,
-		Metadata: map[string]interface{}{
-			"message": "Direct file validation not supported, use preprocessed content",
-		},
-	})
-	return []detector.Match{}, nil
-}
-
 // ValidateContent implements the detector.Validator interface for preprocessed content
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	// Backward-compatible shim: run with a background context (never cancels).
