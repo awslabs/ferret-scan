@@ -315,17 +315,6 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	return matches, nil
 }
 
-// Validate implements the detector.Validator interface for direct file
-// processing. The cloud resources validator only processes preprocessed content
-// via ValidateContent, so this returns no results.
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	if v.observer != nil {
-		finish := v.observer.StartTiming("cloud_resources", "validate_file", filePath)
-		finish(true, map[string]interface{}{"match_count": 0, "direct_file_processing": false})
-	}
-	return []detector.Match{}, nil
-}
-
 // logDetail is a nil-safe debug logging helper.
 func (v *Validator) logDetail(msg string) {
 	if v.observer != nil && v.observer.Debug() != nil {

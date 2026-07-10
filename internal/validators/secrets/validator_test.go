@@ -1184,18 +1184,6 @@ func TestSecretsValidator_IsTabularData(t *testing.T) {
 // Validate method (legacy - returns empty)
 // ---------------------------------------------------------------------------
 
-func TestSecretsValidator_Validate_ReturnsEmpty(t *testing.T) {
-	v := NewValidator()
-
-	matches, err := v.Validate("some/file/path.txt")
-	if err != nil {
-		t.Fatalf("Validate returned error: %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("Validate should return empty matches, got %d", len(matches))
-	}
-}
-
 // ---------------------------------------------------------------------------
 // GetSecretType priority
 // ---------------------------------------------------------------------------

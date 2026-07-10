@@ -542,22 +542,6 @@ func (v *Validator) Configure(cfg *config.Config) {
 	}
 }
 
-// Validate implements the detector.Validator interface
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	// Social media validator should not process files directly - only preprocessed content
-	// Return empty results to avoid processing file system data
-	var finishTiming func(bool, map[string]any)
-	if v.observer != nil {
-		finishTiming = v.observer.StartTiming("social_media_validator", "validate_file", filePath)
-	}
-
-	if finishTiming != nil {
-		finishTiming(true, map[string]any{"match_count": 0, "direct_file_processing": false})
-	}
-
-	return []detector.Match{}, nil
-}
-
 // ValidateContent validates preprocessed content for social media references
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	// Backward-compatible shim: run with a background context (never cancels).

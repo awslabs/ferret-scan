@@ -25,11 +25,6 @@ type MetadataValidatorAdapter struct {
 	observer  observability.Observer
 }
 
-// Validate implements detector.Validator interface
-func (mva *MetadataValidatorAdapter) Validate(filePath string) ([]detector.Match, error) {
-	return mva.validator.Validate(filePath)
-}
-
 // CalculateConfidence implements detector.Validator interface
 func (mva *MetadataValidatorAdapter) CalculateConfidence(match string) (float64, map[string]bool) {
 	return mva.validator.CalculateConfidence(match)

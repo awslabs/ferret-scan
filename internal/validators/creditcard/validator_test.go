@@ -594,17 +594,6 @@ func TestCreditCardValidator_IsTabularData(t *testing.T) {
 	}
 }
 
-func TestCreditCardValidator_LegacyValidate(t *testing.T) {
-	validator := NewValidator()
-	matches, err := validator.Validate("nonexistent.txt")
-	if err != nil {
-		t.Fatalf("Validate() should not error: %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("Validate() should return empty matches, got %d", len(matches))
-	}
-}
-
 func TestCreditCardValidator_ValidateContentMetadata(t *testing.T) {
 	validator := NewValidator()
 

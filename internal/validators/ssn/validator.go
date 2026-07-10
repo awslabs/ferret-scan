@@ -167,28 +167,6 @@ func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
-// Validate implements the detector.Validator interface
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	var finishTiming func(bool, map[string]interface{})
-	var finishStep func(bool, string)
-	if v.observer != nil {
-		finishTiming = v.observer.StartTiming("ssn_validator", "validate_file", filePath)
-		if v.observer.Debug() != nil {
-			finishStep = v.observer.Debug().StartStep("ssn_validator", "validate_file", filePath)
-		}
-	}
-
-	// SSN validator should not process files directly - only preprocessed content
-	// Return empty results to avoid processing file system data
-	if finishTiming != nil {
-		finishTiming(true, map[string]interface{}{"match_count": 0, "direct_file_processing": false})
-	}
-	if finishStep != nil {
-		finishStep(true, "SSN validator only processes preprocessed content")
-	}
-	return []detector.Match{}, nil
-}
-
 // lineContext holds per-line analysis results that are identical for every match
 // on the same line. Computing these once per line (instead of once per match)
 // turns the previous O(matches * lineLength) hot path into O(lineLength + matches):

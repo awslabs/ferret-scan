@@ -584,19 +584,6 @@ func TestPersonNameValidator_HasRepeatedCharacters(t *testing.T) {
 	}
 }
 
-// TestPersonNameValidator_Validate_ReturnsEmpty tests that direct Validate returns empty
-func TestPersonNameValidator_Validate_ReturnsEmpty(t *testing.T) {
-	v := NewValidator()
-
-	matches, err := v.Validate("somefile.txt")
-	if err != nil {
-		t.Fatalf("Validate returned error: %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("Validate should return empty (direct file processing not supported), got %d", len(matches))
-	}
-}
-
 // TestPersonNameValidator_ParseNameParts tests the legacy name parsing
 func TestPersonNameValidator_ParseNameParts(t *testing.T) {
 	v := NewValidator()

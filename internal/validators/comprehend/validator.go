@@ -46,22 +46,6 @@ func (v *Validator) SetRegion(region string) {
 	v.awsRegion = region
 }
 
-// Validate processes a file for PII detection by reading its content
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	if !v.enabled {
-		return []detector.Match{}, nil
-	}
-
-	// Read file content
-	cleanPath := filepath.Clean(filePath)
-	content, err := os.ReadFile(cleanPath)
-	if err != nil {
-		return []detector.Match{}, fmt.Errorf("failed to read file %s: %w", filePath, err)
-	}
-
-	// Use ValidateContent to analyze the text
-	return v.ValidateContent(string(content), filePath)
-}
 
 // ValidateContent analyzes text content for PII using Amazon Comprehend
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {

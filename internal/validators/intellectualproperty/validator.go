@@ -675,28 +675,6 @@ func (v *Validator) compileInternalURLPatterns() {
 	}
 }
 
-// Validate implements the detector.Validator interface
-func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
-	var finishTiming func(bool, map[string]any)
-	var finishStep func(bool, string)
-	if v.observer != nil {
-		finishTiming = v.observer.StartTiming("ip_validator", "validate_file", filePath)
-		if v.observer.Debug() != nil {
-			finishStep = v.observer.Debug().StartStep("ip_validator", "validate_file", filePath)
-		}
-	}
-
-	// Intellectual property validator should not process files directly - only preprocessed content
-	// Return empty results to avoid processing file system data
-	if finishTiming != nil {
-		finishTiming(true, map[string]any{"match_count": 0, "direct_file_processing": false})
-	}
-	if finishStep != nil {
-		finishStep(true, "Intellectual property validator only processes preprocessed content")
-	}
-	return []detector.Match{}, nil
-}
-
 // ValidateContent validates preprocessed content for intellectual property references
 func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
 	// Backward-compatible shim: run with a background context (never cancels).

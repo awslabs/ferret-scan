@@ -106,9 +106,6 @@ func (d *Detector) SetFileRouter(fileRouter *router.FileRouter) {
 	}
 }
 
-// Validate implements detector.Validator (unused in this flow, required by interface).
-func (d *Detector) Validate(filePath string) ([]detector.Match, error) { return nil, nil }
-
 // CalculateConfidence implements detector.Validator (unused in this flow).
 func (d *Detector) CalculateConfidence(match string) (float64, map[string]bool) { return 0.0, nil }
 
