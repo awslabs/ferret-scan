@@ -32,6 +32,19 @@ func NewStandardObserver(level ObservabilityLevel, writer io.Writer) *StandardOb
 	}
 }
 
+// StandardObserver is the production implementation of the Observer seam.
+var _ Observer = (*StandardObserver)(nil)
+
+// Debug returns the attached debug observer, or nil when debug logging is off.
+// It implements the Observer interface so components can hold the interface
+// instead of this concrete type while still reaching the debug observer.
+func (o *StandardObserver) Debug() *DebugObserver {
+	if o == nil {
+		return nil
+	}
+	return o.DebugObserver
+}
+
 // StartTiming returns a function to complete timing
 func (o *StandardObserver) StartTiming(component, operation, filePath string) func(success bool, metadata map[string]interface{}) {
 	start := time.Now()

@@ -17,7 +17,7 @@ import (
 // RecoveryManager handles document processing failure recovery
 type RecoveryManager struct {
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// config contains recovery configuration
 	config *RecoveryConfig
@@ -133,7 +133,7 @@ type RecoveryResult struct {
 }
 
 // NewRecoveryManager creates a new RecoveryManager
-func NewRecoveryManager(observer *observability.StandardObserver) *RecoveryManager {
+func NewRecoveryManager(observer observability.Observer) *RecoveryManager {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}

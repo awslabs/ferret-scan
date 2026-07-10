@@ -21,7 +21,7 @@ type RedactionManager struct {
 	redactors map[string]Redactor
 
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// outputManager handles file system operations
 	outputManager *OutputStructureManager
@@ -218,7 +218,7 @@ type FileRedactionResult struct {
 }
 
 // NewRedactionManager creates a new RedactionManager with default configuration
-func NewRedactionManager(outputManager *OutputStructureManager, observer *observability.StandardObserver) *RedactionManager {
+func NewRedactionManager(outputManager *OutputStructureManager, observer observability.Observer) *RedactionManager {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}
@@ -253,7 +253,7 @@ func NewRedactionManager(outputManager *OutputStructureManager, observer *observ
 }
 
 // NewRedactionManagerWithConfig creates a new RedactionManager with custom configuration
-func NewRedactionManagerWithConfig(outputManager *OutputStructureManager, observer *observability.StandardObserver, config *RedactionManagerConfig) *RedactionManager {
+func NewRedactionManagerWithConfig(outputManager *OutputStructureManager, observer observability.Observer, config *RedactionManagerConfig) *RedactionManager {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}
@@ -840,7 +840,7 @@ func (rm *RedactionManager) GetOutputManager() *OutputStructureManager {
 }
 
 // GetObserver returns the observer for use by external redactor registration
-func (rm *RedactionManager) GetObserver() *observability.StandardObserver {
+func (rm *RedactionManager) GetObserver() observability.Observer {
 	return rm.observer
 }
 

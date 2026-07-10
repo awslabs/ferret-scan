@@ -68,7 +68,7 @@ type Validator struct {
 	customPatterns []*regexp.Regexp
 
 	// Observability (following standard pattern).
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // NewValidator creates and returns a new Validator instance
@@ -98,7 +98,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component.
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
@@ -317,8 +317,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 // logDetail is a nil-safe debug logging helper.
 func (v *Validator) logDetail(msg string) {
-	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("cloud_resources", msg)
+	if v.observer != nil && v.observer.Debug() != nil {
+		v.observer.Debug().LogDetail("cloud_resources", msg)
 	}
 }
 
@@ -701,10 +701,10 @@ func (v *Validator) Configure(cfg *config.Config) {
 }
 
 func (v *Validator) logStartup() {
-	if v.observer == nil || v.observer.DebugObserver == nil {
+	if v.observer == nil || v.observer.Debug() == nil {
 		return
 	}
-	v.observer.DebugObserver.LogDetail("cloud_resources",
+	v.observer.Debug().LogDetail("cloud_resources",
 		fmt.Sprintf("Cloud Resource Validator initialized: %d built-in patterns, %d custom patterns",
 			len(v.patterns), len(v.customPatterns)))
 	enabledCount := 0
@@ -713,7 +713,7 @@ func (v *Validator) logStartup() {
 			enabledCount++
 		}
 	}
-	v.observer.DebugObserver.LogDetail("cloud_resources",
+	v.observer.Debug().LogDetail("cloud_resources",
 		fmt.Sprintf("Providers: %d enabled, %d disabled", enabledCount, len(v.enabledProviders)-enabledCount))
 }
 

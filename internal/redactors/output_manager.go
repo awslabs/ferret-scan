@@ -20,7 +20,7 @@ type OutputStructureManager struct {
 	baseOutputDir string
 
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// preservePermissions indicates whether to preserve original file permissions
 	preservePermissions bool
@@ -39,7 +39,7 @@ type FileInfo struct {
 }
 
 // NewOutputStructureManager creates a new OutputStructureManager
-func NewOutputStructureManager(baseOutputDir string, observer *observability.StandardObserver) (*OutputStructureManager, error) {
+func NewOutputStructureManager(baseOutputDir string, observer observability.Observer) (*OutputStructureManager, error) {
 	if baseOutputDir == "" {
 		return nil, fmt.Errorf("base output directory cannot be empty")
 	}

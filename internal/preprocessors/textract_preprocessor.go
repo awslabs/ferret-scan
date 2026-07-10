@@ -142,7 +142,7 @@ func (tp *TextractPreprocessor) IsEnabled() bool {
 }
 
 // SetObserver sets the observability component (minimal implementation)
-func (tp *TextractPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (tp *TextractPreprocessor) SetObserver(observer observability.Observer) {
 	// Minimal implementation for interface compliance
 }
 

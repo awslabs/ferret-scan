@@ -21,7 +21,7 @@ type FileRouter struct {
 	preprocessors []preprocessors.Preprocessor
 	metrics       *RouterMetrics
 	logger        *DebugLogger
-	observer      *observability.StandardObserver
+	observer      observability.Observer
 }
 
 // MaxFileSize is the default maximum file size the router will process (100 MB).
@@ -262,8 +262,8 @@ func (fr *FileRouter) CanContainMetadata(filePath string) bool {
 	canContain := isMetadataCapableFile(ext)
 
 	// Debug logging for file type detection decisions
-	if fr.observer != nil && fr.observer.DebugObserver != nil {
-		fr.observer.DebugObserver.LogDetail("file_type_detection",
+	if fr.observer != nil && fr.observer.Debug() != nil {
+		fr.observer.Debug().LogDetail("file_type_detection",
 			fmt.Sprintf("File: %s, Extension: %s, CanContainMetadata: %t",
 				filepath.Base(filePath), ext, canContain))
 	}
@@ -277,8 +277,8 @@ func (fr *FileRouter) GetMetadataType(filePath string) string {
 	metadataType := getMetadataTypeForExtension(ext)
 
 	// Debug logging for metadata type detection
-	if fr.observer != nil && fr.observer.DebugObserver != nil {
-		fr.observer.DebugObserver.LogDetail("metadata_type_detection",
+	if fr.observer != nil && fr.observer.Debug() != nil {
+		fr.observer.Debug().LogDetail("metadata_type_detection",
 			fmt.Sprintf("File: %s, Extension: %s, MetadataType: %s",
 				filepath.Base(filePath), ext, metadataType))
 	}
@@ -288,23 +288,32 @@ func (fr *FileRouter) GetMetadataType(filePath string) string {
 
 // Helper functions
 
+// extValidator is the SINGLE source of truth for which extensions the metadata
+// preprocessors actually handle. The router's routing gate (isBinaryDocument /
+// isMetadataCapableFile / getMetadataTypeForExtension) delegates to it so the
+// gate can never claim to process an extension that no preprocessor supports.
+//
+// Previously the router carried its own broader hardcoded list (adding e.g.
+// .heic/.doc/.avi/.ogg) that had DRIFTED from what the preprocessors' own
+// FileExtensionValidator recognizes. A .heic file passed the gate, then reached
+// processFileInternal where every preprocessor's CanProcess returned false,
+// producing a mid-pipeline "no preprocessor can handle file" error instead of a
+// clean "unsupported file type" skip. Deriving the gate from the same validator
+// the preprocessors use removes that drift (v2 gap 5.3).
+var extValidator = preprocessors.NewFileExtensionValidator()
+
+// extProbe turns a bare extension (".heic") into a filename the
+// FileExtensionValidator's path-based predicates can inspect (its Is*File
+// methods run filepath.Ext internally, which returns "" for a bare ".heic").
+func extProbe(ext string) string { return "f" + ext }
+
 func isBinaryDocument(ext string) bool {
-	binaryExts := map[string]bool{
-		// Office documents
-		".docx": true, ".doc": true, ".xlsx": true, ".xls": true, ".pptx": true, ".ppt": true,
-		".odt": true, ".ods": true, ".odp": true,
-		// PDF documents
-		".pdf": true,
-		// Image formats
-		".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".tiff": true, ".tif": true,
-		".bmp": true, ".webp": true, ".heic": true, ".heif": true, ".raw": true, ".cr2": true, ".nef": true, ".arw": true,
-		// Video formats
-		".mp4": true, ".mov": true, ".avi": true, ".mkv": true, ".wmv": true, ".flv": true,
-		".webm": true, ".m4v": true, ".3gp": true, ".ogv": true,
-		// Audio formats
-		".mp3": true, ".flac": true, ".wav": true, ".ogg": true, ".m4a": true, ".aac": true, ".wma": true, ".opus": true,
-	}
-	return binaryExts[ext]
+	p := extProbe(ext)
+	return extValidator.IsOfficeFile(p) ||
+		extValidator.IsPDFFile(p) ||
+		extValidator.IsImageFile(p) ||
+		extValidator.IsVideoFile(p) ||
+		extValidator.IsAudioFile(p)
 }
 
 // isMetadataCapableFile determines if a file extension indicates metadata capability
@@ -313,18 +322,22 @@ func isMetadataCapableFile(ext string) bool {
 	return isBinaryDocument(ext)
 }
 
-// getMetadataTypeForExtension returns the specific metadata type for preprocessor routing
+// getMetadataTypeForExtension returns the specific metadata type for preprocessor
+// routing, keyed off the shared FileExtensionValidator. The returned strings are
+// the same the specialized preprocessors identify with (office/document/image/
+// video/audio_metadata); "none" for anything no preprocessor handles.
 func getMetadataTypeForExtension(ext string) string {
-	switch ext {
-	case ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".odt", ".ods", ".odp":
+	p := extProbe(ext)
+	switch {
+	case extValidator.IsOfficeFile(p):
 		return "office_metadata"
-	case ".pdf":
+	case extValidator.IsPDFFile(p):
 		return "document_metadata"
-	case ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".heic", ".heif", ".raw", ".cr2", ".nef", ".arw":
+	case extValidator.IsImageFile(p):
 		return "image_metadata"
-	case ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm", ".m4v", ".3gp", ".ogv":
+	case extValidator.IsVideoFile(p):
 		return "video_metadata"
-	case ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus":
+	case extValidator.IsAudioFile(p):
 		return "audio_metadata"
 	default:
 		return "none"

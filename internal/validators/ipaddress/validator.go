@@ -86,7 +86,7 @@ type Validator struct {
 	nonSensitiveNets []*net.IPNet
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // ipPattern represents an IP address pattern with its type info
@@ -237,7 +237,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 

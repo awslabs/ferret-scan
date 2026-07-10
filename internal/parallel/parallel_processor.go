@@ -18,7 +18,7 @@ import (
 // ParallelProcessor manages parallel file processing
 type ParallelProcessor struct {
 	workerPool *WorkerPool
-	observer   *observability.StandardObserver
+	observer   observability.Observer
 }
 
 // ProcessingStats tracks parallel processing statistics
@@ -47,7 +47,7 @@ type FileDiagnostic struct {
 }
 
 // NewParallelProcessor creates a new parallel processor
-func NewParallelProcessor(observer *observability.StandardObserver) *ParallelProcessor {
+func NewParallelProcessor(observer observability.Observer) *ParallelProcessor {
 	workers := runtime.NumCPU()
 	if workers > 8 {
 		workers = 8 // Cap at 8 workers to avoid resource exhaustion

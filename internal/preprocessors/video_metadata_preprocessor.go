@@ -68,7 +68,7 @@ func (vmp *VideoMetadataPreprocessor) processVideoMetadata(filePath string) (*Pr
 }
 
 // SetObserver sets the observability component
-func (vmp *VideoMetadataPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (vmp *VideoMetadataPreprocessor) SetObserver(observer observability.Observer) {
 	vmp.BaseMetadataPreprocessor.SetObserver(observer)
 }
 

@@ -850,5 +850,13 @@ func LoadConfigStrict(configFile string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config %q: %w", configFile, err)
 	}
+	// Enforce the typed schema on the strict (operator-supplied) path so a
+	// typo'd enum value (format/strategy/checks/confidence_levels) is reported
+	// instead of silently ignored. The lenient LoadConfig/LoadConfigOrDefault
+	// path deliberately skips this to preserve best-effort auto-discovery
+	// behavior (v2 gap 6.4; see schema.go).
+	if err := ValidateSchema(cfg); err != nil {
+		return nil, fmt.Errorf("invalid config %q: %w", configFile, err)
+	}
 	return cfg, nil
 }

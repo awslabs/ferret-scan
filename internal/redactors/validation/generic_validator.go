@@ -16,7 +16,7 @@ import (
 // GenericDocumentValidator provides basic validation for any document type
 type GenericDocumentValidator struct {
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// supportedTypes lists the file types this validator can handle
 	supportedTypes []string
@@ -26,7 +26,7 @@ type GenericDocumentValidator struct {
 }
 
 // NewGenericDocumentValidator creates a new generic document validator
-func NewGenericDocumentValidator(observer *observability.StandardObserver) *GenericDocumentValidator {
+func NewGenericDocumentValidator(observer observability.Observer) *GenericDocumentValidator {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}

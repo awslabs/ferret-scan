@@ -280,16 +280,19 @@ over-budget inputs, which requires Phase 3 (not yet done).
 | gitlab name-tier metadata → `core.TypeMeta` | 3.3 (remainder) | **open** | #103 |
 | `ScanResult.Incomplete` on the file/worker-pool path | 1.4 (file path) | **open** | #104 |
 | Performance baseline (docs) | — | **open** | #105 |
+| Structured `Observer`/telemetry seam | 6.2 | **open** | #124 |
+| Typed config schema (enum-field validation on strict load) | 6.4 | **open** | #125 |
+| Live-bytes admission budget (`execguard.BytesLimiter`, `--max-live-bytes`, `ScanConfig.MaxLiveBytes`) | 2.3 (admission) | **open** | #126 |
 
 **Not yet started (the real remaining work, roughly two phases):**
 
 | Item | Gap(s) | Notes |
 |---|---|---|
 | **ctx-polling inside validator hot loops + shared `LineScan` primitive + per-validator/extraction budgets** | 1.1 (tail), 4.1, 4.2 | **Phase 3** — the marquee remaining item; fixes the single-long-line O(n²) (see Performance Baseline: 256 KB line ~9.6s → target sub-second). First *observable* behavior change (bounded-partial on over-budget input). Highest value; needs its own review on merged base. |
-| Structured provenance through preprocessing | 5.1 | Move C leftover (HIGH — lossy position round-trip) |
-| Data-driven file-type routing (collapse 4 drifting extension maps) | 5.3 | Move C leftover |
-| Structured `Observer`/telemetry seam | 6.2 | Move D |
-| Typed config schema | 6.4 | Move D |
+| Structured provenance through preprocessing | 5.1 | Move C leftover (HIGH — lossy position round-trip); **behavior-changing → needs an owner decision on line-number semantics** |
+| Data-driven file-type routing (collapse 4 drifting extension maps) | 5.3 | **shipped** (#122) |
+| Streaming + per-validator `strings.Split` elision (the non-admission parts of 2.3) | 2.3 (remainder) | **blocked**: the exported `detector.Validator.ValidateContent(content string)` is a whole-file API; true streaming can't be added without breaking it (same class as 3.2). The admission slice shipped in #126. |
+| Fuse the two validator fan-out engines | 1.2 (engine) | **investigated, not a clean autonomous increment**: the engines are nested (RunValidators fans out a size-1 facade list; the real fan-out is inside the bridge) with non-overlapping semantics, so collapsing them reorders observable side effects → needs an owner decision. |
 | Delete dead `internal/monitoring` + `internal/performance` (~4.4K LOC) | 6.3 | Move D — pure excision |
 | Delete dead `redactors/strategies` (keep `replacement/`) | 6.1 | Move D — pure excision |
 | Collapse dual `Validate`/`ValidateContent` interface surface | 3.2 | Exported-interface breaking change |

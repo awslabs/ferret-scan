@@ -137,7 +137,7 @@ type Validator struct {
 	businessPatterns []string
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // NewValidator creates and returns a new Validator instance
@@ -188,7 +188,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 

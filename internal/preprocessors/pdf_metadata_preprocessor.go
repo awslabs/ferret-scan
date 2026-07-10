@@ -215,7 +215,7 @@ func (pmp *PDFMetadataPreprocessor) GetSupportedExtensions() []string {
 }
 
 // SetObserver sets the observability component
-func (pmp *PDFMetadataPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (pmp *PDFMetadataPreprocessor) SetObserver(observer observability.Observer) {
 	pmp.BaseMetadataPreprocessor.SetObserver(observer)
 }
 

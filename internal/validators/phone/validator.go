@@ -63,7 +63,7 @@ type Validator struct {
 	sortedCountryCodes []string
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // phonePattern represents a phone number pattern with its format info
@@ -259,7 +259,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 

@@ -22,7 +22,7 @@ type RouterInterface interface {
 type BaseMetadataPreprocessor struct {
 	name            string
 	processorType   string
-	observer        *observability.StandardObserver
+	observer        observability.Observer
 	router          RouterInterface
 	resourceManager *MediaResourceManager
 	errorHandler    *GracefulDegradationHandler
@@ -50,7 +50,7 @@ func (bmp *BaseMetadataPreprocessor) GetName() string {
 }
 
 // SetObserver sets the observability component
-func (bmp *BaseMetadataPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (bmp *BaseMetadataPreprocessor) SetObserver(observer observability.Observer) {
 	bmp.observer = observer
 }
 
@@ -65,7 +65,7 @@ func (bmp *BaseMetadataPreprocessor) GetUtilities() *SharedUtilities {
 }
 
 // GetObserver returns the observer instance
-func (bmp *BaseMetadataPreprocessor) GetObserver() *observability.StandardObserver {
+func (bmp *BaseMetadataPreprocessor) GetObserver() observability.Observer {
 	return bmp.observer
 }
 
@@ -76,34 +76,34 @@ func (bmp *BaseMetadataPreprocessor) GetRouter() RouterInterface {
 
 // LogDebugInfo logs debug information if observer is available
 func (bmp *BaseMetadataPreprocessor) LogDebugInfo(message string) {
-	if bmp.observer != nil && bmp.observer.DebugObserver != nil {
-		bmp.observer.DebugObserver.LogDetail(bmp.name, message)
+	if bmp.observer != nil && bmp.observer.Debug() != nil {
+		bmp.observer.Debug().LogDetail(bmp.name, message)
 	}
 }
 
 // LogFileSystemInfo logs file system information for observability (excluded from validator content)
 func (bmp *BaseMetadataPreprocessor) LogFileSystemInfo(filename string, fileSize int64, mimeType string) {
-	if bmp.observer != nil && bmp.observer.DebugObserver != nil {
+	if bmp.observer != nil && bmp.observer.Debug() != nil {
 		message := fmt.Sprintf("File system info - Name: %s, Size: %d bytes, Type: %s", filename, fileSize, mimeType)
-		bmp.observer.DebugObserver.LogDetail(bmp.name, message)
+		bmp.observer.Debug().LogDetail(bmp.name, message)
 	}
 }
 
 // LogSuccessfulProcessing logs successful processing information
 func (bmp *BaseMetadataPreprocessor) LogSuccessfulProcessing(filename string, fileSize int64, mimeType string) {
-	if bmp.observer != nil && bmp.observer.DebugObserver != nil {
+	if bmp.observer != nil && bmp.observer.Debug() != nil {
 		message := fmt.Sprintf("Successfully extracted %s metadata - Name: %s, Size: %d bytes, Type: %s",
 			bmp.processorType, filename, fileSize, mimeType)
-		bmp.observer.DebugObserver.LogDetail(bmp.name, message)
+		bmp.observer.Debug().LogDetail(bmp.name, message)
 	}
 }
 
 // LogRetryAttempt logs retry attempt information
 func (bmp *BaseMetadataPreprocessor) LogRetryAttempt(filePath string, attemptCount int) {
-	if bmp.observer != nil && bmp.observer.DebugObserver != nil {
+	if bmp.observer != nil && bmp.observer.Debug() != nil {
 		message := fmt.Sprintf("Retrying %s metadata extraction for %s (attempt %d)",
 			bmp.processorType, filePath, attemptCount+1)
-		bmp.observer.DebugObserver.LogDetail(bmp.name, message)
+		bmp.observer.Debug().LogDetail(bmp.name, message)
 	}
 }
 

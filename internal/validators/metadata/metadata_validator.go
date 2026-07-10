@@ -93,7 +93,7 @@ const (
 // Validator implements the detector.Validator and PreprocessorAwareValidator interfaces for metadata
 type Validator struct {
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// Preprocessor-aware validation rules
 	validationRules map[string]ValidationRule
@@ -119,15 +119,15 @@ func (v *Validator) ValidateMetadataContent(content router.MetadataContent) ([]d
 	var finishTiming func(bool, map[string]interface{})
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("metadata_validator", "validate_metadata_content", content.SourceFile)
-		if v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("metadata_validator",
+		if v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("metadata_validator",
 				fmt.Sprintf("Processing content from %s (type: %s), content length: %d",
 					content.SourceFile, content.PreprocessorType, len(content.Content)))
 			contentPreview := content.Content
 			if len(contentPreview) > 200 {
 				contentPreview = contentPreview[:200] + "..."
 			}
-			v.observer.DebugObserver.LogDetail("metadata_validator",
+			v.observer.Debug().LogDetail("metadata_validator",
 				fmt.Sprintf("Content preview: %s", contentPreview))
 		}
 	}
@@ -296,7 +296,7 @@ func (v *Validator) initializeDefaultValidationRules() {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
