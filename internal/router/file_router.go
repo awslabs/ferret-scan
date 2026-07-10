@@ -21,7 +21,7 @@ type FileRouter struct {
 	preprocessors []preprocessors.Preprocessor
 	metrics       *RouterMetrics
 	logger        *DebugLogger
-	observer      *observability.StandardObserver
+	observer      observability.Observer
 }
 
 // MaxFileSize is the default maximum file size the router will process (100 MB).
@@ -262,8 +262,8 @@ func (fr *FileRouter) CanContainMetadata(filePath string) bool {
 	canContain := isMetadataCapableFile(ext)
 
 	// Debug logging for file type detection decisions
-	if fr.observer != nil && fr.observer.DebugObserver != nil {
-		fr.observer.DebugObserver.LogDetail("file_type_detection",
+	if fr.observer != nil && fr.observer.Debug() != nil {
+		fr.observer.Debug().LogDetail("file_type_detection",
 			fmt.Sprintf("File: %s, Extension: %s, CanContainMetadata: %t",
 				filepath.Base(filePath), ext, canContain))
 	}
@@ -277,8 +277,8 @@ func (fr *FileRouter) GetMetadataType(filePath string) string {
 	metadataType := getMetadataTypeForExtension(ext)
 
 	// Debug logging for metadata type detection
-	if fr.observer != nil && fr.observer.DebugObserver != nil {
-		fr.observer.DebugObserver.LogDetail("metadata_type_detection",
+	if fr.observer != nil && fr.observer.Debug() != nil {
+		fr.observer.Debug().LogDetail("metadata_type_detection",
 			fmt.Sprintf("File: %s, Extension: %s, MetadataType: %s",
 				filepath.Base(filePath), ext, metadataType))
 	}

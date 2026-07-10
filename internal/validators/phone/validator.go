@@ -63,7 +63,7 @@ type Validator struct {
 	sortedCountryCodes []string
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // phonePattern represents a phone number pattern with its format info
@@ -259,7 +259,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
@@ -269,8 +269,8 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 	var finishStep func(bool, string)
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("phone_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("phone_validator", "validate_file", filePath)
+		if v.observer.Debug() != nil {
+			finishStep = v.observer.Debug().StartStep("phone_validator", "validate_file", filePath)
 		}
 	}
 

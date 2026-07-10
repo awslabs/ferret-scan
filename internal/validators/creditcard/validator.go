@@ -48,7 +48,7 @@ type Validator struct {
 	negativeKeywordRegex *regexp.Regexp
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // BINRange represents a range of valid BIN numbers for efficient lookup
@@ -158,7 +158,7 @@ func initBINRanges() []BINRange {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 

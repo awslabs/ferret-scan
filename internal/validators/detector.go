@@ -38,7 +38,7 @@ type Detector struct {
 	bridge *EnhancedValidatorBridge
 	// observer is retained because MetadataValidatorAdapter needs it at setup
 	// time (to wrap non-PreprocessorAware metadata validators).
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // compile-time guarantee the facade keeps satisfying the validator contracts.
@@ -51,12 +51,12 @@ var (
 // DualPathConfig values mirror the former NewDualPathIntegration exactly so
 // behavior is unchanged (debug logging is driven by the observer's
 // DebugObserver, as before — there is no separate "real-time metrics" flag).
-func NewDetector(observer *observability.StandardObserver) *Detector {
+func NewDetector(observer observability.Observer) *Detector {
 	config := &DualPathConfig{
 		EnableContextIntegration: true,
 		EnableFallbackMode:       true,
 		EnableMetrics:            true,
-		EnableDebugLogging:       observer != nil && observer.DebugObserver != nil,
+		EnableDebugLogging:       observer != nil && observer.Debug() != nil,
 		MaxRetries:               3,
 	}
 

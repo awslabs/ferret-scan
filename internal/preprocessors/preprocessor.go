@@ -127,7 +127,7 @@ type Preprocessor interface {
 	GetSupportedExtensions() []string
 
 	// SetObserver sets the observability component
-	SetObserver(observer *observability.StandardObserver)
+	SetObserver(observer observability.Observer)
 }
 
 // PreprocessorManager manages all available preprocessors

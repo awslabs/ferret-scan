@@ -86,7 +86,7 @@ type Validator struct {
 	nonSensitiveNets []*net.IPNet
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // ipPattern represents an IP address pattern with its type info
@@ -237,7 +237,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
@@ -247,8 +247,8 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 	var finishStep func(bool, string)
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("ipaddress_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("ipaddress_validator", "validate_file", filePath)
+		if v.observer.Debug() != nil {
+			finishStep = v.observer.Debug().StartStep("ipaddress_validator", "validate_file", filePath)
 		}
 	}
 

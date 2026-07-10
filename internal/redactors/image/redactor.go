@@ -28,7 +28,7 @@ import (
 // ImageMetadataRedactor implements redaction for image files by removing metadata
 type ImageMetadataRedactor struct {
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// outputManager handles file system operations
 	outputManager *redactors.OutputStructureManager
@@ -93,7 +93,7 @@ func (f ImageFormat) String() string {
 }
 
 // NewImageMetadataRedactor creates a new ImageMetadataRedactor
-func NewImageMetadataRedactor(outputManager *redactors.OutputStructureManager, observer *observability.StandardObserver) *ImageMetadataRedactor {
+func NewImageMetadataRedactor(outputManager *redactors.OutputStructureManager, observer observability.Observer) *ImageMetadataRedactor {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}
@@ -122,7 +122,7 @@ func NewImageMetadataRedactor(outputManager *redactors.OutputStructureManager, o
 }
 
 // NewImageMetadataRedactorWithOptions creates a new ImageMetadataRedactor with custom options
-func NewImageMetadataRedactorWithOptions(outputManager *redactors.OutputStructureManager, observer *observability.StandardObserver, preserveQuality bool) *ImageMetadataRedactor {
+func NewImageMetadataRedactorWithOptions(outputManager *redactors.OutputStructureManager, observer observability.Observer, preserveQuality bool) *ImageMetadataRedactor {
 	redactor := NewImageMetadataRedactor(outputManager, observer)
 	redactor.preserveImageQuality = preserveQuality
 	return redactor

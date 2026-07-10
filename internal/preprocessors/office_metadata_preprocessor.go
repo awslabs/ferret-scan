@@ -163,7 +163,7 @@ func (omp *OfficeMetadataPreprocessor) GetSupportedExtensions() []string {
 }
 
 // SetObserver sets the observability component
-func (omp *OfficeMetadataPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (omp *OfficeMetadataPreprocessor) SetObserver(observer observability.Observer) {
 	omp.BaseMetadataPreprocessor.SetObserver(observer)
 }
 

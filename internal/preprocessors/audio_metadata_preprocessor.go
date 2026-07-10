@@ -17,7 +17,7 @@ import (
 // AudioMetadataPreprocessor extracts metadata from audio files
 type AudioMetadataPreprocessor struct {
 	name            string
-	observer        *observability.StandardObserver
+	observer        observability.Observer
 	resourceManager *MediaResourceManager
 	errorHandler    *GracefulDegradationHandler
 	errorLogger     *ErrorLogger
@@ -96,8 +96,8 @@ func (amp *AudioMetadataPreprocessor) processAudioMetadataWithRetry(filePath str
 		// Check if we should retry
 		if amp.recoveryManager.ShouldRetry(errorType, attemptCount) {
 			// Log retry attempt
-			if amp.observer != nil && amp.observer.DebugObserver != nil {
-				amp.observer.DebugObserver.LogDetail("audio_metadata_preprocessor",
+			if amp.observer != nil && amp.observer.Debug() != nil {
+				amp.observer.Debug().LogDetail("audio_metadata_preprocessor",
 					fmt.Sprintf("Retrying audio metadata extraction for %s (attempt %d)", filePath, attemptCount+1))
 			}
 
@@ -111,7 +111,7 @@ func (amp *AudioMetadataPreprocessor) processAudioMetadataWithRetry(filePath str
 	}
 
 	// Log successful processing with detailed information
-	if amp.observer != nil && amp.observer.DebugObserver != nil {
+	if amp.observer != nil && amp.observer.Debug() != nil {
 		amp.logSuccessfulProcessing(filePath, audioMeta)
 	}
 
@@ -139,7 +139,7 @@ func (amp *AudioMetadataPreprocessor) GetSupportedExtensions() []string {
 }
 
 // SetObserver sets the observability component
-func (amp *AudioMetadataPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (amp *AudioMetadataPreprocessor) SetObserver(observer observability.Observer) {
 	amp.observer = observer
 }
 
@@ -318,24 +318,24 @@ func (amp *AudioMetadataPreprocessor) addAudioErrorContext(mediaErr *MediaProces
 func (amp *AudioMetadataPreprocessor) logSuccessfulProcessing(filePath string, audioMeta *audiolib.AudioMetadata) {
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
 
-	amp.observer.DebugObserver.LogDetail("audio_metadata_preprocessor",
+	amp.observer.Debug().LogDetail("audio_metadata_preprocessor",
 		fmt.Sprintf("Successfully extracted audio metadata from %s file: %s", ext, filepath.Base(filePath)))
 
 	// Log technical specifications if available
 	if audioMeta.Duration > 0 {
-		amp.observer.DebugObserver.LogDetail("audio_metadata_preprocessor",
+		amp.observer.Debug().LogDetail("audio_metadata_preprocessor",
 			fmt.Sprintf("Audio specs - Duration: %s, Bitrate: %d, Sample Rate: %d, Channels: %d",
 				audioMeta.Duration.String(), audioMeta.Bitrate, audioMeta.SampleRate, audioMeta.Channels))
 	}
 
 	// Log interesting metadata if present (but be careful about privacy-sensitive information)
 	if audioMeta.Artist != "" && audioMeta.Title != "" {
-		amp.observer.DebugObserver.LogDetail("audio_metadata_preprocessor",
+		amp.observer.Debug().LogDetail("audio_metadata_preprocessor",
 			fmt.Sprintf("Track info found: %s - %s", audioMeta.Artist, audioMeta.Title))
 	}
 
 	if audioMeta.Album != "" && audioMeta.Year > 0 {
-		amp.observer.DebugObserver.LogDetail("audio_metadata_preprocessor",
+		amp.observer.Debug().LogDetail("audio_metadata_preprocessor",
 			fmt.Sprintf("Album info: %s (%d)", audioMeta.Album, audioMeta.Year))
 	}
 }

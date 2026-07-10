@@ -17,7 +17,7 @@ import (
 // PlainTextPreprocessor handles plain text files by passing their content through
 // This ensures text files are processed through the same pipeline as other file types
 type PlainTextPreprocessor struct {
-	observer        *observability.StandardObserver
+	observer        observability.Observer
 	enableRedaction bool
 }
 
@@ -34,7 +34,7 @@ func NewPlainTextPreprocessorWithConfig(enableRedaction bool) *PlainTextPreproce
 }
 
 // SetObserver sets the observability component
-func (ptp *PlainTextPreprocessor) SetObserver(observer *observability.StandardObserver) {
+func (ptp *PlainTextPreprocessor) SetObserver(observer observability.Observer) {
 	ptp.observer = observer
 }
 
@@ -100,8 +100,8 @@ func (ptp *PlainTextPreprocessor) Process(filePath string) (*ProcessedContent, e
 	var finishStep func(bool, string)
 	if ptp.observer != nil {
 		finishTiming = ptp.observer.StartTiming("plaintext_preprocessor", "process_file", filePath)
-		if ptp.observer.DebugObserver != nil {
-			finishStep = ptp.observer.DebugObserver.StartStep("plaintext_preprocessor", "process_file", filePath)
+		if ptp.observer.Debug() != nil {
+			finishStep = ptp.observer.Debug().StartStep("plaintext_preprocessor", "process_file", filePath)
 		}
 	}
 
@@ -332,8 +332,8 @@ func (ptp *PlainTextPreprocessor) createOptimizedPositionMappings(result *Proces
 		mappingCount++
 	}
 
-	if ptp.observer != nil && ptp.observer.DebugObserver != nil {
-		ptp.observer.DebugObserver.LogDetail("plaintext_preprocessor",
+	if ptp.observer != nil && ptp.observer.Debug() != nil {
+		ptp.observer.Debug().LogDetail("plaintext_preprocessor",
 			fmt.Sprintf("Created %d optimized position mappings for %d lines (%.1f%% reduction)",
 				mappingCount, len(lines),
 				100.0*(1.0-float64(mappingCount)/float64(len(lines)))))

@@ -98,7 +98,7 @@ type Validator struct {
 	globalTestPatterns []string
 
 	// Observability
-	observer *observability.StandardObserver
+	observer observability.Observer
 }
 
 // NewValidator creates and returns a new Validator instance
@@ -163,7 +163,7 @@ func NewValidator() *Validator {
 }
 
 // SetObserver sets the observability component
-func (v *Validator) SetObserver(observer *observability.StandardObserver) {
+func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
@@ -173,8 +173,8 @@ func (v *Validator) Validate(filePath string) ([]detector.Match, error) {
 	var finishStep func(bool, string)
 	if v.observer != nil {
 		finishTiming = v.observer.StartTiming("ssn_validator", "validate_file", filePath)
-		if v.observer.DebugObserver != nil {
-			finishStep = v.observer.DebugObserver.StartStep("ssn_validator", "validate_file", filePath)
+		if v.observer.Debug() != nil {
+			finishStep = v.observer.Debug().StartStep("ssn_validator", "validate_file", filePath)
 		}
 	}
 

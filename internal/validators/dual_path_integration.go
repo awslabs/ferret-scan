@@ -22,7 +22,7 @@ import (
 // Phase 2, Move B — see detector.go and docs/proposals/V2_ARCHITECTURE.md.)
 type MetadataValidatorAdapter struct {
 	validator detector.Validator
-	observer  *observability.StandardObserver
+	observer  observability.Observer
 }
 
 // Validate implements detector.Validator interface
@@ -87,8 +87,8 @@ func (mva *MetadataValidatorAdapter) GetSupportedPreprocessors() []string {
 // SetPreprocessorValidationRules implements PreprocessorAwareValidator interface
 func (mva *MetadataValidatorAdapter) SetPreprocessorValidationRules(rules map[string]ValidationRule) {
 	// This is a no-op for the adapter since standard validators don't support this
-	if mva.observer != nil && mva.observer.DebugObserver != nil {
-		mva.observer.DebugObserver.LogDetail("metadata_adapter",
+	if mva.observer != nil && mva.observer.Debug() != nil {
+		mva.observer.Debug().LogDetail("metadata_adapter",
 			fmt.Sprintf("SetPreprocessorValidationRules called with %d rules (no-op for standard validator)", len(rules)))
 	}
 }

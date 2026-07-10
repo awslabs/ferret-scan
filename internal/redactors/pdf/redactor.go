@@ -28,7 +28,7 @@ import (
 // pipeline here.
 type PDFRedactor struct {
 	// observer handles observability and metrics
-	observer *observability.StandardObserver
+	observer observability.Observer
 
 	// pdfConfig contains PDF-specific configuration used for validation
 	pdfConfig *model.Configuration
@@ -39,7 +39,7 @@ type PDFRedactor struct {
 // outputManager is currently unused because no document is produced (redaction
 // is unimplemented); it is retained in the signature so the call site does not
 // change when real redaction — which needs the output manager — is added.
-func NewPDFRedactor(outputManager *redactors.OutputStructureManager, observer *observability.StandardObserver) *PDFRedactor {
+func NewPDFRedactor(outputManager *redactors.OutputStructureManager, observer observability.Observer) *PDFRedactor {
 	if observer == nil {
 		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
 	}
