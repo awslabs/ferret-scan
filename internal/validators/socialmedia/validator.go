@@ -821,13 +821,14 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	// Enhanced error handling for confidence calculation
 	defer func() {
 		if r := recover(); r != nil {
-			// Log panic recovery for debugging
+			// Log panic recovery for debugging — never include the matched value
+			// itself (BSC4: no PII in logs).
 			if v.observer != nil && v.observer.DebugObserver != nil {
-				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in CalculateConfidence for match '%s': %v", match, r))
+				v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in CalculateConfidence for match [HIDDEN] (len=%d): %v", len(match), r))
 			}
 			if v.isDebugEnabled() {
 				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Panic in confidence calculation\n")
-				fmt.Fprintf(os.Stderr, "[ERROR]   Match: %s\n", match)
+				fmt.Fprintf(os.Stderr, "[ERROR]   Match: [HIDDEN] (len=%d)\n", len(match))
 				fmt.Fprintf(os.Stderr, "[ERROR]   Panic: %v\n", r)
 				fmt.Fprintf(os.Stderr, "[ERROR]   Action: Returning low confidence for safety\n")
 			}
@@ -849,10 +850,10 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	if platform == "" {
 		// Unknown platform - assign low confidence with enhanced logging
 		if v.observer != nil && v.observer.DebugObserver != nil {
-			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Unknown platform for match: %s", match))
+			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Unknown platform for match [HIDDEN] (len=%d)", len(match)))
 		}
 		if v.isDebugEnabled() {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Unknown platform for match: %s\n", match)
+			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Unknown platform for match [HIDDEN] (len=%d)\n", len(match))
 		}
 		checks["platform_identified"] = false
 		return 10.0, checks
@@ -2805,7 +2806,8 @@ func (v *Validator) processMatchOptimized(match, platform string, patternIndex i
 
 	// Log match details in debug mode (only for high-confidence matches to reduce overhead)
 	if os.Getenv("FERRET_DEBUG") == "1" && confidence > 70 && v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Found %s match: '%s' (confidence: %.1f%%, type: %s, username: %s)", platform, match, confidence, patternType, username))
+		// Do not log the matched handle/URL or extracted username (BSC4: no PII in logs).
+		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Found %s match: [HIDDEN] (len=%d, confidence: %.1f%%, type: %s)", platform, len(match), confidence, patternType))
 	}
 
 	return &socialMediaMatch
@@ -2930,7 +2932,7 @@ func (v *Validator) analyzeContextWithPlatformLine(match string, platform string
 
 	// Log detailed context analysis in debug mode
 	if v.observer != nil && v.observer.DebugObserver != nil {
-		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Context analysis for %s match '%s': impact=%.1f", platform, match, confidenceImpact))
+		v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("Context analysis for %s match [HIDDEN] (len=%d): impact=%.1f", platform, len(match), confidenceImpact))
 		if len(foundPositiveKeywords) > 0 {
 			v.observer.DebugObserver.LogDetail("socialmedia", fmt.Sprintf("  Positive keywords found: %v", foundPositiveKeywords))
 		}
