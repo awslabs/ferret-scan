@@ -168,8 +168,23 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 		}(p)
 	}
 
-	// Collect results
+	// Collect results.
+	//
+	// The overwhelmingly common case is a single successful preprocessor (one
+	// file type → one extractor). For that case we must NOT copy the extracted
+	// text a second time: a strings.Builder.WriteString duplicates the whole
+	// payload into the builder's buffer (a full second copy of, e.g., a 10 MB
+	// extracted PDF), even though String() itself is zero-copy. So we keep a
+	// direct reference to the sole result's text (firstText) and only fall back
+	// to the strings.Builder when a SECOND successful preprocessor arrives and
+	// we genuinely have to concatenate with separators. The builder path
+	// reproduces the original output byte-for-byte (first text, then
+	// "\n\n--- name ---\n" + text for each subsequent processor, in arrival
+	// order); the single-processor path yields Text == firstText exactly, since
+	// the original never prepends a separator to the first write. (v2 gap 2.3:
+	// eliminate the combine-step second copy.)
 	var combinedContent strings.Builder
+	var firstText string
 	var combinedMetadata = make(map[string]interface{})
 	var totalWordCount, totalCharCount, totalLineCount int
 	var successfulProcessors []string
@@ -178,11 +193,19 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 		pResult := <-resultChan
 
 		if pResult.err == nil && pResult.result != nil && pResult.result.Success && pResult.result.Text != "" {
-			// Add content with separator
-			if combinedContent.Len() > 0 {
+			if len(successfulProcessors) == 0 {
+				// First success: reference its text directly (no copy).
+				firstText = pResult.result.Text
+			} else {
+				// Second+ success: we are truly combining. Flush the stashed
+				// first text into the builder once, then append this one with a
+				// separator — identical bytes to the original loop.
+				if combinedContent.Len() == 0 {
+					combinedContent.WriteString(firstText)
+				}
 				combinedContent.WriteString("\n\n--- " + pResult.name + " ---\n")
+				combinedContent.WriteString(pResult.result.Text)
 			}
-			combinedContent.WriteString(pResult.result.Text)
 
 			// Accumulate metadata
 			for k, v := range pResult.result.Metadata {
@@ -201,10 +224,16 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	// Return combined results if any preprocessor succeeded
 	if len(successfulProcessors) > 0 {
 		combinedMetadata["successful_processors"] = successfulProcessors
+		// Single successful processor → use its text directly (zero extra copy);
+		// multiple → the builder holds the byte-identical concatenation.
+		text := firstText
+		if combinedContent.Len() > 0 {
+			text = combinedContent.String()
+		}
 		result := &preprocessors.ProcessedContent{
 			OriginalPath:  filePath,
 			Filename:      filepath.Base(filePath),
-			Text:          combinedContent.String(),
+			Text:          text,
 			Format:        "combined",
 			WordCount:     totalWordCount,
 			CharCount:     totalCharCount,
