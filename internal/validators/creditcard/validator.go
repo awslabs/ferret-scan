@@ -708,7 +708,9 @@ func (v *Validator) logLuhnFailure(originalMatch, cleanMatch string, lineNum int
 
 	fmt.Fprintf(os.Stderr, "[DEBUG]  Credit Card Validator: Luhn test failed\n")
 	fmt.Fprintf(os.Stderr, "[DEBUG]   - File: %s, Line: %d\n", filePath, lineNum)
-	fmt.Fprintf(os.Stderr, "[DEBUG]   - Match: %s -> %s\n", originalMatch, cleanMatch)
+	// Never log the candidate digits themselves (BSC4: no card numbers in logs);
+	// the length is enough to debug Luhn/separator handling.
+	fmt.Fprintf(os.Stderr, "[DEBUG]   - Match: [HIDDEN] (raw len=%d, digits=%d)\n", len(originalMatch), len(cleanMatch))
 }
 
 func (v *Validator) isDebugEnabled() bool {

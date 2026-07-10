@@ -827,7 +827,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 			}
 			if v.isDebugEnabled() {
 				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Panic in confidence calculation\n")
-				fmt.Fprintf(os.Stderr, "[ERROR]   Match: %s\n", match)
+				fmt.Fprintf(os.Stderr, "[ERROR]   Match: [HIDDEN] (len=%d)\n", len(match))
 				fmt.Fprintf(os.Stderr, "[ERROR]   Panic: %v\n", r)
 				fmt.Fprintf(os.Stderr, "[ERROR]   Action: Returning low confidence for safety\n")
 			}
@@ -852,7 +852,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Unknown platform for match: %s", match))
 		}
 		if v.isDebugEnabled() {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Unknown platform for match: %s\n", match)
+			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Unknown platform for match [HIDDEN] (len=%d)\n", len(match))
 		}
 		checks["platform_identified"] = false
 		return 10.0, checks

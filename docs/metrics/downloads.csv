@@ -1,2 +1,3 @@
 date,latest_release,pypi_last_day,pypi_last_week,pypi_last_month,pypi_last_month_with_mirrors,pypi_py3_7_30d,pypi_py3_8_30d,pypi_py3_9_30d,pypi_py3_10_30d,pypi_py3_11_30d,pypi_py3_12_30d,pypi_py3_13_30d,pypi_py_other_30d,ecr_pulls_total,ecr_pulls_delta,github_binary_downloads_total,github_binary_downloads_delta,gh_linux_amd64,gh_linux_arm64,gh_darwin_amd64,gh_darwin_arm64,gh_windows_amd64,gh_windows_arm64
 2026-07-02,v1.10.0,78,544,1560,3736,6,3,6,2,9,328,665,576,2872,,1583,,141,138,140,153,145,142
+2026-07-06,v1.10.0,44,397,1399,3540,6,3,6,1,15,336,637,544,2958,86,1584,1,142,138,140,153,145,142

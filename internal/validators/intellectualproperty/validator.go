@@ -3086,7 +3086,8 @@ func (v *Validator) logReconstructionDetails(originalMatches []detector.Match, r
 	// Also log to stderr in debug mode for comprehensive audit trail
 	if os.Getenv("FERRET_DEBUG") == "1" {
 		fmt.Fprintf(os.Stderr, "[DEBUG] Legal Notice Reconstruction: %d matches → 1 reconstructed match\n", len(originalMatches))
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Text: '%s'\n", reconstructedMatch.Text)
+		// Do not log the matched text itself (BSC4: no matched values in logs).
+		fmt.Fprintf(os.Stderr, "[DEBUG]   Text: [HIDDEN] (len=%d)\n", len(reconstructedMatch.Text))
 		fmt.Fprintf(os.Stderr, "[DEBUG]   Confidence: %.1f%%", reconstructedMatch.Confidence)
 		if reconstructedMatch.Metadata != nil {
 			if boost, ok := reconstructedMatch.Metadata["confidence_boost"].(float64); ok {
