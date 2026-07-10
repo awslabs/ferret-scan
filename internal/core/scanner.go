@@ -35,6 +35,15 @@ type ScanConfig struct {
 	EnableRedaction     bool
 	RedactionStrategy   string
 	RedactionOutputDir  string
+	// MaxLiveBytes optionally caps the total bytes of extracted content held in
+	// memory across concurrently validating files (v2 gap 2.3 "admission"
+	// slice). Zero/negative = disabled = historical behavior (bounded only by
+	// the per-file 100MB size gate × worker count). An in-process embedder on a
+	// memory-constrained host (e.g. a Lambda handler scanning a directory) sets
+	// this so many large files cannot multiply memory past a fixed envelope. It
+	// is forwarded verbatim to the worker pool's JobConfig; the mirror of the
+	// CLI's --max-live-bytes flag.
+	MaxLiveBytes int64
 	// Explain, when true, attaches an advisory explanation (plain-language
 	// rationale, verdict gloss, drafted suppression reason) to each surfaced
 	// match via internal/explain. Off by default; opt-in like the historical
@@ -138,6 +147,7 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		EnableRedaction:    scanConfig.EnableRedaction,
 		RedactionStrategy:  scanConfig.RedactionStrategy,
 		RedactionOutputDir: scanConfig.RedactionOutputDir,
+		MaxLiveBytes:       scanConfig.MaxLiveBytes,
 	}
 
 	parallelProcessor := parallel.NewParallelProcessor(observer)

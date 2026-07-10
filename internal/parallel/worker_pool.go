@@ -29,6 +29,14 @@ type WorkerPool struct {
 	observer       observability.Observer
 	retryManager   *resilience.RetryManager
 	circuitBreaker *resilience.CircuitBreakerManager
+
+	// bytesLimiter bounds total in-flight validator content across workers when
+	// a JobConfig sets MaxLiveBytes (v2 gap 2.3). It is built once from the first
+	// job's config (all jobs in a run share one config) and is nil until then; a
+	// nil/disabled limiter makes AcquireBytes/ReleaseBytes no-ops, so the default
+	// path is byte-identical.
+	bytesLimiterOnce sync.Once
+	bytesLimiter     *execguard.BytesLimiter
 }
 
 // Job represents a file processing task
@@ -68,6 +76,15 @@ type JobConfig struct {
 	// behavior. Attached to the per-file job context so the dispatch chokepoint
 	// (execguard.ValidateContent) can enforce each validator's budget.
 	ValidatorBudgets map[string]execguard.ValidatorBudget
+
+	// MaxLiveBytes optionally caps the total bytes of extracted content held in
+	// memory across concurrently validating files (v2 gap 2.3 "admission"
+	// slice). Zero/negative = disabled = historical behavior (bounded only by
+	// the per-file 100MB size gate × worker count). A memory-constrained
+	// embedder (e.g. Lambda) can set this so N concurrent large files cannot
+	// multiply memory past a fixed envelope. Enforced by the worker pool's
+	// shared execguard.BytesLimiter around the validation phase.
+	MaxLiveBytes int64
 }
 
 // DefaultJobTimeout is the per-file processing ceiling used when
@@ -183,6 +200,21 @@ func (wp *WorkerPool) safeProcessJob(job *Job, workerID int) (result *Result) {
 	return wp.processJob(job, workerID)
 }
 
+// liveBytesLimiter returns the shared live-bytes admission gate for this run,
+// building it once from the job's MaxLiveBytes (all jobs in a run share one
+// JobConfig). Returns nil when no budget is configured so callers skip the gate
+// entirely (byte-identical default path). A disabled BytesLimiter would also be
+// a no-op, but returning nil avoids the acquire/defer overhead on the hot path.
+func (wp *WorkerPool) liveBytesLimiter(job *Job) *execguard.BytesLimiter {
+	if job == nil || job.Config == nil || job.Config.MaxLiveBytes <= 0 {
+		return nil
+	}
+	wp.bytesLimiterOnce.Do(func() {
+		wp.bytesLimiter = execguard.NewBytesLimiter(job.Config.MaxLiveBytes)
+	})
+	return wp.bytesLimiter
+}
+
 // processJob executes a single job with resilience features
 func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	start := time.Now()
@@ -212,6 +244,27 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		)
 		if err != nil {
 			return resilience.ClassifyError(err)
+		}
+
+		// Live-bytes admission gate (v2 gap 2.3): reserve this file's bytes against
+		// the shared budget BEFORE reading/extracting it, and release after the
+		// whole job (preprocessing + validation). Acquiring here — rather than
+		// after ProcessFile — is what actually bounds peak memory: the dominant
+		// resident term is the extracted content ProcessFile materializes, so a
+		// worker must block before reading a large file when the budget is full,
+		// not after it is already in memory. Sized by the on-disk file size (the
+		// admission estimate available pre-read); extraction can expand text
+		// beyond this, but the per-file 100MB gate and the Office decompression
+		// bound (gap 2.4) cap that separately. When no budget is configured the
+		// limiter is disabled and Acquire/Release are no-ops, so the default path
+		// is byte-identical. If ctx is cancelled while waiting for budget, skip the
+		// file and record the context error so coverage is reported incomplete.
+		if bl := wp.liveBytesLimiter(job); bl != nil {
+			if aerr := bl.AcquireBytes(ctx, processingCtx.FileSize); aerr != nil {
+				validationErr = aerr
+				return nil
+			}
+			defer bl.ReleaseBytes(processingCtx.FileSize)
 		}
 
 		// GENAI_DISABLED: Process file with retry logic for GenAI operations
