@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 500" xml:space="preserve" font-family="'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace" role="img" aria-label="ferret-scan terminal demo: detecting and redacting sensitive data">
+  <title>ferret-scan: detect and redact sensitive data</title>
+  <style>
+    .bg      { fill: #0d1117; }
+    .card    { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+    .bar     { fill: #21262d; }
+    .txt     { fill: #c9d1d9; font-size: 15px; }
+    .dim     { fill: #8b949e; }
+    .prompt  { fill: #7ee787; }
+    .flag    { fill: #79c0ff; }
+    .cmd     { fill: #e6edf3; }
+    .head    { fill: #8b949e; font-size: 13px; letter-spacing: .3px; }
+    .high    { fill: #ff7b72; }
+    .med     { fill: #d29922; }
+    .low     { fill: #8b949e; }
+    .val     { fill: #c9d1d9; }
+    .mask    { fill: #7ee787; }
+    .kept    { fill: #c9d1d9; }
+    .caption { fill: #58a6ff; font-size: 13px; }
+
+    /* One shared 18s clock for every group (no per-element delay), so the two
+       acts can never overlap: each group encodes its own visible window and
+       Act 1 fully clears (opacity 0) before Act 2 fades in. */
+    g.fx { opacity: 0; }
+    .a1{animation:a1 18s infinite}.a2{animation:a2 18s infinite}
+    .a3{animation:a3 18s infinite}.a4{animation:a4 18s infinite}
+    .a5{animation:a5 18s infinite}.a6{animation:a6 18s infinite}
+    .a7{animation:a7 18s infinite}.c1{animation:c1 18s infinite}
+    .b0{animation:b0 18s infinite}.b1{animation:b1 18s infinite}
+    .b2{animation:b2 18s infinite}.b3{animation:b3 18s infinite}
+    .c2{animation:c2 18s infinite}
+
+    /* Act 1 — staggered fade-in, all clear together at 44% */
+    @keyframes a1{0%{opacity:0}3%{opacity:0}4.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+    @keyframes a2{0%{opacity:0}8%{opacity:0}9.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+    @keyframes a3{0%{opacity:0}12%{opacity:0}13.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+    @keyframes a4{0%{opacity:0}15%{opacity:0}16.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+    @keyframes a5{0%{opacity:0}18%{opacity:0}19.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+    @keyframes a6{0%{opacity:0}21%{opacity:0}22.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+    @keyframes a7{0%{opacity:0}24%{opacity:0}25.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+    @keyframes c1{0%{opacity:0}30%{opacity:0}31.2%{opacity:1}44%{opacity:1}45.2%{opacity:0}100%{opacity:0}}
+
+    /* Act 2 — begins only after Act 1 has cleared, all clear at 96% */
+    @keyframes b0{0%{opacity:0}49%{opacity:0}50.2%{opacity:1}96%{opacity:1}97.2%{opacity:0}100%{opacity:0}}
+    @keyframes b1{0%{opacity:0}54%{opacity:0}55.2%{opacity:1}96%{opacity:1}97.2%{opacity:0}100%{opacity:0}}
+    @keyframes b2{0%{opacity:0}60%{opacity:0}61.2%{opacity:1}96%{opacity:1}97.2%{opacity:0}100%{opacity:0}}
+    @keyframes b3{0%{opacity:0}66%{opacity:0}67.2%{opacity:1}96%{opacity:1}97.2%{opacity:0}100%{opacity:0}}
+    @keyframes c2{0%{opacity:0}72%{opacity:0}73.2%{opacity:1}96%{opacity:1}97.2%{opacity:0}100%{opacity:0}}
+
+    .cursor { fill: #7ee787; animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="860" height="500" rx="10"/>
+  <rect class="card" x="16" y="16" width="828" height="468" rx="8"/>
+  <rect class="bar"  x="16" y="16" width="828" height="30" rx="8"/>
+  <rect class="bar"  x="16" y="36" width="828" height="10"/>
+  <circle cx="38" cy="31" r="5" fill="#ff5f56"/>
+  <circle cx="58" cy="31" r="5" fill="#ffbd2e"/>
+  <circle cx="78" cy="31" r="5" fill="#27c93f"/>
+  <text x="430" y="35" text-anchor="middle" class="dim" font-size="12">ferret-scan</text>
+
+  <!-- ACT 1: scan (values never shown) -->
+  <g class="fx a1">
+    <text x="40" y="82" class="txt"><tspan class="prompt">$ </tspan><tspan class="cmd">ferret-scan </tspan><tspan class="flag">--file</tspan><tspan class="cmd"> customer-ticket.txt</tspan></text>
+  </g>
+  <g class="fx a2">
+    <text x="40" y="116" class="head">LEVEL     VALIDATOR    TYPE              CONF%   LINE   MATCH      FILE</text>
+    <text x="40" y="132" class="dim">──────────────────────────────────────────────────────────────────────</text>
+  </g>
+  <g class="fx a3">
+    <text x="40" y="158" class="txt"><tspan class="high">[HIGH  ]</tspan> <tspan class="val">secrets      AWS_ACCESS_KEY    100.00%  line 3 </tspan><tspan class="dim">[HIDDEN]</tspan><tspan class="val">   ticket.txt</tspan></text>
+  </g>
+  <g class="fx a4">
+    <text x="40" y="180" class="txt"><tspan class="high">[HIGH  ]</tspan> <tspan class="val">ssn          SSN               100.00%  line 4 </tspan><tspan class="dim">[HIDDEN]</tspan><tspan class="val">   ticket.txt</tspan></text>
+  </g>
+  <g class="fx a5">
+    <text x="40" y="202" class="txt"><tspan class="high">[HIGH  ]</tspan> <tspan class="val">email        BUSINESS          100.00%  line 1 </tspan><tspan class="dim">[HIDDEN]</tspan><tspan class="val">   ticket.txt</tspan></text>
+  </g>
+  <g class="fx a6">
+    <text x="40" y="224" class="txt"><tspan class="med">[MEDIUM]</tspan> <tspan class="val">creditcard   MASTERCARD         88.00%  line 2 </tspan><tspan class="dim">[HIDDEN]</tspan><tspan class="val">   ticket.txt</tspan></text>
+  </g>
+  <g class="fx a7">
+    <text x="40" y="246" class="txt"><tspan class="low">[LOW   ]</tspan> <tspan class="val">phone        PHONE              52.00%  line 4 </tspan><tspan class="dim">[HIDDEN]</tspan><tspan class="val">   ticket.txt</tspan></text>
+  </g>
+  <g class="fx c1">
+    <text x="40" y="300" class="caption">Values stay hidden by default. Confidence is context-aware — not just regex.</text>
+  </g>
+
+  <!-- ACT 2: redaction gateway (synthetic values only) -->
+  <g class="fx b0">
+    <text x="40" y="82" class="txt"><tspan class="prompt">$ </tspan><tspan class="cmd">echo "$LOG" | ferret-scan </tspan><tspan class="flag">--stdin --enable-redaction</tspan></text>
+  </g>
+  <g class="fx b1">
+    <text x="40" y="124" class="dim" font-size="13">in  ▸</text>
+    <text x="92" y="124" class="txt" font-size="14">card 5500-0000-0000-0004  key AKIAIOSFODNN7EXAMPLE  jordan@example.com</text>
+  </g>
+  <g class="fx b2">
+    <text x="40" y="160" class="prompt" font-size="13">out ▸</text>
+    <text x="92" y="160" class="txt" font-size="14"><tspan class="kept">card 5500-</tspan><tspan class="mask">****-****</tspan><tspan class="kept">-0004  key </tspan><tspan class="mask">********************</tspan><tspan class="kept">  j</tspan><tspan class="mask">*****</tspan><tspan class="kept">@example.com</tspan></text>
+  </g>
+  <g class="fx b3">
+    <text x="40" y="200" class="dim" font-size="13">redacted bytes → stdout · findings → stderr · format-preserving, structure intact</text>
+  </g>
+  <g class="fx c2">
+    <text x="40" y="300" class="caption">Streams in a pipe. Embed pkg/redact for an in-process redaction gateway.</text>
+  </g>
+
+  <!-- persistent footer + cursor -->
+  <rect x="40" y="452" width="9" height="16" class="cursor"/>
+  <text x="820" y="464" text-anchor="end" class="dim" font-size="11">demo uses only synthetic / documentation values</text>
+</svg>

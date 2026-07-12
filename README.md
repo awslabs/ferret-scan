@@ -1,1525 +1,264 @@
-<p align="center">
-  <img src="docs/images/ferret-scan-logo-original.png" alt="Ferret Scan Logo" width="200">
-</p>
+# ferret-scan
 
-# Ferret Scan
+<img src="docs/images/ferret-scan-logo.png" alt="ferret-scan" width="240" />
 
-- [Ferret Scan](#ferret-scan)
-  - [Installation](#installation)
-  - [Features](#features)
-  - [Building the Application](#building-the-application)
-    - [Using the Makefile](#using-the-makefile)
-    - [Manual Build](#manual-build)
-  - [Usage](#usage)
-    - [Command Line Options](#command-line-options)
-    - [Examples](#examples)
-  - [Confidence Levels](#confidence-levels)
-  - [Supported Data Types](#supported-data-types)
-  - [Adding New Validators](#adding-new-validators)
-  - [Development Guidelines](#development-guidelines)
+**Find and redact sensitive data before it leaks.** A single-binary Go CLI (plus embedded web UI and Go library) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
 
-    - [Code Style](#code-style)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
+[![PyPI](https://img.shields.io/pypi/v/ferret-scan?logo=pypi&logoColor=white&label=PyPI)](https://pypi.org/project/ferret-scan/)
+[![ECR Public](https://img.shields.io/badge/ECR%20Public-ferret--scan-FF9900?logo=amazonaws&logoColor=white)](https://gallery.ecr.aws/awslabs/ferret-scan)
 
-Ferret Scan is a sensitive data detection tool that scans files for potential sensitive information such as credit card numbers and passport numbers.
+![ferret-scan demo](docs/images/demo.svg)
 
-## Installation
+---
 
-### Recommended: Install from PyPI
+A customer SSN pasted into a log line. An AWS access key committed in a diff. A support transcript archived to S3. A PDF with EXIF metadata attached to a ticket. Sensitive data leaks through the seams between systems — and once it lands in a log store or an object bucket, it is expensive to get back out. **ferret-scan is the control you put in front of those seams:** it finds the sensitive values, scores how likely each one is real, and redacts them so the rest of the data keeps flowing.
+
+---
+
+## Try it in 30 seconds
 
 ```bash
+# 1. Install
 pip install ferret-scan
+
+# 2. Scan a file (values are HIDDEN by default — findings are safe to share)
+ferret-scan --file secrets.env
+
+# 3. Redact a stream in one pipe (redacted text -> stdout, findings -> stderr)
+echo "card 5500-0000-0000-0004 from jordan@example.com" \
+  | ferret-scan --stdin --enable-redaction
 ```
 
-### Alternative Installation Methods
+That last command turns sensitive values into masked-but-shaped output:
 
-- **📦 [Release Installation](docs/INSTALL.md)** - Binary downloads from GitHub releases
-- **📖 [Complete Installation Guide](docs/INSTALLATION.md)** - Comprehensive installation options
-- **🗑️ [Uninstallation Guide](docs/UNINSTALL.md)** - Complete removal instructions
-- **🏗️ Build from Source**: `make build` (see [Building the Application](#building-the-application))
+| Before | After (`--enable-redaction`) |
+|---|---|
+| `card 5500-0000-0000-0004 from jordan@example.com` | `card 5500-****-****-0004 from j*****@example.com` |
 
-## 📚 Documentation
+Sensitive values are masked while the shape of the data survives — so downstream tooling, tests, and log pipelines keep working. (Examples here use reserved documentation values.)
 
-Ferret Scan is extensively documented with comprehensive guides for users, developers, and operators:
+---
 
-**[📖 Complete Documentation Index →](docs/README.md)**
+## Why ferret-scan
 
-### Quick Links
+- **Confidence you can act on.** Scoring is context-aware, not just regex. A credit card in a financial document scores higher than the same digits in a test fixture, because the engine re-weights on document type and surrounding domain. Findings land in three bands: **HIGH (90–100)**, **MEDIUM (60–89)**, **LOW (0–59)**.
+- **Redaction that composes.** The stdin gateway streams redacted bytes to stdout and findings to stderr, so it drops into any Unix pipe or CI step. Three strategies: `simple`, `format_preserving` (default), and `synthetic` (realistic fakes for building test datasets).
+- **Explainable, offline.** `--explain` attaches a plain-language rationale, a verdict (`likely_real` / `likely_test` / `uncertain`), and a drafted suppression reason to every finding. Fully deterministic — no network, no LLM.
+- **Ships everywhere.** One static binary, no runtime deps, a `scratch`-based Docker image (~5–10 MB), a `pip` package, a pre-commit hook, and a stable Go library.
+- **Safe by design.** Matched values are hidden unless you pass `--show-match`. In-memory redaction produces payload-free audit records. The web UI binds to `127.0.0.1` with CSRF and CSP protections.
 
-- **🚀 Getting Started**: [Installation](#installation) | [Configuration Guide](docs/configuration.md) | [Architecture Overview](docs/architecture-diagram.md)
-- **👥 User Guides**: [Web UI](docs/user-guides/README-WebUI.md) | [Docker](docs/user-guides/README-Docker.md) | [Preprocess-Only](docs/user-guides/README-Preprocess-Only.md) | [Suppressions](docs/user-guides/README-Suppressions.md)
-- **🛠 Development**: [Creating Validators](docs/development/creating_validators.md) | run `make test` (Go test suite) | [Cross-platform Test Workflow](.github/workflows/go-test.yml)
-- **🚀 Deployment**: [GitLab Integration](docs/GITLAB_INTEGRATION.md) | [GitLab Security Scanner Setup](docs/deployment/GITLAB_SECURITY_SCANNER_SETUP.md) | [CI/CD Setup](docs/deployment/GITLAB_CI_SETUP.md)
+---
 
-## Architecture
+## Install
 
-Ferret Scan uses a modular architecture with pluggable validators and preprocessors. For detailed architecture documentation and flow diagrams, see [docs/architecture-diagram.md](docs/architecture-diagram.md).
+Pick whichever fits your workflow — all are first-class.
 
-For application flow and processing diagrams, see [docs/ferret-application-flow.md](docs/ferret-application-flow.md).
+| Method | Command |
+|---|---|
+| **pip** (CLI + pre-commit) | `pip install ferret-scan` |
+| **Docker** | `docker pull public.ecr.aws/awslabs/ferret-scan:latest` |
+| **From source** (Go 1.26.5) | `git clone https://github.com/awslabs/ferret-scan.git && cd ferret-scan && go build ./cmd` |
 
-For complete documentation, see the [Documentation Index](docs/README.md).
-
-## Features
-
-### Core Detection Capabilities
-
-- **Email Address Validation**: RFC-compliant email detection with domain validation
-- **Enhanced Credit Card Detection**: Mathematical validation with 15+ card brands, test pattern filtering, XML/HTML support, multiple separator formats (dashes, spaces, none), and improved quoted string handling
-- **Intellectual Property Detection**: Patents, trademarks, copyrights, and trade secrets
-- **Intelligent SSN Detection**: Domain-aware validation with HR/Tax/Healthcare context understanding
-- **IP Address Detection**: IPv4 and IPv6 address identification with network context
-- **Metadata Analysis**: EXIF and document metadata extraction and validation with intelligent file type filtering for improved performance
-- **Advanced Passport Recognition**: Multi-country formats (US, UK, Canada, EU, MRZ) with travel context analysis
-- **Person Name Detection**: Pattern matching with embedded name databases for first/last names, titles, and cultural variations
-- **Phone Number Recognition**: International and domestic formats with country code support
-- **Social Media Detection**: Configurable platform detection for handles, profiles, and usernames
-- **Cloud Resource Detection**: Identifies cloud provider resource identifiers (AWS ARNs, Azure Resource IDs, GCP Resource Names, OCI OCIDs, IBM Cloud CRNs, Alibaba Cloud ARNs)
-- **VIN Detection**: Vehicle Identification Numbers (ISO 3779) with position-9 check-digit validation and manufacturer (WMI) identification
-- **Sophisticated Secrets Detection**: Entropy analysis + 40+ API key patterns (AWS, GitHub, Google Cloud, Stripe, etc.)
-
-### Advanced Intelligence Features 🚀
-
-- **Context-Aware Analysis**: Domain and document type understanding (Healthcare, Financial, HR, etc.)
-- **Environment Detection**: Automatic dev/test/production environment recognition with confidence adjustments
-- **Cross-Path Confidence Adjustment**: Findings are re-weighted using the detected domain/document type and document-vs-metadata context (e.g. a card number in a financial document scores higher than one in test data)
-
-### Performance & Integration
-
-- **Parallel Processing**: Multi-worker file processing with per-validator fan-out
-- **Memory Optimization**: Secure-wipe of matched sensitive data after use
-- **Docker Support**: Containerized deployment for easy integration
-- **CI/CD Integration**: Pre-commit hooks and pipeline integration
-- **GitLab Security Scanner**: Native GitLab SAST report format for Security Dashboard integration
-- **Web UI Interface**: Professional web interface with bulk operations and suppression management (use `ferret-scan --web`)
-
-<!-- GENAI_DISABLED: AI-Powered Capabilities section
-### AI-Powered Capabilities (GenAI)
-- **AI-powered OCR**: Extract text from images and scanned documents using Amazon Textract
-- **AI-powered Transcription**: Convert audio files to text using Amazon Transcribe
-- **AI-powered PII Detection**: Detect sensitive information using Amazon Comprehend ML models
-- **Cost Management**: Real-time cost estimation and selective service usage
--->
-
-### Performance Optimizations
-
-- **Intelligent File Type Filtering**: Metadata validator automatically skips plain text files that cannot contain meaningful metadata
-- **Optimized Processing**: 20-30% performance improvement for workloads with many plain text files (.txt, .py, .js, .json, .md, etc.)
-- **Smart Content Routing**: Only processes metadata extraction for files that actually contain metadata (images, documents, audio, video)
-- **Reduced False Positives**: Eliminates false positives from analyzing plain text content as metadata
-
-### Security & Compliance
-
-- **Memory Scrubbing**: Secure memory handling to minimize sensitive data exposure
-- **Suppression System**: Rule-based filtering to reduce false positives with bulk management
-- **Confidence Scoring**: Multi-factor confidence calculation with context adjustments
-- **Audit Trail**: Comprehensive logging and observability for compliance requirements
-
-## Memory Security
-
-Ferret Scan implements memory scrubbing to reduce the exposure of sensitive data in memory:
-
-### How Memory Scrubbing Works
-
-- **SecureString**: Sensitive data is stored in controlled byte slices instead of regular Go strings
-- **Explicit Clearing**: Memory is overwritten with zeros using multiple passes after processing
-- **Automatic Cleanup**: All matches are cleared from memory after output formatting
-- **Reduced Exposure Window**: Minimizes the time sensitive data remains in memory
-
-### Security Limitations
-
-Due to Go language constraints, memory scrubbing provides **partial protection**:
-
-- ✅ **Controlled clearing**: Byte slices are explicitly zeroed
-- ✅ **Multiple overwrites**: Data is overwritten multiple times
-- ✅ **Forced garbage collection**: Memory cleanup is triggered after processing
-- ❌ **String immutability**: Go strings create temporary copies during processing
-- ❌ **Compiler optimizations**: May eliminate "dead" memory overwrites
-- ❌ **No memory locking**: Cannot prevent swapping to disk
-
-### Memory Security Level: **MEDIUM**
-
-The implementation provides better security than storing sensitive data in regular strings, but cannot guarantee complete memory protection due to Go's memory model.
-
-### Usage
-
-Memory scrubbing is automatically enabled and requires no additional configuration. Sensitive data is cleared from memory after each scan completes.
-
-## Building the Application
-
-### Development Setup
-
-To set up your development environment:
+Docker one-liner (mount the current directory and scan it):
 
 ```bash
-# First, clone the repository
-git clone https://github.com/awslabs/ferret-scan.git
-cd ferret-scan
-
-# Make the setup script executable and run it
-chmod +x scripts/setup-dev.sh
-./scripts/setup-dev.sh
+docker run --rm -v "$PWD:/data" public.ecr.aws/awslabs/ferret-scan:latest --file /data --recursive
 ```
 
-This script will:
+---
 
-- Install required Go tools (like golint)
-- Add the Go bin directory to your PATH
-- Install other dependencies
+## What it detects
 
-### Using the Makefile
+Thirteen validators, each purpose-built. Enable a subset with `--checks CREDIT_CARD,SECRETS,SSN` or run them all (the default).
 
-The project includes a Makefile to simplify common development tasks:
+| Validator | What it catches | Notes |
+|---|---|---|
+| `CREDIT_CARD` | Card numbers across 15+ brands | Luhn-validated; emits `VISA`, `MASTERCARD`, `AMERICAN_EXPRESS`, …; filters known test patterns |
+| `SECRETS` | API keys, tokens, credentials | Entropy analysis + 40+ patterns (AWS keys, GitHub tokens, Stripe, …) |
+| `SSN` | US Social Security Numbers | Domain-aware (HR / Tax / Healthcare context) |
+| `EMAIL` | Email addresses | Emits `BUSINESS` for known SaaS/corporate domains |
+| `PHONE` | Phone numbers | International formats |
+| `IP_ADDRESS` | IPv4 / IPv6 addresses | Skips RFC1918 / reserved / test ranges; context-keyword gated |
+| `PASSPORT` | Passport numbers | US / UK / CA / EU + MRZ |
+| `VIN` | Vehicle Identification Numbers | ISO 3779, position-9 check digit, WMI manufacturer lookup |
+| `PERSON_NAME` | Personal names | Embedded name databases, titles, cultural variations |
+| `CLOUD_RESOURCES` | Cloud resource identifiers | AWS ARNs, Azure IDs, GCP, OCI, IBM CRN, Alibaba |
+| `INTELLECTUAL_PROPERTY` | IP / confidentiality markers | Patents, trademarks, copyrights, trade secrets |
+| `SOCIAL_MEDIA` | Social media handles / profiles | Requires configuration to activate |
+| `METADATA` | EXIF / document metadata | File-path only (needs filesystem); not available via the in-memory library API |
 
-```bash
-# Build the application
-make build
+---
 
-# Format code
-make fmt
+## Example output
 
-# Run linter
-make lint
+By default, matched values are **hidden** — the report is safe to paste into a ticket or share with a teammate.
 
-# Run go vet
-make vet
-
-# Clean build artifacts
-make clean
-
-# Run all checks and build
-make all
-
-# Install configuration file
-make install-config
+```
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH      FILE
+[HIGH  ] ssn          SSN                   100.00% line     3 [HIDDEN]   demo.txt
+[HIGH  ] email        BUSINESS              100.00% line     1 [HIDDEN]   demo.txt
+[HIGH  ] secrets      AWS_ACCESS_KEY        100.00% line     4 [HIDDEN]   demo.txt
+[MEDIUM] phone        PHONE                  75.00% line     3 [HIDDEN]   demo.txt
 ```
 
-### Manual Build
+Pass `--show-match` to reveal the underlying values, and `--explain` to see *why* each was flagged.
 
-If you prefer not to use the Makefile, you can build manually:
+### Output formats
+
+Choose a format with `--format`:
+
+`text` (default) · `json` · `csv` · `yaml` · `junit` · `gitlab-sast` · `sarif`
+
+The `sarif`, `gitlab-sast`, and `junit` formats slot directly into GitHub code scanning, GitLab SAST reports, and CI test dashboards.
+
+---
+
+## Ways to run it
+
+**Scan files, directories, and globs**
 
 ```bash
-go build -ldflags="-s -w" -o ferret-scan ./cmd
+ferret-scan --file ./src --recursive
+ferret-scan --file "logs/*.txt" --checks SECRETS,CREDIT_CARD
+ferret-scan --file report.pdf --explain --format json --output findings.json
 ```
 
-## Usage
+**Redact a stream** (composes in pipes; redacted bytes to stdout, findings to stderr)
 
 ```bash
-./ferret-scan --file <path-to-file> [options]
-
-# Or pipe content via stdin (treated as plain text):
-cat sample.txt | ./ferret-scan --stdin
-echo "secret: 4532-0151-1283-0366" | ./ferret-scan --file -
+cat customer-export.csv | ferret-scan --stdin --enable-redaction --redaction-strategy synthetic > safe-export.csv
 ```
 
-### Command Line Options
-
-#### Core Options
-- `--file`: Path to the input file, directory, or glob pattern (e.g., *.pdf). Use `-` to read from standard input. Required for CLI mode unless `--stdin` is set.
-- `--stdin`: Read content to scan from standard input (treated as plain text). Mutually exclusive with `--file <path>`, positional file args, and `--web`. Pair with `--enable-redaction` to act as a streaming redaction gateway (redacted content → stdout, findings → stderr or `--output <file>`).
-- `--stdin-name`: Synthetic label used as the filename in findings when scanning stdin (default: `<stdin>`). Useful for stable suppression keys when piping the same content repeatedly (e.g. `--stdin-name "<git-diff>"`).
-- `--config`: Path to configuration file (YAML)
-- `--profile`: Profile name to use from config file
-- `--list-profiles`: List available profiles in config file
-- `--format`: Output format: "text", "json", "csv", "yaml", "junit", "gitlab-sast" (default: "text")
-  - **gitlab-sast**: GitLab Security Report format for integration with GitLab Security Dashboard and merge request widgets
-- `--confidence`: Confidence levels to display, comma-separated: "high", "medium", "low", or "all" (default: "all")
-- `--checks`: Specific checks to run, comma-separated: "CLOUD_RESOURCES", "CREDIT_CARD", "EMAIL", "INTELLECTUAL_PROPERTY", "IP_ADDRESS", "METADATA", "PASSPORT", "PERSON_NAME", "PHONE", "SECRETS", "SOCIAL_MEDIA", "SSN", "VIN"<!-- GENAI_DISABLED: , "COMPREHEND_PII" -->, or "all" (default: "all")
-  - **SOCIAL_MEDIA**: Requires configuration - see [Social Media Configuration Guide](docs/social-media-configuration.md)
-- `--disable-ip-types`: Comma-separated list of **intellectual-property** sub-types to disable within the `INTELLECTUAL_PROPERTY` check (here "IP" = intellectual property, not IP address): `copyright`, `patent`, `trademark`, `trade_secret`, `internal_url`. Equivalent to setting `validators.intellectual_property.disabled_types` in config. Default: none disabled.
-
-#### Output and Display Options
-- `--verbose`: Display detailed information for each finding (default: false)
-- `--explain`: Annotate each finding with a plain-language rationale ("why was this flagged?"), a verdict (`likely_real` / `likely_test` / `uncertain`), and a drafted suppression reason. Fully offline and deterministic — it only re-phrases signals the engine already computed (no network calls, no new dependencies, no data leaves the host). Off by default. The explanation appears in text (verbose and pre-commit modes), JSON/YAML (as a first-class `explanation` field), SARIF (in the result message and properties), and gitlab-sast (in the description). When combined with `--generate-suppressions`, generated rules use the drafted per-finding reason. Note: a HIGH-confidence finding is never labelled `likely_test`, so the verdict can't talk a reviewer out of a real finding.
-- `--debug`: Enable debug logging to show preprocessing and validation flow
-- `--output`: Path to output file (if not specified, output to stdout)
-- `--no-color`: Disable colored output (useful for logging or non-terminal output)
-- `--show-match`: Display the actual matched text in findings (otherwise shows [HIDDEN])
-- `--quiet`: Suppress progress output (useful for scripts and CI/CD)
-- `--fail-on-incomplete`: Exit with code `3` if any file's validator coverage was cut short (a per-file/per-validator timeout, cancellation, or budget). Off by default — incomplete coverage otherwise only prints a warning to stderr and leaves the exit code unchanged. Useful in CI to fail a pipeline rather than trust a partial scan. See [Exit Codes](#exit-codes).
-- `--help`: Show help information
-- `--version`: Show version information
-
-#### Exit Codes
-
-`ferret-scan` uses these process exit codes so scripts and CI can branch on the outcome:
-
-| Code | Meaning |
-|------|---------|
-| `0`  | Scan completed. In default mode this is returned even when findings exist (findings are reported in the output, not via exit code); pre-commit mode overrides this — see below. |
-| `1`  | A system or usage error (bad flags, unreadable input, internal failure). |
-| `2`  | No files to process (nothing matched the given paths/filters). |
-| `3`  | **Coverage was incomplete** and `--fail-on-incomplete` was set — at least one file was not fully scanned (timeout, cancellation, or a per-validator budget), so findings may be missing. Only ever returned when the flag is passed. |
-
-In **pre-commit mode** (`--pre-commit-mode`) the exit code instead reflects findings/confidence so a commit can be blocked; `--fail-on-incomplete` composes with it, escalating an otherwise-clean (`0`) pre-commit result to `3` without downgrading a findings-based non-zero result.
-
-#### File Processing Options
-- `--enable-preprocessors`: Enable text extraction from documents (PDF, Office files) (default: true, use `--enable-preprocessors=false` to disable)
-- `--preprocess-only`: Output preprocessed text and exit (no validation or redaction)
-- `-p`: Short form of `--preprocess-only`
-- `--recursive`: Recursively scan directories (default: false)
-- `--exclude`: Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')
-  - **Note**: Uses glob patterns, not regex - dots and other characters are literal (use '.git', not '\\.git')
-- `--respect-gitignore`: Honor `.gitignore`, `.git/info/exclude`, and the global git excludes file when scanning (opt-in; `.git` is always skipped when enabled). See [File Exclusion Patterns](docs/configuration.md#file-exclusion-patterns) for the security trade-offs — `.gitignore` often hides `.env`, `*.pem`, and other high-value files.
-- `--validator-budget`: Per-validator time budget as `NAME=DURATION` pairs. `DURATION` is any Go duration string, so you can specify the unit explicitly — `ms`, `s`, `m`, `h`, or a combination (e.g. `SSN=500ms,IP_ADDRESS=2m,PHONE=1m30s`). Use `all=<duration>` to bound every validator at once; specific names override the wildcard (`all=30s,SSN=5s`). A validator that exceeds its budget is stopped and the scan is reported as incomplete (findings may be missing). Off by default — no per-validator limit beyond the 5-minute per-file ceiling. Intended as a CI/hardening control against pathological inputs. Not valid with `--web` or `--preprocess-only`.
-- `--max-live-bytes`: Cap the total file content held in memory across files scanned concurrently, e.g. `256MB` or `1GB` (units `B`, `KB`, `MB`, `GB`; a bare number is bytes). Without it, peak memory is bounded only by the 100 MB per-file limit multiplied by the worker count, so a directory of large files can multiply memory independently — on a constrained host (e.g. Lambda) that can exhaust memory even though each file is within the size gate. Each file reserves its on-disk size against the budget **before it is read/extracted** and releases it after the scan, so a worker blocks rather than loading another large file when the budget is full; files are only sequenced, findings are unchanged. A file larger than the whole budget still runs (alone). Off by default; not valid with `--web` or `--preprocess-only`. In-process (library) callers set the same cap via `core.ScanConfig.MaxLiveBytes`.
-
-#### Redaction Options
-- `--enable-redaction`: Enable redaction of sensitive data found in documents
-- `--redaction-output-dir`: Directory where redacted files will be stored (default: "./redacted")
-- `--redaction-strategy`: Redaction strategy — `simple` (placeholder), `format_preserving` (masks value, keeps structure), or `synthetic` (realistic fake data) (default: `format_preserving`)
-- `--redaction-audit-log`: Path to save redaction audit log file (JSON format for compliance)
-
-See the [Redaction Guide](docs/user-guides/README-Redaction.md) for strategy details, supported file types, and per-validator behaviour.
-
-#### Suppression Management
-- `--generate-suppressions`: Generate suppression rules for all findings (disabled by default, updates last_seen_at for existing rules)
-- `--suppression-file`: Path to suppression configuration file (default: `$XDG_CONFIG_HOME/ferret-scan/suppressions.yaml` on Unix — falls back to `~/.ferret-scan/suppressions.yaml`; `%APPDATA%\ferret-scan\suppressions.yaml` on Windows)
-- `--show-suppressed`: Include suppressed findings in output with suppression details (marked as [SUPP] in text format)
-
-#### Web Server Mode
-- `--web`: Start web server mode instead of CLI scanning
-- `--port`: Port for web server (default: 8080, only used with --web)
-- `--bind`: Network interface to bind to (default: `127.0.0.1`; auto-detects `0.0.0.0` inside containers via `/.dockerenv` or `FERRET_CONTAINER_MODE=true`). Pass `--bind 0.0.0.0` to expose on the LAN — note that the UI has no authentication.
-
-The web server honors `--config`, `--suppression-file`, and `--exclude` so it can use the same configuration as the CLI:
-
-```bash
-# Use a team-shared suppressions file and exclude common build dirs
-./ferret-scan --web --port 8080 \
-  --suppression-file ./team-suppressions.yaml \
-  --exclude '.git,node_modules,dist,target'
-```
-
-**Security defaults.** The web UI binds to `127.0.0.1` by default and rejects cross-origin POST requests (Origin/Referer mismatch). It emits a baseline Content-Security-Policy plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` on every response. To expose the UI on the LAN, pass `--bind 0.0.0.0` and understand that the UI itself has no authentication — anyone reachable on the bound interface can scan content and modify suppression rules. Inside Docker/Podman the server auto-detects the container environment and binds to all interfaces; port publishing (`docker run -p 127.0.0.1:8080:8080 ...`) controls host exposure.
-
-Without these flags, the web server uses the platform default suppression path (`~/.ferret-scan/suppressions.yaml` on Unix, `%APPDATA%\ferret-scan\suppressions.yaml` on Windows). Configured exclude patterns are applied client-side during folder drag-drop walks so excluded directories are never uploaded.
-
-
-
-<!-- GENAI_DISABLED: GenAI command line options
-#### GenAI Options (Currently Disabled)
-- `--enable-genai`: Enable AI-powered text extraction using Amazon Textract OCR (requires AWS credentials, data sent to AWS, costs may apply)
-- `--genai-services`: Comma-separated list of GenAI services to use: textract, transcribe, comprehend, or 'all' (default: all, only used with --enable-genai)
-- `--textract-region`: AWS region for Textract service (default: us-east-1, only used with --enable-genai)
-- `--transcribe-bucket`: S3 bucket name for Transcribe audio uploads (optional, creates temporary bucket if not specified)
-- `--max-cost`: Maximum cost limit for GenAI services (default: no limit)
-- `--estimate-only`: Show cost estimate and exit without processing
--->
-
-### Examples
-
-Scan a file and display all findings in text format:
-
-```bash
-./ferret-scan --file sample.txt
-```
-
-Scan a file and only show high confidence findings:
-
-```bash
-./ferret-scan --file sample.txt --confidence high
-```
-
-Scan a file and output results as JSON:
-
-```bash
-./ferret-scan --file sample.txt --format json
-```
-
-Generate GitLab Security Report for CI/CD integration:
-
-```bash
-./ferret-scan --file . --recursive --format gitlab-sast --output gl-sast-report.json
-```
-
-Scan a file and save results to an output file:
-
-```bash
-./ferret-scan --file sample.txt --format json --output results.json
-```
-
-Show detailed information for high and medium confidence findings:
-
-```bash
-./ferret-scan --file sample.txt --confidence high,medium --verbose
-```
-
-Use a configuration file:
-
-```bash
-./ferret-scan --file sample.txt --config ferret.yaml
-```
-
-Use a specific profile from the configuration file:
-
-```bash
-./ferret-scan --file sample.txt --profile ci
-```
-
-### Reading from stdin
-
-Pipe content directly without writing it to a file:
-
-```bash
-# Scan a git diff before committing
-git diff | ./ferret-scan --stdin --pre-commit-mode
-
-# Scan command output for accidentally exposed credentials
-kubectl get secrets -o yaml | ./ferret-scan --stdin --confidence high
-
-# JSON output for scripted use
-echo "card 4532-0151-1283-0366" | ./ferret-scan --stdin --format json
-
-# POSIX-style alias: --file - is equivalent to --stdin
-cat sample.txt | ./ferret-scan --file -
-
-# Custom label for stable suppression keys across runs
-git diff | ./ferret-scan --stdin --stdin-name "<git-diff>" --suppression-file ./.ferret-stdin.yaml
-```
-
-**Limitations:**
-
-- stdin content is treated as plain text. To scan binary documents (PDF, DOCX, images, etc.), write them to a file and use `--file`.
-- Maximum stdin size: 100 MB.
-- `--respect-gitignore` and `--exclude` are silently ignored with stdin (no filesystem to walk).
-- `--redaction-audit-log` is not supported with stdin (requires on-disk index management). Scan a file if you need an audit log.
-
-### Streaming redaction (gateway pattern)
-
-When `--enable-redaction` is combined with `--stdin`, ferret-scan acts as a streaming redaction gateway: redacted content is written to stdout while findings go to stderr (or to `--output <file>` if you want a structured findings report).
-
-**Canonical pipe shape** — keeps redacted content and findings cleanly separated:
-
-```bash
-echo "card 5500-0000-0000-0004 email alice@example.com" \
-  | ferret-scan --stdin --enable-redaction --format json \
-    2> findings.json > clean.txt
-```
-
-`clean.txt` contains only the redacted bytes; `findings.json` parses cleanly as JSON. The same pattern works for any structured format (`json`, `yaml`, `sarif`, `gitlab-sast`, `junit`).
-
-> **Note:** When findings stream to stderr alongside redacted content on stdout (i.e., no `--output` is set), human-readable progress lines like "Scan complete: ..." are suppressed so the findings stream stays parseable end-to-end. With `--output <file>`, prose lines on stderr are restored — the findings document is going to a file, so stderr is free to carry progress messages.
->
-> **Interactive use:** When stdout is a terminal (you ran the command without redirecting), the full findings document is replaced with a one-line hint pointing at the canonical pipe shape. This matches the `git diff` / `jq` convention of adapting output to the consumer. Pipe stdout (or set `--output`) to capture full findings.
-
-```bash
-# Pipe a log through ferret-scan and capture only the cleansed text
-cat sensitive.log | ./ferret-scan --stdin --enable-redaction > clean.log
-
-# Compose with other tools — the redacted bytes flow naturally through the pipe
-git diff | ./ferret-scan --stdin --enable-redaction --redaction-strategy synthetic | grep -v password
-
-# Capture findings as JSON while still streaming redacted content
-cat input.txt | ./ferret-scan --stdin --enable-redaction \
-  --redaction-strategy format_preserving \
-  --format json --output findings.json > clean.txt
-```
-
-All three plaintext redaction strategies are supported on stdin:
-
-- `simple` — replaces matches with `[TYPE-REDACTED]` placeholders
-- `format_preserving` — masks values while keeping length and shape (e.g. `4532-****-****-0366`)
-- `synthetic` — generates realistic-looking fake data of the same type
-
-Suppressed matches are passed through unmodified — a suppression rule is an explicit "this is fine" signal that overrides redaction.
-
-### File Exclusion Examples
-
-Exclude specific files or directories from scanning:
-
-```bash
-# Exclude .git directory and log files
-./ferret-scan --file . --recursive --exclude '.git,*.log'
-
-# Exclude multiple patterns
-./ferret-scan --file /path/to/project --recursive --exclude 'node_modules,target,*.tmp'
-
-# Exclude specific files when using glob patterns
-./ferret-scan --file '*.txt' --exclude 'test_*,temp.txt'
-
-# Exclude directories with trailing slash
-./ferret-scan --file . --recursive --exclude 'build/,dist/'
-
-# Respect .gitignore (opt-in) — skips anything git would ignore
-./ferret-scan --file . --recursive --respect-gitignore
-```
-
-Scan for intellectual property (requires configuration):
-
-```bash
-./ferret-scan --file document.txt --config ferret.yaml --checks INTELLECTUAL_PROPERTY
-```
-
-Scan for cloud resource identifiers (AWS ARNs, Azure Resource IDs, GCP names, etc.):
-
-```bash
-./ferret-scan --file infrastructure.tf --checks CLOUD_RESOURCES
-```
-
-Scan for social media profiles and handles (requires configuration):
-
-```bash
-./ferret-scan --file document.txt --checks SOCIAL_MEDIA
-```
-
-Start web server on default port (8080):
-
-```bash
-./ferret-scan --web
-```
-
-Start web server on custom port:
-
-```bash
-./ferret-scan --web --port 9000
-```
-
-**Note**: Social media detection requires configuration. See the [Social Media Configuration Guide](docs/social-media-configuration.md) for setup instructions.
-
-List available profiles in the configuration file:
-
-```bash
-./ferret-scan --list-profiles --config ferret.yaml
-```
-
-### Text Extraction Examples
-
-Extract preprocessed text from documents without validation:
-
-```bash
-./ferret-scan --file document.pdf --preprocess-only
-```
-
-Extract text using short form flag:
-
-```bash
-./ferret-scan --file document.docx -p
-```
-
-Extract text from multiple files:
-
-```bash
-./ferret-scan --file documents/ --recursive --preprocess-only
-```
-
-Extract text with verbose output showing processor details:
-
-```bash
-./ferret-scan --file image.jpg --preprocess-only --verbose
-```
-
-### Profile-Based Configuration Examples
-
-Ferret Scan includes pre-configured profiles for common use cases. Place a `ferret.yaml` in your project root (auto-discovered) or specify with `--config`:
-
-```bash
-# List available profiles
-./ferret-scan --list-profiles
-```
-
-#### CLI (Default)
-
-```bash
-# Standard interactive scan — human-readable text output
-./ferret-scan --file . --recursive --profile cli
-```
-
-#### CI/CD Pipeline
-
-```bash
-# GitLab SAST format (change to --format junit or --format sarif as needed)
-./ferret-scan --file . --recursive --profile ci
-
-# Override format for GitHub Actions / Azure DevOps
-./ferret-scan --file . --recursive --profile ci --format sarif --output results.sarif
-```
-
-#### Web UI
-
-```bash
-# Start web server (always runs --explain automatically)
-./ferret-scan --web --port 8080
-```
-
-#### Pre-commit Hook
-
-```bash
-# Fast scan of staged files (used by .pre-commit-hooks.yaml)
-./ferret-scan --pre-commit-mode --profile precommit --respect-gitignore
-```
-
-#### Redaction
-
-```bash
-# Scan and redact sensitive data with format-preserving replacement
-./ferret-scan --file . --recursive --profile redaction
-```
-
-<!-- GENAI_DISABLED: Amazon Textract OCR examples
-Use Amazon Textract OCR for advanced text extraction from images and scanned documents:
-```bash
-```bash
-# WARNING: This will send files to AWS and incur costs (~$0.0015 per page/image)
-./ferret-scan --file scanned-document.pdf --enable-genai
-```
-
-Use Textract with a specific AWS region:
-```bash
-./ferret-scan --file image.png --enable-genai --textract-region us-west-2
-```
-
-Use only specific GenAI services (to control costs):
-```bash
-# Use only Textract OCR, skip expensive Comprehend
-./ferret-scan --file image.jpg --enable-genai --genai-services textract
-
-# Use Textract and Transcribe, process with local validators
-./ferret-scan --file audio.mp3 --enable-genai --genai-services textract,transcribe
-```
--->
-
-Quiet mode for scripts and CI/CD:
-
-```bash
-# Suppress progress output for clean script output
-./ferret-scan --file document.txt --quiet
-
-# Combine with other options for automated scanning
-./ferret-scan --file *.pdf --quiet --format json --output results.json
-```
-
-Detect secrets and API keys:
-
-```bash
-# Scan for secrets in configuration files
-./ferret-scan --file config.json --checks SECRETS
-
-# High confidence secrets only
-./ferret-scan --file .env --checks SECRETS --confidence high
-
-# Verbose output with entropy analysis
-./ferret-scan --file app.py --checks SECRETS --verbose
-```
-
-View suppressed findings:
-
-```bash
-# Show what findings were suppressed and why
-./ferret-scan --file document.txt --format json --show-suppressed
-
-# Regular scan (suppressed findings not shown)
-./ferret-scan --file document.txt --format json
-```
-
-### Suppression Management
-
-Generate suppression rules for findings to reduce false positives:
-
-```bash
-# Generate disabled suppression rules for all findings
-./ferret-scan --file document.txt --generate-suppressions
-
-# Run again to update last_seen_at timestamps
-./ferret-scan --file document.txt --generate-suppressions
-
-# Use custom suppression file
-./ferret-scan --file document.txt --suppression-file custom-suppressions.yaml
-
-# Default suppression file location (when --suppression-file is omitted):
-#   Unix:    $XDG_CONFIG_HOME/ferret-scan/suppressions.yaml  (falls back to ~/.ferret-scan/suppressions.yaml)
-#   Windows: %APPDATA%\ferret-scan\suppressions.yaml
-# Override via FERRET_CONFIG_DIR env var.
-```
-
-**Web UI Management**: The web interface provides comprehensive suppression management:
-
-- **View Rules**: Browse all suppression rules with file details and pagination
-- **Bulk Operations**: Select multiple rules for enable/disable/delete operations
-- **Individual Actions**: Enable, disable, edit, or remove single rules
-- **Undo Support**: Undo button appears after operations to reverse changes
-- **New Findings Integration**: Add suppressions directly from scan results
-- **Auto-generation**: Rules created during scans with --generate-suppressions
-- **CLI Compatibility**: Suppressions work seamlessly between web UI and command line
-
-#### Bulk Operations and Undo
-
-The web UI supports efficient bulk operations for managing multiple suppressions:
-
-**Bulk Operations:**
-
-```bash
-# Select multiple suppressions using checkboxes
-# Available bulk actions:
-- Enable Selected: Activate multiple rules at once
-- Disable Selected: Deactivate multiple rules at once
-- Delete Selected: Permanently remove multiple rules
-- Add Selected as Suppressions: Create rules from new scan findings
-```
-
-**Undo Functionality:**
-
-- Undo button appears after any bulk or individual operation
-- Reverses the last action (enable → disable, create → delete, etc.)
-- Preserves original enabled/disabled state for deleted rules
-- Works for both bulk and individual operations
-
-**Selection Features:**
-
-- Checkbox selection with "Select All" and "Clear" options
-- Separate selection systems for existing rules vs new findings
-- Visual indicators show selection count and available actions
-
-For comprehensive suppression documentation, see [Suppression System Guide](docs/user-guides/README-Suppressions.md).
-
-<!-- GENAI_DISABLED: For comprehensive GenAI documentation, see [GenAI Integration Guide](docs/development/genai_integration.md). -->
-
-## Recent Changes and Behavior Updates
-
-### Person Name Validator Optimization (2025)
-
-The person name validator has been significantly optimized with database-first processing and enhanced accuracy:
-
-**What Changed:**
-- **Database-First Processing**: Names are checked against embedded databases before pattern matching
-- **Early Exit Optimization**: Non-matching text exits immediately without expensive pattern matching
-- **Enhanced Technical Context Detection**: Automatic confidence penalties for technical terms (API, function, method)
-- **Comma-Separated Name Support**: New patterns for "Last, First" format detection
-- **Confidence Bug Fixes**: Eliminated confidence leakage from zero-confidence matches
-
-**User Impact:**
-- **Dramatic Performance Improvement**: 98% faster processing with 12x throughput increase
-- **Better Accuracy**: Reduced false positives in technical documentation
-- **Enhanced Detection**: Support for additional name formats and patterns
-- **Same Interface**: No configuration changes required
-
-**No Configuration Required**: This optimization is automatic and maintains full backward compatibility.
-
-### Metadata Validator File Type Filtering (2025)
-
-The metadata validator now includes intelligent file type filtering that automatically determines which files can contain meaningful metadata:
-
-**What Changed:**
-- Plain text files (.txt, .py, .js, .json, .md, etc.) are automatically skipped during metadata validation
-- Only files that can actually contain metadata (images, documents, audio, video) are processed
-- Debug logging now shows file type filtering decisions
-
-**User Impact:**
-- **Faster Performance**: 20-30% improvement for workloads with many plain text files
-- **Fewer False Positives**: Eliminates false matches from analyzing text content as metadata
-- **Same Accuracy**: Full metadata detection maintained for files that actually contain metadata
-- **Debug Output**: New debug messages show which files are processed vs skipped
-
-**No Configuration Required**: This optimization is automatic and requires no changes to existing configurations or command-line usage.
-
-## Additional Documentation
-
-### User Guides
-
-- [Configuration Guide](docs/configuration.md) - YAML configuration and profiles
-- [Docker Guide](docs/user-guides/README-Docker.md) - Container deployment
-- [Web UI Guide](docs/user-guides/README-WebUI.md) - Web interface documentation
-- [Examples](examples/README.md) - Code examples and usage samples
-
-### Development
-
-- [Creating Validators](docs/development/creating_validators.md) - Developer guide
-- [Debug Logging](docs/development/debug_logging.md) - Troubleshooting guide
-- [Text Extraction Integration](docs/development/text_extraction_integration.md) - Document processing
-<!-- GENAI_DISABLED: GenAI documentation links
-- [GenAI Implementation Summary](docs/development/genai_implementation_summary.md) - Textract OCR implementation
-- [Comprehend Implementation Summary](docs/development/comprehend_implementation_summary.md) - AI PII detection implementation
--->
-
-### Reference
-
-- [Changelog](CHANGELOG.md) - Version history and updates
-
-## Docker and CI/CD Integration
-
-Ferret Scan is designed for seamless integration into modern development workflows.
-
-### Container Support (Docker/Finch)
-
-Run Ferret Scan in a containerized environment using Docker or Finch:
-
-```bash
-# Pull the prebuilt multi-arch image from Amazon ECR Public (no build needed)
-docker pull public.ecr.aws/awslabs/ferret-scan:latest
-# Gallery: https://gallery.ecr.aws/awslabs/ferret-scan
-
-# Or build the container image yourself (auto-detects Docker/Finch)
-make container-build
-
-# Web UI mode with persistent data (recommended)
-./scripts/container-run.sh -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
-
-# CLI mode - basic scan
-./scripts/container-run.sh --rm -v $(pwd):/data ferret-scan ferret-scan --file /data/document.txt
-
-# CLI mode - with persistent configuration and suppressions
-./scripts/container-run.sh --rm -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan ferret-scan --file /data/document.txt
-
-# Or use container runtime directly (Docker/Finch):
-# docker run -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
-# finch run -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
-```
-
-See the [Container Guide](docs/user-guides/README-Docker.md) for detailed usage instructions.
-
-**Volume Mapping:**
-
-- `-v ~/.ferret-scan:/home/ferret/.ferret-scan` - Persist config and suppressions (the container runs as the non-root `ferret` user, home `/home/ferret`)
-- `-v $(pwd):/data` - Mount current directory for file access (scan with `--file /data/...`)
-- `-e FERRET_CONFIG_DIR=/config` - Override config directory location
-
-### Pre-commit Integration
-
-Integrate Ferret Scan directly into your Git workflow using pre-commit hooks:
-
-#### Quick Team Setup (Recommended)
-
-```bash
-# Complete team setup in one command
-make setup-team
-
-# This configures:
-# • Team security policies (.ferret-scan.yaml)
-# • Pre-commit hooks (.pre-commit-config.yaml)
-# • GitHub Actions workflow (.github/workflows/ferret-scan.yml)
-
-# Commit the configuration to share with your team
-git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml
-git commit -m "Add Ferret Scan team security configuration"
-```
-
-#### Developer Setup (Team Members)
-
-```bash
-# Each team member runs once:
-make setup-developer
-
-# This installs pre-commit hooks and tests the setup
-# Commits will now be automatically scanned for sensitive data
-```
-
-#### Manual Setup Options
-
-**Option 1: Python Package**
-
-```bash
-# Install via pip (published to PyPI)
-pip install ferret-scan
-```
+**Pre-commit hook** — block secrets before they land
 
 ```yaml
-# .pre-commit-config.yaml — pin rev to a released tag (see the latest at
-# https://github.com/awslabs/ferret-scan/releases)
+# .pre-commit-config.yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
     rev: v1.10.0
     hooks:
       - id: ferret-scan
-        name: Ferret Scan - Sensitive Data Detection
-        files: '\.(txt|py|js|json|yaml|md)$'
 ```
 
-#### Option 2: Local Installation
+**CI/CD** — emit a SARIF or GitLab SAST report
 
-```yaml
-# .pre-commit-config.yaml (requires ferret-scan to be installed)
-repos:
-  - repo: local
-    hooks:
-      - id: ferret-scan
-        name: Ferret Scan - Sensitive Data Detection
-        entry: ferret-scan
-        language: system
-        files: '\.(txt|py|js|json|yaml|md)$'
-        args: ['--file', '--quiet']
+```bash
+ferret-scan --file . --recursive --format sarif --output ferret.sarif --quiet
 ```
 
-**Option 3: Direct Binary Integration**
+**Container** — scan a mounted directory with no local install
 
-```yaml
-# .pre-commit-config.yaml (build from source)
-repos:
-  - repo: local
-    hooks:
-      - id: ferret-scan
-        name: Ferret Scan - Direct Binary
-        entry: go run cmd/main.go --pre-commit-mode
-        language: system
-        files: '\.(txt|py|js|json|yaml|md)$'
-        pass_filenames: true
+```bash
+docker run --rm -v "$PWD:/data" public.ecr.aws/awslabs/ferret-scan:latest --file /data --recursive
 ```
 
-### CI/CD Pipeline Integration
+**Web UI** — folder drag-and-drop and bulk suppression management
 
-**GitLab CI/CD:**
-
-```yaml
-# .gitlab-ci.yml
-security-scan:
-  stage: security
-  image: ferret-scan:latest
-  script:
-    - ferret-scan --file . --recursive --format json --output scan-results.json
-  artifacts:
-    reports:
-      junit: junit-report.xml
-    paths:
-      - scan-results.json
-    expire_in: 1 week
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```bash
+ferret-scan --web --port 8080
 ```
 
-**Jenkins Pipeline:**
+**Go library** — embed redaction in-process (see below).
 
-```groovy
-pipeline {
-    agent any
-    stages {
-        stage('Security Scan') {
-            steps {
-                sh 'ferret-scan --file . --recursive --confidence high --format json --output results.json'
-                archiveArtifacts artifacts: 'results.json'
-            }
-        }
-    }
+---
+
+## Web UI
+
+Launch a local, CloudScape-styled interface for interactive scanning, folder drag-and-drop, and bulk suppression management:
+
+```bash
+ferret-scan --web
+```
+
+It binds to `127.0.0.1` by default (auto-detecting `0.0.0.0` only inside containers), enforces CSRF/Origin checks, and sends CSP headers. To expose it on your LAN, pass `--bind 0.0.0.0` — note the UI has no authentication, so do this only on trusted networks.
+
+![ferret-scan web UI — main interface](docs/images/webui-main-interface.png)
+
+![ferret-scan web UI — scan results](docs/images/webui-scan-results.png)
+
+---
+
+## Embed it: the `pkg/redact` library
+
+`pkg/redact` is the stable, public Go API for in-process, in-memory redaction — no subprocess, no filesystem, no payload leakage. An `Engine` is built once and reused; it is safe for concurrent use.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/awslabs/ferret-scan/pkg/redact"
+)
+
+func main() {
+	engine, err := redact.NewEngine(redact.EngineOptions{
+		Checks:   []string{"CREDIT_CARD", "EMAIL"},
+		Strategy: redact.FormatPreserving,
+		// LogWriter defaults to io.Discard — no payload can reach your logs.
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer engine.Close()
+
+	result, err := engine.Redact(context.Background(), redact.Request{
+		Text:  "card 5500-0000-0000-0004 from jordan@example.com",
+		Label: "req-abc-123",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println(result.Redacted)              // redacted text
+	log.Printf("%+v", result.AuditRecord())   // payload-free audit summary
 }
 ```
 
-## Web UI Interface
+`Result.AuditRecord()` returns a payload-free record — per-type finding counts (`FindingsByType`), byte counts, duration, and timestamp — and **never** the matched bytes. `LogWriter` defaults to `io.Discard`, so the no-leak property is enforced by construction rather than by convention. Matched substrings are only reachable if you explicitly opt in via `Result.FindingsWithMatchText()`. Input is capped at 100 MB.
 
-Ferret Scan includes a web-based interface for easy file scanning through your browser.
+> The `METADATA` validator requires filesystem access and is not available on the in-memory library path (passing it is a no-op). Use the CLI file path for EXIF/document metadata.
 
-### Quick Start
+### Build a PII redaction gateway
 
-```bash
-# Build and start the web UI
-make build
-./bin/ferret-scan --web --port 8080
-```
+Because `pkg/redact` runs entirely in memory — no subprocess, no filesystem, and payload-free audit records — you can build a single-tenant redaction service without ferret-scan ever writing sensitive bytes to disk or logs. A representative shape:
 
-Then open http://localhost:8080 in your browser (or the port you specified).
+- Embed the `Engine` in an **AWS Lambda** (`provided.al2023`, `arm64`), constructed once in `init()` and reused across invocations.
+- Front it with an **API Gateway HTTP API** using IAM (SigV4) auth.
+- Callers `POST` JSON `{ "text": "...", "strategy": "format_preserving" }` and receive `{ "redacted": "...", "request_id": "...", "duration_ms": <n> }`.
+- **CloudWatch** records audit **counts only** — never payload bytes — because `AuditRecord` carries no matched substrings.
+- Gateway throttling bounds abuse and DoS.
 
-### Interface Screenshots
+This is an architecture the public API enables; ferret-scan itself ships the CLI, web UI, and library — not the gateway. Note that Lambda synchronous invokes cap request bodies at ~6 MB.
 
-**Main Interface - File Upload and Configuration**
-![Web UI Main Interface](docs/images/webui-main-interface.png)
+---
 
-**Scan Results - Interactive Results Table**
-![Web UI Scan Results](docs/images/webui-scan-results.png)
+## Security posture
 
-### Web UI Features
+- **Values hidden by default.** Findings never include matched text unless you pass `--show-match` (CLI) or opt into `Result.FindingsWithMatchText()` (library).
+- **Payload-free audit records.** The library's `AuditRecord` reports counts, sizes, and timing — never the sensitive bytes.
+- **Memory scrubbing.** Sensitive buffers use a `SecureString` with multi-pass zeroing (a MEDIUM security posture, bounded by what the Go runtime allows).
+- **Suppression system.** Rule-based false-positive management, with bulk operations in the web UI, so you tune signal without editing source.
+- **Hardened web server.** `127.0.0.1` binding by default, CSRF/Origin checks, and CSP headers.
 
-#### Version Information
+For the full model — trust boundaries, threats, and mitigations — see **[THREAT_MODEL.md](THREAT_MODEL.md)**.
 
-- **Display**: Version number shown in top navigation bar
-- **Details**: Click version number for detailed build information
-- **API**: Complete version data available via `/health` endpoint
-- **Timestamp**: Uses current server timestamp for real-time information
+---
 
-#### File Upload
+## Documentation
 
-- **Single File**: Click "Choose Files" and select one file
-- **Multiple Files**: Hold Ctrl/Cmd while selecting files, or drag multiple files onto the upload area
-- **Folder Upload**: Click "Choose Folder" or drag-and-drop a folder onto the upload zone — the browser walks the folder client-side and uploads every file with its relative path, so findings show as `myrepo/src/foo.go`. Configured `--exclude` patterns are applied during the walk, so excluded directories (e.g. `.git`, `node_modules`) are never uploaded. On browsers that support `showDirectoryPicker` (recent Chrome / Edge) the picker prompts directly; older browsers fall back to `<input webkitdirectory>`.
-- **Real-time Processing**: Results appear progressively as each file is scanned
-- **Visual Progress Bar**: Shows completion percentage and current file being processed
-- **Progress Tracking**: Shows current file being processed (e.g., "Scanning file 2 of 5: myrepo/src/document.pdf")
-- **Per-file Limit**: 100 MB per file (decompression-bomb guard); folder uploads are unbounded in count
+| Topic | Link |
+|---|---|
+| Full documentation index | [docs/README.md](docs/README.md) |
+| Configuration & profiles | [docs/configuration.md](docs/configuration.md) |
+| Threat model | [THREAT_MODEL.md](THREAT_MODEL.md) |
+| Writing your own validator | [docs/development/creating_validators.md](docs/development/creating_validators.md) |
 
-#### Scan Configuration
-
-- **Confidence Levels**: Filter results by HIGH, MEDIUM, LOW, or all levels
-- **Check Types**: Select specific validators or run all checks
-- **Verbose Output**: Show detailed information for each finding
-- **Recursive Scanning**: Process directories recursively (when applicable)
-<!-- GENAI_DISABLED: - **GenAI Features**: Enable AI-powered text extraction and PII detection -->
-
-<!-- GENAI_DISABLED: GenAI Options section
-#### GenAI Options
-- **Amazon Textract OCR**: Extract text from images and scanned documents (~$0.0015 per page)
-- **Amazon Transcribe**: Convert audio files to text for analysis (~$0.024 per minute)
-- **Amazon Comprehend PII**: AI-powered PII detection (could be expensive, ~$0.0001 per 100 characters)
-- **Selective Service Usage**: Choose specific AWS services to control costs
-- **AWS Region Selection**: Choose optimal region for GenAI services
-- **Real-time Cost Estimates**: Accurate cost calculation based on selected services and file types
-- **Cost Warning**: Clear indication of AWS charges and data transmission
--->
-
-#### Results Display
-
-- **Real-time Updates**: Results appear as each file completes processing
-- **Smart Sorting**: Default multi-level sort by confidence (desc), filename (asc), line number (asc)
-- **Interactive Pagination**: Navigate large result sets with clickable page numbers (50/100 per page or all)
-- **Clickable Statistics**: Filter results by confidence level using stat cards
-- **Suppressed Findings**: Click "Suppressed" stat card to view detailed modal of suppressed findings with rule information
-- **Color Coding**: Visual distinction between confidence levels
-- **Detailed Information**: File location, line numbers, confidence scores, and metadata
-- **Export Options**: Download results as CSV or JSON with current display settings
-- **Error Handling**: Individual file errors don't stop processing of other files
-
-#### Suppression Management
-
-- **Bulk Operations**: Select multiple suppressions using checkboxes for batch enable/disable/delete
-- **Bulk Expiration**: "Make Permanent" and "Renew 30 Days" actions on selected rules
-- **Individual Actions**: Quick enable/disable/edit/remove buttons for single rules
-- **Undo Functionality**: Undo button appears after operations to reverse the last change
-- **New Findings Integration**: Scan results show new findings that can be added as suppressions
-- **Rule Details**: Click rule IDs to view complete suppression information
-- **Status Indicators**: Visual ENABLED (green) and DISABLED (red) status badges
-- **Smart Pagination**: Navigate large suppression rule sets efficiently
-- **Cached Manager**: The web server caches the parsed suppressions file in memory and reloads only when the file's mtime changes. CLI-side or manual edits to the YAML are picked up on the next request.
-
-### Supported File Types
-
-The web UI supports all file types available in the CLI version:
-
-#### Text Files
-
-- Plain text (.txt, .log, .csv, .json, .xml, etc.)
-- Source code files (.py, .js, .java, .cpp, etc.)
-- Configuration files (.yaml, .ini, .conf, etc.)
-
-**Note**: The metadata validator automatically skips these file types as they cannot contain meaningful metadata, improving performance by 20-30% for workloads with many plain text files.
-
-#### Documents (with preprocessing)
-
-- PDF documents (.pdf)
-- Microsoft Office (.docx, .xlsx, .pptx)
-- OpenDocument (.odt, .ods, .odp)
-
-#### Images (with metadata extraction)
-
-- JPEG (.jpg, .jpeg) - EXIF metadata, GPS coordinates
-- PNG (.png) - Image metadata and properties
-- GIF (.gif) - Animation and metadata
-- BMP (.bmp) - Basic image metadata
-- TIFF (.tiff, .tif) - Comprehensive metadata
-- WebP (.webp) - Modern format metadata
-
-**Note**: The metadata validator automatically processes these file types for metadata extraction.
-
-#### Audio Files (with metadata extraction)
-
-- MP3 (.mp3) - ID3v1/v2 tags, artist, album, lyrics
-- M4A (.m4a) - iTunes metadata, AAC format
-- WAV (.wav) - RIFF chunks, broadcast metadata
-- FLAC (.flac) - Vorbis comments, lossless metadata
-- OGG (.ogg) - Vorbis comments, stream info
-
-**Note**: The metadata validator automatically processes these file types for metadata extraction.
-
-#### Video Files (with metadata extraction)
-
-- MP4 (.mp4) - MP4 atoms, iTunes metadata, codec info
-- MOV (.mov) - QuickTime atoms, metadata
-- AVI (.avi) - RIFF chunks, stream metadata
-- MKV (.mkv) - Matroska elements, tags
-- WMV (.wmv) - ASF headers, Windows Media metadata
-
-**Note**: The metadata validator automatically processes these file types for metadata extraction.
-
-### Security Features
-
-- **Local Processing**: All scanning happens on your machine
-- **Temporary Files**: Uploaded files are automatically deleted after scanning
-- **No Data Storage**: Results are not saved permanently on the server
-- **Memory Scrubbing**: Sensitive data is cleared from memory after processing
-<!-- GENAI_DISABLED: - **GenAI Warnings**: Clear notifications when data will be sent to AWS services -->
-
-### Configuration Examples
-
-#### Basic Document Scan
-
-1. Upload: `contract.pdf`
-2. Confidence: "High & Medium"
-3. Checks: "All Checks"
-4. Click "Scan File"
-
-<!-- GENAI_DISABLED: AI-Powered Image Analysis example
-#### AI-Powered Image Analysis
-1. Upload: `scanned-document.jpg`
-2. Enable: "Enable GenAI"
-3. Region: "us-east-1"
-4. Checks: "All Checks"
-5. Click "Scan File"
--->
-
-#### Bulk File Processing
-
-1. Select multiple files (Ctrl+click or drag multiple)
-2. Configure desired settings
-3. Watch real-time progress as each file is processed
-4. View accumulated results sorted by severity
-
-#### Suppression Management
-
-1. **View Suppressions**: Click "Suppressions" tab to manage rules
-2. **Bulk Operations**: Select multiple rules with checkboxes, then use bulk action buttons
-3. **Individual Actions**: Use enable/disable/edit/remove buttons on each rule
-4. **Undo Changes**: Click "Undo Last Change" button to reverse operations
-5. **Add from Scan**: New findings from scans can be directly added as suppressions
-
-### Technical Details
-
-#### Port Management
-
-- Default port: 8080
-- Auto-increment: If 8080 is busy, tries 8081, 8082, etc.
-- Custom port: Set `PORT` environment variable
-
-#### File Size Limits
-
-- Maximum upload: 100 MB per file (decompression-bomb guard, applied in both `/scan` and the multipart parser)
-<!-- GENAI_DISABLED: - Audio files: 500MB limit (for GenAI transcription) -->
-- Multiple files / folder uploads: No limit on total count
-
-#### Performance
-
-- Sequential processing: Files are scanned one at a time for stability
-- Smart pagination: Only shows pagination controls when needed (50+ results)
-- Progress feedback: Visual progress bar with real-time updates
-- Error isolation: Problems with one file don't affect others
-- Memory efficient: Results are paginated to handle large datasets
-
-### Troubleshooting
-
-#### "ferret-scan binary not found"
-
-```bash
-# Build the main binary first
-make build
-# Then start web UI
-./bin/ferret-scan --web --port 8080
-```
-
-#### Port already in use
-
-The web UI automatically finds an available port. Check the console output for the actual port being used.
-
-<!-- GENAI_DISABLED: GenAI troubleshooting section
-#### GenAI features not working
-1. Ensure AWS credentials are configured
-2. Check internet connectivity
-3. Verify IAM permissions for Textract/Comprehend/Transcribe
-4. Confirm selected AWS region supports the services
--->
-
-#### Large file uploads failing
-
-- Check file size limits (100 MB per file)
-<!-- GENAI_DISABLED: - Ensure stable internet connection for GenAI features -->
-- Try processing files individually if bulk upload fails
-
-### Development
-
-#### Manual Setup
-
-```bash
-# Build main binary
-make build
-
-# Start web server
-./bin/ferret-scan --web --port 8080
-
-# Or run directly
-./bin/ferret-scan --web --port 8080
-```
-
-#### Customization
-
-- Modify `internal/web/server.go` to add features
-- Update HTML template in `internal/web/assets/template.html` for UI changes
-- Adjust file size limits or add new scan options
-
-#### API Endpoint
-
-The web UI exposes a REST API at `/scan` that accepts multipart form data with the same parameters as the web interface.
-
-#### User Interface Enhancements
-
-- **CloudScape Design**: AWS Console-style interface with professional styling
-- **Responsive Layout**: Works on desktop and mobile devices
-- **Interactive Help**: Comprehensive help modal with usage tips and examples
-- **CLI Command Display**: Shows equivalent command-line usage based on current settings
-- **Smart Pagination**: Page numbers with Previous/Next navigation
-- **Sortable Columns**: Click any column header to sort results
-- **Expandable Sections**: Collapsible configuration sections for clean interface
-
-<!-- GENAI_DISABLED: AI-Powered Text Extraction (GenAI) section
-## AI-Powered Text Extraction (GenAI)
-
-Ferret Scan supports advanced AI-powered capabilities using Amazon Web Services. These features are enabled with the `--enable-genai` flag and include:
-
-- **Amazon Textract OCR**: Extract text from images and scanned documents
-- **Amazon Transcribe**: Convert audio files to text for sensitive data detection
-- **Amazon Comprehend PII**: Detect personally identifiable information using ML models
-
-### ⚠️ Important GenAI Considerations
-
-- **Data Transmission**: Your files/text will be sent to AWS services (Textract, Comprehend) for processing
-- **AWS Costs**: Textract ~$0.0015 per page/image, Comprehend ~$0.0001 per 100 characters
-- **AWS Credentials Required**: You must have valid AWS credentials configured
-- **Internet Connection**: Requires internet access to AWS services
-- **Supported Regions**: Services available in specific AWS regions (default: us-east-1)
-
-### GenAI Prerequisites
-
-1. **AWS Account**: Active AWS account with billing enabled
-2. **AWS Credentials**: Configure using one of these methods:
-   - AWS CLI: `aws configure`
-   - Environment variables: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-   - IAM roles (for EC2 instances)
-   - AWS credentials file
-   - **Recommended**: Use the provided IAM role (see below)
-3. **IAM Permissions**: Your credentials need:
-   - `textract:DetectDocumentText` (for OCR)
-   - `transcribe:StartTranscriptionJob`, `transcribe:GetTranscriptionJob`, `transcribe:DeleteTranscriptionJob` (for audio)
-   - `s3:PutObject`, `s3:DeleteObject`, `s3:CreateBucket`, `s3:DeleteBucket`, `s3:ListAllMyBuckets`, `s3:GetBucketLocation` (for Transcribe)
-   - `comprehend:DetectPiiEntities` (for PII detection)
-4. **Supported File Types**: PDF, PNG, JPEG, TIFF images (Textract), MP3, WAV, M4A, FLAC audio (Transcribe), any text content (Comprehend)
-
-### Using the Provided IAM Role (Recommended)
-
-For security and convenience, use the provided CloudFormation template to create a dedicated IAM role:
-
-1. **Deploy the IAM role**:
-```bash
-aws cloudformation deploy --template-file aws-iam-role.yaml --stack-name ferret-scan-iam --capabilities CAPABILITY_NAMED_IAM --parameter-overrides ExternalId=your-secret-external-id
-```
-
-2. **Get the role ARN**:
-```bash
-aws cloudformation describe-stacks --stack-name ferret-scan-iam --query 'Stacks[0].Outputs[?OutputKey==`RoleArn`].OutputValue' --output text
-```
-
-3. **Assume the role before using GenAI features**:
-```bash
-# Assume the role
-aws sts assume-role --role-arn arn:aws:iam::YOUR-ACCOUNT:role/FerretScanGenAIRole --role-session-name ferret-scan-session --external-id your-secret-external-id
-
-# Export the temporary credentials (replace with actual values from above command)
-export AWS_ACCESS_KEY_ID=ASIA...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_SESSION_TOKEN=...
-
-# Now use GenAI features
-./ferret-scan --file document.pdf --enable-genai
-```
-
-4. **Alternative: Create a profile**:
-```bash
-# Add to ~/.aws/config
-[profile ferret-genai]
-role_arn = arn:aws:iam::YOUR-ACCOUNT:role/FerretScanGenAIRole
-source_profile = default
-external_id = your-secret-external-id
-
-# Use the profile
-AWS_PROFILE=ferret-genai ./ferret-scan --file document.pdf --enable-genai
-```
-
-### GenAI Usage Examples
-
-```bash
-# Extract text from a scanned PDF using Textract
-./ferret-scan --file scanned-document.pdf --enable-genai
-
-# Process images with OCR
-./ferret-scan --file screenshot.png --enable-genai
-
-# Transcribe audio files
-./ferret-scan --file audio.mp3 --enable-genai
-
-# Use specific AWS region
-./ferret-scan --file document.pdf --enable-genai --textract-region eu-west-1
-
-# Transcribe audio with custom S3 bucket
-./ferret-scan --file audio.mp3 --enable-genai --transcribe-bucket my-bucket
-
-# AI-powered PII detection
-./ferret-scan --file document.txt --enable-genai --checks COMPREHEND_PII
-
-# Combine with other options
-./ferret-scan --file *.pdf --enable-genai --format json --confidence high
-```
--->
-
-## File Locations
-
-Ferret Scan uses a standard directory structure for configuration and data files:
-
-```
-~/.ferret-scan/
-├── config.yaml        # Main configuration file
-└── suppressions.yaml  # Suppression rules
-```
-
-**Environment Variables:**
-
-- `FERRET_CONFIG_DIR`: Override the base directory (default: `~/.ferret-scan`)
-
-## Configuration File Support
-
-Ferret Scan supports YAML configuration files to set default options and create profiles for different scanning scenarios. This allows you to save commonly used settings and quickly switch between different scanning configurations.
-
-For detailed configuration documentation, see [Configuration Guide](docs/configuration.md).
-
-### Available Profiles Quick Reference
-
-These are the profiles shipped in the auto-discovered [`examples/ferret.yaml`](examples/ferret.yaml). (The more granular set — `quick`, `security-audit`, `comprehensive`, `csv-export`, `json-api`, `debug`, `silent`, `credit-card`, `passport`, `intellectual-property` — lives in the fuller [`config.yaml`](config.yaml) example; use whichever config file you deploy.)
-
-| Profile      | Purpose                    | Output Format | Use Case                                   |
-| ------------ | -------------------------- | ------------- | ------------------------------------------ |
-| `cli`        | Default interactive scan   | Text          | Local development, manual scans            |
-| `web`        | Web UI backing profile     | JSON          | `--web` mode (UI handles display)          |
-| `ci`         | CI/CD integration          | gitlab-sast   | Pipelines (switch to junit/sarif as needed)|
-| `precommit`  | Fast staged-file scan      | Text          | Pre-commit hooks                           |
-| `redaction`  | Scan and redact            | Text          | Format-preserving redaction workflows      |
-
-### Configuration File Locations
-
-The tool looks for configuration files in the following locations (in order of precedence):
-
-1. Path specified with `--config` flag
-2. `config.yaml` in the current directory
-3. `ferret.yaml` or `ferret.yml` in the current directory
-4. `~/.ferret-scan/config.yaml` (standard location)
-5. `.ferret.yaml` or `.ferret.yml` in the user's home directory (legacy)
-
-### Configuration File Structure
-
-The configuration file has three main sections:
-
-- `defaults`: Default settings applied when no profile is specified
-- `validators`: Global validator-specific configurations
-- `profiles`: Named profiles for different scanning scenarios
-
-Example configuration file:
-
-```yaml
-# Default settings applied when no profile is specified
-defaults:
-  format: text                # Output format: text or json
-  confidence_levels: all      # Confidence levels to display: high, medium, low, or combinations
-  checks: all                 # Specific checks to run: CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
-  verbose: false              # Display detailed information for each finding
-  no_color: false             # Disable colored output
-  recursive: false            # Recursively scan directories
-
-# Validator-specific configurations
-validators:
-  # Intellectual property validator configuration
-  intellectual_property:
-    # Disable specific IP sub-types to reduce noise
-    # Valid values: copyright, patent, trademark, trade_secret, internal_url
-    # disabled_types:
-    #   - copyright          # Skip copyright notice detection
-
-    # Internal company URL patterns to detect
-    internal_urls:
-      - "http[s]?:\\/\\/s3\\.amazonaws\\.com"
-      - "http[s]?:\\/\\/.*\\.internal\\..*"
-      - "http[s]?:\\/\\/.*\\.corp\\..*"
-      - "http[s]?:\\/\\/.*-internal\\..*"
-
-    # Custom intellectual property patterns
-    intellectual_property_patterns:
-      patent: "\\b(US|EP|JP|CN|WO)[ -]?(\\d{1,3}[,.]?\\d{3}[,.]?\\d{3}|\\d{1,3}[,.]?\\d{3}[,.]?\\d{2}[A-Z]\\d?)\\b"
-      trademark: "\\b(\\w+\\s*[™®]|\\w+\\s*\\(TM\\)|\\w+\\s*\\(R\\)|\\w+\\s+Trademark|\\w+\\s+Registered\\s+Trademark)\\b"
-      copyright: "(©|\\(c\\)|\\(C\\)|Copyright|\\bCopyright\\b)\\s*\\d{4}[-,]?(\\d{4})?\\s+[A-Za-z0-9\\s\\.,]+"
-      trade_secret: "\\b(Confidential|Trade\\s+Secret|Proprietary|Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted|Classified)\\b"
-
-# Profiles for different scanning scenarios
-profiles:
-  # Quick scan profile - only high confidence matches, minimal output
-  quick:
-    format: text
-    confidence_levels: high
-    checks: all
-    verbose: false
-    no_color: false
-    recursive: false
-    description: "Quick scan with only high confidence matches"
-
-  # Thorough scan profile - all confidence levels, verbose output, recursive scanning
-  thorough:
-    format: text
-    confidence_levels: all
-    checks: all
-    verbose: true
-    no_color: false
-    recursive: true
-    description: "Thorough scan with all confidence levels and recursive scanning"
-
-  # Company-specific profile with custom internal URLs and patterns
-  company-specific:
-    format: text
-    confidence_levels: all
-    checks: INTELLECTUAL_PROPERTY
-    verbose: true
-    no_color: false
-    recursive: true
-    description: "Company-specific intellectual property scan"
-    validators:
-      intellectual_property:
-        # Company-specific internal URL patterns
-        internal_urls:
-          - "http[s]?:\\/\\/company-wiki\\.internal"
-          - "http[s]?:\\/\\/docs\\.company\\.com"
-          - "http[s]?:\\/\\/.*\\.company-internal\\.com"
-```
-
-### Command Line Priority
-
-Command line options take precedence over configuration file settings. The order of precedence is:
-1. Command line options
-2. Profile settings (if a profile is specified)
-3. Default settings from the configuration file
-4. Built-in default values
-
-## Confidence Levels
-
-- **HIGH** (90-100%): Very likely to be sensitive data
-- **MEDIUM** (60-89%): Possibly sensitive data
-- **LOW** (0-59%): Likely not sensitive data or false positive
-
-## Supported Data Types
-
-Ferret Scan includes multiple validators for different types of sensitive data:
-
-- [Credit Card Validator](internal/validators/creditcard/README.md) - Detects credit card numbers from major providers with advanced mathematical validation
-- [Passport Validator](internal/validators/passport/README.md) - Detects passport numbers from various countries with contextual analysis
-- [SSN Validator](internal/validators/ssn/README.md) - Detects Social Security Numbers with domain-aware validation
-- [Person Name Validator](internal/validators/personname/README.md) - Detects personal names using embedded first/last-name databases, titles, and cultural variations with context-aware confidence
-- [IP Address Validator](internal/validators/ipaddress/README.md) - Detects IP addresses with sensitivity filtering (excludes private, reserved, test ranges)
-- [Email Validator](internal/validators/email/README.md) - Detects email addresses with advanced domain validation
-- [Phone Validator](internal/validators/phone/README.md) - Detects phone numbers with international format support
-- [Secrets Validator](internal/validators/secrets/README.md) - Detects API keys, tokens, passwords, and other secrets using entropy analysis
-- [Social Media Validator](internal/validators/socialmedia/README.md) - Detects social media profiles, usernames, and handles across major platforms (LinkedIn, Twitter/X, Facebook, GitHub, Instagram, YouTube, TikTok, etc.)
-- [Intellectual Property Validator](internal/validators/intellectualproperty/README.md) - Detects patents, trademarks, copyrights, and trade secrets
-- [VIN Validator](internal/validators/vin/README.md) - Detects Vehicle Identification Numbers with check digit validation and manufacturer identification
-- [Cloud Resource Validator](internal/validators/cloudresources/README.md) - Detects cloud provider resource identifiers across AWS, Azure, GCP, OCI, IBM Cloud, and Alibaba Cloud
-- [🆕 Enhanced Metadata Validator](internal/validators/metadata/README.md) - Preprocessor-aware metadata validation with intelligent file type filtering and type-specific patterns
-<!-- GENAI_DISABLED: - [Comprehend PII Validator](internal/validators/comprehend/README.md) - AI-powered PII detection using Amazon Comprehend (GenAI mode) -->
-
-For details on each validator's capabilities, supported formats, and detection methods, please refer to their individual documentation.
-
-### Enhanced Metadata Processing Architecture (2025)
-
-The metadata validator now features intelligent file type filtering and a sophisticated dual-path routing system with preprocessor-aware validation:
-
-#### Intelligent File Type Filtering
-
-The metadata validator automatically determines which files can contain meaningful metadata and skips processing of plain text files:
-
-**Files Processed for Metadata:**
-- **Images**: .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp, .heic, .heif, .raw, .cr2, .nef, .arw
-- **Documents**: .pdf, .docx, .doc, .xlsx, .xls, .pptx, .ppt, .odt, .ods, .odp
-- **Audio**: .mp3, .flac, .wav, .ogg, .m4a, .aac, .wma, .opus
-- **Video**: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv
-
-**Files Skipped for Metadata (Performance Optimization):**
-- **Plain Text**: .txt, .md, .log, .csv, .json, .xml, .html, .js, .py, .go, .java, .c, .cpp, .h, .sh, .bat, .ps1, .yaml, .yml
-- **Source Code**: All programming language files and configuration files
-- **Unknown Extensions**: Files without extensions or unrecognized file types
-
-**Performance Benefits:**
-- 20-30% faster processing for workloads with many plain text files
-- Eliminates false positives from analyzing text content as metadata
-- Reduced memory usage and CPU consumption
-- Maintains full accuracy for files that actually contain metadata
-
-#### Supported Metadata Types
-
-- **Image Metadata**: EXIF data, GPS coordinates, camera information, creator details
-  - **File Types**: JPG, JPEG, TIFF, TIF, PNG, GIF, BMP, WEBP
-  - **Enhanced Detection**: GPS data (+60% confidence), device info (+40%), creator info (+30%)
-- **Document Metadata**: Author information, document properties, rights data
-  - **File Types**: PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP
-  - **Enhanced Detection**: Manager info (+40% confidence), comments (+50%), author info (+30%)
-- **Audio Metadata**: Artist information, contact details, recording data
-  - **File Types**: MP3, FLAC, WAV, M4A
-  - **Enhanced Detection**: Contact info (+50% confidence), management (+40%), artist info (+30%)
-- **Video Metadata**: Location data, device information, production details
-  - **File Types**: MP4, MOV, M4V
-  - **Enhanced Detection**: GPS data (+60% confidence), location info (+50%), device info (+40%)
-
-#### Architecture Benefits
-
-- **Improved Accuracy**: 20-30% improvement in precision through targeted validation
-- **Reduced False Positives**: 40-50% reduction through preprocessor-aware patterns
-- **Enhanced Performance**: 5-15% faster processing through intelligent content routing
-- **Better Debugging**: Detailed observability into validation decisions and confidence scoring
-
-#### Usage Examples
-
-```bash
-# Enhanced metadata validation with debug output (shows file type filtering decisions)
-ferret-scan --file photo.jpg --checks METADATA --debug --verbose
-
-# Scan multiple metadata types with high confidence (automatically skips .txt, .py, .js files)
-ferret-scan --file media/ --recursive --checks METADATA --confidence high
-
-# Use enhanced metadata profile with detailed output (shows which files are processed vs skipped)
-ferret-scan --config ferret.yaml --profile enhanced-metadata --file documents/
-
-# Example showing file type filtering in action
-ferret-scan --file mixed-folder/ --recursive --checks METADATA --debug
-# Output will show: "Skipping metadata validation for file.txt (plain text file type)"
-# Output will show: "Processing metadata for photo.jpg (image file type)"
-```
-
-### Enhanced False Positive Prevention
-
-All validators implement advanced false positive prevention:
-
-- **Zero Confidence Filtering**: Automatically excludes matches with 0% confidence scores
-- **Context-Aware Analysis**: Uses surrounding text and keywords to improve accuracy
-- **Pattern Validation**: Mathematical and structural validation for applicable data types
-- **Sensitivity Filtering**: IP Address validator excludes non-identifying addresses (private, reserved, test ranges)
-- **Test Data Detection**: Identifies and filters common test patterns and placeholder data
-
-**Web UI Access**: All validators are available through the web interface at http://localhost:8080 after running `ferret-scan --web` (or specify a custom port with `--port <number>`).
-
-## Adding New Validators
-
-To add a new validator for detecting other types of sensitive data:
-
-1. Create a new package under `internal/validators/`
-2. Implement the `detector.Validator` interface (`ValidateContent`, `CalculateConfidence`, `AnalyzeContext` — there is no file-reading `Validate` method as of v2)
-3. Register your validator by adding one entry to the `validatorConstructors` map in `internal/core/factory.go` (the single source of truth; the `--checks` list derives from it automatically)
-4. Create a README.md in your validator's package directory with:
-   - Description of what the validator detects
-   - Supported formats or types
-   - Detection capabilities and features
-   - Confidence scoring methodology
-   - Usage examples
-   - Implementation details
-5. Add a link to your validator's README in the main README.md
-
-See the existing validator READMEs for examples of the recommended documentation structure.
-
-## Development Guidelines
-
-### Code Style
-
-1. Format code with `make fmt` before committing
-2. Run `make vet` and `make lint` to check for common issues
-3. Follow Go's standard naming conventions and code organization
-
-## Support
-
-For questions, issues, or contributions:
-
-- **Issues & Discussions**: [GitHub Issues](https://github.com/awslabs/ferret-scan/issues)
-- **Source**: [github.com/awslabs/ferret-scan](https://github.com/awslabs/ferret-scan)
-- **Artwork**: Original logo artwork by Olivia Myers McMullin
+---
 
 ## License
-Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-SPDX-License-Identifier: Apache-2.0
+
+Apache-2.0. Copyright Amazon.com, Inc. or its affiliates. An [awslabs](https://github.com/awslabs) open-source project — contributions welcome. See [LICENSE.txt](LICENSE.txt).
