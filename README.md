@@ -73,6 +73,7 @@ For complete documentation, see the [Documentation Index](docs/README.md).
 - **Phone Number Recognition**: International and domestic formats with country code support
 - **Social Media Detection**: Configurable platform detection for handles, profiles, and usernames
 - **Cloud Resource Detection**: Identifies cloud provider resource identifiers (AWS ARNs, Azure Resource IDs, GCP Resource Names, OCI OCIDs, IBM Cloud CRNs, Alibaba Cloud ARNs)
+- **VIN Detection**: Vehicle Identification Numbers (ISO 3779) with position-9 check-digit validation and manufacturer (WMI) identification
 - **Sophisticated Secrets Detection**: Entropy analysis + 40+ API key patterns (AWS, GitHub, Google Cloud, Stripe, etc.)
 
 ### Advanced Intelligence Features 🚀
@@ -1394,6 +1395,7 @@ Ferret Scan includes multiple validators for different types of sensitive data:
 - [Credit Card Validator](internal/validators/creditcard/README.md) - Detects credit card numbers from major providers with advanced mathematical validation
 - [Passport Validator](internal/validators/passport/README.md) - Detects passport numbers from various countries with contextual analysis
 - [SSN Validator](internal/validators/ssn/README.md) - Detects Social Security Numbers with domain-aware validation
+- [Person Name Validator](internal/validators/personname/README.md) - Detects personal names using embedded first/last-name databases, titles, and cultural variations with context-aware confidence
 - [IP Address Validator](internal/validators/ipaddress/README.md) - Detects IP addresses with sensitivity filtering (excludes private, reserved, test ranges)
 - [Email Validator](internal/validators/email/README.md) - Detects email addresses with advanced domain validation
 - [Phone Validator](internal/validators/phone/README.md) - Detects phone numbers with international format support
