@@ -36,7 +36,7 @@ Upload → Temp File → Detection → Filename Substitution → Suppression Che
 ## Technical Changes Made
 
 ### 1. Scanner Architecture Fix
-**File**: `internal/scanner/scanner.go`
+**File**: `internal/core/scanner.go` (suppression matching also lives in `internal/suppressions/suppression.go`)
 
 **Change**: Moved filename substitution to occur before suppression checking:
 
@@ -60,7 +60,7 @@ for _, match := range parallelMatches {
 ```
 
 ### 2. Suppression File Path Fix
-**File**: `internal/scanner/interface.go`
+**File**: `internal/suppressions/suppression.go`
 
 **Change**: Removed hardcoded path with tilde expansion:
 

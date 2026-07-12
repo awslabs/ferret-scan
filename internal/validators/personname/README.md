@@ -189,7 +189,6 @@ The validator implements the core `detector.Validator` interface:
 ```go
 // Core validation interface (the live contract)
 type Validator interface {
-    Validate(filePath string) ([]Match, error)
     ValidateContent(content string, originalPath string) ([]Match, error)
     CalculateConfidence(match string) (float64, map[string]bool)
     AnalyzeContext(match string, context ContextInfo) float64

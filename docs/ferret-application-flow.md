@@ -10,7 +10,7 @@ sequenceDiagram
     participant CLI as CLI Main
     participant Config as Config Manager
     participant CtxAnalyzer as Context Analyzer
-    participant EnhancedMgr as Enhanced Validator Manager
+    participant EnhancedMgr as Detector facade → dual-path bridge
     participant FileRouter as File Router
     participant ParallelProc as Parallel Processor
     participant WorkerPool as Worker Pool

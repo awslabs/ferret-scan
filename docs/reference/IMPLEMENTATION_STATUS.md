@@ -26,7 +26,7 @@
 - **Integration**: Fully integrated into main processing flow in `cmd/main.go`
 
 #### **Phase 2: Enhanced Validator Manager** ✅ **COMPLETE & STREAMLINED**
-- **Enhanced Validator Manager**: `internal/validators/enhanced_integration.go` - Streamlined for CLI
+- **Enhanced Validator Manager**: consolidated in v2 into the `Detector` facade (`internal/validators/detector.go`) → dual-path bridge; the former `enhanced_integration.go` was removed
 - **Context-Aware Validation**: All validators receive context insights
 - **Session-Only Processing**: Optimized for CLI application lifecycle
 - **Advanced Configuration**: Granular control over enhanced features
@@ -49,7 +49,7 @@
 #### **Preprocessors** ✅ **COMPLETE**
 - **Plain Text**: `internal/preprocessors/plaintext_preprocessor.go`
 - **Document Text**: `internal/preprocessors/text_preprocessor.go`
-- **Metadata**: `internal/preprocessors/metadata_preprocessor.go`
+- **Metadata**: `internal/preprocessors/base_metadata_preprocessor.go` + per-type extractors (`{audio,image,office,pdf,video}_metadata_preprocessor.go`)
 <!-- GENAI_DISABLED: - **Textract OCR**: `internal/preprocessors/textract_preprocessor.go` -->
 <!-- GENAI_DISABLED: - **Transcribe Audio**: `internal/preprocessors/transcribe_preprocessor.go` -->
 

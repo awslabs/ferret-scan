@@ -87,7 +87,7 @@ the fan-out plumbing have no execution-control surface** — no context, no isol
 | # | Gap | Severity | Strongest evidence |
 |---|-----|----------|--------------------|
 | 1.1 | **No timeout/cancellation can reach a running validator** (keystone). The only budget is a 5-min `context.WithTimeout`, never consulted during validator work because the interface methods take no ctx. A runaway validator runs to completion regardless. | **HIGH** | [detector.go:29-38](../../internal/detector/detector.go#L29-L38); [validator_runner.go:88-141](../../internal/parallel/validator_runner.go); [worker_pool.go:228](../../internal/parallel/worker_pool.go#L228); [resilience/retry.go:91](../../internal/resilience/retry.go#L91) |
-| 1.2 | **Two redundant execution engines; the controllable one is bypassed.** All real validators are collapsed into one `EnhancedManagerWrapper`, so `RunValidators`' fan-out/error-isolation operate over a single opaque element; the genuine fan-out happens two layers down where the parallel package can't see it. | **HIGH** | [scanner.go:122-123](../../internal/core/scanner.go#L122-L123); [enhanced_wrapper.go:30-64](../../internal/validators/enhanced_wrapper.go); [dual_path_bridge.go:729-839](../../internal/validators/dual_path_bridge.go#L729-L839) |
+| 1.2 | **Two redundant execution engines; the controllable one is bypassed.** All real validators are collapsed into one `EnhancedManagerWrapper`, so `RunValidators`' fan-out/error-isolation operate over a single opaque element; the genuine fan-out happens two layers down where the parallel package can't see it. | **HIGH** | [scanner.go:122-123](../../internal/core/scanner.go#L122-L123); `enhanced_wrapper.go` *(removed in v2)*; [dual_path_bridge.go:729-839](../../internal/validators/dual_path_bridge.go#L729-L839) |
 | 1.3 | **A validator panic crashes the whole process.** The fan-out goroutines have only `defer wg.Done()` — no `recover()`. The worker-level `recover()` is on a different goroutine and cannot catch cross-goroutine panics. 10 of 13 validators have no `recover()` anywhere; one path feeds the public `pkg/redact` library. | **HIGH** | [dual_path_bridge.go:736-808](../../internal/validators/dual_path_bridge.go#L736-L808); [validator_runner.go:82-138](../../internal/parallel/validator_runner.go); [worker_pool.go:145-157](../../internal/parallel/worker_pool.go#L145-L157) |
 | 1.4 | **Validator errors/timeouts/panics never surface to the user.** Errors are discarded unless `--debug`; the dual-path bridge returns nil error regardless of failures. A scan where 3/13 validators errored exits "clean" with a silently-incomplete result — a false sense of completeness for a DLP tool. | **HIGH** | [dual_path_bridge.go:821-839](../../internal/validators/dual_path_bridge.go#L821-L839); [worker_pool.go:216-221](../../internal/parallel/worker_pool.go#L216-L221); [scanner.go:64-70](../../internal/core/scanner.go#L64-L70) |
 
@@ -110,7 +110,7 @@ uncancellable.
 | # | Gap | Severity | Strongest evidence |
 |---|-----|----------|--------------------|
 | 2.1 | **No global concurrency governor.** File-workers (≤8) × ~13 validator goroutines ≈ 100 CPU-bound goroutines on an 8-core box, with no shared semaphore. | MEDIUM | [parallel_processor.go:36-39](../../internal/parallel/parallel_processor.go#L36-L39); [validator_runner.go](../../internal/parallel/validator_runner.go); [redactors/manager.go:512-524](../../internal/redactors/manager.go#L512-L524) |
-| 2.2 | **The adaptive governor is dead code.** `NewAdaptiveParallelProcessor`/`ResourceMonitor` are never instantiated by any real entry point; the memory-pressure signal is mathematically dead (`Alloc / max(Sys*2, 2GB)` can't reach 80%). | MEDIUM | [parallel_processor.go:47-50](../../internal/parallel/parallel_processor.go#L47-L50); [resource_monitor.go:189-247](../../internal/parallel/resource_monitor.go#L189-L247); [adaptive_processor.go:325-353](../../internal/parallel/adaptive_processor.go#L325-L353) |
+| 2.2 | **The adaptive governor is dead code.** `NewAdaptiveParallelProcessor`/`ResourceMonitor` are never instantiated by any real entry point; the memory-pressure signal is mathematically dead (`Alloc / max(Sys*2, 2GB)` can't reach 80%). | MEDIUM | [parallel_processor.go:47-50](../../internal/parallel/parallel_processor.go#L47-L50); `resource_monitor.go`, `adaptive_processor.go` *(both removed in v2, #100)* |
 | 2.3 | **Whole-file buffering + multiplicative content duplication; no live-bytes budget.** Content is never streamed; the 100MB gate is a size check, not a memory budget; the combine step makes a 2nd full copy; each validator materializes its own `strings.Split` line slices. N concurrent large files multiply independently. | HIGH | [file_router.go:27-28](../../internal/router/file_router.go#L27-L28),172-218; [scanner.go:289-297](../../internal/core/scanner.go#L289-L297) |
 | 2.4 | **Decompression amplification.** The Office *text* extractor `io.ReadAll`s zip entries with no `LimitReader` — a sub-100MB `.docx` expands to multi-GB validator text. The *metadata* office extractor right next door already wraps reads in `io.LimitReader(rc, 10MB)`, proving the safety model is per-extractor and ad hoc. | HIGH | `text-extract-officetextlib/office-text-extractor.go` (unbounded `io.ReadAll`); `meta-extract-officelib/office-extractor.go:152` (10MB LimitReader) |
 
@@ -118,8 +118,8 @@ uncancellable.
 
 | # | Gap | Severity | Strongest evidence |
 |---|-----|----------|--------------------|
-| 3.1 | **The enhanced-manager layer is a dead pass-through; 6 hops to a regex.** `EnhancedValidatorManager`'s registry, cross-validator signals, and confidence calibrator are never reached — `ValidateContentWithDualPath` unconditionally delegates to the dual-path helper, which all call sites set. | MEDIUM | [enhanced_integration.go:271-283](../../internal/validators/enhanced_integration.go#L271-L283); [scanner.go:109-123](../../internal/core/scanner.go#L109-L123); [enhanced_wrapper.go:30-45](../../internal/validators/enhanced_wrapper.go#L30-L45) |
-| 3.2 | **Dual `Validate(filePath)` / `ValidateContent` surface.** The interface mandates a file-reading `Validate` that production never calls on a concrete validator; 9 of 11 validators already gutted it to a no-op stub. Latent drift risk enforced by the exported interface. | MEDIUM | [detector.go:29-38](../../internal/detector/detector.go#L29-L38); [template/validator.go:58-60](../../internal/validators/template/validator.go#L58-L60); [dual_path_bridge.go:741](../../internal/validators/dual_path_bridge.go#L741) |
+| 3.1 | **The enhanced-manager layer is a dead pass-through; 6 hops to a regex.** `EnhancedValidatorManager`'s registry, cross-validator signals, and confidence calibrator are never reached — `ValidateContentWithDualPath` unconditionally delegates to the dual-path helper, which all call sites set. | MEDIUM | `enhanced_integration.go`, `enhanced_wrapper.go` *(both removed in v2, #98/#100)*; [scanner.go:109-123](../../internal/core/scanner.go#L109-L123) |
+| 3.2 | **Dual `Validate(filePath)` / `ValidateContent` surface.** The interface mandates a file-reading `Validate` that production never calls on a concrete validator; 9 of 11 validators already gutted it to a no-op stub. Latent drift risk enforced by the exported interface. | MEDIUM | [detector.go:29-38](../../internal/detector/detector.go#L29-L38); `template/validator.go` *(removed in v2)*; [dual_path_bridge.go:741](../../internal/validators/dual_path_bridge.go#L741) |
 | 3.3 | **Adding one validator requires ~15 coordinated edits** with no single source of truth for display/SARIF/gitlab-sast/config metadata; 4 hardcoded check-name lists; the canonical how-to doc contradicts itself (prose says edit `cmd/main.go`, checklist says `factory.go`). | MEDIUM | [creating_validators.md:577-596](../development/creating_validators.md); [cmd/main.go:821](../../cmd/main.go#L821); [factory.go:75-93](../../internal/core/factory.go#L75-L93) |
 
 ### Theme 4 — DoS-complexity surface: one anti-pattern fixed ten ways, no input-shape guards
@@ -145,9 +145,9 @@ merely slow.)*
 
 | # | Gap | Severity | Strongest evidence |
 |---|-----|----------|--------------------|
-| 6.1 | **Two parallel redaction engines.** The live path is `internal/redactors/replacement.Generate` (invalid synthetic SSNs — *safe*); the dead path is `internal/redactors/strategies` (valid SSNs — *less safe*, zero importers). A reader could adopt the wrong, less-safe code. | MEDIUM | [plaintext/redactor.go:362-365](../../internal/redactors/plaintext); [replacement/replacement.go:4-7](../../internal/redactors/replacement); [strategies/synthetic.go:235-261](../../internal/redactors/strategies) |
+| 6.1 | **Two parallel redaction engines.** The live path is `internal/redactors/replacement.Generate` (invalid synthetic SSNs — *safe*); the dead path is `internal/redactors/strategies` (valid SSNs — *less safe*, zero importers). A reader could adopt the wrong, less-safe code. | MEDIUM | [plaintext/redactor.go:362-365](../../internal/redactors/plaintext); [replacement/replacement.go:4-7](../../internal/redactors/replacement); `strategies/synthetic.go` *(the dead path — removed in v2, #116)* |
 | 6.2 | **Observability is unstructured strings-to-`io.Writer`** with no metrics/traces/pluggable sink; concrete `*StandardObserver` threads through ~76 `SetObserver` signatures with no interface seam. Inadequate for Lambda/gateway/CI embedding. | MEDIUM | [observability/observer.go:56-67](../../internal/observability); [scanner.go:88-92](../../internal/core/scanner.go#L88-L92) |
-| 6.3 | **`internal/monitoring` (~2.1K LOC) + most of `internal/performance` (~2.3K LOC) are dead code** — a phantom observability stack with zero importers on the scan path. | MEDIUM | [internal/monitoring/](../../internal/monitoring); [internal/performance/](../../internal/performance) |
+| 6.3 | **`internal/monitoring` (~2.1K LOC) + most of `internal/performance` (~2.3K LOC) are dead code** — a phantom observability stack with zero importers on the scan path. | MEDIUM | `internal/monitoring/`, `internal/performance/` *(both removed in v2, #116/#119/#120)* |
 | 6.4 | **Config: hand-coded 4-tier cascade, code+YAML default drift, untyped per-validator map, no schema validation.** Typos silently no-op (a DLP risk); a `containsField` hack re-parses the entire 51KB YAML per bool lookup. | MEDIUM | [cmd/main.go:155-249](../../cmd/main.go#L155-L249); [config.go:444-562](../../internal/config/config.go#L444-L562) |
 
 ---
@@ -276,34 +276,40 @@ over-budget inputs, which requires Phase 3 (not yet done).
 | Decompression-amplification bound (Office text extractor) | 2.4 | **merged** | #99 |
 | Remove dead adaptive processor + resource monitor | 2.2 | **merged** | #100 |
 | Windows CI cross-platform fixes (CRLF/paths/timer) | (test infra) | **merged** | #98, #101 |
-| Global concurrency governor (`execguard.Limiter`) | 2.1 | **open** | #102 |
-| gitlab name-tier metadata → `core.TypeMeta` | 3.3 (remainder) | **open** | #103 |
-| `ScanResult.Incomplete` on the file/worker-pool path | 1.4 (file path) | **open** | #104 |
-| Performance baseline (docs) | — | **open** | #105 |
-| Structured `Observer`/telemetry seam | 6.2 | **open** | #124 |
-| Typed config schema (enum-field validation on strict load) | 6.4 | **open** | #125 |
-| Live-bytes admission budget (`execguard.BytesLimiter`, `--max-live-bytes`, `ScanConfig.MaxLiveBytes`) | 2.3 (admission) | **open** | #126 |
+| Global concurrency governor (`execguard.Limiter`) | 2.1 | **merged** | #102 |
+| gitlab name-tier metadata → `core.TypeMeta` | 3.3 (remainder) | **merged** | #103 |
+| `ScanResult.Incomplete` on the file/worker-pool path | 1.4 (file path) | **merged** | #104 |
+| Performance baseline (docs) | — | **merged** | #105 |
+| Structured `Observer`/telemetry seam | 6.2 | **merged** | #124 |
+| Typed config schema (enum-field validation on strict load) | 6.4 | **merged** | #125 |
+| Live-bytes admission budget (`execguard.BytesLimiter`, `--max-live-bytes`, `ScanConfig.MaxLiveBytes`) | 2.3 (admission) | **merged** | #126 |
+| Collapse dual `Validate`/`ValidateContent` interface surface (remove file-reading `Validate`) | 3.2 | **merged** | #127 |
+| Combine-step second-copy elision (single-preprocessor fast path) | 2.3 (remainder) | **merged** | #128 |
+| CLI consumption of `ScanResult.Incomplete` (`--fail-on-incomplete`, exit 3) + `--validator-budget` | 1.4 (surface) | **merged** | #112–#115 |
+| Per-line ctx polling across the remaining validator hot loops (Phase 3) | 1.1, 4.1 | **merged** | #107, #109 |
 
-**Not yet started (the real remaining work, roughly two phases):**
+**Shipped since the original ledger** (previously listed here as "not yet started"): data-driven
+file-type routing (5.3, #122); dead-code excision — `internal/monitoring` + `internal/performance`
+(6.3, #116/#119/#120) and `redactors/strategies` (6.1, #116); the dual `Validate`/`ValidateContent`
+interface collapse (3.2, #127); CLI consumption of `ScanResult.Incomplete` — `--fail-on-incomplete`
++ `--validator-budget` (1.4 surface, #112–#115); and per-line ctx-polling across the validator hot
+loops (Phase 3, #107/#109). The founding "runaway validator" DoS concern is now closed at the
+algorithmic level (ctx-cancellable hot loops + per-validator budget + concurrency governor +
+live-bytes admission).
+
+**Genuinely remaining (lower-urgency cleanup / owner decisions):**
 
 | Item | Gap(s) | Notes |
 |---|---|---|
-| **ctx-polling inside validator hot loops + shared `LineScan` primitive + per-validator/extraction budgets** | 1.1 (tail), 4.1, 4.2 | **Phase 3** — the marquee remaining item; fixes the single-long-line O(n²) (see Performance Baseline: 256 KB line ~9.6s → target sub-second). First *observable* behavior change (bounded-partial on over-budget input). Highest value; needs its own review on merged base. |
-| Structured provenance through preprocessing | 5.1 | Move C leftover (HIGH — lossy position round-trip); **behavior-changing → needs an owner decision on line-number semantics** |
-| Data-driven file-type routing (collapse 4 drifting extension maps) | 5.3 | **shipped** (#122) |
-| Streaming + per-validator `strings.Split` elision (the non-admission parts of 2.3) | 2.3 (remainder) | **blocked**: the exported `detector.Validator.ValidateContent(content string)` is a whole-file API; true streaming can't be added without breaking it (same class as 3.2). The admission slice shipped in #126. |
+| Shared `LineScan` primitive for the single-long-line O(n²) tail | 4.1 (slice 2), 4.2 | The per-line ctx-poll bounds *wall-clock* on over-budget input; the shared primitive is the algorithmic fix for one pathological single-line case. See Performance Baseline (256 KB single line). |
+| Structured provenance through preprocessing | 5.1 | HIGH — lossy position round-trip; **behavior-changing → needs an owner decision on line-number semantics** |
+| Streaming + per-validator `strings.Split` elision (non-admission parts of 2.3) | 2.3 (remainder) | **blocked**: the exported `detector.Validator.ValidateContent(content string)` is a whole-file API; true streaming can't be added without breaking that contract. The admission slice (#126) and combine-copy elision (#128) shipped. |
 | Fuse the two validator fan-out engines | 1.2 (engine) | **investigated, not a clean autonomous increment**: the engines are nested (RunValidators fans out a size-1 facade list; the real fan-out is inside the bridge) with non-overlapping semantics, so collapsing them reorders observable side effects → needs an owner decision. |
-| Delete dead `internal/monitoring` + `internal/performance` (~4.4K LOC) | 6.3 | Move D — pure excision |
-| Delete dead `redactors/strategies` (keep `replacement/`) | 6.1 | Move D — pure excision |
-| Collapse dual `Validate`/`ValidateContent` interface surface | 3.2 | Exported-interface breaking change |
-| CLI/web *consumption* of `ScanResult.Incomplete` (exit code / response) | 1.4 (surface) | Separate behavior-changing decision |
 | NAME-tier: gitlab category `AddCategoryMapping` fully gone / text+csv pre-commit switches | 3.3 (tail) | Deliberately deferred; low value |
 
-**Is Phase 3 the last phase?** No. After Phase 3 there is still Move C (provenance/routing) and Move D
-(telemetry/config/dead-code excision), plus the smaller items above. Phase 3 is the highest-*value*
-remaining chunk (it closes the founding "runaway validator" concern at the algorithmic level), but it is
-roughly the program midpoint. A reasonable milestone is to declare the **security-and-correctness** goal met
-after Phase 3 and treat Move C/D as lower-urgency cleanup.
+The **security-and-correctness** goal is met: the remaining items are provenance fidelity, an
+engine-fusion refactor gated on an owner decision, and a streaming optimization blocked by the public
+`ValidateContent` contract — all lower-urgency than the DoS/correctness work already landed.
 
 ---
 

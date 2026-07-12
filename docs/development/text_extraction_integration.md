@@ -90,10 +90,16 @@ Preprocessed document.pdf: extracted 1250 words, 7890 characters
 
 ### Validator Updates
 
-Validators now support two validation methods:
+Validators operate exclusively on pre-extracted content:
 
-- `Validate(filePath string)`: Original method for direct file processing
-- `ValidateContent(content, originalPath string)`: New method for preprocessed content
+- `ValidateContent(content, originalPath string)`: scans preprocessed content (the sole entry point)
+- `ValidateContentCtx(ctx, content, originalPath string)`: context-aware form that polls for cancellation (per-job deadline / `--validator-budget`)
+
+> The former file-reading `Validate(filePath string)` method was removed in v2
+> (gap 3.2): every implementation was a no-op stub that never read the file, so
+> production always went through `ValidateContent`. The step-4 "fallback to
+> regular file validation" above is likewise obsolete — there is no file-reading
+> validation path to fall back to; extraction feeds `ValidateContent` directly.
 
 ### Performance Considerations
 

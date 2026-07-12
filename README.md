@@ -223,6 +223,7 @@ echo "secret: 4532-0151-1283-0366" | ./ferret-scan --file -
 - `--confidence`: Confidence levels to display, comma-separated: "high", "medium", "low", or "all" (default: "all")
 - `--checks`: Specific checks to run, comma-separated: "CLOUD_RESOURCES", "CREDIT_CARD", "EMAIL", "INTELLECTUAL_PROPERTY", "IP_ADDRESS", "METADATA", "PASSPORT", "PERSON_NAME", "PHONE", "SECRETS", "SOCIAL_MEDIA", "SSN", "VIN"<!-- GENAI_DISABLED: , "COMPREHEND_PII" -->, or "all" (default: "all")
   - **SOCIAL_MEDIA**: Requires configuration - see [Social Media Configuration Guide](docs/social-media-configuration.md)
+- `--disable-ip-types`: Comma-separated list of **intellectual-property** sub-types to disable within the `INTELLECTUAL_PROPERTY` check (here "IP" = intellectual property, not IP address): `copyright`, `patent`, `trademark`, `trade_secret`, `internal_url`. Equivalent to setting `validators.intellectual_property.disabled_types` in config. Default: none disabled.
 
 #### Output and Display Options
 - `--verbose`: Display detailed information for each finding (default: false)
@@ -765,8 +766,8 @@ See the [Container Guide](docs/user-guides/README-Docker.md) for detailed usage 
 
 **Volume Mapping:**
 
-- `-v ~/.ferret-scan:/root/.ferret-scan` - Persist config and suppressions
-- `-v $(pwd):/workspace` - Mount current directory for file access
+- `-v ~/.ferret-scan:/home/ferret/.ferret-scan` - Persist config and suppressions (the container runs as the non-root `ferret` user, home `/home/ferret`)
+- `-v $(pwd):/data` - Mount current directory for file access (scan with `--file /data/...`)
 - `-e FERRET_CONFIG_DIR=/config` - Override config directory location
 
 ### Pre-commit Integration
@@ -804,15 +805,16 @@ make setup-developer
 **Option 1: Python Package**
 
 ```bash
-# Install via pip
-# PyPi Package Coming Soon!!
+# Install via pip (published to PyPI)
+pip install ferret-scan
 ```
 
 ```yaml
-# .pre-commit-config.yaml
+# .pre-commit-config.yaml — pin rev to a released tag (see the latest at
+# https://github.com/awslabs/ferret-scan/releases)
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
+    rev: v1.10.0
     hooks:
       - id: ferret-scan
         name: Ferret Scan - Sensitive Data Detection
@@ -1130,7 +1132,7 @@ make build
 #### Customization
 
 - Modify `internal/web/server.go` to add features
-- Update HTML template in `web/template.html` for UI changes
+- Update HTML template in `internal/web/assets/template.html` for UI changes
 - Adjust file size limits or add new scan options
 
 #### API Endpoint
@@ -1268,19 +1270,15 @@ For detailed configuration documentation, see [Configuration Guide](docs/configu
 
 ### Available Profiles Quick Reference
 
-| Profile                 | Purpose                | Output Format | Use Case                          |
-| ----------------------- | ---------------------- | ------------- | --------------------------------- |
-| `quick`                 | Fast security check    | Text          | Development, pre-commit hooks     |
-| `ci`                    | CI/CD integration      | JUnit XML     | Automated testing pipelines       |
-| `security-audit`        | Security team scanning | JSON          | Compliance, security audits       |
-| `comprehensive`         | Complete analysis      | YAML          | Forensic investigation, debugging |
-| `csv-export`            | Data analysis          | CSV           | Spreadsheet analysis, reporting   |
-| `json-api`              | API integration        | JSON          | Programmatic processing           |
-| `debug`                 | Troubleshooting        | YAML          | Validator development, debugging  |
-| `silent`                | Automation             | JSON          | Scripts, monitoring systems       |
-| `credit-card`           | Payment security       | Text          | PCI compliance                    |
-| `passport`              | Travel documents       | Text          | Identity verification             |
-| `intellectual-property` | IP protection          | Text          | Corporate security                |
+These are the profiles shipped in the auto-discovered [`examples/ferret.yaml`](examples/ferret.yaml). (The more granular set — `quick`, `security-audit`, `comprehensive`, `csv-export`, `json-api`, `debug`, `silent`, `credit-card`, `passport`, `intellectual-property` — lives in the fuller [`config.yaml`](config.yaml) example; use whichever config file you deploy.)
+
+| Profile      | Purpose                    | Output Format | Use Case                                   |
+| ------------ | -------------------------- | ------------- | ------------------------------------------ |
+| `cli`        | Default interactive scan   | Text          | Local development, manual scans            |
+| `web`        | Web UI backing profile     | JSON          | `--web` mode (UI handles display)          |
+| `ci`         | CI/CD integration          | gitlab-sast   | Pipelines (switch to junit/sarif as needed)|
+| `precommit`  | Fast staged-file scan      | Text          | Pre-commit hooks                           |
+| `redaction`  | Scan and redact            | Text          | Format-preserving redaction workflows      |
 
 ### Configuration File Locations
 
@@ -1491,8 +1489,8 @@ All validators implement advanced false positive prevention:
 To add a new validator for detecting other types of sensitive data:
 
 1. Create a new package under `internal/validators/`
-2. Implement the `detector.Validator` interface
-3. Add your validator to the list in `cmd/main.go`
+2. Implement the `detector.Validator` interface (`ValidateContent`, `CalculateConfidence`, `AnalyzeContext` — there is no file-reading `Validate` method as of v2)
+3. Register your validator by adding one entry to the `validatorConstructors` map in `internal/core/factory.go` (the single source of truth; the `--checks` list derives from it automatically)
 4. Create a README.md in your validator's package directory with:
    - Description of what the validator detects
    - Supported formats or types

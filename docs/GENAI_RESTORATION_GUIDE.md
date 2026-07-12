@@ -97,10 +97,12 @@ sed -i 's|// GENAI_DISABLED: ||g' internal/router/integration.go
 
 ### 5. Scanner Components Restoration
 
-**File**: `internal/scanner/scanner.go`
+**Files**: `cmd/main.go` and `internal/validators/comprehend/` (there is no `internal/scanner/` package — validator registration and the COMPREHEND_PII wiring live in `cmd/main.go`; the validator itself is under `internal/validators/comprehend/`)
 
 ```bash
-sed -i 's|// GENAI_DISABLED: ||g' internal/scanner/scanner.go
+sed -i 's|// GENAI_DISABLED: ||g' cmd/main.go
+sed -i 's|// GENAI_DISABLED: ||g' internal/validators/comprehend/validator.go
+sed -i 's|// GENAI_DISABLED: ||g' internal/validators/comprehend/help.go
 ```
 
 **Restores**:
@@ -197,7 +199,8 @@ Use this checklist to ensure complete restoration:
 - [ ] `internal/router/file_router.go` - GenAI preprocessors
 - [ ] `internal/router/context.go` - GenAI context handling
 - [ ] `internal/router/integration.go` - GenAI integration
-- [ ] `internal/scanner/scanner.go` - GenAI validators
+- [ ] `cmd/main.go` - COMPREHEND_PII registration / GenAI validator wiring
+- [ ] `internal/validators/comprehend/validator.go` + `help.go` - Comprehend PII validator
 - [ ] `internal/help/help.go` - GenAI help system
 - [ ] `internal/parallel/worker_pool.go` - GenAI parallel processing
 

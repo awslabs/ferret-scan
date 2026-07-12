@@ -31,7 +31,7 @@ func (f *fakePreprocessor) GetName() string        { return f.name }
 func (f *fakePreprocessor) GetSupportedExtensions() []string {
 	return []string{".fake"}
 }
-func (f *fakePreprocessor) SetObserver(*observability.StandardObserver) {}
+func (f *fakePreprocessor) SetObserver(observability.Observer) {}
 func (f *fakePreprocessor) Process(string) (*preprocessors.ProcessedContent, error) {
 	return &preprocessors.ProcessedContent{
 		Text:      f.text,

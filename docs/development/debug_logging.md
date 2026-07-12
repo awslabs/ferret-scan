@@ -224,8 +224,12 @@ For PDF documents with metadata:
 [DEBUG]     * Validator 3 (*metadata.Validator): completed using preprocessed content, found 2 matches
 [DEBUG]       → Confirmed: Validator scanned 856 chars of metadata-extracted content
 [DEBUG]     * Validator 4 (*intellectualproperty.Validator): starting
-[DEBUG]     * Validator 4 (*intellectualproperty.Validator): completed using original file (fallback), found 0 matches
+[DEBUG]     * Validator 4 (*intellectualproperty.Validator): completed using preprocessed content, found 0 matches
 ```
+
+> Exact debug strings vary by version; treat the lines above as illustrative.
+> As of v2 every validator scans **preprocessed content** — there is no
+> "original file" fallback path (see the note under "Validator Methods").
 
 ### 5. Results Summary
 ```
@@ -243,9 +247,7 @@ For PDF documents with metadata:
 - **Word/Line/Page counts** - Statistics about the extracted content
 
 ### Validator Methods
-- **preprocessed content** - Validator used the extracted content from preprocessing (text, metadata, etc.)
-- **original file** - Validator read the file directly (either no preprocessing available or validator doesn't support preprocessed content)
-- **original file (fallback)** - Preprocessing was available but validator doesn't support it, so it fell back to reading the original file
+- **preprocessed content** - Validator scanned the extracted content (document text, metadata, etc.). As of v2 this is the **only** path: validators implement `ValidateContent(content, originalPath)` and operate exclusively on the already-extracted content the pipeline hands them. For files with no preprocessor, the router passes the raw file bytes through as content — so the validator still receives content, never a file path. The former "original file" / "original file (fallback)" modes (where a validator read the file itself) were removed with the file-reading `Validate(filePath)` method (v2 gap 3.2).
 
 ### Confirmation Messages
 When a validator uses preprocessed content, you'll see a confirmation message like:
@@ -275,10 +277,13 @@ If you see "Preprocessing failed":
 2. Verify the file isn't corrupted
 3. Ensure required libraries are installed for the file type
 
-### Validators Not Using Preprocessed Content
-If validators show "original file (fallback)":
-- This is normal for validators that don't support preprocessed content yet
-- The validator will still work by reading the original file directly
+### Validators and Preprocessed Content
+As of v2 all validators consume preprocessed content via `ValidateContent`; there
+is no per-validator "original file" fallback. If a file type has no preprocessor,
+the router passes the raw bytes through as the content, so the validator still
+receives content rather than reading the file itself. If a validator reports zero
+matches on a document you expect to trigger, check the preprocessing status above
+(text length, "Preprocessing successful") rather than a fallback mode.
 
 ### Binary Data in Output
 If you see binary data being printed when scanning images or other binary files:

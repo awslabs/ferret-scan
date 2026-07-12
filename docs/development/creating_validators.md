@@ -14,7 +14,7 @@ This guide explains how to create custom validators for the Ferret Scan tool. Va
   - [Creating a New Validator](#creating-a-new-validator)
   - [Implementing the Validator Interface](#implementing-the-validator-interface)
     - [Basic Validator Structure](#basic-validator-structure)
-    - [The Validate Method](#the-validate-method)
+    - [The ValidateContent Method](#the-validatecontent-method)
     - [The CalculateConfidence Method](#the-calculateconfidence-method)
   - [Adding Contextual Analysis](#adding-contextual-analysis)
   - [Creating Documentation](#creating-documentation)
@@ -53,11 +53,11 @@ internal/validators/
 To create a new validator, follow these steps:
 
 1. Create a new directory under `internal/validators/` for your validator (e.g., `internal/validators/ssn/`)
-2. Copy the template files (`validator.go`, `help.go`, and `README.md`) from `internal/validators/template/` to your new directory
-3. Rename the validator struct (e.g., change `TemplateValidator` to `SSNValidator`) but keep the function name `NewValidator()`
+2. Copy the core files (`validator.go`, `help.go`, and `README.md`) from an existing simple validator (e.g. `internal/validators/vin/`) to your new directory as a starting point
+3. Rename the validator struct (e.g., change `Validator` to `SSNValidator` if you prefer a distinct name) but keep the function name `NewValidator()`
 4. Customize the validator logic for your specific use case
 5. Update the README.md with detailed documentation about your validator
-6. Register your validator in `cmd/main.go` (see the "Registering Your Validator" section below)
+6. Register your validator in `internal/core/factory.go` (see the "Registering Your Validator" section below)
 7. Add a link to your validator's README in the main README.md under the "Supported Data Types" section
 8. Update any configuration files (like `examples/ferret.yaml`) to include your validator in the appropriate profiles
 9. If your validator uses specific patterns that should be configurable, add them to the pattern configuration files (like `python_files/config.json`)
@@ -70,10 +70,26 @@ Your validator must implement the `detector.Validator` interface, which requires
 
 ```go
 type Validator interface {
-    Validate(filePath string) ([]Match, error)
     CalculateConfidence(match string) (float64, map[string]bool)
+    AnalyzeContext(match string, context ContextInfo) float64
+    // Validators operate on pre-extracted content, not raw files. The scan
+    // pipeline reads/preprocesses the file once and hands every validator the
+    // extracted text via ValidateContent.
+    ValidateContent(content string, originalPath string) ([]Match, error)
 }
 ```
+
+> **v2 note.** Earlier versions carried a file-reading `Validate(filePath string) ([]Match, error)`
+> method. It was removed (gap 3.2): every implementation was a no-op stub that
+> returned no matches without ever reading the file, because production always
+> routed pre-extracted text through `ValidateContent`. Do **not** add a
+> `Validate(filePath)` method — implement `ValidateContent` instead.
+>
+> For cooperative cancellation under a per-job deadline or `--validator-budget`,
+> also implement the optional `execguard.ContextAwareValidator` seam —
+> `ValidateContentCtx(ctx context.Context, content, originalPath string) ([]Match, error)` —
+> and poll `ctx` once per line (see `execguard.LineLoopCancelled`). Have the
+> plain `ValidateContent` delegate to it with `context.Background()`.
 
 ### Basic Validator Structure
 
@@ -83,12 +99,12 @@ Here's a basic structure for your validator:
 package yourvalidator
 
 import (
-    "bufio"
-    "os"
+    stdctx "context"
     "regexp"
     "strings"
 
     "github.com/awslabs/ferret-scan/internal/detector"
+    "github.com/awslabs/ferret-scan/internal/execguard"
 )
 
 type YourValidator struct {
@@ -105,40 +121,51 @@ func NewValidator() *YourValidator {
     }
 }
 
-// Validate implements the detector.Validator interface
-func (v *YourValidator) Validate(filePath string) ([]detector.Match, error) {
-    // Implementation
+// ValidateContent implements the detector.Validator interface. It receives the
+// already-extracted content (not a file path) and delegates to the ctx-aware
+// form with a non-cancelling background context.
+func (v *YourValidator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+    return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx implements the optional execguard.ContextAwareValidator
+// seam so a per-job deadline or --validator-budget can interrupt a runaway scan.
+func (v *YourValidator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
+    // Implementation (see below)
 }
 
 // CalculateConfidence implements the detector.Validator interface
 func (v *YourValidator) CalculateConfidence(match string) (float64, map[string]bool) {
     // Implementation
 }
+
+// AnalyzeContext implements the detector.Validator interface
+func (v *YourValidator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
+    // Implementation
+}
 ```
 
-### The Validate Method
+### The ValidateContent Method
 
-The `Validate` method scans a file for potential matches and returns a list of matches with confidence scores:
+`ValidateContent` scans the pre-extracted `content` string (the pipeline has
+already read and preprocessed the file) for potential matches and returns a list
+of matches with confidence scores. The ctx-aware form polls `ctx` once per line
+so a runaway scan is cancelled promptly (v2 Phase 3):
 
 ```go
-func (v *YourValidator) Validate(filePath string) ([]detector.Match, error) {
-    file, err := os.Open(filePath)
-    if err != nil {
-        return nil, err
-    }
-    defer file.Close()
-
+func (v *YourValidator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
     var matches []detector.Match
-    scanner := bufio.NewScanner(file)
-    lineNum := 0
     re := regexp.MustCompile(v.pattern)
 
     // Create a context extractor
     contextExtractor := detector.NewContextExtractor()
 
-    for scanner.Scan() {
-        lineNum++
-        line := scanner.Text()
+    for lineNum, line := range strings.Split(content, "\n") {
+        // Cooperative cancellation: bail promptly on deadline/cancel, returning
+        // the partial matches gathered so far plus ctx.Err().
+        if execguard.LineLoopCancelled(ctx, lineNum) {
+            return matches, ctx.Err()
+        }
         foundMatches := re.FindAllString(line, -1)
 
         for _, match := range foundMatches {
@@ -146,7 +173,7 @@ func (v *YourValidator) Validate(filePath string) ([]detector.Match, error) {
             confidence, checks := v.CalculateConfidence(match)
 
             // Extract context
-            contextInfo, err := contextExtractor.ExtractContext(filePath, lineNum, match)
+            contextInfo, err := contextExtractor.ExtractContext(originalPath, lineNum, match)
             if err == nil {
                 // Analyze context and adjust confidence
                 contextImpact := v.AnalyzeContext(match, contextInfo)
@@ -174,7 +201,7 @@ func (v *YourValidator) Validate(filePath string) ([]detector.Match, error) {
             if confidence > 40 {
                 matches = append(matches, detector.Match{
                     Text:       match,
-                    LineNumber: lineNum,
+                    LineNumber: lineNum + 1, // range index is 0-based; report 1-based lines
                     Type:       "YOUR_CHECK_TYPE",
                     Confidence: confidence,
                     Context:    contextInfo,
@@ -188,7 +215,7 @@ func (v *YourValidator) Validate(filePath string) ([]detector.Match, error) {
         }
     }
 
-    return matches, scanner.Err()
+    return matches, nil
 }
 ```
 
@@ -385,42 +412,33 @@ Describe how your validator works:
 
 ## Registering Your Validator
 
-To register your validator with the Ferret Scan tool, you need to make three changes in `cmd/main.go`:
+As of v2, registration is a **single** change: add your validator's constructor
+to the `validatorConstructors` map in `internal/core/factory.go`, which is the
+single source of truth for which validators exist:
 
-1. Import your validator package:
 ```go
-import (
-    // Other imports...
-    "github.com/awslabs/ferret-scan/internal/validators/yourvalidator"
-)
-```
-
-2. Add your validator to the `allValidators` map:
-```go
-// Initialize all available validators
-allValidators := map[string]detector.Validator{
-    "CREDIT_CARD":    creditcard.NewValidator(),
-    "PASSPORT":       passport.NewValidator(),
-    "METADATA":       metadata.NewValidator(),
-    "YOUR_CHECK_TYPE": yourvalidator.NewValidator(), // Add your validator here
-    // Add more validators here
+// internal/core/factory.go
+var validatorConstructors = map[string]func() detector.Validator{
+    "CREDIT_CARD":     func() detector.Validator { return creditcard.NewValidator() },
+    "PASSPORT":        func() detector.Validator { return passport.NewValidator() },
+    "METADATA":        func() detector.Validator { return metadata.NewValidator() },
+    "YOUR_CHECK_TYPE": func() detector.Validator { return yourvalidator.NewValidator() }, // Add your validator here
+    // ... existing validators ...
 }
 ```
 
-3. Add your validator to the `parseChecksToRun` function:
-```go
-func parseChecksToRun(checks string) map[string]bool {
-    result := map[string]bool{
-        "CREDIT_CARD":    false,
-        "PASSPORT":       false,
-        "METADATA":       false,
-        "YOUR_CHECK_TYPE": false, // Add your validator here
-    }
-    // Rest of the function...
-}
-```
+(Add the corresponding import for `github.com/awslabs/ferret-scan/internal/validators/yourvalidator`
+to `factory.go`.)
 
-These changes ensure that:
+That one entry is enough. The check-name list used by `--checks`, `--checks all`,
+the `--help checks` output, and `parseChecksToRun` all derive from
+`core.CheckNames()` (which reads `validatorConstructors`), so they **cannot drift**
+from the validators that actually exist — there is no separate list to keep in
+sync in `cmd/main.go`. If your validator needs config- or profile-level settings,
+add a type-asserted `Configure(cfg)` call in `BuildValidatorSet` (same file),
+mirroring the existing `CLOUD_RESOURCES` / `INTELLECTUAL_PROPERTY` / `SOCIAL_MEDIA` entries.
+
+This ensures that:
 - Your validator is available for use
 - It appears in the `--help checks` list
 - It can be selected with the `--checks` command line option
