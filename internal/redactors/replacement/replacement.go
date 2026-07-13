@@ -76,11 +76,40 @@ func Generate(originalText, dataType string, strategy redactors.RedactionStrateg
 
 // ─── Simple ──────────────────────────────────────────────────────────────────
 
+// creditCardTypes is the set of finding types the credit-card validator can
+// emit: the generic "CREDIT_CARD" plus every brand-specific sub-type
+// getCreditCardType can return. All of them must route to credit-card
+// redaction so that (a) a brand name never leaks through the Simple
+// placeholder (e.g. "[JCB-REDACTED]") and (b) every brand gets the same
+// format-preserving credit-card mask instead of falling through to the
+// generic full-mask branch. Previously only VISA/MASTERCARD/AMERICAN_EXPRESS/
+// DISCOVER were listed, so MAESTRO/JCB/DINERS_CLUB/UNIONPAY were handled
+// inconsistently. Keep this list in sync with getCreditCardType in
+// internal/validators/creditcard.
+var creditCardTypes = map[string]bool{
+	"CREDIT_CARD":      true,
+	"VISA":             true,
+	"MASTERCARD":       true,
+	"MAESTRO":          true,
+	"AMERICAN_EXPRESS": true,
+	"JCB":              true,
+	"DINERS_CLUB":      true,
+	"DISCOVER":         true,
+	"UNIONPAY":         true,
+}
+
+// isCreditCardType reports whether dataType is a credit-card finding type
+// (generic or any brand sub-type).
+func isCreditCardType(dataType string) bool {
+	return creditCardTypes[dataType]
+}
+
 // Simple returns a bracketed placeholder for the given data type.
 func Simple(dataType string) string {
-	switch dataType {
-	case "CREDIT_CARD", "VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER":
+	if isCreditCardType(dataType) {
 		return "[CREDIT-CARD-REDACTED]"
+	}
+	switch dataType {
 	case "SSN":
 		return "[SSN-REDACTED]"
 	case "EMAIL", "GMAIL", "BUSINESS":
@@ -105,9 +134,10 @@ func Simple(dataType string) string {
 // FormatPreserving returns a replacement that keeps the original structure
 // (separators, length, character types) while masking the sensitive content.
 func FormatPreserving(original, dataType string) string {
-	switch dataType {
-	case "CREDIT_CARD", "VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER":
+	if isCreditCardType(dataType) {
 		return preserveCreditCard(original)
+	}
+	switch dataType {
 	case "SSN":
 		return preserveSSN(original)
 	case "EMAIL", "GMAIL", "BUSINESS":
@@ -207,9 +237,10 @@ func preserveIP(original string) string {
 
 // Synthetic generates realistic-looking but fake data of the same type.
 func Synthetic(original, dataType string) (string, error) {
-	switch dataType {
-	case "CREDIT_CARD", "VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER":
+	if isCreditCardType(dataType) {
 		return syntheticCreditCard(original)
+	}
+	switch dataType {
 	case "SSN":
 		return syntheticSSN(original)
 	case "EMAIL", "GMAIL", "BUSINESS":
