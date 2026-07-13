@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/context"
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/context"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // contextInsightsForTest builds a minimal ContextInsights with the given

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/config"
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // helper to create a validator with specific disabled types

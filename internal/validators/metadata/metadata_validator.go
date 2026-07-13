@@ -5,15 +5,16 @@ package metadata
 
 import (
 	"fmt"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/observability"
-	"github.com/awslabs/ferret-scan/internal/router"
-	"github.com/awslabs/ferret-scan/internal/validators"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
+	"github.com/awslabs/ferret-scan/v2/internal/validators"
 )
 
 // Import MetadataContent from router package to avoid duplication

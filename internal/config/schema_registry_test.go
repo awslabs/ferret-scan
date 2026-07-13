@@ -14,9 +14,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/config"
-	"github.com/awslabs/ferret-scan/internal/formatters"
-	"github.com/awslabs/ferret-scan/pkg/redact"
+	"github.com/awslabs/ferret-scan/v2/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
 // metadataCheck is the one validator redact.ValidCheckNames() omits (it is not

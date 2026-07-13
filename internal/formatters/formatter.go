@@ -5,8 +5,9 @@ package formatters
 
 import (
 	"fmt"
-	"github.com/awslabs/ferret-scan/internal/detector"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // FormatterOptions defines configuration options for formatters

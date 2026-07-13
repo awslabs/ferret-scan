@@ -68,7 +68,7 @@
 //	    "context"
 //	    "log"
 //
-//	    "github.com/awslabs/ferret-scan/pkg/redact"
+//	    "github.com/awslabs/ferret-scan/v2/pkg/redact"
 //	)
 //
 //	func main() {

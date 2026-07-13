@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/explain"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/explain"
 )
 
 func TestSanitizeDescription_IncludesExplanation(t *testing.T) {

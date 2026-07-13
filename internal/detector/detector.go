@@ -4,8 +4,9 @@
 package detector
 
 import (
-	"github.com/awslabs/ferret-scan/internal/security"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/security"
 )
 
 // ContextInfo stores contextual information about a match

@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/formatters"
-	formatterShared "github.com/awslabs/ferret-scan/internal/formatters/shared"
-	"github.com/awslabs/ferret-scan/internal/suppressions"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	formatterShared "github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
+	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 )
 
 // scanFormatterOptions mirrors the options the /scan handler uses to render the

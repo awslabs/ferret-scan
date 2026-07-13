@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // TestDiagnostics_IncompleteFileSurfacedButMatchesKept verifies the v2 Phase 4

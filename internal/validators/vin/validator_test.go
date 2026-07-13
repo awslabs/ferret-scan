@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 func TestVINValidator_ValidVINs(t *testing.T) {

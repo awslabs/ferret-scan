@@ -10,11 +10,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/context"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/execguard"
-	"github.com/awslabs/ferret-scan/internal/help"
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/context"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/help"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // Multi-line PEM-style secret patterns. Compiled once at package init —

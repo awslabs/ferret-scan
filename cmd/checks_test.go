@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/core"
 )
 
 // These tests lock the check-name strings that the CLI derives from

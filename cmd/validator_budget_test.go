@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/core"
 )
 
 func TestParseValidatorBudgets_Empty(t *testing.T) {

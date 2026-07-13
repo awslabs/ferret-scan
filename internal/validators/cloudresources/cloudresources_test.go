@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/config"
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // scan is a test helper that runs the validator over content and returns the matches.

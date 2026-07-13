@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/validators/creditcard"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/creditcard"
 )
 
 func main() {
@@ -26,11 +26,18 @@ func main() {
 }
 
 func processFile(filePath string) {
+	// Read the file content
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Printf("Error reading %s: %v\n", filePath, err)
+		return
+	}
+
 	// Create validator
 	validator := creditcard.NewValidator()
 
-	// Validate the file
-	matches, err := validator.Validate(filePath)
+	// Validate the file content
+	matches, err := validator.ValidateContent(string(content), filePath)
 	if err != nil {
 		fmt.Printf("Error processing %s: %v\n", filePath, err)
 		return

@@ -204,7 +204,7 @@ $Version = "v1.0.0-dev"
 $Commit = git rev-parse HEAD
 $BuildDate = Get-Date -Format "2006-01-02T15:04:05Z"
 
-go build -ldflags "-X github.com/awslabs/ferret-scan/internal/version.Version=$Version -X github.com/awslabs/ferret-scan/internal/version.GitCommit=$Commit -X github.com/awslabs/ferret-scan/internal/version.BuildDate=$BuildDate" -o ferret-scan.exe ./cmd
+go build -ldflags "-X github.com/awslabs/ferret-scan/v2/internal/version.Version=$Version -X github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$Commit -X github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$BuildDate" -o ferret-scan.exe ./cmd
 ```
 
 ### Cross-Platform Building
@@ -266,9 +266,9 @@ $BuildDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
 # Build flags
 $BuildFlags = @()
 $LdFlags = @(
-    "-X github.com/awslabs/ferret-scan/internal/version.Version=$Version",
-    "-X github.com/awslabs/ferret-scan/internal/version.GitCommit=$GitCommit",
-    "-X github.com/awslabs/ferret-scan/internal/version.BuildDate=$BuildDate"
+    "-X github.com/awslabs/ferret-scan/v2/internal/version.Version=$Version",
+    "-X github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$GitCommit",
+    "-X github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$BuildDate"
 )
 
 if (-not $Debug) {
@@ -652,7 +652,7 @@ import (
     "path/filepath"
     "testing"
 
-    "github.com/awslabs/ferret-scan/internal/platform"
+    "github.com/awslabs/ferret-scan/v2/internal/platform"
 )
 
 func TestWindowsIntegration(t *testing.T) {

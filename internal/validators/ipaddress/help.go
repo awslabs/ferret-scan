@@ -3,7 +3,7 @@
 
 package ipaddress
 
-import "github.com/awslabs/ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/v2/internal/help"
 
 // GetCheckInfo returns standardized information about the IP address check
 func (v *Validator) GetCheckInfo() help.CheckInfo {

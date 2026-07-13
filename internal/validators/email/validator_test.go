@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 func TestEmailValidator_URLStructureDetection(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // --- Helper to create a configured validator with platform patterns ---

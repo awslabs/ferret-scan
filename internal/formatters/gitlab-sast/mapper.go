@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/core"
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // VulnerabilityMapper handles mapping Ferret Scan matches to GitLab vulnerabilities

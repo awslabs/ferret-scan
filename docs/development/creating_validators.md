@@ -103,8 +103,8 @@ import (
     "regexp"
     "strings"
 
-    "github.com/awslabs/ferret-scan/internal/detector"
-    "github.com/awslabs/ferret-scan/internal/execguard"
+    "github.com/awslabs/ferret-scan/v2/internal/detector"
+    "github.com/awslabs/ferret-scan/v2/internal/execguard"
 )
 
 type YourValidator struct {
@@ -320,7 +320,7 @@ The help.go file provides runtime documentation for your validator that can be a
 ```go
 package yourvalidator
 
-import "github.com/awslabs/ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/v2/internal/help"
 
 // GetCheckInfo returns standardized information about this check
 func (v *YourValidator) GetCheckInfo() help.CheckInfo {
@@ -427,7 +427,7 @@ var validatorConstructors = map[string]func() detector.Validator{
 }
 ```
 
-(Add the corresponding import for `github.com/awslabs/ferret-scan/internal/validators/yourvalidator`
+(Add the corresponding import for `github.com/awslabs/ferret-scan/v2/internal/validators/yourvalidator`
 to `factory.go`.)
 
 That one entry is enough. The check-name list used by `--checks`, `--checks all`,

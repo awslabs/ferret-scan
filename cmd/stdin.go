@@ -14,17 +14,17 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/awslabs/ferret-scan/internal/config"
-	"github.com/awslabs/ferret-scan/internal/core"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/execguard"
-	"github.com/awslabs/ferret-scan/internal/formatters"
-	"github.com/awslabs/ferret-scan/internal/parallel"
-	"github.com/awslabs/ferret-scan/internal/precommit"
-	"github.com/awslabs/ferret-scan/internal/redactors"
-	plaintextredactor "github.com/awslabs/ferret-scan/internal/redactors/plaintext"
-	"github.com/awslabs/ferret-scan/internal/router"
-	"github.com/awslabs/ferret-scan/internal/suppressions"
+	"github.com/awslabs/ferret-scan/v2/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/parallel"
+	"github.com/awslabs/ferret-scan/v2/internal/precommit"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	plaintextredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
+	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 )
 
 // stdinScanInputs collects everything runStdinScan needs from main(). It

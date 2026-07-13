@@ -6,7 +6,7 @@ package passport
 import (
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // ---------------------------------------------------------------------------

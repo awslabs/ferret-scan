@@ -88,7 +88,7 @@ The advisory pass runs after detection assembles the full slice, at:
 // internal/explain/explain.go  (default build, pure-Go, no tags)
 package explain
 
-import "github.com/awslabs/ferret-scan/internal/detector"
+import "github.com/awslabs/ferret-scan/v2/internal/detector"
 
 type Verdict string // "likely_real" | "likely_test" | "uncertain"
 

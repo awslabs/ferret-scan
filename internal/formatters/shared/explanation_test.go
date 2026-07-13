@@ -6,9 +6,9 @@ package shared
 import (
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/explain"
-	"github.com/awslabs/ferret-scan/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/explain"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 )
 
 func annotatedMatch() detector.Match {

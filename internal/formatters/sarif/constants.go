@@ -3,7 +3,7 @@
 
 package sarif
 
-import "github.com/awslabs/ferret-scan/internal/core"
+import "github.com/awslabs/ferret-scan/v2/internal/core"
 
 // SARIF specification constants
 const (

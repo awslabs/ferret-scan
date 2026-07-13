@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	meta_extract_exiflib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-exiflib"
+	meta_extract_exiflib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/meta-extractors/meta-extract-exiflib"
 )
 
 func main() {

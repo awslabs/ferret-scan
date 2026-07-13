@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/pkg/redact"
+	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
 // helper: build an engine for a test, register cleanup. Tests that need

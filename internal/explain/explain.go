@@ -19,7 +19,7 @@
 // of verdict.
 package explain
 
-import "github.com/awslabs/ferret-scan/internal/detector"
+import "github.com/awslabs/ferret-scan/v2/internal/detector"
 
 // MetadataKey is the Match.Metadata key under which an Explanation is stashed
 // by the pipeline once an Explainer has run. Formatters read it from here.

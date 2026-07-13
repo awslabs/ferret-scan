@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awslabs/ferret-scan/internal/validators/passport"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/passport"
 )
 
 func main() {
@@ -19,8 +19,14 @@ func main() {
 		return
 	}
 
+	content, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+
 	validator := passport.NewValidator()
-	matches, err := validator.Validate(os.Args[1])
+	matches, err := validator.ValidateContent(string(content), os.Args[1])
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return

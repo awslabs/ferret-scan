@@ -8,7 +8,7 @@ package comprehend
 // to reduce binary size and eliminate cloud service dependencies.
 
 /*
-import "github.com/awslabs/ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/v2/internal/help"
 
 // GetCheckInfo returns help information for the Comprehend PII validator
 func (v *Validator) GetCheckInfo() help.CheckInfo {

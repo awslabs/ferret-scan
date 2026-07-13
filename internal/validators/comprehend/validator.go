@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	comprehend_analyzer_lib "github.com/awslabs/ferret-scan/internal/validators/comprehend/comprehend-analyzer-lib"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	comprehend_analyzer_lib "github.com/awslabs/ferret-scan/v2/internal/validators/comprehend/comprehend-analyzer-lib"
 )
 */
 

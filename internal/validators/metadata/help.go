@@ -3,7 +3,7 @@
 
 package metadata
 
-import "github.com/awslabs/ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/v2/internal/help"
 
 // GetCheckInfo implements the HelpProvider interface
 func (v *Validator) GetCheckInfo() help.CheckInfo {

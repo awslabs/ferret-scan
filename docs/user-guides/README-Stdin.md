@@ -124,7 +124,7 @@ import (
     "context"
     "log"
 
-    "github.com/awslabs/ferret-scan/pkg/redact"
+    "github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
 func handler() {
@@ -172,9 +172,9 @@ If you need direct access to the scanner pipeline (e.g. to plug ferret-scan into
 
 ```go
 import (
-    "github.com/awslabs/ferret-scan/internal/core"
-    "github.com/awslabs/ferret-scan/internal/redactors"
-    "github.com/awslabs/ferret-scan/internal/redactors/plaintext"
+    "github.com/awslabs/ferret-scan/v2/internal/core"
+    "github.com/awslabs/ferret-scan/v2/internal/redactors"
+    "github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
 )
 
 func RedactStringLowLevel(input string) (string, error) {

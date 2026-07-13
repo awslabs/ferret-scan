@@ -3,7 +3,7 @@
 
 package cloudresources
 
-import "github.com/awslabs/ferret-scan/internal/help"
+import "github.com/awslabs/ferret-scan/v2/internal/help"
 
 // GetCheckInfo returns standardized information about the cloud resources check
 func (v *Validator) GetCheckInfo() help.CheckInfo {

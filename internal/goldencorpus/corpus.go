@@ -30,8 +30,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/pkg/redact"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
 // Case is one corpus entry: a named input plus the validator set to run against

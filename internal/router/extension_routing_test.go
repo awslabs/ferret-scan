@@ -6,7 +6,7 @@ package router
 import (
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 )
 
 // TestExtensionRouting_MatchesPreprocessorCapability is the drift guard (v2 gap

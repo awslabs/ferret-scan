@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // SignalSynthesizer is the default Explainer: a deterministic, dependency-free

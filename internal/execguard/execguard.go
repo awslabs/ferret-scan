@@ -31,8 +31,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/resilience"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/resilience"
 )
 
 // ErrMatchBudgetExceeded is returned (alongside the truncated, capped matches) by

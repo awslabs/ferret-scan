@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // RouterInterface defines the router functionality the metadata preprocessors

@@ -4,10 +4,11 @@
 package position
 
 import (
-	"github.com/awslabs/ferret-scan/internal/redactors"
 	"math"
 	"strings"
 	"unicode"
+
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 )
 
 // findBestFuzzyMatch finds the best fuzzy match for the target text in the original text

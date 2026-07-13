@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awslabs/ferret-scan/internal/suppressions"
+	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 )
 
 func main() {

@@ -5,7 +5,7 @@
 // +build examples_lambda
 
 // Package main is a reference Lambda handler for a redaction gateway
-// built on github.com/awslabs/ferret-scan/pkg/redact.
+// built on github.com/awslabs/ferret-scan/v2/pkg/redact.
 //
 // See README.md in this directory for build / deploy instructions and
 // architecture notes. The build tag prevents this file from being
@@ -51,7 +51,7 @@ import (
 	//
 	// "github.com/aws/aws-lambda-go/lambda"
 
-	"github.com/awslabs/ferret-scan/pkg/redact"
+	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
 // engine is constructed once per Lambda execution environment and
