@@ -1,7 +1,7 @@
 # Ferret Scan — Threat Model
 
 **Version:** 0.1 (PCSR draft)
-**Last reviewed:** 2026-05-18
+**Last reviewed:** 2026-07-12
 **Owner:** Andrea Di Fabio (adifabio@) — pending handover to OSS maintainer team on publication
 
 This is a starting-point threat model drafted during PCSR prep so a reviewer can edit and sign off before publication. Update whenever a new trust boundary, route, or ingestion path is added. The current model covers two execution modes — CLI scanner and embedded web UI — plus the optional GenAI/Textract/Transcribe preprocessor path.
@@ -34,7 +34,8 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 | Threat | STRIDE | Mitigation |
 |---|---|---|
 | Path traversal via `--file ../../etc/passwd` | T (Tampering) | **Mitigated in code** — `filepath.Clean` + `filepath.Abs` in cmd/main.go:1259, 2085. The scanner reads files; it does not write to operator-controlled paths from CLI. |
-| Decompression bomb via `.zip` / `.tar.gz` preprocessor input | D (DoS) | **Compensating control** — 100 MB upload cap in web mode (server.go:425). CLI mode reads files directly; size cap not enforced — operator's responsibility. Document this in the README hardening section. |
+| Decompression bomb via `.zip` / `.tar.gz` preprocessor input | D (DoS) | **Compensating control** — 100 MB upload cap in web mode (server.go:425). CLI mode reads files directly; per-file size cap is the operator's responsibility, but peak memory across a concurrent scan is now bounded by the opt-in `--max-live-bytes` admission budget (`internal/execguard` BytesLimiter; default: no cap). Document `--max-live-bytes` in the README hardening section for constrained hosts (e.g. Lambda). |
+| Runaway / pathological-input validator hang (e.g. O(n²) on a single very long line) exhausts CPU on CLI or web | D (DoS) | **Mitigated in code (v2)** — validators poll `context.Context` in their hot loops, so the per-job context deadline (and cancellation) can now interrupt an in-flight validator instead of hanging unbounded. The opt-in `--validator-budget NAME=DURATION` sets a per-validator time cap; over-budget validators are stopped and the file is flagged incomplete (`ScanResult.Incomplete` / `IncompleteReason`). `--fail-on-incomplete` makes truncated coverage a non-zero (3) exit instead of a stderr warning. |
 | Reading sensitive system files (`/etc/shadow`, `~/.aws/credentials`) the operator did not intend to scan | I (Info disclosure) | **Compensating control** — the tool only reads files the operator explicitly passes. `--exclude` and `respect_gitignore` reduce scope. No additional sandbox. |
 
 ### TB-2 (browser → web server)
@@ -87,7 +88,7 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 |---|---|---|
 | Compromised third-party action (e.g. attacker repoints `softprops/action-gh-release@v3` upstream) reads `${{ secrets.* }}`, exfiltrates `GITHUB_TOKEN` / OIDC issuance, pushes commits to `main` as `github-actions[bot]`, publishes a tampered `ferret-scan` to PyPI / ECR Public / GHCR. | T (Tampering), E (Elevation of Privilege) | **Mitigated** — every external `uses:` reference is SHA-pinned (PR #64). Dependabot tracks upstream releases against the version-comment field (PR #66). The trust path is now git's content-addressing + dependabot review surface, not GitHub's tag mutability. Tracked as TM-08. |
 | `auto-version-tag` job in `.gitlab-ci.yml` pushes tags to `main` on every push using `GITLAB_RELEASE_TOKEN`. No human approval gate beyond the originating commit. | E | **Compensating control** — `if:` condition limits the job to default-branch pushes by humans (not MRs, not tag pushes). Token can still issue a release without explicit `/release`-style gate. Tracked as TM-09. |
-| Dockerfile `FROM` lines reference upstream images by tag (`golang:1.26.3-alpine`), not by `@sha256:<digest>`. Final image is `FROM scratch`, so the runtime impact is bounded to the builder stage's compiled binary, but the upstream image swap surface is real. | T | **Compensating control** — final stage is `FROM scratch` with no upstream layer; only the builder-stage compilation is at risk. Defense-in-depth fix is digest pinning. Tracked as TM-10. |
+| Dockerfile `FROM` lines reference upstream images by tag (`golang:1.26.5-alpine`), not by `@sha256:<digest>`. Final image is `FROM scratch`, so the runtime impact is bounded to the builder stage's compiled binary, but the upstream image swap surface is real. | T | **Compensating control** — final stage is `FROM scratch` with no upstream layer; only the builder-stage compilation is at risk. Defense-in-depth fix is digest pinning. Tracked as TM-10 (now mitigated — the builder is digest-pinned). |
 
 ## 4. Open items / unmitigated threats blocking publication
 
@@ -102,7 +103,7 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 | TM-07 | SSRF defense-in-depth on Transcribe transcript URI fetch (TB-6) | Minor | **Deferred** — file is `GENAI_DISABLED` and not compiled in. Re-evaluate when GenAI is re-enabled. |
 | TM-08 | Floating-tag GitHub Actions chained with elevated runner permissions and auto-commit (TB-8) | **Major** | **In progress** — added 2026-05-22 by REPO scan. PR #64 SHA-pins every `uses:` reference (`@<sha> # vX.Y.Z` pattern); PR #66 adds dependabot config so the pins stay maintainable. Worst offender pre-fix was `pypa/gh-action-pypi-publish@release/v1` (a branch reference); now pinned to `cef22109... # release/v1 (2026-04-07)`. |
 | TM-09 | `auto-version-tag` GitLab job pushes tags without manual approval (TB-8) | Minor | **In progress** — added 2026-05-22 by REPO scan. PR #69 adds `when: manual` + `allow_failure: true` on the rule (a maintainer must click "play" in the GitLab UI for the tag to push) and inline-documents the expectation that `GITLAB_RELEASE_TOKEN` is scoped `write_repository` only. Final closure also requires verifying the token scope in the GitLab project-settings UI. |
-| TM-10 | Dockerfile builder-stage `FROM` not pinned by digest (TB-8) | Minor | **In progress** — added 2026-05-22 by REPO scan. PR #70 pins `golang:1.26.3-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d`. The digest references a multi-arch manifest list covering both `linux/amd64` and `linux/arm64v8`, matching the platforms `docker-multiarch.yml` builds. Final stage is `FROM scratch` and is unaffected. |
+| TM-10 | Dockerfile builder-stage `FROM` not pinned by digest (TB-8) | Minor | **Mitigated** — added 2026-05-22 by REPO scan; PR #70 introduced digest pinning. The builder is now pinned to `golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2` (Go 1.26.5 picks up fixes for CVE-2026-39822 and CVE-2026-42505). The tag+digest are kept in sync via `scripts/go-version.sh` from the `.go-version` source of truth; the digest references a multi-arch manifest list covering both `linux/amd64` and `linux/arm64`, matching the platforms `docker-multiarch.yml` builds. Final stage is `FROM scratch` and is unaffected. |
 
 ## 4.5 Highest-leverage attack paths
 

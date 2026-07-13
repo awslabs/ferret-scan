@@ -201,6 +201,10 @@ jobs:
           image-ref: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:${{ steps.meta.outputs.version }}
           format: "sarif"
           output: "trivy-results.sarif"
+          # Suppress accepted, non-actionable findings (see .trivyignore for the
+          # rationale behind each entry — e.g. deprecated packages with no fix
+          # that ferret-scan does not actually import).
+          trivyignores: ".trivyignore"
 
       - name: Upload Trivy scan results to GitHub Security tab
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
@@ -285,6 +289,10 @@ jobs:
       security-events: write
 
     steps:
+      # Check out so Grype can read .grype.yaml (accepted-vuln ignore rules).
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
       # Authenticate to GHCR before grype attempts to pull the image.
       # Without this, anchore/scan-action@v7+ fails with
       #   "UNAUTHORIZED: authentication required"
@@ -304,6 +312,8 @@ jobs:
           image: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:latest
           fail-build: false
           severity-cutoff: high
+          # Load accepted-vuln ignore rules (see .grype.yaml for rationale).
+          config: ".grype.yaml"
 
       - name: Upload Grype scan results
         uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3

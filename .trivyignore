@@ -1,0 +1,10 @@
+# Trivy ignore file — accepted, non-actionable findings only.
+# Every entry MUST document WHY it is safe to ignore. Keep this list minimal;
+# prefer fixing (bump the dependency / rebuild the image) over ignoring.
+
+# GO-2026-5932 — golang.org/x/crypto/openpgp is unmaintained/unsafe-by-design.
+# There is NO fixed version (the whole package is deprecated upstream), and
+# ferret-scan does NOT import openpgp — x/crypto is pulled transitively only for
+# x/crypto/ocsp (via pdfcpu). govulncheck confirms 0 reachable/called symbols.
+# Nothing to fix; suppressing to keep the Security tab actionable.
+GO-2026-5932

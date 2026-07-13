@@ -210,20 +210,24 @@ flowchart TD
 **Input**: Combined and routed content
 **Output**: Validation matches with confidence scores and context metadata
 
-> **⚠️ Stale-diagram note (v2 Phase 2).** The diagrams below depict
+> **⚠️ Stale-diagram note (v2 Phase 2, Move B).** The diagrams below depict
 > `ValidateWithAdvancedFeatures()` as the "Main orchestration method" and show a
 > standalone **Cross-Validator Signals** processor, **Confidence Calibrator**,
 > and **Language Detector** as active post-validation stages. **None of those
 > were ever wired into a production entry point** — they were dead code and have
 > been removed (see [docs/proposals/V2_ARCHITECTURE.md](proposals/V2_ARCHITECTURE.md)
-> gap 3.1). The live pipeline is: `EnhancedManagerWrapper` →
-> `EnhancedValidatorManager.ValidateContentWithDualPathCtx` → dual-path helper →
-> `EnhancedValidatorBridge` → document/metadata bridges → validators, with
+> gap 3.1). The former five-type pass-through chain
+> (`EnhancedManagerWrapper` → `EnhancedValidatorManager` →
+> `ValidatorIntegrationHelper` → `DualPathIntegration` → `EnhancedValidatorBridge`)
+> was also collapsed in Move B. The **current live pipeline** is a single facade:
+> `Detector` (satisfies `detector.Validator`) → `EnhancedValidatorBridge.ProcessContentCtx`
+> → document/metadata bridges → validators (each polling `context.Context` in its
+> hot loops so a per-job deadline or `--validator-budget` can interrupt it), with
 > confidence adjustment performed by the bridge's context-based
 > `applyCrossPathConfidenceAdjustments` (NOT the deleted statistical calibrator).
 > The boxes below are retained for historical context but should be read as
-> "intended design that never shipped," pending a diagram rewrite in the Move-B
-> facade work.
+> "intended design that never shipped"; the two `EnhancedManagerWrapper` /
+> `ValidateContent()` boxes now correspond to the collapsed `Detector` facade.
 
 ### 4a. Simplified Overview
 
@@ -625,7 +629,7 @@ A critical architectural decision is the inline content combination within the F
 
 ### **Context-Aware Intelligence**
 
-The **Enhanced Validation Pipeline** represents the system's intelligence layer, featuring both simplified and detailed views to accommodate different stakeholder needs. The architecture employs a method-based orchestration approach through `ValidateWithAdvancedFeatures()`, which integrates context analysis directly within the validation process rather than as separate services.
+The **Enhanced Validation Pipeline** represents the system's intelligence layer, featuring both simplified and detailed views to accommodate different stakeholder needs. In the current (v2) architecture the orchestration is a single facade — `Detector` → `EnhancedValidatorBridge.ProcessContentCtx` — which integrates context analysis directly within the validation process rather than as separate services. (The `ValidateWithAdvancedFeatures()` method and the separate calibrator/language-detector stages shown in the older diagrams above were dead code and were removed in v2 Phase 2 — see the stale-diagram note at the top of section 4.)
 
 The Context Analyzer performs domain classification (Financial, HR, Legal), structure detection (CSV, JSON, XML), and semantic analysis (test vs production environments) in a single integrated method. This design reduces latency and improves accuracy by providing validators with rich contextual information as method parameters.
 

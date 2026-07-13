@@ -113,8 +113,8 @@ The validator is designed to minimize false positives from:
 
 The validator implements the `detector.Validator` interface with:
 
-- `Validate(filePath string)` - Scans files directly
-- `ValidateContent(content, originalPath string)` - Scans preprocessed content
+- `ValidateContent(content, originalPath string)` - Scans preprocessed content (the primary entry point)
+- `ValidateContentCtx(ctx, content, originalPath string)` - Context-aware form that polls for cancellation (per-job deadline / `--validator-budget`)
 - `CalculateConfidence(match string)` - Computes confidence scores
 - `AnalyzeContext(match, context)` - Analyzes surrounding text
 

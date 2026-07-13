@@ -32,10 +32,13 @@ The validator assigns confidence scores based on:
 // Create a new passport validator
 validator := passport.NewValidator()
 
-// Validate a file
-matches, err := validator.Validate("path/to/file.txt")
+// Validate already-extracted content (the scan pipeline reads/preprocesses the
+// file once and passes the text in; the second arg is the original path, used
+// only for reporting/context).
+content, _ := os.ReadFile("path/to/file.txt")
+matches, err := validator.ValidateContent(string(content), "path/to/file.txt")
 if err != nil {
-    log.Fatalf("Error validating file: %v", err)
+    log.Fatalf("Error validating content: %v", err)
 }
 
 // Process matches
