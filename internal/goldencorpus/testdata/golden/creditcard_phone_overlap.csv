@@ -1,0 +1,4 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:creditcard_phone_overlap>,VISA,HIGH,100.0,1,4532 0151 1283 0366
+<golden:creditcard_phone_overlap>,PHONE,LOW,50.0,1,0151 1283 0366
+<golden:creditcard_phone_overlap>,PHONE,HIGH,100.0,2,212-555-0142

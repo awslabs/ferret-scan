@@ -1,0 +1,108 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** <golden:creditcard_phone_overlap> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\ncard 4532 0151 1283 0366 here\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 15\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "VISA"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:creditcard_phone_overlap>",
+        "start_line": 1
+      },
+      "message": "Visa credit card detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Visa Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <golden:creditcard_phone_overlap> (line 1)\n**Confidence:** LOW (50.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\ncard 4532 0151 1283 0366 here\n```\n\n**Additional Information:**\n- context_impact: -55\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PHONE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "phone"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:creditcard_phone_overlap>",
+        "start_line": 1
+      },
+      "message": "Phone number detected: [HIDDEN] (confidence: LOW)",
+      "name": "Phone Number Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <golden:creditcard_phone_overlap> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\ncall 212-555-0142 today\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PHONE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "phone"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:creditcard_phone_overlap>",
+        "start_line": 2
+      },
+      "message": "Phone number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Phone Number Detected",
+      "severity": "Critical"
+    }
+  ]
+}
