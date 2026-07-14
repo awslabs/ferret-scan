@@ -190,6 +190,13 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		return originalText, []redactors.RedactionMapping{}, nil
 	}
 
+	// Collapse overlapping matches to their widest span first. Otherwise a
+	// smaller match contained in a larger one (e.g. a PHONE match inside a
+	// spaced CREDIT_CARD match) gets redacted first, mutating the text so the
+	// larger match can no longer be located — leaving its un-redacted head
+	// (the card's BIN) exposed. See redactors.ResolveOverlaps.
+	matches = redactors.ResolveOverlaps(matches)
+
 	// Sort matches by position (descending) to avoid position shifts during replacement
 	sortedMatches := ptr.sortMatchesByPosition(matches)
 

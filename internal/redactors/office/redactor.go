@@ -440,6 +440,11 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 		modifiedContents.Files[fileName] = content
 	}
 
+	// Collapse overlapping matches to their widest span so a smaller match
+	// contained in a larger one doesn't get redacted first and hide the larger
+	// match's un-redacted head. See redactors.ResolveOverlaps.
+	matches = redactors.ResolveOverlaps(matches)
+
 	// Process each match
 	for _, match := range matches {
 		mapping, err := or.redactMatch(modifiedContents, extractedText, textPositions, match, strategy, docType)

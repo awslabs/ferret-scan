@@ -1,0 +1,7 @@
+=== REDACTED ===
+card **** **** **** 0366 here
+call 212-***-0142 today
+=== FINDINGS (sorted) ===
+type=PHONE line=1 conf=low match=0151 1283 0366
+type=PHONE line=2 conf=high match=212-555-0142
+type=VISA line=1 conf=high match=4532 0151 1283 0366

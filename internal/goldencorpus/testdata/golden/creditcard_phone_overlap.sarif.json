@@ -1,0 +1,264 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_phone_overlap>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "card \ncard 4532 0151 1283 0366 here\n here"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "card 4532 0151 1283 0366 here"
+                  },
+                  "startColumn": 6,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "VISA Detected in <golden:creditcard_phone_overlap> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532 0151 1283 0366'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:creditcard_phone_overlap>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 75,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_phone_overlap>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "card 4532 \ncard 4532 0151 1283 0366 here\n here"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "card 4532 0151 1283 0366 here"
+                  },
+                  "startColumn": 11,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in <golden:creditcard_phone_overlap> at line 1 (confidence: 50.0% - LOW). Matched text: '0151 1283 0366'"
+          },
+          "properties": {
+            "confidence": 50,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "clean_number": "015112830366",
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -55,
+              "country": "UK",
+              "format": "0XXX XXXXXXXX",
+              "original_confidence": 50,
+              "original_file": "<golden:creditcard_phone_overlap>",
+              "pattern_name": "UK_Standard",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": true,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "card"
+            ],
+            "validator": "phone"
+          },
+          "rank": 50,
+          "ruleId": "PHONE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_phone_overlap>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "call \ncall 212-555-0142 today\n today"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 18,
+                  "snippet": {
+                    "text": "call 212-555-0142 today"
+                  },
+                  "startColumn": 6,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in <golden:creditcard_phone_overlap> at line 2 (confidence: 100.0% - HIGH). Matched text: '212-555-0142'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "clean_number": "2125550142",
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 15,
+              "country": "US/CA",
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 100,
+              "original_file": "<golden:creditcard_phone_overlap>",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "call"
+            ],
+            "validator": "phone"
+          },
+          "rank": 75,
+          "ruleId": "PHONE"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A phone number was detected in the scanned content. Phone numbers can be considered personally identifiable information (PII) depending on context and jurisdiction."
+              },
+              "help": {
+                "text": "Phone numbers may be considered PII under various privacy regulations. Evaluate whether this phone number should be present in the code. If it's for testing purposes, use clearly fake numbers (e.g., 555-0100 to 555-0199 in North America). For production use, store phone numbers in secure configuration systems with appropriate access controls."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PHONE.md",
+              "id": "PHONE",
+              "shortDescription": {
+                "text": "Phone Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type VISA was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "id": "VISA",
+              "shortDescription": {
+                "text": "VISA Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

@@ -94,6 +94,17 @@ var Cases = []Case{
 			"invalid-luhn 4532015112830367\n",
 	},
 	{
+		Name: "creditcard_phone_overlap",
+		Description: "A space-separated card the PHONE validator also fires on (its trailing " +
+			"groups look like a phone number). Locks the overlap fix: format-preserving " +
+			"redaction must mask the whole card including the BIN (**** **** **** 0366), " +
+			"not just the head — the contained PHONE match must not win the tail and hide " +
+			"the card's un-redacted BIN. A standalone phone on the next line must still redact.",
+		Checks: []string{"CREDIT_CARD", "PHONE"},
+		Input: "card 4532 0151 1283 0366 here\n" +
+			"call 212-555-0142 today\n",
+	},
+	{
 		Name:        "secrets_aws",
 		Description: "AWS access key + secret-key shaped strings; locks SECRETS detection and confidence.",
 		Checks:      []string{"SECRETS"},
