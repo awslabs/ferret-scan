@@ -8,16 +8,17 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/observability"
-	"github.com/awslabs/ferret-scan/internal/redactors"
-	"github.com/awslabs/ferret-scan/internal/redactors/position"
-	"github.com/awslabs/ferret-scan/internal/redactors/replacement"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/position"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/replacement"
 )
 
 // OfficeRedactor implements redaction for Microsoft Office documents using unified ZIP/XML approach

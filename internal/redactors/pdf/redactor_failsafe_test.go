@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/preprocessors"
-	"github.com/awslabs/ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 )
 
 // A minimal but structurally valid single-page PDF that pdfcpu can parse.

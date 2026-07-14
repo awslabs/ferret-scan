@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/awslabs/ferret-scan/internal/paths"
+	"github.com/awslabs/ferret-scan/v2/internal/paths"
 
 	"gopkg.in/yaml.v3"
 )

@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/execguard"
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // Pre-compiled regex patterns to avoid repeated compilation in hot paths.

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/core"
-	"github.com/awslabs/ferret-scan/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 )
 
 // parseValidatorBudgets parses the --validator-budget flag value into a

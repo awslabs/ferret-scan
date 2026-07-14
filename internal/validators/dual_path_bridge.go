@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/context"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/execguard"
-	"github.com/awslabs/ferret-scan/internal/observability"
-	"github.com/awslabs/ferret-scan/internal/preprocessors"
-	"github.com/awslabs/ferret-scan/internal/router"
+	"github.com/awslabs/ferret-scan/v2/internal/context"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // EnhancedValidatorBridge supports both document and metadata validation paths

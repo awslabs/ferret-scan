@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/observability"
-	meta_extract_officelib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-officelib"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	meta_extract_officelib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/meta-extractors/meta-extract-officelib"
 )
 
 // OfficeMetadataPreprocessor extracts metadata from Office documents

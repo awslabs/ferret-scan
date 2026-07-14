@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/platform"
-	"github.com/awslabs/ferret-scan/tests/helpers"
+	"github.com/awslabs/ferret-scan/v2/internal/platform"
+	"github.com/awslabs/ferret-scan/v2/tests/helpers"
 )
 
 // TestWindowsErrorHandlingAndUserExperience tests Windows error handling and user experience

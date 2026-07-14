@@ -6,8 +6,8 @@ package redactors
 import (
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 )
 
 // RedactionStrategy defines the type of redaction to apply

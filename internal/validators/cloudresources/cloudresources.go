@@ -20,10 +20,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awslabs/ferret-scan/internal/config"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/execguard"
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // maxContentBytes bounds the input this validator will scan. Beyond this size

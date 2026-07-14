@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/resilience"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/resilience"
 )
 
 // panicValidator panics inside ValidateContent — the exact failure mode that,

@@ -65,21 +65,21 @@ build:
 	@echo "Building..."
 	@go env -w GOPROXY=direct
 	@VERSION=$$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "0.0.0-development"); \
-	go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan ./cmd
+	go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan ./cmd
 
 # Build for Windows (amd64)
 build-windows:
 	@echo "Building for Windows (amd64)..."
 	@go env -w GOPROXY=direct
 	@VERSION=$$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "0.0.0-development"); \
-	GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-win-amd64.exe ./cmd
+	GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-win-amd64.exe ./cmd
 
 # Build for Windows (arm64)
 build-windows-arm64:
 	@echo "Building for Windows (arm64)..."
 	@go env -w GOPROXY=direct
 	@VERSION=$$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "0.0.0-development"); \
-	GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-win-arm64.exe ./cmd
+	GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-win-arm64.exe ./cmd
 
 # Build for all platforms
 build-all-platforms:
@@ -87,10 +87,10 @@ build-all-platforms:
 	@go env -w GOPROXY=direct
 	@VERSION=$$(git describe --tags --exact-match 2>/dev/null || git describe --tags 2>/dev/null || echo "0.0.0-development"); \
 	echo "Building for current platform..." && make build && \
-	echo "Building for Linux (amd64)..." && GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-linux-amd64 ./cmd && \
-	echo "Building for Linux (arm64)..." && GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-linux-arm64 ./cmd && \
-	echo "Building for macOS (amd64)..." && GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-darwin-amd64 ./cmd && \
-	echo "Building for macOS (arm64)..." && GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-darwin-arm64 ./cmd
+	echo "Building for Linux (amd64)..." && GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-linux-amd64 ./cmd && \
+	echo "Building for Linux (arm64)..." && GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-linux-arm64 ./cmd && \
+	echo "Building for macOS (amd64)..." && GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-darwin-amd64 ./cmd && \
+	echo "Building for macOS (arm64)..." && GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$$VERSION' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan-darwin-arm64 ./cmd
 	@make build-windows
 	@make build-windows-arm64
 	@echo "✓ All platform binaries built in bin/ directory"
@@ -102,7 +102,7 @@ build-all-platforms:
 build-release:
 	@echo "Building release version $(VERSION)..."
 	@go env -w GOPROXY=direct
-	@go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/internal/version.Version=$(VERSION)' -X 'github.com/awslabs/ferret-scan/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan ./cmd
+	@go build -ldflags="-s -w -X 'github.com/awslabs/ferret-scan/v2/internal/version.Version=$(VERSION)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)' -X 'github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'" -o bin/ferret-scan ./cmd
 
 # Note: Web UI release functionality is now integrated into build-release target
 # The single ferret-scan binary includes both CLI and web modes

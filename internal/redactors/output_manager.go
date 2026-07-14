@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // OutputStructureManager manages the creation of mirrored folder structures for redacted documents

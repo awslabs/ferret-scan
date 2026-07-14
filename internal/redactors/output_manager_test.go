@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // TestCleanupEmptyDirectories_RemovesEmptiesKeepsNonEmpties guards the

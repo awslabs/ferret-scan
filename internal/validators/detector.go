@@ -6,10 +6,10 @@ package validators
 import (
 	stdctx "context"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/observability"
-	"github.com/awslabs/ferret-scan/internal/preprocessors"
-	"github.com/awslabs/ferret-scan/internal/router"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // ProcessedContentValidator is the optional extension of detector.Validator for

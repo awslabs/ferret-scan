@@ -6,7 +6,7 @@ package main
 import (
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/config"
 )
 
 // TestResolveConfiguration_FailOnIncomplete covers the config/profile precedence

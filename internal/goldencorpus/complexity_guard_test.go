@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/validators/creditcard"
-	"github.com/awslabs/ferret-scan/internal/validators/email"
-	"github.com/awslabs/ferret-scan/internal/validators/ipaddress"
-	"github.com/awslabs/ferret-scan/internal/validators/phone"
-	"github.com/awslabs/ferret-scan/internal/validators/ssn"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/creditcard"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/email"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/ipaddress"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/phone"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/ssn"
 )
 
 // This file is the second half of the Phase 0 regression net (the first being

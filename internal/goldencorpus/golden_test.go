@@ -11,18 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/core"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/formatters"
-	"github.com/awslabs/ferret-scan/pkg/redact"
+	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 
-	csvfmt "github.com/awslabs/ferret-scan/internal/formatters/csv"
-	gitlabfmt "github.com/awslabs/ferret-scan/internal/formatters/gitlab-sast"
-	jsonfmt "github.com/awslabs/ferret-scan/internal/formatters/json"
-	junitfmt "github.com/awslabs/ferret-scan/internal/formatters/junit"
-	sariffmt "github.com/awslabs/ferret-scan/internal/formatters/sarif"
-	textfmt "github.com/awslabs/ferret-scan/internal/formatters/text"
-	yamlfmt "github.com/awslabs/ferret-scan/internal/formatters/yaml"
+	csvfmt "github.com/awslabs/ferret-scan/v2/internal/formatters/csv"
+	gitlabfmt "github.com/awslabs/ferret-scan/v2/internal/formatters/gitlab-sast"
+	jsonfmt "github.com/awslabs/ferret-scan/v2/internal/formatters/json"
+	junitfmt "github.com/awslabs/ferret-scan/v2/internal/formatters/junit"
+	sariffmt "github.com/awslabs/ferret-scan/v2/internal/formatters/sarif"
+	textfmt "github.com/awslabs/ferret-scan/v2/internal/formatters/text"
+	yamlfmt "github.com/awslabs/ferret-scan/v2/internal/formatters/yaml"
 )
 
 // formatFresh renders matches using a FRESH formatter instance for the given

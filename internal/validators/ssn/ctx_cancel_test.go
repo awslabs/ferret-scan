@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 )
 
 // TestValidateContentCtx_ReclaimsRunawayMultiLineScan is the v2 Phase 3

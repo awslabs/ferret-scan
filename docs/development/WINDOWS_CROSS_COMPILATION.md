@@ -103,9 +103,9 @@ BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Build flags
 LDFLAGS="-s -w"
-LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/internal/version.Version=$VERSION"
-LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/internal/version.GitCommit=$COMMIT"
-LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/internal/version.BuildDate=$BUILD_DATE"
+LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/v2/internal/version.Version=$VERSION"
+LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$COMMIT"
+LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$BUILD_DATE"
 
 # Build for different Windows architectures
 build_windows() {
@@ -175,9 +175,9 @@ build_target() {
 
     # Build flags
     local ldflags="-s -w"
-    ldflags="$ldflags -X github.com/awslabs/ferret-scan/internal/version.Version=$VERSION"
-    ldflags="$ldflags -X github.com/awslabs/ferret-scan/internal/version.GitCommit=$(git rev-parse HEAD)"
-    ldflags="$ldflags -X github.com/awslabs/ferret-scan/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    ldflags="$ldflags -X github.com/awslabs/ferret-scan/v2/internal/version.Version=$VERSION"
+    ldflags="$ldflags -X github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=$(git rev-parse HEAD)"
+    ldflags="$ldflags -X github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     # Build command
     GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 go build \
@@ -383,7 +383,7 @@ const (
 PROJECT_NAME := ferret-scan
 VERSION := $(shell git describe --tags --always --dirty)
 BUILD_DIR := dist
-LDFLAGS := -s -w -X github.com/awslabs/ferret-scan/internal/version.Version=$(VERSION)
+LDFLAGS := -s -w -X github.com/awslabs/ferret-scan/v2/internal/version.Version=$(VERSION)
 
 # Windows targets
 WINDOWS_TARGETS := windows/amd64 windows/arm64 windows/386
@@ -495,9 +495,9 @@ jobs:
 
         # Build flags
         LDFLAGS="-s -w"
-        LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/internal/version.Version=${{ steps.version.outputs.version }}"
-        LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/internal/version.GitCommit=${{ github.sha }}"
-        LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/v2/internal/version.Version=${{ steps.version.outputs.version }}"
+        LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/v2/internal/version.GitCommit=${{ github.sha }}"
+        LDFLAGS="$LDFLAGS -X github.com/awslabs/ferret-scan/v2/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
         # Build
         go build -ldflags "$LDFLAGS" -trimpath -o "$OUTPUT" ./cmd
@@ -563,9 +563,9 @@ builds:
         goarch: "386"
     ldflags:
       - -s -w
-      - -X github.com/awslabs/ferret-scan/internal/version.Version={{.Version}}
-      - -X github.com/awslabs/ferret-scan/internal/version.GitCommit={{.Commit}}
-      - -X github.com/awslabs/ferret-scan/internal/version.BuildDate={{.Date}}
+      - -X github.com/awslabs/ferret-scan/v2/internal/version.Version={{.Version}}
+      - -X github.com/awslabs/ferret-scan/v2/internal/version.GitCommit={{.Commit}}
+      - -X github.com/awslabs/ferret-scan/v2/internal/version.BuildDate={{.Date}}
 
 archives:
   - id: default

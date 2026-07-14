@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/parallel"
+	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 )
 
 // TestSummarizeIncompleteFiles covers the v2 Phase 4 degraded-coverage summary

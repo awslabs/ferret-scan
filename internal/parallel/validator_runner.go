@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/execguard"
-	"github.com/awslabs/ferret-scan/internal/preprocessors"
-	"github.com/awslabs/ferret-scan/internal/resilience"
-	"github.com/awslabs/ferret-scan/internal/validators/metadata"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/resilience"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/metadata"
 )
 
 // partialMatchesSurvive reports whether an error is a per-validator BUDGET or

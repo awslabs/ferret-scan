@@ -8,10 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/awslabs/ferret-scan/internal/detector"
-	"github.com/awslabs/ferret-scan/internal/observability"
-	"github.com/awslabs/ferret-scan/internal/redactors"
-	"github.com/awslabs/ferret-scan/internal/redactors/position"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -20,6 +16,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/position"
 
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/rwcarlsen/goexif/tiff"

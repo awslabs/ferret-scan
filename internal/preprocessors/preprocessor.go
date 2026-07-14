@@ -6,7 +6,7 @@ package preprocessors
 import (
 	"path/filepath"
 
-	"github.com/awslabs/ferret-scan/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
 // ProcessedContent represents content that has been processed by a preprocessor

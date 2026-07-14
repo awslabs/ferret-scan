@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/tests/helpers"
+	"github.com/awslabs/ferret-scan/v2/tests/helpers"
 )
 
 // stdinBinary builds the ferret-scan binary once per test run and returns

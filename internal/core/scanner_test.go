@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 func TestParseChecksToRun_All(t *testing.T) {

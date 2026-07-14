@@ -34,7 +34,7 @@ Lambda function:
 3. Add the AWS Lambda runtime dependency:
    ```bash
    go get github.com/aws/aws-lambda-go@latest
-   go get github.com/awslabs/ferret-scan@latest
+   go get github.com/awslabs/ferret-scan/v2@latest
    ```
 
 4. Uncomment the `lambda.Start(handle)` line at the bottom of `main()`

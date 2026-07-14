@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/awslabs/ferret-scan/internal/observability"
-	audiolib "github.com/awslabs/ferret-scan/internal/preprocessors/meta-extractors/meta-extract-audiolib"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	audiolib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/meta-extractors/meta-extract-audiolib"
 )
 
 // AudioMetadataPreprocessor extracts metadata from audio files

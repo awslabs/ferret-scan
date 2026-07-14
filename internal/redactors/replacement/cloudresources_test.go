@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/awslabs/ferret-scan/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 )
 
 // Generate() is the single source of truth for redaction replacement across all
