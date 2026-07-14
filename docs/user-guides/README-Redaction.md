@@ -48,7 +48,7 @@ Use this when the document will be shared externally or when downstream systems 
 Masks the sensitive portion while keeping separators, length, and structure intact. Useful when downstream systems validate format.
 
 ```
-4916338506082832  →  4916********2832   (first 4 + last 4 visible)
+4916338506082832  →  ************2832   (last 4 visible; BIN masked)
 372-84-1951       →  ***-**-1951        (last 4 digits visible)
 john@acme.com     →  j***@acme.com      (first char + domain visible)
 312-867-4201      →  312-***-4201       (area code + last 4 visible)
@@ -72,7 +72,7 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 
 | Validator | `simple` | `format_preserving` | `synthetic` |
 |-----------|:--------:|:-------------------:|:-----------:|
-| CREDIT_CARD | ✅ | ✅ Luhn-valid mask | ✅ Valid Luhn number |
+| CREDIT_CARD | ✅ | ✅ Last 4 visible | ✅ Valid Luhn number |
 | SSN | ✅ | ✅ Last 4 visible | ✅ Invalid area code |
 | EMAIL | ✅ | ✅ First char + domain | ✅ Random user@example.com |
 | PHONE | ✅ | ✅ Area code + last 4 | ✅ Same format |

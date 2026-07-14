@@ -2,7 +2,7 @@
 Contact j*******@example.com or call 212-***-0142.
 AWS key ******************** in the config.
 SSN ***-**-4100 on file.
-Card 4532-****-****-0366 expires soon.
+Card ****-****-****-0366 expires soon.
 === FINDINGS (sorted) ===
 type=AWS_ACCESS_KEY line=2 conf=medium match=AKIAIOSFODNN7EXAMPLE
 type=BUSINESS line=1 conf=low match=john.doe@example.com

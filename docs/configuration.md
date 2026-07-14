@@ -964,7 +964,7 @@ redaction:
 | Strategy | What it produces | Best for |
 |----------|-----------------|----------|
 | `simple` | `[CREDIT-CARD-REDACTED]` | External sharing, maximum security |
-| `format_preserving` | `4916****2832`, `j***@acme.com` | Downstream format validation |
+| `format_preserving` | `************2832`, `j***@acme.com` | Downstream format validation |
 | `synthetic` | `4111356762812018`, `Regan Dubois` | Test data generation, realistic output |
 
 ### Supported File Types

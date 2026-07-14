@@ -45,13 +45,14 @@ func TestCreditCard_SimpleIsGenericPlaceholder(t *testing.T) {
 }
 
 // TestCreditCard_FormatPreservingConsistentAcrossBrands confirms every brand
-// gets the same credit-card format-preserving mask (first-4 + last-4 visible,
-// middle masked, structure preserved) rather than the generic full mask.
+// gets the same credit-card format-preserving mask (last-4 visible, everything
+// else — including the BIN / first-4 — masked, structure preserved) rather than
+// the generic full mask.
 func TestCreditCard_FormatPreservingConsistentAcrossBrands(t *testing.T) {
 	const card = "4532-0151-1283-0366"
 	want := FormatPreserving(card, "CREDIT_CARD")
-	// Sanity: the generic CC mask keeps first-4 and last-4 and masks the middle.
-	if !strings.HasPrefix(want, "4532") || !strings.HasSuffix(want, "0366") || !strings.Contains(want, "*") {
+	// Sanity: the CC mask keeps only the last-4 and masks the BIN / first-4.
+	if strings.Contains(want, "4532") || !strings.HasSuffix(want, "0366") || !strings.Contains(want, "*") {
 		t.Fatalf("unexpected baseline CC mask %q", want)
 	}
 	for _, ct := range allCardTypes {
