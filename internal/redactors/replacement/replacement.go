@@ -156,18 +156,17 @@ func preserveCreditCard(original string) string {
 	if len(cleaned) < 8 {
 		return strings.Repeat("*", len(original))
 	}
-	first4 := cleaned[:4]
+	// Mask everything except the last 4 digits. The BIN / first-4 digits are
+	// sensitive (they identify the issuer and card range) and must not survive
+	// into the redacted output — only the tail is kept for reference.
 	last4 := cleaned[len(cleaned)-4:]
-	middle := strings.Repeat("*", len(cleaned)-8)
-	digits := first4 + middle + last4
 	di := 0
 	return digitRe.ReplaceAllStringFunc(original, func(_ string) string {
-		if di < len(digits) {
-			r := string(digits[di])
-			di++
-			return r
+		defer func() { di++ }()
+		if di < len(cleaned)-4 {
+			return "*"
 		}
-		return "*"
+		return string(last4[di-(len(cleaned)-4)])
 	})
 }
 

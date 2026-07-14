@@ -1,7 +1,7 @@
 === REDACTED ===
-visa 4532********0366
-mastercard 5425********9903
-amex 3742*******0126
+visa ************0366
+mastercard ************9903
+amex ***********0126
 invalid-luhn 4532015112830367
 === FINDINGS (sorted) ===
 type=AMERICAN_EXPRESS line=3 conf=high match=374245455400126

@@ -1,6 +1,8 @@
 # ferret-scan
 
-<img src="docs/images/ferret-scan-logo.png" alt="ferret-scan" width="240" />
+<p align="center">
+  <img src="docs/images/ferret-scan-logo-original.png" alt="ferret-scan" width="240" />
+</p>
 
 **Find and redact sensitive data before it leaks.** A single-binary Go CLI (plus embedded web UI and Go library) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
 
