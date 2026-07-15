@@ -394,7 +394,7 @@ func readMP4BoxWithContext(ctx context.Context, file *os.File) (*MP4Box, error) 
 			return nil, err
 		}
 		// Safe comparison with bounds checking
-		if n < 0 || n > math.MaxUint32 || uint32(n) != size {
+		if n < 0 || uint64(n) > math.MaxUint32 || uint32(n) != size {
 			return nil, fmt.Errorf("incomplete box read: expected %d, got %d", size, n)
 		}
 	}
@@ -1312,7 +1312,7 @@ func (ovr *OptimizedVideoReader) ReadBoxData(size uint32) ([]byte, error) {
 		return nil, err
 	}
 	// Safe comparison with bounds checking
-	if n < 0 || n > math.MaxUint32 || uint32(n) != size {
+	if n < 0 || uint64(n) > math.MaxUint32 || uint32(n) != size {
 		return nil, fmt.Errorf("incomplete box read: expected %d, got %d", size, n)
 	}
 
