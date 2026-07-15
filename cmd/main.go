@@ -33,10 +33,6 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/help"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
-	"github.com/awslabs/ferret-scan/v2/internal/redactors/image"
-	"github.com/awslabs/ferret-scan/v2/internal/redactors/office"
-	"github.com/awslabs/ferret-scan/v2/internal/redactors/pdf"
-	"github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
 	"github.com/awslabs/ferret-scan/v2/internal/validators"
 
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
@@ -652,39 +648,6 @@ func handleProfiles(cfg *config.Config, listProfiles bool, profileName, configFi
 		}
 	}
 	return activeProfile
-}
-
-// registerDefaultRedactors registers all default redactors with the manager
-func registerDefaultRedactors(manager *redactors.RedactionManager) error {
-	// Get the output manager and observer from the redaction manager
-	outputManager := manager.GetOutputManager()
-	observer := manager.GetObserver()
-
-	// Register PlainText redactor
-	plainTextRedactor := plaintext.NewPlainTextRedactor(outputManager, observer)
-	if err := manager.RegisterRedactor(plainTextRedactor); err != nil {
-		return fmt.Errorf("failed to register PlainText redactor: %w", err)
-	}
-
-	// Register PDF redactor
-	pdfRedactor := pdf.NewPDFRedactor(outputManager, observer)
-	if err := manager.RegisterRedactor(pdfRedactor); err != nil {
-		return fmt.Errorf("failed to register PDF redactor: %w", err)
-	}
-
-	// Register Office redactor
-	officeRedactor := office.NewOfficeRedactor(outputManager, observer)
-	if err := manager.RegisterRedactor(officeRedactor); err != nil {
-		return fmt.Errorf("failed to register Office redactor: %w", err)
-	}
-
-	// Register Image Metadata redactor
-	imageRedactor := image.NewImageMetadataRedactor(outputManager, observer)
-	if err := manager.RegisterRedactor(imageRedactor); err != nil {
-		return fmt.Errorf("failed to register Image Metadata redactor: %w", err)
-	}
-
-	return nil
 }
 
 // getBoolFlag safely gets the value of a boolean flag pointer, returning false if nil
@@ -1549,34 +1512,14 @@ func main() {
 			redactionObserver = observability.NewStandardObserver(observability.ObservabilityMetrics, os.Stderr)
 		}
 
-		// Create output structure manager
-		outputManager, err := redactors.NewOutputStructureManager(finalConfig.redactionOutputDir, redactionObserver)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating output structure manager: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Parse the CLI redaction strategy
+		// Build the redaction manager with all default redactors via the shared
+		// core factory (single source of truth, also used by core.RedactFile).
 		strategy := redactors.ParseRedactionStrategy(finalConfig.redactionStrategy)
-
-		// Create redaction manager config with CLI strategy
-		redactionConfig := &redactors.RedactionManagerConfig{
-			DefaultStrategy:         strategy,
-			MaxConcurrentRedactions: 4,
-			EnableBatchProcessing:   true,
-			BatchSize:               100,
-			RetryAttempts:           3,
-			RetryDelay:              time.Second * 2,
-			EnableAuditTrail:        true,
-			FailureHandling:         redactors.FailureHandlingGraceful,
-		}
-
-		// Create redaction manager with custom config
-		redactionManager = redactors.NewRedactionManagerWithConfig(outputManager, redactionObserver, redactionConfig)
-
-		// Register default redactors
-		if err := registerDefaultRedactors(redactionManager); err != nil {
-			fmt.Fprintf(os.Stderr, "Error registering default redactors: %v\n", err)
+		var mgrErr error
+		redactionManager, _, mgrErr = core.NewDefaultRedactionManager(
+			finalConfig.redactionOutputDir, strategy, redactionObserver)
+		if mgrErr != nil {
+			fmt.Fprintf(os.Stderr, "Error creating redaction manager: %v\n", mgrErr)
 			os.Exit(1)
 		}
 
