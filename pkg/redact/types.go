@@ -18,7 +18,7 @@ const (
 	Simple Strategy = iota
 
 	// FormatPreserving keeps the same length and structural format as the
-	// original (e.g. "5500-****-****-0004"). Best for callers that need
+	// original (e.g. "****-****-****-0004"). Best for callers that need
 	// the byte length and surrounding structure unchanged downstream.
 	FormatPreserving
 

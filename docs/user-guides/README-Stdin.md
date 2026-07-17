@@ -94,7 +94,7 @@ The combination `--stdin --enable-redaction` is the gateway pattern. All three p
 | Strategy | Example output |
 |---|---|
 | `simple` | `card [CREDIT-CARD-REDACTED] email [EMAIL-REDACTED]` |
-| `format_preserving` | `card 5500-****-****-0004 email a****@example.com` |
+| `format_preserving` | `card ****-****-****-0004 email a****@example.com` |
 | `synthetic` | `card 5555-7344-3408-4176 email 5c0sq@example.com` |
 
 ```bash

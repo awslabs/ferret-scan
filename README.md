@@ -37,7 +37,7 @@ That last command turns sensitive values into masked-but-shaped output:
 
 | Before | After (`--enable-redaction`) |
 |---|---|
-| `card 5500-0000-0000-0004 from jordan@example.com` | `card 5500-****-****-0004 from j*****@example.com` |
+| `card 5500-0000-0000-0004 from jordan@example.com` | `card ****-****-****-0004 from j*****@example.com` |
 
 Sensitive values are masked while the shape of the data survives — so downstream tooling, tests, and log pipelines keep working. (Examples here use reserved documentation values.)
 

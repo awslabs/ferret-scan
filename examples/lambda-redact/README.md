@@ -103,7 +103,7 @@ Content-Type: application/json
 Content-Type: application/json
 
 {
-  "redacted": "card 5500-****-****-0004 from a****@example.com",
+  "redacted": "card ****-****-****-0004 from a****@example.com",
   "request_id": "req-abc-123",
   "duration_ms": 12
 }
@@ -127,7 +127,7 @@ flag enabled:
 
 ```json
 {
-  "redacted": "card 5500-****-****-0004 from a****@example.com",
+  "redacted": "card ****-****-****-0004 from a****@example.com",
   "findings_by_type": {"MASTERCARD": 1, "EMAIL": 1},
   "request_id": "req-abc-123",
   "duration_ms": 12
