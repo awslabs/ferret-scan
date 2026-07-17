@@ -101,6 +101,12 @@ release:
     pip install ferret-scan
     ```
 
+    #### macOS (Homebrew)
+    ```bash
+    brew tap awslabs/ferret-scan https://github.com/awslabs/ferret-scan
+    brew install awslabs/ferret-scan/ferret-scan
+    ```
+
     #### Alternative: Download Binary
     Download the binary for your platform from the assets below if you prefer not to use pip.
 
@@ -121,6 +127,36 @@ release:
 
     **Full Changelog**: https://github.com/awslabs/ferret-scan/compare/{{ .PreviousTag }}...{{ .Tag }}
 
+# Homebrew tap (self-hosted in this repo under HomebrewFormula/).
+# On every release, goreleaser updates the formula with the new version + sha256.
+# Users install with:
+#   brew tap awslabs/ferret-scan https://github.com/awslabs/ferret-scan
+#   brew install awslabs/ferret-scan/ferret-scan
+brews:
+  - name: ferret-scan
+    ids:
+      - ferret-scan-cli
+    repository:
+      owner: awslabs
+      name: ferret-scan
+      branch: main
+    directory: HomebrewFormula
+    commit_author:
+      name: goreleaser[bot]
+      email: goreleaser[bot]@users.noreply.github.com
+    commit_msg_template: "chore(brew): update ferret-scan formula to {{ .Tag }}"
+    homepage: "https://github.com/awslabs/ferret-scan"
+    description: "Find and redact sensitive data before it leaks — PII, secrets, credit cards, metadata"
+    license: "Apache-2.0"
+    skip_upload: auto
+    install: |
+      bin.install "ferret-scan"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/ferret-scan --version")
+      (testpath / "test.txt").write "card 5500-0000-0000-0004\n"
+      output = shell_output("#{bin}/ferret-scan --file #{testpath}/test.txt 2>&1")
+      assert_match "creditcard", output
+
 # Docker builds are handled by .github/workflows/docker-multiarch.yml
 # (multi-arch build + push to ECR Public and GHCR), not by GoReleaser.
-# GoReleaser here focuses on binary + PyPI releases only.
+# GoReleaser here focuses on binary + PyPI + Homebrew releases.
