@@ -9,7 +9,9 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
 [![PyPI](https://img.shields.io/pypi/v/ferret-scan?logo=pypi&logoColor=white&label=PyPI)](https://pypi.org/project/ferret-scan/)
+[![Homebrew](https://img.shields.io/badge/Homebrew-ferret--scan-FBB040?logo=homebrew&logoColor=white)](https://github.com/awslabs/ferret-scan#install)
 [![ECR Public](https://img.shields.io/badge/ECR%20Public-ferret--scan-FF9900?logo=amazonaws&logoColor=white)](https://gallery.ecr.aws/awslabs/ferret-scan)
+[![GitHub stars](https://img.shields.io/github/stars/awslabs/ferret-scan?style=social)](https://github.com/awslabs/ferret-scan)
 
 ![ferret-scan demo](docs/images/demo.svg)
 
@@ -59,6 +61,7 @@ Pick whichever fits your workflow — all are first-class.
 
 | Method | Command |
 |---|---|
+| **Homebrew** (macOS/Linux) | `brew tap awslabs/ferret-scan https://github.com/awslabs/ferret-scan && brew install awslabs/ferret-scan/ferret-scan` |
 | **pip** (CLI + pre-commit) | `pip install ferret-scan` |
 | **Docker** | `docker pull public.ecr.aws/awslabs/ferret-scan:latest` |
 | **From source** (Go 1.26.5) | `git clone https://github.com/awslabs/ferret-scan.git && cd ferret-scan && go build ./cmd` |
