@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -895,6 +894,9 @@ func main() {
 	stdinMode := flag.Bool("stdin", false, "Read content to scan from standard input (treated as plain text)")
 	stdinName := flag.String("stdin-name", "<stdin>", "Synthetic label used as the filename in findings when scanning stdin")
 
+	// Output limit flag
+	limitFlag := flag.Int("limit", 200, "Maximum number of findings to display (sorted by confidence, descending). Use --limit 0 to show all findings.")
+
 	flag.Parse()
 
 	// Parse --validator-budget once, up front, so a malformed spec fails fast with
@@ -977,6 +979,7 @@ func main() {
 			outputFile:       *outputFile,
 			explain:          *explainFindings,
 			validatorBudgets: validatorBudgets,
+			limit:            *limitFlag,
 		})
 		os.Exit(exitCode)
 	}
@@ -1588,6 +1591,7 @@ func main() {
 		NoColor:         finalConfig.noColor,
 		ShowMatch:       finalConfig.showMatch,
 		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
+		Limit:           *limitFlag,
 	}
 
 	// Process all files using parallel processing
@@ -1856,6 +1860,39 @@ func main() {
 		}
 	}
 
+	// Populate scan stats for summary rendering
+	var highCount, mediumCount, lowCount int
+	for _, m := range unsuppressedMatches {
+		switch {
+		case m.Confidence >= 90:
+			highCount++
+		case m.Confidence >= 60:
+			mediumCount++
+		default:
+			lowCount++
+		}
+	}
+	formatterOptions.Stats = &formatters.ScanStats{
+		TotalFiles:     len(filesToProcess),
+		FilesProcessed: processedFiles,
+		FilesSkipped:   finalSkippedCount,
+		TotalFindings:  len(unsuppressedMatches),
+		High:           highCount,
+		Medium:         mediumCount,
+		Low:            lowCount,
+		Suppressed:     suppressedCount,
+		Duration:       elapsed.Seconds(),
+	}
+
+	// Enable streaming for text format writing to stdout (no output file).
+	// The text formatter writes directly to os.Stdout, avoiding a multi-GB
+	// string buffer for large result sets.
+	streamingActive := false
+	if finalConfig.format == "text" && *outputFile == "" {
+		formatterOptions.StreamWriter = os.Stdout
+		streamingActive = true
+	}
+
 	// Format and display results
 	var result string
 	if finalConfig.showSuppressed {
@@ -1875,7 +1912,6 @@ func main() {
 		allMatches[i].Clear()
 	}
 	allMatches = nil
-	runtime.GC() // Force garbage collection
 
 	// Output results
 	if *outputFile != "" {
@@ -1912,7 +1948,9 @@ func main() {
 				"Check file permissions and available disk space")
 			os.Exit(1)
 		}
-	} else {
+	} else if !streamingActive {
+		// When streaming was active, the text formatter already wrote to
+		// os.Stdout — skip the redundant (and potentially empty) Println.
 		fmt.Println(result)
 	}
 

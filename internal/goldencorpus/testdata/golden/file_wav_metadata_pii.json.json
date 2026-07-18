@@ -1,6 +1,46 @@
 {
   "results": [
     {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/clip.wav",
+      "line_number": 7,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "contact_boost": 50,
+        "context_confidence": 0,
+        "context_doctype": "Configuration",
+        "context_domain": "Unknown",
+        "context_impact": -0.04999999999999999,
+        "full_field": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
+        "metadata_type": "DOCUMENT_COMMENTS",
+        "original_confidence": 100,
+        "original_file": "<TMPDIR>/clip.wav",
+        "preprocessor_adjustment": 0,
+        "preprocessor_name": "Audio Metadata Extractor",
+        "preprocessor_type": "audio_metadata",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "source_file": "<TMPDIR>/clip.wav",
+        "source_preprocessor": "audio_metadata",
+        "total_adjustment": 0,
+        "validation_checks": {
+          "contains_enhanced_phone": true,
+          "likely_test_data": true
+        },
+        "validation_path": "metadata"
+      },
+      "text": "contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
+      "type": "DOCUMENT_COMMENTS",
+      "validator": "metadata"
+    },
+    {
       "confidence": 80,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/clip.wav",
@@ -39,46 +79,6 @@
       },
       "text": "john.doe@example.com",
       "type": "AUTHOR_INFO",
-      "validator": "metadata"
-    },
-    {
-      "confidence": 100,
-      "confidence_level": "HIGH",
-      "filename": "<TMPDIR>/clip.wav",
-      "line_number": 7,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "contact_boost": 50,
-        "context_confidence": 0,
-        "context_doctype": "Configuration",
-        "context_domain": "Unknown",
-        "context_impact": -0.04999999999999999,
-        "full_field": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
-        "metadata_type": "DOCUMENT_COMMENTS",
-        "original_confidence": 100,
-        "original_file": "<TMPDIR>/clip.wav",
-        "preprocessor_adjustment": 0,
-        "preprocessor_name": "Audio Metadata Extractor",
-        "preprocessor_type": "audio_metadata",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "source_file": "<TMPDIR>/clip.wav",
-        "source_preprocessor": "audio_metadata",
-        "total_adjustment": 0,
-        "validation_checks": {
-          "contains_enhanced_phone": true,
-          "likely_test_data": true
-        },
-        "validation_path": "metadata"
-      },
-      "text": "contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
-      "type": "DOCUMENT_COMMENTS",
       "validator": "metadata"
     }
   ]

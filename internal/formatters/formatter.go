@@ -5,6 +5,7 @@ package formatters
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -17,6 +18,35 @@ type FormatterOptions struct {
 	NoColor         bool            // Whether to disable colored output
 	ShowMatch       bool            // Whether to display the actual matched text
 	PrecommitMode   bool            // Whether to use pre-commit optimized output
+
+	// Limit caps how many findings are included in the output. 0 = unlimited.
+	// When the total exceeds Limit, a footer indicates how many were omitted.
+	Limit int
+
+	// Stats, when non-nil, is rendered as a summary block in the output
+	// (position depends on format: header for text, top-level field for JSON).
+	Stats *ScanStats
+
+	// StreamWriter, when non-nil, causes the text formatter to write output
+	// directly to this writer instead of buffering into a returned string.
+	// The Format call returns "" when streaming is active — the caller must
+	// skip its own fmt.Println(result). Only the text formatter honors this;
+	// structured formats (JSON, SARIF, etc.) ignore it because they require
+	// structural integrity of the complete document.
+	StreamWriter io.Writer
+}
+
+// ScanStats holds aggregate scan statistics rendered in the output summary.
+type ScanStats struct {
+	TotalFiles     int     `json:"total_files"`
+	FilesProcessed int     `json:"files_processed"`
+	FilesSkipped   int     `json:"files_skipped"`
+	TotalFindings  int     `json:"total_findings"`
+	High           int     `json:"high"`
+	Medium         int     `json:"medium"`
+	Low            int     `json:"low"`
+	Suppressed     int     `json:"suppressed"`
+	Duration       float64 `json:"duration_seconds"`
 }
 
 // Formatter interface defines methods that all output formatters must implement

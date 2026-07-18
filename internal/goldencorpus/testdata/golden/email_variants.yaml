@@ -35,42 +35,6 @@ results:
             valid_tld: true
             valid_username: true
         validation_path: document
-    - text: no-reply@internal.example.org
-      line_number: 3
-      type: BUSINESS
-      confidence: 88
-      confidence_level: MEDIUM
-      filename: <golden:email_variants>
-      validator: email
-      metadata:
-        confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
-        context_impact: -12
-        domain: internal.example.org
-        email_provider: BUSINESS
-        original_confidence: 88
-        original_file: <golden:email_variants>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
-        source: preprocessed_content
-        tld: org
-        username: no-reply
-        validation_checks:
-            business_pattern: false
-            no_consecutive_dots: true
-            not_test_email: true
-            reasonable_length: true
-            valid_domain: true
-            valid_format: true
-            valid_tld: true
-            valid_username: true
-        validation_path: document
     - text: alice@gmail.com
       line_number: 2
       type: GMAIL
@@ -97,6 +61,42 @@ results:
         source: preprocessed_content
         tld: com
         username: alice
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: true
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: no-reply@internal.example.org
+      line_number: 3
+      type: BUSINESS
+      confidence: 88
+      confidence_level: MEDIUM
+      filename: <golden:email_variants>
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: internal.example.org
+        email_provider: BUSINESS
+        original_confidence: 88
+        original_file: <golden:email_variants>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: org
+        username: no-reply
         validation_checks:
             business_pattern: false
             no_consecutive_dots: true

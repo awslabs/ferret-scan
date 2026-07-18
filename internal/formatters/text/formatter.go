@@ -5,6 +5,8 @@ package text
 
 import (
 	"fmt"
+	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -97,10 +99,116 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		return "No matches found at the specified confidence levels.", nil
 	}
 
+	// Sort by confidence descending, then type ascending for priority ordering
+	f.sortMatchesByPriority(filteredMatches)
+
 	if isPrecommitMode {
 		return f.formatPrecommitOutput(filteredMatches, suppressedMatches, options), nil
 	}
-	return f.formatTextWithSuppressed(filteredMatches, suppressedMatches, options), nil
+
+	// Determine output writer: stream directly if StreamWriter is set,
+	// otherwise buffer into a strings.Builder.
+	var w io.Writer
+	if options.StreamWriter != nil {
+		w = options.StreamWriter
+	} else {
+		w = &strings.Builder{}
+	}
+
+	f.writeFormattedOutput(w, filteredMatches, suppressedMatches, options)
+
+	// If streaming, content was already written — return empty string.
+	if options.StreamWriter != nil {
+		return "", nil
+	}
+	return w.(*strings.Builder).String(), nil
+}
+
+// sortMatchesByPriority sorts matches by confidence descending, then type ascending.
+func (f *Formatter) sortMatchesByPriority(matches []detector.Match) {
+	sort.SliceStable(matches, func(i, j int) bool {
+		if matches[i].Confidence != matches[j].Confidence {
+			return matches[i].Confidence > matches[j].Confidence
+		}
+		return matches[i].Type < matches[j].Type
+	})
+}
+
+// writeFormattedOutput writes the formatted text output to the given writer,
+// applying limit truncation and summary header/footer.
+func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) {
+	totalFindings := len(matches)
+
+	// Apply limit: determine how many findings to show
+	limit := options.Limit
+	truncated := false
+	displayMatches := matches
+	if limit > 0 && totalFindings > limit {
+		displayMatches = matches[:limit]
+		truncated = true
+	}
+
+	// Print summary header when stats are available
+	if options.Stats != nil {
+		f.writeSummaryHeader(w, options)
+	}
+
+	// Add headers for non-verbose mode
+	if !options.Verbose && (len(displayMatches) > 0 || len(suppressedMatches) > 0) {
+		f.appendHeaders(w, displayMatches, options)
+	}
+
+	// Display findings
+	for _, match := range displayMatches {
+		confidenceLevel := f.getConfidenceLevel(match.Confidence)
+
+		if !options.Verbose {
+			f.appendSummaryLine(w, match, confidenceLevel, displayMatches, false, options)
+			continue
+		}
+
+		f.appendDetailedMatch(w, match, confidenceLevel, options)
+	}
+
+	// Display suppressed findings if provided
+	if len(suppressedMatches) > 0 {
+		for _, suppressed := range suppressedMatches {
+			match := suppressed.Match
+			confidenceLevel := f.getConfidenceLevel(match.Confidence)
+
+			if !options.Verbose {
+				f.appendSummaryLine(w, match, confidenceLevel, displayMatches, true, options)
+				continue
+			}
+
+			f.appendDetailedSuppressedMatch(w, suppressed, confidenceLevel, options)
+		}
+	}
+
+	// Print truncation footer
+	if truncated {
+		remaining := totalFindings - limit
+		footer := fmt.Sprintf("\n... and %d more findings (use --limit 0 to show all)\n", remaining)
+		fmt.Fprint(w, footer)
+	}
+}
+
+// writeSummaryHeader writes the scan summary block to the writer.
+func (f *Formatter) writeSummaryHeader(w io.Writer, options formatters.FormatterOptions) {
+	stats := options.Stats
+	topLine := "\n═══ Scan Summary ═════════════════════════════════════════════════════════════════\n"
+	bottomLine := "════════════════════════════════════════════════════════════════════════════════\n"
+
+	summaryLine := fmt.Sprintf("Files: %d processed, %d skipped | Findings: %d (%d high, %d medium, %d low)",
+		stats.FilesProcessed, stats.FilesSkipped,
+		stats.TotalFindings, stats.High, stats.Medium, stats.Low)
+	if stats.Suppressed > 0 {
+		summaryLine += fmt.Sprintf(" | %d suppressed", stats.Suppressed)
+	}
+
+	fmt.Fprint(w, topLine)
+	fmt.Fprintln(w, summaryLine)
+	fmt.Fprintln(w, bottomLine)
 }
 
 // filterMatchesByConfidence filters matches based on confidence level settings
@@ -119,50 +227,12 @@ func (f *Formatter) filterMatchesByConfidence(matches []detector.Match, options 
 // formatTextWithSuppressed formats matches and suppressed findings as text output
 func (f *Formatter) formatTextWithSuppressed(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) string {
 	var builder strings.Builder
-
-	// Sort matches by confidence level (HIGH, MEDIUM, LOW) and then by confidence score within each level
-	f.sortMatches(matches)
-
-	// Add headers for non-verbose mode
-	if !options.Verbose && (len(matches) > 0 || len(suppressedMatches) > 0) {
-		f.appendHeaders(&builder, matches, options)
-	}
-
-	// Display regular findings
-	for _, match := range matches {
-		confidenceLevel := f.getConfidenceLevel(match.Confidence)
-
-		// For non-verbose mode, just print a single line summary
-		if !options.Verbose {
-			f.appendSummaryLine(&builder, match, confidenceLevel, matches, false, options)
-			continue
-		}
-
-		// Verbose mode - print detailed information
-		f.appendDetailedMatch(&builder, match, confidenceLevel, options)
-	}
-
-	// Display suppressed findings if provided
-	if len(suppressedMatches) > 0 {
-		for _, suppressed := range suppressedMatches {
-			match := suppressed.Match
-			confidenceLevel := f.getConfidenceLevel(match.Confidence)
-
-			if !options.Verbose {
-				f.appendSummaryLine(&builder, match, confidenceLevel, matches, true, options)
-				continue
-			}
-
-			// Verbose mode - print detailed information with suppression info
-			f.appendDetailedSuppressedMatch(&builder, suppressed, confidenceLevel, options)
-		}
-	}
-
+	f.writeFormattedOutput(&builder, matches, suppressedMatches, options)
 	return builder.String()
 }
 
-// appendHeaders adds column headers to the string builder
-func (f *Formatter) appendHeaders(builder *strings.Builder, matches []detector.Match, options formatters.FormatterOptions) {
+// appendHeaders adds column headers to the writer
+func (f *Formatter) appendHeaders(w io.Writer, matches []detector.Match, options formatters.FormatterOptions) {
 	matchWidth := f.calculateMatchColumnWidth(matches, options)
 	headerStr := fmt.Sprintf("%-8s %-12s %-20s %-8s %-10s %-*s %s\n",
 		"LEVEL", "VALIDATOR", "TYPE", "CONF%", "LINE", matchWidth, "MATCH", "FILE")
@@ -170,7 +240,7 @@ func (f *Formatter) appendHeaders(builder *strings.Builder, matches []detector.M
 		headerStr = f.colors["white"].Sprintf("%-8s %-12s %-20s %-8s %-10s %-*s %s\n",
 			"LEVEL", "VALIDATOR", "TYPE", "CONF%", "LINE", matchWidth, "MATCH", "FILE")
 	}
-	builder.WriteString(headerStr)
+	io.WriteString(w, headerStr)
 
 	// Add separator line with dynamic width
 	totalWidth := 8 + 1 + 12 + 1 + 20 + 1 + 8 + 1 + 10 + 1 + matchWidth + 1 + 10 // approximate
@@ -178,7 +248,7 @@ func (f *Formatter) appendHeaders(builder *strings.Builder, matches []detector.M
 	if !options.NoColor {
 		separator = f.colors["white"].Sprint(strings.Repeat("-", totalWidth) + "\n")
 	}
-	builder.WriteString(separator)
+	io.WriteString(w, separator)
 }
 
 // calculateMatchColumnWidth calculates the optimal width for the match column
@@ -201,8 +271,8 @@ func (f *Formatter) calculateMatchColumnWidth(matches []detector.Match, options 
 	return maxWidth
 }
 
-// appendSummaryLine adds a single line summary to the string builder
-func (f *Formatter) appendSummaryLine(builder *strings.Builder, match detector.Match, confidenceLevel string, allMatches []detector.Match, suppressed bool, options formatters.FormatterOptions) {
+// appendSummaryLine adds a single line summary to the writer
+func (f *Formatter) appendSummaryLine(w io.Writer, match detector.Match, confidenceLevel string, allMatches []detector.Match, suppressed bool, options formatters.FormatterOptions) {
 	// Get the appropriate color for the confidence level
 	var levelColor *color.Color
 	if suppressed {
@@ -317,7 +387,7 @@ func (f *Formatter) appendSummaryLine(builder *strings.Builder, match detector.M
 	}
 
 	// Output in columnar format with better spacing
-	fmt.Fprintf(builder, "%s %s %s %s %s %s %s\n",
+	fmt.Fprintf(w, "%s %s %s %s %s %s %s\n",
 		levelStr,
 		validatorStr,
 		typeStr,
@@ -327,63 +397,63 @@ func (f *Formatter) appendSummaryLine(builder *strings.Builder, match detector.M
 		filenameStr)
 }
 
-// appendDetailedMatch adds detailed match information to the string builder
-func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector.Match, confidenceLevel string, options formatters.FormatterOptions) {
+// appendDetailedMatch adds detailed match information to the writer
+func (f *Formatter) appendDetailedMatch(w io.Writer, match detector.Match, confidenceLevel string, options formatters.FormatterOptions) {
 	// Title with color
 	if !options.NoColor {
-		f.colors["white"].Fprintf(builder, "=== Match Details ===\n")
+		f.colors["white"].Fprintf(w, "=== Match Details ===\n")
 	} else {
-		fmt.Fprintf(builder, "=== Match Details ===\n")
+		fmt.Fprintf(w, "=== Match Details ===\n")
 	}
 
 	// Match text with filename and line number. The value is shown only when
 	// ShowMatch is set; verbose detail must not expose a hidden secret.
 	shownText := displayMatchText(match, options)
 	if !options.NoColor {
-		f.colors["cyan"].Fprintf(builder, "Match found in ")
-		f.colors["white"].Fprintf(builder, "%s", match.Filename)
-		f.colors["cyan"].Fprintf(builder, " on ")
-		f.colors["magenta"].Fprintf(builder, "line %d", match.LineNumber)
-		f.colors["cyan"].Fprintf(builder, ": %s\n", shownText)
+		f.colors["cyan"].Fprintf(w, "Match found in ")
+		f.colors["white"].Fprintf(w, "%s", match.Filename)
+		f.colors["cyan"].Fprintf(w, " on ")
+		f.colors["magenta"].Fprintf(w, "line %d", match.LineNumber)
+		f.colors["cyan"].Fprintf(w, ": %s\n", shownText)
 	} else {
-		fmt.Fprintf(builder, "Match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
+		fmt.Fprintf(w, "Match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
 	}
 
 	// Type
 	if !options.NoColor {
-		f.colors["cyan"].Fprintf(builder, "Type: ")
-		f.colors["white"].Fprintf(builder, "%s\n", match.Type)
+		f.colors["cyan"].Fprintf(w, "Type: ")
+		f.colors["white"].Fprintf(w, "%s\n", match.Type)
 	} else {
-		fmt.Fprintf(builder, "Type: %s\n", match.Type)
+		fmt.Fprintf(w, "Type: %s\n", match.Type)
 	}
 
 	// Vendor (if available)
 	if vendor, ok := match.Metadata["vendor"].(string); ok {
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Vendor: ")
-			f.colors["white"].Fprintf(builder, "%s\n", vendor)
+			f.colors["cyan"].Fprintf(w, "Vendor: ")
+			f.colors["white"].Fprintf(w, "%s\n", vendor)
 		} else {
-			fmt.Fprintf(builder, "Vendor: %s\n", vendor)
+			fmt.Fprintf(w, "Vendor: %s\n", vendor)
 		}
 	}
 
 	// Country (if available)
 	if country, ok := match.Metadata["country"].(string); ok {
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Country: ")
-			f.colors["white"].Fprintf(builder, "%s\n", country)
+			f.colors["cyan"].Fprintf(w, "Country: ")
+			f.colors["white"].Fprintf(w, "%s\n", country)
 		} else {
-			fmt.Fprintf(builder, "Country: %s\n", country)
+			fmt.Fprintf(w, "Country: %s\n", country)
 		}
 	}
 
 	// Format (if available)
 	if format, ok := match.Metadata["format"].(string); ok {
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Format: ")
-			f.colors["white"].Fprintf(builder, "%s\n", format)
+			f.colors["cyan"].Fprintf(w, "Format: ")
+			f.colors["white"].Fprintf(w, "%s\n", format)
 		} else {
-			fmt.Fprintf(builder, "Format: %s\n", format)
+			fmt.Fprintf(w, "Format: %s\n", format)
 		}
 	}
 
@@ -399,29 +469,29 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 	}
 
 	if !options.NoColor {
-		f.colors["cyan"].Fprintf(builder, "Confidence level: ")
-		f.colors["white"].Fprintf(builder, "%.2f%% ", match.Confidence)
-		levelColor.Fprintf(builder, "(%s)\n", confidenceLevel)
+		f.colors["cyan"].Fprintf(w, "Confidence level: ")
+		f.colors["white"].Fprintf(w, "%.2f%% ", match.Confidence)
+		levelColor.Fprintf(w, "(%s)\n", confidenceLevel)
 	} else {
-		fmt.Fprintf(builder, "Confidence level: %.2f%% (%s)\n", match.Confidence, confidenceLevel)
+		fmt.Fprintf(w, "Confidence level: %.2f%% (%s)\n", match.Confidence, confidenceLevel)
 	}
 
 	// Context impact (if available)
 	if impact, ok := match.Metadata["context_impact"].(float64); ok {
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Context impact: ")
+			f.colors["cyan"].Fprintf(w, "Context impact: ")
 			if impact > 0 {
-				f.colors["green"].Fprintf(builder, "+%.2f%%\n", impact)
+				f.colors["green"].Fprintf(w, "+%.2f%%\n", impact)
 			} else if impact < 0 {
-				f.colors["red"].Fprintf(builder, "%.2f%%\n", impact)
+				f.colors["red"].Fprintf(w, "%.2f%%\n", impact)
 			} else {
-				f.colors["white"].Fprintf(builder, "0.00%%\n")
+				f.colors["white"].Fprintf(w, "0.00%%\n")
 			}
 		} else {
 			if impact > 0 {
-				fmt.Fprintf(builder, "Context impact: +%.2f%%\n", impact)
+				fmt.Fprintf(w, "Context impact: +%.2f%%\n", impact)
 			} else {
-				fmt.Fprintf(builder, "Context impact: %.2f%%\n", impact)
+				fmt.Fprintf(w, "Context impact: %.2f%%\n", impact)
 			}
 		}
 	}
@@ -429,22 +499,22 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 	// Validation checks
 	if checks, ok := match.Metadata["validation_checks"].(map[string]bool); ok {
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Validation results:\n")
+			f.colors["cyan"].Fprintf(w, "Validation results:\n")
 		} else {
-			fmt.Fprintf(builder, "Validation results:\n")
+			fmt.Fprintf(w, "Validation results:\n")
 		}
 
 		for check, result := range checks {
 			checkName := f.formatCheckName(check)
 			if !options.NoColor {
-				fmt.Fprintf(builder, "- %s: ", checkName)
+				fmt.Fprintf(w, "- %s: ", checkName)
 				if result {
-					f.colors["green"].Fprintf(builder, "true\n")
+					f.colors["green"].Fprintf(w, "true\n")
 				} else {
-					f.colors["red"].Fprintf(builder, "false\n")
+					f.colors["red"].Fprintf(w, "false\n")
 				}
 			} else {
-				fmt.Fprintf(builder, "- %s: %v\n", checkName, result)
+				fmt.Fprintf(w, "- %s: %v\n", checkName, result)
 			}
 		}
 	}
@@ -452,28 +522,28 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 	// Context keywords
 	if len(match.Context.PositiveKeywords) > 0 || len(match.Context.NegativeKeywords) > 0 {
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Context analysis:\n")
+			f.colors["cyan"].Fprintf(w, "Context analysis:\n")
 		} else {
-			fmt.Fprintf(builder, "Context analysis:\n")
+			fmt.Fprintf(w, "Context analysis:\n")
 		}
 
 		// Positive keywords
 		if len(match.Context.PositiveKeywords) > 0 {
 			if !options.NoColor {
-				fmt.Fprintf(builder, "- Supporting keywords: ")
-				f.colors["green"].Fprintf(builder, "%s\n", strings.Join(match.Context.PositiveKeywords, ", "))
+				fmt.Fprintf(w, "- Supporting keywords: ")
+				f.colors["green"].Fprintf(w, "%s\n", strings.Join(match.Context.PositiveKeywords, ", "))
 			} else {
-				fmt.Fprintf(builder, "- Supporting keywords: %s\n", strings.Join(match.Context.PositiveKeywords, ", "))
+				fmt.Fprintf(w, "- Supporting keywords: %s\n", strings.Join(match.Context.PositiveKeywords, ", "))
 			}
 		}
 
 		// Negative keywords
 		if len(match.Context.NegativeKeywords) > 0 {
 			if !options.NoColor {
-				fmt.Fprintf(builder, "- Contradicting keywords: ")
-				f.colors["red"].Fprintf(builder, "%s\n", strings.Join(match.Context.NegativeKeywords, ", "))
+				fmt.Fprintf(w, "- Contradicting keywords: ")
+				f.colors["red"].Fprintf(w, "%s\n", strings.Join(match.Context.NegativeKeywords, ", "))
 			} else {
-				fmt.Fprintf(builder, "- Contradicting keywords: %s\n", strings.Join(match.Context.NegativeKeywords, ", "))
+				fmt.Fprintf(w, "- Contradicting keywords: %s\n", strings.Join(match.Context.NegativeKeywords, ", "))
 			}
 		}
 	}
@@ -484,19 +554,19 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 	// is meant to suppress (consistent with the JSON/YAML/SARIF/JUnit formatters).
 	if options.Verbose && options.ShowMatch && (match.Context.BeforeText != "" || match.Context.AfterText != "") {
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Context snippet:\n")
+			f.colors["cyan"].Fprintf(w, "Context snippet:\n")
 			if match.Context.BeforeText != "" {
-				fmt.Fprintf(builder, "... %s", match.Context.BeforeText)
+				fmt.Fprintf(w, "... %s", match.Context.BeforeText)
 			}
-			f.colors["yellow"].Fprintf(builder, "[%s]", match.Text)
+			f.colors["yellow"].Fprintf(w, "[%s]", match.Text)
 			if match.Context.AfterText != "" {
-				fmt.Fprintf(builder, "%s ...\n", match.Context.AfterText)
+				fmt.Fprintf(w, "%s ...\n", match.Context.AfterText)
 			} else {
-				fmt.Fprintln(builder)
+				fmt.Fprintln(w)
 			}
 		} else {
-			fmt.Fprintf(builder, "Context snippet:\n")
-			fmt.Fprintf(builder, "... %s[%s]%s ...\n",
+			fmt.Fprintf(w, "Context snippet:\n")
+			fmt.Fprintf(w, "... %s[%s]%s ...\n",
 				match.Context.BeforeText,
 				match.Text,
 				match.Context.AfterText)
@@ -504,95 +574,95 @@ func (f *Formatter) appendDetailedMatch(builder *strings.Builder, match detector
 	}
 
 	// Advisory explanation (present only when scanned with --explain).
-	f.appendExplanation(builder, match, options)
+	f.appendExplanation(w, match, options)
 
-	fmt.Fprintln(builder)
+	fmt.Fprintln(w)
 }
 
 // appendExplanation renders the advisory explanation attached by the
 // --explain pass, if present. It is purely additive narrative — no payload
 // bytes, no effect on confidence or suppression.
-func (f *Formatter) appendExplanation(builder *strings.Builder, match detector.Match, options formatters.FormatterOptions) {
+func (f *Formatter) appendExplanation(w io.Writer, match detector.Match, options formatters.FormatterOptions) {
 	ex, ok := explain.FromMatch(match)
 	if !ok {
 		return
 	}
 	if !options.NoColor {
-		f.colors["cyan"].Fprintf(builder, "Explanation:\n")
-		fmt.Fprintf(builder, "- Why: %s\n", ex.Rationale)
-		fmt.Fprintf(builder, "- Verdict: ")
+		f.colors["cyan"].Fprintf(w, "Explanation:\n")
+		fmt.Fprintf(w, "- Why: %s\n", ex.Rationale)
+		fmt.Fprintf(w, "- Verdict: ")
 		switch ex.Verdict {
 		case explain.VerdictLikelyReal:
-			f.colors["red"].Fprintf(builder, "%s\n", ex.Verdict)
+			f.colors["red"].Fprintf(w, "%s\n", ex.Verdict)
 		case explain.VerdictLikelyTest:
-			f.colors["green"].Fprintf(builder, "%s\n", ex.Verdict)
+			f.colors["green"].Fprintf(w, "%s\n", ex.Verdict)
 		default:
-			f.colors["yellow"].Fprintf(builder, "%s\n", ex.Verdict)
+			f.colors["yellow"].Fprintf(w, "%s\n", ex.Verdict)
 		}
 		if ex.DraftSuppressReason != "" {
-			fmt.Fprintf(builder, "- Suggested suppression reason: %s\n", ex.DraftSuppressReason)
+			fmt.Fprintf(w, "- Suggested suppression reason: %s\n", ex.DraftSuppressReason)
 		}
 	} else {
-		fmt.Fprintf(builder, "Explanation:\n")
-		fmt.Fprintf(builder, "- Why: %s\n", ex.Rationale)
-		fmt.Fprintf(builder, "- Verdict: %s\n", ex.Verdict)
+		fmt.Fprintf(w, "Explanation:\n")
+		fmt.Fprintf(w, "- Why: %s\n", ex.Rationale)
+		fmt.Fprintf(w, "- Verdict: %s\n", ex.Verdict)
 		if ex.DraftSuppressReason != "" {
-			fmt.Fprintf(builder, "- Suggested suppression reason: %s\n", ex.DraftSuppressReason)
+			fmt.Fprintf(w, "- Suggested suppression reason: %s\n", ex.DraftSuppressReason)
 		}
 	}
 }
 
-// appendDetailedSuppressedMatch adds detailed suppressed match information to the string builder
-func (f *Formatter) appendDetailedSuppressedMatch(builder *strings.Builder, suppressed detector.SuppressedMatch, confidenceLevel string, options formatters.FormatterOptions) {
+// appendDetailedSuppressedMatch adds detailed suppressed match information to the writer
+func (f *Formatter) appendDetailedSuppressedMatch(w io.Writer, suppressed detector.SuppressedMatch, confidenceLevel string, options formatters.FormatterOptions) {
 	match := suppressed.Match
 
 	// Title with color
 	if !options.NoColor {
-		f.colors["white"].Fprintf(builder, "=== Suppressed Match Details ===\n")
+		f.colors["white"].Fprintf(w, "=== Suppressed Match Details ===\n")
 	} else {
-		fmt.Fprintf(builder, "=== Suppressed Match Details ===\n")
+		fmt.Fprintf(w, "=== Suppressed Match Details ===\n")
 	}
 
 	// Match text with filename and line number. Shown only when ShowMatch is set.
 	shownText := displayMatchText(match, options)
 	if !options.NoColor {
-		f.colors["cyan"].Fprintf(builder, "Suppressed match found in ")
-		f.colors["white"].Fprintf(builder, "%s", match.Filename)
-		f.colors["cyan"].Fprintf(builder, " on ")
-		f.colors["magenta"].Fprintf(builder, "line %d", match.LineNumber)
-		f.colors["cyan"].Fprintf(builder, ": %s\n", shownText)
+		f.colors["cyan"].Fprintf(w, "Suppressed match found in ")
+		f.colors["white"].Fprintf(w, "%s", match.Filename)
+		f.colors["cyan"].Fprintf(w, " on ")
+		f.colors["magenta"].Fprintf(w, "line %d", match.LineNumber)
+		f.colors["cyan"].Fprintf(w, ": %s\n", shownText)
 	} else {
-		fmt.Fprintf(builder, "Suppressed match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
+		fmt.Fprintf(w, "Suppressed match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
 	}
 
 	// Suppression info
 	if !options.NoColor {
-		f.colors["cyan"].Fprintf(builder, "Suppressed by: ")
-		f.colors["white"].Fprintf(builder, "%s\n", suppressed.SuppressedBy)
-		f.colors["cyan"].Fprintf(builder, "Reason: ")
-		f.colors["white"].Fprintf(builder, "%s\n", suppressed.RuleReason)
+		f.colors["cyan"].Fprintf(w, "Suppressed by: ")
+		f.colors["white"].Fprintf(w, "%s\n", suppressed.SuppressedBy)
+		f.colors["cyan"].Fprintf(w, "Reason: ")
+		f.colors["white"].Fprintf(w, "%s\n", suppressed.RuleReason)
 	} else {
-		fmt.Fprintf(builder, "Suppressed by: %s\n", suppressed.SuppressedBy)
-		fmt.Fprintf(builder, "Reason: %s\n", suppressed.RuleReason)
+		fmt.Fprintf(w, "Suppressed by: %s\n", suppressed.SuppressedBy)
+		fmt.Fprintf(w, "Reason: %s\n", suppressed.RuleReason)
 	}
 
 	// Expiration info
 	if suppressed.ExpiresAt != nil {
 		expirationStatus := f.formatExpirationStatus(suppressed.ExpiresAt, suppressed.Expired)
 		if !options.NoColor {
-			f.colors["cyan"].Fprintf(builder, "Expiration: ")
+			f.colors["cyan"].Fprintf(w, "Expiration: ")
 			if suppressed.Expired {
-				f.colors["red"].Fprintf(builder, "%s\n", expirationStatus)
+				f.colors["red"].Fprintf(w, "%s\n", expirationStatus)
 			} else {
-				f.colors["white"].Fprintf(builder, "%s\n", expirationStatus)
+				f.colors["white"].Fprintf(w, "%s\n", expirationStatus)
 			}
 		} else {
-			fmt.Fprintf(builder, "Expiration: %s\n", expirationStatus)
+			fmt.Fprintf(w, "Expiration: %s\n", expirationStatus)
 		}
 	}
 
 	// Original match details (dimmed)
-	f.appendDetailedMatch(builder, match, confidenceLevel, options)
+	f.appendDetailedMatch(w, match, confidenceLevel, options)
 }
 
 // formatCheckName formats a check name from snake_case to Title Case

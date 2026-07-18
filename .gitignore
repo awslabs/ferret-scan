@@ -237,3 +237,8 @@ ferret-scan-results.sarif
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+
+# Local tooling and agent state (not for open source)
+.claude/
+.security-scan/
+uv.lock

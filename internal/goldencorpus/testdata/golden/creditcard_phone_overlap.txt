@@ -1,5 +1,5 @@
 LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH               FILE
 ---------------------------------------------------------------------------------------------
-[HIGH  ] creditcard   VISA                  100.00% line     1 4532 0151 1283 0366 <golden:creditcard_phone_overlap>
 [HIGH  ] phone        PHONE                 100.00% line     2 212-555-0142        <golden:creditcard_phone_overlap>
+[HIGH  ] creditcard   VISA                  100.00% line     1 4532 0151 1283 0366 <golden:creditcard_phone_overlap>
 [LOW   ] phone        PHONE                  50.00% line     1 0151 1283 0366      <golden:creditcard_phone_overlap>
