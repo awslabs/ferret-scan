@@ -36,6 +36,7 @@ type stdinScanInputs struct {
 	positionalArgs []string
 	stdinName      string
 	outputFile     string
+	explain        bool // --explain: attach rationale + verdict annotations to findings
 	// validatorBudgets is the parsed --validator-budget map (per-validator time
 	// limits), or nil when unset. Applied to the stdin ScanContent config so a
 	// runaway validator on piped input is bounded exactly as in file mode.
@@ -171,6 +172,7 @@ func runStdinScan(in stdinScanInputs) int {
 		Checks:             checks,
 		Debug:              finalCfg.debug,
 		Verbose:            finalCfg.verbose,
+		Explain:            in.explain,
 		Config:             cfg,
 		Profile:            activeProfile,
 		SuppressionManager: nil, // applied below so we can run --generate-suppressions on raw matches

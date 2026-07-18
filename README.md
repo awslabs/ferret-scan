@@ -73,13 +73,19 @@ docker run --rm -v "$PWD:/data" public.ecr.aws/awslabs/ferret-scan:latest --file
 
 ## What it detects
 
-Thirteen validators, each purpose-built. Enable a subset with `--checks CREDIT_CARD,SECRETS,SSN` or run them all (the default).
+Nineteen validators, each purpose-built. Enable a subset with `--checks CREDIT_CARD,SECRETS,SSN` or run them all (the default).
 
 | Validator | What it catches | Notes |
 |---|---|---|
 | `CREDIT_CARD` | Card numbers across 15+ brands | Luhn-validated; emits `VISA`, `MASTERCARD`, `AMERICAN_EXPRESS`, …; filters known test patterns |
 | `SECRETS` | API keys, tokens, credentials | Entropy analysis + 40+ patterns (AWS keys, GitHub tokens, Stripe, …) |
 | `SSN` | US Social Security Numbers | Domain-aware (HR / Tax / Healthcare context) |
+| `BANK_ACCOUNT` | Routing numbers, IBANs, SWIFT/BIC | ABA checksum, IBAN mod-97, SWIFT format; emits `ABA_ROUTING`, `IBAN`, `SWIFT_BIC`, `US_BANK_ACCOUNT` |
+| `OTP` | 2FA secrets and recovery codes | `otpauth://` URIs, TOTP/HOTP secrets (base32), recovery code blocks; emits `OTPAUTH_URI`, `OTP_SECRET`, `RECOVERY_CODES` |
+| `DATE_OF_BIRTH` | Dates of birth in PII context | Very conservative — requires DOB keywords; dates without context score <30 |
+| `PHYSICAL_ADDRESS` | US street addresses | Requires street-type suffix (St/Ave/Blvd/…); emits `US_STREET_ADDRESS`, `PO_BOX` |
+| `DRIVERS_LICENSE` | US driver's license numbers | State-specific formats (top 10 states); keyword-dependent to avoid FPs |
+| `MEDICAL_ID` | Healthcare identifiers | NPI (Luhn-validated), DEA (checksum), MRN, insurance IDs, Medicare MBI |
 | `EMAIL` | Email addresses | Emits `BUSINESS` for known SaaS/corporate domains |
 | `PHONE` | Phone numbers | International formats |
 | `IP_ADDRESS` | IPv4 / IPv6 addresses | Skips RFC1918 / reserved / test ranges; context-keyword gated |

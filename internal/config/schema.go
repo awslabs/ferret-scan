@@ -60,18 +60,24 @@ var validConfidenceLevels = map[string]bool{
 // package, compares this map against redact.ValidCheckNames() so it fails the
 // moment the canonical list changes.
 var validCheckNames = map[string]bool{
+	"BANK_ACCOUNT":          true,
 	"CLOUD_RESOURCES":       true,
 	"CREDIT_CARD":           true,
+	"DATE_OF_BIRTH":         true,
+	"DRIVERS_LICENSE":       true,
 	"EMAIL":                 true,
-	"PHONE":                 true,
+	"INTELLECTUAL_PROPERTY": true,
 	"IP_ADDRESS":            true,
+	"MEDICAL_ID":            true,
+	"METADATA":              true,
+	"OTP":                   true,
 	"PASSPORT":              true,
 	"PERSON_NAME":           true,
-	"METADATA":              true,
-	"INTELLECTUAL_PROPERTY": true,
+	"PHONE":                 true,
+	"PHYSICAL_ADDRESS":      true,
+	"SECRETS":               true,
 	"SOCIAL_MEDIA":          true,
 	"SSN":                   true,
-	"SECRETS":               true,
 	"VIN":                   true,
 }
 

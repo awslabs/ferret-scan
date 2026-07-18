@@ -249,7 +249,7 @@ flowchart TD
         end
 
         %% VALIDATION: Enhanced Validators
-        ValidatorBridges["🌉 All Validator Bridges<br/>13 Context-Enhanced Validators:<br/>☁️ Cloud Resources • 💳 Credit Card • 📧 Email<br/>⚖️ Intellectual Property • 🌐 IP Address • 📋 Metadata<br/>🛂 Passport • 👤 Person Name • 📞 Phone<br/>🔐 Secrets • 📱 Social Media • 🆔 SSN • 🚗 VIN<br/>🤖 Comprehend PII (GENAI_DISABLED)"]
+        ValidatorBridges["🌉 All Validator Bridges<br/>19 Context-Enhanced Validators:<br/>🏦 Bank Account • ☁️ Cloud Resources • 💳 Credit Card<br/>📅 Date of Birth • 🪪 Drivers License • 📧 Email<br/>⚖️ Intellectual Property • 🌐 IP Address • 🏥 Medical ID<br/>📋 Metadata • 🔑 OTP • 🛂 Passport • 👤 Person Name<br/>📞 Phone • 🏠 Physical Address • 🔐 Secrets<br/>📱 Social Media • 🆔 SSN • 🚗 VIN"]
 
         %% POST-VALIDATION: Result Enhancement
         subgraph PostValidation["📈 POST-VALIDATION ENHANCEMENT"]
@@ -635,7 +635,7 @@ The Context Analyzer performs domain classification (Financial, HR, Legal), stru
 
 **File Type Aware Validation**: The ContentRouter now integrates with FileRouter's file type detection to implement intelligent routing. For plain text files, metadata validation is skipped entirely, routing only document body content to appropriate validators. For metadata-capable files, the system creates separate metadata content items with preprocessor type information, enabling the enhanced metadata validator to apply type-specific validation rules.
 
-Thirteen specialized validator bridges handle different data types (cloud resources, credit cards, SSNs, emails, VINs, etc.), each enhanced with context awareness. The bridges wrap standard validators with additional intelligence, adjusting confidence scores based on contextual insights. For example, a credit card number found in a financial document receives higher confidence than one found in test data.
+Nineteen specialized validator bridges handle different data types (cloud resources, credit cards, SSNs, emails, VINs, etc.), each enhanced with context awareness. The bridges wrap standard validators with additional intelligence, adjusting confidence scores based on contextual insights. For example, a credit card number found in a financial document receives higher confidence than one found in test data.
 
 ### **Integrated Redaction & Efficiency**
 

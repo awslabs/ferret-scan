@@ -1,0 +1,814 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package medicalid
+
+import (
+	stdctx "context"
+	"regexp"
+	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+)
+
+// Pre-compiled regex patterns for medical identifier detection.
+var (
+	// NPI: exactly 10 digits starting with 1 or 2
+	reNPI = regexp.MustCompile(`\b[12]\d{9}\b`)
+
+	// DEA: 2 chars (first = registration type, second = alpha) + 7 digits
+	reDEA = regexp.MustCompile(`\b[ABCDFGMabcdfgm][A-Za-z]\d{7}\b`)
+
+	// Medicare Beneficiary Identifier (MBI): 11 chars, specific positional format
+	// Pos1=C(1-9), Pos2=A, Pos3=AN, Pos4=N, Pos5=A, Pos6=AN, Pos7=N, Pos8=A, Pos9=A, Pos10=N, Pos11=N
+	// C = digit 1-9; A = alpha excluding S,L,O,I,B,Z; N = digit 0-9; AN = A or N
+	reMBI = regexp.MustCompile(`\b[1-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][AC-HJ-KM-NP-RT-Y][AC-HJ-KM-NP-RT-Y][0-9][0-9]\b`)
+
+	// MRN: 6-10 digits (very generic, requires strong medical context)
+	reMRN = regexp.MustCompile(`\b\d{6,10}\b`)
+
+	// Insurance member ID: alphanumeric 8-20 chars (letters and digits mixed)
+	reInsuranceID = regexp.MustCompile(`\b[A-Za-z0-9]{8,20}\b`)
+)
+
+// containsKeyword reports whether text contains keyword as a whole word/phrase,
+// case-insensitively.
+func containsKeyword(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	lt := strings.ToLower(text)
+	lk := strings.ToLower(keyword)
+	for from := 0; from+len(lk) <= len(lt); {
+		i := strings.Index(lt[from:], lk)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isWordByte(lt[i-1])
+		right := i + len(lk)
+		rightOK := right >= len(lt) || !isWordByte(lt[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// isWordByte reports whether b is a word character ([a-z0-9_]).
+func isWordByte(b byte) bool {
+	return b == '_' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// Validator implements the detector.Validator interface for detecting
+// medical identifiers (NPI, DEA, MRN, Insurance Member ID, Medicare MBI).
+type Validator struct {
+	pattern          string
+	positiveKeywords []string
+	negativeKeywords []string
+	regex            *regexp.Regexp
+	observer         observability.Observer
+}
+
+// NewValidator creates and returns a new Validator instance.
+func NewValidator() *Validator {
+	return &Validator{
+		positiveKeywords: []string{
+			"medical record", "mrn", "patient id", "member id", "insurance",
+			"npi", "provider", "medicare", "medicaid", "beneficiary",
+			"subscriber", "policy number", "group number", "dea", "prescriber",
+			"pharmacy", "hospital", "clinic", "health plan", "health insurance",
+			"patient", "physician", "doctor", "medical", "healthcare",
+			"health record", "enrollment", "covered", "copay", "deductible",
+			"claims", "formulary", "prior authorization", "referral",
+		},
+		negativeKeywords: []string{
+			"phone", "ssn", "account", "order", "invoice", "tracking",
+			"serial", "model", "version", "ip address", "zip",
+			"test", "example", "sample", "placeholder", "fake", "mock", "demo",
+			"lorem", "foo", "bar", "todo", "fixme",
+		},
+	}
+}
+
+// SetObserver sets the observability component.
+func (v *Validator) SetObserver(observer observability.Observer) {
+	v.observer = observer
+}
+
+// ValidateContent validates preprocessed content for medical identifiers.
+func (v *Validator) ValidateContent(content string, originalPath string) ([]detector.Match, error) {
+	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
+}
+
+// ValidateContentCtx is the context-aware form of ValidateContent.
+func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
+	var matches []detector.Match
+
+	lines := strings.Split(content, "\n")
+
+	for lineNum, line := range lines {
+		if execguard.LineLoopCancelled(ctx, lineNum) {
+			return matches, ctx.Err()
+		}
+
+		lineMatches := v.scanLine(line, lineNum, originalPath)
+		matches = append(matches, lineMatches...)
+	}
+
+	return matches, nil
+}
+
+// scanLine scans a single line for all medical ID types.
+func (v *Validator) scanLine(line string, lineNum int, originalPath string) []detector.Match {
+	var matches []detector.Match
+
+	lowerLine := strings.ToLower(line)
+
+	// Check for NPI numbers
+	for _, loc := range reNPI.FindAllStringIndex(line, -1) {
+		match := line[loc[0]:loc[1]]
+		if m, ok := v.evaluateNPI(match, line, lowerLine, lineNum, originalPath); ok {
+			matches = append(matches, m)
+		}
+	}
+
+	// Check for DEA numbers
+	for _, loc := range reDEA.FindAllStringIndex(line, -1) {
+		match := line[loc[0]:loc[1]]
+		if m, ok := v.evaluateDEA(match, line, lowerLine, lineNum, originalPath); ok {
+			matches = append(matches, m)
+		}
+	}
+
+	// Check for Medicare MBI
+	for _, loc := range reMBI.FindAllStringIndex(line, -1) {
+		match := line[loc[0]:loc[1]]
+		if m, ok := v.evaluateMBI(match, line, lowerLine, lineNum, originalPath); ok {
+			matches = append(matches, m)
+		}
+	}
+
+	// Check for MRN (only if medical context is present on the line)
+	if v.hasMedicalContext(lowerLine) {
+		for _, loc := range reMRN.FindAllStringIndex(line, -1) {
+			match := line[loc[0]:loc[1]]
+			if m, ok := v.evaluateMRN(match, line, lowerLine, lineNum, originalPath); ok {
+				matches = append(matches, m)
+			}
+		}
+	}
+
+	// Check for Insurance Member IDs (only if insurance context is present)
+	if v.hasInsuranceContext(lowerLine) {
+		for _, loc := range reInsuranceID.FindAllStringIndex(line, -1) {
+			match := line[loc[0]:loc[1]]
+			if m, ok := v.evaluateInsuranceID(match, line, lowerLine, lineNum, originalPath); ok {
+				matches = append(matches, m)
+			}
+		}
+	}
+
+	return matches
+}
+
+// evaluateNPI checks an NPI candidate and returns a match if valid.
+func (v *Validator) evaluateNPI(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+	// NPI must pass the NPI-specific Luhn check (prefix 80840)
+	if !npiLuhnValid(match) {
+		return detector.Match{}, false
+	}
+
+	// If the line has phone/contact context, suppress NPI entirely.
+	// A 10-digit number in a "contact", "call", "phone", or "fax" context
+	// is overwhelmingly more likely to be a phone number than an NPI,
+	// even if medical keywords are also present on the line.
+	if v.hasPhoneContext(lowerLine) {
+		return detector.Match{}, false
+	}
+
+	confidence := 80.0 // Valid Luhn checksum gives strong structural confidence
+
+	// Context adjustments
+	contextImpact := v.analyzeContext(match, lowerLine)
+	confidence += contextImpact
+
+	// Without any medical/provider context, suppress heavily
+	if !v.hasProviderContext(lowerLine) {
+		confidence -= 40
+	}
+
+	confidence = clamp(confidence)
+	if confidence <= 0 {
+		return detector.Match{}, false
+	}
+
+	return detector.Match{
+		Text:       match,
+		LineNumber: lineNum + 1,
+		Type:       "NPI",
+		Confidence: confidence,
+		Filename:   originalPath,
+		Validator:  "medicalid",
+		Context:    v.buildContext(match, line, lowerLine),
+		Metadata: map[string]any{
+			"subtype":        "NPI",
+			"luhn_valid":     true,
+			"context_impact": contextImpact,
+		},
+	}, true
+}
+
+// evaluateDEA checks a DEA number candidate and returns a match if valid.
+func (v *Validator) evaluateDEA(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+	// Validate DEA checksum
+	if !deaChecksumValid(match) {
+		return detector.Match{}, false
+	}
+
+	confidence := 85.0 // DEA with valid checksum is strong evidence
+
+	contextImpact := v.analyzeContext(match, lowerLine)
+	confidence += contextImpact
+
+	// Without prescriber/pharmacy context, reduce confidence
+	if !v.hasDEAContext(lowerLine) {
+		confidence -= 30
+	}
+
+	confidence = clamp(confidence)
+	if confidence <= 0 {
+		return detector.Match{}, false
+	}
+
+	return detector.Match{
+		Text:       match,
+		LineNumber: lineNum + 1,
+		Type:       "DEA_NUMBER",
+		Confidence: confidence,
+		Filename:   originalPath,
+		Validator:  "medicalid",
+		Context:    v.buildContext(match, line, lowerLine),
+		Metadata: map[string]any{
+			"subtype":           "DEA",
+			"checksum_valid":    true,
+			"context_impact":    contextImpact,
+			"registrant_type":   string(match[0]),
+			"last_name_initial": string(match[1]),
+		},
+	}, true
+}
+
+// evaluateMBI checks a Medicare MBI candidate and returns a match if valid.
+func (v *Validator) evaluateMBI(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+	confidence := 75.0 // MBI format is fairly specific
+
+	contextImpact := v.analyzeContext(match, lowerLine)
+	confidence += contextImpact
+
+	// Without medicare/beneficiary context, reduce
+	if !v.hasMedicareContext(lowerLine) {
+		confidence -= 35
+	}
+
+	confidence = clamp(confidence)
+	if confidence <= 0 {
+		return detector.Match{}, false
+	}
+
+	return detector.Match{
+		Text:       match,
+		LineNumber: lineNum + 1,
+		Type:       "MEDICARE_MBI",
+		Confidence: confidence,
+		Filename:   originalPath,
+		Validator:  "medicalid",
+		Context:    v.buildContext(match, line, lowerLine),
+		Metadata: map[string]any{
+			"subtype":        "MBI",
+			"context_impact": contextImpact,
+		},
+	}, true
+}
+
+// evaluateMRN checks an MRN candidate and returns a match if valid.
+func (v *Validator) evaluateMRN(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+	// MRN is very generic (just digits), so only detect with strong medical context.
+	// Skip if it looks like a phone, SSN component, zip code, year, etc.
+	if v.looksLikeNonMedicalNumber(match, lowerLine) {
+		return detector.Match{}, false
+	}
+
+	// If this 10-digit number already passes NPI Luhn validation, don't also
+	// report it as MRN — the NPI evaluator handles it with higher specificity.
+	if len(match) == 10 && (match[0] == '1' || match[0] == '2') && npiLuhnValid(match) {
+		return detector.Match{}, false
+	}
+
+	confidence := 15.0 // Very low base — digits without keywords are ambiguous
+
+	// Only boost if we have strong MRN-specific keywords
+	if v.hasMRNKeyword(lowerLine) {
+		confidence += 55 // Strong keyword match -> 70
+	} else if v.hasMedicalContext(lowerLine) {
+		confidence += 30 // Generic medical context -> 45
+	}
+
+	contextImpact := v.analyzeContext(match, lowerLine)
+	confidence += contextImpact
+
+	confidence = clamp(confidence)
+	if confidence <= 0 {
+		return detector.Match{}, false
+	}
+
+	return detector.Match{
+		Text:       match,
+		LineNumber: lineNum + 1,
+		Type:       "MRN",
+		Confidence: confidence,
+		Filename:   originalPath,
+		Validator:  "medicalid",
+		Context:    v.buildContext(match, line, lowerLine),
+		Metadata: map[string]any{
+			"subtype":        "MRN",
+			"context_impact": contextImpact,
+		},
+	}, true
+}
+
+// evaluateInsuranceID checks an insurance member ID candidate.
+func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+	// Insurance IDs must contain a mix of letters and digits
+	if !hasLettersAndDigits(match) {
+		return detector.Match{}, false
+	}
+
+	// Skip if it looks like a common non-insurance pattern
+	if v.looksLikeNonInsuranceID(match, lowerLine) {
+		return detector.Match{}, false
+	}
+
+	confidence := 50.0 // Moderate base — alphanumeric with insurance context
+
+	// Boost if strong insurance keywords present
+	if v.hasInsuranceKeyword(lowerLine) {
+		confidence += 20 // -> 70
+	}
+
+	contextImpact := v.analyzeContext(match, lowerLine)
+	confidence += contextImpact
+
+	confidence = clamp(confidence)
+	if confidence <= 0 {
+		return detector.Match{}, false
+	}
+
+	return detector.Match{
+		Text:       match,
+		LineNumber: lineNum + 1,
+		Type:       "INSURANCE_MEMBER_ID",
+		Confidence: confidence,
+		Filename:   originalPath,
+		Validator:  "medicalid",
+		Context:    v.buildContext(match, line, lowerLine),
+		Metadata: map[string]any{
+			"subtype":        "INSURANCE_MEMBER_ID",
+			"context_impact": contextImpact,
+		},
+	}, true
+}
+
+// CalculateConfidence calculates the confidence score for a potential medical ID.
+func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool) {
+	checks := map[string]bool{
+		"format":       true,
+		"not_test":     true,
+		"has_checksum": false,
+	}
+
+	// Try to determine what type this match is
+	if reNPI.MatchString(match) && npiLuhnValid(match) {
+		checks["has_checksum"] = true
+		return 80.0, checks
+	}
+	if reDEA.MatchString(match) && deaChecksumValid(match) {
+		checks["has_checksum"] = true
+		return 85.0, checks
+	}
+	if reMBI.MatchString(match) {
+		return 75.0, checks
+	}
+
+	// Generic (MRN / Insurance ID)
+	return 50.0, checks
+}
+
+// AnalyzeContext analyzes the context around a match and returns a confidence adjustment.
+func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
+	lowerLine := strings.ToLower(context.FullLine)
+	return v.analyzeContext(match, lowerLine)
+}
+
+// strongNegativeKeywords are test/placeholder indicators that should suppress
+// findings heavily regardless of positive context.
+var strongNegativeKeywords = []string{
+	"test", "example", "sample", "placeholder", "fake", "mock", "demo",
+}
+
+// analyzeContext performs keyword-based context scoring.
+func (v *Validator) analyzeContext(match, lowerLine string) float64 {
+	var impact float64
+
+	// Check for strong negative keywords first (test/example/etc.)
+	// These suppress hard, overriding positive keywords.
+	strongNegCount := 0
+	for _, kw := range strongNegativeKeywords {
+		if containsKeyword(lowerLine, kw) {
+			strongNegCount++
+			impact -= 25
+		}
+	}
+
+	for _, kw := range v.positiveKeywords {
+		if containsKeyword(lowerLine, kw) {
+			impact += 10
+		}
+	}
+
+	for _, kw := range v.negativeKeywords {
+		// Skip strong negatives already counted above
+		isStrong := false
+		for _, s := range strongNegativeKeywords {
+			if kw == s {
+				isStrong = true
+				break
+			}
+		}
+		if isStrong {
+			continue
+		}
+		if containsKeyword(lowerLine, kw) {
+			impact -= 15
+		}
+	}
+
+	// Cap impact
+	if impact > 40 {
+		impact = 40
+	} else if impact < -60 {
+		impact = -60
+	}
+
+	// When ANY strong negative keyword is present (test/example/mock/etc.),
+	// the net impact must stay negative. Test/placeholder data is NEVER a
+	// real finding regardless of how many positive keywords surround it.
+	if strongNegCount > 0 && impact > -25 {
+		impact = -25
+	}
+
+	return impact
+}
+
+// buildContext builds a ContextInfo from the line surrounding the match.
+func (v *Validator) buildContext(match, line, lowerLine string) detector.ContextInfo {
+	ci := detector.ContextInfo{
+		FullLine: line,
+	}
+
+	idx := strings.Index(line, match)
+	if idx >= 0 {
+		start := idx - 50
+		if start < 0 {
+			start = 0
+		}
+		end := idx + len(match) + 50
+		if end > len(line) {
+			end = len(line)
+		}
+		ci.BeforeText = line[start:idx]
+		ci.AfterText = line[idx+len(match) : end]
+	}
+
+	// Collect positive/negative keywords found
+	for _, kw := range v.positiveKeywords {
+		if containsKeyword(lowerLine, kw) {
+			ci.PositiveKeywords = append(ci.PositiveKeywords, kw)
+		}
+	}
+	for _, kw := range v.negativeKeywords {
+		if containsKeyword(lowerLine, kw) {
+			ci.NegativeKeywords = append(ci.NegativeKeywords, kw)
+		}
+	}
+
+	return ci
+}
+
+// --- Context helper functions ---
+
+func (v *Validator) hasMedicalContext(lowerLine string) bool {
+	medicalKW := []string{
+		"medical record", "mrn", "patient", "hospital", "clinic",
+		"physician", "doctor", "healthcare", "health record", "medical",
+		"admission", "discharge", "diagnosis", "treatment",
+	}
+	for _, kw := range medicalKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Validator) hasProviderContext(lowerLine string) bool {
+	providerKW := []string{
+		"npi", "provider", "physician", "doctor", "nurse", "practitioner",
+		"clinician", "medical", "healthcare", "hospital", "clinic",
+		"practice", "health plan", "registry",
+	}
+	for _, kw := range providerKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Validator) hasPhoneContext(lowerLine string) bool {
+	phoneKW := []string{
+		"phone", "call", "fax", "contact", "dial", "reach",
+		"tel", "telephone", "mobile", "cell",
+	}
+	for _, kw := range phoneKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Validator) hasDEAContext(lowerLine string) bool {
+	deaKW := []string{
+		"dea", "prescriber", "pharmacy", "controlled substance",
+		"narcotic", "schedule", "dispensing", "prescription",
+		"drug enforcement", "registrant",
+	}
+	for _, kw := range deaKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Validator) hasMedicareContext(lowerLine string) bool {
+	medicareKW := []string{
+		"medicare", "mbi", "beneficiary", "cms", "medicaid",
+		"enrollment", "coverage", "part a", "part b", "part d",
+	}
+	for _, kw := range medicareKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Validator) hasMRNKeyword(lowerLine string) bool {
+	mrnKW := []string{
+		"mrn", "medical record", "patient id", "patient number",
+		"record number", "chart number", "admission number",
+	}
+	for _, kw := range mrnKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Validator) hasInsuranceContext(lowerLine string) bool {
+	insKW := []string{
+		"insurance", "member id", "member number", "subscriber",
+		"policy number", "group number", "health plan", "enrollee",
+		"covered", "copay", "deductible", "claims",
+	}
+	for _, kw := range insKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Validator) hasInsuranceKeyword(lowerLine string) bool {
+	strongKW := []string{
+		"member id", "member number", "subscriber id", "policy number",
+		"insurance id", "group number", "enrollee id",
+	}
+	for _, kw := range strongKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// looksLikeNonMedicalNumber checks if a digit sequence is likely not an MRN.
+func (v *Validator) looksLikeNonMedicalNumber(match, lowerLine string) bool {
+	// Phone numbers, SSNs, zip codes, years, etc.
+	nonMedicalKW := []string{
+		"phone", "ssn", "zip", "postal", "fax", "extension",
+		"account", "order", "invoice", "tracking", "serial",
+	}
+	for _, kw := range nonMedicalKW {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+
+	// Skip 4-digit years embedded in longer text
+	if len(match) == 4 {
+		// Bare 4-digit matches shouldn't reach here (regex requires 6+)
+		return true
+	}
+
+	// Skip if the match is exactly 9 digits (likely SSN) or 10 digits starting
+	// with 1 (likely phone number)
+	if len(match) == 9 {
+		return true // Likely an SSN
+	}
+	if len(match) == 10 && match[0] == '1' {
+		return true // Likely a phone number with leading 1
+	}
+
+	return false
+}
+
+// looksLikeNonInsuranceID checks if an alphanumeric string is likely not an insurance ID.
+func (v *Validator) looksLikeNonInsuranceID(match, lowerLine string) bool {
+	lower := strings.ToLower(match)
+
+	// Skip common non-insurance patterns
+	nonInsurance := []string{
+		"phone", "ssn", "account", "order", "invoice", "tracking",
+		"serial", "model", "version", "ip address",
+	}
+	for _, kw := range nonInsurance {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+
+	// Skip if it looks like a hex string (all hex chars)
+	if isHexString(lower) {
+		return true
+	}
+
+	// Skip if it has a "0x" hex prefix (the regex may capture "0x..." as alphanumeric)
+	if strings.HasPrefix(lower, "0x") && isHexString(lower[2:]) {
+		return true
+	}
+
+	// Skip if it looks like a UUID component
+	if len(match) == 8 || len(match) == 12 || len(match) == 16 {
+		if isHexString(lower) {
+			return true
+		}
+	}
+
+	// Skip common tech identifiers (all uppercase + digits, looking like codes)
+	if isAllUpperOrDigit(match) && !v.hasInsuranceKeyword(lowerLine) {
+		// Could be a tech ID like "ABC12345DE"
+		// Only allow if strong insurance keyword present
+		return true
+	}
+
+	return false
+}
+
+// --- Checksum functions ---
+
+// npiLuhnValid validates an NPI number using the Luhn algorithm with the
+// "80840" prefix as specified by CMS (the NPI check digit is computed over
+// the 10-digit NPI prefixed with "80840" to form a 15-digit number).
+func npiLuhnValid(npi string) bool {
+	if len(npi) != 10 {
+		return false
+	}
+	// Prefix "80840" + NPI gives a 15-digit number that must pass standard Luhn
+	full := "80840" + npi
+	return luhnValid(full)
+}
+
+// luhnValid validates a numeric string using the standard Luhn algorithm.
+func luhnValid(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	var sum int
+	double := false
+	for i := len(s) - 1; i >= 0; i-- {
+		d := int(s[i] - '0')
+		if d < 0 || d > 9 {
+			return false
+		}
+		if double {
+			d *= 2
+			if d > 9 {
+				d -= 9
+			}
+		}
+		sum += d
+		double = !double
+	}
+	return sum%10 == 0
+}
+
+// deaChecksumValid validates a DEA number checksum.
+// DEA format: 2 letters + 7 digits
+// Checksum: (d1+d3+d5) + 2*(d2+d4+d6) -> last digit of sum = d7
+func deaChecksumValid(dea string) bool {
+	if len(dea) != 9 {
+		return false
+	}
+	// First char must be registration type
+	first := dea[0]
+	if first != 'A' && first != 'B' && first != 'C' && first != 'D' &&
+		first != 'F' && first != 'G' && first != 'M' &&
+		first != 'a' && first != 'b' && first != 'c' && first != 'd' &&
+		first != 'f' && first != 'g' && first != 'm' {
+		return false
+	}
+	// Second char must be alpha
+	second := dea[1]
+	if !((second >= 'A' && second <= 'Z') || (second >= 'a' && second <= 'z')) {
+		return false
+	}
+	// Remaining 7 must be digits
+	digits := make([]int, 7)
+	for i := 0; i < 7; i++ {
+		c := dea[i+2]
+		if c < '0' || c > '9' {
+			return false
+		}
+		digits[i] = int(c - '0')
+	}
+
+	sum := (digits[0] + digits[2] + digits[4]) + 2*(digits[1]+digits[3]+digits[5])
+	return sum%10 == digits[6]
+}
+
+// --- Utility functions ---
+
+func hasLettersAndDigits(s string) bool {
+	hasLetter := false
+	hasDigit := false
+	for _, c := range s {
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+			hasLetter = true
+		}
+		if c >= '0' && c <= '9' {
+			hasDigit = true
+		}
+		if hasLetter && hasDigit {
+			return true
+		}
+	}
+	return false
+}
+
+func isHexString(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAllUpperOrDigit(s string) bool {
+	for _, c := range s {
+		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+
+func clamp(confidence float64) float64 {
+	if confidence > 100 {
+		return 100
+	}
+	if confidence < 0 {
+		return 0
+	}
+	return confidence
+}

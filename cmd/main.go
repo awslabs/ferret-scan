@@ -975,6 +975,7 @@ func main() {
 			positionalArgs:   flag.Args(),
 			stdinName:        *stdinName,
 			outputFile:       *outputFile,
+			explain:          *explainFindings,
 			validatorBudgets: validatorBudgets,
 		})
 		os.Exit(exitCode)
