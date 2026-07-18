@@ -1,0 +1,4 @@
+[LOW] BUSINESS (line 4, conf 48%, uncertain) val="robert@example.com"
+[MEDIUM] PERSON_NAME (line 1, conf 79%, likely_real) val="Robert Aragon"
+[HIGH] SSN (line 2, conf 100%, likely_real) val="489-36-8350"
+[HIGH] VISA (line 3, conf 100%, likely_real) val="4929-3813-3266-4295"
