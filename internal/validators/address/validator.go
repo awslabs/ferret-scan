@@ -191,17 +191,35 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			continue
 		}
 
+		// Per-line invariants, hoisted out of the per-match loops. The confidence
+		// functions and hasNegativeKeywords scan only the line (and adjacent
+		// lines) and ignore the match, so their results are identical for every
+		// match on this line. Computing them once per line instead of once per
+		// match keeps scanning O(line length) rather than O(matches × line
+		// length) — the latter is a single-long-line CPU-exhaustion DoS (a 48KB
+		// line otherwise took ~63s). See the timing regression test.
+		lineHasNegative := v.hasNegativeKeywords(line)
+		var negativePenalty float64
+		if lineHasNegative {
+			negativePenalty = 25
+		}
+		// Keyword sets for ContextInfo, computed once per line (see buildContextInfo).
+		linePositiveKeywords := v.keywordsPresent(line, v.positiveKeywords)
+		lineNegativeKeywords := v.keywordsPresent(line, v.negativeKeywords)
+
 		// Detect PO Box addresses
 		poMatches := rePOBox.FindAllStringIndex(line, -1)
-		for _, loc := range poMatches {
+		var poConfidence float64
+		if len(poMatches) > 0 {
+			poConfidence = v.calculatePOBoxConfidence(line, lines, lineNum) - negativePenalty
+		}
+		for i, loc := range poMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
 			matchText := line[loc[0]:loc[1]]
 
-			confidence := v.calculatePOBoxConfidence(line, lines, lineNum)
-
-			// Check negative keywords
-			if v.hasNegativeKeywords(line) {
-				confidence -= 25
-			}
+			confidence := poConfidence
 
 			if confidence <= 0 {
 				continue
@@ -210,7 +228,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				confidence = 100
 			}
 
-			contextInfo := v.buildContextInfo(line, loc[0], len(matchText))
+			contextInfo := v.buildContextInfo(line, loc[0], len(matchText), linePositiveKeywords, lineNegativeKeywords)
 
 			matches = append(matches, detector.Match{
 				Text:       matchText,
@@ -227,20 +245,34 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			})
 		}
 
-		// Detect street addresses (primary pattern)
+		// Detect street addresses (primary pattern). The street confidence is a
+		// per-line invariant too (base 50 plus line/adjacent-line signals; it
+		// ignores the match), so compute it once and reuse for every match on the
+		// line. streetStartSet indexes the primary-match start offsets so the
+		// directional loop's "already matched" check is O(1) instead of O(matches).
 		streetMatches := reStreetAddress.FindAllStringIndex(line, -1)
-		for _, loc := range streetMatches {
+		var streetFP *streetFPContext
+		var streetConfidence float64
+		if len(streetMatches) > 0 {
+			streetFP = v.newStreetFPContext(line)
+			streetConfidence = v.calculateStreetConfidence("", line, lines, lineNum)
+		}
+		for i, loc := range streetMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
 			matchText := line[loc[0]:loc[1]]
 
-			// Validate this is not a false positive
-			if v.isStreetFalsePositive(line, matchText, loc[0]) {
+			// Validate this is not a false positive (uses per-line precomputed
+			// FP locus sets; only the offset-overlap test is per match).
+			if streetFP.isFalsePositive(matchText, loc[0]) {
 				continue
 			}
 
-			confidence := v.calculateStreetConfidence(matchText, line, lines, lineNum)
+			confidence := streetConfidence
 
-			// Check negative keywords
-			if v.hasNegativeKeywords(line) {
+			// Check negative keywords (per-line invariant)
+			if lineHasNegative {
 				confidence -= 25
 			}
 
@@ -251,7 +283,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				confidence = 100
 			}
 
-			contextInfo := v.buildContextInfo(line, loc[0], len(matchText))
+			contextInfo := v.buildContextInfo(line, loc[0], len(matchText), linePositiveKeywords, lineNegativeKeywords)
 
 			matches = append(matches, detector.Match{
 				Text:       matchText,
@@ -271,28 +303,31 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// Detect street addresses with directional prefixes (N., S., E., W.)
 		// These are missed by the primary regex due to the period in "N."
 		dirMatches := reDirectionalAddr.FindAllStringIndex(line, -1)
-		for _, loc := range dirMatches {
+		if len(dirMatches) > 0 && streetFP == nil {
+			streetFP = v.newStreetFPContext(line)
+			streetConfidence = v.calculateStreetConfidence("", line, lines, lineNum)
+		}
+		for i, loc := range dirMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
 			matchText := line[loc[0]:loc[1]]
 
-			// Skip if already matched by primary pattern
-			alreadyMatched := false
-			for _, sm := range streetMatches {
-				if loc[0] >= sm[0] && loc[0] < sm[1] {
-					alreadyMatched = true
-					break
-				}
-			}
-			if alreadyMatched {
+			// Skip if already matched by primary pattern. streetMatches is sorted
+			// by start offset (FindAllStringIndex returns left-to-right), so a
+			// binary search for the span containing loc[0] is O(log matches)
+			// instead of the O(matches) linear scan that made this loop quadratic.
+			if spanContains(streetMatches, loc[0]) {
 				continue
 			}
 
-			if v.isStreetFalsePositive(line, matchText, loc[0]) {
+			if streetFP.isFalsePositive(matchText, loc[0]) {
 				continue
 			}
 
-			confidence := v.calculateStreetConfidence(matchText, line, lines, lineNum)
+			confidence := streetConfidence
 
-			if v.hasNegativeKeywords(line) {
+			if lineHasNegative {
 				confidence -= 25
 			}
 
@@ -303,7 +338,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				confidence = 100
 			}
 
-			contextInfo := v.buildContextInfo(line, loc[0], len(matchText))
+			contextInfo := v.buildContextInfo(line, loc[0], len(matchText), linePositiveKeywords, lineNegativeKeywords)
 
 			matches = append(matches, detector.Match{
 				Text:       matchText,
@@ -451,37 +486,80 @@ func (v *Validator) isFalsePositiveLine(line string) bool {
 }
 
 // isStreetFalsePositive checks whether a street address match is actually a false positive.
-func (v *Validator) isStreetFalsePositive(line, match string, matchStart int) bool {
-	// Check if this is part of an IP address
+// streetFPContext holds the per-line false-positive locus sets (IP, version,
+// code-ref, math-expression spans) computed ONCE per line. The original
+// isStreetFalsePositive re-ran four whole-line regex scans for every match,
+// which is O(matches × line length) — the single-long-line DoS. Building the
+// locus sets once and only doing the cheap offset-overlap test per match keeps
+// it O(line length). newStreetFPContext runs the regexes lazily: FindAllStringIndex
+// is only called when MatchString reports the pattern is present.
+type streetFPContext struct {
+	line     string
+	ipLocs   [][]int
+	verLocs  [][]int
+	codeLocs [][]int
+	mathLocs [][]int
+}
+
+func (v *Validator) newStreetFPContext(line string) *streetFPContext {
+	c := &streetFPContext{line: line}
 	if reIPAddress.MatchString(line) {
-		// Check if the street number overlaps with an IP
-		ipLocs := reIPAddress.FindAllStringIndex(line, -1)
-		for _, loc := range ipLocs {
-			if matchStart >= loc[0] && matchStart < loc[1] {
-				return true
-			}
-		}
+		c.ipLocs = reIPAddress.FindAllStringIndex(line, -1)
 	}
-
-	// Check if this is a version string context
 	if reVersion.MatchString(line) {
-		// Only suppress if the match number is part of a version
-		vLocs := reVersion.FindAllStringIndex(line, -1)
-		for _, loc := range vLocs {
-			if matchStart >= loc[0] && matchStart < loc[1] {
-				return true
-			}
+		c.verLocs = reVersion.FindAllStringIndex(line, -1)
+	}
+	if reCodeLineRef.MatchString(line) {
+		c.codeLocs = reCodeLineRef.FindAllStringIndex(line, -1)
+	}
+	if reMathExpr.MatchString(line) {
+		c.mathLocs = reMathExpr.FindAllStringIndex(line, -1)
+	}
+	return c
+}
+
+func overlapsAny(locs [][]int, matchStart int) bool {
+	for _, loc := range locs {
+		if matchStart >= loc[0] && matchStart < loc[1] {
+			return true
 		}
 	}
+	return false
+}
 
-	// Check if this is a code file reference (e.g., "123 main.go")
-	if reCodeLineRef.MatchString(line) {
-		cLocs := reCodeLineRef.FindAllStringIndex(line, -1)
-		for _, loc := range cLocs {
-			if matchStart >= loc[0] && matchStart < loc[1] {
-				return true
-			}
+// spanContains reports whether pos falls inside any [start,end) span in locs.
+// locs must be sorted by start offset (as FindAllStringIndex returns them),
+// enabling an O(log n) binary search instead of an O(n) scan — this is what
+// removes the quadratic "already matched by the primary pattern" check in the
+// directional-address loop.
+func spanContains(locs [][]int, pos int) bool {
+	lo, hi := 0, len(locs)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		switch {
+		case pos < locs[mid][0]:
+			hi = mid
+		case pos >= locs[mid][1]:
+			lo = mid + 1
+		default:
+			return true // locs[mid][0] <= pos < locs[mid][1]
 		}
+	}
+	return false
+}
+
+// isFalsePositive is the per-match test. It uses the precomputed per-line locus
+// sets (no whole-line regex rescans) plus the genuinely match-local checks
+// (file-extension trailing dot, street-name word heuristics).
+func (c *streetFPContext) isFalsePositive(match string, matchStart int) bool {
+	line := c.line
+
+	// Part of an IP address / version string / code file ref / math expression?
+	if overlapsAny(c.ipLocs, matchStart) ||
+		overlapsAny(c.verLocs, matchStart) ||
+		overlapsAny(c.codeLocs, matchStart) ||
+		overlapsAny(c.mathLocs, matchStart) {
+		return true
 	}
 
 	// Check if the trailing dot of the match is actually part of a file extension
@@ -499,16 +577,6 @@ func (v *Validator) isStreetFalsePositive(line, match string, matchStart int) bo
 		rest := line[matchEnd+1:]
 		if len(rest) > 0 && ((rest[0] >= 'a' && rest[0] <= 'z') || (rest[0] >= 'A' && rest[0] <= 'Z')) {
 			return true
-		}
-	}
-
-	// Check if the street number is part of a math expression
-	if reMathExpr.MatchString(line) {
-		mLocs := reMathExpr.FindAllStringIndex(line, -1)
-		for _, loc := range mLocs {
-			if matchStart >= loc[0] && matchStart < loc[1] {
-				return true
-			}
 		}
 	}
 
@@ -570,9 +638,17 @@ func (v *Validator) getAdjacentLines(lines []string, lineNum, radius int) string
 }
 
 // buildContextInfo constructs context info for a match.
-func (v *Validator) buildContextInfo(line string, matchStart, matchLen int) detector.ContextInfo {
+// buildContextInfo builds the ContextInfo for a match. posKW/negKW are the
+// per-line keyword sets, computed ONCE per line in ValidateContentCtx and passed
+// in — the original scanned every positive and negative keyword over the whole
+// line for every match, which is O(matches × line length × keywords), the
+// dominant cost of the single-long-line DoS. Only the ±50-char before/after
+// slice is genuinely per match.
+func (v *Validator) buildContextInfo(line string, matchStart, matchLen int, posKW, negKW []string) detector.ContextInfo {
 	contextInfo := detector.ContextInfo{
-		FullLine: line,
+		FullLine:         line,
+		PositiveKeywords: posKW,
+		NegativeKeywords: negKW,
 	}
 
 	start := matchStart - 50
@@ -587,19 +663,19 @@ func (v *Validator) buildContextInfo(line string, matchStart, matchLen int) dete
 	contextInfo.BeforeText = line[start:matchStart]
 	contextInfo.AfterText = line[matchStart+matchLen : end]
 
-	// Find positive/negative keywords on line
-	for _, kw := range v.positiveKeywords {
-		if containsKeyword(line, kw) {
-			contextInfo.PositiveKeywords = append(contextInfo.PositiveKeywords, kw)
-		}
-	}
-	for _, kw := range v.negativeKeywords {
-		if containsKeyword(line, kw) {
-			contextInfo.NegativeKeywords = append(contextInfo.NegativeKeywords, kw)
-		}
-	}
-
 	return contextInfo
+}
+
+// keywordsPresent returns the subset of keywords present in line, computed once
+// per line (see buildContextInfo).
+func (v *Validator) keywordsPresent(line string, keywords []string) []string {
+	var found []string
+	for _, kw := range keywords {
+		if containsKeyword(line, kw) {
+			found = append(found, kw)
+		}
+	}
+	return found
 }
 
 // CalculateConfidence calculates the confidence score for a potential address match.

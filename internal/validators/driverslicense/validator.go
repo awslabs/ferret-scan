@@ -164,7 +164,20 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			continue
 		}
 
-		for _, loc := range idxMatches {
+		// Per-line invariants, hoisted out of the per-match loop. AnalyzeContext
+		// and findKeywordsOnLine scan only the whole line (they ignore the match
+		// position), so their results are identical for every match on this line.
+		// Computing them once per line instead of once per match is what keeps
+		// scanning O(line length) rather than O(matches × line length) — the
+		// latter is a single-long-line CPU-exhaustion DoS. See the timing test.
+		lineImpact := v.AnalyzeContext("", detector.ContextInfo{FullLine: line})
+		linePositiveKeywords := v.findKeywordsOnLine(line, v.positiveKeywords)
+		lineNegativeKeywords := v.findKeywordsOnLine(line, v.negativeKeywords)
+
+		for i, loc := range idxMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
 			match := line[loc[0]:loc[1]]
 
 			// Classify which state format this matches
@@ -191,13 +204,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			contextInfo.BeforeText = line[start:loc[0]]
 			contextInfo.AfterText = line[loc[1]:end]
 
-			// Analyze context for keyword-based adjustment
-			contextImpact := v.AnalyzeContext(match, contextInfo)
+			// Analyze context for keyword-based adjustment (per-line invariant)
+			contextImpact := lineImpact
 			confidence += contextImpact
 
-			// Store keywords found
-			contextInfo.PositiveKeywords = v.findKeywordsOnLine(line, v.positiveKeywords)
-			contextInfo.NegativeKeywords = v.findKeywordsOnLine(line, v.negativeKeywords)
+			// Store keywords found (per-line invariant)
+			contextInfo.PositiveKeywords = linePositiveKeywords
+			contextInfo.NegativeKeywords = lineNegativeKeywords
 			contextInfo.ConfidenceImpact = contextImpact
 
 			// Clamp confidence

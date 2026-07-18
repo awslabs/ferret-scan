@@ -115,7 +115,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			return matches, ctx.Err()
 		}
 
-		lineMatches := v.scanLine(line, lineNum, originalPath)
+		lineMatches := v.scanLine(ctx, line, lineNum, originalPath)
 		matches = append(matches, lineMatches...)
 	}
 
@@ -123,52 +123,65 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 }
 
 // scanLine scans a single line for all medical ID types.
-func (v *Validator) scanLine(line string, lineNum int, originalPath string) []detector.Match {
+func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string) []detector.Match {
 	var matches []detector.Match
 
 	lowerLine := strings.ToLower(line)
 
-	// Check for NPI numbers
-	for _, loc := range reNPI.FindAllStringIndex(line, -1) {
-		match := line[loc[0]:loc[1]]
-		if m, ok := v.evaluateNPI(match, line, lowerLine, lineNum, originalPath); ok {
-			matches = append(matches, m)
+	// Per-line invariants, hoisted out of the per-match loop. analyzeContext and
+	// the keyword-collection in buildContext scan only lowerLine (they ignore the
+	// match string), so their results are identical for every match on this line.
+	// Computing them ONCE per line instead of once per match is what keeps
+	// scanning O(line length) rather than O(matches × line length) — the latter
+	// is a single-long-line CPU-exhaustion DoS. See the timing regression test.
+	lineImpact := v.analyzeContext("", lowerLine)
+	linePositiveKeywords := v.keywordsPresent(lowerLine, v.positiveKeywords)
+	lineNegativeKeywords := v.keywordsPresent(lowerLine, v.negativeKeywords)
+
+	// scanMatches runs one regex over the line, polling ctx between matches so a
+	// single pathological line stays interruptible, and hands each candidate to
+	// the evaluator with the hoisted per-line impact. The match byte offset from
+	// FindAllStringIndex is passed through so buildContext never re-scans the
+	// line with strings.Index.
+	scanMatches := func(re *regexp.Regexp, eval func(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool)) bool {
+		for i, loc := range re.FindAllStringIndex(line, -1) {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return false
+			}
+			match := line[loc[0]:loc[1]]
+			if m, ok := eval(match, line, lowerLine, lineImpact, loc[0], linePositiveKeywords, lineNegativeKeywords, lineNum, originalPath); ok {
+				matches = append(matches, m)
+			}
 		}
+		return true
+	}
+
+	// Check for NPI numbers
+	if !scanMatches(reNPI, v.evaluateNPI) {
+		return matches
 	}
 
 	// Check for DEA numbers
-	for _, loc := range reDEA.FindAllStringIndex(line, -1) {
-		match := line[loc[0]:loc[1]]
-		if m, ok := v.evaluateDEA(match, line, lowerLine, lineNum, originalPath); ok {
-			matches = append(matches, m)
-		}
+	if !scanMatches(reDEA, v.evaluateDEA) {
+		return matches
 	}
 
 	// Check for Medicare MBI
-	for _, loc := range reMBI.FindAllStringIndex(line, -1) {
-		match := line[loc[0]:loc[1]]
-		if m, ok := v.evaluateMBI(match, line, lowerLine, lineNum, originalPath); ok {
-			matches = append(matches, m)
-		}
+	if !scanMatches(reMBI, v.evaluateMBI) {
+		return matches
 	}
 
 	// Check for MRN (only if medical context is present on the line)
 	if v.hasMedicalContext(lowerLine) {
-		for _, loc := range reMRN.FindAllStringIndex(line, -1) {
-			match := line[loc[0]:loc[1]]
-			if m, ok := v.evaluateMRN(match, line, lowerLine, lineNum, originalPath); ok {
-				matches = append(matches, m)
-			}
+		if !scanMatches(reMRN, v.evaluateMRN) {
+			return matches
 		}
 	}
 
 	// Check for Insurance Member IDs (only if insurance context is present)
 	if v.hasInsuranceContext(lowerLine) {
-		for _, loc := range reInsuranceID.FindAllStringIndex(line, -1) {
-			match := line[loc[0]:loc[1]]
-			if m, ok := v.evaluateInsuranceID(match, line, lowerLine, lineNum, originalPath); ok {
-				matches = append(matches, m)
-			}
+		if !scanMatches(reInsuranceID, v.evaluateInsuranceID) {
+			return matches
 		}
 	}
 
@@ -176,7 +189,7 @@ func (v *Validator) scanLine(line string, lineNum int, originalPath string) []de
 }
 
 // evaluateNPI checks an NPI candidate and returns a match if valid.
-func (v *Validator) evaluateNPI(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateNPI(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
 	// NPI must pass the NPI-specific Luhn check (prefix 80840)
 	if !npiLuhnValid(match) {
 		return detector.Match{}, false
@@ -192,8 +205,8 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lineNum int, orig
 
 	confidence := 80.0 // Valid Luhn checksum gives strong structural confidence
 
-	// Context adjustments
-	contextImpact := v.analyzeContext(match, lowerLine)
+	// Context adjustments (per-line invariant, computed once in scanLine)
+	contextImpact := lineImpact
 	confidence += contextImpact
 
 	// Without any medical/provider context, suppress heavily
@@ -213,7 +226,7 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lineNum int, orig
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, lowerLine),
+		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
 		Metadata: map[string]any{
 			"subtype":        "NPI",
 			"luhn_valid":     true,
@@ -223,7 +236,7 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lineNum int, orig
 }
 
 // evaluateDEA checks a DEA number candidate and returns a match if valid.
-func (v *Validator) evaluateDEA(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateDEA(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
 	// Validate DEA checksum
 	if !deaChecksumValid(match) {
 		return detector.Match{}, false
@@ -231,7 +244,7 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lineNum int, orig
 
 	confidence := 85.0 // DEA with valid checksum is strong evidence
 
-	contextImpact := v.analyzeContext(match, lowerLine)
+	contextImpact := lineImpact
 	confidence += contextImpact
 
 	// Without prescriber/pharmacy context, reduce confidence
@@ -251,7 +264,7 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lineNum int, orig
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, lowerLine),
+		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
 		Metadata: map[string]any{
 			"subtype":           "DEA",
 			"checksum_valid":    true,
@@ -263,10 +276,10 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lineNum int, orig
 }
 
 // evaluateMBI checks a Medicare MBI candidate and returns a match if valid.
-func (v *Validator) evaluateMBI(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateMBI(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
 	confidence := 75.0 // MBI format is fairly specific
 
-	contextImpact := v.analyzeContext(match, lowerLine)
+	contextImpact := lineImpact
 	confidence += contextImpact
 
 	// Without medicare/beneficiary context, reduce
@@ -286,7 +299,7 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lineNum int, orig
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, lowerLine),
+		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
 		Metadata: map[string]any{
 			"subtype":        "MBI",
 			"context_impact": contextImpact,
@@ -295,7 +308,7 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lineNum int, orig
 }
 
 // evaluateMRN checks an MRN candidate and returns a match if valid.
-func (v *Validator) evaluateMRN(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateMRN(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
 	// MRN is very generic (just digits), so only detect with strong medical context.
 	// Skip if it looks like a phone, SSN component, zip code, year, etc.
 	if v.looksLikeNonMedicalNumber(match, lowerLine) {
@@ -317,7 +330,7 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lineNum int, orig
 		confidence += 30 // Generic medical context -> 45
 	}
 
-	contextImpact := v.analyzeContext(match, lowerLine)
+	contextImpact := lineImpact
 	confidence += contextImpact
 
 	confidence = clamp(confidence)
@@ -332,7 +345,7 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lineNum int, orig
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, lowerLine),
+		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
 		Metadata: map[string]any{
 			"subtype":        "MRN",
 			"context_impact": contextImpact,
@@ -341,7 +354,7 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lineNum int, orig
 }
 
 // evaluateInsuranceID checks an insurance member ID candidate.
-func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
 	// Insurance IDs must contain a mix of letters and digits
 	if !hasLettersAndDigits(match) {
 		return detector.Match{}, false
@@ -359,7 +372,7 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lineNum i
 		confidence += 20 // -> 70
 	}
 
-	contextImpact := v.analyzeContext(match, lowerLine)
+	contextImpact := lineImpact
 	confidence += contextImpact
 
 	confidence = clamp(confidence)
@@ -374,7 +387,7 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lineNum i
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, lowerLine),
+		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
 		Metadata: map[string]any{
 			"subtype":        "INSURANCE_MEMBER_ID",
 			"context_impact": contextImpact,
@@ -474,35 +487,42 @@ func (v *Validator) analyzeContext(match, lowerLine string) float64 {
 }
 
 // buildContext builds a ContextInfo from the line surrounding the match.
-func (v *Validator) buildContext(match, line, lowerLine string) detector.ContextInfo {
+// keywordsPresent returns the subset of keywords that appear in lowerLine.
+// Hoisted per line (not per match) so buildContext does no per-match keyword
+// scanning — see scanLine's O(n^2) note.
+func (v *Validator) keywordsPresent(lowerLine string, keywords []string) []string {
+	var found []string
+	for _, kw := range keywords {
+		if containsKeyword(lowerLine, kw) {
+			found = append(found, kw)
+		}
+	}
+	return found
+}
+
+// buildContext builds the ContextInfo for a match. matchStart is the match's
+// byte offset within line (from FindAllStringIndex) so we never re-scan the
+// line with strings.Index, and posKW/negKW are the per-line keyword sets
+// computed once in scanLine. Both changes keep this O(1) per match instead of
+// O(line length + keywords), which is what removes the single-long-line DoS.
+func (v *Validator) buildContext(match, line string, matchStart int, posKW, negKW []string) detector.ContextInfo {
 	ci := detector.ContextInfo{
-		FullLine: line,
+		FullLine:         line,
+		PositiveKeywords: posKW,
+		NegativeKeywords: negKW,
 	}
 
-	idx := strings.Index(line, match)
-	if idx >= 0 {
-		start := idx - 50
+	if matchStart >= 0 {
+		start := matchStart - 50
 		if start < 0 {
 			start = 0
 		}
-		end := idx + len(match) + 50
+		end := matchStart + len(match) + 50
 		if end > len(line) {
 			end = len(line)
 		}
-		ci.BeforeText = line[start:idx]
-		ci.AfterText = line[idx+len(match) : end]
-	}
-
-	// Collect positive/negative keywords found
-	for _, kw := range v.positiveKeywords {
-		if containsKeyword(lowerLine, kw) {
-			ci.PositiveKeywords = append(ci.PositiveKeywords, kw)
-		}
-	}
-	for _, kw := range v.negativeKeywords {
-		if containsKeyword(lowerLine, kw) {
-			ci.NegativeKeywords = append(ci.NegativeKeywords, kw)
-		}
+		ci.BeforeText = line[start:matchStart]
+		ci.AfterText = line[matchStart+len(match) : end]
 	}
 
 	return ci

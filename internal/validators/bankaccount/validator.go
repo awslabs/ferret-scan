@@ -140,6 +140,34 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
 }
 
+// lineContext holds per-line values that are invariant across every match on
+// the line. AnalyzeContext, hasStrongNegativeContext and hasBankingKeywords all
+// scan the whole line and ignore the match position, so their results are the
+// same for every match — computing them once per line instead of once per match
+// is what keeps scanning O(line length) instead of O(matches × line length).
+// The latter is a CPU-exhaustion DoS on a single long line (a crafted 48KB line
+// otherwise pins a core for seconds). See the timing regression test.
+type lineContext struct {
+	lower          string  // strings.ToLower(line), for near-match keyword probes
+	keywordImpact  float64 // AnalyzeContext result (positive/negative keyword scan)
+	strongNegative bool    // hasStrongNegativeContext(line)
+	bankingKeyword bool     // hasBankingKeywords(line)
+}
+
+// buildLineContext computes the per-line invariants once. AnalyzeContext is
+// invoked with an empty before/after window and the full line: because the
+// function only tests keyword PRESENCE in BeforeText+FullLine+AfterText and
+// FullLine already spans the whole line, this yields the identical keyword set
+// (and therefore identical impact) as the original per-match calls.
+func (v *Validator) buildLineContext(line string) lineContext {
+	return lineContext{
+		lower:          strings.ToLower(line),
+		keywordImpact:  v.AnalyzeContext("", detector.ContextInfo{FullLine: line}),
+		strongNegative: v.hasStrongNegativeContext(line),
+		bankingKeyword: v.hasBankingKeywords(line),
+	}
+}
+
 // ValidateContentCtx is the context-aware form of ValidateContent.
 func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
 	var matches []detector.Match
@@ -151,41 +179,47 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			return matches, ctx.Err()
 		}
 
-		lineMatches := v.scanLine(line, lineNum, originalPath)
+		lc := v.buildLineContext(line)
+		lineMatches := v.scanLine(ctx, line, lineNum, originalPath, lc)
 		matches = append(matches, lineMatches...)
 	}
 
 	return matches, nil
 }
 
-// scanLine scans a single line for all bank account related patterns.
-func (v *Validator) scanLine(line string, lineNum int, originalPath string) []detector.Match {
+// scanLine scans a single line for all bank account related patterns. The
+// precomputed lineContext is shared across the per-pattern scanners so none of
+// them re-scan the whole line per match.
+func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
 	var matches []detector.Match
 
 	// Scan for IBAN (highest specificity first)
-	matches = append(matches, v.scanIBAN(line, lineNum, originalPath)...)
+	matches = append(matches, v.scanIBAN(ctx, line, lineNum, originalPath, lc)...)
 
 	// Scan for SWIFT/BIC
-	matches = append(matches, v.scanSWIFT(line, lineNum, originalPath)...)
+	matches = append(matches, v.scanSWIFT(ctx, line, lineNum, originalPath, lc)...)
 
 	// Scan for ABA routing numbers
-	matches = append(matches, v.scanABA(line, lineNum, originalPath)...)
+	matches = append(matches, v.scanABA(ctx, line, lineNum, originalPath, lc)...)
 
 	// Scan for US bank account numbers (only if banking context present)
-	matches = append(matches, v.scanUSAccount(line, lineNum, originalPath)...)
+	matches = append(matches, v.scanUSAccount(ctx, line, lineNum, originalPath, lc)...)
 
 	return matches
 }
 
 // scanIBAN detects and validates IBAN numbers.
-func (v *Validator) scanIBAN(line string, lineNum int, originalPath string) []detector.Match {
+func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
 	var matches []detector.Match
 
 	// Try case-insensitive match by checking uppercase version
 	upperLine := strings.ToUpper(line)
 	idxMatches := reIBAN.FindAllStringIndex(upperLine, -1)
 
-	for _, loc := range idxMatches {
+	for i, loc := range idxMatches {
+		if execguard.LineLoopCancelled(ctx, i) {
+			return matches
+		}
 		candidate := upperLine[loc[0]:loc[1]]
 
 		// Validate IBAN structure
@@ -193,16 +227,16 @@ func (v *Validator) scanIBAN(line string, lineNum int, originalPath string) []de
 			continue
 		}
 
-		// Check for negative context
+		// Check for negative context (per-line invariant)
 		contextInfo := v.buildContextInfo(line, loc[0], loc[1]-loc[0])
-		if v.hasStrongNegativeContext(line) {
+		if lc.strongNegative {
 			continue
 		}
 
 		confidence := 85.0 // IBAN with valid checksum is high confidence
 
-		// Context adjustment
-		contextImpact := v.AnalyzeContext(candidate, contextInfo)
+		// Context adjustment (per-line invariant: keyword presence over the line)
+		contextImpact := lc.keywordImpact
 		confidence += contextImpact
 
 		confidence = clampConfidence(confidence)
@@ -229,13 +263,16 @@ func (v *Validator) scanIBAN(line string, lineNum int, originalPath string) []de
 }
 
 // scanSWIFT detects and validates SWIFT/BIC codes.
-func (v *Validator) scanSWIFT(line string, lineNum int, originalPath string) []detector.Match {
+func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
 	var matches []detector.Match
 
 	upperLine := strings.ToUpper(line)
 	idxMatches := reSWIFT.FindAllStringIndex(upperLine, -1)
 
-	for _, loc := range idxMatches {
+	for i, loc := range idxMatches {
+		if execguard.LineLoopCancelled(ctx, i) {
+			return matches
+		}
 		candidate := upperLine[loc[0]:loc[1]]
 
 		// The original text must be uppercase -- real SWIFT codes are always uppercase.
@@ -251,7 +288,7 @@ func (v *Validator) scanSWIFT(line string, lineNum int, originalPath string) []d
 
 		// SWIFT codes without banking context are often false positives (random 8-char strings)
 		contextInfo := v.buildContextInfo(line, loc[0], loc[1]-loc[0])
-		hasBankingContext := v.hasBankingKeywords(line)
+		hasBankingContext := lc.bankingKeyword
 
 		// All-letter candidates (no digits) are very likely English words unless
 		// banking context is present. Real all-alpha SWIFT codes like DEUTDEFF
@@ -260,7 +297,7 @@ func (v *Validator) scanSWIFT(line string, lineNum int, originalPath string) []d
 			continue
 		}
 
-		if v.hasStrongNegativeContext(line) {
+		if lc.strongNegative {
 			continue
 		}
 
@@ -269,7 +306,7 @@ func (v *Validator) scanSWIFT(line string, lineNum int, originalPath string) []d
 			confidence = 75.0
 		}
 
-		contextImpact := v.AnalyzeContext(candidate, contextInfo)
+		contextImpact := lc.keywordImpact
 		confidence += contextImpact
 
 		// SWIFT needs banking context to reach meaningful confidence
@@ -327,12 +364,15 @@ func isCommonWord(s string) bool {
 }
 
 // scanABA detects and validates US ABA routing numbers.
-func (v *Validator) scanABA(line string, lineNum int, originalPath string) []detector.Match {
+func (v *Validator) scanABA(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
 	var matches []detector.Match
 
 	idxMatches := reABA.FindAllStringIndex(line, -1)
 
-	for _, loc := range idxMatches {
+	for i, loc := range idxMatches {
+		if execguard.LineLoopCancelled(ctx, i) {
+			return matches
+		}
 		candidate := line[loc[0]:loc[1]]
 
 		// Must be exactly 9 digits
@@ -351,20 +391,20 @@ func (v *Validator) scanABA(line string, lineNum int, originalPath string) []det
 		}
 
 		contextInfo := v.buildContextInfo(line, loc[0], 9)
-		if v.hasStrongNegativeContext(line) {
+		if lc.strongNegative {
 			continue
 		}
 
 		// ABA routing numbers are only 9 digits -- lots of 9-digit numbers exist.
 		// Without banking context, confidence is low.
-		hasBankingContext := v.hasBankingKeywords(line)
+		hasBankingContext := lc.bankingKeyword
 
 		confidence := 40.0 // Conservative base for bare 9-digit number
 		if hasBankingContext {
 			confidence = 70.0
 		}
 
-		contextImpact := v.AnalyzeContext(candidate, contextInfo)
+		contextImpact := lc.keywordImpact
 		confidence += contextImpact
 
 		// Without any banking keywords, bare 9-digit numbers should not surface.
@@ -397,17 +437,20 @@ func (v *Validator) scanABA(line string, lineNum int, originalPath string) []det
 
 // scanUSAccount detects US bank account numbers (8-17 digits) only when banking
 // keywords are present nearby.
-func (v *Validator) scanUSAccount(line string, lineNum int, originalPath string) []detector.Match {
+func (v *Validator) scanUSAccount(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
 	var matches []detector.Match
 
 	// US account numbers are just digit sequences -- require banking context.
-	if !v.hasBankingKeywords(line) {
+	if !lc.bankingKeyword {
 		return nil
 	}
 
 	idxMatches := reUSAccount.FindAllStringIndex(line, -1)
 
-	for _, loc := range idxMatches {
+	for i, loc := range idxMatches {
+		if execguard.LineLoopCancelled(ctx, i) {
+			return matches
+		}
 		candidate := line[loc[0]:loc[1]]
 		length := len(candidate)
 
@@ -439,19 +482,20 @@ func (v *Validator) scanUSAccount(line string, lineNum int, originalPath string)
 		}
 
 		contextInfo := v.buildContextInfo(line, loc[0], length)
-		if v.hasStrongNegativeContext(line) {
+		if lc.strongNegative {
 			continue
 		}
 
 		confidence := 55.0 // Moderate base (requires banking context to even enter here)
 
-		contextImpact := v.AnalyzeContext(candidate, contextInfo)
+		contextImpact := lc.keywordImpact
 		confidence += contextImpact
 
-		// Account numbers very close to "account" keyword get a boost
-		lowerLine := strings.ToLower(line)
-		if v.keywordNearMatch(lowerLine, loc[0], "account") ||
-			v.keywordNearMatch(lowerLine, loc[0], "acct") {
+		// Account numbers very close to "account" keyword get a boost. Uses the
+		// per-line lowercased copy (lc.lower) so we don't re-lower the whole line
+		// per match; keywordNearMatch only inspects a ±30-char window by offset.
+		if v.keywordNearMatch(lc.lower, loc[0], "account") ||
+			v.keywordNearMatch(lc.lower, loc[0], "acct") {
 			confidence += 15
 		}
 
