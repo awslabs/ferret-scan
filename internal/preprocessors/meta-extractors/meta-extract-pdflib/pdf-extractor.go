@@ -50,10 +50,14 @@ func ExtractMetadata(filePath string) (*Metadata, error) {
 		Properties: make(map[string]string),
 	}
 
-	// Check file size and warn about potential memory issues
+	// Enforce (not just warn on) a file-size ceiling before the unbounded
+	// os.ReadFile below, mirroring the office extractor's validateFileSize. The
+	// previous code only printed a warning and then read the whole file anyway,
+	// so a large attacker-supplied PDF could OOM-kill the process (Glasswing
+	// MEDIUM). Reject oversized files instead.
 	const maxSafeFileSize = 100 * 1024 * 1024 // 100MB
 	if fileInfo.Size() > maxSafeFileSize {
-		fmt.Fprintf(os.Stderr, "Warning: Large PDF file (%d MB), metadata extraction may use significant memory\n", fileInfo.Size()/(1024*1024))
+		return metadata, fmt.Errorf("PDF file too large: %d bytes (max: %d)", fileInfo.Size(), maxSafeFileSize)
 	}
 
 	// Read the PDF file - for very large files, consider streaming in future

@@ -255,9 +255,16 @@ func (e *Engine) Redact(ctx context.Context, req Request) (*Result, error) {
 	// unredacted (the redactor is fed only the unsuppressed ones).
 	unsuppressed, suppressed := applySuppressions(matches, req.AllowSuppressions, label)
 
-	// Run redaction. Map our public Strategy onto the internal enum.
+	// Run redaction. Map our public Strategy onto the internal enum. The call is
+	// wrapped in a panic recover so a defect in any single redactor (e.g. a bad
+	// slice/Repeat bound on a malformed match) is converted into a returned error
+	// rather than crashing the embedding process — this is a library API that
+	// runs inside long-lived callers (gateways, Lambdas), so a panic must never
+	// escape. Redaction is all-or-nothing: on panic we return an error and no
+	// partially-redacted text, so a caller never mistakes unredacted output for
+	// redacted output.
 	internalStrategy := mapStrategy(strategy)
-	redacted, _, err := e.redactor.RedactString(text, unsuppressed, internalStrategy)
+	redacted, err := redactStringSafely(e.redactor, text, unsuppressed, internalStrategy)
 	if err != nil {
 		return nil, fmt.Errorf("redact: redaction failed: %w", err)
 	}
@@ -389,4 +396,21 @@ func applySuppressions(matches []detector.Match, rules []Rule, label string) (
 		}
 	}
 	return unsuppressed, suppressed
+}
+
+// redactStringSafely calls the redactor and converts any panic into an error.
+// Redaction runs inside long-lived library callers (gateways, Lambdas), so a
+// defect in a single redactor must never crash the host process. On panic it
+// returns an error and the empty string — callers already treat a non-nil error
+// as "redaction failed" and never emit the text, so unredacted content can never
+// be mistaken for redacted output.
+func redactStringSafely(r *plaintextredactor.PlainTextRedactor, text string, matches []detector.Match, strategy redactors.RedactionStrategy) (redacted string, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			redacted = ""
+			err = fmt.Errorf("redactor panicked: %v", rec)
+		}
+	}()
+	redacted, _, err = r.RedactString(text, matches, strategy)
+	return redacted, err
 }

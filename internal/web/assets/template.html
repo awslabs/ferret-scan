@@ -2127,7 +2127,7 @@
                         <div class="finding-text" style="max-width: 350px; word-break: break-word; overflow-wrap: break-word; white-space: normal;">${showMatch ? escapeHtml(extractMetadataValue(result.text, validator)) : `<span class="redacted-link" onclick="toggleRedactedText(this, ${index})" title="Click to reveal">🔒 [HIDDEN]</span>`}</div>
                         ${verbose && result.metadata ? formatMetadata(result.metadata) : ''}
                     </td>
-                    <td title="${escapeHtml(result.filename)}">${escapeHtml(formatPathForDisplay(result.filename))}</td>
+                    <td title="${escapeAttr(result.filename)}">${escapeHtml(formatPathForDisplay(result.filename))}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -3055,9 +3055,9 @@
                         <td><input type="checkbox" class="new-finding-checkbox" value="${item.hash}" onchange="updateNewFindingsBulkActions()"></td>
                         <td style="font-family: monospace; font-size: 12px;">NEW</td>
                         <td><span style="background: #fff4e6; color: #ff9900; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">NEW FINDING</span></td>
-                        <td title="${escapeHtml(finding.filename)}">${escapeHtml(formatPathForDisplay(finding.filename))}</td>
+                        <td title="${escapeAttr(finding.filename)}">${escapeHtml(formatPathForDisplay(finding.filename))}</td>
                         <td>${finding.type}</td>
-                        <td><div class="finding-text" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(finding.actualText || finding.text)}">${escapeHtml((finding.actualText || finding.text).substring(0, 50))}${(finding.actualText || finding.text).length > 50 ? '...' : ''}</div></td>
+                        <td><div class="finding-text" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeAttr(finding.actualText || finding.text)}">${escapeHtml((finding.actualText || finding.text).substring(0, 50))}${(finding.actualText || finding.text).length > 50 ? '...' : ''}</div></td>
                         <td>${Math.round(finding.confidence)}%</td>
                         <td>${finding.line_number}</td>
                         <td>
@@ -3067,7 +3067,13 @@
                 } else {
                     // Existing suppression rule
                     const rule = item;
-                    const ruleId = rule.ID || rule.id;
+                    // Escape the rule ID before it enters innerHTML — it lands in
+                    // text, in value="..." and inside onclick='...(\'${ruleId}\')'
+                    // strings below. escapeAttr (escapes < > & " ') is decoded by
+                    // the HTML attribute parser before the JS string sees it, so a
+                    // quote/backslash can't break out of the onclick string. Guards
+                    // stored XSS (HIGH-3) from a malicious suppression rule ID.
+                    const ruleId = escapeAttr(rule.ID || rule.id);
                     const isEnabled = rule.Enabled !== undefined ? rule.Enabled : rule.enabled;
 
                     // Check if rule is expired
@@ -3090,8 +3096,14 @@
                             '<span style="background: #ffeaea; color: #d13212; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">DISABLED</span>';
 
                     const metadata = rule.Metadata || rule.metadata || {};
-                    const filename = metadata.filename || 'Unknown';
-                    const fileType = metadata.finding_type || metadata.file_type || 'Unknown';
+                    // Escape all rule-sourced values before they enter innerHTML.
+                    // These come from a YAML suppression file that a contributor
+                    // or POST /suppressions/create can control, so an unescaped
+                    // value here is stored XSS (HIGH-3). escapeAttr is safe in
+                    // both HTML text and quoted-attribute/onclick-string contexts
+                    // (it escapes < > & " '), which all three of these hit below.
+                    const filename = escapeAttr(metadata.filename || 'Unknown');
+                    const fileType = escapeAttr(metadata.finding_type || metadata.file_type || 'Unknown');
                     const lineNumber = metadata.line_number || 'Unknown';
                     const confidence = metadata.confidence ? Math.round(parseFloat(metadata.confidence)) : 'Unknown';
 
@@ -3101,12 +3113,12 @@
                         <td>${statusBadge}</td>
                         <td>${filename}</td>
                         <td>${fileType}</td>
-                        <td><div class="finding-text" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(metadata.finding_text || 'N/A')}">${escapeHtml((metadata.finding_text || 'N/A').substring(0, 50))}${(metadata.finding_text || 'N/A').length > 50 ? '...' : ''}</div></td>
+                        <td><div class="finding-text" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeAttr(metadata.finding_text || 'N/A')}">${escapeHtml((metadata.finding_text || 'N/A').substring(0, 50))}${(metadata.finding_text || 'N/A').length > 50 ? '...' : ''}</div></td>
                         <td>${confidence}%</td>
                         <td>${lineNumber}</td>
                         <td>
                             <label class="toggle-switch" style="margin-right: 8px;">
-                                <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleSuppressionStatus('${ruleId}', '${rule.Hash || rule.hash}', this.checked)">
+                                <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleSuppressionStatus('${ruleId}', '${escapeAttr(rule.Hash || rule.hash)}', this.checked)">
                                 <span class="toggle-slider"></span>
                             </label>
                             <button onclick="showEditSuppressionModal('${ruleId}')" class="icon-button edit" style="margin-right: 4px;">✏️<span class="tooltip">Edit</span></button>
@@ -3314,8 +3326,8 @@
 
             content.innerHTML = `
                 <div style="display: grid; grid-template-columns: 150px 1fr; gap: 8px; margin-bottom: 16px;">
-                    <strong>ID:</strong> <span style="font-family: monospace;">${rule.ID || rule.id}</span>
-                    <strong>Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${rule.Hash || rule.hash}</span>
+                    <strong>ID:</strong> <span style="font-family: monospace;">${escapeHtml(rule.ID || rule.id)}</span>
+                    <strong>Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${escapeHtml(rule.Hash || rule.hash)}</span>
                     <strong>Status:</strong> <span style="color: ${(rule.Enabled !== undefined ? rule.Enabled : rule.enabled) ? '#037f0c' : '#d13212'}; font-weight: 600;">${(rule.Enabled !== undefined ? rule.Enabled : rule.enabled) ? 'ENABLED' : 'DISABLED'}</span>
                     <strong>Reason:</strong> <span>${escapeHtml(rule.Reason || rule.reason)}</span>
                     <strong>Created By:</strong> <span>${escapeHtml(rule.CreatedBy || rule.created_by || 'Unknown')}</span>
@@ -3327,7 +3339,7 @@
                     <div style="margin-top: 16px;">
                         <strong>Metadata:</strong>
                         <div style="background: #f2f3f3; padding: 12px; border-radius: 4px; margin-top: 8px; font-family: monospace; font-size: 12px;">
-                            ${Object.entries(rule.Metadata || rule.metadata || {}).map(([key, value]) => `<div><strong>${key}:</strong> ${escapeHtml(String(value))}</div>`).join('')}
+                            ${Object.entries(rule.Metadata || rule.metadata || {}).map(([key, value]) => `<div><strong>${escapeHtml(String(key))}:</strong> ${escapeHtml(String(value))}</div>`).join('')}
                         </div>
                     </div>
                 ` : ''}
@@ -4248,7 +4260,7 @@
                 html += `<tr>
                     <td style="white-space: nowrap;">${actualFinding.Type || actualFinding.type}</td>
                     <td style="white-space: nowrap;"><span class="confidence-badge confidence-${confidenceLevel}">${confidenceLevel.toUpperCase()}</span> (${Math.round(confidence)}%)</td>
-                    <td style="white-space: nowrap;" title="${escapeHtml(actualFinding.Filename || actualFinding.filename)}">${escapeHtml(formatPathForDisplay(actualFinding.Filename || actualFinding.filename))}</td>
+                    <td style="white-space: nowrap;" title="${escapeAttr(actualFinding.Filename || actualFinding.filename)}">${escapeHtml(formatPathForDisplay(actualFinding.Filename || actualFinding.filename))}</td>
                     <td style="white-space: nowrap; text-align: center;">${finding.line_number || 'N/A'}</td>
                     <td><div class="finding-text">${document.getElementById('showMatchCheck').checked ? `<span style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal;">${escapeHtml(actualFinding.Text || actualFinding.text)}</span>` : `<span class="redacted-link" data-text="${(actualFinding.Text || actualFinding.text).replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" onclick="toggleSuppressedTextFromData(this)" title="Click to reveal">🔒 [HIDDEN]</span>`}</div></td>
                     <td style="font-family: monospace; font-size: 12px; white-space: nowrap;">${suppressed.suppressed_by}</td>
