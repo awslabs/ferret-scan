@@ -9,7 +9,7 @@ defaults:
   format: text # Output format: text, json, csv, yaml, junit, gitlab-sast, sarif
   confidence_levels: all # Confidence levels to display: high, medium, low, or combinations
   checks:
-    all # Specific checks to run: CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
+    all # Specific checks to run: BANK_ACCOUNT, CLOUD_RESOURCES, CREDIT_CARD, DATE_OF_BIRTH, DRIVERS_LICENSE, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, MEDICAL_ID, METADATA, OTP, PASSPORT, PERSON_NAME, PHONE, PHYSICAL_ADDRESS, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
     # GENAI_DISABLED: COMPREHEND_PII also available with --enable-genai
   verbose: false # Display detailed information for each finding
   debug: false # Enable debug logging to show preprocessing and validation flow

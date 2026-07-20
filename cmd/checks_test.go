@@ -20,7 +20,7 @@ import (
 // checkNameLiteral is the exact, historically-shipped sorted name list with the
 // ", " separator used by the --checks flag help and the "Available checks:"
 // error message in cmd/main.go.
-const checkNameLiteral = "CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN"
+const checkNameLiteral = "BANK_ACCOUNT, CLOUD_RESOURCES, CREDIT_CARD, DATE_OF_BIRTH, DRIVERS_LICENSE, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, MEDICAL_ID, METADATA, OTP, PASSPORT, PERSON_NAME, PHONE, PHYSICAL_ADDRESS, SECRETS, SOCIAL_MEDIA, SSN, VIN"
 
 func TestCheckNamesJoinMatchesHistoricalLiteral(t *testing.T) {
 	got := strings.Join(core.CheckNames(), ", ")

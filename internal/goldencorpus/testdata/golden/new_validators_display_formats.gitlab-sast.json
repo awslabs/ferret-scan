@@ -1,0 +1,264 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (iban) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 2)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\npay to IBAN DE89 3704 0044 0532 0130 00 per invoice\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "IBAN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "bank_account"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 2
+      },
+      "message": "Sensitive data (iban) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Iban Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (date of birth) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 4)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\npatient dob 3/14/87 and sibling born March 14th, 1987\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DATE_OF_BIRTH"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "dob"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 4
+      },
+      "message": "Sensitive data (date of birth) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Date Of Birth Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (date of birth) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 4)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\npatient dob 3/14/87 and sibling born March 14th, 1987\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DATE_OF_BIRTH"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "dob"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 4
+      },
+      "message": "Sensitive data (date of birth) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Date Of Birth Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (date of birth) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 5)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\nadmission date of birth 03.14.1987 on form\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DATE_OF_BIRTH"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "dob"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 5
+      },
+      "message": "Sensitive data (date of birth) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Date Of Birth Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected sensitive data (drivers license) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 3)\n**Confidence:** MEDIUM (70.0%)\n**Detected by:** driverslicense validator\n\n**Context:**\n```\ndriver's license D123-4567-8901 verified\n```\n\n**Additional Information:**\n- context_impact: 65\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DRIVERS_LICENSE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "driverslicense"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 3
+      },
+      "message": "Sensitive data (drivers license) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Drivers License Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (medicare mbi) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmedicare beneficiary 1EG4-TE5-MK73 on card\n```\n\n**Additional Information:**\n- context_impact: 20\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "MEDICARE_MBI"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 1
+      },
+      "message": "Sensitive data (medicare mbi) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Medicare Mbi Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (us street address) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 6)\n**Confidence:** HIGH (95.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nship to 123 42nd Street, New York, NY 10036\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_STREET_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 6
+      },
+      "message": "Sensitive data (us street address) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Us Street Address Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (us street address) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 7)\n**Confidence:** HIGH (90.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nmailing address 1234 US Highway 61\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_STREET_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 7
+      },
+      "message": "Sensitive data (us street address) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Us Street Address Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (us street address) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 8)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\ndeliver to 742 evergreen terrace, springfield, il 62704\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_STREET_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 8,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 8
+      },
+      "message": "Sensitive data (us street address) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Us Street Address Detected",
+      "severity": "High"
+    }
+  ]
+}

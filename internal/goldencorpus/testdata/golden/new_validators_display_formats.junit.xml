@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:new_validators_display_formats&gt;" classname="security-scan" time="0.001">
+      <failure message="9 security findings detected" type="SECURITY_FINDINGS">Line 1: MEDICARE_MBI detected with 95.0% confidence (HIGH)&#xA;Match: 1EG4-TE5-MK73&#xA;Validator: medicalid&#xA;Line 6: US_STREET_ADDRESS detected with 95.0% confidence (HIGH)&#xA;Match: 123 42nd Street&#xA;Validator: physical_address&#xA;Line 5: DATE_OF_BIRTH detected with 90.0% confidence (HIGH)&#xA;Match: 03.14.1987&#xA;Validator: dob&#xA;Line 4: DATE_OF_BIRTH detected with 90.0% confidence (HIGH)&#xA;Match: 3/14/87&#xA;Validator: dob&#xA;Line 4: DATE_OF_BIRTH detected with 90.0% confidence (HIGH)&#xA;Match: March 14th, 1987&#xA;Validator: dob&#xA;Line 7: US_STREET_ADDRESS detected with 90.0% confidence (HIGH)&#xA;Match: 1234 US Highway 61&#xA;Validator: physical_address&#xA;Line 8: US_STREET_ADDRESS detected with 85.0% confidence (MEDIUM)&#xA;Match: 742 evergreen terrace&#xA;Validator: physical_address&#xA;Line 2: IBAN detected with 80.0% confidence (MEDIUM)&#xA;Match: DE89 3704 0044 0532 0130 00&#xA;Validator: bank_account&#xA;Line 3: DRIVERS_LICENSE detected with 70.0% confidence (MEDIUM)&#xA;Match: D123-4567-8901&#xA;Validator: driverslicense</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

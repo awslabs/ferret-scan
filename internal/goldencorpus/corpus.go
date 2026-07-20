@@ -147,6 +147,42 @@ var Cases = []Case{
 		Input: "prod arn:aws:iam::123456789012:role/PaymentsAdmin\n" +
 			"example arn:aws:iam::123456789012:role/PaymentsAdmin\n",
 	},
+	{
+		Name: "new_validators_display_formats",
+		Description: "Card/print display formats for the new validators: dashed MBI (as printed " +
+			"on Medicare cards), space-grouped IBAN (invoice format), dashed DL, dotted and " +
+			"2-digit-year DOB, ordinal street name, highway with route number, lowercase address " +
+			"with keyword context. Locks the separator-normalization and format-coverage behavior " +
+			"added after the recall-gap audit.",
+		Checks: []string{"MEDICAL_ID", "BANK_ACCOUNT", "DRIVERS_LICENSE", "DATE_OF_BIRTH", "PHYSICAL_ADDRESS"},
+		Input: "medicare beneficiary 1EG4-TE5-MK73 on card\n" +
+			"pay to IBAN DE89 3704 0044 0532 0130 00 per invoice\n" +
+			"driver's license D123-4567-8901 verified\n" +
+			"patient dob 3/14/87 and sibling born March 14th, 1987\n" +
+			"admission date of birth 03.14.1987 on form\n" +
+			"ship to 123 42nd Street, New York, NY 10036\n" +
+			"mailing address 1234 US Highway 61\n" +
+			"deliver to 742 evergreen terrace, springfield, il 62704\n",
+	},
+	{
+		Name: "new_validators_decoys",
+		Description: "Shape-valid values in PII-contradicting context for the new validators' " +
+			"broadest patterns: SSN-shaped and date-shaped tokens near DL keywords, a version " +
+			"string near DOB keywords, test-context IBAN/routing numbers, an MBI shape without " +
+			"medicare context, and prose that embeds lowercase suffix words. Locks the " +
+			"suppression behavior (shape guards, denylists, keyword gates) that keeps the " +
+			"normalization passes from widening the false-positive surface.",
+		Checks: []string{"MEDICAL_ID", "BANK_ACCOUNT", "DRIVERS_LICENSE", "DATE_OF_BIRTH", "PHYSICAL_ADDRESS"},
+		Input: "license check ssn 123-45-6789 cross-reference\n" +
+			"license issued 12-31-1987 expires 12-31-2031\n" +
+			"zip on license record 12345-6789\n" +
+			"upgrade dob service to version 2.14.87 build\n" +
+			"test iban DE89 3704 0044 0532 0130 00 example fixture\n" +
+			"routing 021000021 test transfer\n" +
+			"shape only 1EG4-TE5-MK73 without context\n" +
+			"5 people way too many for the room\n" +
+			"3 items in way of progress\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

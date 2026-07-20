@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                       FILE
+-----------------------------------------------------------------------------------------------------
+[MEDIUM] bank_account IBAN                   60.00% line     5 DE89 3704 0044 0532 0130 00 <golden:new_validators_decoys>
+[LOW   ] medicalid    MEDICARE_MBI           40.00% line     7 1EG4-TE5-MK73               <golden:new_validators_decoys>

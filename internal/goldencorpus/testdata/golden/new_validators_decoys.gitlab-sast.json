@@ -1,0 +1,82 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected sensitive data (iban) in this file.\n\n**Location:** <golden:new_validators_decoys> (line 5)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\ntest iban DE89 3704 0044 0532 0130 00 example fixture\n```\n\n**Additional Information:**\n- context_impact: -25\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "IBAN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "bank_account"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:new_validators_decoys>",
+        "start_line": 5
+      },
+      "message": "Sensitive data (iban) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Iban Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (medicare mbi) in this file.\n\n**Location:** <golden:new_validators_decoys> (line 7)\n**Confidence:** LOW (40.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nshape only 1EG4-TE5-MK73 without context\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "MEDICARE_MBI"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "<golden:new_validators_decoys>",
+        "start_line": 7
+      },
+      "message": "Sensitive data (medicare mbi) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Medicare Mbi Detected",
+      "severity": "Medium"
+    }
+  ]
+}

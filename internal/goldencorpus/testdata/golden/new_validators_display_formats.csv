@@ -1,0 +1,10 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:new_validators_display_formats>,IBAN,MEDIUM,80.0,2,DE89 3704 0044 0532 0130 00
+<golden:new_validators_display_formats>,DATE_OF_BIRTH,HIGH,90.0,4,3/14/87
+<golden:new_validators_display_formats>,DATE_OF_BIRTH,HIGH,90.0,4,"March 14th, 1987"
+<golden:new_validators_display_formats>,DATE_OF_BIRTH,HIGH,90.0,5,03.14.1987
+<golden:new_validators_display_formats>,DRIVERS_LICENSE,MEDIUM,70.0,3,D123-4567-8901
+<golden:new_validators_display_formats>,MEDICARE_MBI,HIGH,95.0,1,1EG4-TE5-MK73
+<golden:new_validators_display_formats>,US_STREET_ADDRESS,HIGH,95.0,6,123 42nd Street
+<golden:new_validators_display_formats>,US_STREET_ADDRESS,HIGH,90.0,7,1234 US Highway 61
+<golden:new_validators_display_formats>,US_STREET_ADDRESS,MEDIUM,85.0,8,742 evergreen terrace
