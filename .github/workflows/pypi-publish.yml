@@ -282,7 +282,7 @@ jobs:
 
       - name: Publish to Test PyPI
         if: github.event.inputs.action == 'publish-testpypi'
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1 (2026-04-07)
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1 (2026-04-07)
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: python-package/dist/
@@ -321,7 +321,7 @@ jobs:
 
       - name: Publish to PyPI
         if: steps.should_publish.outputs.should_publish == 'true'
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1 (2026-04-07)
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1 (2026-04-07)
         with:
           packages-dir: python-package/dist/
           verbose: true
