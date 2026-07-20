@@ -1,10 +1,25 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package redact is the public, stable API for embedding ferret-scan as
-// an in-process library — Lambda handlers, sidecars, gRPC servers, batch
-// jobs, and any other Go code that wants to scan and redact text without
-// shelling out to the CLI.
+// Package redact is the public API for combined detect-and-redact in one call.
+// It is built for callers (Lambda handlers, sidecars, gRPC servers, batch jobs)
+// that want to scan and redact text in a single step with a pre-warmed, reusable
+// Engine — no subprocess, no filesystem, no payload leakage.
+//
+// For detection-only (without redaction), or for file-based scanning/redaction,
+// use the sibling package pkg/scan which separates the two concerns:
+//
+//   - scan.ScanText — detect sensitive data in a string (no disk)
+//   - scan.ScanFile — detect in a file (PDF/DOCX/images/text — 90+ types)
+//   - scan.RedactText — mask findings in a string given pre-computed findings
+//   - scan.RedactFile — write a redacted copy of the same file type
+//   - scan.CanProcessFile — check if a file type is supported
+//   - scan.CheckNames — list canonical validator IDs
+//
+// This package (pkg/redact) combines detection + in-memory text redaction for
+// the common one-call use case, with a pre-built validator graph for warm-path
+// performance. Use it when you need both detection and redaction and want the
+// fastest per-request latency on repeated calls.
 //
 // # Design goals
 //

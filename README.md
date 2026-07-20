@@ -4,7 +4,7 @@
   <img src="docs/images/ferret-scan-logo-original.png" alt="ferret-scan" width="240" />
 </p>
 
-**Find and redact sensitive data before it leaks.** A single-binary Go CLI (plus embedded web UI and Go library) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
+**Find and redact sensitive data before it leaks.** A single-binary Go CLI (plus embedded web UI and Go library — `pkg/scan` for detection, `pkg/redact` for redaction) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -50,7 +50,7 @@ Sensitive values are masked while the shape of the data survives — so downstre
 - **Confidence you can act on.** Scoring is context-aware, not just regex. A credit card in a financial document scores higher than the same digits in a test fixture, because the engine re-weights on document type and surrounding domain. Findings land in three bands: **HIGH (90–100)**, **MEDIUM (60–89)**, **LOW (0–59)**.
 - **Redaction that composes.** The stdin gateway streams redacted bytes to stdout and findings to stderr, so it drops into any Unix pipe or CI step. Three strategies: `simple`, `format_preserving` (default), and `synthetic` (realistic fakes for building test datasets).
 - **Explainable, offline.** `--explain` attaches a plain-language rationale, a verdict (`likely_real` / `likely_test` / `uncertain`), and a drafted suppression reason to every finding. Fully deterministic — no network, no LLM.
-- **Ships everywhere.** One static binary, no runtime deps, a `scratch`-based Docker image (~5–10 MB), a `pip` package, a pre-commit hook, and a stable Go library.
+- **Ships everywhere.** One static binary, no runtime deps, a `scratch`-based Docker image (~5–10 MB), a `pip` package, a Homebrew tap, a pre-commit hook, and a stable Go library (`pkg/scan` + `pkg/redact`).
 - **Safe by design.** Matched values are hidden unless you pass `--show-match`. In-memory redaction produces payload-free audit records. The web UI binds to `127.0.0.1` with CSRF and CSP protections.
 
 ---
@@ -92,7 +92,7 @@ Thirteen validators, each purpose-built. Enable a subset with `--checks CREDIT_C
 | `CLOUD_RESOURCES` | Cloud resource identifiers | AWS ARNs, Azure IDs, GCP, OCI, IBM CRN, Alibaba |
 | `INTELLECTUAL_PROPERTY` | IP / confidentiality markers | Patents, trademarks, copyrights, trade secrets |
 | `SOCIAL_MEDIA` | Social media handles / profiles | Requires configuration to activate |
-| `METADATA` | EXIF / document metadata | File-path only (needs filesystem); not available via the in-memory library API |
+| `METADATA` | EXIF / document metadata | File-path only (needs filesystem); available via CLI and `pkg/scan.ScanFile`, not via `ScanText`/`pkg/redact` (in-memory) |
 
 ---
 
@@ -185,51 +185,77 @@ It binds to `127.0.0.1` by default (auto-detecting `0.0.0.0` only inside contain
 
 ---
 
-## Embed it: the `pkg/redact` library
+## Embed it: the Go library
 
-`pkg/redact` is the stable, public Go API for in-process, in-memory redaction — no subprocess, no filesystem, no payload leakage. An `Engine` is built once and reused; it is safe for concurrent use.
+Two public packages let you embed ferret-scan in your Go application — no subprocess, no CLI, no payload leakage:
+
+| Package | Purpose | Input |
+|---|---|---|
+| **`pkg/scan`** | **Detection** — find sensitive data | Text strings or file paths |
+| **`pkg/redact`** | **Redaction** — mask/replace findings | Text strings (Engine-based, one-call detect+redact) |
+
+Detection and redaction are **separate concerns** — use one or both:
+
+### Detect only (`pkg/scan`)
 
 ```go
-package main
+import "github.com/awslabs/ferret-scan/v2/pkg/scan"
 
-import (
-	"context"
-	"log"
-
-	"github.com/awslabs/ferret-scan/v2/pkg/redact"
-)
-
-func main() {
-	engine, err := redact.NewEngine(redact.EngineOptions{
-		Checks:   []string{"CREDIT_CARD", "EMAIL"},
-		Strategy: redact.FormatPreserving,
-		// LogWriter defaults to io.Discard — no payload can reach your logs.
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer engine.Close()
-
-	result, err := engine.Redact(context.Background(), redact.Request{
-		Text:  "card 5500-0000-0000-0004 from jordan@example.com",
-		Label: "req-abc-123",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println(result.Redacted)              // redacted text
-	log.Printf("%+v", result.AuditRecord())   // payload-free audit summary
+// In-memory text detection (no disk, no temp files)
+result, _ := scan.ScanText(ctx, "card 5500-0000-0000-0004", scan.TextOptions{
+    Checks:  []string{"CREDIT_CARD", "SSN"},
+    Explain: true,  // attach "why flagged" rationale
+})
+for _, f := range result.Findings {
+    fmt.Printf("%s (line %d, %s, %s)\n", f.Type, f.LineNumber, f.Band(), f.Rationale)
 }
+
+// File-based detection (PDF, DOCX, XLSX, images, text — 90+ types)
+result, _ = scan.ScanFile(ctx, "report.docx", scan.FileOptions{})
+
+// Check if a file type is supported before scanning
+ok, reason := scan.CanProcessFile("archive.zip")  // false, "Unsupported file type"
+
+// Redact text in-place using pre-computed findings (no re-detection)
+redacted, _ := scan.RedactText(text, result.Findings, scan.StrategyFormatPreserving)
+
+// Redact a file (writes a redacted copy of the same type: .docx→.docx, .pdf→.pdf)
+fileResult, _ := scan.RedactFile("report.docx", scan.RedactFileOptions{
+    OutputDir: "/tmp/redacted",
+    Strategy:  scan.StrategyFormatPreserving,
+})
 ```
 
-`Result.AuditRecord()` returns a payload-free record — per-type finding counts (`FindingsByType`), byte counts, duration, and timestamp — and **never** the matched bytes. `LogWriter` defaults to `io.Discard`, so the no-leak property is enforced by construction rather than by convention. Matched substrings are only reachable if you explicitly opt in via `Result.FindingsWithMatchText()`. Input is capped at 100 MB.
+`pkg/scan` exposes: `ScanText`, `ScanFile`, `RedactText`, `RedactFile`, `CanProcessFile`, `CheckNames`, `ConfidenceOf`, `ParseStrategy`. All delegate to the internal engine with zero duplication.
 
-> The `METADATA` validator requires filesystem access and is not available on the in-memory library path (passing it is a no-op). Use the CLI file path for EXIF/document metadata.
+> The `METADATA` validator requires filesystem access — available via `ScanFile` but not `ScanText`.
+
+### Detect + redact in one call (`pkg/redact`)
+
+`pkg/redact` is the higher-level API when you want **both detection and redaction in one step** with a reusable, pre-warmed engine. An `Engine` is built once and reused; it is safe for concurrent use.
+
+```go
+import "github.com/awslabs/ferret-scan/v2/pkg/redact"
+
+engine, _ := redact.NewEngine(redact.EngineOptions{
+    Checks:   []string{"CREDIT_CARD", "EMAIL"},
+    Strategy: redact.FormatPreserving,
+})
+defer engine.Close()
+
+result, _ := engine.Redact(ctx, redact.Request{
+    Text:  "card 5500-0000-0000-0004 from jordan@example.com",
+    Label: "req-abc-123",
+})
+log.Println(result.Redacted)              // ****-****-****-0004 from j*****@example.com
+log.Printf("%+v", result.AuditRecord())   // payload-free audit summary
+```
+
+`Result.AuditRecord()` returns a payload-free record — per-type finding counts, byte counts, duration — and **never** the matched bytes. `LogWriter` defaults to `io.Discard`, so the no-leak property is enforced by construction. Matched substrings are only reachable via explicit opt-in (`Result.FindingsWithMatchText()`). Input is capped at 100 MB.
 
 ### Build a PII redaction gateway
 
-Because `pkg/redact` runs entirely in memory — no subprocess, no filesystem, and payload-free audit records — you can build a single-tenant redaction service without ferret-scan ever writing sensitive bytes to disk or logs. A representative shape:
+Because both packages run entirely in memory — no subprocess, no filesystem, and payload-free audit records — you can build a single-tenant redaction service without ferret-scan ever writing sensitive bytes to disk or logs. A representative shape:
 
 - Embed the `Engine` in an **AWS Lambda** (`provided.al2023`, `arm64`), constructed once in `init()` and reused across invocations.
 - Front it with an **API Gateway HTTP API** using IAM (SigV4) auth.

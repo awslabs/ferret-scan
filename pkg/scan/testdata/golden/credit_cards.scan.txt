@@ -1,0 +1,3 @@
+[HIGH] AMERICAN_EXPRESS (line 3, conf 100%, likely_real) val="3782-822463-10005"
+[LOW] MASTERCARD (line 2, conf 15%, uncertain) val="5500-0000-0000-0004"
+[LOW] VISA (line 1, conf 15%, likely_test) val="4111-1111-1111-1111"
