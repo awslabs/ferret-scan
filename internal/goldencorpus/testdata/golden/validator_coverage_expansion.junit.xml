@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:validator_coverage_expansion&gt;" classname="security-scan" time="0.001">
+      <failure message="8 security findings detected" type="SECURITY_FINDINGS">Line 1: US_MILITARY_ADDRESS detected with 95.0% confidence (HIGH)&#xA;Match: PSC 1523, Box 25, APO AE 09009&#xA;Validator: physical_address&#xA;Line 3: US_STREET_ADDRESS detected with 95.0% confidence (HIGH)&#xA;Match: 123 O&#39;Brien St&#xA;Validator: physical_address&#xA;Line 2: US_RURAL_ROUTE detected with 90.0% confidence (HIGH)&#xA;Match: Rural Route 3 Box 88&#xA;Validator: physical_address&#xA;Line 4: US_STREET_ADDRESS detected with 90.0% confidence (HIGH)&#xA;Match: 456 King-Smith Rd&#xA;Validator: physical_address&#xA;Line 5: DRIVERS_LICENSE detected with 85.0% confidence (MEDIUM)&#xA;Match: D12345678901234&#xA;Validator: driverslicense&#xA;Line 7: OTP_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: jbswy3dpehpk3pxp&#xA;Validator: otp&#xA;Line 6: DRIVERS_LICENSE detected with 70.0% confidence (MEDIUM)&#xA;Match: J1234567890123&#xA;Validator: driverslicense&#xA;Line 8: US_RURAL_ROUTE detected with 40.0% confidence (LOW)&#xA;Match: RR 4&#xA;Validator: physical_address</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

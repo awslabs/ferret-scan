@@ -1,0 +1,567 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "new jersey driver license \nnew jersey driver license D12345678901234 on record\n on record"
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 42,
+                  "snippet": {
+                    "text": "new jersey driver license D12345678901234 on record"
+                  },
+                  "startColumn": 27,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "DRIVERS_LICENSE Detected in <golden:validator_coverage_expansion> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'D12345678901234'"
+          },
+          "properties": {
+            "confidence": 85,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 80,
+              "format": "NJ_1L14D",
+              "original_confidence": 85,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format_match": true,
+                "has_dl_context": false,
+                "not_all_same": true,
+                "not_all_zeros": true,
+                "not_sequential": false
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "driver",
+              "license",
+              "driver license"
+            ],
+            "validator": "driverslicense"
+          },
+          "rank": 67.5,
+          "ruleId": "DRIVERS_LICENSE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "wisconsin dl \nwisconsin dl J1234567890123 verified\n verified"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 28,
+                  "snippet": {
+                    "text": "wisconsin dl J1234567890123 verified"
+                  },
+                  "startColumn": 14,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "DRIVERS_LICENSE Detected in <golden:validator_coverage_expansion> at line 6 (confidence: 70.0% - MEDIUM). Matched text: 'J1234567890123'"
+          },
+          "properties": {
+            "confidence": 70,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 65,
+              "format": "WI_1L13D",
+              "original_confidence": 70,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format_match": true,
+                "has_dl_context": false,
+                "not_all_same": true,
+                "not_all_zeros": true,
+                "not_sequential": false
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "dl"
+            ],
+            "validator": "driverslicense"
+          },
+          "rank": 60,
+          "ruleId": "DRIVERS_LICENSE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "2fa secret: \n2fa secret: jbswy3dpehpk3pxp lowercase\n lowercase"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "2fa secret: jbswy3dpehpk3pxp lowercase"
+                  },
+                  "startColumn": 13,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "OTP_SECRET Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'jbswy3dpehpk3pxp'"
+          },
+          "properties": {
+            "confidence": 85,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 30,
+              "original_confidence": 85,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format": true,
+                "not_excluded": true,
+                "valid_chars": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "2fa",
+              "secret"
+            ],
+            "validator": "otp"
+          },
+          "rank": 67.5,
+          "ruleId": "OTP_SECRET"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "mail to \nmail to PSC 1523, Box 25, APO AE 09009 promptly\n promptly"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 39,
+                  "snippet": {
+                    "text": "mail to PSC 1523, Box 25, APO AE 09009 promptly"
+                  },
+                  "startColumn": 9,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "US_MILITARY_ADDRESS Detected in <golden:validator_coverage_expansion> at line 1 (confidence: 95.0% - HIGH). Matched text: 'PSC 1523, Box 25, APO AE 09009'"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "original_confidence": 95,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "mail to"
+            ],
+            "validator": "physical_address"
+          },
+          "rank": 72.5,
+          "ruleId": "US_MILITARY_ADDRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "mailing \nmailing Rural Route 3 Box 88, Roanoke, VA 24012\n, Roanoke, VA 24012"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "mailing Rural Route 3 Box 88, Roanoke, VA 24012"
+                  },
+                  "startColumn": 9,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "US_RURAL_ROUTE Detected in <golden:validator_coverage_expansion> at line 2 (confidence: 90.0% - HIGH). Matched text: 'Rural Route 3 Box 88'"
+          },
+          "properties": {
+            "confidence": 90,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "original_confidence": 90,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "mailing"
+            ],
+            "validator": "physical_address"
+          },
+          "rank": 70,
+          "ruleId": "US_RURAL_ROUTE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "The package weighs \nThe package weighs RR 4 lbs on the scale\n lbs on the scale"
+                  },
+                  "startLine": 8
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "The package weighs RR 4 lbs on the scale"
+                  },
+                  "startColumn": 20,
+                  "startLine": 8
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "US_RURAL_ROUTE Detected in <golden:validator_coverage_expansion> at line 8 (confidence: 40.0% - LOW). Matched text: 'RR 4'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "original_confidence": 40,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "short_form": true,
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "validator": "physical_address"
+          },
+          "rank": 45,
+          "ruleId": "US_RURAL_ROUTE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "send to \nsend to 123 O'Brien St, Boston, MA 02101\n, Boston, MA 02101"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 23,
+                  "snippet": {
+                    "text": "send to 123 O'Brien St, Boston, MA 02101"
+                  },
+                  "startColumn": 9,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "US_STREET_ADDRESS Detected in <golden:validator_coverage_expansion> at line 3 (confidence: 95.0% - HIGH). Matched text: '123 O'Brien St'"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "original_confidence": 95,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "send to"
+            ],
+            "validator": "physical_address"
+          },
+          "rank": 72.5,
+          "ruleId": "US_STREET_ADDRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:validator_coverage_expansion>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "deliver \ndeliver 456 King-Smith Rd today\n today"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 26,
+                  "snippet": {
+                    "text": "deliver 456 King-Smith Rd today"
+                  },
+                  "startColumn": 9,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "US_STREET_ADDRESS Detected in <golden:validator_coverage_expansion> at line 4 (confidence: 90.0% - HIGH). Matched text: '456 King-Smith Rd'"
+          },
+          "properties": {
+            "confidence": 90,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "original_confidence": 90,
+              "original_file": "<golden:validator_coverage_expansion>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "deliver"
+            ],
+            "validator": "physical_address"
+          },
+          "rank": 70,
+          "ruleId": "US_STREET_ADDRESS"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type DRIVERS_LICENSE was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/DRIVERS_LICENSE.md",
+              "id": "DRIVERS_LICENSE",
+              "shortDescription": {
+                "text": "DRIVERS_LICENSE Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type OTP_SECRET was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/OTP_SECRET.md",
+              "id": "OTP_SECRET",
+              "shortDescription": {
+                "text": "OTP_SECRET Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type US_MILITARY_ADDRESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/US_MILITARY_ADDRESS.md",
+              "id": "US_MILITARY_ADDRESS",
+              "shortDescription": {
+                "text": "US_MILITARY_ADDRESS Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type US_RURAL_ROUTE was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/US_RURAL_ROUTE.md",
+              "id": "US_RURAL_ROUTE",
+              "shortDescription": {
+                "text": "US_RURAL_ROUTE Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type US_STREET_ADDRESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/US_STREET_ADDRESS.md",
+              "id": "US_STREET_ADDRESS",
+              "shortDescription": {
+                "text": "US_STREET_ADDRESS Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

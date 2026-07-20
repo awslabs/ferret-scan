@@ -1,0 +1,237 @@
+{
+  "results": [
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "original_confidence": 95,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "PSC 1523, Box 25, APO AE 09009",
+      "type": "US_MILITARY_ADDRESS",
+      "validator": "physical_address"
+    },
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "original_confidence": 95,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "123 O'Brien St",
+      "type": "US_STREET_ADDRESS",
+      "validator": "physical_address"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "original_confidence": 90,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "Rural Route 3 Box 88",
+      "type": "US_RURAL_ROUTE",
+      "validator": "physical_address"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 4,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "original_confidence": 90,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "456 King-Smith Rd",
+      "type": "US_STREET_ADDRESS",
+      "validator": "physical_address"
+    },
+    {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 5,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": 80,
+        "format": "NJ_1L14D",
+        "original_confidence": 85,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "format_match": true,
+          "has_dl_context": false,
+          "not_all_same": true,
+          "not_all_zeros": true,
+          "not_sequential": false
+        },
+        "validation_path": "document"
+      },
+      "text": "D12345678901234",
+      "type": "DRIVERS_LICENSE",
+      "validator": "driverslicense"
+    },
+    {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 7,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": 30,
+        "original_confidence": 85,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "format": true,
+          "not_excluded": true,
+          "valid_chars": true
+        },
+        "validation_path": "document"
+      },
+      "text": "jbswy3dpehpk3pxp",
+      "type": "OTP_SECRET",
+      "validator": "otp"
+    },
+    {
+      "confidence": 70,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 6,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": 65,
+        "format": "WI_1L13D",
+        "original_confidence": 70,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "format_match": true,
+          "has_dl_context": false,
+          "not_all_same": true,
+          "not_all_zeros": true,
+          "not_sequential": false
+        },
+        "validation_path": "document"
+      },
+      "text": "J1234567890123",
+      "type": "DRIVERS_LICENSE",
+      "validator": "driverslicense"
+    },
+    {
+      "confidence": 40,
+      "confidence_level": "LOW",
+      "filename": "<golden:validator_coverage_expansion>",
+      "line_number": 8,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "original_confidence": 40,
+        "original_file": "<golden:validator_coverage_expansion>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "short_form": true,
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "RR 4",
+      "type": "US_RURAL_ROUTE",
+      "validator": "physical_address"
+    }
+  ]
+}

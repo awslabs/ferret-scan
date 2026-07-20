@@ -165,6 +165,27 @@ var Cases = []Case{
 			"deliver to 742 evergreen terrace, springfield, il 62704\n",
 	},
 	{
+		Name: "validator_coverage_expansion",
+		Description: "Formats added in the coverage-expansion pass: military APO/FPO (PSC/Unit + " +
+			"Box + APO/FPO/DPO + AA/AE/AP + ZIP), rural routes (full and Box-anchored short " +
+			"forms), apostrophe/hyphen street names, NJ (1L+14D) and WI (1L+13D) licenses, and " +
+			"lowercase base32 OTP secrets (keyword-gated, word-guarded). Decoy lines lock the " +
+			"guards: RR-as-abbreviation stays LOW, APO-as-word and prose apostrophes stay out, " +
+			"lowercase English prose is not a secret.",
+		Checks: []string{"PHYSICAL_ADDRESS", "DRIVERS_LICENSE", "OTP"},
+		Input: "mail to PSC 1523, Box 25, APO AE 09009 promptly\n" +
+			"mailing Rural Route 3 Box 88, Roanoke, VA 24012\n" +
+			"send to 123 O'Brien St, Boston, MA 02101\n" +
+			"deliver 456 King-Smith Rd today\n" +
+			"new jersey driver license D12345678901234 on record\n" +
+			"wisconsin dl J1234567890123 verified\n" +
+			"2fa secret: jbswy3dpehpk3pxp lowercase\n" +
+			"The package weighs RR 4 lbs on the scale\n" +
+			"APO is an abbreviation for Apollo\n" +
+			"123 O' clock reading on the dial\n" +
+			"the authentication protocol requires base configuration\n",
+	},
+	{
 		Name: "new_validators_decoys",
 		Description: "Shape-valid values in PII-contradicting context for the new validators' " +
 			"broadest patterns: SSN-shaped and date-shaped tokens near DL keywords, a version " +
