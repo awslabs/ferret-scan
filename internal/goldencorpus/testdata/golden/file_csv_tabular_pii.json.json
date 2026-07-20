@@ -1,82 +1,6 @@
 {
   "results": [
     {
-      "confidence": 25,
-      "confidence_level": "LOW",
-      "filename": "<TMPDIR>/people.csv",
-      "line_number": 3,
-      "metadata": {
-        "card_type": "MASTERCARD",
-        "confidence_adjustment": 20,
-        "context_confidence": 1,
-        "context_doctype": "CSV",
-        "context_domain": "HR_Payroll",
-        "context_impact": -100,
-        "original_confidence": 5,
-        "original_file": "<TMPDIR>/people.csv",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "digits": true,
-          "entropy": true,
-          "length": true,
-          "luhn": true,
-          "not_repeating": true,
-          "not_test": true,
-          "vendor": true
-        },
-        "validation_path": "document",
-        "vendor": "MasterCard"
-      },
-      "text": "5425233430109903",
-      "type": "MASTERCARD",
-      "validator": "creditcard"
-    },
-    {
-      "confidence": 25,
-      "confidence_level": "LOW",
-      "filename": "<TMPDIR>/people.csv",
-      "line_number": 2,
-      "metadata": {
-        "card_type": "VISA",
-        "confidence_adjustment": 20,
-        "context_confidence": 1,
-        "context_doctype": "CSV",
-        "context_domain": "HR_Payroll",
-        "context_impact": -100,
-        "original_confidence": 5,
-        "original_file": "<TMPDIR>/people.csv",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "digits": true,
-          "entropy": true,
-          "length": true,
-          "luhn": true,
-          "not_repeating": true,
-          "not_test": true,
-          "vendor": true
-        },
-        "validation_path": "document",
-        "vendor": "Visa"
-      },
-      "text": "4532015112830366",
-      "type": "VISA",
-      "validator": "creditcard"
-    },
-    {
       "confidence": 75,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/people.csv",
@@ -229,6 +153,82 @@
       "text": "529-11-2233",
       "type": "SSN",
       "validator": "ssn"
+    },
+    {
+      "confidence": 25,
+      "confidence_level": "LOW",
+      "filename": "<TMPDIR>/people.csv",
+      "line_number": 3,
+      "metadata": {
+        "card_type": "MASTERCARD",
+        "confidence_adjustment": 20,
+        "context_confidence": 1,
+        "context_doctype": "CSV",
+        "context_domain": "HR_Payroll",
+        "context_impact": -100,
+        "original_confidence": 5,
+        "original_file": "<TMPDIR>/people.csv",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "entropy": true,
+          "length": true,
+          "luhn": true,
+          "not_repeating": true,
+          "not_test": true,
+          "vendor": true
+        },
+        "validation_path": "document",
+        "vendor": "MasterCard"
+      },
+      "text": "5425233430109903",
+      "type": "MASTERCARD",
+      "validator": "creditcard"
+    },
+    {
+      "confidence": 25,
+      "confidence_level": "LOW",
+      "filename": "<TMPDIR>/people.csv",
+      "line_number": 2,
+      "metadata": {
+        "card_type": "VISA",
+        "confidence_adjustment": 20,
+        "context_confidence": 1,
+        "context_doctype": "CSV",
+        "context_domain": "HR_Payroll",
+        "context_impact": -100,
+        "original_confidence": 5,
+        "original_file": "<TMPDIR>/people.csv",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "entropy": true,
+          "length": true,
+          "luhn": true,
+          "not_repeating": true,
+          "not_test": true,
+          "vendor": true
+        },
+        "validation_path": "document",
+        "vendor": "Visa"
+      },
+      "text": "4532015112830366",
+      "type": "VISA",
+      "validator": "creditcard"
     }
   ]
 }

@@ -1,7 +1,7 @@
 LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                FILE
 ----------------------------------------------------------------------------------------------
-[HIGH  ] creditcard   VISA                  100.00% line     4 4532-0151-1283-0366  notes.txt
 [HIGH  ] ssn          SSN                   100.00% line     3 449-87-4100          notes.txt
+[HIGH  ] creditcard   VISA                  100.00% line     4 4532-0151-1283-0366  notes.txt
 [MEDIUM] phone        PHONE                  73.00% line     1 212-555-0142         notes.txt
 [MEDIUM] secrets      AWS_ACCESS_KEY         69.00% line     2 AKIAIOSFODNN7EXAMPLE notes.txt
 [LOW   ] email        BUSINESS               33.00% line     1 john.doe@example.com notes.txt

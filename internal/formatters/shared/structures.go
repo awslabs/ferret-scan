@@ -4,6 +4,8 @@
 package shared
 
 import (
+	"sort"
+
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
@@ -187,8 +189,11 @@ func SanitizeSuppressedMatches(suppressed []detector.SuppressedMatch, showMatch 
 
 // JSONResponse represents the top-level response structure for JSON/YAML output
 type JSONResponse struct {
-	Results    []JSONMatch                `json:"results" yaml:"results"`
-	Suppressed []detector.SuppressedMatch `json:"suppressed,omitempty" yaml:"suppressed,omitempty"`
+	Stats         *formatters.ScanStats      `json:"stats,omitempty" yaml:"stats,omitempty"`
+	Results       []JSONMatch                `json:"results" yaml:"results"`
+	Suppressed    []detector.SuppressedMatch `json:"suppressed,omitempty" yaml:"suppressed,omitempty"`
+	Truncated     bool                       `json:"truncated,omitempty" yaml:"truncated,omitempty"`
+	TotalFindings int                        `json:"total_findings,omitempty" yaml:"total_findings,omitempty"`
 }
 
 // JSONMatch represents a single match in JSON/YAML format
@@ -244,6 +249,23 @@ func GetConfidenceLevel(confidence float64) string {
 
 // ConvertMatchesToJSONFormat converts detector matches to JSON/YAML format
 func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) JSONResponse {
+	totalFindings := len(matches)
+
+	// Sort by confidence descending, then type ascending (same priority order as text)
+	sort.SliceStable(matches, func(i, j int) bool {
+		if matches[i].Confidence != matches[j].Confidence {
+			return matches[i].Confidence > matches[j].Confidence
+		}
+		return matches[i].Type < matches[j].Type
+	})
+
+	// Apply limit
+	truncated := false
+	if options.Limit > 0 && totalFindings > options.Limit {
+		matches = matches[:options.Limit]
+		truncated = true
+	}
+
 	var jsonMatches []JSONMatch
 	for _, match := range matches {
 		// Sanitize metadata through the single shared path so a value duplicated
@@ -299,11 +321,17 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 		jsonMatches = append(jsonMatches, jsonMatch)
 	}
 
-	return JSONResponse{
+	resp := JSONResponse{
 		Results: jsonMatches,
 		// Suppressed matches embed the raw finding, so route them through the
 		// same deny-by-default redaction as active results: without --show-match
 		// the value, metadata, and surrounding context are withheld.
 		Suppressed: SanitizeSuppressedMatches(suppressedMatches, options.ShowMatch),
+		Stats:      options.Stats,
 	}
+	if truncated {
+		resp.Truncated = true
+		resp.TotalFindings = totalFindings
+	}
+	return resp
 }

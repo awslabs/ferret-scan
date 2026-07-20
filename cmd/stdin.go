@@ -41,6 +41,8 @@ type stdinScanInputs struct {
 	// limits), or nil when unset. Applied to the stdin ScanContent config so a
 	// runaway validator on piped input is bounded exactly as in file mode.
 	validatorBudgets map[string]execguard.ValidatorBudget
+	// limit is the --limit value (max findings to display). 0 = unlimited.
+	limit int
 }
 
 // runStdinScan is the entry point for stdin scanning. It mirrors the
@@ -282,6 +284,7 @@ func runStdinScan(in stdinScanInputs) int {
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
 		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
+		Limit:           in.limit,
 	}
 
 	var formatted string

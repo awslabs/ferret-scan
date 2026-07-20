@@ -113,7 +113,7 @@ func (h *System) ShowGeneralHelp() {
 	// --checks flag help and the two parseChecksToRun sites in cmd/main.go) are
 	// sourced from core.CheckNames(); this is the one that cannot be. Keep the
 	// no-space comma separators to match historical output.
-	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: CLOUD_RESOURCES,CREDIT_CARD,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,METADATA,PASSPORT,PERSON_NAME,PHONE,SECRETS,SOCIAL_MEDIA,SSN,VIN,all (default: all)")
+	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: BANK_ACCOUNT,CLOUD_RESOURCES,CREDIT_CARD,DATE_OF_BIRTH,DRIVERS_LICENSE,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,MEDICAL_ID,METADATA,OTP,PASSPORT,PERSON_NAME,PHONE,PHYSICAL_ADDRESS,SECRETS,SOCIAL_MEDIA,SSN,VIN,all (default: all)")
 	fmt.Fprintln(w, "\t\t\tNote: INTELLECTUAL_PROPERTY requires configuration for internal URL detection")
 	fmt.Fprintln(w, "\t\t\tNote: METADATA validator now includes enhanced preprocessor-aware validation for images, documents, audio, and video")
 	// GENAI_DISABLED: COMPREHEND_PII reference removed from help
@@ -147,6 +147,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --redaction-output-dir\t<path>\tDirectory where redacted files will be stored (default: ./redacted)")
 	fmt.Fprintln(w, "  --redaction-strategy\t<strategy>\tDefault redaction strategy: simple, format_preserving, or synthetic (default: format_preserving)")
 	fmt.Fprintln(w, "  --redaction-audit-log\t<path>\tPath to save redaction audit log file (JSON format for compliance)")
+	fmt.Fprintln(w, "  --limit\t<n>\tMaximum findings to display (default: 200, 0 = unlimited)")
 	fmt.Fprintln(w, "  --web\t\tStart web server mode instead of CLI scanning")
 	fmt.Fprintln(w, "  --port\t<port>\tPort for web server (default: 8080, only used with --web)")
 	fmt.Fprintln(w, "  --version\t\tShow version information")
