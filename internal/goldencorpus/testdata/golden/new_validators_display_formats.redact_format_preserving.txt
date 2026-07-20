@@ -1,0 +1,19 @@
+=== REDACTED ===
+medicare beneficiary ************* on card
+pay to IBAN *************************** per invoice
+driver's license ************** verified
+patient dob ******* and sibling born ****************
+admission date of birth ********** on form
+ship to ***************, New York, NY 10036
+mailing address ******************
+deliver to *********************, springfield, il 62704
+=== FINDINGS (sorted) ===
+type=DATE_OF_BIRTH line=4 conf=high match=3/14/87
+type=DATE_OF_BIRTH line=4 conf=high match=March 14th, 1987
+type=DATE_OF_BIRTH line=5 conf=high match=03.14.1987
+type=DRIVERS_LICENSE line=3 conf=medium match=D123-4567-8901
+type=IBAN line=2 conf=medium match=DE89 3704 0044 0532 0130 00
+type=MEDICARE_MBI line=1 conf=high match=1EG4-TE5-MK73
+type=US_STREET_ADDRESS line=6 conf=high match=123 42nd Street
+type=US_STREET_ADDRESS line=7 conf=high match=1234 US Highway 61
+type=US_STREET_ADDRESS line=8 conf=medium match=742 evergreen terrace

@@ -15,19 +15,51 @@ import (
 
 // Pre-compiled regex patterns used across validator methods.
 var (
+	// streetSuffixAlt is the recognized street-type alternation shared by the
+	// primary and directional patterns. Beyond the classic types it includes
+	// the common residential-development suffixes (Ridge, Point, Cove, Bend,
+	// Landing, Crossing, ...); the list is still a deliberate subset of the
+	// ~200 USPS Publication 28 types to bound the false-positive surface.
+	streetSuffixAlt = `St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Ct|Court|` +
+		`Rd|Road|Way|Pkwy|Parkway|Cir|Circle|Pl|Place|Ter|Terrace|` +
+		`Trl|Trail|Loop|Run|Pass|Pike|Hwy|Highway|Sq|Square|` +
+		`Ridge|Point|Cove|Bend|Landing|Crossing|Commons|Row|Walk|Green|` +
+		`Path|Glen|Hollow|Meadow|Summit|Vista`
+
+	// streetNameWord matches one word of a street name. A word either starts
+	// with a letter ("Main", "Evergreen") or is an ordinal number ("42nd",
+	// "5th") — the ordinal form is what makes numbered streets in NYC-style
+	// grid cities ("123 42nd Street") detectable. Bare numbers are NOT street
+	// name words (that would make "500 300 Blvd" ambiguous with measurements).
+	streetNameWord = `(?:[A-Za-z][A-Za-z0-9]*|\d{1,4}(?:st|nd|rd|th|ST|ND|RD|TH))`
+
 	// reStreetAddress matches a US street address: number + street name + street type.
-	// Requires at least a street number, one or more name words, and a recognized suffix.
-	// The suffix list is comprehensive but kept to common US types to minimize false positives.
+	// Requires at least a street number, one or more name words, and a recognized
+	// suffix. Highway suffixes may carry a trailing route number ("1234 US
+	// Highway 61") — without it the match span would truncate mid-token and
+	// leave the route number un-redacted; other suffixes deliberately don't
+	// accept a trailing number ("100 Main St 3 pm" must not swallow the 3).
 	reStreetAddress = regexp.MustCompile(
 		`\b(\d{1,6})\s+` + // street number (1-6 digits)
-			`([A-Za-z][A-Za-z0-9]*(?:\s+[A-Za-z][A-Za-z0-9]*)*)` + // street name (1+ words)
-			`\s+(` +
-			`St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Ct|Court|` +
-			`Rd|Road|Way|Pkwy|Parkway|Cir|Circle|Pl|Place|Ter|Terrace|` +
-			`Trl|Trail|Loop|Run|Pass|Pike|Hwy|Highway|Sq|Square` +
-			`)` +
-			`\.?` + // optional trailing dot
-			`\b`,
+			`(` + streetNameWord + `(?:\s+` + streetNameWord + `)*)` + // street name (1+ words)
+			`\s+(?:` +
+			`(?:Hwy|Highway)\.?(?:\s+\d{1,4})?` + // highway, optional route number
+			`|(?:` + streetSuffixAlt + `)\.?` + // any other suffix
+			`)\b`,
+	)
+
+	// reStreetAddressAnyCase is the case-insensitive form of reStreetAddress,
+	// for lowercased text (chat logs, normalized transcripts). It is consulted
+	// ONLY on lines that independently carry address context (positive keyword
+	// or city/state/ZIP) — unconditionally, lowercase suffix words collide with
+	// ordinary prose ("5 people way too many" is number + name + "way").
+	reStreetAddressAnyCase = regexp.MustCompile(
+		`(?i)\b(\d{1,6})\s+` +
+			`(` + streetNameWord + `(?:\s+` + streetNameWord + `)*)` +
+			`\s+(?:` +
+			`(?:Hwy|Highway)\.?(?:\s+\d{1,4})?` +
+			`|(?:` + streetSuffixAlt + `)\.?` +
+			`)\b`,
 	)
 
 	// rePOBox matches P.O. Box addresses.
@@ -60,12 +92,8 @@ var (
 	reDirectionalAddr = regexp.MustCompile(
 		`\b(\d{1,6})\s+` + // street number
 			`([NSEW]\.?\s+|(?:N[EW]|S[EW])\.?\s+)` + // directional prefix with optional dot
-			`([A-Za-z][A-Za-z0-9]*(?:\s+[A-Za-z][A-Za-z0-9]*)*)` + // street name
-			`\s+(` +
-			`St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Ct|Court|` +
-			`Rd|Road|Way|Pkwy|Parkway|Cir|Circle|Pl|Place|Ter|Terrace|` +
-			`Trl|Trail|Loop|Run|Pass|Pike|Hwy|Highway|Sq|Square` +
-			`)` +
+			`(` + streetNameWord + `(?:\s+` + streetNameWord + `)*)` + // street name
+			`\s+(` + streetSuffixAlt + `)` +
 			`\.?` + // optional trailing dot
 			`\b`,
 	)
@@ -300,6 +328,64 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			})
 		}
 
+		// Case-insensitive fallback for lowercased text ("742 evergreen
+		// terrace"). Only consulted when the line independently signals an
+		// address (positive keyword, or city/state/ZIP shape which
+		// reCityStateZip already matches case-insensitively) — without that
+		// gate, lowercase suffix words are ordinary prose. Spans already
+		// matched case-sensitively are skipped; the small confidence penalty
+		// reflects the weaker evidence of a case-mismatched suffix.
+		if len(linePositiveKeywords) > 0 || reCityStateZip.MatchString(line) {
+			anyCase := reStreetAddressAnyCase.FindAllStringIndex(line, -1)
+			if len(anyCase) > 0 && streetFP == nil {
+				streetFP = v.newStreetFPContext(line)
+				streetConfidence = v.calculateStreetConfidence("", line, lines, lineNum)
+			}
+			for i, loc := range anyCase {
+				if execguard.LineLoopCancelled(ctx, i) {
+					return matches, ctx.Err()
+				}
+				if spanContains(streetMatches, loc[0]) {
+					continue
+				}
+				matchText := line[loc[0]:loc[1]]
+				if streetFP.isFalsePositive(matchText, loc[0]) {
+					continue
+				}
+
+				confidence := streetConfidence - 10
+				if lineHasNegative {
+					confidence -= 25
+				}
+				if confidence <= 0 {
+					continue
+				}
+				if confidence > 100 {
+					confidence = 100
+				}
+
+				contextInfo := v.buildContextInfo(line, loc[0], len(matchText), linePositiveKeywords, lineNegativeKeywords)
+
+				matches = append(matches, detector.Match{
+					Text:       matchText,
+					LineNumber: lineNum + 1,
+					Type:       "US_STREET_ADDRESS",
+					Confidence: confidence,
+					Filename:   originalPath,
+					Validator:  "physical_address",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"source":        "preprocessed_content",
+						"original_file": originalPath,
+						"case_relaxed":  true,
+					},
+				})
+			}
+			// Re-collect spans so the directional loop below also skips
+			// anything the fallback just reported.
+			streetMatches = mergeSpans(streetMatches, anyCase)
+		}
+
 		// Detect street addresses with directional prefixes (N., S., E., W.)
 		// These are missed by the primary regex due to the period in "N."
 		dirMatches := reDirectionalAddr.FindAllStringIndex(line, -1)
@@ -525,6 +611,32 @@ func overlapsAny(locs [][]int, matchStart int) bool {
 		}
 	}
 	return false
+}
+
+// mergeSpans merges two span lists (each sorted by start offset, as
+// FindAllStringIndex returns them) into one sorted list, preserving the
+// sorted-by-start invariant spanContains relies on for its binary search.
+func mergeSpans(a, b [][]int) [][]int {
+	if len(b) == 0 {
+		return a
+	}
+	if len(a) == 0 {
+		return b
+	}
+	out := make([][]int, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if a[i][0] <= b[j][0] {
+			out = append(out, a[i])
+			i++
+		} else {
+			out = append(out, b[j])
+			j++
+		}
+	}
+	out = append(out, a[i:]...)
+	out = append(out, b[j:]...)
+	return out
 }
 
 // spanContains reports whether pos falls inside any [start,end) span in locs.

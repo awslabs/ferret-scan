@@ -24,6 +24,13 @@ var (
 	// We require at least 15 characters total (shortest valid IBAN is Norway at 15).
 	reIBAN = regexp.MustCompile(`\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b`)
 
+	// IBAN in the standard display format: space-separated groups of 4
+	// (e.g. "DE89 3704 0044 0532 0130 00" on invoices and statements).
+	// Candidates are normalized (spaces stripped) and must pass the same
+	// isValidIBAN gate (valid country, exact length, mod-97 checksum) as
+	// contiguous IBANs, so the loose grouping here adds no FP surface.
+	reIBANSpaced = regexp.MustCompile(`\b[A-Z]{2}\d{2}(?: [A-Z0-9]{4}){2,7}(?: [A-Z0-9]{1,4})?\b`)
+
 	// SWIFT/BIC: 4 bank + 2 country + 2 location + optional 3 branch (8 or 11 chars).
 	reSWIFT = regexp.MustCompile(`\b[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b`)
 
@@ -255,6 +262,42 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 			Metadata: map[string]any{
 				"country":        candidate[:2],
 				"context_impact": contextImpact,
+			},
+		})
+	}
+
+	// Second pass: display-format (space-grouped) IBANs. Candidates are
+	// normalized and must pass the identical isValidIBAN gate; the reported
+	// span is the original spaced text so redaction masks the whole token.
+	for i, loc := range reIBANSpaced.FindAllStringIndex(upperLine, -1) {
+		if execguard.LineLoopCancelled(ctx, i) {
+			return matches
+		}
+		normalized := strings.ReplaceAll(upperLine[loc[0]:loc[1]], " ", "")
+		if !v.isValidIBAN(normalized) {
+			continue
+		}
+		if lc.strongNegative {
+			continue
+		}
+
+		confidence := clampConfidence(85.0 + lc.keywordImpact)
+		if confidence <= 0 {
+			continue
+		}
+
+		matches = append(matches, detector.Match{
+			Text:       line[loc[0]:loc[1]], // original case and spacing
+			LineNumber: lineNum + 1,
+			Type:       "IBAN",
+			Confidence: confidence,
+			Filename:   originalPath,
+			Validator:  "bank_account",
+			Context:    v.buildContextInfo(line, loc[0], loc[1]-loc[0]),
+			Metadata: map[string]any{
+				"country":        normalized[:2],
+				"context_impact": lc.keywordImpact,
+				"normalized":     normalized,
 			},
 		})
 	}

@@ -442,8 +442,12 @@ func TestAdversarial(t *testing.T) {
 	// ========================================================================
 
 	t.Run("CaseSensitivity", func(t *testing.T) {
-		// The regex as written uses exact case: St|Street|Ave|Avenue etc.
-		// All-caps addresses (common in mail) would NOT match
+		// The primary regex is case-exact (St|Street|Ave|...), but a
+		// case-insensitive fallback fires on lines that independently carry
+		// address context (positive keyword or city/state/ZIP shape). So
+		// case-mismatched addresses match only when that context gate opens:
+		// a ZIP line or the word "street" itself opens it; a bare "456 OAK
+		// AVE" (no keyword, no ZIP) stays unmatched.
 		tests := []struct {
 			name        string
 			input       string
@@ -452,12 +456,12 @@ func TestAdversarial(t *testing.T) {
 			{
 				name:        "lowercase_st",
 				input:       "123 Main st, Springfield, IL 62701",
-				expectMatch: false, // regex has "St" not "st"
+				expectMatch: true, // city/state/ZIP opens the case-relaxed gate
 			},
 			{
 				name:        "uppercase_ST",
 				input:       "123 MAIN ST",
-				expectMatch: false, // regex has "St" not "ST"
+				expectMatch: false, // no keyword, no ZIP: gate stays closed
 			},
 			{
 				name:        "mixed_case_Street",
@@ -467,12 +471,12 @@ func TestAdversarial(t *testing.T) {
 			{
 				name:        "uppercase_STREET",
 				input:       "123 MAIN STREET",
-				expectMatch: false, // "STREET" != "Street"
+				expectMatch: true, // "street" keyword opens the gate (envelope format)
 			},
 			{
 				name:        "uppercase_AVE",
 				input:       "456 OAK AVE",
-				expectMatch: false, // "AVE" != "Ave"
+				expectMatch: false, // "AVE" is not an address keyword: gate stays closed
 			},
 			{
 				name:        "proper_case_Ave",

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:new_validators_decoys&gt;" classname="security-scan" time="0.001">
+      <failure message="2 security findings detected" type="SECURITY_FINDINGS">Line 5: IBAN detected with 60.0% confidence (MEDIUM)&#xA;Match: DE89 3704 0044 0532 0130 00&#xA;Validator: bank_account&#xA;Line 7: MEDICARE_MBI detected with 40.0% confidence (LOW)&#xA;Match: 1EG4-TE5-MK73&#xA;Validator: medicalid</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

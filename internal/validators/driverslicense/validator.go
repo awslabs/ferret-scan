@@ -49,6 +49,17 @@ var (
 
 	// State name patterns for context detection
 	reStateName = regexp.MustCompile(`(?i)\b(?:california|texas|florida|new york|pennsylvania|illinois|ohio|georgia|north carolina|michigan|CA|TX|FL|NY|PA|IL|OH|GA|NC|MI)\b`)
+
+	// Licenses are often printed with separators (e.g. "D123-4567-8901",
+	// "123 456 789"). Candidates are normalized (separators stripped) and must
+	// classify into one of the state formats above; see the shape guards in
+	// evaluateSeparatedCandidate for the SSN/date collisions normalization
+	// would otherwise introduce.
+	reSeparatedDL = regexp.MustCompile(`\b[A-Za-z]{0,2}\d{1,4}(?:[- ]\d{1,4}){1,4}\b`)
+
+	// The canonical SSN grouping (3-2-4). A dashed 9-digit token in this exact
+	// grouping is overwhelmingly an SSN, never a printed DL — always rejected.
+	reSSNShape = regexp.MustCompile(`^\d{3}-\d{2}-\d{4}$`)
 )
 
 // containsKeyword reports whether text contains keyword as a whole word/phrase,
@@ -160,7 +171,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		}
 
 		idxMatches := v.regex.FindAllStringIndex(line, -1)
-		if len(idxMatches) == 0 {
+		sepMatches := v.separatedCandidates(line, idxMatches)
+		if len(idxMatches) == 0 && len(sepMatches) == 0 {
 			continue
 		}
 
@@ -174,35 +186,33 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		linePositiveKeywords := v.findKeywordsOnLine(line, v.positiveKeywords)
 		lineNegativeKeywords := v.findKeywordsOnLine(line, v.negativeKeywords)
 
-		for i, loc := range idxMatches {
-			if execguard.LineLoopCancelled(ctx, i) {
-				return matches, ctx.Err()
-			}
-			match := line[loc[0]:loc[1]]
-
-			// Classify which state format this matches
-			format := v.classifyMatch(match)
+		// emit scores one candidate and appends a match if it survives. text is
+		// the span reported (and redacted); classifyText is the separator-free
+		// form used for format classification and structural checks. For
+		// contiguous matches they are the same string.
+		emit := func(spanStart, spanEnd int, text, classifyText string) {
+			format := v.classifyMatch(classifyText)
 			if format == "" {
-				continue
+				return
 			}
 
 			// Calculate base confidence from structural validation
-			confidence, checks := v.CalculateConfidence(match)
+			confidence, checks := v.CalculateConfidence(classifyText)
 
 			// Build context info
 			contextInfo := detector.ContextInfo{
 				FullLine: line,
 			}
-			start := loc[0] - 50
+			start := spanStart - 50
 			if start < 0 {
 				start = 0
 			}
-			end := loc[1] + 50
+			end := spanEnd + 50
 			if end > len(line) {
 				end = len(line)
 			}
-			contextInfo.BeforeText = line[start:loc[0]]
-			contextInfo.AfterText = line[loc[1]:end]
+			contextInfo.BeforeText = line[start:spanStart]
+			contextInfo.AfterText = line[spanEnd:end]
 
 			// Analyze context for keyword-based adjustment (per-line invariant)
 			contextImpact := lineImpact
@@ -222,29 +232,139 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 			// Skip very low confidence matches
 			if confidence <= 0 {
-				continue
+				return
+			}
+
+			metadata := map[string]any{
+				"validation_checks": checks,
+				"context_impact":    contextImpact,
+				"format":            format,
+				"source":            "preprocessed_content",
+				"original_file":     originalPath,
+			}
+			if classifyText != text {
+				metadata["normalized"] = classifyText
 			}
 
 			matches = append(matches, detector.Match{
-				Text:       match,
+				Text:       text,
 				LineNumber: lineNum + 1,
 				Type:       "DRIVERS_LICENSE",
 				Confidence: confidence,
 				Filename:   originalPath,
 				Validator:  "driverslicense",
 				Context:    contextInfo,
-				Metadata: map[string]any{
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"format":            format,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
+				Metadata:   metadata,
 			})
+		}
+
+		for i, loc := range idxMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
+			match := line[loc[0]:loc[1]]
+			emit(loc[0], loc[1], match, match)
+		}
+
+		// Separator-formatted candidates (D123-4567-8901): classified on the
+		// normalized form, reported on the original span so redaction masks
+		// the token as printed.
+		for i, sc := range sepMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
+			emit(sc.start, sc.end, line[sc.start:sc.end], sc.normalized)
 		}
 	}
 
 	return matches, nil
+}
+
+// sepCandidate is a separator-formatted DL candidate: the original span on the
+// line plus its normalized (separator-stripped) form.
+type sepCandidate struct {
+	start, end int
+	normalized string
+}
+
+// separatedCandidates finds separator-formatted DL candidates (D123-4567-8901,
+// "123 456 789") that classify into a known state format once separators are
+// stripped. contiguousLocs are the spans already matched by reAnyDL (sorted by
+// start, as FindAllStringIndex returns them); candidates overlapping them are
+// skipped. Shape guards reject the token families that normalization would
+// otherwise misclassify: SSNs (3-2-4 → 9 digits = NY), dates (12-31-1987 →
+// 8 digits = TX), and ZIP+4 (5-4 → 9 digits = NY). Everything here is one
+// regex pass plus O(candidate length) work per candidate, preserving the
+// O(line length) per-line bound.
+func (v *Validator) separatedCandidates(line string, contiguousLocs [][]int) []sepCandidate {
+	var out []sepCandidate
+	for _, loc := range reSeparatedDL.FindAllStringIndex(line, -1) {
+		if overlapsSpans(contiguousLocs, loc[0], loc[1]) {
+			continue
+		}
+		text := line[loc[0]:loc[1]]
+
+		if reSSNShape.MatchString(text) {
+			continue
+		}
+		if isDateOrZipShape(text) {
+			continue
+		}
+
+		normalized := strings.Map(func(r rune) rune {
+			if r == '-' || r == ' ' {
+				return -1
+			}
+			return r
+		}, text)
+		if v.classifyMatch(normalized) == "" {
+			continue
+		}
+
+		out = append(out, sepCandidate{start: loc[0], end: loc[1], normalized: normalized})
+	}
+	return out
+}
+
+// overlapsSpans reports whether [start,end) overlaps any span in locs
+// (sorted by start offset).
+func overlapsSpans(locs [][]int, start, end int) bool {
+	for _, l := range locs {
+		if l[0] >= end {
+			return false
+		}
+		if l[1] > start {
+			return true
+		}
+	}
+	return false
+}
+
+// isDateOrZipShape rejects separated digit groupings that are canonically
+// dates or ZIP+4 codes rather than printed license numbers:
+// D-M-Y / M-D-Y ("12-31-1987", "31 12 87"), ISO-ish ("1987 12 31"),
+// and ZIP+4 ("12345-6789").
+func isDateOrZipShape(text string) bool {
+	parts := strings.FieldsFunc(text, func(r rune) bool { return r == '-' || r == ' ' })
+	for _, p := range parts {
+		for i := 0; i < len(p); i++ {
+			if p[i] < '0' || p[i] > '9' {
+				return false // letter prefix → not a date/zip shape
+			}
+		}
+	}
+	if len(parts) == 2 && len(parts[0]) == 5 && len(parts[1]) == 4 {
+		return true // ZIP+4
+	}
+	if len(parts) == 3 {
+		if len(parts[0]) <= 2 && len(parts[1]) <= 2 && (len(parts[2]) == 2 || len(parts[2]) == 4) {
+			return true // D-M-Y / M-D-Y
+		}
+		if len(parts[0]) == 4 && len(parts[1]) <= 2 && len(parts[2]) <= 2 {
+			return true // Y-M-D
+		}
+	}
+	return false
 }
 
 // lineHasPositiveKeyword checks whether the line contains at least one

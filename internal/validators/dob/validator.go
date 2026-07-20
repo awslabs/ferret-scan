@@ -17,17 +17,37 @@ import (
 
 // Pre-compiled regex patterns for date detection.
 var (
-	// MM/DD/YYYY or DD/MM/YYYY (with / or - as separator)
-	reNumericDate = regexp.MustCompile(`\b(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})\b`)
+	// MM/DD/YYYY or DD/MM/YYYY (with /, -, or . as separator; dots are common
+	// in forms and European-style documents, e.g. "03.14.1987")
+	reNumericDate = regexp.MustCompile(`\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})\b`)
+
+	// MM/DD/YY or DD/MM/YY two-digit-year form (e.g. "3/14/87"). Kept as a
+	// separate pattern so the century-resolution logic (and its extra
+	// ambiguity) only applies to candidates that actually need it. Both
+	// separators are captured and compared in extractDates (RE2 has no
+	// backreferences); mixed separators like "3/14-87" are rejected there.
+	// The \b guards prevent overlap with the 4-digit-year pattern (a
+	// trailing \d{2} of \d{4} has no word boundary).
+	reNumericDate2Y = regexp.MustCompile(`\b(\d{1,2})([/\-.])(\d{1,2})([/\-.])(\d{2})\b`)
 
 	// YYYY-MM-DD (ISO 8601)
 	reISODate = regexp.MustCompile(`\b(\d{4})-(\d{2})-(\d{2})\b`)
 
-	// Month DD, YYYY or Month DD YYYY (e.g., "January 15, 1990" or "Jan 15 1990")
-	reMonthDDYYYY = regexp.MustCompile(`\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})\b`)
+	// Month DD, YYYY or Month DD YYYY, with optional ordinal suffix on the day
+	// (e.g., "January 15, 1990", "Jan 15 1990", "March 14th, 1987")
+	reMonthDDYYYY = regexp.MustCompile(`\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b`)
 
-	// DD Month YYYY (e.g., "15 January 1990" or "15 Jan 1990")
-	reDDMonthYYYY = regexp.MustCompile(`\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec),?\s+(\d{4})\b`)
+	// DD Month YYYY, with optional ordinal suffix (e.g., "15 January 1990",
+	// "14th March 1987")
+	reDDMonthYYYY = regexp.MustCompile(`\b(\d{1,2})(?:st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec),?\s+(\d{4})\b`)
+
+	// reVersionContext marks lines whose dotted numbers are software versions,
+	// not dates. Dotted two-digit-year candidates (x.y.zz) are shaped exactly
+	// like semver strings, and a strong DOB keyword elsewhere on the line
+	// (e.g. a service named "dob") would short-circuit the negative-keyword
+	// pass — so the dotted 2Y extractor refuses candidates on such lines
+	// outright rather than relying on confidence scoring.
+	reVersionContext = regexp.MustCompile(`(?i)\b(?:version|build|release|upgrade|patch|changelog|semver|pip|npm|v\d+\.\d+)\b|==\d`)
 )
 
 // monthMap maps month names/abbreviations to their numeric value.
@@ -261,6 +281,37 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 		})
 	}
 
+	// Numeric dates with two-digit years: MM/DD/YY or DD/MM/YY
+	for _, loc := range reNumericDate2Y.FindAllStringSubmatchIndex(line, -1) {
+		text := line[loc[0]:loc[1]]
+		if seen[text] {
+			continue
+		}
+		// Mixed separators ("3/14-87") are not a date; require both to match.
+		sep := line[loc[4]:loc[5]]
+		if sep != line[loc[8]:loc[9]] {
+			continue
+		}
+		// Dotted two-digit-year candidates are shaped like semver versions
+		// ("2.14.87"); refuse them on version-context lines (see reVersionContext).
+		if sep == "." && reVersionContext.MatchString(line) {
+			continue
+		}
+		seen[text] = true
+		part1, _ := strconv.Atoi(line[loc[2]:loc[3]])
+		part2, _ := strconv.Atoi(line[loc[6]:loc[7]])
+		yy, _ := strconv.Atoi(line[loc[10]:loc[11]])
+
+		day, month := v.resolveNumericDate(part1, part2)
+		if day == 0 && month == 0 {
+			continue
+		}
+		candidates = append(candidates, dateCandidate{
+			text: text, start: loc[0],
+			day: day, month: month, year: resolveTwoDigitYear(yy),
+		})
+	}
+
 	// Month DD, YYYY
 	for _, loc := range reMonthDDYYYY.FindAllStringSubmatchIndex(line, -1) {
 		text := line[loc[0]:loc[1]]
@@ -296,6 +347,18 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 	}
 
 	return candidates
+}
+
+// resolveTwoDigitYear maps a two-digit year to a full year using the standard
+// sliding-window rule: values up to the current two-digit year are 20xx,
+// values above it are 19xx (in 2026: 14 → 2014, 87 → 1987). A DOB can't be in
+// the future, so the pivot is the current year rather than a fixed cutoff.
+func resolveTwoDigitYear(yy int) int {
+	pivot := time.Now().Year() % 100
+	if yy <= pivot {
+		return 2000 + yy
+	}
+	return 1900 + yy
 }
 
 // resolveNumericDate resolves ambiguous MM/DD vs DD/MM numeric dates.

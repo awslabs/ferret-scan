@@ -1,0 +1,269 @@
+{
+  "results": [
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": -5,
+        "country": "DE",
+        "normalized": "DE89370400440532013000",
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_path": "document"
+      },
+      "text": "DE89 3704 0044 0532 0130 00",
+      "type": "IBAN",
+      "validator": "bank_account"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 4,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 75,
+        "original_confidence": 90,
+        "original_file": "<golden:new_validators_display_formats>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "not_test": true,
+          "plausible_year": true,
+          "valid_date": true
+        },
+        "validation_path": "document"
+      },
+      "text": "3/14/87",
+      "type": "DATE_OF_BIRTH",
+      "validator": "dob"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 4,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 75,
+        "original_confidence": 90,
+        "original_file": "<golden:new_validators_display_formats>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "not_test": true,
+          "plausible_year": true,
+          "valid_date": true
+        },
+        "validation_path": "document"
+      },
+      "text": "March 14th, 1987",
+      "type": "DATE_OF_BIRTH",
+      "validator": "dob"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 5,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 75,
+        "original_confidence": 90,
+        "original_file": "<golden:new_validators_display_formats>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "not_test": true,
+          "plausible_year": true,
+          "valid_date": true
+        },
+        "validation_path": "document"
+      },
+      "text": "03.14.1987",
+      "type": "DATE_OF_BIRTH",
+      "validator": "dob"
+    },
+    {
+      "confidence": 70,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 65,
+        "format": "IL_1L11D",
+        "normalized": "D12345678901",
+        "original_confidence": 70,
+        "original_file": "<golden:new_validators_display_formats>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "format_match": true,
+          "has_dl_context": false,
+          "not_all_same": true,
+          "not_all_zeros": true,
+          "not_sequential": false
+        },
+        "validation_path": "document"
+      },
+      "text": "D123-4567-8901",
+      "type": "DRIVERS_LICENSE",
+      "validator": "driverslicense"
+    },
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 20,
+        "normalized": "1EG4TE5MK73",
+        "original_confidence": 95,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "subtype": "MBI",
+        "validation_path": "document"
+      },
+      "text": "1EG4-TE5-MK73",
+      "type": "MEDICARE_MBI",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 6,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "original_confidence": 95,
+        "original_file": "<golden:new_validators_display_formats>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "123 42nd Street",
+      "type": "US_STREET_ADDRESS",
+      "validator": "physical_address"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 7,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "original_confidence": 90,
+        "original_file": "<golden:new_validators_display_formats>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "1234 US Highway 61",
+      "type": "US_STREET_ADDRESS",
+      "validator": "physical_address"
+    },
+    {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:new_validators_display_formats>",
+      "line_number": 8,
+      "metadata": {
+        "case_relaxed": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "original_confidence": 85,
+        "original_file": "<golden:new_validators_display_formats>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "742 evergreen terrace",
+      "type": "US_STREET_ADDRESS",
+      "validator": "physical_address"
+    }
+  ]
+}

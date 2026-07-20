@@ -1,0 +1,226 @@
+results:
+    - text: DE89 3704 0044 0532 0130 00
+      line_number: 2
+      type: IBAN
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:new_validators_display_formats>
+      validator: bank_account
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: -5
+        country: DE
+        normalized: DE89370400440532013000
+        original_confidence: 80
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_path: document
+    - text: 3/14/87
+      line_number: 4
+      type: DATE_OF_BIRTH
+      confidence: 90
+      confidence_level: HIGH
+      filename: <golden:new_validators_display_formats>
+      validator: dob
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 75
+        original_confidence: 90
+        original_file: <golden:new_validators_display_formats>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            not_test: true
+            plausible_year: true
+            valid_date: true
+        validation_path: document
+    - text: March 14th, 1987
+      line_number: 4
+      type: DATE_OF_BIRTH
+      confidence: 90
+      confidence_level: HIGH
+      filename: <golden:new_validators_display_formats>
+      validator: dob
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 75
+        original_confidence: 90
+        original_file: <golden:new_validators_display_formats>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            not_test: true
+            plausible_year: true
+            valid_date: true
+        validation_path: document
+    - text: 03.14.1987
+      line_number: 5
+      type: DATE_OF_BIRTH
+      confidence: 90
+      confidence_level: HIGH
+      filename: <golden:new_validators_display_formats>
+      validator: dob
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 75
+        original_confidence: 90
+        original_file: <golden:new_validators_display_formats>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            not_test: true
+            plausible_year: true
+            valid_date: true
+        validation_path: document
+    - text: D123-4567-8901
+      line_number: 3
+      type: DRIVERS_LICENSE
+      confidence: 70
+      confidence_level: MEDIUM
+      filename: <golden:new_validators_display_formats>
+      validator: driverslicense
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 65
+        format: IL_1L11D
+        normalized: D12345678901
+        original_confidence: 70
+        original_file: <golden:new_validators_display_formats>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            format_match: true
+            has_dl_context: false
+            not_all_same: true
+            not_all_zeros: true
+            not_sequential: false
+        validation_path: document
+    - text: 1EG4-TE5-MK73
+      line_number: 1
+      type: MEDICARE_MBI
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:new_validators_display_formats>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 20
+        normalized: 1EG4TE5MK73
+        original_confidence: 95
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: MBI
+        validation_path: document
+    - text: 123 42nd Street
+      line_number: 6
+      type: US_STREET_ADDRESS
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:new_validators_display_formats>
+      validator: physical_address
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        original_confidence: 95
+        original_file: <golden:new_validators_display_formats>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: 1234 US Highway 61
+      line_number: 7
+      type: US_STREET_ADDRESS
+      confidence: 90
+      confidence_level: HIGH
+      filename: <golden:new_validators_display_formats>
+      validator: physical_address
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        original_confidence: 90
+        original_file: <golden:new_validators_display_formats>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: 742 evergreen terrace
+      line_number: 8
+      type: US_STREET_ADDRESS
+      confidence: 85
+      confidence_level: MEDIUM
+      filename: <golden:new_validators_display_formats>
+      validator: physical_address
+      metadata:
+        case_relaxed: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        original_confidence: 85
+        original_file: <golden:new_validators_display_formats>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document

@@ -1,0 +1,47 @@
+results:
+    - text: DE89 3704 0044 0532 0130 00
+      line_number: 5
+      type: IBAN
+      confidence: 60
+      confidence_level: MEDIUM
+      filename: <golden:new_validators_decoys>
+      validator: bank_account
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: -25
+        country: DE
+        normalized: DE89370400440532013000
+        original_confidence: 60
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_path: document
+    - text: 1EG4-TE5-MK73
+      line_number: 7
+      type: MEDICARE_MBI
+      confidence: 40
+      confidence_level: LOW
+      filename: <golden:new_validators_decoys>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 0
+        normalized: 1EG4TE5MK73
+        original_confidence: 40
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        subtype: MBI
+        validation_path: document

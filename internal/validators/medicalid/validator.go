@@ -26,6 +26,13 @@ var (
 	// C = digit 1-9; A = alpha excluding S,L,O,I,B,Z; N = digit 0-9; AN = A or N
 	reMBI = regexp.MustCompile(`\b[1-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][AC-HJ-KM-NP-RT-Y][AC-HJ-KM-NP-RT-Y][0-9][0-9]\b`)
 
+	// Medicare cards print the MBI with dashes in a 4-3-4 grouping
+	// (e.g. 1EG4-TE5-MK73). Same positional character rules as reMBI with
+	// dashes at the card positions; the match is normalized (dashes stripped)
+	// and re-validated against reMBI before being reported, and the reported
+	// span is the original dashed text so redaction covers the whole token.
+	reMBIDashed = regexp.MustCompile(`\b[1-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9]-[AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9]-[AC-HJ-KM-NP-RT-Y][AC-HJ-KM-NP-RT-Y][0-9][0-9]\b`)
+
 	// MRN: 6-10 digits (very generic, requires strong medical context)
 	reMRN = regexp.MustCompile(`\b\d{6,10}\b`)
 
@@ -166,8 +173,11 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 		return matches
 	}
 
-	// Check for Medicare MBI
+	// Check for Medicare MBI (contiguous and card-printed dashed forms)
 	if !scanMatches(reMBI, v.evaluateMBI) {
+		return matches
+	}
+	if !scanMatches(reMBIDashed, v.evaluateDashedMBI) {
 		return matches
 	}
 
@@ -305,6 +315,28 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lineImpact float6
 			"context_impact": contextImpact,
 		},
 	}, true
+}
+
+// evaluateDashedMBI checks a card-printed dashed MBI candidate (1EG4-TE5-MK73).
+// The dashes are stripped and the result re-validated against the contiguous
+// MBI rules; scoring is identical to evaluateMBI. The reported Text keeps the
+// original dashed form so redaction masks the token as printed.
+func (v *Validator) evaluateDashedMBI(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
+	normalized := strings.ReplaceAll(match, "-", "")
+	if !reMBI.MatchString(normalized) {
+		return detector.Match{}, false
+	}
+
+	m, ok := v.evaluateMBI(normalized, line, lowerLine, lineImpact, matchStart, posKW, negKW, lineNum, originalPath)
+	if !ok {
+		return detector.Match{}, false
+	}
+
+	// Report the original dashed span (position and text) for correct redaction.
+	m.Text = match
+	m.Context = v.buildContext(match, line, matchStart, posKW, negKW)
+	m.Metadata["normalized"] = normalized
+	return m, true
 }
 
 // evaluateMRN checks an MRN candidate and returns a match if valid.
