@@ -135,3 +135,49 @@ func TestTextFormatter_PrecommitHonorsShowMatch(t *testing.T) {
 		t.Errorf("pre-commit --show-match should reveal the matched value:\n%s", shown)
 	}
 }
+
+// TestTextFormatter_PrecommitGuidanceHintMatchesState is a regression test for
+// the misleading resolution hint: pre-commit guidance unconditionally said
+// "Use --show-match flag to see exact matches", even when the operator had
+// already passed --show-match (the values were already on screen). The hint
+// must appear only when ShowMatch is off, i.e. only when following it would
+// actually change the output.
+func TestTextFormatter_PrecommitGuidanceHintMatchesState(t *testing.T) {
+	const secret = "4929-3813-3266-4295"
+	matches := []detector.Match{{
+		Text:       secret,
+		LineNumber: 2,
+		Type:       "CREDIT_CARD",
+		Confidence: 100,
+		Filename:   "cards.tsv",
+		Validator:  "creditcard",
+	}}
+	levels := map[string]bool{"high": true, "medium": true, "low": true}
+	const hint = "Use --show-match flag"
+
+	// ShowMatch off: values are [HIDDEN], so the hint is actionable — show it.
+	hidden, err := NewFormatter().Format(matches, nil, formatters.FormatterOptions{
+		PrecommitMode: true, ShowMatch: false, NoColor: true, ConfidenceLevel: levels,
+	})
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+	if !strings.Contains(hidden, hint) {
+		t.Errorf("pre-commit guidance should suggest --show-match when it is off:\n%s", hidden)
+	}
+
+	// ShowMatch on: values are already shown; suggesting the flag is misleading.
+	shown, err := NewFormatter().Format(matches, nil, formatters.FormatterOptions{
+		PrecommitMode: true, ShowMatch: true, NoColor: true, ConfidenceLevel: levels,
+	})
+	if err != nil {
+		t.Fatalf("Format error: %v", err)
+	}
+	if strings.Contains(shown, hint) {
+		t.Errorf("pre-commit guidance must not suggest --show-match when it is already on:\n%s", shown)
+	}
+	// The remaining guidance is still present in both states.
+	if !strings.Contains(shown, "Resolution options:") || !strings.Contains(hidden, "Resolution options:") {
+		t.Errorf("resolution guidance header should be present in both states")
+	}
+}
