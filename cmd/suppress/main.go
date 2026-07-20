@@ -102,5 +102,15 @@ func enableSuppression(manager *suppressions.SuppressionManager, hash, reason st
 		fmt.Printf("Error enabling suppression: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Successfully enabled suppression for hash: %s\n", hash[:8])
+	fmt.Printf("Successfully enabled suppression for hash: %s\n", shortHash(hash))
+}
+
+// shortHash returns up to the first 8 characters of a hash for display, without
+// panicking on hashes shorter than 8 chars (rule Hash is a free-form YAML string
+// with no length constraint, so hash[:8] could slice out of range).
+func shortHash(hash string) string {
+	if len(hash) <= 8 {
+		return hash
+	}
+	return hash[:8]
 }

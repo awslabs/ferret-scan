@@ -31,6 +31,13 @@ const (
 	// MaxZipEntryBytes bounds a single decompressed entry (e.g. document.xml,
 	// one sheet's sharedStrings.xml).
 	MaxZipEntryBytes = 50 * 1024 * 1024 // 50MB
+	// MaxTotalTextBytes bounds the CUMULATIVE extracted text across all entries
+	// in one document. The per-entry cap alone doesn't stop a document with many
+	// entries (e.g. thousands of slides/sheets, each under 50MB) from summing to
+	// tens of GB and then being fed whole to every validator (security finding
+	// LOW-1). Consistent with this extractor's truncate-don't-error philosophy,
+	// accumulation loops stop appending once the running total exceeds this.
+	MaxTotalTextBytes = 200 * 1024 * 1024 // 200MB
 )
 
 // readZipEntryLimited reads a decompressed zip entry, capped at MaxZipEntryBytes,
@@ -202,6 +209,10 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 
 	// Add headers first
 	for _, headerFile := range headerFiles {
+		// Stop once cumulative extracted text hits the cap (LOW-1).
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
 		headerText, err := extractWordXMLText(headerFile)
 		if err == nil && headerText != "" {
 			allText.WriteString("--- HEADER ---\n")
@@ -215,6 +226,10 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 
 	// Add footers last
 	for _, footerFile := range footerFiles {
+		// Stop once cumulative extracted text hits the cap (LOW-1).
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
 		footerText, err := extractWordXMLText(footerFile)
 		if err == nil && footerText != "" {
 			allText.WriteString("\n\n--- FOOTER ---\n")
@@ -272,6 +287,11 @@ func extractXlsxText(filePath string, content *TextContent) (*TextContent, error
 	sortWorksheets(worksheets)
 
 	for _, worksheet := range worksheets {
+		// Stop once cumulative extracted text hits the cap (LOW-1): many small
+		// entries can still sum to a memory-exhausting total.
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
 		// Get sheet name
 		sheetName := strings.TrimPrefix(worksheet.Name, "xl/worksheets/")
 		sheetName = strings.TrimSuffix(sheetName, ".xml")
@@ -331,6 +351,10 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 
 	// Process slides
 	for i, slide := range slides {
+		// Stop once cumulative extracted text hits the cap (LOW-1).
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
 		slideNum := i + 1
 		allText.WriteString(fmt.Sprintf("--- Slide %d ---\n", slideNum))
 
@@ -352,6 +376,10 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 
 	// Process master slides
 	for i, master := range masters {
+		// Stop once cumulative extracted text hits the cap (LOW-1).
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
 		allText.WriteString(fmt.Sprintf("--- Master %d ---\n", i+1))
 		masterText, err := extractTextFromXML(master, "//a:t")
 		if err == nil {

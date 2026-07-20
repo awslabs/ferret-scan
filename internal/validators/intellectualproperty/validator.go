@@ -876,7 +876,7 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 					// Debug logging to verify this code path is reached
 					if v.observer != nil && v.observer.Debug() != nil {
 						v.observer.Debug().LogDetail("intellectualproperty",
-							fmt.Sprintf("INTERNAL URL MATCH FOUND: '%s' - setting HIGH confidence", match))
+							fmt.Sprintf("INTERNAL URL MATCH FOUND: [HIDDEN] (len=%d) - setting HIGH confidence", len(match)))
 					}
 					// Configured internal URLs always start at HIGH confidence
 					// If someone configured a pattern, they want it treated as high priority

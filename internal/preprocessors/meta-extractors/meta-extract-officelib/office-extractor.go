@@ -22,6 +22,12 @@ const (
 	MaxFileSize     = 100 * 1024 * 1024 // 100MB max file size
 	MaxXMLSize      = 10 * 1024 * 1024  // 10MB max XML content
 	XMLParseTimeout = 30 * time.Second  // 30 second timeout for XML parsing
+	// MaxEmbeddedMediaSize bounds a single embedded media file extracted to a
+	// temp file. Without it, extractImageToTemp did an unbounded io.Copy, so a
+	// small .docx/.xlsx/.pptx with a media entry that deflates to many GB could
+	// exhaust the temp filesystem (security finding MED-3). The XML readers in
+	// this file already cap at MaxXMLSize; media is larger but still bounded.
+	MaxEmbeddedMediaSize = 50 * 1024 * 1024 // 50MB max per embedded media file
 )
 
 // Global replacer for efficient error sanitization (initialized once)
@@ -702,6 +708,12 @@ func extractImageToTemp(file *zip.File) (string, error) {
 	}
 	defer rc.Close()
 
+	// Reject before extracting when the entry declares a size over the cap.
+	if file.UncompressedSize64 > MaxEmbeddedMediaSize {
+		return "", fmt.Errorf("embedded media %q declares %d bytes, exceeding the %d cap (possible decompression bomb)",
+			file.Name, file.UncompressedSize64, MaxEmbeddedMediaSize)
+	}
+
 	// Create temp file
 	tempFile, err := os.CreateTemp("", "office_image_*"+filepath.Ext(file.Name))
 	if err != nil {
@@ -709,11 +721,18 @@ func extractImageToTemp(file *zip.File) (string, error) {
 	}
 	defer tempFile.Close()
 
-	// Copy image data
-	_, err = io.Copy(tempFile, rc)
+	// Copy image data, bounded so a lying declared size can't exhaust the temp
+	// filesystem. Read one byte past the cap to detect an over-cap entry, then
+	// remove the partial temp file so no bomb fragment is left on disk (MED-3).
+	n, err := io.Copy(tempFile, io.LimitReader(rc, MaxEmbeddedMediaSize+1))
 	if err != nil {
 		os.Remove(tempFile.Name())
 		return "", err
+	}
+	if n > MaxEmbeddedMediaSize {
+		os.Remove(tempFile.Name())
+		return "", fmt.Errorf("embedded media %q exceeds the %d extraction cap (possible decompression bomb)",
+			file.Name, MaxEmbeddedMediaSize)
 	}
 
 	return tempFile.Name(), nil

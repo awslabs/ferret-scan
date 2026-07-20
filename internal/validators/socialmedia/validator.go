@@ -807,7 +807,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		if r := recover(); r != nil {
 			// Log panic recovery for debugging
 			if v.observer != nil && v.observer.Debug() != nil {
-				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in CalculateConfidence for match '%s': %v", match, r))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Recovered from panic in CalculateConfidence for match [HIDDEN] (len=%d): %v", len(match), r))
 			}
 			if v.isDebugEnabled() {
 				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Panic in confidence calculation\n")
@@ -833,7 +833,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	if platform == "" {
 		// Unknown platform - assign low confidence with enhanced logging
 		if v.observer != nil && v.observer.Debug() != nil {
-			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Unknown platform for match: %s", match))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Unknown platform for match [HIDDEN] (len=%d)", len(match)))
 		}
 		if v.isDebugEnabled() {
 			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Unknown platform for match [HIDDEN] (len=%d)\n", len(match))
@@ -2789,7 +2789,7 @@ func (v *Validator) processMatchOptimized(match, platform string, patternIndex i
 
 	// Log match details in debug mode (only for high-confidence matches to reduce overhead)
 	if os.Getenv("FERRET_DEBUG") == "1" && confidence > 70 && v.observer != nil && v.observer.Debug() != nil {
-		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Found %s match: '%s' (confidence: %.1f%%, type: %s, username: %s)", platform, match, confidence, patternType, username))
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Found %s match [HIDDEN] (len=%d) (confidence: %.1f%%, type: %s, username len=%d)", platform, len(match), confidence, patternType, len(username)))
 	}
 
 	return &socialMediaMatch
@@ -2914,7 +2914,7 @@ func (v *Validator) analyzeContextWithPlatformLine(match string, platform string
 
 	// Log detailed context analysis in debug mode
 	if v.observer != nil && v.observer.Debug() != nil {
-		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Context analysis for %s match '%s': impact=%.1f", platform, match, confidenceImpact))
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Context analysis for %s match [HIDDEN] (len=%d): impact=%.1f", platform, len(match), confidenceImpact))
 		if len(foundPositiveKeywords) > 0 {
 			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Positive keywords found: %v", foundPositiveKeywords))
 		}

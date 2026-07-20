@@ -56,6 +56,20 @@ const (
 	DocumentTypePPTX
 )
 
+// Decompression-bomb bounds for extractOfficeContent. An Office file is a ZIP,
+// and the only upstream gate is on-disk (compressed) size — a small archive can
+// declare gigabytes of uncompressed content. These caps bound what a single
+// document can expand to in memory. They mirror the 50MB/entry cap already used
+// by the text and metadata extractors; the redactor was the one reader still
+// doing an unbounded io.ReadAll (security finding HIGH-4).
+const (
+	// maxOfficeEntryBytes bounds a single decompressed zip entry.
+	maxOfficeEntryBytes = 50 * 1024 * 1024 // 50MB
+	// maxOfficeTotalBytes bounds the cumulative decompressed size across all
+	// entries in one document.
+	maxOfficeTotalBytes = 200 * 1024 * 1024 // 200MB
+)
+
 // String returns the string representation of the document type
 func (dt OfficeDocumentType) String() string {
 	switch dt {
@@ -265,9 +279,18 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 
 	var extractedText strings.Builder
 	var textPositions []OfficeTextPosition
+	var totalDecompressed int64
 
 	// Extract all files from ZIP
 	for _, file := range reader.File {
+		// Reject before decompressing when the entry declares a size over the
+		// per-entry cap. This is the cheap first line of defense against a
+		// decompression bomb (a tiny compressed entry claiming multi-GB output).
+		if file.UncompressedSize64 > maxOfficeEntryBytes {
+			return nil, "", nil, fmt.Errorf("office entry %q declares %d bytes, exceeding the %d cap (possible decompression bomb)",
+				file.Name, file.UncompressedSize64, maxOfficeEntryBytes)
+		}
+
 		rc, err := file.Open()
 		if err != nil {
 			or.logEvent("file_extraction_failed", false, map[string]interface{}{
@@ -277,7 +300,9 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 			continue
 		}
 
-		content, err := io.ReadAll(rc)
+		// Read at most one byte past the cap so a lying declared size (or a
+		// stored/zip64 entry) is still caught by the actual decompressed length.
+		content, err := io.ReadAll(io.LimitReader(rc, maxOfficeEntryBytes+1))
 		rc.Close()
 		if err != nil {
 			or.logEvent("file_read_failed", false, map[string]interface{}{
@@ -285,6 +310,17 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 				"error":     err.Error(),
 			})
 			continue
+		}
+		// The redactor repackages exactly what it reads, so a truncated entry
+		// would silently corrupt the redacted output — fail closed instead.
+		if int64(len(content)) > maxOfficeEntryBytes {
+			return nil, "", nil, fmt.Errorf("office entry %q exceeds the %d per-entry decompression cap (possible bomb)",
+				file.Name, maxOfficeEntryBytes)
+		}
+		totalDecompressed += int64(len(content))
+		if totalDecompressed > maxOfficeTotalBytes {
+			return nil, "", nil, fmt.Errorf("office document exceeds the %d cumulative decompression cap (possible bomb)",
+				maxOfficeTotalBytes)
 		}
 
 		zipContents.Files[file.Name] = content

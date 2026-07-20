@@ -30,7 +30,11 @@ jobs:
           go-version-file: ".go-version"
 
       - name: Install git-chglog
-        run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+        # Pinned to an exact version (not @latest) so a compromised newer release
+        # can't be pulled into this privileged release job (contents:write +
+        # packages:write). Go's sumdb does not protect against a maliciously
+        # published new version. Bump deliberately after review. (MED-4)
+        run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.4
 
       - name: Generate/Update Changelog
         run: |

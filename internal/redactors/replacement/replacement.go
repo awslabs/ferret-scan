@@ -206,19 +206,24 @@ func preserveEmail(original string) string {
 
 func preservePhone(original string) string {
 	cleaned := nonDigit.ReplaceAllString(original, "")
-	if len(cleaned) < 6 {
+	// Mask everything except the last 4 digits — the same policy as SSN and
+	// credit card. The previous "first3 + stars + last4" scheme had two security
+	// defects: for a 7-digit number the middle was Repeat("*", 0) so ALL seven
+	// digits survived verbatim (a redaction that redacts nothing), and for a
+	// 6-digit number it computed Repeat("*", -1) which PANICS — an unrecovered
+	// crash for any pkg/redact embedder. Keeping only the last 4 fixes both.
+	if len(cleaned) < 4 {
 		return strings.Repeat("*", len(original))
 	}
-	first3 := cleaned[:3]
 	last4 := cleaned[len(cleaned)-4:]
-	middle := strings.Repeat("*", len(cleaned)-7)
-	masked := first3 + middle + last4
 	di := 0
 	return digitRe.ReplaceAllStringFunc(original, func(_ string) string {
-		if di < len(masked) {
-			r := string(masked[di])
-			di++
-			return r
+		defer func() { di++ }()
+		if di < len(cleaned)-4 {
+			return "*"
+		}
+		if di < len(cleaned) {
+			return string(last4[di-(len(cleaned)-4)])
 		}
 		return "*"
 	})

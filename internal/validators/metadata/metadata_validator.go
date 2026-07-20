@@ -124,12 +124,11 @@ func (v *Validator) ValidateMetadataContent(content router.MetadataContent) ([]d
 			v.observer.Debug().LogDetail("metadata_validator",
 				fmt.Sprintf("Processing content from %s (type: %s), content length: %d",
 					content.SourceFile, content.PreprocessorType, len(content.Content)))
-			contentPreview := content.Content
-			if len(contentPreview) > 200 {
-				contentPreview = contentPreview[:200] + "..."
-			}
-			v.observer.Debug().LogDetail("metadata_validator",
-				fmt.Sprintf("Content preview: %s", contentPreview))
+			// Do NOT log the content itself — it is raw scanned data that may
+			// contain the very secrets/PII this tool exists to protect (BSC4).
+			// The previous "Content preview: <first 200 bytes>" leaked payload to
+			// stderr/CI logs on plain --debug. Log only the length. (Glasswing
+			// finding; same class as the socialmedia/intellectualproperty fixes.)
 		}
 	}
 

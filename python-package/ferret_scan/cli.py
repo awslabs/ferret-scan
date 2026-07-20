@@ -6,6 +6,7 @@
 CLI wrapper for ferret-scan binary
 """
 
+import hashlib
 import platform
 import stat
 import subprocess
@@ -110,9 +111,19 @@ class FerretScanCLI:
             # Find the appropriate asset
             system, arch = self.get_platform_info()
             download_url = None
+            download_name = None
+            checksums_url = None
 
             for asset in release_data.get("assets", []):
                 asset_name = asset["name"]
+
+                # Capture the checksums manifest so the downloaded binary can be
+                # integrity-verified before we chmod +x and execute it (MED-5).
+                if asset_name in ("checksums.txt", "ferret-scan_checksums.txt") or (
+                    asset_name.startswith("ferret-scan") and asset_name.endswith("checksums.txt")
+                ):
+                    checksums_url = asset["browser_download_url"]
+                    continue
 
                 # Check if this asset matches our platform
                 # Support both formats: ferret-scan-darwin-arm64 and ferret-scan_1.2.2_darwin_arm64
@@ -127,6 +138,7 @@ class FerretScanCLI:
                         continue
 
                     download_url = asset["browser_download_url"]
+                    download_name = asset_name
                     break
 
             if not download_url:
@@ -158,6 +170,13 @@ class FerretScanCLI:
                     "Please try again later or download manually."
                 )
 
+            # Verify the download's SHA-256 against the release's checksums.txt
+            # BEFORE writing an executable bit or running it (MED-5). Without this
+            # a tampered asset would be chmod +x'd and executed unconditionally.
+            # HTTPS protects transport; this additionally detects a corrupted or
+            # substituted asset. The manifest is fetched from the SAME release.
+            self._verify_checksum(response.content, download_name, checksums_url)
+
             # Write binary to disk
             try:
                 with open(binary_path, "wb") as f:
@@ -183,6 +202,57 @@ class FerretScanCLI:
                 f"Unexpected error while downloading ferret-scan binary: {e}. "
                 "Please try downloading the binary manually from the GitHub releases page."
             )
+
+    def _verify_checksum(self, content, asset_name, checksums_url):
+        """Verify the downloaded binary's SHA-256 against the release's
+        checksums.txt manifest before it is made executable (MED-5).
+
+        The manifest is goreleaser's standard format: one "  " line per
+        asset. We locate the line for our asset_name and compare its
+        digest to the SHA-256 of the downloaded bytes. Any mismatch,
+        missing manifest, or missing entry is a hard failure — we never
+        execute an unverified binary.
+        """
+        if not checksums_url:
+            raise RuntimeError(
+                "Release is missing a checksums.txt manifest; refusing to run an "
+                "unverified binary. Please download and verify manually."
+            )
+        if not asset_name:
+            raise RuntimeError(
+                "Internal error: downloaded asset name unknown; cannot verify checksum."
+            )
+
+        try:
+            resp = requests.get(checksums_url, timeout=60)
+            resp.raise_for_status()
+            manifest = resp.text
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(
+                f"Failed to fetch checksums manifest for integrity verification: {e}."
+            )
+
+        expected = None
+        for line in manifest.splitlines():
+            parts = line.split()
+            # goreleaser format: "<sha256>  <filename>"
+            if len(parts) == 2 and parts[1] == asset_name:
+                expected = parts[0].lower()
+                break
+
+        if not expected:
+            raise RuntimeError(
+                f"No checksum entry for {asset_name} in the release manifest; "
+                "refusing to run an unverified binary."
+            )
+
+        actual = hashlib.sha256(content).hexdigest().lower()
+        if actual != expected:
+            raise RuntimeError(
+                f"Checksum mismatch for {asset_name}: expected {expected}, got {actual}. "
+                "The download may be corrupted or tampered with; refusing to run it."
+            )
+        print(f"Verified SHA-256 for {asset_name}", file=sys.stderr)
 
     def run(self, args):
         """Run ferret-scan with the given arguments"""
