@@ -183,6 +183,42 @@ var Cases = []Case{
 			"5 people way too many for the room\n" +
 			"3 items in way of progress\n",
 	},
+	{
+		Name: "context_decoys_original",
+		Description: "Real-context vs decoy-context pairs for the ORIGINAL validators (SSN, " +
+			"PHONE, CREDIT_CARD, EMAIL): the same shaped value framed as PII on one line and " +
+			"as a part number / error code / SKU on another. Locks CURRENT context-scoring " +
+			"behavior including known warts — e.g. SSN-shaped part numbers today score the " +
+			"same as real SSNs (no context discrimination). A future context-scoring change " +
+			"must show up here as an intentional diff, not slip through silently.",
+		Checks: []string{"SSN", "PHONE", "CREDIT_CARD", "EMAIL"},
+		Input: "employee ssn 449-87-4100 on file\n" +
+			"part number 449-87-4100 from the catalog\n" +
+			"requisition 526-33-8210 approved for shipment\n" +
+			"call us at 212-555-0142 today\n" +
+			"error code 212-555-0142 in the diagnostics log\n" +
+			"SKU 313-555-0175 restocked\n",
+	},
+	{
+		Name: "context_decoys_personname",
+		Description: "Multi-line document (PERSON_NAME is document-length sensitive) mixing " +
+			"real person references with decoy name-shaped strings: geographic features " +
+			"(Jordan River), products (Lincoln Continental), and companies (Amazon Web " +
+			"Services) that share surface shape with person names. Locks CURRENT " +
+			"disambiguation behavior, whatever it is, so future name-context changes " +
+			"surface as intentional diffs.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Contact Maria Delgado for approval\n" +
+			"the Jordan River flows north\n" +
+			"Please forward the report to James Whitfield by Friday\n" +
+			"Lincoln Continental parked outside\n" +
+			"Sarah Okonkwo will present the quarterly results\n" +
+			"Amazon Web Services launched\n" +
+			"Schedule a review with Daniel Moreau next week\n" +
+			"the Hudson Valley orchard shipped apples\n" +
+			"Priya Raghavan approved the budget request\n" +
+			"Ford Mustang sales rose sharply\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

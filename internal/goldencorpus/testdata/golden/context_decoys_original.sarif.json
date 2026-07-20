@@ -1,0 +1,457 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_original>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "call us at \ncall us at 212-555-0142 today\n today"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "call us at 212-555-0142 today"
+                  },
+                  "startColumn": 12,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in <golden:context_decoys_original> at line 4 (confidence: 100.0% - HIGH). Matched text: '212-555-0142'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "clean_number": "2125550142",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 15,
+              "country": "US/CA",
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 100,
+              "original_file": "<golden:context_decoys_original>",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "call"
+            ],
+            "validator": "phone"
+          },
+          "rank": 75,
+          "ruleId": "PHONE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_original>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "error code \nerror code 212-555-0142 in the diagnostics log\n in the diagnostics log"
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "error code 212-555-0142 in the diagnostics log"
+                  },
+                  "startColumn": 12,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in <golden:context_decoys_original> at line 5 (confidence: 65.0% - MEDIUM). Matched text: '212-555-0142'"
+          },
+          "properties": {
+            "confidence": 65,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "clean_number": "2125550142",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": -20,
+              "country": "US/CA",
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 65,
+              "original_file": "<golden:context_decoys_original>",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "phone"
+          },
+          "rank": 57.5,
+          "ruleId": "PHONE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_original>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "SKU \nSKU 313-555-0175 restocked\n restocked"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 17,
+                  "snippet": {
+                    "text": "SKU 313-555-0175 restocked"
+                  },
+                  "startColumn": 5,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in <golden:context_decoys_original> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '313-555-0175'"
+          },
+          "properties": {
+            "confidence": 65,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "clean_number": "3135550175",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": -20,
+              "country": "US/CA",
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 65,
+              "original_file": "<golden:context_decoys_original>",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "phone"
+          },
+          "rank": 57.5,
+          "ruleId": "PHONE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_original>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "employee ssn \nemployee ssn 449-87-4100 on file\n on file"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "employee ssn 449-87-4100 on file"
+                  },
+                  "startColumn": 14,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 1 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 50,
+              "original_confidence": 100,
+              "original_file": "<golden:context_decoys_original>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_original>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "part number \npart number 449-87-4100 from the catalog\n from the catalog"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "part number 449-87-4100 from the catalog"
+                  },
+                  "startColumn": 13,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:context_decoys_original>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_original>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "requisition \nrequisition 526-33-8210 approved for shipment\n approved for shipment"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "requisition 526-33-8210 approved for shipment"
+                  },
+                  "startColumn": 13,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 3 (confidence: 100.0% - HIGH). Matched text: '526-33-8210'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:context_decoys_original>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A phone number was detected in the scanned content. Phone numbers can be considered personally identifiable information (PII) depending on context and jurisdiction."
+              },
+              "help": {
+                "text": "Phone numbers may be considered PII under various privacy regulations. Evaluate whether this phone number should be present in the code. If it's for testing purposes, use clearly fake numbers (e.g., 555-0100 to 555-0199 in North America). For production use, store phone numbers in secure configuration systems with appropriate access controls."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PHONE.md",
+              "id": "PHONE",
+              "shortDescription": {
+                "text": "Phone Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations."
+              },
+              "help": {
+                "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/SSN.md",
+              "id": "SSN",
+              "shortDescription": {
+                "text": "Social Security Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}
