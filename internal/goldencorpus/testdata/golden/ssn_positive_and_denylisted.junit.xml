@@ -2,7 +2,7 @@
 <testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
   <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
     <testcase name="&lt;golden:ssn_positive_and_denylisted&gt;" classname="security-scan" time="0.001">
-      <failure message="SSN found: 449-87-4100" type="SSN">Line 1: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4100&#xA;Validator: ssn</failure>
+      <failure message="SSN found: 449-87-4100" type="SSN">Line 1: SSN detected with 60.0% confidence (MEDIUM)&#xA;Match: 449-87-4100&#xA;Validator: ssn</failure>
     </testcase>
   </testsuite>
 </testsuites>

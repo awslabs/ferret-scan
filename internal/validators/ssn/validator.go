@@ -1081,7 +1081,8 @@ func (v *Validator) isTabularData(line, match string) bool {
 	structuredElements := 0
 
 	// Count SSN-like patterns
-	structuredElements += len(reSSNStrict.FindAllString(line, -1))
+	ssnSpans := reSSNStrict.FindAllStringIndex(line, -1)
+	structuredElements += len(ssnSpans)
 
 	// Count credit card-like patterns
 	structuredElements += len(reCreditCard.FindAllString(line, -1))
@@ -1092,8 +1093,24 @@ func (v *Validator) isTabularData(line, match string) bool {
 	// Count email-like patterns
 	structuredElements += len(reEmail.FindAllString(line, -1))
 
-	// Count date-like patterns (MM/DD/YYYY, YYYY-MM-DD, etc.)
-	structuredElements += len(reDate.FindAllString(line, -1))
+	// Count date-like patterns (MM/DD/YYYY, YYYY-MM-DD, etc.) — but not date
+	// matches that sit INSIDE an SSN span: the tail of every XXX-XX-XXXX SSN
+	// itself parses as \d{1,2}-\d{2}-\d{4}, so without this exclusion a line
+	// holding a single bare SSN self-counts as two "structured elements" and
+	// EVERY SSN line gets the +15 tabular boost — which is what flattened all
+	// context discrimination (real vs decoy context both re-clamped to 100).
+	for _, d := range reDate.FindAllStringIndex(line, -1) {
+		inSSN := false
+		for _, s := range ssnSpans {
+			if d[0] >= s[0] && d[1] <= s[1] {
+				inSSN = true
+				break
+			}
+		}
+		if !inSSN {
+			structuredElements++
+		}
+	}
 
 	// If multiple structured elements, likely tabular data
 	return structuredElements >= 2

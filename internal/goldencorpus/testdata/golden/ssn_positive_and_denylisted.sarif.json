@@ -29,18 +29,18 @@
             }
           ],
           "message": {
-            "text": "Social Security Number Detected in <golden:ssn_positive_and_denylisted> at line 1 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+            "text": "Social Security Number Detected in <golden:ssn_positive_and_denylisted> at line 1 (confidence: 60.0% - MEDIUM). Matched text: '449-87-4100'"
           },
           "properties": {
-            "confidence": 100,
-            "confidenceLevel": "HIGH",
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 0,
               "context_doctype": "Unknown",
               "context_domain": "Unknown",
-              "context_impact": 15,
-              "original_confidence": 100,
+              "context_impact": 0,
+              "original_confidence": 60,
               "original_file": "<golden:ssn_positive_and_denylisted>",
               "semantic_context": {
                 "FinancialData": 0,
@@ -63,7 +63,7 @@
             },
             "validator": "ssn"
           },
-          "rank": 100,
+          "rank": 80,
           "ruleId": "SSN"
         }
       ],

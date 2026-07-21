@@ -1,8 +1,8 @@
 {
   "results": [
     {
-      "confidence": 100,
-      "confidence_level": "HIGH",
+      "confidence": 60,
+      "confidence_level": "MEDIUM",
       "filename": "<golden:ssn_positive_and_denylisted>",
       "line_number": 1,
       "metadata": {
@@ -10,8 +10,8 @@
         "context_confidence": 0,
         "context_doctype": "Unknown",
         "context_domain": "Unknown",
-        "context_impact": 15,
-        "original_confidence": 100,
+        "context_impact": 0,
+        "original_confidence": 60,
         "original_file": "<golden:ssn_positive_and_denylisted>",
         "semantic_context": {
           "FinancialData": 0,
