@@ -301,6 +301,18 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			keywordResults := v.processMatches(keywordMatches, line, lineNum, originalPath, content, contextInsights, "keyword_pattern", 60, lineHasShellVars, envType, isShellScript)
 			matches = append(matches, keywordResults...)
 		}
+
+		// Process AWS secret access keys (context-gated; see findAWSSecretKeys).
+		// Adjacent lines provide the AKIA-pairing context: credentials files list
+		// aws_access_key_id and aws_secret_access_key on consecutive lines.
+		var prevLine, nextLine string
+		if lineNum > 0 {
+			prevLine = lines[lineNum-1]
+		}
+		if lineNum+1 < len(lines) {
+			nextLine = lines[lineNum+1]
+		}
+		matches = append(matches, v.findAWSSecretKeys(line, prevLine, nextLine, lineNum, originalPath)...)
 	}
 
 	return matches, nil
@@ -877,6 +889,158 @@ func (v *Validator) isJWTToken(match string) bool {
 // isAWSAccessKey checks if the match is an AWS access key
 func (v *Validator) isAWSAccessKey(match string) bool {
 	return strings.HasPrefix(match, "AKIA") && len(match) == 20
+}
+
+// AWS secret access key detection (issue #147 item 4). The secret half of an
+// AWS credential pair is exactly 40 chars of [A-Za-z0-9/+=] with NO
+// distinguishing prefix — bare, that shape collides with SHA-1-adjacent
+// tokens, git blob refs, and arbitrary base64, so the pattern is consulted
+// ONLY when an AWS-specific context gate opens (see awsSecretContextOpen).
+var (
+	// reAWSSecretCandidate matches a 40-char secret-shaped token. Word
+	// boundaries via explicit charset exclusion (base64 chars incl. / and +
+	// are not regex word chars, so \b alone would split tokens). The LEFT
+	// boundary permits '=' — base64 padding never leads a token, and the
+	// KEY=value assignment form puts '=' immediately before the secret.
+	reAWSSecretCandidate = regexp.MustCompile(`(^|[^A-Za-z0-9/+])([A-Za-z0-9/+]{40})(=*)($|[^A-Za-z0-9/+=])`)
+
+	// reAWSSecretKeyName matches the ways the secret is labeled in real
+	// configs: env style (AWS_SECRET_ACCESS_KEY), credentials-file style
+	// (aws_secret_access_key), SDK/CloudFormation style (SecretAccessKey),
+	// and loose prose ("secret access key"). Case-insensitive.
+	reAWSSecretKeyName = regexp.MustCompile(`(?i)(?:aws_?)?secret_?access_?key|aws_?secret(?:_?key)?`)
+
+	// reAKIAAnywhere detects a paired access-key ID nearby — the strongest
+	// possible signal that a 40-char token is the matching secret.
+	reAKIAAnywhere = regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`)
+)
+
+// containsWordBoundary reports whether keyword appears in text as a whole
+// word (text must already be lowercased). Same boundary semantics as the
+// containsKeyword helper in the other validator packages: a word byte is
+// [a-z0-9_]; boundaries are string edges or non-word bytes. Prevents "test"
+// from matching inside "latest" or "attestation".
+func containsWordBoundary(text, keyword string) bool {
+	for from := 0; from+len(keyword) <= len(text); {
+		i := strings.Index(text[from:], keyword)
+		if i < 0 {
+			return false
+		}
+		i += from
+		leftOK := i == 0 || !isSecretWordByte(text[i-1])
+		right := i + len(keyword)
+		rightOK := right >= len(text) || !isSecretWordByte(text[right])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// isSecretWordByte reports whether b is a word character for boundary
+// detection (input is lowercased by the caller).
+func isSecretWordByte(b byte) bool {
+	return b == '_' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// awsSecretContextOpen reports whether line (with its immediate neighbors)
+// carries AWS-secret context: the secret's own key name on the line, or a
+// paired AKIA/ASIA access key on the same or an adjacent line (credentials
+// files list the two on consecutive lines).
+func (v *Validator) awsSecretContextOpen(line, prevLine, nextLine string) bool {
+	if reAWSSecretKeyName.MatchString(line) {
+		return true
+	}
+	return reAKIAAnywhere.MatchString(line) ||
+		reAKIAAnywhere.MatchString(prevLine) ||
+		reAKIAAnywhere.MatchString(nextLine)
+}
+
+// findAWSSecretKeys detects AWS secret access keys on a line. Guards, in
+// order: the context gate above (no gate, no scan — bare 40-char base64 is
+// far too common); a placeholder/test-pattern check; an all-one-case check
+// (real secrets mix cases — hex digests and YOUR_SECRET_HERE style
+// placeholders typically don't); and a Shannon-entropy floor reusing the
+// validator's base64 machinery. AKIA-prefixed tokens are excluded (they are
+// the ID half, already detected). Runs O(line length) once per line.
+func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum int, originalPath string) []detector.Match {
+	if len(line) < 40 {
+		return nil
+	}
+	if !v.awsSecretContextOpen(line, prevLine, nextLine) {
+		return nil
+	}
+	// Test/documentation context suppresses the whole line — matching the
+	// suppression the other secrets paths get from the context-aware
+	// confidence calculation ("test secret_access_key example ..." is a
+	// fixture, not a leak). Checked on the line only, not neighbors: a real
+	// secret adjacent to a test line must still be reported.
+	lowerLine := strings.ToLower(line)
+	for _, kw := range []string{"test", "example", "sample", "fake", "mock", "placeholder", "dummy"} {
+		if containsWordBoundary(lowerLine, kw) {
+			return nil
+		}
+	}
+
+	var results []detector.Match
+	for _, m := range reAWSSecretCandidate.FindAllStringSubmatchIndex(line, -1) {
+		start, end := m[4], m[5] // capture group 2: the 40-char token
+		candidate := line[start:end]
+
+		// The ID half is handled by the AKIA pattern; don't double-report.
+		if strings.HasPrefix(candidate, "AKIA") || strings.HasPrefix(candidate, "ASIA") {
+			continue
+		}
+		// Placeholder / documentation values ("EXAMPLE", "wJalr..." is
+		// intentionally NOT excluded — it is AWS's canonical doc secret and
+		// the golden fixtures prove users paste it; test-context keywords are
+		// the right suppressor for docs, not a value denylist).
+		if v.isObviousPlaceholder(candidate) {
+			continue
+		}
+		lower := strings.ToLower(candidate)
+		if lower == candidate || strings.ToUpper(candidate) == candidate {
+			// All-lowercase or all-uppercase 40-char runs are usually hashes,
+			// hex blobs, or shouty placeholders, not AWS secrets (which are
+			// base64 of random bytes — mixed case with overwhelming odds).
+			continue
+		}
+		if v.calculateShannonEntropy(candidate, v.base64Charset) <= v.base64Limit {
+			continue
+		}
+
+		confidence := 90.0 // context-gated + shape + entropy: strong evidence
+		if reAWSSecretKeyName.MatchString(line) && reAKIAAnywhere.MatchString(prevLine+nextLine) {
+			confidence = 95.0 // labeled AND paired with an access key ID
+		}
+		// A literal "EXAMPLE" embedded in the value is near-proof of an AWS
+		// documentation placeholder (wJalr...CYEXAMPLEKEY and friends): real
+		// secrets are random base64, where a 7-char literal is a ~1-in-10^9
+		// event. Demote below HIGH but keep it visible/redactable — mirroring
+		// how the AKIA...EXAMPLE access-key ID stays detected rather than
+		// being value-denylisted.
+		exampleEmbedded := strings.Contains(strings.ToUpper(candidate), "EXAMPLE")
+		if exampleEmbedded && confidence > 65 {
+			confidence = 65
+		}
+
+		results = append(results, detector.Match{
+			Text:       candidate,
+			LineNumber: lineNum + 1,
+			Type:       "AWS_SECRET_ACCESS_KEY",
+			Confidence: confidence,
+			Filename:   originalPath,
+			Validator:  "secrets",
+			Metadata: map[string]any{
+				"detection_method": "aws_secret_context",
+				"source":           "preprocessed_content",
+				"secret_type":      "AWS_SECRET_ACCESS_KEY",
+				"example_embedded": exampleEmbedded,
+			},
+		})
+	}
+	return results
 }
 
 // isGitHubToken checks if the match is a GitHub token
