@@ -868,7 +868,7 @@ func (f *Formatter) formatPrecommitOutput(matches []detector.Match, suppressedMa
 	// Add resolution guidance if there are findings
 	if len(matches) > 0 {
 		builder.WriteString("\n")
-		builder.WriteString(f.getPrecommitResolutionGuidance(matches))
+		builder.WriteString(f.getPrecommitResolutionGuidance(matches, options))
 	}
 
 	return builder.String()
@@ -919,13 +919,18 @@ func (f *Formatter) getPrecommitIssueDescription(match detector.Match) string {
 }
 
 // getPrecommitResolutionGuidance provides actionable guidance for resolving issues
-func (f *Formatter) getPrecommitResolutionGuidance(matches []detector.Match) string {
+func (f *Formatter) getPrecommitResolutionGuidance(matches []detector.Match, options formatters.FormatterOptions) string {
 	var guidance strings.Builder
 
 	guidance.WriteString("Resolution options:\n")
 	guidance.WriteString("1. Remove or redact the sensitive data\n")
 	guidance.WriteString("2. Add suppression rules if data is intentional (run `ferret-scan --help` for the suppression flags, or see https://github.com/awslabs/ferret-scan)\n")
-	guidance.WriteString("3. Use --show-match flag to see exact matches for review (otherwise shows [HIDDEN])\n")
+	// Only suggest --show-match when it is not already in effect: suggesting a
+	// flag the operator has already passed is misleading. When ShowMatch is on,
+	// the per-finding "match:" lines above already show the exact values.
+	if !options.ShowMatch {
+		guidance.WriteString("3. Use --show-match flag to see exact matches for review (otherwise shows [HIDDEN])\n")
+	}
 
 	// Check if there are high confidence findings that should block
 	hasHighConfidence := false
