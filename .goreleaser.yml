@@ -132,6 +132,14 @@ release:
 # Users install with:
 #   brew tap awslabs/ferret-scan https://github.com/awslabs/ferret-scan
 #   brew install awslabs/ferret-scan/ferret-scan
+#
+# NOTE: `brews` is deprecated in goreleaser v2 in favor of `homebrew_casks`,
+# but casks are macOS-ONLY and this tap deliberately serves Linux (linuxbrew)
+# users too — the README advertises "Homebrew (macOS/Linux)". Migrating would
+# silently drop Linux support. `brews` remains functional for all of v2 (CI
+# pins "~> v2" and runs --skip=validate, so the deprecation warning cannot
+# fail a release). Revisit only when planning the goreleaser v3 upgrade:
+# https://goreleaser.com/deprecations#brews
 brews:
   - name: ferret-scan
     # ids filters by ARCHIVE id, not build id ("binaries" wraps the
@@ -153,8 +161,11 @@ brews:
     description: "Find and redact sensitive data before it leaks — PII, secrets, credit cards, metadata"
     license: "Apache-2.0"
     skip_upload: auto
-    install: |
-      bin.install "ferret-scan"
+    # No custom install block: with binary-format archives the downloaded
+    # file is named by archives.name_template (ferret-scan_2.1.0_darwin_arm64),
+    # NOT "ferret-scan". goreleaser's generated default install renames it
+    # (bin.install "<asset>" => "ferret-scan"); the previous hand-written
+    # `bin.install "ferret-scan"` hit Errno::ENOENT on every brew install.
     test: |
       assert_match version.to_s, shell_output("#{bin}/ferret-scan --version")
       (testpath / "test.txt").write "card 5500-0000-0000-0004\n"
