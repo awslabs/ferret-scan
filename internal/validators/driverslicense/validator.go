@@ -28,6 +28,12 @@ var (
 	// New York: 9 digits (also Georgia)
 	reNewYorkDL = regexp.MustCompile(`\b\d{9}\b`)
 
+	// New Jersey: 1 letter + 14 digits (15 characters total — extremely distinctive length)
+	reNewJerseyDL = regexp.MustCompile(`\b[A-Za-z]\d{14}\b`)
+
+	// Wisconsin: 1 letter + 13 digits (14 characters total — very distinctive length)
+	reWisconsinDL = regexp.MustCompile(`\b[A-Za-z]\d{13}\b`)
+
 	// Illinois: 1 letter + 11 digits
 	reIllinoisDL = regexp.MustCompile(`\b[A-Za-z]\d{11}\b`)
 
@@ -36,10 +42,14 @@ var (
 
 	// Composite pattern that matches ANY of the above formats in a single pass.
 	// Used by ValidateContentCtx for the initial line scan; hits are then
-	// classified into the specific state format in classifyMatch.
+	// classified into the specific state format in classifyMatch. Ordered
+	// longest-first so the regex engine greedily matches the full token
+	// without a shorter prefix stealing the match.
 	reAnyDL = regexp.MustCompile(
 		`\b(?:` +
 			`[A-Za-z]{2}\d{6}` + // Ohio (2 letters + 6 digits)
+			`|[A-Za-z]\d{14}` + // New Jersey (1 letter + 14 digits)
+			`|[A-Za-z]\d{13}` + // Wisconsin (1 letter + 13 digits)
 			`|[A-Za-z]\d{12}` + // Florida/Michigan (1 letter + 12 digits)
 			`|[A-Za-z]\d{11}` + // Illinois (1 letter + 11 digits)
 			`|[A-Za-z]\d{7}` + // California (1 letter + 7 digits)
@@ -48,7 +58,7 @@ var (
 			`)\b`)
 
 	// State name patterns for context detection
-	reStateName = regexp.MustCompile(`(?i)\b(?:california|texas|florida|new york|pennsylvania|illinois|ohio|georgia|north carolina|michigan|CA|TX|FL|NY|PA|IL|OH|GA|NC|MI)\b`)
+	reStateName = regexp.MustCompile(`(?i)\b(?:california|texas|florida|new york|new jersey|pennsylvania|illinois|ohio|georgia|north carolina|michigan|wisconsin|CA|TX|FL|NY|NJ|PA|IL|OH|GA|NC|MI|WI)\b`)
 
 	// Licenses are often printed with separators (e.g. "D123-4567-8901",
 	// "123 456 789"). Candidates are normalized (separators stripped) and must
@@ -130,8 +140,9 @@ func NewValidator() *Validator {
 			"work permit",
 		},
 		stateKeywords: []string{
-			"california", "texas", "florida", "new york", "pennsylvania",
-			"illinois", "ohio", "georgia", "north carolina", "michigan",
+			"california", "texas", "florida", "new york", "new jersey",
+			"pennsylvania", "illinois", "ohio", "georgia", "north carolina",
+			"michigan", "wisconsin",
 		},
 	}
 
@@ -389,8 +400,16 @@ func (v *Validator) lineHasPositiveKeyword(line string) bool {
 
 // classifyMatch determines which state DL format the match corresponds to.
 // Returns a human-readable format string or "" if no specific format is matched.
+// Ordered longest-first so that longer formats are checked before shorter ones
+// that would also match (e.g. NJ 1L+14D before FL 1L+12D).
 func (v *Validator) classifyMatch(match string) string {
 	switch {
+	case reNewJerseyDL.MatchString(match):
+		// 1 letter + 14 digits: New Jersey
+		return "NJ_1L14D"
+	case reWisconsinDL.MatchString(match):
+		// 1 letter + 13 digits: Wisconsin
+		return "WI_1L13D"
 	case reFloridaDL.MatchString(match):
 		// 1 letter + 12 digits: Florida or Michigan
 		return "FL_MI_1L12D"

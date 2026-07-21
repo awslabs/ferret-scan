@@ -1,0 +1,21 @@
+=== REDACTED ===
+mail to [US_MILITARY_ADDRESS-REDACTED] promptly
+mailing [US_RURAL_ROUTE-REDACTED], Roanoke, VA 24012
+send to [US_STREET_ADDRESS-REDACTED], Boston, MA 02101
+deliver [US_STREET_ADDRESS-REDACTED] today
+new jersey driver license [DRIVERS_LICENSE-REDACTED] on record
+wisconsin dl [DRIVERS_LICENSE-REDACTED] verified
+2fa secret: [OTP_SECRET-REDACTED] lowercase
+The package weighs [US_RURAL_ROUTE-REDACTED] lbs on the scale
+APO is an abbreviation for Apollo
+123 O' clock reading on the dial
+the authentication protocol requires base configuration
+=== FINDINGS (sorted) ===
+type=DRIVERS_LICENSE line=5 conf=medium match=D12345678901234
+type=DRIVERS_LICENSE line=6 conf=medium match=J1234567890123
+type=OTP_SECRET line=7 conf=medium match=jbswy3dpehpk3pxp
+type=US_MILITARY_ADDRESS line=1 conf=high match=PSC 1523, Box 25, APO AE 09009
+type=US_RURAL_ROUTE line=2 conf=high match=Rural Route 3 Box 88
+type=US_RURAL_ROUTE line=8 conf=low match=RR 4
+type=US_STREET_ADDRESS line=3 conf=high match=123 O'Brien St
+type=US_STREET_ADDRESS line=4 conf=high match=456 King-Smith Rd

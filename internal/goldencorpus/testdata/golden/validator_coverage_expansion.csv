@@ -1,0 +1,9 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:validator_coverage_expansion>,DRIVERS_LICENSE,MEDIUM,85.0,5,D12345678901234
+<golden:validator_coverage_expansion>,DRIVERS_LICENSE,MEDIUM,70.0,6,J1234567890123
+<golden:validator_coverage_expansion>,OTP_SECRET,MEDIUM,85.0,7,jbswy3dpehpk3pxp
+<golden:validator_coverage_expansion>,US_MILITARY_ADDRESS,HIGH,95.0,1,"PSC 1523, Box 25, APO AE 09009"
+<golden:validator_coverage_expansion>,US_RURAL_ROUTE,HIGH,90.0,2,Rural Route 3 Box 88
+<golden:validator_coverage_expansion>,US_RURAL_ROUTE,LOW,40.0,8,RR 4
+<golden:validator_coverage_expansion>,US_STREET_ADDRESS,HIGH,95.0,3,123 O'Brien St
+<golden:validator_coverage_expansion>,US_STREET_ADDRESS,HIGH,90.0,4,456 King-Smith Rd

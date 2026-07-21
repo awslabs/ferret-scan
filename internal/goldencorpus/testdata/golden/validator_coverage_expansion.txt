@@ -1,0 +1,10 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                          FILE
+--------------------------------------------------------------------------------------------------------
+[HIGH  ] physical_... US_MILITARY_ADDRESS    95.00% line     1 PSC 1523, Box 25, APO AE 09009 <golden:validator_coverage_expansion>
+[HIGH  ] physical_... US_STREET_ADDRESS      95.00% line     3 123 O'Brien St                 <golden:validator_coverage_expansion>
+[HIGH  ] physical_... US_RURAL_ROUTE         90.00% line     2 Rural Route 3 Box 88           <golden:validator_coverage_expansion>
+[HIGH  ] physical_... US_STREET_ADDRESS      90.00% line     4 456 King-Smith Rd              <golden:validator_coverage_expansion>
+[MEDIUM] driversli... DRIVERS_LICENSE        85.00% line     5 D12345678901234                <golden:validator_coverage_expansion>
+[MEDIUM] otp          OTP_SECRET             85.00% line     7 jbswy3dpehpk3pxp               <golden:validator_coverage_expansion>
+[MEDIUM] driversli... DRIVERS_LICENSE        70.00% line     6 J1234567890123                 <golden:validator_coverage_expansion>
+[LOW   ] physical_... US_RURAL_ROUTE         40.00% line     8 RR 4                           <golden:validator_coverage_expansion>

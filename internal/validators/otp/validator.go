@@ -24,6 +24,11 @@ var (
 	// We match only uppercase; CalculateConfidence normalizes to upper for validation.
 	reBase32Secret = regexp.MustCompile(`\b[A-Z2-7]{16,64}\b`)
 
+	// Lowercase base32 secrets: same charset but lowercase. Some tools/configs emit
+	// secrets in lowercase (e.g., "jbswy3dpehpk3pxp"). Matched separately and only
+	// considered when positive OTP context is present on the line.
+	reBase32SecretLower = regexp.MustCompile(`\b[a-z2-7]{16,64}\b`)
+
 	// Recovery/backup codes: groups of 4-10 alphanumeric blocks separated by dashes
 	// or spaces. We detect lines that have 2+ such blocks (a single block is too
 	// ambiguous). The typical pattern is XXXX-XXXX-XXXX or XXXXXXXX XXXXXXXX.
@@ -122,6 +127,69 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	return v.ValidateContentCtx(stdctx.Background(), content, originalPath)
 }
 
+// otpLineContext holds the per-line invariants, computed ONCE per line.
+// AnalyzeContext ignores its match argument and only tests keyword PRESENCE
+// over BeforeText+FullLine+AfterText — and Before/After are slices of the
+// line, so its result is identical for every match on the line. The original
+// code recomputed it (plus hasPositive/hasNegativeContext and the
+// buildContextInfo keyword scans) per match, which is O(matches × line
+// length × keywords) — the single-long-line CPU-exhaustion DoS the other
+// validators were already hardened against. See the timing regression test.
+type otpLineContext struct {
+	impact  float64
+	posKW   []string
+	negKW   []string
+	hasPos  bool
+	hasNeg  bool
+	uriLocs [][]int
+}
+
+func (v *Validator) buildOTPLineContext(line string) otpLineContext {
+	return otpLineContext{
+		impact: v.AnalyzeContext("", detector.ContextInfo{FullLine: line}),
+		posKW:  v.findKeywords(line, v.positiveKeywords),
+		negKW:  v.findKeywords(line, v.negativeKeywords),
+		hasPos: v.hasPositiveContext(line),
+		hasNeg: v.hasNegativeContext(line),
+	}
+}
+
+// contextInfoAt builds the ContextInfo for a match at a known byte offset,
+// reusing the per-line keyword sets — no strings.Index re-scan, no per-match
+// keyword sweep.
+func (v *Validator) contextInfoAt(line string, start, length int, lc otpLineContext) detector.ContextInfo {
+	ci := detector.ContextInfo{
+		FullLine:         line,
+		PositiveKeywords: lc.posKW,
+		NegativeKeywords: lc.negKW,
+	}
+	from := start - 50
+	if from < 0 {
+		from = 0
+	}
+	to := start + length + 50
+	if to > len(line) {
+		to = len(line)
+	}
+	ci.BeforeText = line[from:start]
+	ci.AfterText = line[start+length : to]
+	return ci
+}
+
+// insideAnySpan reports whether [start,end) falls inside any span in locs
+// (sorted by start, as FindAllStringIndex returns them).
+func insideAnySpan(locs [][]int, start, end int) bool {
+	for _, l := range locs {
+		if l[0] > start {
+			return false
+		}
+		if end <= l[1] {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidateContentCtx is the context-aware form of ValidateContent, implementing
 // cooperative cancellation via execguard.LineLoopCancelled.
 func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
@@ -134,148 +202,111 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			return matches, ctx.Err()
 		}
 
-		// Check for otpauth:// URIs
-		uriMatches := reOTPAuthURI.FindAllString(line, -1)
-		for _, uri := range uriMatches {
-			confidence, checks := v.CalculateConfidence(uri)
-			contextInfo := v.buildContextInfo(line, uri)
-			contextImpact := v.AnalyzeContext(uri, contextInfo)
-			confidence += contextImpact
+		lc := v.buildOTPLineContext(line)
 
+		// emit scores one candidate at a known offset and appends it if it
+		// survives clamping. Confidence math is identical to the original
+		// per-match path; only the redundant per-match line scans are gone.
+		emit := func(start, length int, matchType string, applyNegative bool) {
+			text := line[start : start+length]
+			confidence, checks := v.CalculateConfidence(text)
+			confidence += lc.impact
+			if applyNegative && lc.hasNeg {
+				confidence -= 30
+			}
 			confidence = v.clampConfidence(confidence)
 			if confidence <= 0 {
-				continue
+				return
 			}
-
 			matches = append(matches, detector.Match{
-				Text:       uri,
+				Text:       text,
 				LineNumber: lineNum + 1,
-				Type:       "OTPAUTH_URI",
+				Type:       matchType,
 				Confidence: confidence,
 				Filename:   originalPath,
 				Validator:  "otp",
-				Context:    contextInfo,
+				Context:    v.contextInfoAt(line, start, length, lc),
 				Metadata: map[string]any{
 					"validation_checks": checks,
-					"context_impact":    contextImpact,
+					"context_impact":    lc.impact,
 					"source":            "preprocessed_content",
 					"original_file":     originalPath,
 				},
 			})
 		}
 
-		// Check for base32 secrets (only with context keywords)
-		secretMatches := reBase32Secret.FindAllString(line, -1)
-		for _, secret := range secretMatches {
-			// Skip if already part of an otpauth URI on this line
-			if strings.Contains(line, "otpauth://") && strings.Contains(line, secret) {
-				// Check if the secret is inside the URI (as a parameter value)
-				for _, uri := range uriMatches {
-					if strings.Contains(uri, secret) {
-						goto nextSecret
-					}
+		// Check for otpauth:// URIs
+		lc.uriLocs = reOTPAuthURI.FindAllStringIndex(line, -1)
+		for i, loc := range lc.uriLocs {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
+			emit(loc[0], loc[1]-loc[0], "OTPAUTH_URI", false)
+		}
+
+		// Check for base32 secrets (only with context keywords — a bare
+		// base32 string is far too ambiguous on its own).
+		if lc.hasPos {
+			for i, loc := range reBase32Secret.FindAllStringIndex(line, -1) {
+				if execguard.LineLoopCancelled(ctx, i) {
+					return matches, ctx.Err()
 				}
-			}
+				secret := line[loc[0]:loc[1]]
 
-			// Base32 secrets require positive keyword context — a bare base32
-			// string is far too ambiguous on its own.
-			if !v.hasPositiveContext(line) {
-				continue
-			}
-
-			// Reject if this looks like a UUID or hex hash
-			if reUUID.MatchString(secret) || reHexHash.MatchString(secret) {
-				continue
-			}
-
-			// Reject AWS access key IDs (AKIA.../ASIA...)
-			if reAWSKeyID.MatchString(secret) {
-				continue
-			}
-
-			// Validate it is actually valid base32
-			if !v.isValidBase32(secret) {
-				continue
-			}
-
-			{
-				confidence, checks := v.CalculateConfidence(secret)
-				contextInfo := v.buildContextInfo(line, secret)
-				contextImpact := v.AnalyzeContext(secret, contextInfo)
-				confidence += contextImpact
-
-				// Apply negative keyword suppression
-				if v.hasNegativeContext(line) {
-					confidence -= 30
-				}
-
-				confidence = v.clampConfidence(confidence)
-				if confidence <= 0 {
+				// Skip if inside an otpauth URI on this line (its secret= param)
+				if insideAnySpan(lc.uriLocs, loc[0], loc[1]) {
 					continue
 				}
-
-				matches = append(matches, detector.Match{
-					Text:       secret,
-					LineNumber: lineNum + 1,
-					Type:       "OTP_SECRET",
-					Confidence: confidence,
-					Filename:   originalPath,
-					Validator:  "otp",
-					Context:    contextInfo,
-					Metadata: map[string]any{
-						"validation_checks": checks,
-						"context_impact":    contextImpact,
-						"source":            "preprocessed_content",
-						"original_file":     originalPath,
-					},
-				})
+				// Reject UUID / hex-hash / AWS-key shaped tokens
+				if reUUID.MatchString(secret) || reHexHash.MatchString(secret) || reAWSKeyID.MatchString(secret) {
+					continue
+				}
+				if !v.isValidBase32(secret) {
+					continue
+				}
+				emit(loc[0], loc[1]-loc[0], "OTP_SECRET", true)
 			}
-		nextSecret:
+
+			// Lowercase base32 secrets (some tools/configs emit lowercase).
+			// Normalized to uppercase for validation; original text reported.
+			for i, loc := range reBase32SecretLower.FindAllStringIndex(line, -1) {
+				if execguard.LineLoopCancelled(ctx, i) {
+					return matches, ctx.Err()
+				}
+				secret := line[loc[0]:loc[1]]
+
+				if insideAnySpan(lc.uriLocs, loc[0], loc[1]) {
+					continue
+				}
+				upper := strings.ToUpper(secret)
+				if reUUID.MatchString(secret) || reHexHash.MatchString(secret) {
+					continue
+				}
+				if !v.isValidBase32(upper) {
+					continue
+				}
+				// Reject uppercased forms that look like English words/patterns
+				if v.isLikelyWord(upper) {
+					continue
+				}
+				emit(loc[0], loc[1]-loc[0], "OTP_SECRET", true)
+			}
 		}
 
 		// Check for recovery/backup code blocks
-		recoveryMatches := reRecoveryCodeBlock.FindAllString(line, -1)
-		if len(recoveryMatches) >= 2 && v.hasRecoveryContext(line) {
+		recoveryLocs := reRecoveryCodeBlock.FindAllStringIndex(line, -1)
+		if len(recoveryLocs) >= 2 && v.hasRecoveryContext(line) {
 			// Multiple recovery-code-shaped blocks on the same line with context
-			for _, code := range recoveryMatches {
-				// Skip UUIDs and partial UUIDs
-				if reUUID.MatchString(code) || rePartialUUID.MatchString(code) {
+			for i, loc := range recoveryLocs {
+				if execguard.LineLoopCancelled(ctx, i) {
+					return matches, ctx.Err()
+				}
+				code := line[loc[0]:loc[1]]
+				// Skip UUIDs, partial UUIDs, and hex-only dash blocks
+				if reUUID.MatchString(code) || rePartialUUID.MatchString(code) || reHexDashBlock.MatchString(code) {
 					continue
 				}
-				// Skip hex-only dash blocks (likely partial UUIDs or hashes)
-				if reHexDashBlock.MatchString(code) {
-					continue
-				}
-
-				confidence, checks := v.CalculateConfidence(code)
-				contextInfo := v.buildContextInfo(line, code)
-				contextImpact := v.AnalyzeContext(code, contextInfo)
-				confidence += contextImpact
-
-				if v.hasNegativeContext(line) {
-					confidence -= 30
-				}
-
-				confidence = v.clampConfidence(confidence)
-				if confidence <= 0 {
-					continue
-				}
-
-				matches = append(matches, detector.Match{
-					Text:       code,
-					LineNumber: lineNum + 1,
-					Type:       "RECOVERY_CODES",
-					Confidence: confidence,
-					Filename:   originalPath,
-					Validator:  "otp",
-					Context:    contextInfo,
-					Metadata: map[string]any{
-						"validation_checks": checks,
-						"context_impact":    contextImpact,
-						"source":            "preprocessed_content",
-						"original_file":     originalPath,
-					},
-				})
+				emit(loc[0], loc[1]-loc[0], "RECOVERY_CODES", true)
 			}
 		}
 	}

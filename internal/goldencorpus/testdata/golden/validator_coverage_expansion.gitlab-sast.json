@@ -1,0 +1,238 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (drivers license) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 5)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** driverslicense validator\n\n**Context:**\n```\nnew jersey driver license D12345678901234 on record\n```\n\n**Additional Information:**\n- context_impact: 80\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DRIVERS_LICENSE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "driverslicense"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 5
+      },
+      "message": "Sensitive data (drivers license) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Drivers License Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected sensitive data (drivers license) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 6)\n**Confidence:** MEDIUM (70.0%)\n**Detected by:** driverslicense validator\n\n**Context:**\n```\nwisconsin dl J1234567890123 verified\n```\n\n**Additional Information:**\n- context_impact: 65\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DRIVERS_LICENSE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "driverslicense"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 6
+      },
+      "message": "Sensitive data (drivers license) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Drivers License Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (otp secret) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 7)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** otp validator\n\n**Context:**\n```\n2fa secret: jbswy3dpehpk3pxp lowercase\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "OTP_SECRET"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "otp"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 7
+      },
+      "message": "Sensitive data (otp secret) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Otp Secret Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (us military address) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nmail to PSC 1523, Box 25, APO AE 09009 promptly\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_MILITARY_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 1
+      },
+      "message": "Sensitive data (us military address) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Us Military Address Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (us rural route) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 2)\n**Confidence:** HIGH (90.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nmailing Rural Route 3 Box 88, Roanoke, VA 24012\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_RURAL_ROUTE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 2
+      },
+      "message": "Sensitive data (us rural route) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Us Rural Route Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected sensitive data (us rural route) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 8)\n**Confidence:** LOW (40.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nThe package weighs RR 4 lbs on the scale\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_RURAL_ROUTE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 8,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 8
+      },
+      "message": "Sensitive data (us rural route) detected: [HIDDEN] (confidence: LOW)",
+      "name": "Us Rural Route Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (us street address) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 3)\n**Confidence:** HIGH (95.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nsend to 123 O'Brien St, Boston, MA 02101\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_STREET_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 3
+      },
+      "message": "Sensitive data (us street address) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Us Street Address Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (us street address) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 4)\n**Confidence:** HIGH (90.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\ndeliver 456 King-Smith Rd today\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_STREET_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:validator_coverage_expansion>",
+        "start_line": 4
+      },
+      "message": "Sensitive data (us street address) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Us Street Address Detected",
+      "severity": "Critical"
+    }
+  ]
+}

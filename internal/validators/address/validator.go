@@ -27,11 +27,15 @@ var (
 		`Path|Glen|Hollow|Meadow|Summit|Vista`
 
 	// streetNameWord matches one word of a street name. A word either starts
-	// with a letter ("Main", "Evergreen") or is an ordinal number ("42nd",
-	// "5th") — the ordinal form is what makes numbered streets in NYC-style
-	// grid cities ("123 42nd Street") detectable. Bare numbers are NOT street
-	// name words (that would make "500 300 Blvd" ambiguous with measurements).
-	streetNameWord = `(?:[A-Za-z][A-Za-z0-9]*|\d{1,4}(?:st|nd|rd|th|ST|ND|RD|TH))`
+	// with a letter ("Main", "Evergreen", "O'Brien", "King-Smith") or is an
+	// ordinal number ("42nd", "5th") — the ordinal form is what makes numbered
+	// streets in NYC-style grid cities ("123 42nd Street") detectable. Internal
+	// apostrophes and hyphens are allowed (Irish/hyphenated names) but the word
+	// must end with an alphanumeric character — no trailing punctuation. Single
+	// letters also match (e.g. the "D" in "D Street"). Bare numbers are NOT
+	// street name words (that would make "500 300 Blvd" ambiguous with
+	// measurements).
+	streetNameWord = `(?:[A-Za-z][A-Za-z0-9'\-]*[A-Za-z0-9]|[A-Za-z]|\d{1,4}(?:st|nd|rd|th|ST|ND|RD|TH))`
 
 	// reStreetAddress matches a US street address: number + street name + street type.
 	// Requires at least a street number, one or more name words, and a recognized
@@ -96,6 +100,31 @@ var (
 			`\s+(` + streetSuffixAlt + `)` +
 			`\.?` + // optional trailing dot
 			`\b`,
+	)
+
+	// reRuralRoute matches US rural route / highway contract route addresses.
+	// Full forms ("Rural Route 3", "Star Route 1 Box 88") are unambiguous;
+	// abbreviated forms ("RR 4", "HC 72") require the "Box NNN" continuation
+	// or external address context to avoid false positives. Case-insensitive.
+	reRuralRoute = regexp.MustCompile(
+		`(?i)\b(?:` +
+			`(?:Rural\s+Route|Star\s+Route)\s+\d{1,4}(?:\s*,?\s*Box\s+\d{1,6})?` +
+			`|(?:RR|R\.R\.|HC)\s+\d{1,4}\s*,?\s*Box\s+\d{1,6}` +
+			`)\b`,
+	)
+
+	// reRuralRouteShort matches abbreviated rural-route forms WITHOUT the Box
+	// continuation (e.g. "RR 4", "HC 72"). These need positive address context
+	// (ZIP, state, mailing keyword) to reach actionable confidence.
+	reRuralRouteShort = regexp.MustCompile(
+		`(?i)\b(?:RR|R\.R\.|HC)\s+\d{1,4}\b`,
+	)
+
+	// reAPOAddress matches US military mail addresses: PSC/CMR/Unit + number,
+	// optional Box, followed by APO/FPO/DPO + military state code + ZIP.
+	// The compound structure is extremely specific (near-zero FP).
+	reAPOAddress = regexp.MustCompile(
+		`(?i)\b(?:PSC|CMR|Unit)\s+\d{1,5}(?:\s*,?\s*Box\s+\d{1,6})?\s*,?\s*(?:APO|FPO|DPO)\s+(?:AA|AE|AP)\s+\d{5}(?:-\d{4})?\b`,
 	)
 
 	// False positive patterns
@@ -262,6 +291,122 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Text:       matchText,
 				LineNumber: lineNum + 1,
 				Type:       "PO_BOX",
+				Confidence: confidence,
+				Filename:   originalPath,
+				Validator:  "physical_address",
+				Context:    contextInfo,
+				Metadata: map[string]any{
+					"source":        "preprocessed_content",
+					"original_file": originalPath,
+				},
+			})
+		}
+
+		// Detect rural route addresses (RR N Box N, HC N Box N, Rural Route N, Star Route N).
+		ruralMatches := reRuralRoute.FindAllStringIndex(line, -1)
+		var ruralConfidence float64
+		if len(ruralMatches) > 0 {
+			ruralConfidence = v.calculateRuralRouteConfidence(line, lines, lineNum) - negativePenalty
+		}
+		for i, loc := range ruralMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
+			matchText := line[loc[0]:loc[1]]
+
+			confidence := ruralConfidence
+			if confidence <= 0 {
+				continue
+			}
+			if confidence > 100 {
+				confidence = 100
+			}
+
+			contextInfo := v.buildContextInfo(line, loc[0], len(matchText), linePositiveKeywords, lineNegativeKeywords)
+
+			matches = append(matches, detector.Match{
+				Text:       matchText,
+				LineNumber: lineNum + 1,
+				Type:       "US_RURAL_ROUTE",
+				Confidence: confidence,
+				Filename:   originalPath,
+				Validator:  "physical_address",
+				Context:    contextInfo,
+				Metadata: map[string]any{
+					"source":        "preprocessed_content",
+					"original_file": originalPath,
+				},
+			})
+		}
+
+		// Short-form rural routes (RR 4, HC 72) without Box — only match when
+		// the full-form regex above did NOT already match and positive address
+		// context is present on this or adjacent lines.
+		if len(ruralMatches) == 0 {
+			ruralShortMatches := reRuralRouteShort.FindAllStringIndex(line, -1)
+			var ruralShortConfidence float64
+			if len(ruralShortMatches) > 0 {
+				ruralShortConfidence = v.calculateRuralRouteShortConfidence(line, lines, lineNum) - negativePenalty
+			}
+			for i, loc := range ruralShortMatches {
+				if execguard.LineLoopCancelled(ctx, i) {
+					return matches, ctx.Err()
+				}
+				matchText := line[loc[0]:loc[1]]
+
+				confidence := ruralShortConfidence
+				if confidence <= 0 {
+					continue
+				}
+				if confidence > 100 {
+					confidence = 100
+				}
+
+				contextInfo := v.buildContextInfo(line, loc[0], len(matchText), linePositiveKeywords, lineNegativeKeywords)
+
+				matches = append(matches, detector.Match{
+					Text:       matchText,
+					LineNumber: lineNum + 1,
+					Type:       "US_RURAL_ROUTE",
+					Confidence: confidence,
+					Filename:   originalPath,
+					Validator:  "physical_address",
+					Context:    contextInfo,
+					Metadata: map[string]any{
+						"source":        "preprocessed_content",
+						"original_file": originalPath,
+						"short_form":    true,
+					},
+				})
+			}
+		}
+
+		// Detect military APO/FPO/DPO addresses.
+		apoMatches := reAPOAddress.FindAllStringIndex(line, -1)
+		var apoConfidence float64
+		if len(apoMatches) > 0 {
+			apoConfidence = v.calculateAPOConfidence(line, lines, lineNum) - negativePenalty
+		}
+		for i, loc := range apoMatches {
+			if execguard.LineLoopCancelled(ctx, i) {
+				return matches, ctx.Err()
+			}
+			matchText := line[loc[0]:loc[1]]
+
+			confidence := apoConfidence
+			if confidence <= 0 {
+				continue
+			}
+			if confidence > 100 {
+				confidence = 100
+			}
+
+			contextInfo := v.buildContextInfo(line, loc[0], len(matchText), linePositiveKeywords, lineNegativeKeywords)
+
+			matches = append(matches, detector.Match{
+				Text:       matchText,
+				LineNumber: lineNum + 1,
+				Type:       "US_MILITARY_ADDRESS",
 				Confidence: confidence,
 				Filename:   originalPath,
 				Validator:  "physical_address",
@@ -504,6 +649,72 @@ func (v *Validator) calculatePOBoxConfidence(line string, lines []string, lineNu
 	}
 
 	// Positive keyword boost
+	keywordBoost := v.calculateKeywordBoost(line, lines, lineNum)
+	confidence += keywordBoost
+
+	return confidence
+}
+
+// calculateRuralRouteConfidence computes confidence for a full-form rural route
+// match (contains "Box" or spells out "Rural Route" / "Star Route").
+func (v *Validator) calculateRuralRouteConfidence(line string, lines []string, lineNum int) float64 {
+	confidence := 55.0
+
+	// City/state/ZIP on same line
+	if reCityStateZip.MatchString(line) {
+		confidence += 20
+	} else {
+		adjacentContext := v.getAdjacentLines(lines, lineNum, 2)
+		if reCityStateZip.MatchString(adjacentContext) {
+			confidence += 20
+		} else if reStateAbbrev.MatchString(adjacentContext) && reZIPAlone.MatchString(adjacentContext) {
+			confidence += 15
+		} else if reZIPAlone.MatchString(adjacentContext) {
+			confidence += 10
+		}
+	}
+
+	// Positive keyword boost
+	keywordBoost := v.calculateKeywordBoost(line, lines, lineNum)
+	confidence += keywordBoost
+
+	return confidence
+}
+
+// calculateRuralRouteShortConfidence computes confidence for abbreviated rural
+// routes without the Box continuation (e.g. "RR 4", "HC 72"). These are only
+// actionable when address context is independently present.
+func (v *Validator) calculateRuralRouteShortConfidence(line string, lines []string, lineNum int) float64 {
+	confidence := 40.0
+
+	// Require city/state/ZIP or positive keyword to reach actionable threshold.
+	if reCityStateZip.MatchString(line) {
+		confidence += 20
+	} else {
+		adjacentContext := v.getAdjacentLines(lines, lineNum, 2)
+		if reCityStateZip.MatchString(adjacentContext) {
+			confidence += 20
+		} else if reStateAbbrev.MatchString(adjacentContext) && reZIPAlone.MatchString(adjacentContext) {
+			confidence += 15
+		} else if reZIPAlone.MatchString(adjacentContext) {
+			confidence += 10
+		}
+	}
+
+	// Positive keyword boost
+	keywordBoost := v.calculateKeywordBoost(line, lines, lineNum)
+	confidence += keywordBoost
+
+	return confidence
+}
+
+// calculateAPOConfidence computes confidence for a military APO/FPO/DPO match.
+// The compound pattern (PSC/CMR/Unit + APO/FPO/DPO + AA/AE/AP + ZIP) is
+// self-guarding — near-zero false positive rate — so the base is very high.
+func (v *Validator) calculateAPOConfidence(line string, lines []string, lineNum int) float64 {
+	confidence := 80.0
+
+	// Positive keyword boost (minor — pattern is already decisive)
 	keywordBoost := v.calculateKeywordBoost(line, lines, lineNum)
 	confidence += keywordBoost
 

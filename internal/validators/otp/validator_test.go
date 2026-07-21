@@ -605,6 +605,77 @@ func TestOTPValidator_IsLikelyWord(t *testing.T) {
 	}
 }
 
+func TestOTPValidator_LowercaseBase32Secrets(t *testing.T) {
+	validator := NewValidator()
+
+	tests := []struct {
+		name        string
+		content     string
+		expectMatch bool
+		matchText   string
+		description string
+	}{
+		{
+			name:        "Lowercase TOTP secret with context",
+			content:     "totp secret: jbswy3dpehpk3pxp",
+			expectMatch: true,
+			matchText:   "jbswy3dpehpk3pxp",
+			description: "Lowercase base32 with TOTP keyword should match",
+		},
+		{
+			name:        "Lowercase secret with 2FA keyword",
+			content:     "2fa seed krugkidrovuwg2zamjzg653oehpk3pxp",
+			expectMatch: true,
+			matchText:   "krugkidrovuwg2zamjzg653oehpk3pxp",
+			description: "Longer lowercase base32 with 2FA context",
+		},
+		{
+			name:        "Lowercase base32 without context",
+			content:     "random data: jbswy3dpehpk3pxp here",
+			expectMatch: false,
+			description: "Lowercase base32 without OTP keywords should not match",
+		},
+		{
+			name:        "English word with OTP context but caught by isLikelyWord",
+			content:     "2fa secret: aaaaaaaaaaaaaaaa",
+			expectMatch: false,
+			description: "All-same-char pattern rejected by isLikelyWord",
+		},
+		{
+			name:        "Lowercase with negative context suppression",
+			content:     "test example totp key: jbswy3dpehpk3pxp",
+			expectMatch: false,
+			description: "Negative keywords should suppress even lowercase matches",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := validator.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent() error = %v", err)
+			}
+			hasMatch := false
+			for _, m := range matches {
+				if m.Type == "OTP_SECRET" && m.Confidence > 50 {
+					hasMatch = true
+					if tt.matchText != "" && m.Text != tt.matchText {
+						t.Errorf("expected match text %q, got %q", tt.matchText, m.Text)
+					}
+					break
+				}
+			}
+			if hasMatch != tt.expectMatch {
+				t.Errorf("%s: expected match=%v, got=%v (matches=%d)",
+					tt.description, tt.expectMatch, hasMatch, len(matches))
+				for _, m := range matches {
+					t.Logf("  match: type=%s text=%q confidence=%.1f", m.Type, m.Text, m.Confidence)
+				}
+			}
+		})
+	}
+}
+
 func TestOTPValidator_SecretInsideOTPAuthURI(t *testing.T) {
 	validator := NewValidator()
 
