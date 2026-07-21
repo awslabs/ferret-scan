@@ -3,5 +3,5 @@ Filename,Type,Confidence Level,Confidence %,Line Number,Text
 <golden:context_decoys_original>,PHONE,MEDIUM,65.0,5,212-555-0142
 <golden:context_decoys_original>,PHONE,MEDIUM,65.0,6,313-555-0175
 <golden:context_decoys_original>,SSN,HIGH,100.0,1,449-87-4100
-<golden:context_decoys_original>,SSN,HIGH,100.0,2,449-87-4100
-<golden:context_decoys_original>,SSN,HIGH,100.0,3,526-33-8210
+<golden:context_decoys_original>,SSN,MEDIUM,60.0,2,449-87-4100
+<golden:context_decoys_original>,SSN,MEDIUM,60.0,3,526-33-8210

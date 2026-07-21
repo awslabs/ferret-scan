@@ -107,7 +107,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:context_decoys_original> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nemployee ssn 449-87-4100 on file\n```\n\n**Additional Information:**\n- context_impact: 50\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:context_decoys_original> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nemployee ssn 449-87-4100 on file\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -132,8 +132,8 @@
     },
     {
       "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:context_decoys_original> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\npart number 449-87-4100 from the catalog\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:context_decoys_original> (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\npart number 449-87-4100 from the catalog\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -152,14 +152,14 @@
         "file": "<golden:context_decoys_original>",
         "start_line": 2
       },
-      "message": "Social Security Number detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Social Security Number detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Social Security Number Detected",
-      "severity": "Critical"
+      "severity": "High"
     },
     {
       "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:context_decoys_original> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nrequisition 526-33-8210 approved for shipment\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:context_decoys_original> (line 3)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nrequisition 526-33-8210 approved for shipment\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -178,9 +178,9 @@
         "file": "<golden:context_decoys_original>",
         "start_line": 3
       },
-      "message": "Social Security Number detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Social Security Number detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Social Security Number Detected",
-      "severity": "Critical"
+      "severity": "High"
     }
   ]
 }
