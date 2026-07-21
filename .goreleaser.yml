@@ -134,8 +134,12 @@ release:
 #   brew install awslabs/ferret-scan/ferret-scan
 brews:
   - name: ferret-scan
+    # ids filters by ARCHIVE id, not build id ("binaries" wraps the
+    # ferret-scan-cli build). Referencing the build id here matched zero
+    # archives and failed the v2.1.0 release with "no linux/macos archives
+    # found ... ids=[ferret-scan-cli]".
     ids:
-      - ferret-scan-cli
+      - binaries
     repository:
       owner: awslabs
       name: ferret-scan
