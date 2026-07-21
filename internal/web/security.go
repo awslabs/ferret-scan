@@ -52,12 +52,18 @@ func IsLoopbackBind(addr string) bool {
 // what an attacker can do; they are not a substitute for input sanitization
 // and Origin checks (handled separately).
 //
-// CSP is intentionally permissive ('unsafe-inline' for both scripts and
-// styles) because the embedded template at internal/web/assets/template.html
-// uses ~90 inline event handlers and ~301 inline style attributes. A strict
-// CSP would visibly break the UI; refactoring the template is tracked as a
-// separate follow-up. Even with 'unsafe-inline', CSP still blocks:
-//   - external script/style sources (no script-src https://*)
+// script-src is strict ('self', no 'unsafe-inline'): all front-end code
+// lives in the embedded /app.js asset and the template carries no inline
+// <script> blocks or on*= handler attributes (interactivity is bound via
+// data-action/data-change delegation — see assets/app.js). Structural tests
+// in template_xss_test.go fail the build if inline script sneaks back in.
+//
+// style-src intentionally keeps 'unsafe-inline': the template still uses
+// ~301 inline style attributes. Hoisting those into the stylesheet is a
+// separate follow-up (issue #147 covers script-src only). Even so, CSP
+// blocks:
+//   - inline and external scripts (script-src 'self')
+//   - external style sources other than the allow-listed CDN
 //   - cross-origin form posts (form-action 'self')
 //   - object/embed/applet (object-src 'none')
 //   - base-uri tampering (base-uri 'self')
@@ -66,7 +72,7 @@ func IsLoopbackBind(addr string) bool {
 // allow-listed in style-src. Removing that dependency is tracked separately.
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	const csp = "default-src 'self'; " +
-		"script-src 'self' 'unsafe-inline'; " +
+		"script-src 'self'; " +
 		"style-src 'self' 'unsafe-inline' https://d0.awsstatic.com; " +
 		"img-src 'self' data:; " +
 		"font-src 'self' data:; " +
