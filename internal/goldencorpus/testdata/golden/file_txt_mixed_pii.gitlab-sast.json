@@ -133,7 +133,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nSSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 40\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nSSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 25\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

@@ -10,7 +10,7 @@
         "context_confidence": 0,
         "context_doctype": "Unknown",
         "context_domain": "Unknown",
-        "context_impact": 40,
+        "context_impact": 25,
         "original_confidence": 100,
         "original_file": "<golden:mixed_pii_basic>",
         "semantic_context": {

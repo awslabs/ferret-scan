@@ -28,8 +28,8 @@
   "vulnerabilities": [
     {
       "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:ssn_positive_and_denylisted> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nreal: 449-87-4100\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:ssn_positive_and_denylisted> (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nreal: 449-87-4100\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -48,9 +48,9 @@
         "file": "<golden:ssn_positive_and_denylisted>",
         "start_line": 1
       },
-      "message": "Social Security Number detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Social Security Number detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Social Security Number Detected",
-      "severity": "Critical"
+      "severity": "High"
     }
   ]
 }
