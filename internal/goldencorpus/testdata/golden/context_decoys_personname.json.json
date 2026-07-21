@@ -1,0 +1,381 @@
+{
+  "results": [
+    {
+      "confidence": 92,
+      "confidence_level": "HIGH",
+      "filename": "<golden:context_decoys_personname>",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "context_impact": 0,
+        "context_keywords": null,
+        "cultural_context": [
+          "western",
+          "english",
+          "european"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "english",
+            "european"
+          ],
+          "FirstName": "James",
+          "FullName": "James Whitfield",
+          "LastName": "Whitfield",
+          "MiddleName": "",
+          "Pattern": "basic_western_name",
+          "Suffix": "",
+          "Title": ""
+        },
+        "original_confidence": 92,
+        "pattern": "basic_western_name",
+        "pattern_priority": 5,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_checks": {
+          "both_names_known": true,
+          "has_known_name_component": true,
+          "has_middle_name": false,
+          "has_suffix": false,
+          "has_title": false,
+          "known_first_name": true,
+          "known_last_name": true,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "James Whitfield",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
+    },
+    {
+      "confidence": 92,
+      "confidence_level": "HIGH",
+      "filename": "<golden:context_decoys_personname>",
+      "line_number": 7,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "context_impact": 0,
+        "context_keywords": null,
+        "cultural_context": [
+          "western",
+          "english",
+          "european"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "english",
+            "european"
+          ],
+          "FirstName": "Daniel",
+          "FullName": "Daniel Moreau",
+          "LastName": "Moreau",
+          "MiddleName": "",
+          "Pattern": "basic_western_name",
+          "Suffix": "",
+          "Title": ""
+        },
+        "original_confidence": 92,
+        "pattern": "basic_western_name",
+        "pattern_priority": 5,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_checks": {
+          "both_names_known": true,
+          "has_known_name_component": true,
+          "has_middle_name": false,
+          "has_suffix": false,
+          "has_title": false,
+          "known_first_name": true,
+          "known_last_name": true,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "Daniel Moreau",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:context_decoys_personname>",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "context_impact": 12,
+        "context_keywords": [
+          "+contact"
+        ],
+        "cultural_context": [
+          "western",
+          "hispanic",
+          "compound"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "hispanic",
+            "compound"
+          ],
+          "FirstName": "Contact",
+          "FullName": "Contact Maria Delgado",
+          "LastName": "Delgado",
+          "MiddleName": "Maria",
+          "Pattern": "three_part_name",
+          "Suffix": "",
+          "Title": ""
+        },
+        "original_confidence": 80,
+        "pattern": "three_part_name",
+        "pattern_priority": 6,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_checks": {
+          "both_names_known": false,
+          "has_known_name_component": true,
+          "has_middle_name": true,
+          "has_suffix": false,
+          "has_title": false,
+          "known_first_name": false,
+          "known_last_name": true,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "Contact Maria Delgado",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
+    },
+    {
+      "confidence": 67,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:context_decoys_personname>",
+      "line_number": 4,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "context_impact": 0,
+        "context_keywords": [
+          "-inc",
+          "-park"
+        ],
+        "cultural_context": [
+          "western",
+          "english",
+          "european"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "english",
+            "european"
+          ],
+          "FirstName": "Lincoln",
+          "FullName": "Lincoln Continental",
+          "LastName": "Continental",
+          "MiddleName": "",
+          "Pattern": "basic_western_name",
+          "Suffix": "",
+          "Title": ""
+        },
+        "original_confidence": 67,
+        "pattern": "basic_western_name",
+        "pattern_priority": 5,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_checks": {
+          "both_names_known": false,
+          "has_known_name_component": true,
+          "has_middle_name": false,
+          "has_suffix": false,
+          "has_title": false,
+          "known_first_name": true,
+          "known_last_name": false,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "Lincoln Continental",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
+    },
+    {
+      "confidence": 67,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:context_decoys_personname>",
+      "line_number": 5,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "context_impact": 0,
+        "context_keywords": null,
+        "cultural_context": [
+          "western",
+          "english",
+          "european"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "english",
+            "european"
+          ],
+          "FirstName": "Sarah",
+          "FullName": "Sarah Okonkwo",
+          "LastName": "Okonkwo",
+          "MiddleName": "",
+          "Pattern": "basic_western_name",
+          "Suffix": "",
+          "Title": ""
+        },
+        "original_confidence": 67,
+        "pattern": "basic_western_name",
+        "pattern_priority": 5,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_checks": {
+          "both_names_known": false,
+          "has_known_name_component": true,
+          "has_middle_name": false,
+          "has_suffix": false,
+          "has_title": false,
+          "known_first_name": true,
+          "known_last_name": false,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "Sarah Okonkwo",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
+    },
+    {
+      "confidence": 67,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:context_decoys_personname>",
+      "line_number": 9,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "context_impact": 0,
+        "context_keywords": null,
+        "cultural_context": [
+          "western",
+          "english",
+          "european"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "english",
+            "european"
+          ],
+          "FirstName": "Priya",
+          "FullName": "Priya Raghavan",
+          "LastName": "Raghavan",
+          "MiddleName": "",
+          "Pattern": "basic_western_name",
+          "Suffix": "",
+          "Title": ""
+        },
+        "original_confidence": 67,
+        "pattern": "basic_western_name",
+        "pattern_priority": 5,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_checks": {
+          "both_names_known": false,
+          "has_known_name_component": true,
+          "has_middle_name": false,
+          "has_suffix": false,
+          "has_title": false,
+          "known_first_name": true,
+          "known_last_name": false,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "Priya Raghavan",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
+    }
+  ]
+}

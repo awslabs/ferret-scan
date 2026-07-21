@@ -1,0 +1,7 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:context_decoys_personname>,PERSON_NAME,MEDIUM,80.0,1,Contact Maria Delgado
+<golden:context_decoys_personname>,PERSON_NAME,HIGH,92.0,3,James Whitfield
+<golden:context_decoys_personname>,PERSON_NAME,MEDIUM,67.0,4,Lincoln Continental
+<golden:context_decoys_personname>,PERSON_NAME,MEDIUM,67.0,5,Sarah Okonkwo
+<golden:context_decoys_personname>,PERSON_NAME,HIGH,92.0,7,Daniel Moreau
+<golden:context_decoys_personname>,PERSON_NAME,MEDIUM,67.0,9,Priya Raghavan

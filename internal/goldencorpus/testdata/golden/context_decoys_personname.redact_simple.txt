@@ -1,0 +1,18 @@
+=== REDACTED ===
+[PERSON-NAME-REDACTED] for approval
+the Jordan River flows north
+Please forward the report to [PERSON-NAME-REDACTED] by Friday
+[PERSON-NAME-REDACTED] parked outside
+[PERSON-NAME-REDACTED] will present the quarterly results
+Amazon Web Services launched
+Schedule a review with [PERSON-NAME-REDACTED] next week
+the Hudson Valley orchard shipped apples
+[PERSON-NAME-REDACTED] approved the budget request
+Ford Mustang sales rose sharply
+=== FINDINGS (sorted) ===
+type=PERSON_NAME line=1 conf=medium match=Contact Maria Delgado
+type=PERSON_NAME line=3 conf=high match=James Whitfield
+type=PERSON_NAME line=4 conf=medium match=Lincoln Continental
+type=PERSON_NAME line=5 conf=medium match=Sarah Okonkwo
+type=PERSON_NAME line=7 conf=high match=Daniel Moreau
+type=PERSON_NAME line=9 conf=medium match=Priya Raghavan

@@ -1,0 +1,515 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'Contact Maria Delgado'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 12,
+              "context_keywords": [
+                "+contact"
+              ],
+              "cultural_context": [
+                "western",
+                "hispanic",
+                "compound"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "hispanic",
+                  "compound"
+                ],
+                "FirstName": "Contact",
+                "FullName": "Contact Maria Delgado",
+                "LastName": "Delgado",
+                "MiddleName": "Maria",
+                "Pattern": "three_part_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 80,
+              "pattern": "three_part_name",
+              "pattern_priority": 6,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": false,
+                "has_known_name_component": true,
+                "has_middle_name": true,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": false,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 70,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 3 (confidence: 92.0% - HIGH). Matched text: 'James Whitfield'"
+          },
+          "properties": {
+            "confidence": 92,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "James",
+                "FullName": "James Whitfield",
+                "LastName": "Whitfield",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 92,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 76,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 4 (confidence: 67.0% - MEDIUM). Matched text: 'Lincoln Continental'"
+          },
+          "properties": {
+            "confidence": 67,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 0,
+              "context_keywords": [
+                "-inc",
+                "-park"
+              ],
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "Lincoln",
+                "FullName": "Lincoln Continental",
+                "LastName": "Continental",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 67,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": false,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": false,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 63.5,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 5 (confidence: 67.0% - MEDIUM). Matched text: 'Sarah Okonkwo'"
+          },
+          "properties": {
+            "confidence": 67,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "Sarah",
+                "FullName": "Sarah Okonkwo",
+                "LastName": "Okonkwo",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 67,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": false,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": false,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 63.5,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 7 (confidence: 92.0% - HIGH). Matched text: 'Daniel Moreau'"
+          },
+          "properties": {
+            "confidence": 92,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "Daniel",
+                "FullName": "Daniel Moreau",
+                "LastName": "Moreau",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 92,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 76,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 9 (confidence: 67.0% - MEDIUM). Matched text: 'Priya Raghavan'"
+          },
+          "properties": {
+            "confidence": 67,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "Priya",
+                "FullName": "Priya Raghavan",
+                "LastName": "Raghavan",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 67,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": false,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": false,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 63.5,
+          "ruleId": "PERSON_NAME"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A person's name was detected in the scanned content. Names are considered personally identifiable information (PII) under various privacy regulations."
+              },
+              "help": {
+                "text": "Person names are considered PII under GDPR, CCPA, and other privacy regulations. Evaluate whether this name should be present in the code. If it's test data, use clearly fictional names or anonymized identifiers. For production use, ensure names are stored securely with appropriate access controls and data retention policies."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PERSON_NAME.md",
+              "id": "PERSON_NAME",
+              "shortDescription": {
+                "text": "Person Name Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

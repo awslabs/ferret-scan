@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:context_decoys_personname&gt;" classname="security-scan" time="0.001">
+      <failure message="6 security findings detected" type="SECURITY_FINDINGS">Line 3: PERSON_NAME detected with 92.0% confidence (HIGH)&#xA;Match: James Whitfield&#xA;Validator: PERSON_NAME&#xA;Line 7: PERSON_NAME detected with 92.0% confidence (HIGH)&#xA;Match: Daniel Moreau&#xA;Validator: PERSON_NAME&#xA;Line 1: PERSON_NAME detected with 80.0% confidence (MEDIUM)&#xA;Match: Contact Maria Delgado&#xA;Validator: PERSON_NAME&#xA;Line 5: PERSON_NAME detected with 67.0% confidence (MEDIUM)&#xA;Match: Sarah Okonkwo&#xA;Validator: PERSON_NAME&#xA;Line 4: PERSON_NAME detected with 67.0% confidence (MEDIUM)&#xA;Match: Lincoln Continental&#xA;Validator: PERSON_NAME&#xA;Line 9: PERSON_NAME detected with 67.0% confidence (MEDIUM)&#xA;Match: Priya Raghavan&#xA;Validator: PERSON_NAME</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

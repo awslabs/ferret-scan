@@ -1,0 +1,328 @@
+results:
+    - text: James Whitfield
+      line_number: 3
+      type: PERSON_NAME
+      confidence: 92
+      confidence_level: HIGH
+      filename: <golden:context_decoys_personname>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Retail
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - english
+            - european
+        name_components:
+            fullname: James Whitfield
+            title: ""
+            firstname: James
+            middlename: ""
+            lastname: Whitfield
+            suffix: ""
+            pattern: basic_western_name
+            cultural:
+                - western
+                - english
+                - european
+        original_confidence: 92
+        pattern: basic_western_name
+        pattern_priority: 5
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_checks:
+            both_names_known: true
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: Daniel Moreau
+      line_number: 7
+      type: PERSON_NAME
+      confidence: 92
+      confidence_level: HIGH
+      filename: <golden:context_decoys_personname>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Retail
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - english
+            - european
+        name_components:
+            fullname: Daniel Moreau
+            title: ""
+            firstname: Daniel
+            middlename: ""
+            lastname: Moreau
+            suffix: ""
+            pattern: basic_western_name
+            cultural:
+                - western
+                - english
+                - european
+        original_confidence: 92
+        pattern: basic_western_name
+        pattern_priority: 5
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_checks:
+            both_names_known: true
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: Contact Maria Delgado
+      line_number: 1
+      type: PERSON_NAME
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:context_decoys_personname>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Retail
+        context_impact: 12
+        context_keywords:
+            - +contact
+        cultural_context:
+            - western
+            - hispanic
+            - compound
+        name_components:
+            fullname: Contact Maria Delgado
+            title: ""
+            firstname: Contact
+            middlename: Maria
+            lastname: Delgado
+            suffix: ""
+            pattern: three_part_name
+            cultural:
+                - western
+                - hispanic
+                - compound
+        original_confidence: 80
+        pattern: three_part_name
+        pattern_priority: 6
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_checks:
+            both_names_known: false
+            has_known_name_component: true
+            has_middle_name: true
+            has_suffix: false
+            has_title: false
+            known_first_name: false
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: Lincoln Continental
+      line_number: 4
+      type: PERSON_NAME
+      confidence: 67
+      confidence_level: MEDIUM
+      filename: <golden:context_decoys_personname>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Retail
+        context_impact: 0
+        context_keywords:
+            - -inc
+            - -park
+        cultural_context:
+            - western
+            - english
+            - european
+        name_components:
+            fullname: Lincoln Continental
+            title: ""
+            firstname: Lincoln
+            middlename: ""
+            lastname: Continental
+            suffix: ""
+            pattern: basic_western_name
+            cultural:
+                - western
+                - english
+                - european
+        original_confidence: 67
+        pattern: basic_western_name
+        pattern_priority: 5
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_checks:
+            both_names_known: false
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: false
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: Sarah Okonkwo
+      line_number: 5
+      type: PERSON_NAME
+      confidence: 67
+      confidence_level: MEDIUM
+      filename: <golden:context_decoys_personname>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Retail
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - english
+            - european
+        name_components:
+            fullname: Sarah Okonkwo
+            title: ""
+            firstname: Sarah
+            middlename: ""
+            lastname: Okonkwo
+            suffix: ""
+            pattern: basic_western_name
+            cultural:
+                - western
+                - english
+                - european
+        original_confidence: 67
+        pattern: basic_western_name
+        pattern_priority: 5
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_checks:
+            both_names_known: false
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: false
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: Priya Raghavan
+      line_number: 9
+      type: PERSON_NAME
+      confidence: 67
+      confidence_level: MEDIUM
+      filename: <golden:context_decoys_personname>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Retail
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - english
+            - european
+        name_components:
+            fullname: Priya Raghavan
+            title: ""
+            firstname: Priya
+            middlename: ""
+            lastname: Raghavan
+            suffix: ""
+            pattern: basic_western_name
+            cultural:
+                - western
+                - english
+                - european
+        original_confidence: 67
+        pattern: basic_western_name
+        pattern_priority: 5
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_checks:
+            both_names_known: false
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: false
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
