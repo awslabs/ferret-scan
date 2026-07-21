@@ -249,7 +249,7 @@
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": 50,
+              "context_impact": 45,
               "original_confidence": 100,
               "original_file": "<golden:context_decoys_original>",
               "semantic_context": {
@@ -305,18 +305,18 @@
             }
           ],
           "message": {
-            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 2 (confidence: 60.0% - MEDIUM). Matched text: '449-87-4100'"
           },
           "properties": {
-            "confidence": 100,
-            "confidenceLevel": "HIGH",
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": 15,
-              "original_confidence": 100,
+              "context_impact": 0,
+              "original_confidence": 60,
               "original_file": "<golden:context_decoys_original>",
               "semantic_context": {
                 "FinancialData": 0,
@@ -339,7 +339,7 @@
             },
             "validator": "ssn"
           },
-          "rank": 100,
+          "rank": 80,
           "ruleId": "SSN"
         },
         {
@@ -368,18 +368,18 @@
             }
           ],
           "message": {
-            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 3 (confidence: 100.0% - HIGH). Matched text: '526-33-8210'"
+            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 3 (confidence: 60.0% - MEDIUM). Matched text: '526-33-8210'"
           },
           "properties": {
-            "confidence": 100,
-            "confidenceLevel": "HIGH",
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": 15,
-              "original_confidence": 100,
+              "context_impact": 0,
+              "original_confidence": 60,
               "original_file": "<golden:context_decoys_original>",
               "semantic_context": {
                 "FinancialData": 0,
@@ -402,7 +402,7 @@
             },
             "validator": "ssn"
           },
-          "rank": 100,
+          "rank": 80,
           "ruleId": "SSN"
         }
       ],

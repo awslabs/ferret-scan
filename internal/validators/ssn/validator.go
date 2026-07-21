@@ -1099,17 +1099,21 @@ func (v *Validator) isTabularData(line, match string) bool {
 	// holding a single bare SSN self-counts as two "structured elements" and
 	// EVERY SSN line gets the +15 tabular boost — which is what flattened all
 	// context discrimination (real vs decoy context both re-clamped to 100).
+	//
+	// Both index slices are sorted by start offset (FindAllStringIndex returns
+	// left-to-right, non-overlapping), so a two-pointer merge walk keeps this
+	// O(dates + ssns). The first version nested the span test — O(dates×ssns),
+	// which on a 1MB single line of ~87K SSNs (the DoS regression shape) is
+	// ~7.6 billion comparisons and pushed the perf test from ~2s to ~180s.
+	si := 0
 	for _, d := range reDate.FindAllStringIndex(line, -1) {
-		inSSN := false
-		for _, s := range ssnSpans {
-			if d[0] >= s[0] && d[1] <= s[1] {
-				inSSN = true
-				break
-			}
+		for si < len(ssnSpans) && ssnSpans[si][1] < d[1] {
+			si++
 		}
-		if !inSSN {
-			structuredElements++
+		if si < len(ssnSpans) && d[0] >= ssnSpans[si][0] && d[1] <= ssnSpans[si][1] {
+			continue // date is the tail of an SSN token
 		}
+		structuredElements++
 	}
 
 	// If multiple structured elements, likely tabular data
