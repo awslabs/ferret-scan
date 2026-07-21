@@ -126,6 +126,7 @@ func TestSecurityHeadersMiddleware_AddsAllHeaders(t *testing.T) {
 	}
 	for _, frag := range []string{
 		"default-src 'self'",
+		"script-src 'self'",
 		"object-src 'none'",
 		"frame-ancestors 'none'",
 		"form-action 'self'",
@@ -133,6 +134,21 @@ func TestSecurityHeadersMiddleware_AddsAllHeaders(t *testing.T) {
 		if !strings.Contains(csp, frag) {
 			t.Errorf("CSP missing %q. Full: %s", frag, csp)
 		}
+	}
+	// script-src must not regress to 'unsafe-inline' (issue #147 item 1):
+	// all script lives in the embedded /app.js; inline handlers are gone.
+	// (style-src still carries 'unsafe-inline' — out of scope here.)
+	scriptSrc := ""
+	for _, directive := range strings.Split(csp, ";") {
+		if d := strings.TrimSpace(directive); strings.HasPrefix(d, "script-src ") {
+			scriptSrc = d
+		}
+	}
+	if scriptSrc == "" {
+		t.Fatalf("CSP has no script-src directive. Full: %s", csp)
+	}
+	if strings.Contains(scriptSrc, "unsafe-inline") {
+		t.Errorf("CSP script-src contains 'unsafe-inline' — regression of issue #147 item 1: %s", scriptSrc)
 	}
 }
 

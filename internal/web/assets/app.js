@@ -1,0 +1,2924 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+// Front-end logic for the Ferret Scan web UI.
+//
+// This file is embedded into the binary (see internal/web/server.go) and
+// served same-origin at /app.js. It used to live in an inline <script> block
+// in template.html; it was extracted so the Content-Security-Policy can use
+// script-src 'self' without 'unsafe-inline'. Do not add inline <script> blocks
+// or on*="..." attributes to template.html — the CSP will block them.
+
+let currentResults = [];
+let allResults = [];
+let scanning = false;
+let activeFilter = 'all';
+let sortField = null;
+let sortDirection = 'desc';
+let currentPage = 1;
+let pageSize = 50;
+let lastScanResults = [];
+let newFindings = [];
+
+// Files queued from drag-and-drop (including walked folder contents).
+// Each entry is { file: File, relativePath: string }. When non-empty,
+// submit uses these instead of the native fileInput.files list.
+let pendingDroppedFiles = [];
+
+// Exclude patterns from --exclude / config.defaults.exclude_patterns.
+// Populated from /config-info on load. Applied during folder walks.
+let excludePatterns = [];
+
+function toggleSection(header) {
+    const content = header.nextElementSibling;
+    const arrow = header.querySelector('span');
+
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        arrow.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        arrow.textContent = '▼';
+    }
+}
+
+/* GENAI_DISABLED: toggleGenAI function
+function toggleGenAI() {
+    const genaiCheck = document.getElementById('genaiCheck');
+    const warning = document.getElementById('genaiWarning');
+    const servicesContainer = document.getElementById('genaiServicesContainer');
+    const regionContainer = document.getElementById('regionContainer');
+
+    if (genaiCheck.checked) {
+        warning.classList.remove('hidden');
+        servicesContainer.classList.remove('hidden');
+        regionContainer.classList.remove('hidden');
+    } else {
+        warning.classList.add('hidden');
+        servicesContainer.classList.add('hidden');
+        regionContainer.classList.add('hidden');
+    }
+    updateCliCommand();
+}
+GENAI_DISABLED_END */
+
+function showAlert(message, type = 'error') {
+    const alertsContainer = document.getElementById('alerts');
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type}`;
+    alert.textContent = message;
+
+    alertsContainer.appendChild(alert);
+
+    setTimeout(() => {
+        alert.remove();
+    }, 5000);
+}
+
+document.getElementById('scanForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    if (scanning) return;
+
+    // Prefer drag-dropped files (which may carry relativePath info from
+    // a folder walk) over the native input list.
+    let queue;
+    if (pendingDroppedFiles.length > 0) {
+        queue = pendingDroppedFiles.slice();
+    } else {
+        const fileInput = document.getElementById('fileInput');
+        queue = Array.from(fileInput.files).map(f => ({ file: f, relativePath: f.name }));
+    }
+
+    if (queue.length === 0) {
+        showAlert('Please select at least one file to scan.');
+        return;
+    }
+
+    scanning = true;
+    const scanButton = document.getElementById('scanButton');
+    scanButton.classList.add('button-loading');
+    scanButton.textContent = 'Scanning...';
+
+    document.getElementById('progressContainer').classList.remove('hidden');
+    document.getElementById('resultsContainer').classList.add('hidden');
+
+    try {
+        await processScan(queue);
+    } catch (error) {
+        showAlert('Scan failed: ' + error.message);
+    } finally {
+        scanning = false;
+        scanButton.classList.remove('button-loading');
+        scanButton.textContent = 'Start Scan';
+        document.getElementById('progressContainer').classList.add('hidden');
+    }
+});
+
+async function processScan(queue) {
+    currentResults = [];
+    window.suppressedCount = 0;
+    window.suppressedFindings = [];
+    window.incompleteReasons = [];
+    const totalFiles = queue.length;
+
+    for (let i = 0; i < totalFiles; i++) {
+        const item = queue[i];
+        const file = item.file;
+        const relativePath = item.relativePath || file.name;
+        const progress = Math.round(((i + 1) / totalFiles) * 100);
+
+        document.getElementById('progressFill').style.width = progress + '%';
+        document.getElementById('progressText').textContent = `Scanning file ${i + 1} of ${totalFiles}: ${relativePath}`;
+
+        try {
+            const results = await scanSingleFile(file, relativePath);
+            if (results && results.length > 0) {
+                currentResults = currentResults.concat(results);
+            }
+        } catch (error) {
+            showAlert(`Error scanning ${relativePath}: ${error.message}`, 'warning');
+        }
+    }
+
+    await displayResults();
+}
+
+async function scanSingleFile(file, relativePath) {
+    const formData = new FormData();
+    formData.append('files', file);
+    // Sent as a parallel field because Go's multipart parser strips
+    // directories from the filename header. The server uses this to
+    // display findings as "myrepo/src/foo.go" instead of "foo.go".
+    if (relativePath && relativePath !== file.name) {
+        formData.append('relative_path', relativePath);
+    }
+    formData.append('confidence', document.getElementById('confidenceSelect').value);
+    formData.append('checks', getSelectedChecks());
+    formData.append('verbose', document.getElementById('verboseCheck').checked);
+    // showMatch is handled client-side only
+    formData.append('recursive', document.getElementById('recursiveCheck').checked);
+    /* GENAI_DISABLED: GenAI form parameters
+    formData.append('enableGenAI', document.getElementById('genaiCheck').checked);
+    formData.append('genaiServices', getSelectedGenAIServices());
+    formData.append('textractRegion', document.getElementById('regionSelect').value);
+    GENAI_DISABLED_END */
+
+    const response = await fetch('/scan', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+        throw new Error(data.error || 'Unknown error occurred');
+    }
+
+    // Store suppressed findings from backend
+    if (data.suppressed && data.suppressed.length > 0) {
+        window.suppressedFindings = (window.suppressedFindings || []).concat(data.suppressed);
+        window.suppressedCount = (window.suppressedCount || 0) + data.suppressed.length;
+    }
+
+    // Track degraded coverage (v2 Phase 4): if the backend reports the scan
+    // was incomplete for this file, remember the reason so displayResults
+    // can warn that findings may be missing rather than imply a clean scan.
+    if (data.incomplete) {
+        window.incompleteReasons = (window.incompleteReasons || []);
+        window.incompleteReasons.push(data.incomplete_reason || 'coverage incomplete');
+    }
+
+    return data.results || [];
+}
+
+async function displayResults() {
+    allResults = [...currentResults];
+    lastScanResults = [...currentResults];
+
+    // Filter out findings that already have suppressions (for new findings list only)
+    await filterNewFindings();
+
+    activeFilter = 'all';
+    sortField = 'confidence';
+    sortDirection = 'desc';
+    updateDisplay();
+
+    document.getElementById('resultsContainer').classList.remove('hidden');
+
+    /* GENAI_DISABLED: Cost estimation call
+    // Show cost estimate if GenAI was used
+    if (document.getElementById('genaiCheck').checked) {
+        calculateAndDisplayCost();
+    }
+    GENAI_DISABLED_END */
+
+    if (currentResults.length > 0) {
+        showAlert(`Scan complete: ${currentResults.length} findings detected`, 'success');
+    } else {
+        showAlert('Scan complete: No sensitive data found', 'success');
+    }
+
+    // Degraded-coverage warning (v2 Phase 4): a timed-out / budget-limited
+    // scan may be MISSING findings, so a clean-looking result must not be
+    // trusted as complete. Surface it as a persistent warning alert.
+    const incompleteReasons = window.incompleteReasons || [];
+    if (incompleteReasons.length > 0) {
+        const detail = incompleteReasons.length === 1
+            ? incompleteReasons[0]
+            : `${incompleteReasons.length} files were not fully scanned`;
+        showAlert(`⚠ Scan coverage incomplete — findings may be missing: ${detail}`, 'warning');
+    }
+}
+
+function filterResults(filter) {
+    activeFilter = filter;
+    currentPage = 1;
+    updateDisplay();
+}
+
+function sortTable(field) {
+    if (sortField === field) {
+        sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+    } else {
+        sortField = field;
+        sortDirection = 'desc';
+    }
+    currentPage = 1;
+    updateDisplay();
+}
+
+function updatePagination() {
+    const newPageSize = document.getElementById('pageSize').value;
+    pageSize = newPageSize === 'all' ? 'all' : parseInt(newPageSize);
+    currentPage = 1;
+    updateDisplay();
+}
+
+function changePage(direction) {
+    if (pageSize === 'all') return;
+
+    const totalResults = activeFilter === 'all' ? allResults.length : allResults.filter(r => r.confidence_level === activeFilter).length;
+    const totalPages = Math.ceil(totalResults / pageSize);
+
+    currentPage += direction;
+    if (currentPage < 1) currentPage = 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    updateDisplay();
+}
+
+function goToPage(page) {
+    currentPage = page;
+    updateDisplay();
+}
+
+function updateDisplay() {
+    // Filter results based on active filter
+    let filteredResults = activeFilter === 'all' ?
+        [...allResults] :
+        allResults.filter(r => r.confidence_level === activeFilter);
+
+    // Apply sorting - default multi-level sort or user-selected field
+    filteredResults.sort((a, b) => {
+        if (sortField === 'confidence' || !sortField) {
+            // Multi-level sort: confidence desc, filename asc, line_number asc
+            const confDiff = b.confidence - a.confidence;
+            if (confDiff !== 0) return confDiff;
+
+            const fileCompare = normalizePath(a.filename).toLowerCase().localeCompare(normalizePath(b.filename).toLowerCase());
+            if (fileCompare !== 0) return fileCompare;
+
+            return a.line_number - b.line_number;
+        } else if (sortField === 'validator') {
+            // Special handling for validator field (derived from type)
+            const aVal = getValidatorFromType(a.type).toLowerCase();
+            const bVal = getValidatorFromType(b.type).toLowerCase();
+
+            if (sortDirection === 'desc') {
+                return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+            } else {
+                return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+            }
+        } else {
+            // Single field sort
+            let aVal = a[sortField];
+            let bVal = b[sortField];
+
+            if (typeof aVal === 'string') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+
+            if (sortDirection === 'desc') {
+                return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+            } else {
+                return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+            }
+        }
+    });
+
+    // Update sort indicators
+    document.querySelectorAll('[id^="sort-"]').forEach(span => span.textContent = '');
+    if (sortField) {
+        const indicator = sortDirection === 'desc' ? '▼' : '▲';
+        const sortElement = document.getElementById(`sort-${sortField}`);
+        if (sortElement) {
+            sortElement.textContent = indicator;
+        }
+    }
+
+    // Update stats
+    const stats = {
+        total: allResults.length,
+        high: allResults.filter(r => r.confidence_level === 'HIGH').length,
+        medium: allResults.filter(r => r.confidence_level === 'MEDIUM').length,
+        low: allResults.filter(r => r.confidence_level === 'LOW').length
+    };
+
+    document.getElementById('totalStat').textContent = stats.total;
+    document.getElementById('highStat').textContent = stats.high;
+    document.getElementById('mediumStat').textContent = stats.medium;
+    document.getElementById('lowStat').textContent = stats.low;
+    document.getElementById('suppressedStat').textContent = window.suppressedCount || 0;
+
+
+    // Update active card styling
+    document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('active'));
+    const activeCard = activeFilter === 'all' ? 'totalCard' :
+        activeFilter === 'HIGH' ? 'highCard' :
+            activeFilter === 'MEDIUM' ? 'mediumCard' : 'lowCard';
+    document.getElementById(activeCard).classList.add('active');
+
+    // Update table
+    const tbody = document.getElementById('resultsBody');
+    tbody.innerHTML = '';
+
+    const showMatch = document.getElementById('showMatchCheck').checked;
+    const verbose = document.getElementById('verboseCheck').checked;
+
+    // Store actual text for suppression creation
+    allResults.forEach(result => {
+        if (!result.actualText) {
+            result.actualText = result.text; // Store the actual text
+        }
+    });
+
+    // Apply pagination
+    const totalResults = filteredResults.length;
+    const totalPages = pageSize === 'all' ? 1 : Math.ceil(totalResults / pageSize);
+
+    if (currentPage > totalPages) currentPage = 1;
+
+    let paginatedResults;
+    if (pageSize === 'all') {
+        paginatedResults = filteredResults;
+    } else {
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        paginatedResults = filteredResults.slice(startIndex, endIndex);
+    }
+
+    // Update pagination info
+    if (totalResults < 50 || totalResults === 0) {
+        document.getElementById('paginationInfo').textContent = '';
+        document.getElementById('paginationControls').style.display = 'none';
+        document.getElementById('paginationBottom').style.display = 'none';
+    } else {
+        document.getElementById('paginationBottom').style.display = 'flex';
+        if (pageSize === 'all') {
+            document.getElementById('paginationInfo').textContent = `Showing all ${totalResults} results`;
+            document.getElementById('paginationControls').style.display = 'none';
+        } else {
+            const startIndex = (currentPage - 1) * pageSize + 1;
+            const endIndex = Math.min(currentPage * pageSize, totalResults);
+            document.getElementById('paginationInfo').textContent = `Showing ${startIndex}-${endIndex} of ${totalResults} results`;
+
+            // Generate page numbers
+            const pageNumbers = document.getElementById('pageNumbers');
+            pageNumbers.innerHTML = '';
+
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.textContent = i;
+                pageBtn.onclick = () => goToPage(i);
+                pageBtn.style.cssText = `padding: 6px 10px; border: 1px solid #d5dbdb; background: ${i === currentPage ? '#0972d3' : 'white'}; color: ${i === currentPage ? 'white' : '#16191f'}; cursor: pointer; border-radius: 4px; font-size: 14px;`;
+                pageNumbers.appendChild(pageBtn);
+            }
+
+            document.getElementById('prevButton').disabled = currentPage === 1;
+            document.getElementById('nextButton').disabled = currentPage === totalPages;
+            document.getElementById('paginationControls').style.display = 'flex';
+        }
+    }
+
+    // Store actual texts for redacted functionality
+    actualTexts = paginatedResults.map(result => {
+        const validator = result.validator || getValidatorFromType(result.type);
+        return extractMetadataValue(result.text, validator);
+    });
+
+    paginatedResults.forEach((result, index) => {
+        const row = document.createElement('tr');
+        const validator = result.validator || getValidatorFromType(result.type);
+        row.innerHTML = `
+            <td><span class="confidence-badge confidence-${result.confidence_level.toLowerCase()}">${result.confidence_level}</span></td>
+            <td>${validator}</td>
+            <td>${result.type}</td>
+            <td>${Math.round(result.confidence)}%</td>
+            <td>${result.line_number}</td>
+            <td>
+                <div class="finding-text" style="max-width: 350px; word-break: break-word; overflow-wrap: break-word; white-space: normal;">${showMatch ? escapeHtml(extractMetadataValue(result.text, validator)) : `<span class="redacted-link" data-action="toggleRedactedText" data-index="${index}" title="Click to reveal">🔒 [HIDDEN]</span>`}</div>
+                ${verbose && result.metadata ? formatMetadata(result.metadata) : ''}
+            </td>
+            <td title="${escapeAttr(result.filename)}">${escapeHtml(formatPathForDisplay(result.filename))}</td>
+        `;
+        tbody.appendChild(row);
+    });
+
+
+}
+
+function formatMetadata(metadata) {
+    if (!metadata || typeof metadata !== 'object') return '';
+
+    const items = [];
+
+    // Add context impact if present
+    if (metadata.context_impact !== undefined) {
+        items.push(`<strong>Context impact:</strong> ${metadata.context_impact}%`);
+    }
+
+    // Add validation results if present
+    if (metadata.validation_checks && typeof metadata.validation_checks === 'object') {
+        items.push('<strong>Validation results:</strong>');
+        Object.entries(metadata.validation_checks).forEach(([key, value]) => {
+            items.push(`&nbsp;&nbsp;- ${key}: ${value}`);
+        });
+    }
+
+    // Add other metadata (excluding validation_checks, context_impact, and original_file)
+    Object.entries(metadata)
+        .filter(([key, value]) => key !== 'validation_checks' && key !== 'context_impact' && key !== 'original_file' && value != null)
+        .forEach(([key, value]) => {
+            items.push(`<strong>${key}:</strong> ${escapeHtml(String(value))}`);
+        });
+
+    return items.length ? `<div style="margin-top: 8px; font-size: 12px; color: #5f6b7a;">${items.join('<br>')}</div>` : '';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// escapeAttr escapes a string for safe use inside a double-quoted HTML
+// attribute value. escapeHtml (textContent/innerHTML) does NOT escape
+// quotes, so it is unsafe for attributes that may contain them.
+function escapeAttr(text) {
+    return String(text == null ? '' : text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Windows path formatting functions
+// These functions handle cross-platform path display in the web UI
+// The server normalizes paths to web-friendly format, but these provide additional client-side formatting
+function formatPathForDisplay(path) {
+    if (!path) return path;
+
+    // The server already normalizes paths to web-friendly format (forward slashes)
+    // But we can add additional client-side formatting if needed
+
+    // Ensure consistent forward slash display
+    let displayPath = path.replace(/\\/g, '/');
+
+    // Handle Windows drive letters for better display
+    if (displayPath.match(/^[A-Za-z]:\//)) {
+        // Already in correct format (C:/)
+        return displayPath;
+    } else if (displayPath.match(/^[A-Za-z]:/)) {
+        // Add trailing slash for consistency (C: -> C:/)
+        return displayPath.replace(/^([A-Za-z]:)/, '$1/');
+    }
+
+    return displayPath;
+}
+
+function validatePathInput(path) {
+    if (!path) return { valid: true, message: '' };
+
+    // Basic path validation for web forms
+    const invalidChars = ['<', '>', '"', '|', '?', '*'];
+    for (let char of invalidChars) {
+        if (path.includes(char)) {
+            return {
+                valid: false,
+                message: `Path contains invalid character: ${char}`
+            };
+        }
+    }
+
+    // Check for path traversal attempts
+    if (path.includes('..')) {
+        return {
+            valid: false,
+            message: 'Path traversal not allowed'
+        };
+    }
+
+    return { valid: true, message: '' };
+}
+
+function normalizePath(path) {
+    if (!path) return path;
+
+    // Normalize path separators for consistent display
+    return path.replace(/\\/g, '/');
+}
+
+function extractMetadataValue(text, validator) {
+    // For metadata fields, extract just the value part to avoid redundancy with TYPE column
+    // This matches the CLI formatter logic
+    if (validator === "metadata" && text.includes(":")) {
+        const parts = text.split(":", 2);
+        if (parts.length === 2) {
+            const value = parts[1].trim();
+            if (value !== "") {
+                return value;
+            }
+        }
+    }
+    return text;
+}
+
+function getValidatorFromType(type) {
+    // Map types to their validator modules based on CLI output patterns
+    const typeToValidator = {
+        'ALIBABA_ARN': 'cloud_resources',
+        'AMEX': 'creditcard',
+        'API Key': 'secrets',
+        'AWS_ARN': 'cloud_resources',
+        'AZURE_RESOURCE_ID': 'cloud_resources',
+        'Canadian Passport': 'passport',
+        'Copyright': 'intellectualproperty',
+        'Credit Card': 'creditcard',
+        'DISCOVER': 'creditcard',
+        'Document Properties': 'metadata',
+        'EXIF': 'metadata',
+        'GCP_RESOURCE_NAME': 'cloud_resources',
+        'GPS': 'metadata',
+        'IBM_CRN': 'cloud_resources',
+        'MASTERCARD': 'creditcard',
+        'OCI_OCID': 'cloud_resources',
+        'PERSON_NAME': 'personname',
+        'Password': 'secrets', // pragma: allowlist secret
+        'Passport': 'passport',
+        'Patent': 'intellectualproperty',
+        'Person Name': 'personname',
+        'SSN': 'ssn',
+        'Secret': 'secrets', // pragma: allowlist secret
+        'Social Security': 'ssn',
+        'Token': 'secrets',
+        'Trade Secret': 'intellectualproperty', // pragma: allowlist secret
+        'Trademark': 'intellectualproperty',
+        'UK Passport': 'passport',
+        'US Passport': 'passport',
+        'VISA': 'creditcard',
+        /* GENAI_DISABLED: PII comprehend mapping
+        'PII': 'comprehend'
+        GENAI_DISABLED_END */
+    };
+
+    // Try exact match first
+    if (typeToValidator[type]) {
+        return typeToValidator[type];
+    }
+
+    // Try partial matches
+    for (const [typePattern, validator] of Object.entries(typeToValidator)) {
+        if (type.toLowerCase().includes(typePattern.toLowerCase()) ||
+            typePattern.toLowerCase().includes(type.toLowerCase())) {
+            return validator;
+        }
+    }
+
+    // Default fallback - derive from type name
+    return type.toLowerCase().replace(/\s+/g, '');
+}
+
+function exportResults() {
+    if (currentResults.length === 0) {
+        showAlert('No results to export', 'warning');
+        return;
+    }
+
+    // Get selected format from dropdown
+    const format = document.getElementById('exportFormat').value;
+    const showMatch = document.getElementById('showMatchCheck').checked;
+    const verbose = document.getElementById('verboseCheck').checked;
+
+    // Show loading state. Previously grabbed via the implicit `event.target`
+    // global from the inline onclick; resolved by attribute now that the
+    // button is bound through delegated dispatch.
+    const exportButton = document.querySelector('[data-action="exportResults"]');
+    const originalText = exportButton.textContent;
+    exportButton.textContent = 'Exporting...';
+    exportButton.disabled = true;
+
+    // Prepare request data
+    const requestData = {
+        format: format,
+        results: currentResults,
+        show_match: showMatch,
+        verbose: verbose
+    };
+
+    // Call the unified export endpoint
+    fetch('/export', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Export failed: ${response.statusText}`);
+            }
+
+            // Get filename from Content-Disposition header
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'ferret-scan-results';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1].replace(/"/g, '');
+                }
+            }
+
+            return response.blob().then(blob => ({ blob, filename }));
+        })
+        .then(({ blob, filename }) => {
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showAlert(`Results exported as ${filename}`, 'success');
+        })
+        .catch(error => {
+            console.error('Export error:', error);
+            showAlert(`Export failed: ${error.message}`, 'error');
+        })
+        .finally(() => {
+            // Restore button state
+            exportButton.textContent = originalText;
+            exportButton.disabled = false;
+        });
+}
+
+function showHelp() {
+    // Always show the Web Interface tab first as it's most relevant for web users
+    switchHelpTab('webui');
+    document.getElementById('helpModal').style.display = 'block';
+}
+
+function closeHelp() {
+    document.getElementById('helpModal').style.display = 'none';
+}
+
+function switchHelpTab(tabName) {
+    // Hide all help tab contents
+    const helpContents = document.querySelectorAll('.help-tab-content');
+    helpContents.forEach(content => content.classList.add('hidden'));
+
+    // Remove active class from all help tab buttons
+    const helpTabs = document.querySelectorAll('.help-tab-button');
+    helpTabs.forEach(tab => {
+        tab.classList.remove('active');
+        tab.style.color = '#5f6b7a';
+        tab.style.borderBottomColor = 'transparent';
+        tab.style.background = 'transparent';
+    });
+
+    // Show selected help tab content
+    const selectedContent = document.getElementById(tabName + 'HelpContent');
+    if (selectedContent) {
+        selectedContent.classList.remove('hidden');
+    }
+
+    // Activate selected help tab button
+    const selectedTab = document.getElementById(tabName + 'HelpTab');
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+        selectedTab.style.color = '#0972d3';
+        selectedTab.style.borderBottomColor = '#0972d3';
+        selectedTab.style.background = '#f0f8ff';
+    }
+
+    // Documentation is now accessed via external GitHub link - no tab switching needed
+}
+
+function getSelectedChecks() {
+    if (document.getElementById('allChecks').checked) return 'all';
+
+    const checks = [];
+    if (document.getElementById('bankAccount').checked) checks.push('BANK_ACCOUNT');
+    if (document.getElementById('secrets').checked) checks.push('SECRETS');
+    if (document.getElementById('cloudResources').checked) checks.push('CLOUD_RESOURCES');
+    if (document.getElementById('creditCard').checked) checks.push('CREDIT_CARD');
+    if (document.getElementById('dateOfBirth').checked) checks.push('DATE_OF_BIRTH');
+    if (document.getElementById('driversLicense').checked) checks.push('DRIVERS_LICENSE');
+    if (document.getElementById('email').checked) checks.push('EMAIL');
+    if (document.getElementById('intellectualProperty').checked) checks.push('INTELLECTUAL_PROPERTY');
+    if (document.getElementById('ipAddress').checked) checks.push('IP_ADDRESS');
+    if (document.getElementById('medicalId').checked) checks.push('MEDICAL_ID');
+    if (document.getElementById('metadata').checked) checks.push('METADATA');
+    if (document.getElementById('otp').checked) checks.push('OTP');
+    if (document.getElementById('passport').checked) checks.push('PASSPORT');
+    if (document.getElementById('personName').checked) checks.push('PERSON_NAME');
+    if (document.getElementById('phone').checked) checks.push('PHONE');
+    if (document.getElementById('physicalAddress').checked) checks.push('PHYSICAL_ADDRESS');
+    if (document.getElementById('socialMedia').checked) checks.push('SOCIAL_MEDIA');
+    if (document.getElementById('ssn').checked) checks.push('SSN');
+    if (document.getElementById('vin').checked) checks.push('VIN');
+    /* GENAI_DISABLED: COMPREHEND_PII check
+    if (document.getElementById('comprehendPii').checked) checks.push('COMPREHEND_PII');
+    GENAI_DISABLED_END */
+
+    return checks.length > 0 ? checks.join(',') : 'all';
+}
+
+/* GENAI_DISABLED: getSelectedGenAIServices function
+function getSelectedGenAIServices() {
+    if (!document.getElementById('genaiCheck').checked) return 'all';
+
+    const services = [];
+    if (document.getElementById('textractService').checked) services.push('textract');
+    if (document.getElementById('transcribeService').checked) services.push('transcribe');
+    if (document.getElementById('comprehendService').checked) services.push('comprehend');
+
+    return services.length > 0 ? services.join(',') : 'all';
+}
+GENAI_DISABLED_END */
+
+function toggleAllChecks() {
+    const allChecked = document.getElementById('allChecks').checked;
+    const checkboxes = ['bankAccount', 'secrets', 'cloudResources', 'creditCard', 'dateOfBirth', 'driversLicense', 'email', 'intellectualProperty', 'ipAddress', 'medicalId', 'metadata', 'otp', 'passport', 'personName', 'phone', 'physicalAddress', 'socialMedia', 'ssn', 'vin', 'comprehendPii'];
+
+    checkboxes.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.checked = allChecked;
+        }
+    });
+    updateCliCommand();
+}
+
+function updateCliCommand() {
+    const confidence = document.getElementById('confidenceSelect').value;
+    const checks = getSelectedChecks();
+    const verbose = document.getElementById('verboseCheck').checked;
+    const showMatch = document.getElementById('showMatchCheck').checked;
+    const recursive = document.getElementById('recursiveCheck').checked;
+    /* GENAI_DISABLED: GenAI CLI variables
+    const genai = document.getElementById('genaiCheck').checked;
+    const region = document.getElementById('regionSelect').value;
+    GENAI_DISABLED_END */
+
+    let cmd = './ferret-scan --file <your-file>';
+
+    if (confidence !== 'all') cmd += ` --confidence ${confidence}`;
+    if (checks !== 'all') cmd += ` --checks ${checks}`;
+    if (verbose) cmd += ' --verbose';
+    if (showMatch) cmd += ' --show-match';
+    if (recursive) cmd += ' --recursive';
+    /* GENAI_DISABLED: GenAI CLI command generation
+    if (genai) {
+        cmd += ' --enable-genai';
+        const genaiServices = getSelectedGenAIServices();
+        if (genaiServices !== 'all') cmd += ` --genai-services ${genaiServices}`;
+        if (region !== 'us-east-1') cmd += ` --textract-region ${region}`;
+    }
+    GENAI_DISABLED_END */
+
+    document.getElementById('cliCommand').innerHTML = escapeHtml(cmd);
+}
+
+// Update CLI command when form changes
+document.getElementById('confidenceSelect').addEventListener('change', updateCliCommand);
+/* GENAI_DISABLED: comprehendPii event listener removed from array */
+['cloudResources', 'creditCard', 'passport', 'ssn', 'metadata', 'intellectualProperty', 'email', 'phone', 'ipAddress', 'socialMedia', 'secrets'].forEach(id => {
+    document.getElementById(id).addEventListener('change', updateCliCommand);
+});
+/* GENAI_DISABLED: GenAI service event listeners
+['textractService', 'transcribeService', 'comprehendService'].forEach(id => {
+    document.getElementById(id).addEventListener('change', function() {
+        // Uncheck main GenAI if no services are selected
+        const anyServiceSelected = document.getElementById('textractService').checked ||
+                                 document.getElementById('transcribeService').checked ||
+                                 document.getElementById('comprehendService').checked;
+        if (!anyServiceSelected) {
+            document.getElementById('genaiCheck').checked = false;
+            toggleGenAI();
+        }
+        updateCliCommand();
+    });
+});
+GENAI_DISABLED_END */
+document.getElementById('verboseCheck').addEventListener('change', updateCliCommand);
+document.getElementById('showMatchCheck').addEventListener('change', updateCliCommand);
+document.getElementById('recursiveCheck').addEventListener('change', updateCliCommand);
+
+// Pick a folder. Prefers the File System Access API when available
+// (Chromium 86+), because it lets us walk the tree ourselves and skip
+// excluded directories like .git / node_modules before the browser
+// enumerates them — so the native "upload N files" dialog shows a
+// realistic count. Firefox / Safari fall back to <input webkitdirectory>,
+// which unavoidably enumerates everything first (the filter still
+// applies, but the browser's confirmation dialog shows the raw count).
+async function pickFolder() {
+    if (typeof window.showDirectoryPicker === 'function') {
+        try {
+            const dirHandle = await window.showDirectoryPicker();
+            const label = document.getElementById('fileDropZoneLabel');
+            if (label) label.textContent = 'Reading folder...';
+            const collected = [];
+            await walkDirectoryHandle(dirHandle, dirHandle.name, collected);
+            if (collected.length === 0) {
+                showAlert('No scannable files found in the selected folder (all filtered by exclude patterns).', 'warning');
+                if (label) label.textContent = 'or drag files/folders here';
+                return;
+            }
+            pendingDroppedFiles = collected;
+            try { document.getElementById('fileInput').value = ''; } catch (_) {}
+            updateDropZoneLabel();
+        } catch (err) {
+            // User cancelled — leave existing state alone. Any other
+            // failure falls through to the legacy picker.
+            if (err && err.name === 'AbortError') return;
+            document.getElementById('folderInput').click();
+        }
+        return;
+    }
+    // Older browsers: use the hidden webkitdirectory input. The browser
+    // will enumerate everything and show its own "upload N files"
+    // prompt; we can't influence that count, but we still filter out
+    // excluded paths before uploading.
+    document.getElementById('folderInput').click();
+}
+
+// Walk a FileSystemDirectoryHandle tree (File System Access API),
+// applying the configured exclude patterns at each level so excluded
+// directories are skipped wholesale — we never even read their files.
+async function walkDirectoryHandle(dirHandle, parentPath, out) {
+    // Skip excluded directories before descending. Match against both
+    // the full relative path and the base name; also honor trailing-/
+    // patterns as directory excludes.
+    if (isExcludedByPatterns(parentPath, dirHandle.name, excludePatterns)) return;
+    for await (const [name, handle] of dirHandle.entries()) {
+        const relPath = `${parentPath}/${name}`;
+        if (isExcludedByPatterns(relPath, name, excludePatterns)) continue;
+        if (handle.kind === 'file') {
+            try {
+                const file = await handle.getFile();
+                out.push({ file, relativePath: relPath });
+            } catch (_) { /* unreadable file — skip */ }
+        } else if (handle.kind === 'directory') {
+            await walkDirectoryHandle(handle, relPath, out);
+        }
+    }
+}
+
+// Drag-and-drop: accept both files and folders. Folders are walked
+// client-side via the webkitGetAsEntry API and every file inside is
+// added with a relative path so reports show e.g. "myrepo/src/foo.go".
+(function setupDropZone() {
+    const dropZone = document.getElementById('fileDropZone');
+    const label = document.getElementById('fileDropZoneLabel');
+    if (!dropZone) return;
+
+    const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+    ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+        stop(e);
+        dropZone.style.borderColor = 'var(--color-text-accent)';
+        dropZone.style.background = '#f0f7ff';
+    }));
+    ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+        stop(e);
+        dropZone.style.borderColor = '';
+        dropZone.style.background = '';
+    }));
+
+    dropZone.addEventListener('drop', async (e) => {
+        const items = e.dataTransfer && e.dataTransfer.items;
+        if (!items || items.length === 0) return;
+
+        label.textContent = 'Reading files...';
+        try {
+            const collected = await collectDroppedItems(items);
+            if (collected.length === 0) {
+                showAlert('No files found in dropped items.', 'warning');
+                label.textContent = 'or drag files/folders here';
+                return;
+            }
+            pendingDroppedFiles = collected;
+            // Clear any previously-picked files from the native input so
+            // the submit handler unambiguously picks the drop list.
+            try { document.getElementById('fileInput').value = ''; } catch (_) {}
+            updateDropZoneLabel();
+        } catch (err) {
+            showAlert('Failed to read dropped items: ' + err.message);
+            label.textContent = 'or drag files/folders here';
+        }
+    });
+
+    // When the user picks via the native file picker, drop the queued
+    // drag-drop files so the two sources don't combine unexpectedly.
+    document.getElementById('fileInput').addEventListener('change', () => {
+        if (document.getElementById('fileInput').files.length > 0) {
+            pendingDroppedFiles = [];
+            label.textContent = 'or drag files/folders here';
+        }
+    });
+
+    // Folder picker: convert the FileList into the same relativePath-
+    // tagged queue shape the drop handler produces so downstream code
+    // (exclude filters, submit, report paths) doesn't care how the
+    // files arrived. Browsers populate File.webkitRelativePath for
+    // folder-picked files, e.g. "myrepo/src/foo.go".
+    document.getElementById('folderInput').addEventListener('change', (e) => {
+        const picked = Array.from(e.target.files || []);
+        if (picked.length === 0) return;
+        const collected = [];
+        for (const f of picked) {
+            const rel = f.webkitRelativePath || f.name;
+            if (isExcludedByPatterns(rel, f.name, excludePatterns)) continue;
+            collected.push({ file: f, relativePath: rel });
+        }
+        if (collected.length === 0) {
+            showAlert('No scannable files found in the selected folder (all filtered by exclude patterns).', 'warning');
+            e.target.value = '';
+            return;
+        }
+        pendingDroppedFiles = collected;
+        // Clear the other input so the two sources don't combine.
+        try { document.getElementById('fileInput').value = ''; } catch (_) {}
+        updateDropZoneLabel();
+    });
+
+    // Pull the configured exclude patterns from the server. Folder
+    // walks apply these to skip e.g. .git or node_modules when those
+    // are configured. Failure is non-fatal — we just won't filter.
+    fetch('/config-info').then(r => r.json()).then(d => {
+        if (d && Array.isArray(d.exclude_patterns)) {
+            excludePatterns = d.exclude_patterns;
+        }
+    }).catch(() => {});
+})();
+
+function updateDropZoneLabel() {
+    const label = document.getElementById('fileDropZoneLabel');
+    if (!label) return;
+    const n = pendingDroppedFiles.length;
+    if (n === 0) {
+        label.textContent = 'or drag files/folders here';
+        return;
+    }
+    const folders = new Set();
+    for (const item of pendingDroppedFiles) {
+        const slash = item.relativePath.indexOf('/');
+        if (slash > 0) folders.add(item.relativePath.slice(0, slash));
+    }
+    if (folders.size > 0) {
+        label.textContent = `${n} file${n === 1 ? '' : 's'} ready from ${folders.size} folder${folders.size === 1 ? '' : 's'} (${[...folders].slice(0, 3).join(', ')}${folders.size > 3 ? '…' : ''})`;
+    } else {
+        label.textContent = `${n} file${n === 1 ? '' : 's'} ready`;
+    }
+}
+
+// Walk dropped DataTransferItems. Returns [{file, relativePath}].
+async function collectDroppedItems(items) {
+    const entries = [];
+    for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+        if (entry) {
+            entries.push(entry);
+        } else {
+            // Browser without entry API — fall back to flat file.
+            const file = items[i].getAsFile && items[i].getAsFile();
+            if (file) entries.push({ _flatFile: file });
+        }
+    }
+    const out = [];
+    for (const entry of entries) {
+        if (entry._flatFile) {
+            out.push({ file: entry._flatFile, relativePath: entry._flatFile.name });
+        } else {
+            await walkEntry(entry, '', out);
+        }
+    }
+    return out;
+}
+
+async function walkEntry(entry, parentPath, out) {
+    if (!entry) return;
+    const relPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+    if (isExcludedByPatterns(relPath, entry.name, excludePatterns)) return;
+
+    if (entry.isFile) {
+        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+        out.push({ file, relativePath: relPath });
+        return;
+    }
+    if (entry.isDirectory) {
+        const reader = entry.createReader();
+        // readEntries yields up to 100 at a time; keep calling until empty.
+        while (true) {
+            const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+            if (!batch || batch.length === 0) break;
+            for (const child of batch) {
+                await walkEntry(child, relPath, out);
+            }
+        }
+    }
+}
+
+// Mirrors the CLI's isExcluded matcher (see internal/exclude package):
+//   - glob match against full relative path
+//   - glob match against basename
+//   - substring match against full path (matches the CLI behavior)
+//   - patterns ending in '/' match any path segment (directory exclude)
+function isExcludedByPatterns(relPath, baseName, patterns) {
+    if (!patterns || patterns.length === 0) return false;
+    for (const pat of patterns) {
+        if (!pat) continue;
+        if (matchGlob(pat, relPath)) return true;
+        if (matchGlob(pat, baseName)) return true;
+        if (relPath.indexOf(pat) >= 0) return true;
+        if (pat.endsWith('/')) {
+            const dirPat = pat.slice(0, -1);
+            for (const seg of relPath.split('/')) {
+                if (matchGlob(dirPat, seg)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Minimal Go-style filepath.Match: supports * (no separator) and ? for
+// a single char. No bracket classes — the existing CLI flag rarely
+// uses them, and we can extend if needed.
+function matchGlob(pattern, name) {
+    const re = new RegExp('^' + pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\?/g, '[^/]') + '$');
+    return re.test(name);
+}
+/* GENAI_DISABLED: GenAI main checkbox and region event listeners
+document.getElementById('genaiCheck').addEventListener('change', updateCliCommand);
+document.getElementById('regionSelect').addEventListener('change', updateCliCommand);
+GENAI_DISABLED_END */
+
+/* GENAI_DISABLED: calculateAndDisplayCost function
+function calculateAndDisplayCost() {
+    const fileInput = document.getElementById('fileInput');
+    const files = fileInput.files;
+    let textractCost = 0;
+    let comprehendCost = 0;
+    let totalPages = 0;
+    let totalChars = 0;
+
+    // Check which services are enabled
+    const textractEnabled = document.getElementById('textractService').checked;
+    const comprehendEnabled = document.getElementById('comprehendService').checked;
+
+    // Estimate costs based on file types and sizes
+    for (let file of files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+
+        // Textract costs for images and PDFs (only if enabled)
+        if (textractEnabled && ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp', 'pdf'].includes(ext)) {
+            if (ext === 'pdf') {
+                // Estimate 1 page per 50KB for PDFs
+                totalPages += Math.max(1, Math.ceil(file.size / 51200));
+            } else {
+                // Images count as 1 page each
+                totalPages += 1;
+            }
+        }
+
+        // Comprehend costs for all text content (only if enabled)
+        if (comprehendEnabled) {
+            totalChars += file.size;
+        }
+    }
+
+    if (textractEnabled) textractCost = totalPages * 0.0015;
+    if (comprehendEnabled) comprehendCost = (totalChars / 100) * 0.0001;
+    const totalCost = textractCost + comprehendCost;
+
+    const breakdown = [];
+    if (textractEnabled && totalPages > 0) {
+        breakdown.push(`<strong>Textract OCR:</strong> ${totalPages} pages × $0.0015 = $${textractCost.toFixed(4)}`);
+    }
+    if (comprehendEnabled && totalChars > 0) {
+        breakdown.push(`<strong>Comprehend PII:</strong> ${Math.ceil(totalChars/100)} units × $0.0001 = $${comprehendCost.toFixed(4)}`);
+    }
+
+    document.getElementById('costBreakdown').innerHTML = breakdown.join('<br>');
+    document.getElementById('totalCost').textContent = `Total Estimated Cost: $${totalCost.toFixed(4)}`;
+    document.getElementById('costContainer').classList.remove('hidden');
+}
+GENAI_DISABLED_END */
+
+
+
+// Tab switching functionality
+function switchTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+
+    // Show selected tab content
+    document.getElementById(tabName + 'Content').classList.add('active');
+    document.getElementById(tabName + 'Tab').classList.add('active');
+
+    // Load suppressions when switching to suppressions tab
+    if (tabName === 'suppressions') {
+        loadSuppressions();
+    }
+}
+
+// Suppression management functions
+async function loadSuppressions() {
+    try {
+        const response = await fetch('/suppressions');
+        const data = await response.json();
+
+        if (data.success) {
+            displaySuppressions(data.rules || []);
+        } else {
+            showAlert('Failed to load suppressions: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error loading suppressions: ' + error.message);
+    }
+}
+
+function displaySuppressions(rules) {
+    allSuppressionRules = rules; // Store globally for details lookup
+    const tbody = document.getElementById('suppressionsBody');
+    const noSuppressions = document.getElementById('noSuppressions');
+
+    // Combine rules with new findings
+    const combinedItems = [...rules];
+    newFindings.forEach(finding => {
+        combinedItems.push({
+            isNewFinding: true,
+            finding: finding,
+            hash: generateFindingHash(finding)
+        });
+    });
+
+    if (combinedItems.length === 0) {
+        tbody.innerHTML = '';
+        noSuppressions.classList.remove('hidden');
+        document.getElementById('suppressionsPaginationControls').style.display = 'none';
+        document.getElementById('suppressionsPaginationBottom').style.display = 'none';
+        return;
+    }
+
+    noSuppressions.classList.add('hidden');
+
+    // Apply sorting
+    let sortedItems = [...combinedItems];
+    if (suppressionSortField) {
+        sortedItems.sort((a, b) => {
+            let aVal, bVal;
+
+            if (a.isNewFinding && b.isNewFinding) {
+                // Both are new findings
+                switch (suppressionSortField) {
+                    case 'filename':
+                        aVal = normalizePath(a.finding.filename || 'Unknown');
+                        bVal = normalizePath(b.finding.filename || 'Unknown');
+                        break;
+                    case 'type':
+                        aVal = a.finding.type || 'Unknown';
+                        bVal = b.finding.type || 'Unknown';
+                        break;
+                    case 'confidence':
+                        aVal = parseFloat(a.finding.confidence || 0);
+                        bVal = parseFloat(b.finding.confidence || 0);
+                        break;
+                    case 'line':
+                        aVal = parseInt(a.finding.line_number || 0);
+                        bVal = parseInt(b.finding.line_number || 0);
+                        break;
+                    default:
+                        return 0;
+                }
+            } else if (!a.isNewFinding && !b.isNewFinding) {
+                // Both are existing rules
+                switch (suppressionSortField) {
+                    case 'id':
+                        const aId = a.ID || a.id;
+                        const bId = b.ID || b.id;
+                        const aNum = parseInt(aId.split('-').pop()) || 0;
+                        const bNum = parseInt(bId.split('-').pop()) || 0;
+                        aVal = aNum;
+                        bVal = bNum;
+                        break;
+                    case 'enabled':
+                        aVal = a.Enabled !== undefined ? a.Enabled : a.enabled;
+                        bVal = b.Enabled !== undefined ? b.Enabled : b.enabled;
+                        break;
+                    case 'filename':
+                        aVal = normalizePath((a.Metadata || a.metadata || {}).filename || 'Unknown');
+                        bVal = normalizePath((b.Metadata || b.metadata || {}).filename || 'Unknown');
+                        break;
+                    case 'type':
+                        aVal = (a.Metadata || a.metadata || {}).finding_type || (a.Metadata || a.metadata || {}).file_type || 'Unknown';
+                        bVal = (b.Metadata || b.metadata || {}).finding_type || (b.Metadata || b.metadata || {}).file_type || 'Unknown';
+                        break;
+                    case 'confidence':
+                        aVal = parseFloat((a.Metadata || a.metadata || {}).confidence || 0);
+                        bVal = parseFloat((b.Metadata || b.metadata || {}).confidence || 0);
+                        break;
+                    case 'line':
+                        aVal = parseInt((a.Metadata || a.metadata || {}).line_number || 0);
+                        bVal = parseInt((b.Metadata || b.metadata || {}).line_number || 0);
+                        break;
+                    default:
+                        return 0;
+                }
+            } else {
+                // Mixed - new findings first
+                return a.isNewFinding ? -1 : 1;
+            }
+
+            if (typeof aVal === 'string') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+
+            if (suppressionSortDirection === 'desc') {
+                return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+            } else {
+                return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+            }
+        });
+    } else {
+        // Default sort: new findings first
+        sortedItems.sort((a, b) => {
+            if (a.isNewFinding && !b.isNewFinding) return -1;
+            if (!a.isNewFinding && b.isNewFinding) return 1;
+            return 0;
+        });
+    }
+
+    // Update sort indicators
+    document.querySelectorAll('[id^="sort-"]').forEach(span => span.textContent = '');
+    if (suppressionSortField) {
+        const indicator = suppressionSortDirection === 'desc' ? '▼' : '▲';
+        document.getElementById(`sort-${suppressionSortField}`).textContent = indicator;
+    }
+
+    // Apply pagination
+    const totalResults = sortedItems.length;
+    const totalPages = suppressionPageSize === 'all' ? 1 : Math.ceil(totalResults / suppressionPageSize);
+
+    if (suppressionCurrentPage > totalPages) suppressionCurrentPage = 1;
+
+    let paginatedItems;
+    if (suppressionPageSize === 'all') {
+        paginatedItems = sortedItems;
+    } else {
+        const startIndex = (suppressionCurrentPage - 1) * suppressionPageSize;
+        const endIndex = startIndex + suppressionPageSize;
+        paginatedItems = sortedItems.slice(startIndex, endIndex);
+    }
+
+    // Update pagination info
+    if (totalResults < 50 || totalResults === 0) {
+        document.getElementById('suppressionsPaginationControls').style.display = 'none';
+        document.getElementById('suppressionsPaginationBottom').style.display = 'none';
+    } else {
+        document.getElementById('suppressionsPaginationBottom').style.display = 'flex';
+        if (suppressionPageSize === 'all') {
+            document.getElementById('suppressionsPaginationInfo').textContent = `Showing all ${totalResults} rules`;
+            document.getElementById('suppressionsPaginationControls').style.display = 'none';
+        } else {
+            const startIndex = (suppressionCurrentPage - 1) * suppressionPageSize + 1;
+            const endIndex = Math.min(suppressionCurrentPage * suppressionPageSize, totalResults);
+            document.getElementById('suppressionsPaginationInfo').textContent = `Showing ${startIndex}-${endIndex} of ${totalResults} rules`;
+
+            // Generate page numbers
+            const pageNumbers = document.getElementById('suppressionsPageNumbers');
+            pageNumbers.innerHTML = '';
+
+            let startPage = Math.max(1, suppressionCurrentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.textContent = i;
+                pageBtn.onclick = () => goToSuppressionPage(i);
+                pageBtn.style.cssText = `padding: 6px 10px; border: 1px solid #d5dbdb; background: ${i === suppressionCurrentPage ? '#0972d3' : 'white'}; color: ${i === suppressionCurrentPage ? 'white' : '#16191f'}; cursor: pointer; border-radius: 4px; font-size: 14px;`;
+                pageNumbers.appendChild(pageBtn);
+            }
+
+            document.getElementById('suppressionsPrevButton').disabled = suppressionCurrentPage === 1;
+            document.getElementById('suppressionsNextButton').disabled = suppressionCurrentPage === totalPages;
+            document.getElementById('suppressionsPaginationControls').style.display = 'flex';
+        }
+    }
+
+    tbody.innerHTML = '';
+    paginatedItems.forEach(item => {
+        const row = document.createElement('tr');
+
+        if (item.isNewFinding) {
+            // New finding row
+            const finding = item.finding;
+            row.style.backgroundColor = '#f0f8ff';
+            row.innerHTML = `
+                <td><input type="checkbox" class="new-finding-checkbox" value="${item.hash}" data-change="updateNewFindingsBulkActions"></td>
+                <td style="font-family: monospace; font-size: 12px;">NEW</td>
+                <td><span style="background: #fff4e6; color: #ff9900; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">NEW FINDING</span></td>
+                <td title="${escapeAttr(finding.filename)}">${escapeHtml(formatPathForDisplay(finding.filename))}</td>
+                <td>${finding.type}</td>
+                <td><div class="finding-text" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeAttr(finding.actualText || finding.text)}">${escapeHtml((finding.actualText || finding.text).substring(0, 50))}${(finding.actualText || finding.text).length > 50 ? '...' : ''}</div></td>
+                <td>${Math.round(finding.confidence)}%</td>
+                <td>${finding.line_number}</td>
+                <td>
+                    <button data-hash="${escapeAttr(item.hash)}" data-reason="${escapeAttr((finding.explanation && finding.explanation.draft_suppress_reason) || '')}" data-action="showAddSuppressionModal" class="button" style="padding: 4px 8px; font-size: 12px;">Add Suppression</button>
+                </td>
+            `;
+        } else {
+            // Existing suppression rule
+            const rule = item;
+            // Escape the rule ID before it enters innerHTML — it lands in
+            // text, in value="..." and in data-arg="..." attributes below.
+            // escapeAttr (escapes < > & " ') keeps a quote in a malicious
+            // rule ID from breaking out of the attribute. Guards stored XSS
+            // (HIGH-3) from a malicious suppression rule ID.
+            const ruleId = escapeAttr(rule.ID || rule.id);
+            const isEnabled = rule.Enabled !== undefined ? rule.Enabled : rule.enabled;
+
+            // Check if rule is expired
+            let isExpired = false;
+            const expiresAt = rule.ExpiresAt || rule.expires_at;
+            if (expiresAt) {
+                try {
+                    const expirationDate = new Date(expiresAt);
+                    const now = new Date();
+                    isExpired = expirationDate < now;
+                } catch (e) {
+                    // Invalid date, treat as not expired
+                }
+            }
+
+            const statusBadge = isExpired ?
+                '<span style="background: #ff9900; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">EXPIRED</span>' :
+                isEnabled ?
+                    '<span style="background: #eafaf1; color: #037f0c; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">ENABLED</span>' :
+                    '<span style="background: #ffeaea; color: #d13212; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">DISABLED</span>';
+
+            const metadata = rule.Metadata || rule.metadata || {};
+            // Escape all rule-sourced values before they enter innerHTML.
+            // These come from a YAML suppression file that a contributor
+            // or POST /suppressions/create can control, so an unescaped
+            // value here is stored XSS (HIGH-3). escapeAttr is safe in
+            // both HTML text and quoted-attribute/onclick-string contexts
+            // (it escapes < > & " '), which all three of these hit below.
+            const filename = escapeAttr(metadata.filename || 'Unknown');
+            const fileType = escapeAttr(metadata.finding_type || metadata.file_type || 'Unknown');
+            const lineNumber = metadata.line_number || 'Unknown';
+            const confidence = metadata.confidence ? Math.round(parseFloat(metadata.confidence)) : 'Unknown';
+
+            row.innerHTML = `
+                <td><input type="checkbox" class="suppression-checkbox" value="${ruleId}" data-change="updateBulkActions"></td>
+                <td style="font-family: monospace; font-size: 12px;"><a href="#" data-action="showSuppressionDetails" data-arg="${ruleId}" style="color: var(--color-text-accent); text-decoration: none;">${ruleId}</a></td>
+                <td>${statusBadge}</td>
+                <td>${filename}</td>
+                <td>${fileType}</td>
+                <td><div class="finding-text" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeAttr(metadata.finding_text || 'N/A')}">${escapeHtml((metadata.finding_text || 'N/A').substring(0, 50))}${(metadata.finding_text || 'N/A').length > 50 ? '...' : ''}</div></td>
+                <td>${confidence}%</td>
+                <td>${lineNumber}</td>
+                <td>
+                    <label class="toggle-switch" style="margin-right: 8px;">
+                        <input type="checkbox" ${isEnabled ? 'checked' : ''} data-change="toggleSuppressionStatus" data-arg="${ruleId}" data-hash="${escapeAttr(rule.Hash || rule.hash)}">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <button data-action="showEditSuppressionModal" data-arg="${ruleId}" class="icon-button edit" style="margin-right: 4px;">✏️<span class="tooltip">Edit</span></button>
+                    <button data-action="removeSuppression" data-arg="${ruleId}" class="icon-button remove">🗑️<span class="tooltip">Remove</span></button>
+                </td>
+            `;
+        }
+        tbody.appendChild(row);
+    });
+}
+
+function removeSuppression(id) {
+    document.getElementById('removeSuppressionId').value = id;
+    document.getElementById('removeSuppressionModal').classList.remove('hidden');
+}
+
+function closeRemoveSuppressionModal() {
+    document.getElementById('removeSuppressionModal').classList.add('hidden');
+}
+
+async function confirmRemoveSuppression() {
+    const id = document.getElementById('removeSuppressionId').value;
+
+    // Capture rule data before deletion for undo
+    const rule = allSuppressionRules.find(r => (r.ID || r.id) === id);
+    if (!rule) {
+        showAlert('Rule not found', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/suppressions/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            trackOperation('delete', { rules: [rule] });
+            showAlert('Suppression rule removed successfully', 'success');
+            closeRemoveSuppressionModal();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to remove suppression: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error removing suppression: ' + error.message);
+    }
+}
+
+function enableSuppression(hash) {
+    document.getElementById('enableSuppressionHash').value = hash;
+    document.getElementById('enableSuppressionReason').value = '';
+    document.getElementById('enableSuppressionModal').classList.remove('hidden');
+}
+
+function closeEnableSuppressionModal() {
+    document.getElementById('enableSuppressionModal').classList.add('hidden');
+    document.getElementById('enableSuppressionForm').reset();
+}
+
+document.getElementById('enableSuppressionForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const hash = document.getElementById('enableSuppressionHash').value;
+    const reason = document.getElementById('enableSuppressionReason').value;
+
+    // Find the rule ID for tracking
+    const rule = allSuppressionRules.find(r => (r.Hash || r.hash) === hash);
+    const ruleId = rule ? (rule.ID || rule.id) : null;
+
+    try {
+        const response = await fetch('/suppressions/enable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hash: hash, reason: reason })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            if (ruleId) {
+                trackOperation('enable', { ids: [ruleId] });
+            }
+            showAlert('Suppression rule enabled successfully', 'success');
+            closeEnableSuppressionModal();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to enable suppression: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error enabling suppression: ' + error.message);
+    }
+});
+
+function disableSuppression(id) {
+    document.getElementById('disableSuppressionId').value = id;
+    document.getElementById('disableSuppressionModal').classList.remove('hidden');
+}
+
+function closeDisableSuppressionModal() {
+    document.getElementById('disableSuppressionModal').classList.add('hidden');
+}
+
+async function confirmDisableSuppression() {
+    const id = document.getElementById('disableSuppressionId').value;
+
+    try {
+        const response = await fetch('/suppressions/disable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            trackOperation('disable', { ids: [id] });
+            showAlert('Suppression rule disabled successfully', 'success');
+            closeDisableSuppressionModal();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to disable suppression: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error disabling suppression: ' + error.message);
+    }
+}
+
+
+
+
+
+let allSuppressionRules = [];
+let suppressionSortField = null;
+let suppressionSortDirection = 'desc';
+let suppressionCurrentPage = 1;
+let suppressionPageSize = 50;
+let lastOperation = null;
+
+function sortSuppressions(field) {
+    if (suppressionSortField === field) {
+        suppressionSortDirection = suppressionSortDirection === 'desc' ? 'asc' : 'desc';
+    } else {
+        suppressionSortField = field;
+        suppressionSortDirection = 'desc';
+    }
+    suppressionCurrentPage = 1;
+    displaySuppressions(allSuppressionRules);
+}
+
+function updateSuppressionsPagination() {
+    const newPageSize = document.getElementById('suppressionsPageSize').value;
+    suppressionPageSize = newPageSize === 'all' ? 'all' : parseInt(newPageSize);
+    suppressionCurrentPage = 1;
+    displaySuppressions(allSuppressionRules);
+}
+
+function changeSuppressionPage(direction) {
+    if (suppressionPageSize === 'all') return;
+
+    const totalPages = Math.ceil(allSuppressionRules.length / suppressionPageSize);
+    suppressionCurrentPage += direction;
+    if (suppressionCurrentPage < 1) suppressionCurrentPage = 1;
+    if (suppressionCurrentPage > totalPages) suppressionCurrentPage = totalPages;
+
+    displaySuppressions(allSuppressionRules);
+}
+
+function goToSuppressionPage(page) {
+    suppressionCurrentPage = page;
+    displaySuppressions(allSuppressionRules);
+}
+
+function showSuppressionDetails(id) {
+    const rule = allSuppressionRules.find(r => (r.ID || r.id) === id);
+    if (!rule) {
+        showAlert('Suppression rule not found', 'error');
+        return;
+    }
+
+    const content = document.getElementById('suppressionDetailsContent');
+    const createdAt = new Date(rule.CreatedAt || rule.created_at).toLocaleString();
+    const lastSeenAt = rule.LastSeenAt ? new Date(rule.LastSeenAt).toLocaleString() : (rule.last_seen_at ? new Date(rule.last_seen_at).toLocaleString() : 'Never');
+
+    // Format expiration information
+    let expirationInfo = 'Never expires';
+    const expiresAt = rule.ExpiresAt || rule.expires_at;
+    if (expiresAt) {
+        try {
+            const expirationDate = new Date(expiresAt);
+            const now = new Date();
+            const diffMs = expirationDate.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+            if (diffDays < 0) {
+                const daysAgo = Math.abs(diffDays);
+                expirationInfo = `<span style="color: #d13212; font-weight: bold;">Expired ${daysAgo === 0 ? 'today' : daysAgo === 1 ? '1 day ago' : daysAgo + ' days ago'}</span>`;
+            } else {
+                expirationInfo = `<span style="color: ${diffDays <= 1 ? '#ff9900' : '#232f3e'}; font-weight: ${diffDays <= 1 ? 'bold' : 'normal'};">Expires ${diffDays === 0 ? 'today' : diffDays === 1 ? 'in 1 day' : 'in ' + diffDays + ' days'}</span> (${expirationDate.toLocaleString()})`;
+            }
+        } catch (e) {
+            expirationInfo = 'Invalid expiration date';
+        }
+    }
+
+    content.innerHTML = `
+        <div style="display: grid; grid-template-columns: 150px 1fr; gap: 8px; margin-bottom: 16px;">
+            <strong>ID:</strong> <span style="font-family: monospace;">${escapeHtml(rule.ID || rule.id)}</span>
+            <strong>Hash:</strong> <span style="font-family: monospace; word-break: break-all;">${escapeHtml(rule.Hash || rule.hash)}</span>
+            <strong>Status:</strong> <span style="color: ${(rule.Enabled !== undefined ? rule.Enabled : rule.enabled) ? '#037f0c' : '#d13212'}; font-weight: 600;">${(rule.Enabled !== undefined ? rule.Enabled : rule.enabled) ? 'ENABLED' : 'DISABLED'}</span>
+            <strong>Reason:</strong> <span>${escapeHtml(rule.Reason || rule.reason)}</span>
+            <strong>Created By:</strong> <span>${escapeHtml(rule.CreatedBy || rule.created_by || 'Unknown')}</span>
+            <strong>Created At:</strong> <span>${createdAt}</span>
+            <strong>Last Seen:</strong> <span>${lastSeenAt}</span>
+            <strong>Expires:</strong> <span>${expirationInfo}</span>
+        </div>
+        ${rule.Metadata || rule.metadata ? `
+            <div style="margin-top: 16px;">
+                <strong>Metadata:</strong>
+                <div style="background: #f2f3f3; padding: 12px; border-radius: 4px; margin-top: 8px; font-family: monospace; font-size: 12px;">
+                    ${Object.entries(rule.Metadata || rule.metadata || {}).map(([key, value]) => `<div><strong>${escapeHtml(String(key))}:</strong> ${escapeHtml(String(value))}</div>`).join('')}
+                </div>
+            </div>
+        ` : ''}
+    `;
+
+    document.getElementById('suppressionDetailsModal').classList.remove('hidden');
+}
+
+function closeSuppressionDetailsModal() {
+    document.getElementById('suppressionDetailsModal').classList.add('hidden');
+}
+
+function showEditSuppressionModal(id) {
+    const rule = allSuppressionRules.find(r => (r.ID || r.id) === id);
+    if (!rule) {
+        showAlert('Suppression rule not found', 'error');
+        return;
+    }
+
+    document.getElementById('editSuppressionId').value = rule.ID || rule.id;
+    document.getElementById('editSuppressionReason').value = rule.Reason || rule.reason;
+    document.getElementById('editSuppressionCreatedBy').value = rule.CreatedBy || rule.created_by || '';
+    document.getElementById('editSuppressionEnabled').value = (rule.Enabled !== undefined ? rule.Enabled : rule.enabled).toString();
+
+    // Set expiration date
+    const expiresAt = rule.ExpiresAt || rule.expires_at;
+    if (expiresAt) {
+        try {
+            const date = new Date(expiresAt);
+            // Format for datetime-local input (YYYY-MM-DDTHH:MM)
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            document.getElementById('editSuppressionExpiresAt').value = `${year}-${month}-${day}T${hours}:${minutes}`;
+        } catch (e) {
+            document.getElementById('editSuppressionExpiresAt').value = '';
+        }
+    } else {
+        document.getElementById('editSuppressionExpiresAt').value = '';
+    }
+
+    document.getElementById('editSuppressionModal').classList.remove('hidden');
+}
+
+function closeEditSuppressionModal() {
+    document.getElementById('editSuppressionModal').classList.add('hidden');
+    document.getElementById('editSuppressionForm').reset();
+}
+
+document.getElementById('editSuppressionForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const id = document.getElementById('editSuppressionId').value;
+    const reason = document.getElementById('editSuppressionReason').value;
+    const createdBy = document.getElementById('editSuppressionCreatedBy').value;
+    const enabled = document.getElementById('editSuppressionEnabled').value === 'true';
+    const expiresAtValue = document.getElementById('editSuppressionExpiresAt').value;
+
+    // Convert datetime-local to ISO string
+    let expiresAt = null;
+    if (expiresAtValue) {
+        try {
+            expiresAt = new Date(expiresAtValue).toISOString();
+        } catch (e) {
+            showAlert('Invalid expiration date format', 'error');
+            return;
+        }
+    }
+
+    // Capture original state for undo
+    const originalRule = allSuppressionRules.find(r => (r.ID || r.id) === id);
+    if (!originalRule) {
+        showAlert('Original rule not found for undo tracking', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/suppressions/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: id,
+                reason: reason,
+                created_by: createdBy,
+                enabled: enabled,
+                expires_at: expiresAt
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Track edit operation for undo
+            trackOperation('edit', {
+                id: id,
+                original: {
+                    reason: originalRule.Reason || originalRule.reason,
+                    created_by: originalRule.CreatedBy || originalRule.created_by || '',
+                    enabled: originalRule.Enabled !== undefined ? originalRule.Enabled : originalRule.enabled
+                }
+            });
+            showAlert('Suppression rule updated successfully', 'success');
+            closeEditSuppressionModal();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to update suppression: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error updating suppression: ' + error.message);
+    }
+});
+
+async function downloadSuppressionFile() {
+    try {
+        const response = await fetch('/suppressions/download');
+        if (!response.ok) {
+            throw new Error('Failed to download file');
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '.ferret-scan-suppressions.yaml';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showAlert('Suppression file downloaded successfully', 'success');
+    } catch (error) {
+        showAlert('Error downloading file: ' + error.message);
+    }
+}
+
+
+
+function generateFindingHash(finding) {
+    // Simple hash for UI identification only - backend generates proper hash
+    const str = `${finding.filename}:${finding.type}:${finding.line_number}:${finding.text}`;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16);
+}
+
+async function filterNewFindings() {
+    try {
+        const response = await fetch('/suppressions');
+        const data = await response.json();
+
+        if (data.success && data.rules) {
+            const allHashes = new Set(data.rules.map(rule => rule.Hash || rule.hash));
+            const filteredFindings = [];
+
+            for (const finding of currentResults) {
+                const hasAnySuppression = await checkFindingHasSuppressionHash(finding, allHashes);
+                if (!hasAnySuppression) {
+                    filteredFindings.push(finding);
+                }
+            }
+            newFindings = filteredFindings;
+        } else {
+            newFindings = [...currentResults];
+        }
+    } catch (error) {
+        newFindings = [...currentResults];
+    }
+}
+
+async function checkFindingHasSuppressionHash(finding, existingHashes) {
+    try {
+        // Send finding to backend to generate proper hash
+        const response = await fetch('/suppressions/check-hash', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                finding_data: {
+                    ...finding,
+                    text: finding.actualText || finding.text,
+                    full_line: finding.full_line || finding.actualText || finding.text,
+                    before_text: finding.before_text || '',
+                    after_text: finding.after_text || ''
+                }
+            })
+        });
+
+        const data = await response.json();
+        if (data.success && data.hash) {
+            return existingHashes.has(data.hash);
+        }
+    } catch (error) {
+        // Ignore hash check errors
+    }
+    return false;
+}
+
+function showAddSuppressionModal(hash, draftReason) {
+    document.getElementById('addSuppressionHash').value = hash;
+    // Prefill the reason with the drafted suppression reason from the
+    // --explain pass when available; the operator can edit before
+    // saving. Falls back to empty for unannotated findings.
+    document.getElementById('addSuppressionReason').value = draftReason || '';
+    document.getElementById('addSuppressionModal').classList.remove('hidden');
+}
+
+function closeAddSuppressionModal() {
+    document.getElementById('addSuppressionModal').classList.add('hidden');
+    document.getElementById('addSuppressionForm').reset();
+}
+
+document.getElementById('addSuppressionForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const hash = document.getElementById('addSuppressionHash').value;
+    const reason = document.getElementById('addSuppressionReason').value;
+
+    // Find the finding data
+    const finding = newFindings.find(f => generateFindingHash(f) === hash);
+    if (!finding) {
+        showAlert('Finding data not found', 'error');
+        return;
+    }
+
+    try {
+        // Set default 1-week expiration
+        const oneWeekFromNow = new Date();
+        oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
+
+        const response = await fetch('/suppressions/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                hash: hash,
+                reason: reason,
+                expires_at: oneWeekFromNow.toISOString(),
+                finding_data: {
+                    ...finding,
+                    text: finding.actualText || finding.text,
+                    full_line: finding.full_line || finding.actualText || finding.text,
+                    before_text: finding.before_text || '',
+                    after_text: finding.after_text || ''
+                }
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            newFindings = newFindings.filter(f => generateFindingHash(f) !== hash);
+            showAlert('Suppression rule created successfully', 'success');
+            closeAddSuppressionModal();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to create suppression: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error creating suppression: ' + error.message);
+    }
+});
+
+async function addFindingAsSuppression(hash) {
+    showAddSuppressionModal(hash);
+}
+
+function getScanHelpContent() {
+    return `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                <h3 style="color: #0972d3; margin: 0 0 8px 0;">📁 Supported File Types</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>Audio:</strong> FLAC, M4A, MP3, OGG, WAV</li>
+                    <li><strong>Documents:</strong> Excel, PDF, PowerPoint, Word</li>
+                    <li><strong>Images:</strong> BMP, GIF, JPEG, PNG, TIFF, WebP</li>
+                    <li><strong>Text:</strong> .csv, .json, .log, .txt, .xml, source code</li>
+                    <li><strong>Video:</strong> AVI, MKV, MOV, MP4, WMV</li>
+                </ul>
+
+                <h3 style="color: #0972d3; margin: 16px 0 8px 0;">🎯 Detection Types</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>AI PII:</strong> ML-powered detection</li>
+                    <li><strong>Credit Cards:</strong> Vendor validation, Luhn algorithm</li>
+                    <li><strong>IP:</strong> Patents, trademarks, copyrights</li>
+                    <li><strong>Metadata:</strong> EXIF, GPS, document properties</li>
+                    <li><strong>Passports:</strong> Multi-country formats</li>
+                    <li><strong>Person Names:</strong> Human names with pattern matching</li>
+                    <li><strong>SSN:</strong> US Social Security Numbers</li>
+                </ul>
+
+                <h3 style="color: #0972d3; margin: 16px 0 8px 0;">📊 Confidence Levels</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><span style="color: #d13212;"><strong>HIGH (90-100%):</strong></span> Very likely sensitive</li>
+                    <li><span style="color: #ff9900;"><strong>MEDIUM (60-89%):</strong></span> Possibly sensitive</li>
+                    <li><span style="color: #037f0c;"><strong>LOW (0-59%):</strong></span> Likely false positive</li>
+                </ul>
+            </div>
+            <!-- GENAI_DISABLED: Second AI Features help section
+            <div>
+                <h3 style="color: #0972d3; margin: 0 0 8px 0;">🤖 AI Features (GenAI)</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>Textract OCR:</strong> Extract text from images</li>
+                    <li><strong>Transcribe:</strong> Convert audio to text</li>
+                    <li><strong>Comprehend:</strong> Advanced PII detection</li>
+                </ul>
+                <div style="background: #fff4e6; border: 1px solid #ff9900; border-radius: 4px; padding: 8px; margin: 8px 0; font-size: 12px; color: #ff9900;">
+                    <strong>⚠️ Warning:</strong> Requires AWS credentials, sends data to AWS, costs apply
+                </div>
+            </div>
+            GENAI_DISABLED_END -->
+
+                <h3 style="color: #0972d3; margin: 16px 0 8px 0;">💡 Usage Tips</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li>Use confidence filtering to reduce false positives</li>
+                    <li>Enable verbose mode for detailed metadata</li>
+                    <li>Click stat cards to filter by confidence level</li>
+                    <li>Click "Suppressed" card to view suppressed findings</li>
+                    <li>Click table headers to sort results</li>
+                    <!-- GENAI_DISABLED: GenAI usage tip
+                    <li>GenAI works best for images and audio files</li>
+                    GENAI_DISABLED_END -->
+                </ul>
+            </div>
+        </div>
+    `;
+}
+
+function getSuppressionHelpContent() {
+    return `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                <h3 style="color: #0972d3; margin: 0 0 8px 0;">🚫 Suppression Rules</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>Purpose:</strong> Reduce false positives by suppressing known safe findings</li>
+                    <li><strong>Hash-based:</strong> Rules are tied to specific finding signatures</li>
+                    <li><strong>Status:</strong> Rules can be enabled, disabled, or expired</li>
+                    <li><strong>Expiration:</strong> New rules expire in 1 week by default</li>
+                    <li><strong>Metadata:</strong> Shows file, type, confidence, and line info</li>
+                </ul>
+
+                <h3 style="color: #0972d3; margin: 16px 0 8px 0;">📋 Bulk Operations</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>Select Rules:</strong> Use checkboxes to select multiple rules</li>
+                    <li><strong>Bulk Enable/Disable:</strong> Change status of multiple rules at once</li>
+                    <li><strong>Bulk Delete:</strong> Remove multiple rules permanently</li>
+                    <li><strong>New Findings:</strong> Add multiple scan results as suppressions</li>
+                    <li><strong>Undo Operations:</strong> Reverse the last bulk or individual operation</li>
+                </ul>
+
+                <h3 style="color: #0972d3; margin: 16px 0 8px 0;">🔍 Table Features</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>Sorting:</strong> Click column headers to sort</li>
+                    <li><strong>Pagination:</strong> Navigate large rule sets (50/100/all per page)</li>
+                    <li><strong>Status:</strong> Visual enabled/disabled indicators</li>
+                    <li><strong>Actions:</strong> Individual enable/disable/edit/remove buttons</li>
+                </ul>
+            </div>
+            <div>
+                <h3 style="color: #0972d3; margin: 0 0 8px 0;">⚙️ Rule Actions</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>Enable:</strong> Activate rule to suppress findings (individual or bulk)</li>
+                    <li><strong>Disable:</strong> Keep rule but don't suppress (individual or bulk)</li>
+                    <li><strong>Edit:</strong> Change reason, creator, status, or expiration date</li>
+                    <li><strong>Remove:</strong> Permanently delete rule (individual or bulk)</li>
+                    <li><strong>Undo:</strong> Reverse the last operation (appears after actions)</li>
+                </ul>
+
+                <h3 style="color: #0972d3; margin: 16px 0 8px 0;">📊 Rule Information</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li><strong>ID:</strong> Unique identifier (SUP-00000001, etc.)</li>
+                    <li><strong>Status:</strong> ENABLED (green), DISABLED (red), or EXPIRED (orange)</li>
+                    <li><strong>File:</strong> Original filename where finding occurred</li>
+                    <li><strong>Type:</strong> Category of sensitive data detected</li>
+                    <li><strong>Finding:</strong> Actual detected text (N/A for existing rules - only hashes stored for security)</li>
+                    <li><strong>Confidence:</strong> Detection confidence percentage</li>
+                    <li><strong>Line:</strong> Line number in original file</li>
+                    <li><strong>Expiration:</strong> When rule expires (click ID for details)</li>
+                </ul>
+
+                <h3 style="color: #0972d3; margin: 16px 0 8px 0;">💡 Best Practices</h3>
+                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
+                    <li>Use bulk operations for efficiency with multiple rules</li>
+                    <li>Use descriptive reasons for future reference</li>
+                    <li>Disable rather than delete if unsure (can undo)</li>
+                    <li>Sort by confidence to prioritize high-impact rules</li>
+                    <li>Review expired rules regularly - they no longer suppress findings</li>
+                    <li><strong>CLI Compatible:</strong> Rules work with both web UI and command line</li>
+                </ul>
+            </div>
+        </div>
+    `;
+}
+
+// Bulk operations functions
+function updateBulkActions() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const count = checkboxes.length;
+
+    document.getElementById('selectedCount').textContent = `${count} selected`;
+
+    if (count > 0) {
+        document.getElementById('bulkActions').classList.remove('hidden');
+    } else {
+        document.getElementById('bulkActions').classList.add('hidden');
+    }
+
+    // Header select-all reflects the state of every checkbox-backed row
+    // in the table, not just the suppression-rule rows. Otherwise it
+    // ignores "new finding" rows entirely and can look broken on pages
+    // that contain both kinds.
+    syncSelectAllHeader();
+}
+
+// Keep the header checkbox in sync with both suppression rows and
+// new-finding rows. Called by row-level onchange handlers.
+function syncSelectAllHeader() {
+    const allCheckboxes = document.querySelectorAll('.suppression-checkbox, .new-finding-checkbox');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    if (!selectAllCheckbox) return;
+
+    const checkedCount = document.querySelectorAll('.suppression-checkbox:checked, .new-finding-checkbox:checked').length;
+
+    if (allCheckboxes.length === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    } else if (checkedCount === allCheckboxes.length) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+    } else if (checkedCount > 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true;
+    } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+}
+
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    // Toggle every row checkbox in the table — both existing suppression
+    // rules and new findings — so the header acts on everything visible.
+    const checkboxes = document.querySelectorAll('.suppression-checkbox, .new-finding-checkbox');
+
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+
+    updateBulkActions();
+    updateNewFindingsBulkActions();
+}
+
+function selectAllSuppressions() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox');
+    checkboxes.forEach(checkbox => checkbox.checked = true);
+    updateBulkActions();
+}
+
+function clearSelection() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox');
+    checkboxes.forEach(checkbox => checkbox.checked = false);
+    document.getElementById('selectAllCheckbox').checked = false;
+    updateBulkActions();
+}
+
+// Bulk expiration controls. "Make permanent" clears ExpiresAt (rule
+// never expires); "renew 30 days" sets it to now + 30 days. Both go
+// through a single server endpoint that updates all selected rules
+// in one call.
+function bulkMakePermanent() {
+    bulkUpdateExpiration(null, 'permanent (no expiration)');
+}
+
+function bulkRenew30Days() {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    // ISO 8601 with timezone — the server parses this into time.Time.
+    bulkUpdateExpiration(d.toISOString(), `expiring ${d.toLocaleDateString()}`);
+}
+
+async function bulkUpdateExpiration(expiresAtISO, humanLabel) {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+
+    if (ids.length === 0) {
+        showAlert('No suppressions selected', 'warning');
+        return;
+    }
+
+    // Capture prior expiration for undo so a mistaken click can be
+    // reverted rule-by-rule to whatever each rule had before.
+    const priorExpirations = {};
+    for (const rule of allSuppressionRules) {
+        const id = rule.ID || rule.id;
+        if (!ids.includes(id)) continue;
+        priorExpirations[id] = rule.ExpiresAt || rule.expires_at || null;
+    }
+
+    try {
+        const response = await fetch('/suppressions/bulk-update-expiration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids, expires_at: expiresAtISO })
+        });
+        const data = await response.json();
+        if (data.success) {
+            trackOperation('updateExpiration', { priorExpirations });
+            showAlert(`Updated ${ids.length} suppression(s) — now ${humanLabel}`, 'success');
+            clearSelection();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to update expirations: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error updating expirations: ' + error.message);
+    }
+}
+
+function bulkEnableSuppressions() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+
+    if (ids.length === 0) {
+        showAlert('No suppressions selected', 'warning');
+        return;
+    }
+
+    document.getElementById('bulkEnableCount').textContent = ids.length;
+    document.getElementById('bulkEnableReason').value = '';
+    document.getElementById('bulkEnableModal').classList.remove('hidden');
+}
+
+function closeBulkEnableModal() {
+    document.getElementById('bulkEnableModal').classList.add('hidden');
+    document.getElementById('bulkEnableForm').reset();
+}
+
+document.getElementById('bulkEnableForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+    const reason = document.getElementById('bulkEnableReason').value;
+
+    try {
+        const response = await fetch('/suppressions/bulk-enable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids, reason: reason })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            trackOperation('enable', { ids });
+            showAlert(`Successfully enabled ${data.success_count} suppression(s)`, 'success');
+            if (data.errors && data.errors.length > 0) {
+                showAlert(`Some errors occurred: ${data.errors.join(', ')}`, 'warning');
+            }
+            closeBulkEnableModal();
+            clearSelection();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to enable suppressions: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error enabling suppressions: ' + error.message);
+    }
+});
+
+function bulkDisableSuppressions() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+
+    if (ids.length === 0) {
+        showAlert('No suppressions selected', 'warning');
+        return;
+    }
+
+    document.getElementById('bulkDisableCount').textContent = ids.length;
+    document.getElementById('bulkDisableModal').classList.remove('hidden');
+}
+
+function closeBulkDisableModal() {
+    document.getElementById('bulkDisableModal').classList.add('hidden');
+}
+
+async function confirmBulkDisable() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+
+    try {
+        const response = await fetch('/suppressions/bulk-disable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            trackOperation('disable', { ids });
+            showAlert(`Successfully disabled ${data.success_count} suppression(s)`, 'success');
+            if (data.errors && data.errors.length > 0) {
+                showAlert(`Some errors occurred: ${data.errors.join(', ')}`, 'warning');
+            }
+            closeBulkDisableModal();
+            clearSelection();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to disable suppressions: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error disabling suppressions: ' + error.message);
+    }
+}
+
+function bulkDeleteSuppressions() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+
+    if (ids.length === 0) {
+        showAlert('No suppressions selected', 'warning');
+        return;
+    }
+
+    document.getElementById('bulkDeleteCount').textContent = ids.length;
+    document.getElementById('bulkDeleteModal').classList.remove('hidden');
+}
+
+function closeBulkDeleteModal() {
+    document.getElementById('bulkDeleteModal').classList.add('hidden');
+}
+
+async function confirmBulkDelete() {
+    const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+
+    // Capture rule data before deletion for undo
+    const selectedRules = allSuppressionRules.filter(rule => ids.includes(rule.ID || rule.id));
+
+    if (selectedRules.length === 0) {
+        showAlert('Selected rules not found', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/suppressions/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            trackOperation('delete', { rules: selectedRules });
+            showAlert(`Successfully deleted ${data.success_count} suppression(s)`, 'success');
+            if (data.errors && data.errors.length > 0) {
+                showAlert(`Some errors occurred: ${data.errors.join(', ')}`, 'warning');
+            }
+            closeBulkDeleteModal();
+            clearSelection();
+            loadSuppressions();
+        } else {
+            showAlert('Failed to delete suppressions: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showAlert('Error deleting suppressions: ' + error.message);
+    }
+}
+
+function bulkAddSuppressions() {
+    const checkboxes = document.querySelectorAll('.new-finding-checkbox:checked');
+    const hashes = Array.from(checkboxes).map(cb => cb.value);
+
+    if (hashes.length === 0) {
+        showAlert('No new findings selected', 'warning');
+        return;
+    }
+
+    document.getElementById('bulkAddCount').textContent = hashes.length;
+    document.getElementById('bulkAddReason').value = '';
+    document.getElementById('bulkAddModal').classList.remove('hidden');
+}
+
+function closeBulkAddModal() {
+    document.getElementById('bulkAddModal').classList.add('hidden');
+    document.getElementById('bulkAddForm').reset();
+}
+
+document.getElementById('bulkAddForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const checkboxes = document.querySelectorAll('.new-finding-checkbox:checked');
+    const hashes = Array.from(checkboxes).map(cb => cb.value);
+    const reason = document.getElementById('bulkAddReason').value;
+
+    let successCount = 0;
+    const errors = [];
+    const createdIds = [];
+
+    for (const hash of hashes) {
+        const finding = newFindings.find(f => generateFindingHash(f) === hash);
+        if (!finding) {
+            errors.push(`Finding with hash ${hash} not found`);
+            continue;
+        }
+
+        try {
+            const response = await fetch('/suppressions/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hash: hash,
+                    reason: reason,
+                    finding_data: {
+                        ...finding,
+                        text: finding.actualText || finding.text,
+                        full_line: finding.full_line || finding.actualText || finding.text,
+                        before_text: finding.before_text || '',
+                        after_text: finding.after_text || ''
+                    }
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                successCount++;
+                if (data.id) {
+                    createdIds.push(data.id);
+                }
+            } else {
+                errors.push(`Failed to create suppression for finding: ${data.error}`);
+            }
+        } catch (error) {
+            errors.push(`Error creating suppression: ${error.message}`);
+        }
+    }
+
+    if (successCount > 0) {
+        trackOperation('create', { ids: createdIds });
+        showAlert(`Successfully created ${successCount} suppression(s)`, 'success');
+        newFindings = newFindings.filter(f => !hashes.includes(generateFindingHash(f)));
+    }
+
+    if (errors.length > 0) {
+        showAlert(`Some errors occurred: ${errors.join(', ')}`, 'warning');
+    }
+
+    closeBulkAddModal();
+    clearNewFindingsSelection();
+    loadSuppressions();
+});
+
+function selectAllNewFindings() {
+    const checkboxes = document.querySelectorAll('.new-finding-checkbox');
+    checkboxes.forEach(checkbox => checkbox.checked = true);
+    updateNewFindingsBulkActions();
+}
+
+function clearNewFindingsSelection() {
+    const checkboxes = document.querySelectorAll('.new-finding-checkbox');
+    checkboxes.forEach(checkbox => checkbox.checked = false);
+    updateNewFindingsBulkActions();
+}
+
+function updateNewFindingsBulkActions() {
+    const checkboxes = document.querySelectorAll('.new-finding-checkbox:checked');
+    const count = checkboxes.length;
+
+    document.getElementById('newFindingsSelectedCount').textContent = `${count} new findings selected`;
+
+    if (count > 0) {
+        document.getElementById('newFindingsBulkActions').classList.remove('hidden');
+    } else {
+        document.getElementById('newFindingsBulkActions').classList.add('hidden');
+    }
+
+    // Keep the table header's select-all in sync — new-finding rows
+    // participate in the "select all" set too.
+    syncSelectAllHeader();
+}
+
+function trackOperation(type, data) {
+    lastOperation = { type, data, timestamp: Date.now() };
+    document.getElementById('undoButton').classList.remove('hidden');
+}
+
+async function undoLastOperation() {
+    if (!lastOperation) return;
+
+    const { type, data } = lastOperation;
+
+    try {
+        switch (type) {
+            case 'enable':
+                await fetch('/suppressions/bulk-disable', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: data.ids })
+                });
+                showAlert(`Undid enable operation for ${data.ids.length} suppression(s)`, 'success');
+                break;
+            case 'disable':
+                await fetch('/suppressions/bulk-enable', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: data.ids, reason: 'Undo disable operation' })
+                });
+                showAlert(`Undid disable operation for ${data.ids.length} suppression(s)`, 'success');
+                break;
+            case 'create':
+                await fetch('/suppressions/bulk-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: data.ids })
+                });
+                showAlert(`Undid creation of ${data.ids.length} suppression(s)`, 'success');
+                break;
+            case 'delete':
+                await fetch('/suppressions/bulk-create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rules: data.rules.map(rule => ({
+                            hash: rule.Hash || rule.hash,
+                            reason: rule.Reason || rule.reason,
+                            enabled: rule.Enabled !== undefined ? rule.Enabled : rule.enabled,
+                            metadata: rule.Metadata || rule.metadata || {}
+                        }))
+                    })
+                });
+                showAlert(`Undid deletion of ${data.rules.length} suppression(s)`, 'success');
+                break;
+            case 'edit':
+                await fetch('/suppressions/edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: data.id,
+                        reason: data.original.reason,
+                        created_by: data.original.created_by,
+                        enabled: data.original.enabled
+                    })
+                });
+                showAlert('Undid edit operation', 'success');
+                break;
+        }
+    } catch (error) {
+        showAlert('Undo failed: ' + error.message);
+    }
+
+    lastOperation = null;
+    document.getElementById('undoButton').classList.add('hidden');
+    loadSuppressions();
+}
+
+function showSuppressedFindings() {
+    if (!window.suppressedFindings || window.suppressedFindings.length === 0) {
+        showAlert('No suppressed findings to display', 'warning');
+        return;
+    }
+
+    const content = document.getElementById('suppressedFindingsContent');
+    let html = `<table class="table" style="table-layout: fixed; width: 100%;">
+        <thead>
+            <tr>
+                <th style="width: 8%;">Type</th>
+                <th style="width: 15%;">Confidence</th>
+                <th style="width: 13%;">File</th>
+                <th style="width: 5%;">Line</th>
+                <th style="width: 14%;">Finding</th>
+                <th style="width: 12%;">Suppressed By</th>
+                <th style="width: 20%;">Reason</th>
+                <th style="width: 13%;">Expiration</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    window.suppressedFindings.forEach(suppressed => {
+        const finding = suppressed.finding;
+        // Handle both direct finding object and nested finding structure
+        const actualFinding = finding.finding || finding;
+        const confidence = actualFinding.Confidence || actualFinding.confidence || 0;
+        const confidenceLevel = confidence >= 90 ? 'high' : confidence >= 60 ? 'medium' : 'low';
+
+        // Format expiration status
+        let expirationStatus = 'Never expires';
+        if (suppressed.expires_at) {
+            try {
+                const expiresAt = new Date(suppressed.expires_at);
+                const now = new Date();
+                const diffMs = expiresAt.getTime() - now.getTime();
+                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+                if (suppressed.expired || diffDays < 0) {
+                    const daysAgo = Math.abs(diffDays);
+                    if (daysAgo === 0) {
+                        expirationStatus = '<span style="color: #d13212; font-weight: bold;">Expired today</span>';
+                    } else if (daysAgo === 1) {
+                        expirationStatus = '<span style="color: #d13212; font-weight: bold;">Expired 1 day ago</span>';
+                    } else {
+                        expirationStatus = `<span style="color: #d13212; font-weight: bold;">Expired ${daysAgo} days ago</span>`;
+                    }
+                } else {
+                    if (diffDays === 0) {
+                        expirationStatus = '<span style="color: #ff9900; font-weight: bold;">Expires today</span>';
+                    } else if (diffDays === 1) {
+                        expirationStatus = '<span style="color: #ff9900;">Expires in 1 day</span>';
+                    } else {
+                        expirationStatus = `<span style="color: #232f3e;">Expires in ${diffDays} days</span>`;
+                    }
+                }
+            } catch (e) {
+                expirationStatus = 'Invalid date';
+            }
+        }
+
+        html += `<tr>
+            <td style="white-space: nowrap;">${actualFinding.Type || actualFinding.type}</td>
+            <td style="white-space: nowrap;"><span class="confidence-badge confidence-${confidenceLevel}">${confidenceLevel.toUpperCase()}</span> (${Math.round(confidence)}%)</td>
+            <td style="white-space: nowrap;" title="${escapeAttr(actualFinding.Filename || actualFinding.filename)}">${escapeHtml(formatPathForDisplay(actualFinding.Filename || actualFinding.filename))}</td>
+            <td style="white-space: nowrap; text-align: center;">${finding.line_number || 'N/A'}</td>
+            <td><div class="finding-text">${document.getElementById('showMatchCheck').checked ? `<span style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal;">${escapeHtml(actualFinding.Text || actualFinding.text)}</span>` : `<span class="redacted-link" data-text="${(actualFinding.Text || actualFinding.text).replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" data-action="toggleSuppressedTextFromData" title="Click to reveal">🔒 [HIDDEN]</span>`}</div></td>
+            <td style="font-family: monospace; font-size: 12px; white-space: nowrap;">${suppressed.suppressed_by}</td>
+            <td style="word-wrap: break-word; overflow-wrap: break-word;">${escapeHtml(suppressed.rule_reason)}</td>
+            <td style="white-space: nowrap;">${expirationStatus}</td>
+        </tr>`;
+    });
+
+    html += '</tbody></table>';
+    content.innerHTML = html;
+    document.getElementById('suppressedFindingsModal').classList.remove('hidden');
+}
+
+function closeSuppressedFindingsModal() {
+    document.getElementById('suppressedFindingsModal').classList.add('hidden');
+}
+
+function toggleSuppressionStatus(ruleId, hash, isEnabled) {
+    if (isEnabled) {
+        enableSuppression(hash);
+    } else {
+        disableSuppression(ruleId);
+    }
+}
+
+// Store actual text for each result
+let actualTexts = [];
+
+// Function to toggle redacted text visibility
+function toggleRedactedText(element, index) {
+    if (element.classList.contains('revealed')) {
+        element.innerHTML = '🔒 [HIDDEN]';
+        element.classList.remove('revealed');
+        element.title = 'Click to reveal';
+    } else {
+        const actualText = actualTexts[index] || 'Text not available';
+        element.innerHTML = `<span style="word-break: break-word; overflow-wrap: break-word; white-space: normal;">🔓 ${escapeHtml(actualText)}</span>`;
+        element.classList.add('revealed');
+        element.title = 'Click to hide';
+    }
+}
+
+// Function for suppressed findings modal
+function toggleSuppressedText(element, actualText) {
+    if (element.classList.contains('revealed')) {
+        element.innerHTML = '🔒 [HIDDEN]';
+        element.classList.remove('revealed');
+        element.title = 'Click to reveal';
+    } else {
+        element.innerHTML = '🔓 ' + actualText;
+        element.classList.add('revealed');
+        element.title = 'Click to hide';
+    }
+}
+
+function toggleSuppressedTextFromData(element) {
+    const actualText = element.getAttribute('data-text')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+    if (element.classList.contains('revealed')) {
+        element.innerHTML = '🔒 [HIDDEN]';
+        element.classList.remove('revealed');
+        element.title = 'Click to reveal';
+        element.style.whiteSpace = 'nowrap';
+    } else {
+        element.innerHTML = `<span style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal;">🔓 ${escapeHtml(actualText)}</span>`;
+        element.classList.add('revealed');
+        element.title = 'Click to hide';
+        element.style.whiteSpace = 'normal';
+    }
+}
+
+// Help modal functions
+function showHelp() {
+    document.getElementById('helpModal').classList.remove('hidden');
+    // Load default documentation
+    loadSelectedDoc();
+}
+
+function closeHelp() {
+    document.getElementById('helpModal').classList.add('hidden');
+}
+
+function switchHelpTab(tabName) {
+    // Remove active class from all tabs
+    document.querySelectorAll('.help-tab-button').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.color = '#5f6b7a';
+        btn.style.borderBottomColor = 'transparent';
+        btn.style.background = 'transparent';
+    });
+
+    // Hide all tab contents
+    document.querySelectorAll('.help-tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+
+    // Show selected tab
+    document.getElementById(tabName + 'HelpTab').classList.add('active');
+    document.getElementById(tabName + 'HelpTab').style.color = '#0972d3';
+    document.getElementById(tabName + 'HelpTab').style.borderBottomColor = '#0972d3';
+    document.getElementById(tabName + 'HelpTab').style.background = '#f0f8ff';
+    document.getElementById(tabName + 'HelpContent').classList.remove('hidden');
+}
+
+// Version information functions
+let versionData = null;
+
+async function fetchVersionInfo() {
+    try {
+        const response = await fetch('/health');
+        if (response.ok) {
+            const healthData = await response.json();
+            // Extract version info from health response
+            versionData = {
+                version: healthData.build_info.version,
+                commit: healthData.build_info.commit,
+                build_date: healthData.timestamp, // Use timestamp instead of build_date
+                go_version: healthData.build_info.go_version,
+                platform: healthData.build_info.platform,
+                full_string: `ferret-scan ${healthData.build_info.version} (commit: ${healthData.build_info.commit}, built: ${healthData.timestamp}, go: ${healthData.build_info.go_version}, platform: ${healthData.build_info.platform})`,
+                short: healthData.version
+            };
+            updateVersionDisplay();
+        } else {
+            document.getElementById('versionInfo').textContent = 'Version unavailable';
+        }
+    } catch (error) {
+        console.error('Failed to fetch version info:', error);
+        document.getElementById('versionInfo').textContent = 'Version unavailable';
+    }
+}
+
+function updateVersionDisplay() {
+    if (versionData) {
+        const versionElement = document.getElementById('versionInfo');
+        // Check if version already starts with 'v', if not add it
+        const displayVersion = versionData.version.startsWith('v') ? versionData.version : `v${versionData.version}`;
+        versionElement.textContent = displayVersion;
+        versionElement.title = `Click for details - Timestamp: ${versionData.build_date}`;
+    }
+}
+
+function showVersionDetails() {
+    if (!versionData) {
+        showAlert('Version information not available', 'warning');
+        return;
+    }
+
+    const details = `
+        <div style="font-family: monospace; font-size: 14px; line-height: 1.6;">
+            <h3 style="margin-top: 0;">Ferret Scan Version Information</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="padding: 4px 8px; font-weight: bold;">Version:</td><td style="padding: 4px 8px;">${versionData.version}</td></tr>
+                <tr><td style="padding: 4px 8px; font-weight: bold;">Git Commit:</td><td style="padding: 4px 8px; font-family: monospace;">${versionData.commit}</td></tr>
+                <tr><td style="padding: 4px 8px; font-weight: bold;">Timestamp:</td><td style="padding: 4px 8px;">${versionData.build_date}</td></tr>
+                <tr><td style="padding: 4px 8px; font-weight: bold;">Go Version:</td><td style="padding: 4px 8px;">${versionData.go_version}</td></tr>
+                <tr><td style="padding: 4px 8px; font-weight: bold;">Platform:</td><td style="padding: 4px 8px;">${versionData.platform}</td></tr>
+            </table>
+            <div style="margin-top: 16px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                <strong>Full Version String:</strong><br>
+                <code>${versionData.full_string}</code>
+            </div>
+        </div>
+    `;
+
+    // Create and show modal
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5); z-index: 10000; display: flex;
+        align-items: center; justify-content: center;
+    `;
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white; padding: 24px; border-radius: 8px;
+        max-width: 600px; width: 90%; max-height: 80%; overflow-y: auto;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    `;
+
+    content.innerHTML = details + `
+        <div style="text-align: right; margin-top: 20px;">
+            <button data-action="closeVersionModal"
+                    style="background: #0972d3; color: white; border: none;
+                           padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    `;
+
+    modal.className = 'version-modal';
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+// Initialize CLI command and version info on page load
+updateCliCommand();
+fetchVersionInfo();
+
+// ---------------------------------------------------------------------------
+// Delegated event binding (CSP: script-src 'self')
+//
+// template.html and the innerHTML fragments above must not use inline
+// on*="..." attributes — the CSP blocks them. Instead, clickable elements
+// carry data-action="<name>" (and change targets carry data-change="<name>")
+// plus optional data-arg / data-index / data-hash / data-reason parameters.
+// Two document-level listeners dispatch through the explicit tables below, so
+// rows injected later via innerHTML are covered automatically and no per-
+// element binding is needed.
+//
+// The tables are deliberately an allowlist (rather than window[name] lookup)
+// so a markup-injection bug can never escalate into calling an arbitrary
+// global function.
+// ---------------------------------------------------------------------------
+
+const clickActions = {
+    // Top nav / help
+    showVersionDetails: () => showVersionDetails(),
+    closeVersionModal: (el) => el.closest('.version-modal').remove(),
+    showHelp: () => showHelp(),
+    closeHelp: () => closeHelp(),
+    switchHelpTab: (el) => switchHelpTab(el.dataset.arg),
+
+    // Tabs
+    switchTab: (el) => switchTab(el.dataset.arg),
+
+    // File selection
+    pickFiles: () => document.getElementById('fileInput').click(),
+    pickFolder: () => pickFolder(),
+
+    // Expandable config sections
+    toggleSection: (el) => toggleSection(el),
+
+    // Results: stats filter cards, export, table sorting, pagination
+    filterResults: (el) => filterResults(el.dataset.arg),
+    exportResults: () => exportResults(),
+    sortTable: (el) => sortTable(el.dataset.arg),
+    changePage: (el) => changePage(parseInt(el.dataset.arg, 10)),
+    toggleRedactedText: (el) => toggleRedactedText(el, parseInt(el.dataset.index, 10)),
+    showSuppressedFindings: () => showSuppressedFindings(),
+    closeSuppressedFindingsModal: () => closeSuppressedFindingsModal(),
+    toggleSuppressedTextFromData: (el) => toggleSuppressedTextFromData(el),
+
+    // Suppressions toolbar
+    undoLastOperation: () => undoLastOperation(),
+    loadSuppressions: () => loadSuppressions(),
+    downloadSuppressionFile: () => downloadSuppressionFile(),
+
+    // Suppressions bulk actions
+    selectAllSuppressions: () => selectAllSuppressions(),
+    clearSelection: () => clearSelection(),
+    bulkEnableSuppressions: () => bulkEnableSuppressions(),
+    bulkDisableSuppressions: () => bulkDisableSuppressions(),
+    bulkMakePermanent: () => bulkMakePermanent(),
+    bulkRenew30Days: () => bulkRenew30Days(),
+    bulkDeleteSuppressions: () => bulkDeleteSuppressions(),
+
+    // New-findings bulk actions
+    selectAllNewFindings: () => selectAllNewFindings(),
+    clearNewFindingsSelection: () => clearNewFindingsSelection(),
+    bulkAddSuppressions: () => bulkAddSuppressions(),
+
+    // Suppressions table (static header + dynamically injected rows)
+    sortSuppressions: (el) => sortSuppressions(el.dataset.arg),
+    changeSuppressionPage: (el) => changeSuppressionPage(parseInt(el.dataset.arg, 10)),
+    showSuppressionDetails: (el) => showSuppressionDetails(el.dataset.arg),
+    showEditSuppressionModal: (el) => showEditSuppressionModal(el.dataset.arg),
+    removeSuppression: (el) => removeSuppression(el.dataset.arg),
+    showAddSuppressionModal: (el) => showAddSuppressionModal(el.dataset.hash, el.dataset.reason),
+
+    // Modal close / cancel / confirm buttons
+    closeAddSuppressionModal: () => closeAddSuppressionModal(),
+    closeEditSuppressionModal: () => closeEditSuppressionModal(),
+    closeSuppressionDetailsModal: () => closeSuppressionDetailsModal(),
+    closeRemoveSuppressionModal: () => closeRemoveSuppressionModal(),
+    confirmRemoveSuppression: () => confirmRemoveSuppression(),
+    closeEnableSuppressionModal: () => closeEnableSuppressionModal(),
+    closeDisableSuppressionModal: () => closeDisableSuppressionModal(),
+    confirmDisableSuppression: () => confirmDisableSuppression(),
+    closeBulkEnableModal: () => closeBulkEnableModal(),
+    closeBulkDisableModal: () => closeBulkDisableModal(),
+    confirmBulkDisable: () => confirmBulkDisable(),
+    closeBulkDeleteModal: () => closeBulkDeleteModal(),
+    confirmBulkDelete: () => confirmBulkDelete(),
+    closeBulkAddModal: () => closeBulkAddModal(),
+};
+
+const changeActions = {
+    toggleAllChecks: () => toggleAllChecks(),
+    toggleGenAI: () => toggleGenAI(),
+    updateCliCommand: () => updateCliCommand(),
+    updatePagination: () => updatePagination(),
+    toggleSelectAll: () => toggleSelectAll(),
+    updateBulkActions: () => updateBulkActions(),
+    updateNewFindingsBulkActions: () => updateNewFindingsBulkActions(),
+    updateSuppressionsPagination: () => updateSuppressionsPagination(),
+    toggleSuppressionStatus: (el) => toggleSuppressionStatus(el.dataset.arg, el.dataset.hash, el.checked),
+};
+
+document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const action = clickActions[el.dataset.action];
+    if (!action) return;
+    // Anchors used as buttons (e.g. suppression rule ID links with href="#")
+    // must not navigate/scroll-jump when handled.
+    if (el.tagName === 'A') e.preventDefault();
+    action(el, e);
+});
+
+document.addEventListener('change', (e) => {
+    const el = e.target.closest('[data-change]');
+    if (!el) return;
+    const action = changeActions[el.dataset.change];
+    if (!action) return;
+    action(el, e);
+});
+
+// The logo is optional: hide the <img> if /logo 404s. Was an inline onerror
+// attribute; error events don't bubble, so bind directly — and because the
+// image may already have failed before this script ran, also check the
+// already-settled state.
+(() => {
+    const logo = document.getElementById('logoImg');
+    if (!logo) return;
+    const hide = () => { logo.style.display = 'none'; };
+    logo.addEventListener('error', hide);
+    if (logo.complete && logo.naturalWidth === 0) hide();
+})();

@@ -42,6 +42,14 @@ import (
 //go:embed assets/template.html
 var embeddedTemplate string
 
+// embeddedAppJS is the front-end script for the web UI, served same-origin at
+// /app.js. It lives in a separate file (rather than an inline <script> block
+// in the template) so the Content-Security-Policy can use script-src 'self'
+// without 'unsafe-inline'.
+//
+//go:embed assets/app.js
+var embeddedAppJS string
+
 // WebServer represents the web server instance.
 //
 // suppressions/config caching: the manager and resolved config are built
@@ -281,6 +289,7 @@ func (ws *WebServer) setupRoutes() {
 
 	// Static asset serving with security validation
 	ws.mux.HandleFunc("/logo", ws.serveLogo)
+	ws.mux.HandleFunc("/app.js", ws.serveAppJS)
 
 	// Suppression management endpoints (delegate to CLI suppression system)
 	ws.mux.HandleFunc("/suppressions", ws.handleSuppressions)
@@ -333,6 +342,20 @@ func (ws *WebServer) serveHome(responseWriter http.ResponseWriter, request *http
 	responseWriter.Header().Set("Content-Type", "text/html")
 	responseWriter.WriteHeader(http.StatusOK)
 	responseWriter.Write([]byte(htmlContent))
+}
+
+// serveAppJS serves the embedded front-end script referenced by the main
+// page as <script src="/app.js">. Served same-origin so the strict CSP
+// (script-src 'self') permits it.
+func (ws *WebServer) serveAppJS(responseWriter http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" {
+		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	responseWriter.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	responseWriter.WriteHeader(http.StatusOK)
+	responseWriter.Write([]byte(embeddedAppJS))
 }
 
 // loadTemplate loads the HTML template from embedded content
