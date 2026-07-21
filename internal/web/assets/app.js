@@ -745,18 +745,25 @@ function getSelectedChecks() {
     if (document.getElementById('allChecks').checked) return 'all';
 
     const checks = [];
+    if (document.getElementById('bankAccount').checked) checks.push('BANK_ACCOUNT');
     if (document.getElementById('secrets').checked) checks.push('SECRETS');
     if (document.getElementById('cloudResources').checked) checks.push('CLOUD_RESOURCES');
     if (document.getElementById('creditCard').checked) checks.push('CREDIT_CARD');
+    if (document.getElementById('dateOfBirth').checked) checks.push('DATE_OF_BIRTH');
+    if (document.getElementById('driversLicense').checked) checks.push('DRIVERS_LICENSE');
     if (document.getElementById('email').checked) checks.push('EMAIL');
     if (document.getElementById('intellectualProperty').checked) checks.push('INTELLECTUAL_PROPERTY');
     if (document.getElementById('ipAddress').checked) checks.push('IP_ADDRESS');
+    if (document.getElementById('medicalId').checked) checks.push('MEDICAL_ID');
     if (document.getElementById('metadata').checked) checks.push('METADATA');
+    if (document.getElementById('otp').checked) checks.push('OTP');
     if (document.getElementById('passport').checked) checks.push('PASSPORT');
     if (document.getElementById('personName').checked) checks.push('PERSON_NAME');
     if (document.getElementById('phone').checked) checks.push('PHONE');
+    if (document.getElementById('physicalAddress').checked) checks.push('PHYSICAL_ADDRESS');
     if (document.getElementById('socialMedia').checked) checks.push('SOCIAL_MEDIA');
     if (document.getElementById('ssn').checked) checks.push('SSN');
+    if (document.getElementById('vin').checked) checks.push('VIN');
     /* GENAI_DISABLED: COMPREHEND_PII check
     if (document.getElementById('comprehendPii').checked) checks.push('COMPREHEND_PII');
     GENAI_DISABLED_END */
@@ -779,7 +786,7 @@ GENAI_DISABLED_END */
 
 function toggleAllChecks() {
     const allChecked = document.getElementById('allChecks').checked;
-    const checkboxes = ['secrets', 'cloudResources', 'creditCard', 'email', 'intellectualProperty', 'ipAddress', 'metadata', 'passport', 'personName', 'phone', 'socialMedia', 'ssn', 'comprehendPii'];
+    const checkboxes = ['bankAccount', 'secrets', 'cloudResources', 'creditCard', 'dateOfBirth', 'driversLicense', 'email', 'intellectualProperty', 'ipAddress', 'medicalId', 'metadata', 'otp', 'passport', 'personName', 'phone', 'physicalAddress', 'socialMedia', 'ssn', 'vin', 'comprehendPii'];
 
     checkboxes.forEach(id => {
         const element = document.getElementById(id);
