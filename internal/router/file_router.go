@@ -389,13 +389,10 @@ func isTextFile(filePath string) (bool, error) {
 
 	buffer = buffer[:n]
 
-	// Check for null bytes
-	for _, b := range buffer {
-		if b == 0 {
-			return false, nil
-		}
-	}
-
+	// Null-byte gating happens inside LooksLikeText, after encoding
+	// detection — UTF-16 text carries a null per ASCII character, so a
+	// pre-decode null check would (and previously did) classify every
+	// UTF-16 file as binary.
 	// UTF-8-aware sniff shared with the plaintext preprocessor: the previous
 	// ASCII-byte-ratio copy here silently classified short lines containing
 	// any multi-byte character (™, em-dash, accents, non-Latin scripts) as

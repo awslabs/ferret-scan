@@ -16,18 +16,18 @@ import (
 // mode (stdin was unaffected, which is how the gap hid).
 func TestLooksLikeText(t *testing.T) {
 	textCases := map[string]string{
-		"plain ascii":              "Contact john.doe@example.com about the contract\n",
-		"trademark symbol short":   "Acme ™ contact john.doe@example.com\n",
-		"em-dash short":            "Contract — contact john.doe@example.com\n",
-		"copyright dense":          strings.Repeat("© 2026 Acme. ", 10),
-		"accented names":           "Renée Müller, José García, François Lefèvre\n",
-		"french prose":             "Le numéro de sécurité sociale de l'employé est confidentiel.\n",
-		"japanese":                 "顧客の個人情報：山田太郎、東京都渋谷区\n",
-		"cyrillic":                 "Персональные данные клиента: Иван Петров\n",
-		"emoji":                    "credit card 5500-0000-0000-0004 \U0001f4b3\n",
-		"curly quotes":             "“confidential” ‘internal’ draft\n",
-		"crlf windows text":        "line one\r\nline two\r\n",
-		"tab separated":            "name\temail\tssn\n",
+		"plain ascii":               "Contact john.doe@example.com about the contract\n",
+		"trademark symbol short":    "Acme ™ contact john.doe@example.com\n",
+		"em-dash short":             "Contract — contact john.doe@example.com\n",
+		"copyright dense":           strings.Repeat("© 2026 Acme. ", 10),
+		"accented names":            "Renée Müller, José García, François Lefèvre\n",
+		"french prose":              "Le numéro de sécurité sociale de l'employé est confidentiel.\n",
+		"japanese":                  "顧客の個人情報：山田太郎、東京都渋谷区\n",
+		"cyrillic":                  "Персональные данные клиента: Иван Петров\n",
+		"emoji":                     "credit card 5500-0000-0000-0004 \U0001f4b3\n",
+		"curly quotes":              "“confidential” ‘internal’ draft\n",
+		"crlf windows text":         "line one\r\nline two\r\n",
+		"tab separated":             "name\temail\tssn\n",
 		"latin-1 legacy (fallback)": string([]byte{'c', 'a', 'f', 0xe9, ' ', 'm', 'e', 'n', 'u', '\n', 'p', 'r', 'i', 'x', ':', ' ', '5', '0', '\n'}),
 	}
 	for name, content := range textCases {
@@ -43,8 +43,12 @@ func TestLooksLikeText(t *testing.T) {
 		"png header": {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xD8, 0xFE, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86},
 		// dense control characters, valid UTF-8 (all < 0x80)
 		"control-char soup": {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0B, 0x0C, 0x0E, 0x0F, 0x10, 0x11, 'a', 'b'},
-		// random high bytes, invalid UTF-8
-		"random high bytes": {0xFE, 0xFF, 0xC0, 0xC1, 0xF5, 0xF6, 0x80, 0x81, 0xFE, 0xFF, 0xC0, 0xC1, 0xF5, 0xF6, 0x80, 0x81, 0xFE, 0xFF, 0xC0, 0xC1},
+		// random high bytes, invalid UTF-8. Deliberately does NOT start with
+		// FE FF / FF FE: a leading UTF-16 BOM is an explicit encoding
+		// declaration and such buffers are decoded as UTF-16 by design (see
+		// TestLooksLikeText_Encodings) — the byte-ratio fallback only judges
+		// buffers with no recognized encoding signature.
+		"random high bytes": {0xC0, 0xC1, 0xF5, 0xF6, 0x80, 0x81, 0xFE, 0xFF, 0xC0, 0xC1, 0xF5, 0xF6, 0x80, 0x81, 0xFE, 0xFF, 0xC0, 0xC1, 0xF5, 0xF6},
 	}
 	for name, content := range binaryCases {
 		t.Run("binary/"+name, func(t *testing.T) {
