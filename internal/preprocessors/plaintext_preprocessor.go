@@ -312,26 +312,41 @@ func LooksLikeText(buf []byte) bool {
 	}
 
 	// Not valid UTF-8: fall back to a legacy single-byte-encoding judgment.
-	// The whole high half (>= 0x80) counts as printable — Latin-1 letters
-	// live at 0xA0+ and Windows-1252 places its typographic characters
-	// (curly quotes, en/em dashes, ellipsis, ™) in 0x80-0x9F, so a short
-	// cp1252 line from an old Word/Outlook export must not be classified
-	// binary for using them. BUT real single-byte-encoding text is
-	// predominantly ASCII with scattered high bytes; an all-high-bytes
-	// buffer is binary, not prose. Hence two thresholds: >95% printable
-	// overall AND a majority of plain ASCII text.
-	printableCount, asciiCount := 0, 0
+	//
+	// Floor (identical to the historical rule): ASCII printables, tab/CR/LF,
+	// and ALL bytes >= 0xA0 count as printable against a 95% bar. Bytes at
+	// 0xA0+ are where every ISO-8859-x / Windows-125x codepage puts its
+	// letters — Cyrillic cp1251, Greek cp1253, Hebrew cp1255, Arabic cp1256
+	// prose is majority high-byte, and an "ASCII majority" requirement here
+	// silently skipped all of it (proven by adversarial verification:
+	// Russian cp1251 with an embedded email went from 2 findings to a
+	// silent skip). Never require ASCII dominance of legacy text.
+	//
+	// Extension (the cp1252 fix): Windows-1252 also places typographic
+	// characters — curly quotes, en/em dashes, ellipsis, ™ — in 0x80-0x9F.
+	// Those count as printable ONLY when the document is ASCII-majority,
+	// which is what a smart-quoted Word/Outlook export actually looks like.
+	// Gating the 0x80-0x9F allowance (rather than granting it wholesale)
+	// keeps structureless high-byte binary rejected: random bytes spanning
+	// 0x80-0xFF are not ASCII-majority, so their 0x80-0x9F content stays
+	// unprintable and drags them under the bar, exactly as before.
+	asciiCount, high160Count, typo1252Count := 0, 0, 0
 	for _, b := range buf {
 		switch {
 		case (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13:
-			printableCount++
 			asciiCount++
+		case b >= 160:
+			high160Count++
 		case b >= 128:
-			printableCount++
+			typo1252Count++
 		}
 	}
 	n := float64(len(buf))
-	return float64(printableCount)/n > 0.95 && float64(asciiCount)/n > 0.5
+	printable := asciiCount + high160Count
+	if float64(asciiCount)/n > 0.5 {
+		printable += typo1252Count
+	}
+	return float64(printable)/n > 0.95
 }
 
 // looksLikeDecodedText judges already-decoded (valid UTF-8) text: accept

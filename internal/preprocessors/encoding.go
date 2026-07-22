@@ -57,6 +57,20 @@ func (e TextEncoding) String() string {
 	}
 }
 
+// hasNullByte reports whether b contains at least one 0x00 byte. Used to
+// confirm a UTF-16 BOM: real UTF-16 text always carries nulls (the high half
+// of every ASCII character, space, and newline), so a "BOM" followed by a
+// null-free body is legacy single-byte text that happens to start with
+// ÿþ/þÿ, not UTF-16.
+func hasNullByte(b []byte) bool {
+	for _, c := range b {
+		if c == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // DetectTextEncoding inspects the leading bytes of buf (any prefix of the
 // file, e.g. the 512-byte sniff window or the whole content) and identifies
 // the encoding. Detection order matters: BOMs are unambiguous and checked
@@ -75,10 +89,22 @@ func DetectTextEncoding(buf []byte) TextEncoding {
 			if len(buf) >= 4 && buf[2] == 0x00 && buf[3] == 0x00 {
 				return EncodingUnknown // UTF-32LE: rare; not supported
 			}
-			return EncodingUTF16LE
-		}
-		if buf[0] == 0xFE && buf[1] == 0xFF {
-			return EncodingUTF16BE
+			if hasNullByte(buf[2:]) {
+				return EncodingUTF16LE
+			}
+			// FF FE with ZERO nulls after it is almost certainly NOT
+			// UTF-16: every real UTF-16 document carries nulls (ASCII
+			// chars, spaces U+0020, newlines U+000A all have a 0x00 half).
+			// It IS what a legacy single-byte file looks like when its
+			// text begins with 'ÿþ' (0xFF 0xFE in Latin-1/cp1252) —
+			// adversarial verification proved decoding such a file as
+			// UTF-16 turns it into mojibake and silently hides its PII.
+			// Fall through to the non-BOM heuristics.
+		} else if buf[0] == 0xFE && buf[1] == 0xFF {
+			if hasNullByte(buf[2:]) {
+				return EncodingUTF16BE
+			}
+			// Same rationale: 'þÿ'-leading legacy text, not a BOM.
 		}
 	}
 

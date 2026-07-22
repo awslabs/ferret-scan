@@ -152,3 +152,58 @@ func TestLooksLikeText_Encodings(t *testing.T) {
 		})
 	}
 }
+
+// TestAdversarialFindings locks the fixes for the three regressions the
+// adversarial verification panel proved against the first version of this
+// change (PR #165). Each subtest is a distilled attacker repro.
+func TestAdversarialFindings(t *testing.T) {
+	t.Run("cp1251 Cyrillic prose is text (majority high-byte)", func(t *testing.T) {
+		// Attack: Russian cp1251 prose + ASCII email. The first version's
+		// ASCII-majority gate classified it binary — silent skip of every
+		// non-Latin Windows codepage. cp1251 letters are 0xC0-0xFF.
+		prose := bytes.Repeat([]byte{0xD3, 0xE2, 0xE0, 0xE6, 0xE0, 0xE5, 0xEC, 0xFB, 0xE9, 0x20}, 20) // "Уважаемый " x20
+		prose = append(prose, []byte("ivan.petrov@example.com\n")...)
+		if !LooksLikeText(prose) {
+			t.Error("cp1251 Cyrillic prose must classify as text (was the panel's major regression)")
+		}
+	})
+	t.Run("cp1253 Greek prose is text", func(t *testing.T) {
+		prose := bytes.Repeat([]byte{0xC1, 0xE3, 0xE1, 0xF0, 0xE7, 0xF4, 0xDD, 0x20}, 25) // Greek letters cp1253
+		prose = append(prose, []byte("SSN 449-87-4100\n")...)
+		if !LooksLikeText(prose) {
+			t.Error("cp1253 Greek prose must classify as text")
+		}
+	})
+	t.Run("legacy text starting with FF FE bytes is not UTF-16", func(t *testing.T) {
+		// Attack: cp1252 text beginning with 'ÿþ' (FF FE) was decoded as
+		// UTF-16LE, turning the file to mojibake and hiding its PII.
+		// Real UTF-16 always contains nulls; this file has none.
+		data := append([]byte{0xFF, 0xFE}, []byte(" starts this legacy file. SSN: 449-87-4100\n")...)
+		if enc := DetectTextEncoding(data); enc != EncodingUTF8 {
+			t.Errorf("null-free FF FE-leading buffer detected as %v, want fallback (utf-8/legacy)", enc)
+		}
+		if !LooksLikeText(data) {
+			t.Error("FF FE-leading legacy text must classify as text")
+		}
+	})
+	t.Run("legacy text starting with FE FF bytes is not UTF-16", func(t *testing.T) {
+		data := append([]byte{0xFE, 0xFF}, []byte(" also legacy. email a@b.co\n")...)
+		if enc := DetectTextEncoding(data); enc != EncodingUTF8 {
+			t.Errorf("null-free FE FF-leading buffer detected as %v", enc)
+		}
+	})
+	t.Run("real UTF-16LE BOM still detected (has nulls)", func(t *testing.T) {
+		data := fixtureUTF16("real utf-16 content\n", false, true)
+		if enc := DetectTextEncoding(data); enc != EncodingUTF16LE {
+			t.Errorf("genuine UTF-16LE+BOM detected as %v", enc)
+		}
+	})
+	t.Run("random high-byte binary still rejected despite 0x80-0x9F allowance", func(t *testing.T) {
+		// The cp1252 typographic allowance is gated on ASCII majority, so
+		// structureless high-byte spans must stay binary.
+		data := bytes.Repeat([]byte{0x81, 0x8D, 0x8F, 0x90, 0x9D, 0xC3, 0xF7, 0x85}, 16)
+		if LooksLikeText(data) {
+			t.Error("random high-byte binary must remain binary")
+		}
+	})
+}
