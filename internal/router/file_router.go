@@ -396,16 +396,11 @@ func isTextFile(filePath string) (bool, error) {
 		}
 	}
 
-	// Check printable ratio
-	printableCount := 0
-	for _, b := range buffer {
-		if (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13 {
-			printableCount++
-		}
-	}
-
-	printableRatio := float64(printableCount) / float64(len(buffer))
-	return printableRatio > 0.95, nil
+	// UTF-8-aware sniff shared with the plaintext preprocessor: the previous
+	// ASCII-byte-ratio copy here silently classified short lines containing
+	// any multi-byte character (™, em-dash, accents, non-Latin scripts) as
+	// binary, skipping the file for every validator in file mode.
+	return preprocessors.LooksLikeText(buffer), nil
 }
 
 func generateRequestID() string {
