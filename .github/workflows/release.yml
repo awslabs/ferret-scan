@@ -66,6 +66,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload generated Homebrew formula
+        # Hands the freshly generated formula to the brew-smoke job below.
+        # goreleaser writes it under dist/homebrew/ even when skip_upload
+        # (prerelease) prevents committing it to main, so prereleases get
+        # smoke-tested too.
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: homebrew-formula
+          # goreleaser layout under dist/homebrew/ varies by version
+          # (flat vs Formula/ subdir); upload the whole directory and let
+          # the smoke job locate ferret-scan.rb with find.
+          path: dist/homebrew/
+          if-no-files-found: error
+          retention-days: 7
+
 
 
       - name: Run GoReleaser (Snapshot)
@@ -85,3 +101,61 @@ jobs:
           name: snapshot-binaries
           path: dist/*
           retention-days: 7
+
+  # Smoke test the formula goreleaser JUST generated, against the release
+  # assets it JUST uploaded. This is the check that would have caught the
+  # v2.1.0 Errno::ENOENT install-block bug (PR #161) before users hit it.
+  # Runs after the release exists so the formula's download URLs resolve.
+  # If it fails, the release is already published — treat a red brew-smoke
+  # as "pull the formula/fix forward immediately", not as a gate.
+  brew-smoke:
+    name: brew install + smoke (macos)
+    needs: goreleaser
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ENV_HINTS: "1"
+    steps:
+      - name: Download generated Homebrew formula
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: homebrew-formula
+          path: formula-artifact
+
+      - name: Install formula from a throwaway local tap
+        # Modern Homebrew rejects installing a bare .rb path ("Homebrew
+        # requires formulae to be in a tap"), so stage the generated formula
+        # in a local tap. `--no-git` keeps tap-new offline and avoids
+        # needing a git identity on the runner.
+        run: |
+          set -euo pipefail
+          formula="$(find formula-artifact -name 'ferret-scan.rb' -print -quit)"
+          if [ -z "$formula" ]; then
+            echo "generated formula not found in artifact" >&2
+            find formula-artifact -type f >&2
+            exit 1
+          fi
+          brew tap-new local/smoke --no-git
+          cp "$formula" "$(brew --repository local/smoke)/Formula/"
+          brew install local/smoke/ferret-scan
+
+      - name: Run formula test block
+        run: brew test local/smoke/ferret-scan
+
+      - name: Smoke test installed binary
+        run: |
+          set -euo pipefail
+          ferret-scan --version
+          ferret-scan --version | grep -E '^ferret-scan [0-9]+\.[0-9]+\.[0-9]+'
+          out="$(echo "card 5500-0000-0000-0004" | ferret-scan --stdin 2>&1)" || {
+            echo "$out"
+            echo "ferret-scan --stdin exited non-zero" >&2
+            exit 1
+          }
+          echo "$out"
+          echo "$out" | grep -i creditcard
