@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:ip_consolidation_long_line&gt;" classname="security-scan" time="0.001">
+      <failure message="INTELLECTUAL_PROPERTY found: © 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. [+218 more matches on line]" type="INTELLECTUAL_PROPERTY">Line 1: INTELLECTUAL_PROPERTY detected with 100.0% confidence (HIGH)&#xA;Match: © 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. [+218 more matches on line]&#xA;Validator: INTELLECTUAL_PROPERTY</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

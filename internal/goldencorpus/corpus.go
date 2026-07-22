@@ -221,6 +221,17 @@ var Cases = []Case{
 			"SKU 313-555-0175 restocked\n",
 	},
 	{
+		Name: "ip_consolidation_long_line",
+		Description: "A single ~8KB line of ~63 concatenated AWS slide footers — the shape PDF " +
+			"text extraction produces when every slide carries the same copyright/confidential " +
+			"footer (user-reported: one finding whose Text was the entire 11,871-char line). " +
+			"Locks the bounded consolidated match text (\"<primary> [+N more matches on line]\", " +
+			"<= 256 bytes, match_text_truncated=true) AND that redaction still masks the ENTIRE " +
+			"line (redactors.RestoreBoundedMatchText restores the full-line span before masking).",
+		Checks: []string{"INTELLECTUAL_PROPERTY"},
+		Input:  repeatedFooterLine(8000),
+	},
+	{
 		Name: "context_decoys_personname",
 		Description: "Multi-line document (PERSON_NAME is document-length sensitive) mixing " +
 			"real person references with decoy name-shaped strings: geographic features " +
@@ -441,6 +452,20 @@ func longLineWithEmbeddedEmail() string {
 	return line + "needle@example.com end\n"
 }
 
+// repeatedFooterLine builds a single line of >= n bytes made of concatenated
+// copies of the standard AWS slide footer, mimicking PDF text extraction of a
+// deck whose every slide carries the footer. Exercises the IP validator's
+// same-line legal-notice consolidation on a pathologically long line.
+func repeatedFooterLine(n int) string {
+	const footer = "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. "
+	var sb strings.Builder
+	sb.Grow(n + len(footer))
+	for sb.Len() < n {
+		sb.WriteString(footer)
+	}
+	return sb.String() + "\n"
+}
+
 // manyEmails generates n lines each containing a distinct email address.
 func manyEmails(n int) string {
 	out := ""
@@ -485,9 +510,18 @@ func CanonicalSort(matches []detector.Match) []detector.Match {
 // timestampPatterns matches the non-deterministic wall-clock timestamps that a
 // couple of formatters embed (gitlab-sast emits ISO-8601 start/end times). They
 // are replaced with a fixed sentinel so the snapshot is byte-stable.
-var timestampPatterns = []*regexp.Regexp{
+var timestampPatterns = []struct {
+	re          *regexp.Regexp
+	replacement string
+}{
 	// gitlab-sast: "2026-06-30T11:07:42"
-	regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?`),
+	{regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?`), "<TIMESTAMP>"},
+	// INTELLECTUAL_PROPERTY legal-notice reconstruction stamps a Unix-epoch
+	// string into metadata ("reconstruction_timestamp": "1784686027"); it
+	// varies every run, so normalize the digits wherever the key appears
+	// (JSON, YAML, CSV metadata blobs, and gitlab-sast description bullets)
+	// while keeping the key itself intact.
+	{regexp.MustCompile(`(reconstruction_timestamp[^0-9]*)\d+`), "${1}<TIMESTAMP>"},
 }
 
 // NormalizeOutput makes formatter output byte-stable for snapshotting by
@@ -505,8 +539,8 @@ var timestampPatterns = []*regexp.Regexp{
 // what data appears (a new field, a changed message, a different detection),
 // the snapshot still catches it. format is the formatter name (e.g. "sarif").
 func NormalizeOutput(format, s string) string {
-	for _, re := range timestampPatterns {
-		s = re.ReplaceAllString(s, "<TIMESTAMP>")
+	for _, p := range timestampPatterns {
+		s = p.re.ReplaceAllString(s, p.replacement)
 	}
 
 	switch format {

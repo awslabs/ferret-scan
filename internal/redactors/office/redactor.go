@@ -476,6 +476,12 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 		modifiedContents.Files[fileName] = content
 	}
 
+	// Restore bounded (display-truncated) consolidated match texts to their
+	// full-line spans first — redaction locates matches by searching for
+	// Match.Text in the extracted content, and a bounded display text does not
+	// occur there. See redactors.RestoreBoundedMatchText.
+	matches = redactors.RestoreBoundedMatchText(matches)
+
 	// Collapse overlapping matches to their widest span so a smaller match
 	// contained in a larger one doesn't get redacted first and hide the larger
 	// match's un-redacted head. See redactors.ResolveOverlaps.
