@@ -250,17 +250,63 @@ func (ptp *PlainTextPreprocessor) isTextFile(filePath string) bool {
 		}
 	}
 
-	// Count printable characters
+	return LooksLikeText(buffer)
+}
+
+// LooksLikeText reports whether buf (a null-free prefix of the file) is text.
+// Exported because the FileRouter maintains a second sniff site (isTextFile in
+// internal/router) that must apply identical semantics — the two copies of the
+// old byte-ratio heuristic drifted into the same UTF-8 bug independently.
+//
+// UTF-8 first: every byte of a multi-byte UTF-8 sequence is >= 0x80, so the
+// old ASCII-printable ratio counted EVERY non-ASCII character against the
+// file. A short line with a ™ (3 bytes) or an em-dash, a name with accents,
+// or any non-Latin-script document fell below the 95% bar and the file was
+// silently skipped as "binary" — a recall hole across ALL validators in file
+// mode (stdin mode never sniffs, which is how the gap hid). Genuinely binary
+// data essentially never forms long runs of valid UTF-8, so utf8.Valid is
+// both the safer and the stricter signal; the ASCII-ratio heuristic remains
+// only as the fallback for legacy single-byte encodings (Latin-1 etc.),
+// which are not valid UTF-8 but are still text someone may want scanned.
+func LooksLikeText(buf []byte) bool {
+	if len(buf) == 0 {
+		return false
+	}
+
+	// The 512-byte read may split a multi-byte sequence at the end; trim up
+	// to utf8.UTFMax-1 trailing continuation/start bytes of an incomplete
+	// rune so a truncated final character doesn't fail validation.
+	trimmed := buf
+	for i := 0; i < utf8.UTFMax-1 && len(trimmed) > 0; i++ {
+		if r, _ := utf8.DecodeLastRune(trimmed); r != utf8.RuneError {
+			break
+		}
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	if len(trimmed) > 0 && utf8.Valid(trimmed) {
+		// Valid UTF-8. Reject only if dominated by control characters
+		// (binary formats that happen to be UTF-8-clean, e.g. some font or
+		// archive headers survive the null-byte check).
+		control := 0
+		total := 0
+		for _, r := range string(trimmed) {
+			total++
+			if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+				control++
+			}
+		}
+		return total > 0 && float64(control)/float64(total) < 0.05
+	}
+
+	// Not valid UTF-8: fall back to the ASCII-printable ratio for legacy
+	// single-byte encodings, with a small allowance for high bytes.
 	printableCount := 0
-	for _, b := range buffer {
-		if (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13 {
+	for _, b := range buf {
+		if (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13 || b >= 160 {
 			printableCount++
 		}
 	}
-
-	// Consider it text if more than 95% of characters are printable
-	printableRatio := float64(printableCount) / float64(len(buffer))
-	return printableRatio > 0.95
+	return float64(printableCount)/float64(len(buf)) > 0.95
 }
 
 // countWords counts the number of words in the text
