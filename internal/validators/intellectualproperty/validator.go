@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -934,15 +935,27 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 			}
 		} // end of internal_url disabled check
 
-		// Check for IP patterns using individual regex patterns
-		ipPatterns := map[string]*regexp.Regexp{
-			"patent":       v.regexPatent,
-			"trademark":    v.regexTrademark,
-			"copyright":    v.regexCopyright,
-			"trade_secret": v.regexTradeSecret,
+		// Check for IP patterns using individual regex patterns.
+		//
+		// DETERMINISM: this was a map, and Go randomizes map iteration order —
+		// so the within-line match order (and everything derived from it:
+		// ip_types ordering, the "TYPE+N" display label, primary-match
+		// tie-breaks in consolidation) varied run to run. A fixed slice order
+		// makes the output stable. Copyright first: it is the preferred
+		// primary match (findPrimaryMatch gives it a +10 bonus) and the most
+		// representative label for consolidated legal notices.
+		ipPatterns := []struct {
+			ipType string
+			regex  *regexp.Regexp
+		}{
+			{"copyright", v.regexCopyright},
+			{"patent", v.regexPatent},
+			{"trademark", v.regexTrademark},
+			{"trade_secret", v.regexTradeSecret},
 		}
 
-		for ipType, regex := range ipPatterns {
+		for _, p := range ipPatterns {
+			ipType, regex := p.ipType, p.regex
 			// Skip disabled IP sub-types
 			if v.disabledTypes[ipType] {
 				continue
@@ -2283,8 +2296,9 @@ func (v *Validator) reconstructLegalNotice(matches []detector.Match) detector.Ma
 	// Calculate reconstructed confidence
 	reconstructedConfidence := v.calculateReconstructedConfidence(matches, analysis)
 
-	// Build consolidated match text using full line context
-	consolidatedText := v.buildConsolidatedMatchText(matches)
+	// Build consolidated match text using full line context, bounded for
+	// display (see buildConsolidatedMatchText for the bounding contract).
+	consolidatedText, matchTextTruncated := v.buildConsolidatedMatchText(matches, primaryMatch)
 
 	// Collect all IP types from the original matches
 	ipTypes := v.collectIPTypes(matches)
@@ -2349,6 +2363,7 @@ func (v *Validator) reconstructLegalNotice(matches []detector.Match) detector.Ma
 		"original_validation_checks": originalValidationChecks,
 		"original_context_impacts":   originalContextImpacts,
 		"primary_match_index":        v.findPrimaryMatchIndex(matches, primaryMatch),
+		"match_text_truncated":       matchTextTruncated,
 
 		// Reconstruction metadata
 		"source":                   "legal_notice_reconstruction",
@@ -2491,11 +2506,33 @@ func (v *Validator) findPrimaryMatch(matches []detector.Match) detector.Match {
 	return primaryMatch
 }
 
-// buildConsolidatedMatchText creates the match text for the reconstructed finding
-// Uses the full line context to show the complete legal notice
-func (v *Validator) buildConsolidatedMatchText(matches []detector.Match) string {
+// Bounds for the consolidated match text (display bounding only — the full
+// original fragments always survive in metadata["original_match_texts"], and
+// the redaction layer restores full-line coverage from Context.FullLine via
+// redactors.RestoreBoundedMatchText, so bounding never weakens redaction).
+const (
+	// consolidatedFullLineCap is the longest full line that is used VERBATIM as
+	// the consolidated match text — the historical behavior for ordinary legal
+	// notices, which golden fixtures and downstream consumers rely on.
+	consolidatedFullLineCap = 200
+
+	// consolidatedTextCap is the hard ceiling on the consolidated match text
+	// when bounding kicks in ("<primary match> [+N more matches on line]").
+	consolidatedTextCap = 256
+)
+
+// buildConsolidatedMatchText creates the match text for the reconstructed
+// finding and reports whether it was bounded (truncated) for display.
+//
+// Short lines (<= consolidatedFullLineCap after trimming) keep the historical
+// behavior: the full line IS the legal notice and is returned verbatim. Long
+// lines — e.g. a PDF whose text extraction concatenates every slide's footer
+// onto one logical line (user-reported: a single 11,871-char Match.Text from
+// ~63 footer copies) — are bounded to the primary match plus an explicit
+// "[+N more matches on line]" marker, capped at consolidatedTextCap bytes.
+func (v *Validator) buildConsolidatedMatchText(matches []detector.Match, primaryMatch detector.Match) (string, bool) {
 	if len(matches) == 0 {
-		return ""
+		return "", false
 	}
 
 	// Check if all matches are on the same line
@@ -2514,8 +2551,16 @@ func (v *Validator) buildConsolidatedMatchText(matches []detector.Match) string 
 	}
 
 	if allSameLine && fullLine != "" {
-		// All matches on same line - use the full line as consolidated text
-		return strings.TrimSpace(fullLine)
+		trimmed := strings.TrimSpace(fullLine)
+		if len(trimmed) <= consolidatedFullLineCap {
+			// All matches on a short same line - use the full line as
+			// consolidated text (historical behavior, locked by fixtures).
+			return trimmed, false
+		}
+		// Pathologically long line: bound the display text. Redaction coverage
+		// is preserved separately (redactors.RestoreBoundedMatchText restores
+		// the full line from Context.FullLine before masking).
+		return boundedConsolidatedText(primaryMatch.Text, len(matches)), true
 	}
 
 	// Multi-line matches - combine the individual match texts
@@ -2531,10 +2576,38 @@ func (v *Validator) buildConsolidatedMatchText(matches []detector.Match) string 
 	}
 
 	// Join with appropriate separator
+	sep := "; "
 	if len(textParts) <= 2 {
-		return strings.Join(textParts, " ")
+		sep = " "
 	}
-	return strings.Join(textParts, "; ")
+	joined := strings.Join(textParts, sep)
+	if len(joined) <= consolidatedTextCap {
+		return joined, false
+	}
+	return boundedConsolidatedText(primaryMatch.Text, len(matches)), true
+}
+
+// boundedConsolidatedText renders "<primary match text> [+N more matches on
+// line]", hard-capped at consolidatedTextCap bytes. When even the primary
+// match text exceeds the remaining budget it is truncated with an explicit
+// "..." marker so the bounding is always visible, never silent.
+func boundedConsolidatedText(primaryText string, matchCount int) string {
+	primaryText = strings.TrimSpace(primaryText)
+	marker := fmt.Sprintf(" [+%d more matches on line]", matchCount-1)
+	budget := consolidatedTextCap - len(marker)
+	if len(primaryText) > budget {
+		const ellipsis = "..."
+		cut := budget - len(ellipsis)
+		if cut < 0 {
+			cut = 0
+		}
+		// Never split a multi-byte UTF-8 sequence at the cut point.
+		for cut > 0 && !utf8.RuneStart(primaryText[cut]) {
+			cut--
+		}
+		primaryText = primaryText[:cut] + ellipsis
+	}
+	return primaryText + marker
 }
 
 // collectIPTypes gathers all IP types from the original matches

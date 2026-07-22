@@ -1,0 +1,2266 @@
+{
+  "results": [
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<golden:ip_consolidation_long_line>",
+      "line_number": 1,
+      "metadata": {
+        "analysis_confidence": 95,
+        "confidence_adjustment": 20,
+        "confidence_boost": 9,
+        "confidence_boost_percentage": 10.112359550561797,
+        "consolidated_count": 219,
+        "context_confidence": 0,
+        "context_doctype": "CSV",
+        "context_domain": "Unknown",
+        "ip_types": [
+          "copyright",
+          "trademark",
+          "trade_secret"
+        ],
+        "legal_notice_type": "comprehensive_legal_notice",
+        "match_text_truncated": true,
+        "notice_classification": {
+          "has_repetition": false,
+          "is_comprehensive": true,
+          "is_mixed": false,
+          "pattern_complexity": 7,
+          "primary_type": "comprehensive_legal_notice",
+          "semantic_strength": 95
+        },
+        "original_confidence": 98,
+        "original_confidences": [
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          89,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79,
+          79
+        ],
+        "original_context_impacts": [
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9,
+          9
+        ],
+        "original_file": "<golden:ip_consolidation_long_line>",
+        "original_match_count": 219,
+        "original_match_texts": [
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. ",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "and Trademark",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential",
+          "Confidential"
+        ],
+        "original_match_types": [
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "copyright",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trademark",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret",
+          "trade_secret"
+        ],
+        "original_validation_checks": [
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          },
+          {
+            "context_relevant": false,
+            "format": true,
+            "not_common_pattern": true,
+            "not_example": true
+          }
+        ],
+        "primary_match_index": 0,
+        "proximity_score": 0.9,
+        "reconstruction_algorithm": "proximity_semantic_analysis",
+        "reconstruction_reason": "strong_legal_notice_pattern",
+        "reconstruction_timestamp": "<TIMESTAMP>",
+        "reconstruction_type": "mixed_notice",
+        "reconstruction_version": "1.1",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0.16666666666666666,
+          "Production": 0,
+          "TestData": 0
+        },
+        "semantic_groups": [
+          "full_legal_notice",
+          "copyright_with_confidential",
+          "copyright_with_trademark",
+          "trademark_with_confidential",
+          "repeated_confidential",
+          "all_rights_reserved",
+          "standard_copyright_notice"
+        ],
+        "source": "legal_notice_reconstruction",
+        "validation_path": "document"
+      },
+      "text": "© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. [+218 more matches on line]",
+      "type": "INTELLECTUAL_PROPERTY",
+      "validator": "INTELLECTUAL_PROPERTY"
+    }
+  ]
+}

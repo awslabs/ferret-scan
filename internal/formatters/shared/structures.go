@@ -91,13 +91,14 @@ var safeMetadataKeys = map[string]bool{
 	"last_names_count":  true,
 
 	// Pattern bookkeeping (names of internal patterns, not matched content)
-	"pattern":             true,
-	"pattern_name":        true,
-	"pattern_priority":    true,
-	"pattern_index":       true,
-	"reconstruction_type": true,
-	"consolidated_count":  true,
-	"cluster_type":        true,
+	"pattern":              true,
+	"pattern_name":         true,
+	"pattern_priority":     true,
+	"pattern_index":        true,
+	"reconstruction_type":  true,
+	"consolidated_count":   true,
+	"match_text_truncated": true, // boolean flag: display text was bounded
+	"cluster_type":         true,
 
 	// Risk classification (levels/factors, not content)
 	"custom_prop_risk_level":   true,

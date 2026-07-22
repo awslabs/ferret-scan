@@ -190,6 +190,13 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		return originalText, []redactors.RedactionMapping{}, nil
 	}
 
+	// Restore bounded (display-truncated) consolidated match texts to their
+	// full-line spans FIRST: redaction locates matches by searching for
+	// Match.Text, and a bounded display text does not occur in the document —
+	// without this the whole consolidated line would silently survive
+	// redaction. See redactors.RestoreBoundedMatchText.
+	matches = redactors.RestoreBoundedMatchText(matches)
+
 	// Collapse overlapping matches to their widest span first. Otherwise a
 	// smaller match contained in a larger one (e.g. a PHONE match inside a
 	// spaced CREDIT_CARD match) gets redacted first, mutating the text so the
