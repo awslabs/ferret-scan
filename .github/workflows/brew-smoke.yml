@@ -1,0 +1,76 @@
+# Smoke test for the committed Homebrew formula (HomebrewFormula/ferret-scan.rb).
+#
+# Why this exists: the v2.1.0 formula shipped broken (Errno::ENOENT — the
+# install block referenced a filename that doesn't exist in binary archives,
+# fixed in PR #161) because the brew install path was never exercised in CI.
+#
+# What this tests: the formula as committed on this ref, which pins the
+# PREVIOUS release's download URLs and sha256s. That still catches the whole
+# class of install-block bugs (bad rename, bad URL, bad checksum, Ruby syntax)
+# before they are baked into .goreleaser.yml's brews template for the next
+# release. The freshly generated formula for a NEW release is smoke-tested by
+# the brew-smoke job in release.yml.
+#
+# Note on triggers: goreleaser's bot commits the regenerated formula to main
+# with the workflow-provided GITHUB_TOKEN, and GITHUB_TOKEN-authored pushes do
+# NOT trigger push workflows — so the push trigger below only fires on
+# human-authored formula changes. Release-time coverage lives in release.yml.
+
+name: Brew Formula Smoke Test
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "HomebrewFormula/**"
+      - ".goreleaser.yml"
+      - ".github/workflows/brew-smoke.yml"
+  push:
+    branches: [main, master]
+    paths:
+      - "HomebrewFormula/**"
+      - ".github/workflows/brew-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  brew-smoke:
+    name: brew install + smoke (macos)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ENV_HINTS: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install formula from a throwaway local tap
+        # Modern Homebrew rejects `brew install --formula ./file.rb`
+        # ("Homebrew requires formulae to be in a tap"), so stage the formula
+        # in a local tap first. `--no-git` keeps tap-new offline and avoids
+        # needing a git identity on the runner.
+        run: |
+          set -euo pipefail
+          brew tap-new local/smoke --no-git
+          cp HomebrewFormula/ferret-scan.rb "$(brew --repository local/smoke)/Formula/"
+          brew install local/smoke/ferret-scan
+
+      - name: Run formula test block
+        run: brew test local/smoke/ferret-scan
+
+      - name: Smoke test installed binary
+        run: |
+          set -euo pipefail
+          ferret-scan --version
+          ferret-scan --version | grep -E '^ferret-scan [0-9]+\.[0-9]+\.[0-9]+'
+          out="$(echo "card 5500-0000-0000-0004" | ferret-scan --stdin 2>&1)" || {
+            echo "$out"
+            echo "ferret-scan --stdin exited non-zero" >&2
+            exit 1
+          }
+          echo "$out"
+          echo "$out" | grep -i creditcard
