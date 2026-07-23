@@ -133,8 +133,17 @@ func (ptr *PlainTextRedactor) RedactDocument(originalPath string, outputPath str
 		return nil, fmt.Errorf("failed to read original file: %w", err)
 	}
 
-	// Convert to string for processing
-	originalText := string(content)
+	// Decode transcodable encodings (UTF-16 with/without BOM, BOM'd UTF-8)
+	// to UTF-8 for redaction — matches were produced against the DECODED
+	// text by the preprocessor, so redacting the raw bytes would never find
+	// them (UTF-16 interleaves nulls through every match). The original
+	// encoding is restored on write so a redacted .reg export or PowerShell
+	// transcript remains a valid file in its native encoding.
+	encoding := preprocessors.DetectTextEncoding(content)
+	originalText, ok := preprocessors.DecodeToUTF8(content, encoding)
+	if !ok {
+		originalText = string(content)
+	}
 
 	// Perform redaction
 	redactedText, redactionMap, err := ptr.redactText(originalText, matches, strategy)
@@ -150,11 +159,13 @@ func (ptr *PlainTextRedactor) RedactDocument(originalPath string, outputPath str
 		}
 	}
 
-	// Write redacted content to output file with secure permissions.
+	// Write redacted content to output file with secure permissions,
+	// re-encoded to the ORIGINAL file's encoding (BOM restored) so a
+	// redacted UTF-16 file stays valid in its native tooling.
 	// #nosec G703 -- outputPath is operator-controlled (--redaction-output-dir
 	// + mirrored input filename); CLI-only path. Web mode hard-codes
 	// EnableRedaction: false so this is unreachable from the HTTP boundary.
-	err = os.WriteFile(outputPath, []byte(redactedText), 0600)
+	err = os.WriteFile(outputPath, preprocessors.EncodeFromUTF8(redactedText, encoding), 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write redacted file: %w", err)
 	}
@@ -477,6 +488,22 @@ func (ptr *PlainTextRedactor) RedactString(content string, matches []detector.Ma
 	return ptr.redactText(content, matches, strategy)
 }
 
+// readFileHead returns up to n leading bytes of the file at path — enough
+// for encoding detection without re-reading potentially 100MB of content.
+func readFileHead(path string, n int) ([]byte, error) {
+	f, err := os.Open(path) // #nosec G304 -- path is the scan target the operator supplied
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	buf := make([]byte, n)
+	read, err := f.Read(buf)
+	if read == 0 && err != nil {
+		return nil, err
+	}
+	return buf[:read], nil
+}
+
 // RedactContent implements ContentRedactor interface for efficient content-based redaction
 func (ptr *PlainTextRedactor) RedactContent(content *preprocessors.ProcessedContent, outputPath string, matches []detector.Match, strategy redactors.RedactionStrategy) (*redactors.RedactionResult, error) {
 	var finishTiming func(bool, map[string]interface{})
@@ -510,8 +537,20 @@ func (ptr *PlainTextRedactor) RedactContent(content *preprocessors.ProcessedCont
 		}
 	}
 
+	// content.Text is the preprocessor's DECODED UTF-8; if the source file
+	// was a transcodable encoding (UTF-16, BOM'd UTF-8), re-encode the
+	// redacted text so the output stays valid in its native tooling — a
+	// redacted .reg export or PowerShell transcript must not silently
+	// become UTF-8. The original's leading bytes identify the encoding.
+	outputBytes := []byte(redactedText)
+	if head, rerr := readFileHead(content.OriginalPath, 512); rerr == nil {
+		if enc := preprocessors.DetectTextEncoding(head); enc != preprocessors.EncodingUTF8 {
+			outputBytes = preprocessors.EncodeFromUTF8(redactedText, enc)
+		}
+	}
+
 	// Write redacted content to output file with secure permissions
-	err = os.WriteFile(outputPath, []byte(redactedText), 0600)
+	err = os.WriteFile(outputPath, outputBytes, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write redacted file: %w", err)
 	}

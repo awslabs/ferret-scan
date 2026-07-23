@@ -208,7 +208,17 @@ func (ptp *PlainTextPreprocessor) readTextFile(filePath string) (string, error) 
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
-	content := string(fileContent)
+	// Decode transcodable encodings (UTF-16 LE/BE with or without BOM,
+	// BOM'd UTF-8) to UTF-8 before scanning; validators only speak UTF-8.
+	// Windows tooling (PowerShell 5 Out-File, .reg exports) writes UTF-16LE,
+	// which previously reached the validators as null-riddled bytes no
+	// pattern could match even when the sniff let the file through.
+	var content string
+	if decoded, ok := DecodeToUTF8(fileContent, DetectTextEncoding(fileContent)); ok {
+		content = decoded
+	} else {
+		content = string(fileContent)
+	}
 
 	// Validate UTF-8 encoding
 	if !utf8.ValidString(content) {
@@ -243,13 +253,10 @@ func (ptp *PlainTextPreprocessor) isTextFile(filePath string) bool {
 
 	buffer = buffer[:n]
 
-	// Check for null bytes (common in binary files)
-	for _, b := range buffer {
-		if b == 0 {
-			return false
-		}
-	}
-
+	// Null-byte and ratio gating live inside LooksLikeText: the null check
+	// must come AFTER encoding detection, because UTF-16 text has a null in
+	// every other byte by construction — the old order made every UTF-16
+	// file (PowerShell Out-File, .reg exports) binary by definition.
 	return LooksLikeText(buffer)
 }
 
@@ -273,6 +280,23 @@ func LooksLikeText(buf []byte) bool {
 		return false
 	}
 
+	// Transcodable encodings first: UTF-16 (BOM'd or heuristically detected)
+	// contains a null byte per ASCII character, so it can never survive a
+	// pre-decode null-byte gate or the ratio tests below — decode the sniff
+	// window and judge the decoded text instead. PowerShell 5 Out-File,
+	// .reg exports, and plenty of Windows logs are UTF-16LE.
+	if decoded, ok := utf8OrDecoded(buf); ok {
+		return looksLikeDecodedText(decoded)
+	}
+
+	// Not a recognized transcodable encoding: any null byte means binary
+	// (the classic gate, now applied only after UTF-16 has had its chance).
+	for _, b := range buf {
+		if b == 0 {
+			return false
+		}
+	}
+
 	// The 512-byte read may split a multi-byte sequence at the end; trim up
 	// to utf8.UTFMax-1 trailing continuation/start bytes of an incomplete
 	// rune so a truncated final character doesn't fail validation.
@@ -284,29 +308,59 @@ func LooksLikeText(buf []byte) bool {
 		trimmed = trimmed[:len(trimmed)-1]
 	}
 	if len(trimmed) > 0 && utf8.Valid(trimmed) {
-		// Valid UTF-8. Reject only if dominated by control characters
-		// (binary formats that happen to be UTF-8-clean, e.g. some font or
-		// archive headers survive the null-byte check).
-		control := 0
-		total := 0
-		for _, r := range string(trimmed) {
-			total++
-			if r < 32 && r != '\t' && r != '\n' && r != '\r' {
-				control++
-			}
-		}
-		return total > 0 && float64(control)/float64(total) < 0.05
+		return looksLikeDecodedText(string(trimmed))
 	}
 
-	// Not valid UTF-8: fall back to the ASCII-printable ratio for legacy
-	// single-byte encodings, with a small allowance for high bytes.
-	printableCount := 0
+	// Not valid UTF-8: fall back to a legacy single-byte-encoding judgment.
+	//
+	// Floor (identical to the historical rule): ASCII printables, tab/CR/LF,
+	// and ALL bytes >= 0xA0 count as printable against a 95% bar. Bytes at
+	// 0xA0+ are where every ISO-8859-x / Windows-125x codepage puts its
+	// letters — Cyrillic cp1251, Greek cp1253, Hebrew cp1255, Arabic cp1256
+	// prose is majority high-byte, and an "ASCII majority" requirement here
+	// silently skipped all of it (proven by adversarial verification:
+	// Russian cp1251 with an embedded email went from 2 findings to a
+	// silent skip). Never require ASCII dominance of legacy text.
+	//
+	// Extension (the cp1252 fix): Windows-1252 also places typographic
+	// characters — curly quotes, en/em dashes, ellipsis, ™ — in 0x80-0x9F.
+	// Those count as printable ONLY when the document is ASCII-majority,
+	// which is what a smart-quoted Word/Outlook export actually looks like.
+	// Gating the 0x80-0x9F allowance (rather than granting it wholesale)
+	// keeps structureless high-byte binary rejected: random bytes spanning
+	// 0x80-0xFF are not ASCII-majority, so their 0x80-0x9F content stays
+	// unprintable and drags them under the bar, exactly as before.
+	asciiCount, high160Count, typo1252Count := 0, 0, 0
 	for _, b := range buf {
-		if (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13 || b >= 160 {
-			printableCount++
+		switch {
+		case (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13:
+			asciiCount++
+		case b >= 160:
+			high160Count++
+		case b >= 128:
+			typo1252Count++
 		}
 	}
-	return float64(printableCount)/float64(len(buf)) > 0.95
+	n := float64(len(buf))
+	printable := asciiCount + high160Count
+	if float64(asciiCount)/n > 0.5 {
+		printable += typo1252Count
+	}
+	return float64(printable)/n > 0.95
+}
+
+// looksLikeDecodedText judges already-decoded (valid UTF-8) text: accept
+// unless dominated by control characters — binary formats that happen to be
+// UTF-8-clean (some font/archive headers) survive the null-byte gates.
+func looksLikeDecodedText(s string) bool {
+	control, total := 0, 0
+	for _, r := range s {
+		total++
+		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+			control++
+		}
+	}
+	return total > 0 && float64(control)/float64(total) < 0.05
 }
 
 // countWords counts the number of words in the text
