@@ -454,6 +454,18 @@ func (v *Validator) keywordInFullContext(keyword, before, after string, lc *line
 	if lc.keywordOnLine[keyword] {
 		return true
 	}
+	// A SINGLE-WORD keyword absent from the line cannot appear in
+	// before+" "+line+" "+after either: before/after are substrings of the
+	// line, and a token with no internal space can only span the synthetic
+	// " " joins if it itself contains a space. So single-word keywords are
+	// fully decided by keywordOnLine — skip the two junction scans entirely.
+	// This is the dominant per-match cost on a dense single long line
+	// (O(matches × keywords) junction scans); restricting it to the few
+	// multi-word keywords keeps behavior byte-identical while removing the
+	// bulk of the work. (Whitespace check is cheap and allocation-free.)
+	if !strings.Contains(keyword, " ") {
+		return false
+	}
 	// Scan the tiny regions around each synthetic space join. before/after are
 	// already substrings of the line, so any match not already covered above must
 	// span "before + ' ' + line" or "line + ' ' + after".
