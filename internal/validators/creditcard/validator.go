@@ -94,6 +94,17 @@ func NewValidator() *Validator {
 			"telephone",
 			"md5", "sha", "hash", "uuid", "guid", "crc", "checksum",
 			"version", "build", "test", "example", "fake", "mock", "sample",
+			// Synonym clusters the reranker-benchmark corpus proved walk
+			// straight past the list above: "S/N" fired at 95 where "serial"
+			// was suppressed; same for shipping/logistics and inventory
+			// wording. Whole-word matched like the rest ("s/n" matches the
+			// token, not letters inside words). Deliberately NOT included:
+			// "batch" — POS settlement receipts print "BATCH NNNN" beside a
+			// REAL card (regression-verified against the corpus), and it fired
+			// zero decoys, so it is pure false-suppression risk.
+			"s/n", "sn#", "nameplate", "waybill", "parcel",
+			"booking", "barcode", "asset", "asset tag", "sku",
+			"part", "designator", "receipt", "session", "token",
 		},
 	}
 

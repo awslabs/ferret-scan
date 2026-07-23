@@ -2,7 +2,7 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH        FILE
 --------------------------------------------------------------------------------------
 [HIGH  ] phone        PHONE                 100.00% line     4 212-555-0142 <golden:context_decoys_original>
 [HIGH  ] ssn          SSN                   100.00% line     1 449-87-4100  <golden:context_decoys_original>
-[MEDIUM] phone        PHONE                  65.00% line     5 212-555-0142 <golden:context_decoys_original>
-[MEDIUM] phone        PHONE                  65.00% line     6 313-555-0175 <golden:context_decoys_original>
-[MEDIUM] ssn          SSN                    60.00% line     2 449-87-4100  <golden:context_decoys_original>
-[MEDIUM] ssn          SSN                    60.00% line     3 526-33-8210  <golden:context_decoys_original>
+[LOW   ] ssn          SSN                    55.00% line     2 449-87-4100  <golden:context_decoys_original>
+[LOW   ] phone        PHONE                  47.00% line     6 313-555-0175 <golden:context_decoys_original>
+[LOW   ] ssn          SSN                    40.00% line     3 526-33-8210  <golden:context_decoys_original>
+[LOW   ] phone        PHONE                  30.00% line     5 212-555-0142 <golden:context_decoys_original>

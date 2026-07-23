@@ -7,8 +7,8 @@ error code [PHONE-REDACTED] in the diagnostics log
 SKU [PHONE-REDACTED] restocked
 === FINDINGS (sorted) ===
 type=PHONE line=4 conf=high match=212-555-0142
-type=PHONE line=5 conf=medium match=212-555-0142
-type=PHONE line=6 conf=medium match=313-555-0175
+type=PHONE line=5 conf=low match=212-555-0142
+type=PHONE line=6 conf=low match=313-555-0175
 type=SSN line=1 conf=high match=449-87-4100
-type=SSN line=2 conf=medium match=449-87-4100
-type=SSN line=3 conf=medium match=526-33-8210
+type=SSN line=2 conf=low match=449-87-4100
+type=SSN line=3 conf=low match=526-33-8210

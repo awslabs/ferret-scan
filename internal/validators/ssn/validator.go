@@ -124,6 +124,23 @@ func NewValidator() *Validator {
 			"555-55-5555", "666-66-6666", "777-77-7777", "888-88-8888",
 			"999-99-9999", "serial", "model", "version", "build",
 			"encoded", "numeric", "code", "hash", "uuid", "guid",
+			// Procurement/operations vocabulary: SSN-shaped tokens labeled as
+			// any of these scored 60 MEDIUM (displayed by default) in the
+			// reranker-benchmark corpus — part/lot/requisition numbers in the
+			// XXX-XX-XXXX shape are common in ERP exports. The per-keyword
+			// -15 same-line penalty pushes them below the display bar while
+			// keyword-anchored real SSNs stay at 100.
+			"part number", "part no", "requisition", "lot", "batch",
+			"work order", "invoice", "rma", "asset tag", "asset",
+			"case", "ticket", "sku", "purchase order", "docket",
+			"tracking", "shipment", "order number",
+			"po", "permit", "reservation", "grant", "bin",
+			"accession", "specimen", "contract", "txn", "transaction",
+			// "policy" is intentionally NOT listed: insurance-policy documents
+			// legitimately carry SSNs on the same line ("policy holder SSN:"),
+			// and the strong positive keywords win there anyway — verified in
+			// the regression test.
+			"policy number", "policy no",
 		},
 		invalidPatterns: []string{
 			"000", "666", "900", "901", "902", "903", "904", "905", "906", "907", "908", "909",
@@ -593,11 +610,27 @@ func (v *Validator) isEnhancedTabularData(line, value string) bool {
 	// Phone patterns
 	structuredCount += len(rePhoneEnhanced.FindAllString(line, -1))
 
-	// Date patterns
-	structuredCount += len(reDate.FindAllString(line, -1))
-
 	// SSN patterns
-	structuredCount += len(reSSNEnhanced.FindAllString(line, -1))
+	ssnSpans := reSSNEnhanced.FindAllStringIndex(line, -1)
+	structuredCount += len(ssnSpans)
+
+	// Date patterns — excluding matches INSIDE an SSN span: the tail of every
+	// XXX-XX-XXXX parses as \d{1,2}-\d{2}-\d{4}, so a line with one SSN would
+	// otherwise self-count as SSN+date. Combined with a single Title Case
+	// name ("Judge Hollis", "Nordvik Tooling") that reached the 3-element
+	// bar and awarded the +25 tabular boost to ordinary PROSE — the same
+	// self-counting bug fixed in isTabularData (#155), in its enhanced
+	// sibling. Two-pointer walk: both index slices are sorted.
+	si := 0
+	for _, d := range reDate.FindAllStringIndex(line, -1) {
+		for si < len(ssnSpans) && ssnSpans[si][1] < d[1] {
+			si++
+		}
+		if si < len(ssnSpans) && d[0] >= ssnSpans[si][0] && d[1] <= ssnSpans[si][1] {
+			continue
+		}
+		structuredCount++
+	}
 
 	// Name patterns (Title Case words)
 	structuredCount += len(reNameEnhanced.FindAllString(line, -1))

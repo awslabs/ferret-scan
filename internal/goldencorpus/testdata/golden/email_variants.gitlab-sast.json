@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:email_variants> (line 3)\n**Confidence:** MEDIUM (88.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nno-reply@internal.example.org\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:email_variants> (line 3)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nno-reply@internal.example.org\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

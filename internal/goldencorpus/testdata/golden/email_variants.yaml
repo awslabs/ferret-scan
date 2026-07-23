@@ -74,7 +74,7 @@ results:
     - text: no-reply@internal.example.org
       line_number: 3
       type: BUSINESS
-      confidence: 88
+      confidence: 85
       confidence_level: MEDIUM
       filename: <golden:email_variants>
       validator: email
@@ -86,7 +86,7 @@ results:
         context_impact: -12
         domain: internal.example.org
         email_provider: BUSINESS
-        original_confidence: 88
+        original_confidence: 85
         original_file: <golden:email_variants>
         semantic_context:
             FinancialData: 0
