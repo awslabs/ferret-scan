@@ -101,21 +101,21 @@
             }
           ],
           "message": {
-            "text": "Phone Number Detected in <golden:context_decoys_original> at line 5 (confidence: 65.0% - MEDIUM). Matched text: '212-555-0142'"
+            "text": "Phone Number Detected in <golden:context_decoys_original> at line 5 (confidence: 30.0% - LOW). Matched text: '212-555-0142'"
           },
           "properties": {
-            "confidence": 65,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 30,
+            "confidenceLevel": "LOW",
             "metadata": {
               "clean_number": "2125550142",
               "confidence_adjustment": 0,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": -20,
+              "context_impact": -55,
               "country": "US/CA",
               "format": "XXX-XXX-XXXX",
-              "original_confidence": 65,
+              "original_confidence": 30,
               "original_file": "<golden:context_decoys_original>",
               "pattern_name": "US_Dashed",
               "semantic_context": {
@@ -139,9 +139,12 @@
               },
               "validation_path": "document"
             },
+            "negativeKeywords": [
+              "error code"
+            ],
             "validator": "phone"
           },
-          "rank": 57.5,
+          "rank": 40,
           "ruleId": "PHONE"
         },
         {
@@ -170,21 +173,21 @@
             }
           ],
           "message": {
-            "text": "Phone Number Detected in <golden:context_decoys_original> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '313-555-0175'"
+            "text": "Phone Number Detected in <golden:context_decoys_original> at line 6 (confidence: 47.0% - LOW). Matched text: '313-555-0175'"
           },
           "properties": {
-            "confidence": 65,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 47,
+            "confidenceLevel": "LOW",
             "metadata": {
               "clean_number": "3135550175",
               "confidence_adjustment": 0,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": -20,
+              "context_impact": -38,
               "country": "US/CA",
               "format": "XXX-XXX-XXXX",
-              "original_confidence": 65,
+              "original_confidence": 47,
               "original_file": "<golden:context_decoys_original>",
               "pattern_name": "US_Dashed",
               "semantic_context": {
@@ -208,9 +211,12 @@
               },
               "validation_path": "document"
             },
+            "negativeKeywords": [
+              "sku"
+            ],
             "validator": "phone"
           },
-          "rank": 57.5,
+          "rank": 48.5,
           "ruleId": "PHONE"
         },
         {
@@ -305,18 +311,18 @@
             }
           ],
           "message": {
-            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 2 (confidence: 60.0% - MEDIUM). Matched text: '449-87-4100'"
+            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 2 (confidence: 55.0% - LOW). Matched text: '449-87-4100'"
           },
           "properties": {
-            "confidence": 60,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 55,
+            "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": 0,
-              "original_confidence": 60,
+              "context_impact": -15,
+              "original_confidence": 55,
               "original_file": "<golden:context_decoys_original>",
               "semantic_context": {
                 "FinancialData": 0,
@@ -337,9 +343,12 @@
               },
               "validation_path": "document"
             },
+            "negativeKeywords": [
+              "part number"
+            ],
             "validator": "ssn"
           },
-          "rank": 80,
+          "rank": 77.5,
           "ruleId": "SSN"
         },
         {
@@ -368,18 +377,18 @@
             }
           ],
           "message": {
-            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 3 (confidence: 60.0% - MEDIUM). Matched text: '526-33-8210'"
+            "text": "Social Security Number Detected in <golden:context_decoys_original> at line 3 (confidence: 40.0% - LOW). Matched text: '526-33-8210'"
           },
           "properties": {
-            "confidence": 60,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 40,
+            "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": 0,
-              "original_confidence": 60,
+              "context_impact": -30,
+              "original_confidence": 40,
               "original_file": "<golden:context_decoys_original>",
               "semantic_context": {
                 "FinancialData": 0,
@@ -400,9 +409,13 @@
               },
               "validation_path": "document"
             },
+            "negativeKeywords": [
+              "requisition",
+              "shipment"
+            ],
             "validator": "ssn"
           },
-          "rank": 80,
+          "rank": 70,
           "ruleId": "SSN"
         }
       ],

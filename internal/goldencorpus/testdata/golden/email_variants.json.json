@@ -83,7 +83,7 @@
       "validator": "email"
     },
     {
-      "confidence": 88,
+      "confidence": 85,
       "confidence_level": "MEDIUM",
       "filename": "<golden:email_variants>",
       "line_number": 3,
@@ -95,7 +95,7 @@
         "context_impact": -12,
         "domain": "internal.example.org",
         "email_provider": "BUSINESS",
-        "original_confidence": 88,
+        "original_confidence": 85,
         "original_file": "<golden:email_variants>",
         "semantic_context": {
           "FinancialData": 0,

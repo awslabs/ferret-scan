@@ -158,7 +158,7 @@ type lineContext struct {
 	lower          string  // strings.ToLower(line), for near-match keyword probes
 	keywordImpact  float64 // AnalyzeContext result (positive/negative keyword scan)
 	strongNegative bool    // hasStrongNegativeContext(line)
-	bankingKeyword bool     // hasBankingKeywords(line)
+	bankingKeyword bool    // hasBankingKeywords(line)
 }
 
 // buildLineContext computes the per-line invariants once. AnalyzeContext is

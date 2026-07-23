@@ -24,8 +24,8 @@ func TestPhone_FormatPreserving_NoLeak(t *testing.T) {
 		lead  string // leading digits that MUST NOT survive
 	}{
 		{"six_digits", "012345", "2345", "01"},
-		{"seven_digits_local", "0123456", "3456", "012"},   // the old full-leak case
-		{"seven_dashed", "012-3456", "3456", "012"},         // the old full-leak case
+		{"seven_digits_local", "0123456", "3456", "012"}, // the old full-leak case
+		{"seven_dashed", "012-3456", "3456", "012"},      // the old full-leak case
 		{"ten_digits", "2065550173", "0173", "206555"},
 		{"us_formatted", "(206) 555-0173", "0173", "206555"},
 		{"e164", "+12065550173", "0173", "120655"},

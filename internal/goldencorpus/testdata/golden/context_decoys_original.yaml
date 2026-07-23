@@ -67,25 +67,21 @@ results:
             not_test_number: true
             valid_area: true
         validation_path: document
-    - text: 212-555-0142
-      line_number: 5
-      type: PHONE
-      confidence: 65
-      confidence_level: MEDIUM
+    - text: 449-87-4100
+      line_number: 2
+      type: SSN
+      confidence: 55
+      confidence_level: LOW
       filename: <golden:context_decoys_original>
-      validator: phone
+      validator: ssn
       metadata:
-        clean_number: "2125550142"
         confidence_adjustment: 0
         context_confidence: 1
         context_doctype: Unknown
         context_domain: HR_Payroll
-        context_impact: -20
-        country: US/CA
-        format: XXX-XXX-XXXX
-        original_confidence: 65
+        context_impact: -15
+        original_confidence: 55
         original_file: <golden:context_decoys_original>
-        pattern_name: US_Dashed
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -94,21 +90,19 @@ results:
             TestData: 0
         source: preprocessed_content
         validation_checks:
+            digits: true
+            format: true
+            not_common_pattern: true
             not_repeating: true
             not_sequential: true
-            not_ssn_pattern: true
-            not_test_number: false
-            not_timestamp: true
-            reasonable_length: true
-            valid_country: true
-            valid_digits: true
-            valid_format: true
+            not_test_number: true
+            valid_area: true
         validation_path: document
     - text: 313-555-0175
       line_number: 6
       type: PHONE
-      confidence: 65
-      confidence_level: MEDIUM
+      confidence: 47
+      confidence_level: LOW
       filename: <golden:context_decoys_original>
       validator: phone
       metadata:
@@ -117,10 +111,10 @@ results:
         context_confidence: 1
         context_doctype: Unknown
         context_domain: HR_Payroll
-        context_impact: -20
+        context_impact: -38
         country: US/CA
         format: XXX-XXX-XXXX
-        original_confidence: 65
+        original_confidence: 47
         original_file: <golden:context_decoys_original>
         pattern_name: US_Dashed
         semantic_context:
@@ -141,11 +135,11 @@ results:
             valid_digits: true
             valid_format: true
         validation_path: document
-    - text: 449-87-4100
-      line_number: 2
+    - text: 526-33-8210
+      line_number: 3
       type: SSN
-      confidence: 60
-      confidence_level: MEDIUM
+      confidence: 40
+      confidence_level: LOW
       filename: <golden:context_decoys_original>
       validator: ssn
       metadata:
@@ -153,8 +147,8 @@ results:
         context_confidence: 1
         context_doctype: Unknown
         context_domain: HR_Payroll
-        context_impact: 0
-        original_confidence: 60
+        context_impact: -30
+        original_confidence: 40
         original_file: <golden:context_decoys_original>
         semantic_context:
             FinancialData: 0
@@ -172,21 +166,25 @@ results:
             not_test_number: true
             valid_area: true
         validation_path: document
-    - text: 526-33-8210
-      line_number: 3
-      type: SSN
-      confidence: 60
-      confidence_level: MEDIUM
+    - text: 212-555-0142
+      line_number: 5
+      type: PHONE
+      confidence: 30
+      confidence_level: LOW
       filename: <golden:context_decoys_original>
-      validator: ssn
+      validator: phone
       metadata:
+        clean_number: "2125550142"
         confidence_adjustment: 0
         context_confidence: 1
         context_doctype: Unknown
         context_domain: HR_Payroll
-        context_impact: 0
-        original_confidence: 60
+        context_impact: -55
+        country: US/CA
+        format: XXX-XXX-XXXX
+        original_confidence: 30
         original_file: <golden:context_decoys_original>
+        pattern_name: US_Dashed
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -195,11 +193,13 @@ results:
             TestData: 0
         source: preprocessed_content
         validation_checks:
-            digits: true
-            format: true
-            not_common_pattern: true
             not_repeating: true
             not_sequential: true
-            not_test_number: true
-            valid_area: true
+            not_ssn_pattern: true
+            not_test_number: false
+            not_timestamp: true
+            reasonable_length: true
+            valid_country: true
+            valid_digits: true
+            valid_format: true
         validation_path: document

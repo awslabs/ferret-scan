@@ -332,12 +332,36 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 
 	// EFFICIENCY FIRST: Check database matches before any expensive operations
 	// This is the authoritative source - no matches = early exit
+	// hyphenPartKnown handles compound given/family names (Soo-Jin, Jean-Luc,
+	// Mary-Kate): the full hyphenated token is rarely in the ~5K dictionary,
+	// but its parts usually are. A single part matching is enough to treat the
+	// compound as a known name component — the dictionary is the authoritative
+	// gate and these are real names it would otherwise reject outright
+	// (recall gap surfaced by the reranker-benchmark corpus generator).
+	// Requires the part be 2+ chars so a stray "A-Team" style initial can't
+	// qualify on a one-letter fragment.
+	hyphenPartKnown := func(name string, dict map[string]bool) bool {
+		if !strings.Contains(name, "-") {
+			return false
+		}
+		for _, part := range strings.Split(name, "-") {
+			if len(part) < 2 {
+				continue
+			}
+			if dict[part] || dict[v.normalizeAccents(part)] {
+				return true
+			}
+		}
+		return false
+	}
+
 	if v.firstNames != nil && len(components.FirstName) > 0 {
 		// Try both the original name and normalized version (without accents)
 		firstName := strings.ToLower(components.FirstName)
 		normalizedFirstName := v.normalizeAccents(firstName)
 
-		if v.firstNames[firstName] || v.firstNames[normalizedFirstName] {
+		if v.firstNames[firstName] || v.firstNames[normalizedFirstName] ||
+			hyphenPartKnown(firstName, v.firstNames) {
 			checks["known_first_name"] = true
 		}
 	}
@@ -347,7 +371,8 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 		lastName := strings.ToLower(components.LastName)
 		normalizedLastName := v.normalizeAccents(lastName)
 
-		if v.lastNames[lastName] || v.lastNames[normalizedLastName] {
+		if v.lastNames[lastName] || v.lastNames[normalizedLastName] ||
+			hyphenPartKnown(lastName, v.lastNames) {
 			checks["known_last_name"] = true
 		}
 	}

@@ -114,6 +114,58 @@ var (
 	nameEmailPattern       = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+[A-Za-z0-9._%+-]+@`)
 )
 
+// machineEmailCap is the maximum final confidence for machine-identifier
+// addresses (noreply@, mailer-daemon@, service accounts). They are real,
+// deliverable addresses — worth detecting and redacting — but they are not a
+// person's contact information, so they must not reach the HIGH band that
+// drives blocking decisions. 85 keeps them prominent MEDIUM findings.
+const machineEmailCap = 85.0
+
+// machineLocalParts are local-part prefixes (or exact local parts) that
+// identify automated senders rather than people. Sourced from the reranker
+// benchmark corpus, where these fired at 100 HIGH across logs, mail headers,
+// git trailers, cron configs, and monitoring identities.
+var machineLocalParts = []string{
+	"noreply", "no-reply", "no_reply", "donotreply", "do-not-reply",
+	"mailer-daemon", "postmaster", "bounce", "bounces",
+	"alerts", "alert", "notifications", "notification", "notify",
+	"automated", "auto-confirm", "auto-reply", "autoreply",
+	"svc-", "service-account", "system", "daemon", "cron", "robot", "bot@",
+}
+
+// isMachineLocalPart reports whether the email's local part identifies an
+// automated sender. An entry matches when the local part equals it exactly,
+// or continues with a machine-style separator (+ - _ or a digit: noreply2@,
+// alerts+prod@, svc-deploy@). A "." continuation does NOT match: dot-joined
+// continuations are the firstname.lastname convention, so system.smith@ is a
+// person, not a daemon.
+func isMachineLocalPart(email string) bool {
+	at := strings.IndexByte(email, '@')
+	if at <= 0 {
+		return false
+	}
+	local := strings.ToLower(email[:at])
+	for _, p := range machineLocalParts {
+		p = strings.TrimSuffix(p, "@")
+		if !strings.HasPrefix(local, p) {
+			continue
+		}
+		if len(local) == len(p) {
+			return true // exact match
+		}
+		// Entries that end in a separator (svc-) carry their boundary with
+		// them; any continuation matches.
+		if last := p[len(p)-1]; last == '-' || last == '_' {
+			return true
+		}
+		next := local[len(p)]
+		if next == '+' || next == '-' || next == '_' || (next >= '0' && next <= '9') {
+			return true
+		}
+	}
+	return false
+}
+
 // Validator implements the detector.Validator interface for detecting
 // email addresses using regex patterns and contextual analysis.
 type Validator struct {
@@ -278,6 +330,20 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			}
 
 			confidence += contextImpact
+
+			// HARD CAP for machine-identifier local parts (noreply@,
+			// mailer-daemon@, svc-*@, ...): these are the single most common
+			// email FP in real logs and configs — they are addresses, but not
+			// a person's contact. The -15 test-pattern penalty alone is
+			// clawed back by positive context ("alert", "notification",
+			// "noreply" are themselves positive keywords) and re-clamped to
+			// 100 HIGH. Mirror the phone fictional-range cap: applied AFTER
+			// context adjustment so keyword stacking cannot raise a machine
+			// address back into HIGH. Capped at 85 (solid MEDIUM) — still
+			// detected, displayed, and redactable, never HIGH.
+			if isMachineLocalPart(match) && confidence > machineEmailCap {
+				confidence = machineEmailCap
+			}
 
 			// Ensure confidence stays within bounds
 			if confidence > 100 {

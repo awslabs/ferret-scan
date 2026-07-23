@@ -1,4 +1,4 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
 <golden:email_variants>,BUSINESS,HIGH,100.0,1,support@acme-corp.com
-<golden:email_variants>,BUSINESS,MEDIUM,88.0,3,no-reply@internal.example.org
+<golden:email_variants>,BUSINESS,MEDIUM,85.0,3,no-reply@internal.example.org
 <golden:email_variants>,GMAIL,HIGH,100.0,2,alice@gmail.com

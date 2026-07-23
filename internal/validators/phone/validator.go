@@ -108,6 +108,16 @@ func NewValidator() *Validator {
 			"timestamp", "unix", "epoch", "milliseconds", "seconds", "time",
 			"created", "modified", "updated", "generated", "build", "version",
 			"revision", "commit", "hash", "checksum", "uuid", "guid",
+			// Operational/inventory vocabulary: phone-shaped tokens labeled
+			// as these scored 65-100 (displayed) in the reranker-benchmark
+			// corpus — order refs, RMAs, serials, SKUs, permits, lots, and
+			// error codes are routinely formatted XXX-XXX-XXXX. A same-line
+			// occurrence is strong evidence the number is not a phone.
+			"error code", "fault code", "order reference", "order ref",
+			"rma", "serial", "serial number", "s/n", "part no", "part number",
+			"case number", "permit", "batch", "lot", "sku", "fixture",
+			"row id", "bib number", "model", "promo code", "certificate",
+			"asset tag", "bin", "accession", "stamped", "etched",
 		},
 		knownTestPatterns: []string{
 			"555-0", "555-1", "000-000", "111-111", "222-222", "333-333",

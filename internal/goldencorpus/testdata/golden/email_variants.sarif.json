@@ -88,10 +88,10 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:email_variants> at line 3 (confidence: 88.0% - MEDIUM). Matched text: 'no-reply@internal.example.org'"
+            "text": "BUSINESS Detected in <golden:email_variants> at line 3 (confidence: 85.0% - MEDIUM). Matched text: 'no-reply@internal.example.org'"
           },
           "properties": {
-            "confidence": 88,
+            "confidence": 85,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -101,7 +101,7 @@
               "context_impact": -12,
               "domain": "internal.example.org",
               "email_provider": "BUSINESS",
-              "original_confidence": 88,
+              "original_confidence": 85,
               "original_file": "<golden:email_variants>",
               "semantic_context": {
                 "FinancialData": 0,
@@ -133,7 +133,7 @@
             ],
             "validator": "email"
           },
-          "rank": 69,
+          "rank": 67.5,
           "ruleId": "BUSINESS"
         },
         {
