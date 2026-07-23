@@ -150,16 +150,24 @@ var complexityTargets = []struct {
 		threshold: 5 * time.Second,
 	},
 	{
-		name:      "personname",
-		new:       func() validatorUnderTest { return personname.NewValidator() },
-		unit:      "contact Maria Delgado and James Wilson and Sarah Chen and Robert Brown ",
-		threshold: 5 * time.Second,
+		name: "personname",
+		new:  func() validatorUnderTest { return personname.NewValidator() },
+		unit: "contact Maria Delgado and James Wilson and Sarah Chen and Robert Brown ",
+		// personname and secrets are the heaviest validators per byte
+		// (dictionary lookups per candidate token; entropy + multi-pattern
+		// secret scanning). They scale LINEARLY — the ratio check below is the
+		// true O(n^2) guard and holds for them — but their linear constant is
+		// large enough that the 128KB 4x input runs ~6s on the slow, shared
+		// macos CI runner (well under 100ms locally). A 15s absolute ceiling
+		// keeps a genuine quadratic blowup (which would be many tens of
+		// seconds on this input) failing loudly while tolerating runner noise.
+		threshold: 15 * time.Second,
 	},
 	{
 		name:      "secrets",
 		new:       func() validatorUnderTest { return secrets.NewValidator() },
 		unit:      "AWS_KEY=AKIAIOSFODNN7EXAMPLE token=ghp_1234567890abcdefghij1234567890abcdef ",
-		threshold: 5 * time.Second,
+		threshold: 15 * time.Second, // see personname note: heavy-but-linear
 	},
 	{
 		name:      "socialmedia",
