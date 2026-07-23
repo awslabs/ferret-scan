@@ -16,18 +16,18 @@ import (
 // mode (stdin was unaffected, which is how the gap hid).
 func TestLooksLikeText(t *testing.T) {
 	textCases := map[string]string{
-		"plain ascii":              "Contact john.doe@example.com about the contract\n",
-		"trademark symbol short":   "Acme ™ contact john.doe@example.com\n",
-		"em-dash short":            "Contract — contact john.doe@example.com\n",
-		"copyright dense":          strings.Repeat("© 2026 Acme. ", 10),
-		"accented names":           "Renée Müller, José García, François Lefèvre\n",
-		"french prose":             "Le numéro de sécurité sociale de l'employé est confidentiel.\n",
-		"japanese":                 "顧客の個人情報：山田太郎、東京都渋谷区\n",
-		"cyrillic":                 "Персональные данные клиента: Иван Петров\n",
-		"emoji":                    "credit card 5500-0000-0000-0004 \U0001f4b3\n",
-		"curly quotes":             "“confidential” ‘internal’ draft\n",
-		"crlf windows text":        "line one\r\nline two\r\n",
-		"tab separated":            "name\temail\tssn\n",
+		"plain ascii":               "Contact john.doe@example.com about the contract\n",
+		"trademark symbol short":    "Acme ™ contact john.doe@example.com\n",
+		"em-dash short":             "Contract — contact john.doe@example.com\n",
+		"copyright dense":           strings.Repeat("© 2026 Acme. ", 10),
+		"accented names":            "Renée Müller, José García, François Lefèvre\n",
+		"french prose":              "Le numéro de sécurité sociale de l'employé est confidentiel.\n",
+		"japanese":                  "顧客の個人情報：山田太郎、東京都渋谷区\n",
+		"cyrillic":                  "Персональные данные клиента: Иван Петров\n",
+		"emoji":                     "credit card 5500-0000-0000-0004 \U0001f4b3\n",
+		"curly quotes":              "“confidential” ‘internal’ draft\n",
+		"crlf windows text":         "line one\r\nline two\r\n",
+		"tab separated":             "name\temail\tssn\n",
 		"latin-1 legacy (fallback)": string([]byte{'c', 'a', 'f', 0xe9, ' ', 'm', 'e', 'n', 'u', '\n', 'p', 'r', 'i', 'x', ':', ' ', '5', '0', '\n'}),
 	}
 	for name, content := range textCases {
