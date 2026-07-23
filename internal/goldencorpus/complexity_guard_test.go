@@ -9,11 +9,24 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/address"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/bankaccount"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/cloudresources"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/creditcard"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/dob"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/driverslicense"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/email"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/intellectualproperty"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/ipaddress"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/medicalid"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/otp"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/passport"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/personname"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/phone"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/secrets"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/socialmedia"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/ssn"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/vin"
 )
 
 // This file is the second half of the Phase 0 regression net (the first being
@@ -74,6 +87,98 @@ var complexityTargets = []struct {
 		name:      "creditcard",
 		new:       func() validatorUnderTest { return creditcard.NewValidator() },
 		unit:      "card 4532015112830366 5425233430109903 374245455400126 ",
+		threshold: 5 * time.Second,
+	},
+	// The 13 remaining text-mode validators (METADATA excluded — it scans
+	// extracted file metadata, not text windows). Each unit is a dense,
+	// match-bearing line; keyword-gated validators (dob, driverslicense,
+	// medicalid, otp, passport, bankaccount US-account) carry their trigger
+	// keyword so the per-match context scan — the O(n^2)-prone path — is
+	// actually exercised, not short-circuited by an empty candidate set.
+	{
+		name:      "address",
+		new:       func() validatorUnderTest { return address.NewValidator() },
+		unit:      "ship to 123 Main St and 456 Oak Ave and 789 Elm Blvd, Springfield IL 62704 ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "bankaccount",
+		new:       func() validatorUnderTest { return bankaccount.NewValidator() },
+		unit:      "routing 026009593 account 1234567890 iban DE89370400440532013000 swift BOFAUS3N ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "cloudresources",
+		new:       func() validatorUnderTest { return cloudresources.NewValidator() },
+		unit:      "arn:aws:iam::123456789012:role/Admin arn:aws:s3:::my-bucket/key i-0abcd1234ef567890 ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "dob",
+		new:       func() validatorUnderTest { return dob.NewValidator() },
+		unit:      "dob 03/14/1987 born 05/22/1990 birthdate 1978-11-02 date of birth 12/01/1985 ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "driverslicense",
+		new:       func() validatorUnderTest { return driverslicense.NewValidator() },
+		unit:      "driver license D1234567 dl 12345678 licence D123-4567-8901 dmv A9876543 ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "intellectualproperty",
+		new:       func() validatorUnderTest { return intellectualproperty.NewValidator() },
+		unit:      "Copyright 2026 Acme. Confidential and Proprietary. Trade Secret. Patent Pending. ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "medicalid",
+		new:       func() validatorUnderTest { return medicalid.NewValidator() },
+		unit:      "npi 1234567893 dea FC9825487 mbi 1EG4-TE5-MK73 mrn 8432197 patient record ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "otp",
+		new:       func() validatorUnderTest { return otp.NewValidator() },
+		unit:      "2fa secret JBSWY3DPEHPK3PXP totp KRUGKIDROVUWG2ZA backup code abcd-efgh-1234 ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "passport",
+		new:       func() validatorUnderTest { return passport.NewValidator() },
+		unit:      "passport 512345678 travel document L8837362 visa passport no 987654321 ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name: "personname",
+		new:  func() validatorUnderTest { return personname.NewValidator() },
+		unit: "contact Maria Delgado and James Wilson and Sarah Chen and Robert Brown ",
+		// personname and secrets are the heaviest validators per byte
+		// (dictionary lookups per candidate token; entropy + multi-pattern
+		// secret scanning). They scale LINEARLY — the ratio check below is the
+		// true O(n^2) guard and holds for them — but their linear constant is
+		// large enough that the 128KB 4x input runs ~6s on the slow, shared
+		// macos CI runner (well under 100ms locally). A 15s absolute ceiling
+		// keeps a genuine quadratic blowup (which would be many tens of
+		// seconds on this input) failing loudly while tolerating runner noise.
+		threshold: 15 * time.Second,
+	},
+	{
+		name:      "secrets",
+		new:       func() validatorUnderTest { return secrets.NewValidator() },
+		unit:      "AWS_KEY=AKIAIOSFODNN7EXAMPLE token=ghp_1234567890abcdefghij1234567890abcdef ",
+		threshold: 15 * time.Second, // see personname note: heavy-but-linear
+	},
+	{
+		name:      "socialmedia",
+		new:       func() validatorUnderTest { return socialmedia.NewValidator() },
+		unit:      "follow @alice_smith and @bob.jones and twitter.com/carol on socials ",
+		threshold: 5 * time.Second,
+	},
+	{
+		name:      "vin",
+		new:       func() validatorUnderTest { return vin.NewValidator() },
+		unit:      "vin 1HGCM82633A004352 vehicle 2FMDK3GC4BBA12345 vin JH4KA7561PC008269 ",
 		threshold: 5 * time.Second,
 	},
 }

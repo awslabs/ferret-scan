@@ -159,6 +159,7 @@ type lineContext struct {
 	keywordImpact  float64 // AnalyzeContext result (positive/negative keyword scan)
 	strongNegative bool    // hasStrongNegativeContext(line)
 	bankingKeyword bool    // hasBankingKeywords(line)
+	phoneKeyword   bool    // any phone-context keyword on the line (looksLikePhone)
 }
 
 // buildLineContext computes the per-line invariants once. AnalyzeContext is
@@ -172,6 +173,14 @@ func (v *Validator) buildLineContext(line string) lineContext {
 		keywordImpact:  v.AnalyzeContext("", detector.ContextInfo{FullLine: line}),
 		strongNegative: v.hasStrongNegativeContext(line),
 		bankingKeyword: v.hasBankingKeywords(line),
+		// Phone-context keywords are line-global (looksLikePhone asked the
+		// same six whole-line questions for EVERY 10-digit match). Hoisting
+		// them here turns the US-account scan from O(matches × line length)
+		// back to O(line length) — this was the bankaccount O(n^2) the
+		// expanded complexity guard caught.
+		phoneKeyword: containsKeyword(line, "phone") || containsKeyword(line, "telephone") ||
+			containsKeyword(line, "fax") || containsKeyword(line, "call us") ||
+			containsKeyword(line, "mobile") || containsKeyword(line, "cell"),
 	}
 }
 
@@ -510,7 +519,7 @@ func (v *Validator) scanUSAccount(ctx stdctx.Context, line string, lineNum int, 
 		}
 
 		// Skip if this looks like a phone number
-		if v.looksLikePhone(line, loc[0], loc[1]) {
+		if v.looksLikePhone(line, loc[0], loc[1], lc.phoneKeyword) {
 			continue
 		}
 
@@ -925,20 +934,16 @@ var rePhoneFormatted = regexp.MustCompile(`\(\d{3}\)\s?\d{3}[-.]?\d{4}|\d{3}[-.\
 // Only returns true if the match appears as a formatted phone (with separators/parens) or
 // if phone-related keywords are present in the line. Bare 10-digit numbers in banking
 // context are NOT suppressed as phones.
-func (v *Validator) looksLikePhone(line string, start, end int) bool {
+func (v *Validator) looksLikePhone(line string, start, end int, phoneKeyword bool) bool {
 	matchLen := end - start
 	// Phone numbers are exactly 10 digits. Longer sequences are not phones.
 	if matchLen != 10 {
 		return false
 	}
 
-	// If banking keywords are present, do not suppress -- banking context takes priority.
-	// The caller already ensures banking context exists before calling scanUSAccount.
-
-	// Check if phone-specific keywords are on the line
-	if containsKeyword(line, "phone") || containsKeyword(line, "telephone") ||
-		containsKeyword(line, "fax") || containsKeyword(line, "call us") ||
-		containsKeyword(line, "mobile") || containsKeyword(line, "cell") {
+	// Phone-context keywords on the line (precomputed once per line in
+	// lineContext — see phoneKeyword). Scanning them per match was the O(n^2).
+	if phoneKeyword {
 		return true
 	}
 
