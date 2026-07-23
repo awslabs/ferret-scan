@@ -129,6 +129,26 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	return matches, nil
 }
 
+// medicalLineContext holds the per-line-invariant context predicates and
+// keyword sets, computed once per line in scanLine and passed to every
+// evaluator. Every field is a pure function of the line, so computing them
+// per match (as the evaluators used to) was the source of the O(n^2) blowup
+// on a dense line.
+type medicalLineContext struct {
+	lineImpact float64
+	posKW      []string
+	negKW      []string
+	phone      bool // hasPhoneContext
+	provider   bool // hasProviderContext
+	dea        bool // hasDEAContext
+	medicare   bool // hasMedicareContext
+	medical    bool // hasMedicalContext
+	mrnKeyword bool // hasMRNKeyword
+	insKeyword bool // hasInsuranceKeyword
+	nonMedKW   bool // nonMedicalKeywordPresent (MRN suppressor keywords)
+	nonInsKW   bool // nonInsuranceKeywordPresent (insurance suppressor keywords)
+}
+
 // scanLine scans a single line for all medical ID types.
 func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string) []detector.Match {
 	var matches []detector.Match
@@ -145,18 +165,40 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	linePositiveKeywords := v.keywordsPresent(lowerLine, v.positiveKeywords)
 	lineNegativeKeywords := v.keywordsPresent(lowerLine, v.negativeKeywords)
 
+	// Per-line context predicates, hoisted out of the per-match evaluators.
+	// Each hasXContext scans the whole lowerLine and ignores the match, so its
+	// result is identical for every match on the line. The evaluators
+	// previously called them per match — with ~5000 matches on a dense
+	// digit line (MRN \d{6,10} + NPI) that is O(matches × line length), the
+	// medicalid O(n^2) the expanded complexity guard caught. Computed once
+	// here and passed down via lc.
+	lc := medicalLineContext{
+		lineImpact: lineImpact,
+		posKW:      linePositiveKeywords,
+		negKW:      lineNegativeKeywords,
+		phone:      v.hasPhoneContext(lowerLine),
+		provider:   v.hasProviderContext(lowerLine),
+		dea:        v.hasDEAContext(lowerLine),
+		medicare:   v.hasMedicareContext(lowerLine),
+		medical:    v.hasMedicalContext(lowerLine),
+		mrnKeyword: v.hasMRNKeyword(lowerLine),
+		insKeyword: v.hasInsuranceKeyword(lowerLine),
+		nonMedKW:   v.nonMedicalKeywordPresent(lowerLine),
+		nonInsKW:   v.nonInsuranceKeywordPresent(lowerLine),
+	}
+
 	// scanMatches runs one regex over the line, polling ctx between matches so a
 	// single pathological line stays interruptible, and hands each candidate to
-	// the evaluator with the hoisted per-line impact. The match byte offset from
+	// the evaluator with the hoisted per-line context. The match byte offset from
 	// FindAllStringIndex is passed through so buildContext never re-scans the
 	// line with strings.Index.
-	scanMatches := func(re *regexp.Regexp, eval func(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool)) bool {
+	scanMatches := func(re *regexp.Regexp, eval func(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool)) bool {
 		for i, loc := range re.FindAllStringIndex(line, -1) {
 			if execguard.LineLoopCancelled(ctx, i) {
 				return false
 			}
 			match := line[loc[0]:loc[1]]
-			if m, ok := eval(match, line, lowerLine, lineImpact, loc[0], linePositiveKeywords, lineNegativeKeywords, lineNum, originalPath); ok {
+			if m, ok := eval(match, line, lowerLine, lc, loc[0], lineNum, originalPath); ok {
 				matches = append(matches, m)
 			}
 		}
@@ -199,7 +241,7 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 }
 
 // evaluateNPI checks an NPI candidate and returns a match if valid.
-func (v *Validator) evaluateNPI(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	// NPI must pass the NPI-specific Luhn check (prefix 80840)
 	if !npiLuhnValid(match) {
 		return detector.Match{}, false
@@ -209,18 +251,18 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lineImpact float6
 	// A 10-digit number in a "contact", "call", "phone", or "fax" context
 	// is overwhelmingly more likely to be a phone number than an NPI,
 	// even if medical keywords are also present on the line.
-	if v.hasPhoneContext(lowerLine) {
+	if lc.phone {
 		return detector.Match{}, false
 	}
 
 	confidence := 80.0 // Valid Luhn checksum gives strong structural confidence
 
 	// Context adjustments (per-line invariant, computed once in scanLine)
-	contextImpact := lineImpact
+	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
 	// Without any medical/provider context, suppress heavily
-	if !v.hasProviderContext(lowerLine) {
+	if !lc.provider {
 		confidence -= 40
 	}
 
@@ -236,7 +278,7 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lineImpact float6
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
+		Context:    v.buildContext(match, line, matchStart, lc.posKW, lc.negKW),
 		Metadata: map[string]any{
 			"subtype":        "NPI",
 			"luhn_valid":     true,
@@ -246,7 +288,7 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lineImpact float6
 }
 
 // evaluateDEA checks a DEA number candidate and returns a match if valid.
-func (v *Validator) evaluateDEA(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateDEA(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	// Validate DEA checksum
 	if !deaChecksumValid(match) {
 		return detector.Match{}, false
@@ -254,11 +296,11 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lineImpact float6
 
 	confidence := 85.0 // DEA with valid checksum is strong evidence
 
-	contextImpact := lineImpact
+	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
 	// Without prescriber/pharmacy context, reduce confidence
-	if !v.hasDEAContext(lowerLine) {
+	if !lc.dea {
 		confidence -= 30
 	}
 
@@ -274,7 +316,7 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lineImpact float6
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
+		Context:    v.buildContext(match, line, matchStart, lc.posKW, lc.negKW),
 		Metadata: map[string]any{
 			"subtype":           "DEA",
 			"checksum_valid":    true,
@@ -286,14 +328,14 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lineImpact float6
 }
 
 // evaluateMBI checks a Medicare MBI candidate and returns a match if valid.
-func (v *Validator) evaluateMBI(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateMBI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	confidence := 75.0 // MBI format is fairly specific
 
-	contextImpact := lineImpact
+	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
 	// Without medicare/beneficiary context, reduce
-	if !v.hasMedicareContext(lowerLine) {
+	if !lc.medicare {
 		confidence -= 35
 	}
 
@@ -309,7 +351,7 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lineImpact float6
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
+		Context:    v.buildContext(match, line, matchStart, lc.posKW, lc.negKW),
 		Metadata: map[string]any{
 			"subtype":        "MBI",
 			"context_impact": contextImpact,
@@ -321,29 +363,29 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lineImpact float6
 // The dashes are stripped and the result re-validated against the contiguous
 // MBI rules; scoring is identical to evaluateMBI. The reported Text keeps the
 // original dashed form so redaction masks the token as printed.
-func (v *Validator) evaluateDashedMBI(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateDashedMBI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	normalized := strings.ReplaceAll(match, "-", "")
 	if !reMBI.MatchString(normalized) {
 		return detector.Match{}, false
 	}
 
-	m, ok := v.evaluateMBI(normalized, line, lowerLine, lineImpact, matchStart, posKW, negKW, lineNum, originalPath)
+	m, ok := v.evaluateMBI(normalized, line, lowerLine, lc, matchStart, lineNum, originalPath)
 	if !ok {
 		return detector.Match{}, false
 	}
 
 	// Report the original dashed span (position and text) for correct redaction.
 	m.Text = match
-	m.Context = v.buildContext(match, line, matchStart, posKW, negKW)
+	m.Context = v.buildContext(match, line, matchStart, lc.posKW, lc.negKW)
 	m.Metadata["normalized"] = normalized
 	return m, true
 }
 
 // evaluateMRN checks an MRN candidate and returns a match if valid.
-func (v *Validator) evaluateMRN(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateMRN(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	// MRN is very generic (just digits), so only detect with strong medical context.
 	// Skip if it looks like a phone, SSN component, zip code, year, etc.
-	if v.looksLikeNonMedicalNumber(match, lowerLine) {
+	if lc.nonMedKW || v.looksLikeNonMedicalNumberShape(match) {
 		return detector.Match{}, false
 	}
 
@@ -356,13 +398,13 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lineImpact float6
 	confidence := 15.0 // Very low base — digits without keywords are ambiguous
 
 	// Only boost if we have strong MRN-specific keywords
-	if v.hasMRNKeyword(lowerLine) {
+	if lc.mrnKeyword {
 		confidence += 55 // Strong keyword match -> 70
-	} else if v.hasMedicalContext(lowerLine) {
+	} else if lc.medical {
 		confidence += 30 // Generic medical context -> 45
 	}
 
-	contextImpact := lineImpact
+	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
 	confidence = clamp(confidence)
@@ -377,7 +419,7 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lineImpact float6
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
+		Context:    v.buildContext(match, line, matchStart, lc.posKW, lc.negKW),
 		Metadata: map[string]any{
 			"subtype":        "MRN",
 			"context_impact": contextImpact,
@@ -386,25 +428,25 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lineImpact float6
 }
 
 // evaluateInsuranceID checks an insurance member ID candidate.
-func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lineImpact float64, matchStart int, posKW, negKW []string, lineNum int, originalPath string) (detector.Match, bool) {
+func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	// Insurance IDs must contain a mix of letters and digits
 	if !hasLettersAndDigits(match) {
 		return detector.Match{}, false
 	}
 
 	// Skip if it looks like a common non-insurance pattern
-	if v.looksLikeNonInsuranceID(match, lowerLine) {
+	if lc.nonInsKW || v.looksLikeNonInsuranceIDShape(match, lc.insKeyword) {
 		return detector.Match{}, false
 	}
 
 	confidence := 50.0 // Moderate base — alphanumeric with insurance context
 
 	// Boost if strong insurance keywords present
-	if v.hasInsuranceKeyword(lowerLine) {
+	if lc.insKeyword {
 		confidence += 20 // -> 70
 	}
 
-	contextImpact := lineImpact
+	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
 	confidence = clamp(confidence)
@@ -419,7 +461,7 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lineImpac
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, matchStart, posKW, negKW),
+		Context:    v.buildContext(match, line, matchStart, lc.posKW, lc.negKW),
 		Metadata: map[string]any{
 			"subtype":        "INSURANCE_MEMBER_ID",
 			"context_impact": contextImpact,
@@ -671,24 +713,29 @@ func (v *Validator) hasInsuranceKeyword(lowerLine string) bool {
 }
 
 // looksLikeNonMedicalNumber checks if a digit sequence is likely not an MRN.
-func (v *Validator) looksLikeNonMedicalNumber(match, lowerLine string) bool {
-	// Phone numbers, SSNs, zip codes, years, etc.
-	nonMedicalKW := []string{
+// nonMedicalKeywordPresent reports whether the line carries a keyword that
+// makes a digit run more likely a phone/SSN/zip/order number than an MRN.
+// Line-global — hoisted into medicalLineContext (was scanned per match).
+func (v *Validator) nonMedicalKeywordPresent(lowerLine string) bool {
+	for _, kw := range []string{
 		"phone", "ssn", "zip", "postal", "fax", "extension",
 		"account", "order", "invoice", "tracking", "serial",
-	}
-	for _, kw := range nonMedicalKW {
+	} {
 		if containsKeyword(lowerLine, kw) {
 			return true
 		}
 	}
+	return false
+}
 
+// looksLikeNonMedicalNumberShape is the match-only (no line scan) half of the
+// old looksLikeNonMedicalNumber: length-based SSN/phone/year heuristics.
+func (v *Validator) looksLikeNonMedicalNumberShape(match string) bool {
 	// Skip 4-digit years embedded in longer text
 	if len(match) == 4 {
 		// Bare 4-digit matches shouldn't reach here (regex requires 6+)
 		return true
 	}
-
 	// Skip if the match is exactly 9 digits (likely SSN) or 10 digits starting
 	// with 1 (likely phone number)
 	if len(match) == 9 {
@@ -697,49 +744,50 @@ func (v *Validator) looksLikeNonMedicalNumber(match, lowerLine string) bool {
 	if len(match) == 10 && match[0] == '1' {
 		return true // Likely a phone number with leading 1
 	}
-
 	return false
 }
 
 // looksLikeNonInsuranceID checks if an alphanumeric string is likely not an insurance ID.
-func (v *Validator) looksLikeNonInsuranceID(match, lowerLine string) bool {
-	lower := strings.ToLower(match)
-
-	// Skip common non-insurance patterns
-	nonInsurance := []string{
+// nonInsuranceKeywordPresent reports whether the line carries a keyword that
+// makes an alphanumeric token more likely a non-insurance identifier.
+// Line-global — hoisted into medicalLineContext (was scanned per match).
+func (v *Validator) nonInsuranceKeywordPresent(lowerLine string) bool {
+	for _, kw := range []string{
 		"phone", "ssn", "account", "order", "invoice", "tracking",
 		"serial", "model", "version", "ip address",
-	}
-	for _, kw := range nonInsurance {
+	} {
 		if containsKeyword(lowerLine, kw) {
 			return true
 		}
 	}
+	return false
+}
+
+// looksLikeNonInsuranceIDShape is the match-only (no line scan) half of the
+// old looksLikeNonInsuranceID: hex/UUID/tech-code shape heuristics. insKeyword
+// is the hoisted lc.insKeyword (the one line-dependent input this half needs).
+func (v *Validator) looksLikeNonInsuranceIDShape(match string, insKeyword bool) bool {
+	lower := strings.ToLower(match)
 
 	// Skip if it looks like a hex string (all hex chars)
 	if isHexString(lower) {
 		return true
 	}
-
-	// Skip if it has a "0x" hex prefix (the regex may capture "0x..." as alphanumeric)
+	// Skip if it has a "0x" hex prefix
 	if strings.HasPrefix(lower, "0x") && isHexString(lower[2:]) {
 		return true
 	}
-
 	// Skip if it looks like a UUID component
 	if len(match) == 8 || len(match) == 12 || len(match) == 16 {
 		if isHexString(lower) {
 			return true
 		}
 	}
-
-	// Skip common tech identifiers (all uppercase + digits, looking like codes)
-	if isAllUpperOrDigit(match) && !v.hasInsuranceKeyword(lowerLine) {
-		// Could be a tech ID like "ABC12345DE"
-		// Only allow if strong insurance keyword present
+	// Skip common tech identifiers (all uppercase + digits) unless a strong
+	// insurance keyword is present on the line.
+	if isAllUpperOrDigit(match) && !insKeyword {
 		return true
 	}
-
 	return false
 }
 
