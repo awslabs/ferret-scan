@@ -79,8 +79,12 @@ func NewValidator() *Validator {
 			"inc", "llc", "ltd", "corp", "enterprises", "industries", "manufacturing",
 			"consulting", "group", "associates", "partners", "holdings",
 			"catalog", "collection", "series", "line", "model", "version",
+			// "park" intentionally omitted here too (it was removed from
+			// geoPatternsMap): it is a common surname, so it must not carry a
+			// geographic/negative penalty. Real addresses are caught by the
+			// accompanying geo word (street/avenue/road/drive).
 			"city", "county", "state", "country", "mountain", "lake", "river",
-			"creek", "valley", "park", "street", "avenue", "road", "drive",
+			"creek", "valley", "street", "avenue", "road", "drive",
 			"algorithm", "method", "protocol", "function", "pattern", "transform",
 		},
 		observer: observability.NewStandardObserver(observability.ObservabilityMetrics, nil),
@@ -780,6 +784,18 @@ func (v *Validator) isTechnicalContext(match string, components NameComponents) 
 		if lastName == tech {
 			return true
 		}
+	}
+
+	// Consult veryCommonNamesMap for either token. These are very common
+	// software/operations words (default, root, update, cancel, warning, debug,
+	// system, ...) that appear beside a known surname in logs and UI text
+	// ("Default Johnson", "Update User") and scored MEDIUM as false names. None
+	// of these tokens is present in the first/last-name databases (verified), so
+	// treating them as technical context cannot demote a real person name — it
+	// only suppresses the technical-word-plus-surname false positive. This is the
+	// intended consumer of veryCommonNamesMap, which was previously dead code.
+	if veryCommonNamesMap[firstName] || veryCommonNamesMap[lastName] {
+		return true
 	}
 
 	return false
