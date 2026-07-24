@@ -896,6 +896,30 @@ func TestSSNValidator_DocWordDoesNotSuppress(t *testing.T) {
 	}
 }
 
+// TestSSNValidator_GrantWordDoesNotSuppress locks the narrowing of the "grant"
+// negative keyword to its ID-number forms. Bare "grant" penalized real SSNs on
+// grant/benefit documents and near a person named Grant; only "grant number"/
+// "grant no" (the SSN-shaped grant-management identifier) should now suppress.
+func TestSSNValidator_GrantWordDoesNotSuppress(t *testing.T) {
+	v := NewValidator()
+	const mediumThreshold = 60.0
+
+	// Real SSN near "grant" (funding doc / surname) must not be demoted below MEDIUM.
+	for _, line := range []string{
+		"grant recipient SSN 219-09-9999 on file",
+		"Grant Wilson SSN 219-09-9999 approved",
+	} {
+		if c := ssnMatchConfidence(t, v, line); c < mediumThreshold {
+			t.Errorf("real SSN should not be suppressed by bare 'grant' in %q, got %.1f", line, c)
+		}
+	}
+
+	// The SSN-shaped grant-management ID number still suppresses.
+	if c := ssnMatchConfidence(t, v, "grant number 321-07-4567 in the ledger"); c >= 90 {
+		t.Errorf("'grant number' ID should not reach HIGH, got %.1f", c)
+	}
+}
+
 // TestSSNValidator_BareNineDigitWeakerThanDashed is a regression test for M2:
 // a separator-less 9-digit token (order/serial/ZIP9 ID) over-matched and could
 // reach HIGH in vaguely positive context. The bare form now scores lower than

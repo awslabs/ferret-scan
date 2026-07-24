@@ -134,13 +134,15 @@ func NewValidator() *Validator {
 			"work order", "invoice", "rma", "asset tag", "asset",
 			"case", "ticket", "sku", "purchase order", "docket",
 			"tracking", "shipment", "order number",
-			"po", "permit", "reservation", "grant", "bin",
+			"po", "permit", "reservation", "bin",
 			"accession", "specimen", "contract", "txn", "transaction",
-			// "policy" is intentionally NOT listed: insurance-policy documents
-			// legitimately carry SSNs on the same line ("policy holder SSN:"),
-			// and the strong positive keywords win there anyway — verified in
-			// the regression test.
-			"policy number", "policy no",
+			// "policy" and "grant" are intentionally NOT listed as bare words:
+			// insurance-policy and grant/benefit documents legitimately carry
+			// SSNs on the same line ("policy holder SSN:", "grant recipient SSN"),
+			// and "Grant" is a common surname — a bare "grant" penalty demoted
+			// real SSNs near a person named Grant. Only the ID-number forms, which
+			// share the SSN shape in ERP/grants-management exports, suppress.
+			"policy number", "policy no", "grant number", "grant no",
 		},
 		invalidPatterns: []string{
 			"000", "666", "900", "901", "902", "903", "904", "905", "906", "907", "908", "909",

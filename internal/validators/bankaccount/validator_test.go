@@ -470,6 +470,43 @@ func TestBankAccountValidator_USAccount_Negative(t *testing.T) {
 	}
 }
 
+// TestBankAccountValidator_VersionSubstring locks the looksLikeVersion whole-word
+// fix: "version" as a bare substring inside "conversion"/"subversion"/"aversion"
+// wrongly suppressed a real account number that happened to follow one of those
+// words. Whole-word matching detects the account again, while a genuine "version"
+// label and a "v.N" prefix still suppress.
+func TestBankAccountValidator_VersionSubstring(t *testing.T) {
+	validator := NewValidator()
+
+	// Recovered: "conversion"/"subversion" must NOT suppress a banking-context account.
+	for _, content := range []string{
+		"checking conversion 12345678901",
+		"savings subversion 98765432100",
+	} {
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		if len(filterByType(matches, "US_BANK_ACCOUNT")) == 0 {
+			t.Errorf("expected US_BANK_ACCOUNT for %q (version-substring must not suppress), got none", content)
+		}
+	}
+
+	// Still suppressed: a genuine version label / v.N prefix.
+	for _, content := range []string{
+		"checking version 12345678901",
+		"savings v.2 12345678901",
+	} {
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		if len(filterByType(matches, "US_BANK_ACCOUNT")) > 0 {
+			t.Errorf("expected version context to suppress account for %q, got a match", content)
+		}
+	}
+}
+
 func TestBankAccountValidator_ContextAnalysis(t *testing.T) {
 	validator := NewValidator()
 
