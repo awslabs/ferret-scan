@@ -538,8 +538,11 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	var impact float64
 	for _, keyword := range v.positiveKeywords {
-		if strings.Contains(fullContext, keyword) {
-			if strings.Contains(lineLower, keyword) {
+		// Whole-token matching (matching the negative-keyword path below and the
+		// ValidateContent hot path): "arn" no longer scores "learn"/"warning",
+		// "aws" no longer scores "flaws". Keeps the two scoring paths consistent.
+		if hasKeywordToken(fullContext, []string{keyword}) {
+			if hasKeywordToken(lineLower, []string{keyword}) {
 				impact += 10
 			} else {
 				impact += 5
