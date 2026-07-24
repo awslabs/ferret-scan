@@ -44,6 +44,52 @@ func newConfiguredValidator() *Validator {
 	return v
 }
 
+// TestSocialMediaValidator_NewerPlatforms locks the Wave-4 addition of Threads,
+// Bluesky, and Mastodon (the platforms the shipped config.yaml was missing). It
+// configures the same patterns config.yaml now ships and asserts each profile
+// URL is detected and identified to the right platform.
+func TestSocialMediaValidator_NewerPlatforms(t *testing.T) {
+	v := NewValidator()
+	v.platformPatterns = map[string][]string{
+		"threads": {
+			`(?i)https?://(?:www\.)?threads\.net/@[a-zA-Z0-9_.]+`,
+		},
+		"bluesky": {
+			`(?i)https?://(?:www\.)?bsky\.app/profile/[a-zA-Z0-9_.-]+`,
+		},
+		"mastodon": {
+			`(?i)https?://(?:mastodon\.social|mastodon\.online|mstdn\.social|fosstodon\.org)/@[a-zA-Z0-9_]+`,
+		},
+	}
+	v.patternsConfigured = true
+	v.compilePlatformPatterns()
+
+	cases := []struct {
+		content  string
+		platform string
+	}{
+		{"follow me at https://threads.net/@johndoe today", "threads"},
+		{"my feed https://bsky.app/profile/jay.bsky.social here", "bluesky"},
+		{"toots at https://mastodon.social/@user daily", "mastodon"},
+	}
+	for _, tc := range cases {
+		matches, err := v.ValidateContent(tc.content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if p, _ := m.Metadata["platform"].(string); p == tc.platform {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected a %s match for %q, got %d matches", tc.platform, tc.content, len(matches))
+		}
+	}
+}
+
 // --- Valid URL Tests ---
 
 func TestSocialMediaValidator_ValidURLs(t *testing.T) {

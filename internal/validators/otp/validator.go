@@ -103,6 +103,12 @@ func NewValidator() *Validator {
 			"google authenticator", "authy", "otp", "one-time",
 			"multi-factor", "verification code", "secret", "seed",
 			"provisioning", "enrollment", "setup key",
+			// Common OTP phrasings the list missed. "-" is a word boundary in
+			// containsKeyword, so the hyphenated "one-time" literal does NOT match
+			// the space form "one time" (or "one-time password"); both variants and
+			// "passcode"/"two-step"/"two step" are added explicitly.
+			"passcode", "one time", "one-time password", "one time password",
+			"two-step", "two step", "authentication code", "security code",
 		},
 		negativeKeywords: []string{
 			"license", "activation", "product key", "serial", "uuid",

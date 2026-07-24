@@ -457,6 +457,21 @@ validators:
         - "(?i)https?://(?:www\\.)?clubhouse\\.com/@[a-zA-Z0-9_]+" # Profile URLs
         - "(?i)clubhouse\\.com/@[a-zA-Z0-9_]+" # Without protocol
 
+      # Threads - Meta's text-based social platform
+      threads:
+        - "(?i)https?://(?:www\\.)?threads\\.net/@[a-zA-Z0-9_.]+" # Profile URLs
+        - "(?i)threads\\.net/@[a-zA-Z0-9_.]+" # Without protocol
+
+      # Bluesky - Decentralized microblogging (AT Protocol)
+      bluesky:
+        - "(?i)https?://(?:www\\.)?bsky\\.app/profile/[a-zA-Z0-9_.-]+" # Profile URLs
+        - "(?i)bsky\\.app/profile/[a-zA-Z0-9_.-]+" # Without protocol
+
+      # Mastodon - Federated microblogging (instance/@user)
+      mastodon:
+        - "(?i)https?://[a-zA-Z0-9_.-]+/@[a-zA-Z0-9_]+@[a-zA-Z0-9_.-]+" # Full federated handle URL
+        - "(?i)https?://(?:mastodon\\.social|mastodon\\.online|mstdn\\.social|fosstodon\\.org)/@[a-zA-Z0-9_]+" # Major instance profile URLs
+
     # Keywords that increase confidence when found near social media patterns
     positive_keywords:
       - "profile"
@@ -640,6 +655,28 @@ validators:
         - "author"
         - "publication"
         - "clap"
+
+      threads:
+        - "post"
+        - "follow"
+        - "thread"
+        - "reply"
+        - "repost"
+
+      bluesky:
+        - "post"
+        - "follow"
+        - "skeet"
+        - "repost"
+        - "feed"
+
+      mastodon:
+        - "toot"
+        - "boost"
+        - "follow"
+        - "instance"
+        - "fediverse"
+        - "federated"
 
     # Patterns to whitelist (reduce false positives)
     whitelist_patterns:

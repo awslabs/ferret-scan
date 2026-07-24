@@ -207,6 +207,18 @@ func TestMedicalIDValidator_MBI_Positive(t *testing.T) {
 			name:    "MBI with beneficiary keyword",
 			content: "Beneficiary ID: 2AW3HA4NK91",
 		},
+		{
+			name:    "MBI with legacy HICN keyword",
+			content: "HICN 1EG4TE5MK72 on legacy record",
+		},
+		{
+			name:    "MBI with health insurance claim keyword",
+			content: "health insurance claim number 1EG4TE5MK72",
+		},
+		{
+			name:    "MBI with pharmacy RxBIN context",
+			content: "RxBIN 610014 member 2AW3HA4NK91 pharmacy",
+		},
 	}
 
 	for _, tt := range tests {
