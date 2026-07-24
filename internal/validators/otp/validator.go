@@ -477,15 +477,25 @@ func negativeKeywordActive(keyword string, isJWTContext bool) bool {
 // honoring the same JWT-aware carve-out AnalyzeContext uses (see
 // negativeKeywordActive) so the emit-time -30 penalty cannot fire on a keyword
 // that AnalyzeContext deliberately skipped.
+//
+// The JWT regex (reJWT) is the expensive check, and "session" is the ONLY
+// keyword whose activeness depends on it, so we defer the JWT scan until we
+// actually match "session" — on the common line (no session token) reJWT never
+// runs. Every other negative keyword short-circuits the moment it matches.
 func (v *Validator) hasNegativeContext(line string) bool {
-	isJWTContext := reJWT.MatchString(line)
 	for _, kw := range v.negativeKeywords {
-		if !negativeKeywordActive(kw, isJWTContext) {
+		if !containsKeyword(line, kw) {
 			continue
 		}
-		if containsKeyword(line, kw) {
-			return true
+		if kw == "session" {
+			// "session" only counts alongside a JWT (a session token); scan for
+			// the JWT lazily, here, rather than once per line up front.
+			if reJWT.MatchString(line) {
+				return true
+			}
+			continue
 		}
+		return true
 	}
 	return false
 }
