@@ -251,6 +251,21 @@ var Cases = []Case{
 			"Priya Raghavan approved the budget request\n" +
 			"Ford Mustang sales rose sharply\n",
 	},
+	{
+		Name: "context_soft_negative_labels",
+		Description: "Real PII labelled with an identifier word that is a SOFT suppressor " +
+			"(account/order for CREDIT_CARD, patient-account for MEDICAL_ID MRN). Locks the " +
+			"two-tier negative fix: a soft label must NOT hard-drop a real value when a strong " +
+			"positive keyword co-occurs (card word / MRN keyword), while a bare label line and " +
+			"a device-identifier decoy (IMEI: Luhn-valid, card-shaped) must stay suppressed. " +
+			"A future regression that reinstates the old -100 hard-drop shows up here.",
+		Checks: []string{"CREDIT_CARD", "MEDICAL_ID"},
+		Input: "Order 5678 paid with card 4532015112830366\n" +
+			"Account Number for visa 5425233430109903\n" +
+			"Patient account number: 1234567 on chart\n" +
+			"imei 490154203237518 on the handset\n" +
+			"order id: 4532015112830366 catalog\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

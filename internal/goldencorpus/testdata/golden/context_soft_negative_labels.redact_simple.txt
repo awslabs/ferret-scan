@@ -1,0 +1,10 @@
+=== REDACTED ===
+Order 5678 paid with card [CREDIT-CARD-REDACTED]
+Account Number for visa [CREDIT-CARD-REDACTED]
+Patient account number: [MRN-REDACTED] on chart
+imei 490154203237518 on the handset
+order id: 4532015112830366 catalog
+=== FINDINGS (sorted) ===
+type=MASTERCARD line=2 conf=high match=5425233430109903
+type=MRN line=3 conf=medium match=1234567
+type=VISA line=1 conf=high match=4532015112830366

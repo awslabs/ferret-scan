@@ -847,6 +847,89 @@ func TestCreditCardValidator_NegativeKeywordWordBoundary(t *testing.T) {
 	}
 }
 
+// TestCreditCardValidator_SoftNegativeOverride locks the two-tier negative
+// behavior: SOFT negatives (account/order/serial-style identifier labels that
+// legitimately co-occur with a real card) suppress ONLY when no positive card
+// keyword is present. An explicit card word overrides the label so a genuine
+// card labelled with an account/order number is no longer hard-dropped, while a
+// bare label line (no card word) still suppresses.
+func TestCreditCardValidator_SoftNegativeOverride(t *testing.T) {
+	v := NewValidator()
+	const card = "4532015112830366" // Luhn-valid, not a known test pattern
+
+	// Positive card keyword present -> soft negative must NOT drop the card.
+	recovered := []string{
+		"Order 5678 paid with card " + card,    // "order" soft-neg, "paid"/"card" positive
+		"Account Number for visa " + card,      // "account" soft-neg, "visa" positive
+		"serial reference, cardholder " + card, // "serial"/"reference" soft-neg, "cardholder" positive
+		"invoice line: credit card " + card,    // "invoice" soft-neg, "credit"/"card" positive
+	}
+	for _, line := range recovered {
+		impact := v.AnalyzeContext(card, detector.ContextInfo{FullLine: line})
+		if impact <= -100 {
+			t.Errorf("soft negative must not drop card when a positive co-occurs for %q, got impact %.1f", line, impact)
+		}
+		matches, err := v.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if strings.Contains(m.Text, card) && m.Confidence > 15 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected labelled real card to surface for %q, got %d matches", line, len(matches))
+		}
+	}
+
+	// Bare soft-negative label (no card word) must STILL suppress.
+	for _, line := range []string{
+		"account number " + card,
+		"order id: " + card,
+		"serial " + card,
+	} {
+		impact := v.AnalyzeContext(card, detector.ContextInfo{FullLine: line})
+		if impact > -100 {
+			t.Errorf("bare soft-negative label should still suppress for %q, got impact %.1f", line, impact)
+		}
+	}
+
+	// HARD negatives suppress regardless of any positive on the line.
+	for _, line := range []string{
+		"card sha256 checksum " + card, // "card" positive but "sha"/"checksum" are hard
+		"payment md5 hash " + card,     // "payment" positive but "md5"/"hash" are hard
+		"visa version 2 build " + card, // "visa" positive but "version"/"build" are hard
+	} {
+		impact := v.AnalyzeContext(card, detector.ContextInfo{FullLine: line})
+		if impact > -100 {
+			t.Errorf("hard negative must suppress even with a positive present for %q, got impact %.1f", line, impact)
+		}
+	}
+}
+
+// TestCreditCardValidator_DeviceIdentifierDecoys locks suppression of Luhn-valid,
+// card-shaped device/loyalty identifiers (IMEI, ICCID, loyalty numbers) that are
+// not payment cards. The IMEI 490154203237518 is 15 digits, Luhn-valid, and
+// starts with 4 — it passes the card regex + Luhn gate and surfaced as an FP
+// before "imei"/"iccid"/"loyalty" were added as soft negatives.
+func TestCreditCardValidator_DeviceIdentifierDecoys(t *testing.T) {
+	v := NewValidator()
+	for _, line := range []string{
+		"imei 490154203237518 on the handset",
+		"device iccid 8991101200003204510 registered",
+		"loyalty number 4532015112830366 redeemed",
+		"rewards membership 4532015112830366 balance",
+	} {
+		impact := v.AnalyzeContext("490154203237518", detector.ContextInfo{FullLine: line})
+		if impact > -100 {
+			t.Errorf("device/loyalty identifier should be suppressed for %q, got impact %.1f", line, impact)
+		}
+	}
+}
+
 // TestCreditCardValidator_EqualsColonDelimiters is a regression test for M4:
 // the delimiter classes omitted '=' and ':', so PANs in config / key=value /
 // key:value logs (the dominant leak format) were missed.
