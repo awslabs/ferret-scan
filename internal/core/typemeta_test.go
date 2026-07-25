@@ -79,9 +79,9 @@ func TestTypeMeta_CloudSubTypesShareDescriptionDistinctWeight(t *testing.T) {
 
 // TestTypeMeta_GitLabName locks the name-tier (gap 3.3 remainder): gitlab-sast
 // vulnerability display names, keyed by validator name. Captures the nuances
-// that (a) GitLabName is NOT always == SARIFShort (SECRETS differs), (b)
+// that (a) GitLabName is NOT always == SARIFShort (SECRETS differs), and (b)
 // sub-types like VISA have no GitLabName so the mapper's title-case fallback
-// applies, and (c) COMPREHEND carries a GitLabName despite having no SARIF entry.
+// applies.
 func TestTypeMeta_GitLabName(t *testing.T) {
 	cases := []struct {
 		typ  string
@@ -89,7 +89,6 @@ func TestTypeMeta_GitLabName(t *testing.T) {
 	}{
 		{"CREDIT_CARD", "Credit Card Number Detected"},
 		{"SECRETS", "Secret/API Key Detected"}, // differs from SARIFShort "Secret or API Key Detected"
-		{"COMPREHEND", "AWS Comprehend PII Detected"},
 		{"VIN", "Vehicle Identification Number Detected"},
 		{"VISA", ""},           // sub-type: no name-tier entry → mapper title-case fallback
 		{"AWS_ACCESS_KEY", ""}, // sub-type

@@ -78,10 +78,10 @@ func RedactFile(cfg RedactConfig) (*RedactResult, error) {
 	// Router with preprocessors enabled so PDF/DOCX/image content is extracted.
 	fileRouter := router.NewFileRouter(false)
 	router.RegisterDefaultPreprocessors(fileRouter)
-	fileRouter.InitializePreprocessors(router.CreateRouterConfig(false, nil, "", true))
+	fileRouter.InitializePreprocessors(router.CreateRouterConfig(true))
 	detectorFacade.SetFileRouter(fileRouter)
 
-	if canProcess, reason := fileRouter.CanProcessFile(cfg.FilePath, true, false); !canProcess {
+	if canProcess, reason := fileRouter.CanProcessFile(cfg.FilePath, true); !canProcess {
 		return nil, fmt.Errorf("file type not supported for redaction: %s (%s)", cfg.FilePath, reason)
 	}
 

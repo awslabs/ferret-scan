@@ -42,26 +42,6 @@ function toggleSection(header) {
     }
 }
 
-/* GENAI_DISABLED: toggleGenAI function
-function toggleGenAI() {
-    const genaiCheck = document.getElementById('genaiCheck');
-    const warning = document.getElementById('genaiWarning');
-    const servicesContainer = document.getElementById('genaiServicesContainer');
-    const regionContainer = document.getElementById('regionContainer');
-
-    if (genaiCheck.checked) {
-        warning.classList.remove('hidden');
-        servicesContainer.classList.remove('hidden');
-        regionContainer.classList.remove('hidden');
-    } else {
-        warning.classList.add('hidden');
-        servicesContainer.classList.add('hidden');
-        regionContainer.classList.add('hidden');
-    }
-    updateCliCommand();
-}
-GENAI_DISABLED_END */
-
 function showAlert(message, type = 'error') {
     const alertsContainer = document.getElementById('alerts');
     const alert = document.createElement('div');
@@ -158,11 +138,6 @@ async function scanSingleFile(file, relativePath) {
     formData.append('verbose', document.getElementById('verboseCheck').checked);
     // showMatch is handled client-side only
     formData.append('recursive', document.getElementById('recursiveCheck').checked);
-    /* GENAI_DISABLED: GenAI form parameters
-    formData.append('enableGenAI', document.getElementById('genaiCheck').checked);
-    formData.append('genaiServices', getSelectedGenAIServices());
-    formData.append('textractRegion', document.getElementById('regionSelect').value);
-    GENAI_DISABLED_END */
 
     const response = await fetch('/scan', {
         method: 'POST',
@@ -210,13 +185,6 @@ async function displayResults() {
     updateDisplay();
 
     document.getElementById('resultsContainer').classList.remove('hidden');
-
-    /* GENAI_DISABLED: Cost estimation call
-    // Show cost estimate if GenAI was used
-    if (document.getElementById('genaiCheck').checked) {
-        calculateAndDisplayCost();
-    }
-    GENAI_DISABLED_END */
 
     if (currentResults.length > 0) {
         showAlert(`Scan complete: ${currentResults.length} findings detected`, 'success');
@@ -601,9 +569,6 @@ function getValidatorFromType(type) {
         'UK Passport': 'passport',
         'US Passport': 'passport',
         'VISA': 'creditcard',
-        /* GENAI_DISABLED: PII comprehend mapping
-        'PII': 'comprehend'
-        GENAI_DISABLED_END */
     };
 
     // Try exact match first
@@ -764,29 +729,13 @@ function getSelectedChecks() {
     if (document.getElementById('socialMedia').checked) checks.push('SOCIAL_MEDIA');
     if (document.getElementById('ssn').checked) checks.push('SSN');
     if (document.getElementById('vin').checked) checks.push('VIN');
-    /* GENAI_DISABLED: COMPREHEND_PII check
-    if (document.getElementById('comprehendPii').checked) checks.push('COMPREHEND_PII');
-    GENAI_DISABLED_END */
 
     return checks.length > 0 ? checks.join(',') : 'all';
 }
 
-/* GENAI_DISABLED: getSelectedGenAIServices function
-function getSelectedGenAIServices() {
-    if (!document.getElementById('genaiCheck').checked) return 'all';
-
-    const services = [];
-    if (document.getElementById('textractService').checked) services.push('textract');
-    if (document.getElementById('transcribeService').checked) services.push('transcribe');
-    if (document.getElementById('comprehendService').checked) services.push('comprehend');
-
-    return services.length > 0 ? services.join(',') : 'all';
-}
-GENAI_DISABLED_END */
-
 function toggleAllChecks() {
     const allChecked = document.getElementById('allChecks').checked;
-    const checkboxes = ['bankAccount', 'secrets', 'cloudResources', 'creditCard', 'dateOfBirth', 'driversLicense', 'email', 'intellectualProperty', 'ipAddress', 'medicalId', 'metadata', 'otp', 'passport', 'personName', 'phone', 'physicalAddress', 'socialMedia', 'ssn', 'vin', 'comprehendPii'];
+    const checkboxes = ['bankAccount', 'secrets', 'cloudResources', 'creditCard', 'dateOfBirth', 'driversLicense', 'email', 'intellectualProperty', 'ipAddress', 'medicalId', 'metadata', 'otp', 'passport', 'personName', 'phone', 'physicalAddress', 'socialMedia', 'ssn', 'vin'];
 
     checkboxes.forEach(id => {
         const element = document.getElementById(id);
@@ -803,10 +752,6 @@ function updateCliCommand() {
     const verbose = document.getElementById('verboseCheck').checked;
     const showMatch = document.getElementById('showMatchCheck').checked;
     const recursive = document.getElementById('recursiveCheck').checked;
-    /* GENAI_DISABLED: GenAI CLI variables
-    const genai = document.getElementById('genaiCheck').checked;
-    const region = document.getElementById('regionSelect').value;
-    GENAI_DISABLED_END */
 
     let cmd = './ferret-scan --file <your-file>';
 
@@ -815,39 +760,15 @@ function updateCliCommand() {
     if (verbose) cmd += ' --verbose';
     if (showMatch) cmd += ' --show-match';
     if (recursive) cmd += ' --recursive';
-    /* GENAI_DISABLED: GenAI CLI command generation
-    if (genai) {
-        cmd += ' --enable-genai';
-        const genaiServices = getSelectedGenAIServices();
-        if (genaiServices !== 'all') cmd += ` --genai-services ${genaiServices}`;
-        if (region !== 'us-east-1') cmd += ` --textract-region ${region}`;
-    }
-    GENAI_DISABLED_END */
 
     document.getElementById('cliCommand').innerHTML = escapeHtml(cmd);
 }
 
 // Update CLI command when form changes
 document.getElementById('confidenceSelect').addEventListener('change', updateCliCommand);
-/* GENAI_DISABLED: comprehendPii event listener removed from array */
 ['cloudResources', 'creditCard', 'passport', 'ssn', 'metadata', 'intellectualProperty', 'email', 'phone', 'ipAddress', 'socialMedia', 'secrets'].forEach(id => {
     document.getElementById(id).addEventListener('change', updateCliCommand);
 });
-/* GENAI_DISABLED: GenAI service event listeners
-['textractService', 'transcribeService', 'comprehendService'].forEach(id => {
-    document.getElementById(id).addEventListener('change', function() {
-        // Uncheck main GenAI if no services are selected
-        const anyServiceSelected = document.getElementById('textractService').checked ||
-                                 document.getElementById('transcribeService').checked ||
-                                 document.getElementById('comprehendService').checked;
-        if (!anyServiceSelected) {
-            document.getElementById('genaiCheck').checked = false;
-            toggleGenAI();
-        }
-        updateCliCommand();
-    });
-});
-GENAI_DISABLED_END */
 document.getElementById('verboseCheck').addEventListener('change', updateCliCommand);
 document.getElementById('showMatchCheck').addEventListener('change', updateCliCommand);
 document.getElementById('recursiveCheck').addEventListener('change', updateCliCommand);
@@ -1098,62 +1019,6 @@ function matchGlob(pattern, name) {
         .replace(/\?/g, '[^/]') + '$');
     return re.test(name);
 }
-/* GENAI_DISABLED: GenAI main checkbox and region event listeners
-document.getElementById('genaiCheck').addEventListener('change', updateCliCommand);
-document.getElementById('regionSelect').addEventListener('change', updateCliCommand);
-GENAI_DISABLED_END */
-
-/* GENAI_DISABLED: calculateAndDisplayCost function
-function calculateAndDisplayCost() {
-    const fileInput = document.getElementById('fileInput');
-    const files = fileInput.files;
-    let textractCost = 0;
-    let comprehendCost = 0;
-    let totalPages = 0;
-    let totalChars = 0;
-
-    // Check which services are enabled
-    const textractEnabled = document.getElementById('textractService').checked;
-    const comprehendEnabled = document.getElementById('comprehendService').checked;
-
-    // Estimate costs based on file types and sizes
-    for (let file of files) {
-        const ext = file.name.split('.').pop().toLowerCase();
-
-        // Textract costs for images and PDFs (only if enabled)
-        if (textractEnabled && ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp', 'pdf'].includes(ext)) {
-            if (ext === 'pdf') {
-                // Estimate 1 page per 50KB for PDFs
-                totalPages += Math.max(1, Math.ceil(file.size / 51200));
-            } else {
-                // Images count as 1 page each
-                totalPages += 1;
-            }
-        }
-
-        // Comprehend costs for all text content (only if enabled)
-        if (comprehendEnabled) {
-            totalChars += file.size;
-        }
-    }
-
-    if (textractEnabled) textractCost = totalPages * 0.0015;
-    if (comprehendEnabled) comprehendCost = (totalChars / 100) * 0.0001;
-    const totalCost = textractCost + comprehendCost;
-
-    const breakdown = [];
-    if (textractEnabled && totalPages > 0) {
-        breakdown.push(`<strong>Textract OCR:</strong> ${totalPages} pages × $0.0015 = $${textractCost.toFixed(4)}`);
-    }
-    if (comprehendEnabled && totalChars > 0) {
-        breakdown.push(`<strong>Comprehend PII:</strong> ${Math.ceil(totalChars/100)} units × $0.0001 = $${comprehendCost.toFixed(4)}`);
-    }
-
-    document.getElementById('costBreakdown').innerHTML = breakdown.join('<br>');
-    document.getElementById('totalCost').textContent = `Total Estimated Cost: $${totalCost.toFixed(4)}`;
-    document.getElementById('costContainer').classList.remove('hidden');
-}
-GENAI_DISABLED_END */
 
 
 
@@ -1963,19 +1828,6 @@ function getScanHelpContent() {
                     <li><span style="color: #037f0c;"><strong>LOW (0-59%):</strong></span> Likely false positive</li>
                 </ul>
             </div>
-            <!-- GENAI_DISABLED: Second AI Features help section
-            <div>
-                <h3 style="color: #0972d3; margin: 0 0 8px 0;">🤖 AI Features (GenAI)</h3>
-                <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
-                    <li><strong>Textract OCR:</strong> Extract text from images</li>
-                    <li><strong>Transcribe:</strong> Convert audio to text</li>
-                    <li><strong>Comprehend:</strong> Advanced PII detection</li>
-                </ul>
-                <div style="background: #fff4e6; border: 1px solid #ff9900; border-radius: 4px; padding: 8px; margin: 8px 0; font-size: 12px; color: #ff9900;">
-                    <strong>⚠️ Warning:</strong> Requires AWS credentials, sends data to AWS, costs apply
-                </div>
-            </div>
-            GENAI_DISABLED_END -->
 
                 <h3 style="color: #0972d3; margin: 16px 0 8px 0;">💡 Usage Tips</h3>
                 <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
@@ -1984,9 +1836,6 @@ function getScanHelpContent() {
                     <li>Click stat cards to filter by confidence level</li>
                     <li>Click "Suppressed" card to view suppressed findings</li>
                     <li>Click table headers to sort results</li>
-                    <!-- GENAI_DISABLED: GenAI usage tip
-                    <li>GenAI works best for images and audio files</li>
-                    GENAI_DISABLED_END -->
                 </ul>
             </div>
         </div>
@@ -2882,7 +2731,6 @@ const clickActions = {
 
 const changeActions = {
     toggleAllChecks: () => toggleAllChecks(),
-    toggleGenAI: () => toggleGenAI(),
     updateCliCommand: () => updateCliCommand(),
     updatePagination: () => updatePagination(),
     toggleSelectAll: () => toggleSelectAll(),

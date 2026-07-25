@@ -14,10 +14,6 @@ import (
 	"strings"
 	"time"
 
-	// GENAI_DISABLED: AWS SDK imports for credential validation
-	// awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	// "github.com/aws/aws-sdk-go-v2/service/sts"
-
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/gitignore"
@@ -25,8 +21,6 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/version"
 	"github.com/awslabs/ferret-scan/v2/internal/web"
 
-	// GENAI_DISABLED: Cost estimation for GenAI services
-	// "github.com/awslabs/ferret-scan/v2/internal/cost"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/help"
@@ -48,8 +42,6 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
-	// GENAI_DISABLED: Comprehend validator import
-	// "github.com/awslabs/ferret-scan/v2/internal/validators/comprehend"
 )
 
 // exitCodeIncompleteCoverage is returned when --fail-on-incomplete is set and at
@@ -120,11 +112,6 @@ type configFlags struct {
 	showSuppressed       bool
 	generateSuppressions bool
 	failOnIncomplete     bool
-	// GENAI_DISABLED: GenAI-related configuration flags
-	// enableGenAI         bool
-	// genaiServices       string
-	// textractRegion      string
-	// estimateOnly        bool
 	// Redaction flags
 	enableRedaction    bool
 	redactionOutputDir string
@@ -145,11 +132,6 @@ type finalConfiguration struct {
 	enablePreprocessors bool
 	preprocessOnly      bool
 	precommitMode       bool
-	// GENAI_DISABLED: GenAI-related configuration values
-	// enableGenAI         bool
-	// genaiServices       map[string]bool
-	// textractRegion      string
-	// estimateOnly        bool
 	// Redaction configuration
 	enableRedaction      bool
 	redactionOutputDir   string
@@ -276,39 +258,6 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 	if isFlagSet("pre-commit-mode") {
 		final.precommitMode = flags.precommitMode
 	}
-
-	// GENAI_DISABLED: GenAI (Textract) configuration resolution
-	// final.enableGenAI = false // default fallback
-	// if cfg != nil && cfg.Preprocessors.Textract.Enabled {
-	// 	final.enableGenAI = cfg.Preprocessors.Textract.Enabled
-	// }
-	// if activeProfile != nil {
-	// 	final.enableGenAI = activeProfile.EnableGenAI
-	// }
-	// if isFlagSet("enable-genai") {
-	// 	final.enableGenAI = flags.enableGenAI
-	// }
-
-	// GENAI_DISABLED: GenAI Services parsing
-	// final.genaiServices = parseGenAIServices(flags.genaiServices, final.enableGenAI)
-
-	// GENAI_DISABLED: Textract region configuration
-	// final.textractRegion = "us-east-1" // default fallback
-	// if cfg != nil && cfg.Preprocessors.Textract.Region != "" {
-	// 	final.textractRegion = cfg.Preprocessors.Textract.Region
-	// }
-	// if isFlagSet("textract-region") {
-	// 	final.textractRegion = flags.textractRegion
-	// }
-
-	// GENAI_DISABLED: Estimate only configuration
-	// final.estimateOnly = false // default fallback
-	// if activeProfile != nil {
-	// 	final.estimateOnly = activeProfile.EstimateOnly
-	// }
-	// if isFlagSet("estimate-only") {
-	// 	final.estimateOnly = flags.estimateOnly
-	// }
 
 	// Redaction configuration
 	final.enableRedaction = false // default fallback
@@ -486,7 +435,7 @@ func processPreprocessOnly(supportedFiles []string, fileRouter *router.FileRoute
 		}
 
 		// Check if file can be processed
-		canProcess, reason := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors, false)
+		canProcess, reason := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors)
 		if !canProcess {
 			// Enhanced error messages for unsupported file types
 			if strings.Contains(reason, "Unsupported file type") {
@@ -504,7 +453,7 @@ func processPreprocessOnly(supportedFiles []string, fileRouter *router.FileRoute
 		}
 
 		// Create processing context with enhanced error handling
-		processingContext, err := fileRouter.CreateProcessingContext(filePath, false, nil, "", finalConfig.debug)
+		processingContext, err := fileRouter.CreateProcessingContext(filePath, finalConfig.debug)
 		if err != nil {
 			// Provide more specific error messages
 			if strings.Contains(err.Error(), "permission") {
@@ -849,18 +798,10 @@ func main() {
 	preprocessOnly := flag.Bool("preprocess-only", false, "Output preprocessed text and exit (no validation or redaction)")
 	preprocessOnlyShort := flag.Bool("p", false, "Output preprocessed text and exit (alias for --preprocess-only)")
 	explainFindings := flag.Bool("explain", false, "Annotate each finding with a plain-language rationale, a verdict (likely real/test/uncertain), and a drafted suppression reason. Fully offline; no data leaves the host.")
-	// GENAI_DISABLED: GenAI-related command line flags
-	// enableGenAI := flag.Bool("enable-genai", false, "Enable AI-powered services: Textract OCR, Transcribe, and Comprehend PII detection (requires AWS credentials, data sent to AWS, costs may apply)")
-	// genaiServices := flag.String("genai-services", "all", "Comma-separated list of GenAI services to use: textract, transcribe, comprehend, or 'all' (only used with --enable-genai)")
-	// textractRegion := flag.String("textract-region", "us-east-1", "AWS region for Textract service (only used with --enable-genai)")
-	// transcribeBucket := flag.String("transcribe-bucket", "", "S3 bucket name for Transcribe audio uploads (optional, creates temporary bucket if not specified)")
 	suppressionFile := flag.String("suppression-file", "", "Path to suppression configuration file (default: $XDG_CONFIG_HOME/ferret-scan/suppressions.yaml on Unix, %APPDATA%\\ferret-scan\\suppressions.yaml on Windows)")
 	generateSuppressions := flag.Bool("generate-suppressions", false, "Generate suppression rules for all findings (disabled by default, can be enabled in YAML)")
 
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
-	// GENAI_DISABLED: Cost control flags for GenAI services
-	// maxCost := flag.Float64("max-cost", 0, "Maximum cost limit for GenAI services (default: no limit)")
-	// estimateOnly := flag.Bool("estimate-only", false, "Show cost estimate and exit without processing")
 	quiet := flag.Bool("quiet", false, "Suppress progress output (useful for scripts and CI/CD)")
 	precommitMode := flag.Bool("pre-commit-mode", false, "Enable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
 	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file's validator coverage was cut short (timeout, cancellation, or budget). Default off: incomplete coverage only warns on stderr.")
@@ -1036,11 +977,6 @@ func main() {
 		enablePreprocessors: flags.enablePreprocessors,
 		preprocessOnly:      flags.preprocessOnly,
 		precommitMode:       flags.precommitMode,
-		// GENAI_DISABLED: GenAI configuration flag passing
-		// enableGenAI:         *enableGenAI,
-		// genaiServices:       *genaiServices,
-		// textractRegion:      *textractRegion,
-		// estimateOnly:        *estimateOnly,
 		// Redaction flags
 		enableRedaction:      flags.enableRedaction,
 		redactionOutputDir:   flags.redactionOutputDir,
@@ -1185,8 +1121,7 @@ func main() {
 	// Context-aware dual-path validation, optimized for CLI.
 
 	// Parse which checks should be run based on --checks parameter
-	// GENAI_DISABLED: Pass false for enableGenAI parameter
-	enabledChecks := parseChecksToRun(finalConfig.checksToRun, false)
+	enabledChecks := parseChecksToRun(finalConfig.checksToRun)
 
 	if mainDebugObs != nil {
 		mainDebugObs.LogDetail("config", fmt.Sprintf("Enabled checks: %v", enabledChecks))
@@ -1402,73 +1337,6 @@ func main() {
 	// Parse confidence levels
 	confidenceFilter := parseConfidenceLevels(finalConfig.confidenceLevels)
 
-	// GENAI_DISABLED: GenAI warning and cost estimate logic
-	// if finalConfig.enableGenAI {
-	// 	fmt.Fprintf(os.Stderr, "\n⚠️  GENAI MODE ENABLED - IMPORTANT NOTICE:\n")
-	// 	fmt.Fprintf(os.Stderr, "   • Amazon Textract OCR will be used for text extraction\n")
-	// 	fmt.Fprintf(os.Stderr, "   • Amazon Comprehend will be used for PII detection\n")
-	// 	fmt.Fprintf(os.Stderr, "   • Your files/text will be sent to AWS services\n")
-	// 	fmt.Fprintf(os.Stderr, "   • Region: %s\n", finalConfig.textractRegion)
-	// 	fmt.Fprintf(os.Stderr, "\n")
-
-	// 	// Show cost estimate (no AWS credentials needed for estimation)
-	// 	costEstimator := cost.NewEstimator()
-	// 	estimate, err := costEstimator.EstimateFiles(filesToProcess, finalConfig.genaiServices)
-	// 	if err == nil && estimate.TotalCost > 0 {
-	// 		fmt.Fprintf(os.Stderr, "💰 %s\n", estimate.FormatDetailedSummary())
-
-	// 		// Handle estimate-only mode (exit before credential validation and user prompt)
-	// 		if finalConfig.estimateOnly {
-	// 			fmt.Fprintf(os.Stderr, "\nEstimate-only mode: exiting without processing\n")
-	// 			os.Exit(0)
-	// 		}
-
-	// 		// Check cost limits
-	// 		if *maxCost > 0 && estimate.TotalCost > *maxCost {
-	// 			fmt.Fprintf(os.Stderr, "\n❌ Cost limit exceeded: $%.4f > $%.4f\n", estimate.TotalCost, *maxCost)
-	// 			fmt.Fprintf(os.Stderr, "Use --max-cost %.4f to override or reduce file count\n", estimate.TotalCost)
-	// 			os.Exit(1)
-	// 		}
-
-	// 		// Prompt for any GenAI costs (only when actually processing)
-	// 		if estimate.TotalCost > 0.0 {
-	// 			fmt.Fprintf(os.Stderr, "\nContinue? [y/N]: ")
-	// 			var response string
-	// 			fmt.Scanln(&response)
-	// 			if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-	// 				fmt.Fprintf(os.Stderr, "Operation cancelled by user\n")
-	// 				os.Exit(0)
-	// 			}
-	// 		}
-	// 		fmt.Fprintf(os.Stderr, "\n")
-	// 	} else if finalConfig.estimateOnly {
-	// 		// Handle estimate-only mode even when no costs (e.g., text files with no GenAI services)
-	// 		fmt.Fprintf(os.Stderr, "💰 Estimated cost: $0.00 (no GenAI services needed for this file type)\n")
-	// 		fmt.Fprintf(os.Stderr, "\nEstimate-only mode: exiting without processing\n")
-	// 		os.Exit(0)
-	// 	}
-
-	// 	// Validate AWS credentials (only if not estimate-only mode)
-	// 	if !finalConfig.estimateOnly {
-	// 		fmt.Fprintf(os.Stderr, "Validating AWS credentials...\n")
-	// 		if err := validateAWSCredentials(finalConfig.textractRegion); err != nil {
-	// 			fmt.Fprintf(os.Stderr, "\nError: AWS credentials validation failed: %v\n\n", err)
-	// 			fmt.Fprintf(os.Stderr, "To fix this issue:\n")
-	// 			fmt.Fprintf(os.Stderr, "1. Configure AWS credentials using one of these methods:\n")
-	// 			fmt.Fprintf(os.Stderr, "   - Run 'aws configure' (requires AWS CLI)\n")
-	// 			fmt.Fprintf(os.Stderr, "   - Set environment variables: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY\n")
-	// 			fmt.Fprintf(os.Stderr, "   - Use IAM roles (for EC2 instances)\n")
-	// 			fmt.Fprintf(os.Stderr, "   - Configure AWS credentials file (~/.aws/credentials)\n")
-	// 			fmt.Fprintf(os.Stderr, "2. Ensure your credentials have permissions for:\n")
-	// 			fmt.Fprintf(os.Stderr, "   - textract:DetectDocumentText\n")
-	// 			fmt.Fprintf(os.Stderr, "   - comprehend:DetectPiiEntities\n")
-	// 			fmt.Fprintf(os.Stderr, "3. Check that the specified region (%s) is correct\n\n", finalConfig.textractRegion)
-	// 			os.Exit(1)
-	// 		}
-	// 		fmt.Fprintf(os.Stderr, "AWS credentials validated successfully.\n\n")
-	// 	}
-	// }
-
 	// Initialize file router with observability
 	fileRouter := router.NewFileRouter(finalConfig.debug)
 
@@ -1477,17 +1345,8 @@ func main() {
 	}
 	router.RegisterDefaultPreprocessors(fileRouter)
 
-	// GENAI_DISABLED: Router configuration with GenAI settings
-	routerConfig := router.CreateRouterConfig(
-		false,                       // enableGenAI disabled
-		nil,                         // genaiServices disabled
-		"",                          // textractRegion disabled
-		finalConfig.enableRedaction, // Pass redaction setting to preprocessors
-	)
-	// GENAI_DISABLED: Transcribe bucket configuration
-	// if *transcribeBucket != "" {
-	// 	routerConfig["transcribe_bucket"] = *transcribeBucket
-	// }
+	// Router configuration: pass the redaction setting to preprocessors.
+	routerConfig := router.CreateRouterConfig(finalConfig.enableRedaction)
 
 	if mainDebugObs != nil {
 		mainDebugObs.LogDetail("main", "Initializing preprocessors...")
@@ -1562,11 +1421,6 @@ func main() {
 		} else {
 			mainDebugObs.LogDetail("config", "Text extraction enabled: true (default)")
 		}
-		// GENAI_DISABLED: GenAI debug logging
-		// mainDebugObs.LogDetail("config", fmt.Sprintf("GenAI (Textract) enabled: %v", finalConfig.enableGenAI))
-		// if finalConfig.enableGenAI {
-		// 	mainDebugObs.LogDetail("config", fmt.Sprintf("Textract region: %s", finalConfig.textractRegion))
-		// }
 		mainDebugObs.LogDetail("config", fmt.Sprintf("Validators to run: %v", finalConfig.checksToRun))
 		mainDebugObs.LogDetail("config", fmt.Sprintf("Recursive scan: %v", finalConfig.recursive))
 		mainDebugObs.LogDetail("config", fmt.Sprintf("Confidence levels: %v", finalConfig.confidenceLevels))
@@ -1660,8 +1514,7 @@ func main() {
 	// Filter supported files
 	var supportedFiles []string
 	for _, filePath := range filesToProcess {
-		// GENAI_DISABLED: Pass false for enableGenAI parameter
-		canProcess, _ := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors, false)
+		canProcess, _ := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors)
 		if canProcess {
 			supportedFiles = append(supportedFiles, filePath)
 		} else {
@@ -1692,9 +1545,6 @@ func main() {
 		// to avoid duplicate file processing and improve performance
 
 		jobConfig := &parallel.JobConfig{
-			// GENAI_DISABLED: EnableGenAI:        false,
-			// GENAI_DISABLED: GenAIServices:      nil,
-			// GENAI_DISABLED: TextractRegion:     "",
 			Debug:              finalConfig.debug,
 			EnableRedaction:    finalConfig.enableRedaction,
 			RedactionStrategy:  finalConfig.redactionStrategy,
@@ -2342,40 +2192,9 @@ func isFlagSet(name string) bool {
 	return found
 }
 
-// GENAI_DISABLED: parseGenAIServices converts a comma-separated string of GenAI service names
-// into a map of enabled services
-// func parseGenAIServices(services string, enableGenAI bool) map[string]bool {
-// 	result := map[string]bool{
-// 		"textract":   false,
-// 		"transcribe": false,
-// 		"comprehend": false,
-// 	}
-
-// 	if !enableGenAI {
-// 		return result
-// 	}
-
-// 	if services == "all" {
-// 		result["textract"] = true
-// 		result["transcribe"] = true
-// 		result["comprehend"] = true
-// 		return result
-// 	}
-
-// 	// Parse comma-separated list of services
-// 	for _, service := range strings.Split(services, ",") {
-// 		serviceStr := strings.ToLower(strings.TrimSpace(service))
-// 		if _, exists := result[serviceStr]; exists {
-// 			result[serviceStr] = true
-// 		}
-// 	}
-
-// 	return result
-// }
-
 // parseChecksToRun converts a comma-separated string of check names
 // into a map of enabled checks
-func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
+func parseChecksToRun(checks string) map[string]bool {
 	// Available checks come from the single source of truth (core.CheckNames,
 	// derived from validatorConstructors) so this list cannot drift from the
 	// validators that actually exist. Order is irrelevant here — it only seeds
@@ -2389,14 +2208,7 @@ func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 	}
 
 	if checks == "all" {
-		// Enable all checks, COMPREHEND_PII excluded since GenAI is disabled
 		for key := range result {
-			// GENAI_DISABLED: COMPREHEND_PII logic removed
-			// if key == "COMPREHEND_PII" {
-			// 	result[key] = enableGenAI
-			// } else {
-			// 	result[key] = true
-			// }
 			result[key] = true
 		}
 		return result
@@ -2408,7 +2220,6 @@ func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 		if _, exists := result[checkStr]; exists {
 			result[checkStr] = true
 		} else if checkStr != "" {
-			// GENAI_DISABLED: Reject unknown checks including COMPREHEND_PII
 			fmt.Fprintf(os.Stderr, "Error: Unknown check type '%s'\n", checkStr)
 			fmt.Fprintf(os.Stderr, "Available checks: %s\n", strings.Join(core.CheckNames(), ", "))
 			os.Exit(1)
@@ -2417,29 +2228,6 @@ func parseChecksToRun(checks string, enableGenAI bool) map[string]bool {
 
 	return result
 }
-
-// GENAI_DISABLED: validateAWSCredentials checks if AWS credentials are properly configured
-// func validateAWSCredentials(region string) error {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-// 	defer cancel()
-
-// 	// Load AWS configuration
-// 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
-// 	if err != nil {
-// 		return fmt.Errorf("failed to load AWS configuration: %w", err)
-// 	}
-
-// 	// Create STS client to test credentials
-// 	stsClient := sts.NewFromConfig(cfg)
-
-// 	// Call GetCallerIdentity to validate credentials
-// 	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-// 	if err != nil {
-// 		return fmt.Errorf("credentials are invalid or expired: %w", err)
-// 	}
-
-// 	return nil
-// }
 
 // handleWebMode validates web mode flags and starts the web server
 func handleWebMode(port, bindFlag string, args []string, inputFile, configFile, suppressionFile string, excludePatterns []string) error {

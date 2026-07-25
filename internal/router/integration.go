@@ -75,66 +75,11 @@ func RegisterDefaultPreprocessors(router *FileRouter) {
 		}
 		return processor
 	})
-
-	// GENAI_DISABLED: Textract preprocessor factory (GenAI)
-	// router.RegisterPreprocessor("textract", func(config map[string]interface{}) preprocessors.Preprocessor {
-	//	region := "us-east-1"
-	//	if r, ok := config["genai_region"].(string); ok && r != "" {
-	//		region = r
-	//	}
-	//
-	//	enabled := false
-	//	if genaiEnabled, ok := config["enable_genai"].(bool); ok {
-	//		enabled = genaiEnabled
-	//	}
-	//
-	//	if genaiServices, ok := config["genai_services"].(map[string]bool); ok {
-	//		if textractEnabled, exists := genaiServices["textract"]; exists {
-	//			enabled = enabled && textractEnabled
-	//		}
-	//	}
-	//
-	//	processor := preprocessors.NewTextractPreprocessor(region)
-	//	processor.SetEnabled(enabled)
-	//	return processor
-	// })
-
-	// GENAI_DISABLED: Transcribe preprocessor factory (GenAI)
-	// router.RegisterPreprocessor("transcribe", func(config map[string]interface{}) preprocessors.Preprocessor {
-	//	region := "us-east-1"
-	//	if r, ok := config["genai_region"].(string); ok && r != "" {
-	//		region = r
-	//	}
-	//
-	//	enabled := false
-	//	if genaiEnabled, ok := config["enable_genai"].(bool); ok {
-	//		enabled = genaiEnabled
-	//	}
-	//
-	//	if genaiServices, ok := config["genai_services"].(map[string]bool); ok {
-	//		if transcribeEnabled, exists := genaiServices["transcribe"]; exists {
-	//			enabled = enabled && transcribeEnabled
-	//		}
-	//	}
-	//
-	//	if enabled {
-	//		processor := preprocessors.NewTranscribePreprocessor(region)
-	//		// Set custom bucket if provided
-	//		if bucket, ok := config["transcribe_bucket"].(string); ok && bucket != "" {
-	//			processor.SetBucket(bucket)
-	//		}
-	//		return processor
-	//	}
-	//	return nil
-	// })
 }
 
-// GENAI_DISABLED: CreateRouterConfig creates configuration map for preprocessors
-func CreateRouterConfig(enableGenAI bool, genaiServices map[string]bool, genaiRegion string, enableRedaction bool) map[string]interface{} {
+// CreateRouterConfig creates the configuration map passed to preprocessor factories.
+func CreateRouterConfig(enableRedaction bool) map[string]interface{} {
 	return map[string]interface{}{
-		// GENAI_DISABLED: "enable_genai":   enableGenAI,
-		// GENAI_DISABLED: "genai_services": genaiServices,
-		// GENAI_DISABLED: "genai_region":   genaiRegion,
 		"enable_redaction": enableRedaction,
 	}
 }

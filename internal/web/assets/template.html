@@ -467,17 +467,6 @@
             gap: var(--space-scaled-m);
         }
 
-        /* GENAI_DISABLED: GenAI warning styles
-        .genai-warning {
-            background: #fff4e6;
-            border: 1px solid var(--color-text-status-warning);
-            border-radius: 4px;
-            padding: var(--space-scaled-m);
-            margin-top: var(--space-scaled-s);
-            color: var(--color-text-status-warning);
-        }
-        GENAI_DISABLED_END */
-
         /* Hover highlight for the clickable version badge in the top nav.
            Was an inline onmouseover/onmouseout pair; moved here so the CSP
            can drop 'unsafe-inline' from script-src. */
@@ -861,12 +850,6 @@
                                                     <input type="checkbox" id="vin" checked>
                                                     <label>Vehicle Identification Numbers</label>
                                                 </div>
-                                                <!-- GENAI_DISABLED: COMPREHEND_PII checkbox
-                                            <div class="checkbox-item">
-                                                <input type="checkbox" id="comprehendPii" checked>
-                                                <label>AI PII Detection</label>
-                                            </div>
-                                            GENAI_DISABLED_END -->
                                             </div>
                                         </div>
                                     </div>
@@ -895,55 +878,6 @@
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- GENAI_DISABLED: AI-Powered Features section -->
-                            <div class="expandable-section" style="display: none;">
-                                <div class="expandable-header" data-action="toggleSection">
-                                    AI-Powered Features
-                                    <span>▼</span>
-                                </div>
-                                <div class="expandable-content">
-                                    <div class="checkbox-item">
-                                        <input type="checkbox" id="genaiCheck" data-change="toggleGenAI">
-                                        <label>Enable GenAI (Textract OCR, Transcribe, Comprehend)</label>
-                                    </div>
-                                    <div id="genaiWarning" class="genai-warning hidden">
-                                        <strong>⚠️ Important:</strong> Enabling GenAI will send your files to AWS
-                                        services.
-                                        This requires valid AWS credentials and will incur costs.
-                                    </div>
-                                    <div id="genaiServicesContainer" class="form-field hidden">
-                                        <label class="form-field-label">GenAI Services</label>
-                                        <div class="form-field-description">Select which AWS services to use</div>
-                                        <div class="checkbox-group">
-                                            <div class="checkbox-item">
-                                                <input type="checkbox" id="textractService" checked>
-                                                <label>Textract OCR (images, PDFs, ~$0.0015 per page)</label>
-                                            </div>
-                                            <div class="checkbox-item">
-                                                <input type="checkbox" id="transcribeService" checked>
-                                                <label>Transcribe (audio files, ~$0.024 per minute)</label>
-                                            </div>
-                                            <div class="checkbox-item">
-                                                <input type="checkbox" id="comprehendService" checked>
-                                                <label>Comprehend PII (text files, ~$0.0001 per 100 characters)</label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="regionContainer" class="form-field hidden">
-                                        <label class="form-field-label">AWS Region</label>
-                                        <div class="form-field-description">Select the AWS region for GenAI services
-                                        </div>
-                                        <select id="regionSelect" class="select">
-                                            <option value="us-east-1">US East 1 (N. Virginia)</option>
-                                            <option value="us-west-2">US West 2 (Oregon)</option>
-                                            <option value="eu-west-1">EU West 1 (Ireland)</option>
-                                            <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- GENAI_DISABLED_END -->
 
                             <button type="submit" id="scanButton" class="button">Start Scan</button>
                         </form>
@@ -1056,18 +990,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- GENAI_DISABLED: Cost estimation container
-            <div id="costContainer" class="container hidden">
-                <div class="container-header">
-                    <h2 class="header-h2">GenAI Cost Estimate</h2>
-                </div>
-                <div class="container-content">
-                    <div id="costBreakdown"></div>
-                    <div style="margin-top: 12px; font-weight: 600; font-size: 16px;" id="totalCost">Total Estimated Cost: $0.00</div>
-                </div>
-            </div>
-            GENAI_DISABLED_END -->
 
                 <div id="cliContainer" class="container">
                     <div class="container-header">

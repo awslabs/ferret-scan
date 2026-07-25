@@ -40,7 +40,7 @@ func TestChecksFlagHelpStringByteEqual(t *testing.T) {
 
 func TestParseChecksToRun_AcceptsEveryCanonicalName(t *testing.T) {
 	for _, name := range core.CheckNames() {
-		result := parseChecksToRun(name, false)
+		result := parseChecksToRun(name)
 		if !result[name] {
 			t.Errorf("parseChecksToRun(%q) did not enable %q; result=%v", name, name, result)
 		}
@@ -48,7 +48,7 @@ func TestParseChecksToRun_AcceptsEveryCanonicalName(t *testing.T) {
 }
 
 func TestParseChecksToRun_AllEnablesEverything(t *testing.T) {
-	result := parseChecksToRun("all", false)
+	result := parseChecksToRun("all")
 	for _, name := range core.CheckNames() {
 		if !result[name] {
 			t.Errorf("parseChecksToRun(\"all\") did not enable %q", name)

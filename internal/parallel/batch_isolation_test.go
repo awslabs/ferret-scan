@@ -47,7 +47,7 @@ func newTestFileRouter(t *testing.T) *router.FileRouter {
 	t.Helper()
 	fr := router.NewFileRouter(false)
 	router.RegisterDefaultPreprocessors(fr)
-	fr.InitializePreprocessors(router.CreateRouterConfig(false, nil, "", false))
+	fr.InitializePreprocessors(router.CreateRouterConfig(false))
 	return fr
 }
 
