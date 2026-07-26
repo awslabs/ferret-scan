@@ -148,11 +148,6 @@ func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, 
 		truncated = true
 	}
 
-	// Print summary header when stats are available
-	if options.Stats != nil {
-		f.writeSummaryHeader(w, options)
-	}
-
 	// Add headers for non-verbose mode
 	if !options.Verbose && (len(displayMatches) > 0 || len(suppressedMatches) > 0) {
 		f.appendHeaders(w, displayMatches, options)
@@ -191,12 +186,17 @@ func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, 
 		footer := fmt.Sprintf("\n... and %d more findings (use --limit 0 to show all)\n", remaining)
 		fmt.Fprint(w, footer)
 	}
+
+	// Print summary footer when stats are available
+	if options.Stats != nil {
+		f.writeSummaryHeader(w, options)
+	}
 }
 
 // writeSummaryHeader writes the scan summary block to the writer.
 func (f *Formatter) writeSummaryHeader(w io.Writer, options formatters.FormatterOptions) {
 	stats := options.Stats
-	topLine := "\n═══ Scan Summary ═════════════════════════════════════════════════════════════════\n"
+	topLine := "\n═══ Scan Summary ═══════════════════════════════════════════════════════════════\n"
 	bottomLine := "════════════════════════════════════════════════════════════════════════════════\n"
 
 	summaryLine := fmt.Sprintf("Files: %d processed, %d skipped | Findings: %d (%d high, %d medium, %d low)",
