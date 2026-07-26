@@ -131,7 +131,12 @@ func NewValidator() *Validator {
 			"ssn", "social security", "phone", "account", "serial",
 			"order", "invoice", "reference", "tracking", "confirmation",
 			"test", "example", "sample", "placeholder", "fake", "mock", "demo",
-			"ip", "address", "port", "version", "build", "hash",
+			// "address" is intentionally NOT a negative: a driver's-license record
+			// almost always lists the holder's physical address on the same line,
+			// so it hard-suppressed real DLs. "IP address" is still caught by the
+			// "ip" keyword; a bare address line never reaches scoring because the
+			// positive-keyword gate (lineHasPositiveKeyword) requires DL context.
+			"ip", "port", "version", "build", "hash",
 			"uuid", "guid", "isbn", "sku", "model",
 			// Non-DL license/permit contexts (common false positive sources)
 			"software", "fishing", "hunting", "gun", "concealed",
@@ -387,11 +392,15 @@ func (v *Validator) lineHasPositiveKeyword(line string) bool {
 			return true
 		}
 	}
-	// Also accept state name + a generic ID indicator
+	// Also accept state name + a generic ID indicator. "id" is matched as a
+	// WHOLE WORD (containsKeyword), not a raw substring: strings.Contains(lower,
+	// "id") fired inside "resident"/"valid"/"midtown", so a state name plus any
+	// such word wrongly opened the DL gate. "number"/"no."/"no:" stay as-is
+	// (they do not collide with common words the way bare "id" does).
 	if reStateName.MatchString(line) {
-		// State name alone is not enough; require at least "id" or "number" nearby
 		lower := strings.ToLower(line)
-		if strings.Contains(lower, "id") || strings.Contains(lower, "number") || strings.Contains(lower, "no.") || strings.Contains(lower, "no:") {
+		if containsKeyword(line, "id") || strings.Contains(lower, "number") ||
+			strings.Contains(lower, "no.") || strings.Contains(lower, "no:") {
 			return true
 		}
 	}

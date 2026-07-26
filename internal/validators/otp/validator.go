@@ -388,9 +388,7 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	}
 
 	for _, keyword := range v.negativeKeywords {
-		// Skip "token" suppression if not in JWT context — "token" in
-		// isolation is not negative for OTP (it can mean "OTP token").
-		if keyword == "session" && !isJWTContext {
+		if !negativeKeywordActive(keyword, isJWTContext) {
 			continue
 		}
 		if containsKeyword(fullContext, keyword) {
@@ -455,9 +453,30 @@ func (v *Validator) hasPositiveContext(line string) bool {
 	return false
 }
 
-// hasNegativeContext checks if the line contains any negative keywords.
+// negativeKeywordActive reports whether a negative keyword should count against
+// an OTP candidate given the line's JWT context. "session" is a negative signal
+// ONLY alongside a JWT (session tokens): on its own, a 2FA/TOTP setup line that
+// merely mentions "session" is not evidence against an OTP secret. Both the
+// per-keyword score (AnalyzeContext) and the presence gate (hasNegativeContext,
+// which drives the -30 in emit) must apply this identically — otherwise the
+// carve-out in one path is silently overridden by the -30 in the other.
+func negativeKeywordActive(keyword string, isJWTContext bool) bool {
+	if keyword == "session" && !isJWTContext {
+		return false
+	}
+	return true
+}
+
+// hasNegativeContext checks if the line contains any active negative keyword,
+// honoring the same JWT-aware carve-out AnalyzeContext uses (see
+// negativeKeywordActive) so the emit-time -30 penalty cannot fire on a keyword
+// that AnalyzeContext deliberately skipped.
 func (v *Validator) hasNegativeContext(line string) bool {
+	isJWTContext := reJWT.MatchString(line)
 	for _, kw := range v.negativeKeywords {
+		if !negativeKeywordActive(kw, isJWTContext) {
+			continue
+		}
 		if containsKeyword(line, kw) {
 			return true
 		}
@@ -488,7 +507,11 @@ func (v *Validator) hasRecoveryContext(line string) bool {
 		"product key", "product keys", "license", "activation", "serial",
 		"version", "firmware", "patch", "release",
 		"exit", "room", "door", "floor",
-		"staff", "employee", "device id", "device",
+		// "device id" (a hardware identifier label) suppresses, but bare "device"
+		// does NOT: real recovery codes are routinely described per device
+		// ("recovery codes for this device"), and a lone "device" wrongly vetoed
+		// them.
+		"staff", "employee", "device id",
 		"tracking", "order", "invoice",
 		"disk", "contains key", "replacement",
 	}

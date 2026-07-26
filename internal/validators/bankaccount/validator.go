@@ -41,6 +41,10 @@ var (
 	rePhoneLike   = regexp.MustCompile(`\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}`)
 	reDateLike    = regexp.MustCompile(`\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}`)
 	reVersionLike = regexp.MustCompile(`\b[vV]?\d+\.\d+\.\d+`)
+	// reVersionPrefix matches a "v"/"v." version prefix bound to a digit at a
+	// word boundary (v.1, v2, V.10), so a version-labelled number is suppressed
+	// without a bare "v." substring firing inside unrelated words.
+	reVersionPrefix = regexp.MustCompile(`\b[vV]\.?\d`)
 
 	// ISO 3166-1 alpha-2 country codes (subset used for IBAN validation).
 	validIBANCountries = map[string]int{
@@ -975,13 +979,22 @@ func (v *Validator) looksLikeDate(line string, start, end int) bool {
 }
 
 // looksLikeVersion checks if the digit sequence is preceded by a version indicator.
+//
+// The "version" word is matched on a WHOLE-WORD boundary (containsKeyword), not a
+// raw substring: a bare strings.Contains matched "version" inside "conversion",
+// "subversion" and "aversion", wrongly suppressing a real account number that
+// happened to follow one of those words. The "v." prefix check is likewise
+// anchored to a version token (reVersionPrefix: "v." or "v" immediately before a
+// digit at a word boundary, e.g. "v.1"/"v2"), not any word merely ending in "v".
 func (v *Validator) looksLikeVersion(line string, start int) bool {
 	windowStart := start - 10
 	if windowStart < 0 {
 		windowStart = 0
 	}
 	window := line[windowStart:start]
-	return reVersionLike.MatchString(window) || strings.Contains(strings.ToLower(window), "version") || strings.Contains(strings.ToLower(window), "v.")
+	return reVersionLike.MatchString(window) ||
+		containsKeyword(window, "version") ||
+		reVersionPrefix.MatchString(window)
 }
 
 // --- Utility helpers ---

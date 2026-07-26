@@ -140,6 +140,51 @@ func TestDriversLicenseValidator_PositiveCases(t *testing.T) {
 	}
 }
 
+// TestDriversLicenseValidator_AddressDoesNotSuppress locks the removal of the
+// "address" negative keyword: a driver's-license record almost always lists the
+// holder's physical address on the same line, so "address" hard-suppressed real
+// DLs. The DL must still surface with address context, while "IP address" (via
+// the "ip" keyword) still suppresses.
+func TestDriversLicenseValidator_AddressDoesNotSuppress(t *testing.T) {
+	validator := NewValidator()
+
+	// Recovered: a real DL line that also mentions the holder's address.
+	for _, content := range []string{
+		"Driver's License: D1234567, address 123 Main St",
+		"California DL D1234567 mailing address on file",
+	} {
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if m.Type == "DRIVERS_LICENSE" && m.Confidence >= 60 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("real DL with address context should surface for %q, got %d matches", content, len(matches))
+		}
+	}
+
+	// Still suppressed: an IP address / port context (via "ip"/"port").
+	for _, content := range []string{
+		"IP address port for device D1234567",
+	} {
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		for _, m := range matches {
+			if m.Type == "DRIVERS_LICENSE" && m.Confidence >= 60 {
+				t.Errorf("IP/port context should suppress DL for %q, got %.1f", content, m.Confidence)
+			}
+		}
+	}
+}
+
 func TestDriversLicenseValidator_NegativeCases(t *testing.T) {
 	validator := NewValidator()
 

@@ -143,6 +143,61 @@ func TestOTPValidator_Base32Secrets(t *testing.T) {
 	}
 }
 
+// TestOTPValidator_SessionAndDeviceGating locks the Wave-2 OTP fixes:
+//   - "session" is a negative signal ONLY with a JWT on the line; a 2FA/TOTP
+//     setup line that merely mentions "session" must keep its OTP secret. The
+//     AnalyzeContext carve-out and the emit-time -30 (hasNegativeContext) must
+//     agree, so the secret is not silently dropped by the -30.
+//   - bare "device" no longer vetoes recovery codes ("recovery codes for this
+//     device"), while "device id" still suppresses.
+func TestOTPValidator_SessionAndDeviceGating(t *testing.T) {
+	validator := NewValidator()
+
+	// "session" without a JWT must NOT suppress a real TOTP secret.
+	got, err := validator.ValidateContent(
+		"2FA authenticator secret key JBSWY3DPEHPK3PXP for this session", "test.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	foundSecret := false
+	for _, m := range got {
+		if m.Type == "OTP_SECRET" && m.Confidence > 50 {
+			foundSecret = true
+		}
+	}
+	if !foundSecret {
+		t.Errorf("'session' without a JWT should not suppress the OTP secret; got %d matches", len(got))
+	}
+
+	// bare "device" must NOT veto recovery codes.
+	rc, err := validator.ValidateContent(
+		"Your recovery codes for this device: ABCD-EFGH-IJKL MNOP-QRST-UVWX", "test.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	foundRC := false
+	for _, m := range rc {
+		if m.Type == "RECOVERY_CODES" {
+			foundRC = true
+		}
+	}
+	if !foundRC {
+		t.Errorf("bare 'device' should not veto recovery codes; got %d matches", len(rc))
+	}
+
+	// "device id" (hardware identifier) must still suppress recovery-code shapes.
+	di, err := validator.ValidateContent(
+		"backup device id list: ABCD-EFGH-IJKL MNOP-QRST-UVWX", "test.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	for _, m := range di {
+		if m.Type == "RECOVERY_CODES" {
+			t.Errorf("'device id' should still suppress recovery codes; got a match %q", m.Text)
+		}
+	}
+}
+
 func TestOTPValidator_RecoveryCodes(t *testing.T) {
 	validator := NewValidator()
 
