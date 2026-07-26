@@ -239,6 +239,15 @@ func NewValidator() *Validator {
 			"proprietary process", "proprietary method", "proprietary formula",
 			"confidentiality agreement", "NDA", "non-disclosure", "trade dress",
 			"service mark", "industrial design", "mask work", "sui generis",
+			// Multi-word IP-notice phrases that co-occur with a real marker and
+			// should raise its confidence. These are BOOST-only (positive
+			// keywords never create a finding on their own — findings come from
+			// the patent/trademark/copyright/trade-secret regexes), so they
+			// cannot add a false positive. Kept as long phrases to avoid the
+			// substring collisions short tokens have (e.g. the pre-existing
+			// "NDA" inside "agenda").
+			"patent pending", "patent-pending", "licensed under",
+			"respective owners", "all trademarks", "patents pending",
 		},
 		negativeKeywords: []string{
 			"example", "sample", "test", "dummy", "placeholder", "template",

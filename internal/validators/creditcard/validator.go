@@ -58,6 +58,10 @@ type Validator struct {
 	positiveKeywordRegex     *regexp.Regexp
 	hardNegativeKeywordRegex *regexp.Regexp
 	softNegativeKeywordRegex *regexp.Regexp
+	// anyNegativeKeywordRegex matches hard OR soft negatives in one pass, so the
+	// no-positive path (where both tiers suppress identically) costs a single
+	// scan instead of two — keeping analyzeContextLower at two scans max.
+	anyNegativeKeywordRegex *regexp.Regexp
 
 	// Observability
 	observer observability.Observer
@@ -150,6 +154,7 @@ func NewValidator() *Validator {
 	v.positiveKeywordRegex = buildKeywordRegex(v.positiveKeywords)
 	v.hardNegativeKeywordRegex = buildKeywordRegex(v.hardNegativeKeywords)
 	v.softNegativeKeywordRegex = buildKeywordRegex(v.softNegativeKeywords)
+	v.anyNegativeKeywordRegex = buildKeywordRegex(v.negativeKeywords) // hard+soft combined
 
 	// Pre-compile test patterns for fast rejection
 	v.testPatterns = []*regexp.Regexp{
@@ -620,29 +625,28 @@ func (v *Validator) analyzeContext(match string, context detector.ContextInfo) f
 // ONCE and calls this directly, instead of lowercasing the whole line again for
 // every match on the line. Behavior is identical to analyzeContext.
 func (v *Validator) analyzeContextLower(lowerLine string) float64 {
-	// Hard negatives suppress outright: the number is a different mathematical/
-	// synthetic object (hash, timestamp, version, test fixture), never a card,
-	// so an incidental positive word cannot rescue it.
-	if v.hardNegativeKeywordRegex != nil && v.hardNegativeKeywordRegex.MatchString(lowerLine) {
-		return -100 // Very strong negative impact to ensure rejection
-	}
-
+	// Two regex scans max (same cost as the pre-tiering implementation). The tier
+	// distinction only matters when a positive card word is present: WITHOUT a
+	// positive, hard and soft negatives both suppress, so a single combined
+	// "any negative" scan settles it; WITH a positive, only a hard negative can
+	// still override the card word, so we scan just the hard set.
 	positive := v.positiveKeywordRegex != nil && v.positiveKeywordRegex.MatchString(lowerLine)
 
-	// Soft negatives are identifier/label words that co-occur with REAL cards.
-	// They suppress only when no positive card keyword is present on the line;
-	// an explicit card word ("card"/"paid"/"visa"/...) overrides the label so a
-	// genuine card labelled with an account/order/serial number is not dropped.
-	if !positive && v.softNegativeKeywordRegex != nil && v.softNegativeKeywordRegex.MatchString(lowerLine) {
+	if !positive {
+		// No positive: any negative (hard OR soft) suppresses.
+		if v.anyNegativeKeywordRegex != nil && v.anyNegativeKeywordRegex.MatchString(lowerLine) {
+			return -100
+		}
+		return 0.0
+	}
+
+	// Positive present: hard negatives (hash/timestamp/version/test — a different
+	// mathematical/synthetic object, never a card) still suppress outright; soft
+	// identifier labels (account/order/serial/...) are overridden by the card word.
+	if v.hardNegativeKeywordRegex != nil && v.hardNegativeKeywordRegex.MatchString(lowerLine) {
 		return -100
 	}
-
-	// Quick positive keyword check
-	if positive {
-		return 15 // Boost for positive context (single boost; avoid over-boosting)
-	}
-
-	return 0.0
+	return 15 // Boost for positive context (single boost; avoid over-boosting)
 }
 
 // buildContextInfo efficiently builds context information by locating the match

@@ -680,6 +680,45 @@ func TestPatentPrefixCaseSensitive(t *testing.T) {
 	}
 }
 
+// TestIPNoticePhraseBoost locks the Wave-4 positive-keyword additions
+// ("patent pending", "licensed under", "respective owners", ...). These are
+// BOOST-only: they raise the confidence of a REAL IP marker on the line but
+// never create a finding on their own (findings come from the regexes). The
+// test asserts (a) the boost lifts a genuine marker's confidence and (b) the
+// phrase alone, with no marker, produces nothing (no new false positives).
+func TestIPNoticePhraseBoost(t *testing.T) {
+	v := NewValidator()
+
+	best := func(line string) float64 {
+		matches, _ := v.ValidateContent(line+"\n", "test.txt")
+		var b float64
+		for _, m := range matches {
+			if m.Confidence > b {
+				b = m.Confidence
+			}
+		}
+		return b
+	}
+
+	// Boost: a real trademark marker gains confidence when "Patent Pending" is present.
+	baseTM := best("AcmeWidget(TM) released")
+	boostedTM := best("AcmeWidget(TM) is Patent Pending")
+	if boostedTM <= baseTM {
+		t.Errorf("'Patent Pending' should boost a real TM marker: base=%.1f boosted=%.1f", baseTM, boostedTM)
+	}
+
+	// No new false positive: the phrases alone (no IP marker) must not be a finding.
+	for _, line := range []string{
+		"This product is patent pending",
+		"All trademarks are the property of their respective owners",
+		"the software is licensed under the terms herein",
+	} {
+		if b := best(line); b > 0 {
+			t.Errorf("boost-only phrase %q must not create a finding, got confidence %.1f", line, b)
+		}
+	}
+}
+
 // TestCopyrightFooterVariants is a regression test for M29: copyright notices
 // without a year, with em-dash ranges, or with parenthesized/no-year entities
 // were missed because the pattern required a 4-digit year + ASCII-only name.

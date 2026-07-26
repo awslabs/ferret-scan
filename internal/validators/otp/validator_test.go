@@ -143,6 +143,38 @@ func TestOTPValidator_Base32Secrets(t *testing.T) {
 	}
 }
 
+// TestOTPValidator_ExtraPositiveKeywords locks the Wave-4 positive-keyword
+// additions. A base32 secret is only scanned when the line carries an OTP
+// keyword (lc.hasPos); these common phrasings were previously missing, so a
+// real TOTP seed on a "passcode"/"one time password"/"two-step" line was not
+// detected at all. "-" is a word boundary in containsKeyword, so the hyphenated
+// "one-time" literal did not cover the space form "one time".
+func TestOTPValidator_ExtraPositiveKeywords(t *testing.T) {
+	validator := NewValidator()
+	for _, content := range []string{
+		"passcode secret JBSWY3DPEHPK3PXP",
+		"one time password JBSWY3DPEHPK3PXP",
+		"two-step secret key JBSWY3DPEHPK3PXP",
+		"authentication code JBSWY3DPEHPK3PXP",
+		"security code seed JBSWY3DPEHPK3PXP",
+	} {
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if m.Type == "OTP_SECRET" && m.Confidence > 50 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected OTP_SECRET for %q, got %d matches", content, len(matches))
+		}
+	}
+}
+
 // TestOTPValidator_SessionAndDeviceGating locks the Wave-2 OTP fixes:
 //   - "session" is a negative signal ONLY with a JWT on the line; a 2FA/TOTP
 //     setup line that merely mentions "session" must keep its OTP secret. The
