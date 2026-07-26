@@ -2,6 +2,13 @@
 
 [← Back to Documentation Index](../README.md)
 
+## Unreleased
+
+### Removed
+- **AWS GenAI integration removed entirely**: Deleted the previously disabled AWS GenAI code — Amazon Textract (OCR), Amazon Transcribe (audio transcription), Amazon Comprehend (ML PII detection), and the cost estimator — including the `--enable-genai`, `--genai-services`, `--textract-region`, `--transcribe-bucket`, `--max-cost`, and `--estimate-only` CLI flags, the `COMPREHEND_PII` check, the web UI "AI-Powered Features" section and cost estimate controls, the related documentation and examples, the restore script, and the IAM role template (`aws-iam-role.yaml`)
+
+---
+
 ## v0.14.1 - Security Release (September 16, 2025)
 
 ### 🔒 SECURITY FIXES
@@ -14,9 +21,9 @@
   - File routing and processing (`internal/router/file_router.go`)
   - Platform file attributes (`internal/platform/attributes.go`)
   - Text preprocessors (`internal/preprocessors/plaintext_preprocessor.go`)
-  - Cost estimation (`internal/cost/estimator.go`)
+  - Cost estimation (`internal/cost/estimator.go`) *(GenAI cost estimator; removed from the codebase in a later release)*
   - Suppression management (`internal/suppressions/suppression.go`)
-  - Validator operations (`internal/validators/comprehend/validator.go`)
+  - Validator operations (`internal/validators/comprehend/validator.go`) *(Comprehend GenAI validator; removed from the codebase in a later release)*
 
 ### 🛡️ Security Impact
 - **Prevents unauthorized file access** through malicious path manipulation
@@ -128,12 +135,11 @@
 - **Visual Progress Bar**: Replaced text progress with animated progress bar
 - **Original Filenames**: Display actual filenames instead of temporary file paths
 
-<!-- GENAI_DISABLED: GenAI Cost Management
-- **Selective Service Usage**: Individual checkboxes for Textract, Transcribe, Comprehend
-- **Accurate Cost Calculation**: Only calculates costs for selected services
-- **Real-time Cost Estimates**: Updates based on file types and selected services
-- **Cost Transparency**: Clear pricing information for each service
--->
+#### GenAI Cost Management *(GenAI integration; removed from the codebase in a later release)*
+- **Selective Service Usage**: Provided individual checkboxes for Textract, Transcribe, Comprehend
+- **Accurate Cost Calculation**: Calculated costs only for selected services
+- **Real-time Cost Estimates**: Updated estimates based on file types and selected services
+- **Cost Transparency**: Showed clear pricing information for each service
 
 #### User Experience Improvements
 - **Expandable Sections**: Collapsible configuration sections for clean interface
@@ -144,11 +150,10 @@
 
 ### CLI Enhancements
 
-<!-- GENAI_DISABLED: GenAI Service Selection
-- **--genai-services Flag**: Selective AWS service usage (textract, transcribe, comprehend, all)
-- **Cost Control**: Ability to exclude expensive services like Comprehend
-- **Service Validation**: Proper validation of service combinations
--->
+#### GenAI Service Selection *(GenAI integration; removed from the codebase in a later release)*
+- **--genai-services Flag**: Enabled selective AWS service usage (textract, transcribe, comprehend, all)
+- **Cost Control**: Allowed excluding expensive services like Comprehend
+- **Service Validation**: Validated service combinations
 
 #### Suppression System
 - **--generate-suppressions Flag**: Auto-generate suppression rules for findings
@@ -160,7 +165,7 @@
 - **Modular Architecture**: Extensible agent system for advanced analysis
 - **Local Agents**: Risk assessment, context analysis, remediation suggestions
 - **Agent Control Flags**: --enable-agents and --agents for selective usage
-<!-- GENAI_DISABLED: - **Future AI Integration**: Framework ready for AI-powered agents -->
+- **Future AI Integration**: Framework was originally positioned to support AI-powered agents *(the GenAI integration was later removed from the codebase)*
 
 ### Core System Improvements
 
@@ -190,15 +195,15 @@
 - **Intellectual Property**: Patents, trademarks, copyrights, trade secrets
 - **Social Security Numbers**: US SSN detection with format validation
 - **Enhanced Metadata**: GPS coordinates, timestamps, device fingerprints
-<!-- GENAI_DISABLED: - **AI-Powered PII**: Amazon Comprehend integration for advanced detection -->
+- **AI-Powered PII**: Added Amazon Comprehend integration for advanced detection *(removed from the codebase in a later release)*
 
 ### Documentation Updates
 
 #### README Enhancements
 - **Web UI Documentation**: Comprehensive web interface guide
-<!-- GENAI_DISABLED: - **GenAI Integration**: Detailed AWS service setup and usage -->
+- **GenAI Integration**: Documented detailed AWS service setup and usage *(GenAI integration and its documentation removed from the codebase in a later release)*
 - **Pagination Features**: Documentation of new navigation capabilities
-- **Cost Management**: Clear guidance on controlling AWS costs
+- **Cost Management**: Provided guidance on controlling AWS costs *(cost estimator later removed along with the GenAI integration)*
 
 #### Help System
 - **Interactive Help**: Modal help system in web interface
@@ -234,7 +239,7 @@
 ### Default Behavior
 - **Default Sorting**: Results now sorted by confidence, filename, line number
 - **Pagination**: Large result sets automatically paginated
-<!-- GENAI_DISABLED: - **GenAI Services**: More granular control over AWS service usage -->
+- **GenAI Services**: Introduced more granular control over AWS service usage *(GenAI integration removed from the codebase in a later release)*
 
 ## Migration Guide
 
@@ -245,13 +250,13 @@
 
 ### For Users
 1. **Web Interface**: New pagination and filtering controls
-<!-- GENAI_DISABLED: 2. **CLI Options**: New --genai-services flag for cost control -->
+2. **CLI Options**: A `--genai-services` flag was added for cost control *(flag removed from the codebase in a later release)*
 3. **Suppression Files**: Enhanced suppression system with new features
 
 ## Future Roadmap
 
 ### Planned Features
-<!-- GENAI_DISABLED: - **AI Agent Integration**: Advanced AI-powered analysis agents -->
+- **AI Agent Integration**: Advanced AI-powered analysis agents were previously planned *(no longer planned; the GenAI integration was removed from the codebase)*
 - **Enhanced Reporting**: More detailed reporting and analytics
 - **Additional Validators**: More sensitive data detection types
 - **Performance Improvements**: Further optimization for large datasets
@@ -260,4 +265,4 @@
 - **Real-time Scanning**: Live file monitoring capabilities
 - **Integration APIs**: REST API for third-party integrations
 - **Cloud Deployment**: Native cloud deployment options
-<!-- GENAI_DISABLED: - **Advanced Analytics**: Machine learning for pattern detection -->
+- **Advanced Analytics**: Machine learning for pattern detection was previously under consideration *(no longer under consideration following the GenAI removal)*

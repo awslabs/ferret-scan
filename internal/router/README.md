@@ -20,11 +20,11 @@ router := NewFileRouter(true)
 RegisterDefaultPreprocessors(router)
 
 // Initialize with configuration
-config := CreateRouterConfig(enableGenAI, genaiServices, genaiRegion)
+config := CreateRouterConfig(enableRedaction)
 router.InitializePreprocessors(config)
 
 // Process a file
-ctx, err := router.CreateProcessingContext(filePath, enableGenAI, genaiServices, genaiRegion, debug)
+ctx, err := router.CreateProcessingContext(filePath, debug)
 if err != nil {
     return err
 }
@@ -45,8 +45,7 @@ When `--debug` is enabled, structured JSON logs are written to stderr:
     "request_id": "a1b2c3d4e5f6g7h8",
     "file_path": "/path/to/file.pdf",
     "file_size": 1024000,
-    "file_ext": ".pdf",
-    "enable_genai": true
+    "file_ext": ".pdf"
   }
 }
 ```

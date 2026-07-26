@@ -44,14 +44,14 @@
 - **Parallel Processor**: `internal/parallel/parallel_processor.go` - Handles concurrent processing
 - **Observability**: `internal/observability/` - Debug logging and metrics
 - **Memory Security**: `internal/security/memory.go` - Memory scrubbing
-- **Cost Estimation**: `internal/cost/estimator.go` - AWS cost calculation
+- **Cost Estimation**: ❌ **REMOVED** - `internal/cost/estimator.go` (AWS AI-service cost calculation) was deleted along with the AWS GenAI integration
 
 #### **Preprocessors** ✅ **COMPLETE**
 - **Plain Text**: `internal/preprocessors/plaintext_preprocessor.go`
 - **Document Text**: `internal/preprocessors/text_preprocessor.go`
 - **Metadata**: `internal/preprocessors/base_metadata_preprocessor.go` + per-type extractors (`{audio,image,office,pdf,video}_metadata_preprocessor.go`)
-<!-- GENAI_DISABLED: - **Textract OCR**: `internal/preprocessors/textract_preprocessor.go` -->
-<!-- GENAI_DISABLED: - **Transcribe Audio**: `internal/preprocessors/transcribe_preprocessor.go` -->
+- **Textract OCR**: ❌ **REMOVED** - the Amazon Textract preprocessor (`textract_preprocessor.go`) was deleted; the feature no longer exists
+- **Transcribe Audio**: ❌ **REMOVED** - the Amazon Transcribe preprocessor (`transcribe_preprocessor.go`) was deleted; the feature no longer exists
 
 #### **Enhanced Validators** ✅ **COMPLETE**
 - **Credit Card**: Enhanced with context awareness
@@ -61,7 +61,7 @@
 - **Intellectual Property**: Legal context analysis
 - **Cloud Resources**: Multi-cloud resource identifier detection (AWS/Azure/GCP/OCI/IBM/Alibaba)
 - **Metadata**: Context-aware metadata validation
-<!-- GENAI_DISABLED: - **Comprehend PII**: AWS AI-powered detection -->
+- **Comprehend PII**: ❌ **REMOVED** - the Amazon Comprehend validator (`COMPREHEND_PII` check) was deleted; the feature no longer exists
 
 ### 🔄 **MINOR PLACEHOLDERS (2% Remaining)**
 

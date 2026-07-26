@@ -4,15 +4,16 @@
 **Last reviewed:** 2026-07-12
 **Owner:** Andrea Di Fabio (adifabio@) — pending handover to OSS maintainer team on publication
 
-This is a starting-point threat model drafted during PCSR prep so a reviewer can edit and sign off before publication. Update whenever a new trust boundary, route, or ingestion path is added. The current model covers two execution modes — CLI scanner and embedded web UI — plus the optional GenAI/Textract/Transcribe preprocessor path.
+This is a starting-point threat model drafted during PCSR prep so a reviewer can edit and sign off before publication. Update whenever a new trust boundary, route, or ingestion path is added. The current model covers two execution modes — CLI scanner and embedded web UI.
 
 ## 1. System overview
 
-Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secrets, IP markers) in local files and produces redacted output or structured findings. Three execution surfaces:
+Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secrets, IP markers) in local files and produces redacted output or structured findings. Two execution surfaces:
 
 1. **CLI** — `ferret-scan --file <path>` reads files from the local filesystem; no listening sockets, no inbound trust boundaries.
 2. **Web UI** — `ferret-scan --web --port 8080` starts an HTTP server bound to `:<port>` (all interfaces). Accepts multipart file uploads and JSON suppression-rule mutations.
-3. **Optional cloud preprocessors** — Amazon Textract / Transcribe / Comprehend, gated behind a build flag and currently disabled in the source tree (`<!-- GENAI_DISABLED: ... -->` markers throughout).
+
+A former optional cloud-preprocessor path (Amazon Textract / Transcribe / Comprehend) was removed entirely from the codebase; the associated trust boundaries (TB-5, TB-6) are retained below for the record, marked eliminated.
 
 ## 2. Trust boundaries
 
@@ -22,8 +23,8 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 | TB-2 | Browser → web server | inbound | No authentication. Server binds to `:<port>` (all interfaces). |
 | TB-3 | Web server → uploaded file content | inbound | Multipart upload, 100 MB cap (server.go:323, 425). Written to OS temp dir, removed on scan completion. |
 | TB-4 | Web server → suppression YAML on disk | bidirectional | `suppressions/` package mutates the YAML file. Path comes from `--suppression-file` flag at startup; not request-controlled. |
-| TB-5 | Process → AWS APIs (Textract/Transcribe/Comprehend) | outbound | Only when GenAI flag enabled. Credentials from standard AWS chain (env, profile, IAM role). Currently disabled in source. |
-| TB-6 | Process → external HTTP (Transcribe transcript URI) | outbound | `http.Get(uri)` in transcribe-extractor.go:186 against a URI returned by `GetTranscriptionJob`. Service-controlled, not user-controlled. |
+| TB-5 | Process → AWS APIs (formerly Textract/Transcribe/Comprehend) | outbound | **Eliminated** — the GenAI integration was removed entirely; the tool makes no outbound AWS API calls. Row retained for the record. |
+| TB-6 | Process → external HTTP (formerly the Transcribe transcript URI fetch) | outbound | **Eliminated** — the Transcribe integration (including the transcript-URI `http.Get`) was removed entirely; the tool makes no outbound HTTP calls. Row retained for the record. |
 | TB-7 | Pre-commit hook → ferret-scan binary | inbound (developer machine) | Pre-commit invokes the binary against staged files; same trust as CLI. |
 | TB-8 | GitHub Actions runners → external registries (ECR Public / GHCR / PyPI) | outbound | Build, package, and publish flow. Workflows run with `contents: write`, `packages: write`, and `id-token: write` (PyPI trusted publishing + AWS OIDC for ECR). Third-party actions are SHA-pinned with version comments (`@<sha> # vX.Y.Z`) — see PR #64 and `.github/workflows/README.md`. Auto-version-tag job pushes tags to `main` on every push. |
 
@@ -54,7 +55,7 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 
 | Threat | STRIDE | Mitigation |
 |---|---|---|
-| Malicious file content (e.g. crafted PDF/DOCX) exploiting a preprocessor parser | E | **Compensating control** — preprocessors are disabled by default (`enable_preprocessors: true` is on, but GenAI/Textract paths are gated behind `<!-- GENAI_DISABLED: -->` markers and absent from current builds). Risk surface is local Go libraries (PDF, DOCX). Recommend dependency-pin review in PCSR follow-up. |
+| Malicious file content (e.g. crafted PDF/DOCX) exploiting a preprocessor parser | E | **Compensating control** — risk surface is local Go libraries (PDF, DOCX); no cloud preprocessors exist. Recommend dependency-pin review in PCSR follow-up. |
 | Temp file leakage to `/tmp` after process crash | I | **Compensating control** — `os.CreateTemp` uses random filenames; `defer os.Remove(...)` (server.go:436). Crash mid-scan leaves the file behind, but content is bounded by what the operator already had locally. |
 
 ### TB-4 (suppression YAML mutation)
@@ -63,18 +64,18 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 |---|---|---|
 | Malicious suppression rule hides real findings | T, R | **Mitigated** — gated by TB-2's localhost-only default. Any caller able to reach the suppression endpoints is on the local machine; LAN binding requires explicit `--bind 0.0.0.0` plus the cross-origin check (which still applies). The pragma `# pragma: allowlist secret` is appended automatically (suppressions package), preventing the suppressions file from triggering ferret-scan itself. **Re-evaluate** if a future deployment exposes the UI remotely (add explicit auth on `suppressions/*` routes at that point). |
 
-### TB-5 (process → AWS APIs)
+### TB-5 (process → AWS APIs — eliminated)
 
 | Threat | STRIDE | Mitigation |
 |---|---|---|
-| Hardcoded AWS credentials in source | I | **Mitigated in code** — credentials come from the standard AWS chain (env, shared config, IAM role). README and aws-iam-role.yaml document IAM-role-based access with ExternalId and PrincipalArn constraints. No `AWS_ACCESS_KEY_ID` literals in source. |
-| Excessive IAM permissions when role is assumed | E | **Compensating control** — aws-iam-role.yaml scopes permissions to Textract/Transcribe/Comprehend only and uses ExternalId. Reviewer should run `cfn-nag` against the template before publication. |
+| Hardcoded AWS credentials in source | I | **Eliminated** — the GenAI integration was removed entirely; the codebase contains no AWS SDK usage and no credential handling. No `AWS_ACCESS_KEY_ID` literals in source. |
+| Excessive IAM permissions when role is assumed | E | **Eliminated** — the GenAI integration was removed entirely; no IAM role is assumed and no IAM template ships with the project. |
 
-### TB-6 (Transcribe transcript URI)
+### TB-6 (Transcribe transcript URI — eliminated)
 
 | Threat | STRIDE | Mitigation |
 |---|---|---|
-| SSRF via `http.Get(uri)` with attacker-controlled URI | T, I | **Compensating control** — the URI returned by `GetTranscriptionJob` is service-issued (S3 pre-signed URL, validated origin). User cannot influence the URI directly. Recommend wrapping with a redirect-disabling client and an allowlist of `*.s3.amazonaws.com` / `*.s3.<region>.amazonaws.com` hosts as defense in depth. |
+| SSRF via `http.Get(uri)` with attacker-controlled URI | T, I | **Eliminated** — the Transcribe integration (and its transcript-URI fetch) was removed entirely; the tool makes no outbound HTTP requests. |
 
 ### TB-7 (pre-commit hook)
 
@@ -100,7 +101,7 @@ Ferret Scan is a Go-based CLI/web tool that detects sensitive content (PII, secr
 | TM-04 | Suppression mutation has no auth (TB-4) — gated by TM-01 fix | Major | **Mitigated** — closed by TM-01's loopback default. Re-evaluate if `--bind 0.0.0.0` becomes the documented deployment posture. |
 | TM-05 | Embedded HTML template has ~90 inline event handlers and ~301 inline `style` attributes; CSP must include `'unsafe-inline'` until refactored | Minor (defense-in-depth) | **Partially closed (script half done)** — inline `<script>` block extracted to the embedded `/app.js` asset and all 93 inline `on*` handlers replaced with `data-action`/`data-change` event delegation; CSP `script-src` is now `'self'` (issue #147 item 1). Remaining: hoist inline `style` attributes into the stylesheet, then drop `'unsafe-inline'` from `style-src`. |
 | TM-06 | Cloudscape design-system stylesheet loaded from `https://d0.awsstatic.com` (CSP allow-listed) | Minor (defense-in-depth) | **Open** — tracked. Self-host the CSS in the embed to drop the third-party `style-src` allowance. |
-| TM-07 | SSRF defense-in-depth on Transcribe transcript URI fetch (TB-6) | Minor | **Deferred** — file is `GENAI_DISABLED` and not compiled in. Re-evaluate when GenAI is re-enabled. |
+| TM-07 | SSRF defense-in-depth on Transcribe transcript URI fetch (TB-6) | Minor | **Eliminated** — the GenAI integration (including the Transcribe transcript-URI fetch) was removed entirely; the code no longer exists. |
 | TM-08 | Floating-tag GitHub Actions chained with elevated runner permissions and auto-commit (TB-8) | **Major** | **In progress** — added 2026-05-22 by REPO scan. PR #64 SHA-pins every `uses:` reference (`@<sha> # vX.Y.Z` pattern); PR #66 adds dependabot config so the pins stay maintainable. Worst offender pre-fix was `pypa/gh-action-pypi-publish@release/v1` (a branch reference); now pinned to `cef22109... # release/v1 (2026-04-07)`. |
 | TM-09 | `auto-version-tag` GitLab job pushes tags without manual approval (TB-8) | Minor | **In progress** — added 2026-05-22 by REPO scan. PR #69 adds `when: manual` + `allow_failure: true` on the rule (a maintainer must click "play" in the GitLab UI for the tag to push) and inline-documents the expectation that `GITLAB_RELEASE_TOKEN` is scoped `write_repository` only. Final closure also requires verifying the token scope in the GitLab project-settings UI. |
 | TM-10 | Dockerfile builder-stage `FROM` not pinned by digest (TB-8) | Minor | **Mitigated** — added 2026-05-22 by REPO scan; PR #70 introduced digest pinning. The builder is now pinned to `golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2` (Go 1.26.5 picks up fixes for CVE-2026-39822 and CVE-2026-42505). The tag+digest are kept in sync via `scripts/go-version.sh` from the `.go-version` source of truth; the digest references a multi-arch manifest list covering both `linux/amd64` and `linux/arm64`, matching the platforms `docker-multiarch.yml` builds. Final stage is `FROM scratch` and is unaffected. |

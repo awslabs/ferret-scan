@@ -9,7 +9,7 @@
 
 ## 0. Why this doc leads with history
 
-Ferret Scan **already shipped GenAI and deliberately removed it.** Amazon Textract (OCR), Transcribe (audio→text), and Comprehend (ML PII detection) were integrated behind an `--enable-genai` flag with cost estimation, then disabled-by-commenting (not deleted) with a full [`docs/GENAI_RESTORATION_GUIDE.md`](../GENAI_RESTORATION_GUIDE.md). The stated reason, verbatim from [`internal/validators/comprehend/validator.go:6-8`](../../internal/validators/comprehend/validator.go#L6-L8):
+Ferret Scan **already shipped GenAI and deliberately removed it.** Amazon Textract (OCR), Transcribe (audio→text), and Comprehend (ML PII detection) were integrated behind an `--enable-genai` flag with cost estimation, later disabled, and have since been fully removed from the codebase — code, docs, and restoration guide alike. The stated reason, quoted verbatim from the since-removed `internal/validators/comprehend/validator.go`:
 
 > "The comprehend-analyzer-lib dependency and AWS SDK v2 required for this functionality have been removed from go.mod to **reduce binary size** and **eliminate cloud service dependencies**."
 
@@ -138,7 +138,7 @@ type LLMAdjudicator struct{ Endpoint string /* ... */ }
 
 ---
 
-## 7. CLI surface (mirrors the `--enable-genai` precedent)
+## 7. CLI surface (mirrors the since-removed `--enable-genai` precedent)
 
 | Flag | Default | Effect |
 |---|---|---|
@@ -183,7 +183,7 @@ Thread per-finding reasons through `GenerateSuppressionRules` (the ~3-call-site 
 | A `LIKELY_TEST` gloss lulls a human into dismissing a real secret | Verdict is a gloss on existing confidence, never independent; HIGH findings always surface; never auto-suppress; generated suppressions are `enabled=false` for human review. |
 | Suppression-hash invalidation / non-determinism | Explainer runs after hashing and never mutates `Confidence`. |
 | LLM rationale leaks payload bytes | Explanation off `Finding`/`AuditRecord`; `Clear()` wipes it; LLM tier span-strips `m.Text`; observability via `io.Discard`. |
-| LLM tier re-opens an outbound trust boundary | Off by default, build-tagged out of the binary, loopback-only unless `--explain-allow-remote`, loud warning — the `--enable-genai` posture. |
+| LLM tier re-opens an outbound trust boundary | Off by default, build-tagged out of the binary, loopback-only unless `--explain-allow-remote`, loud warning — the old `--enable-genai` posture. |
 | Phase 2 signature change ripples | Scoped to ~3 call sites; covered by existing suppression tests. |
 
 ---
@@ -192,7 +192,7 @@ Thread per-finding reasons through `GenerateSuppressionRules` (the ~3-call-site 
 
 - **Not** bundling model weights; **not** adding a CGO inference runtime; **not** shipping ONNX/transformer NER — infeasible under `CGO_ENABLED=0` with no mature pure-Go runtime; would break the size constraint.
 - **Not** adding any AWS SDK or heavy dependency to core `go.mod`.
-- **Not** re-enabling Textract/Transcribe/Comprehend or any cloud API in the default build.
+- **Not** re-introducing Textract/Transcribe/Comprehend or any cloud API in the default build.
 - **Not** letting any AI tier mutate confidence, gate CI, or auto-suppress.
 - **Not** exposing explanation text on the payload-free public `Finding`/`AuditRecord` by default.
 - **Not** making the LLM tier part of the released artifact — it is a separate opt-in build.

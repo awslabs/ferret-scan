@@ -148,8 +148,7 @@ flowchart TD
             OfficePrep["📊 Office Extractor<br/>Word, Excel, PowerPoint"]
             ImagePrep["🖼️ Image Metadata<br/>EXIF extraction"]
             MetadataPrep["📋 Metadata Extractor<br/>File system metadata"]
-            AudioPrep["🎵 Audio Metadata<br/>DISABLED"]
-            TextractPrep["🤖 AWS Textract<br/>GENAI_DISABLED"]
+            AudioPrep["🎵 Audio Metadata<br/>Tag extraction"]
         end
 
         CombinedContent["🔗 Combined Content<br/>**Built within FileRouter**<br/>Separators: \\n\\n--- ProcessorName ---\\n"]
@@ -174,7 +173,6 @@ flowchart TD
     FileRouter --> ImagePrep
     FileRouter --> MetadataPrep
     FileRouter --> AudioPrep
-    FileRouter --> TextractPrep
 
     %% Content combination happens WITHIN FileRouter
     PlainTextPrep -.-> CombinedContent
@@ -182,6 +180,7 @@ flowchart TD
     OfficePrep -.-> CombinedContent
     ImagePrep -.-> CombinedContent
     MetadataPrep -.-> CombinedContent
+    AudioPrep -.-> CombinedContent
 
     FileRouter --> CombinedContent
     CombinedContent --> ContentRouter
@@ -194,13 +193,11 @@ flowchart TD
     classDef processing fill:#e8f5e8,stroke:#388e3c,stroke-width:3px
     classDef router fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef output fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef disabled fill:#ffebee,stroke:#d32f2f,stroke-width:2px,stroke-dasharray: 5 5
 
     class FilesInput input
-    class ParallelProcessor,Worker1,Worker2,Worker3,PlainTextPrep,PDFPrep,OfficePrep,ImagePrep,MetadataPrep processing
+    class ParallelProcessor,Worker1,Worker2,Worker3,PlainTextPrep,PDFPrep,OfficePrep,ImagePrep,MetadataPrep,AudioPrep processing
     class FileRouter,ContentRouter router
     class CombinedContent output
-    class AudioPrep,TextractPrep disabled
 ```
 
 ## 4. Enhanced Validation Pipeline
@@ -339,7 +336,6 @@ flowchart TD
             SSNBridge["🆔 SSN<br/>ValidateWithContext()"]
             CloudResourcesBridge["☁️ Cloud Resources<br/>ValidateWithContext()"]
             VINBridge["🚗 VIN<br/>ValidateWithContext()"]
-            ComprehendBridge["🤖 Comprehend PII<br/>GENAI_DISABLED"]
         end
 
         %% POST-VALIDATION: Result Enhancement
@@ -387,7 +383,6 @@ flowchart TD
     ContextAnalyzer --> SSNBridge
     ContextAnalyzer --> CloudResourcesBridge
     ContextAnalyzer --> VINBridge
-    ContextAnalyzer --> ComprehendBridge
 
     %% STEP 3: POST-VALIDATION ENHANCEMENT
     CreditCardBridge --> CrossValidatorProcessor
@@ -429,7 +424,6 @@ flowchart TD
     classDef validators fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
     classDef redaction fill:#f1f8e9,stroke:#689f38,stroke-width:2px
     classDef output fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
-    classDef disabled fill:#ffebee,stroke:#d32f2f,stroke-width:2px,stroke-dasharray: 5 5
 
     class ContentInput input
     class EnhancedWrapper,ValidateMethod validation
@@ -438,7 +432,6 @@ flowchart TD
     class CreditCardBridge,EmailBridge,IPropBridge,IPBridge,MetadataBridge,PassportBridge,PersonNameBridge,PhoneBridge,SecretsBridge,SocialMediaBridge,SSNBridge,CloudResourcesBridge,VINBridge validators
     class RedactionManager,PlainTextRedactor,PDFRedactor,OfficeRedactor,ImageRedactor redaction
     class ValidationMatches,RedactionResults output
-    class ComprehendBridge disabled
 ```
 
 ## 5. Results Processing & Output Generation
@@ -679,9 +672,7 @@ The modular design enables easy extension through pluggable preprocessors, valid
 
 Several architectural decisions reflect deep consideration of real-world usage patterns:
 
-- **GenAI services are currently disabled** (Audio, Textract, Comprehend), indicated by dashed borders in the diagrams, allowing for future activation without architectural changes
 - **File size limits (100MB) and worker caps (8)** provide predictable resource usage in enterprise environments
 - **Session-only cross-validator correlation** provides immediate insights without persistent storage requirements
-<!-- GENAI_DISABLED: - **Statistical confidence calibration** improves accuracy without complex machine learning infrastructure -->
 
 This architecture successfully balances the competing demands of accuracy, performance, maintainability, and extensibility, creating a robust platform for sensitive data detection that can adapt to diverse organizational needs while maintaining high performance and reliability standards.

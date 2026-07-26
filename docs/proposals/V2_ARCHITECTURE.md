@@ -574,8 +574,10 @@ know what was vetted):
 - *SecureString memory protection is vestigial* — REFUTED as architectural. Real doc/code contradiction
   (README advertises `Match.SecureText` storage that is never populated), but fixable with a local edit.
   Not a leak.
-- *Disabled GenAI extractors remain as commented-out source* — REFUTED as architectural. ~63
-  `GENAI_DISABLED` markers are dead weight, but removal is mechanical; the registry already is the seam.
+- *Disabled GenAI extractors remain as commented-out source* — REFUTED as architectural. At the time of
+  the audit, ~63 `GENAI_DISABLED` markers were dead weight, but removal was mechanical; the registry
+  already was the seam. The since-removed GenAI integration (and all of those markers) has subsequently
+  been deleted outright.
 - *LogWriter "no-leak chokepoint" claim is false in Debug mode* — REFUTED as architectural. A real
   `--debug` CLI redaction path JSON-logs raw `match_text` to stderr, but `pkg/redact`/stdin do not leak
   (nil observer). Fix is hashing/dropping 3 map keys — local.

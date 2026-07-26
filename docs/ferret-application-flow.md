@@ -47,7 +47,7 @@ sequenceDiagram
         CLI->>FileRouter: NewFileRouter(debug)
         CLI->>FileRouter: RegisterDefaultPreprocessors()
         CLI->>CLI: getFilesToProcess(inputFile, recursive)
-        CLI->>FileRouter: CanProcessFile(filePath, enablePreprocessors, false)
+        CLI->>FileRouter: CanProcessFile(filePath, enablePreprocessors)
         Note over FileRouter: File type filtering with CanContainMetadata()
         FileRouter-->>CLI: Supported files list
 
@@ -98,7 +98,7 @@ sequenceDiagram
 
     Note over CLI: 7. Get files to process and filter supported types
     CLI->>CLI: getFilesToProcess(inputFile, recursive)
-    CLI->>FileRouter: CanProcessFile(filePath, enablePreprocessors, enableGenAI)
+    CLI->>FileRouter: CanProcessFile(filePath, enablePreprocessors)
     Note over FileRouter: Enhanced with CanContainMetadata() for intelligent file type filtering
     FileRouter-->>CLI: Supported files list
 
@@ -278,7 +278,7 @@ sequenceDiagram
 - **YAML**: YAML format, 100% compatible with JSON structure
 - **JUnit**: JUnit XML format for CI/CD integration and test reporting
 
-### 9. **Available Validators** (Non-GenAI)
+### 9. **Available Validators**
 - **Cloud Resources**: AWS ARN, Azure Resource ID, GCP Resource Name, OCI OCID, IBM CRN, Alibaba ARN detection with account/subscription ID extraction
 - **Credit Card**: Luhn algorithm + 15+ card brands + test pattern filtering
 - **Email**: Domain validation + context analysis

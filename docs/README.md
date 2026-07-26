@@ -45,9 +45,6 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - [🆕 Context Analysis Integration](development/context-analysis-integration.md) - Context engine integration and data flow
 - [🆕 Enhanced Metadata Validation](development/enhanced-metadata-validation.md) - Preprocessor-aware metadata validation guide
 - [🆕 FileRouter Metadata Capabilities](development/file-router-metadata-capabilities.md) - File type detection and metadata capability methods
-<!-- GENAI_DISABLED: - [GenAI Integration](development/genai_integration.md) - AI-powered features overview -->
-<!-- GENAI_DISABLED: - [GenAI Implementation](development/genai_implementation_summary.md) - Textract OCR implementation -->
-<!-- GENAI_DISABLED: - [Comprehend Implementation](development/comprehend_implementation_summary.md) - AI PII detection -->
 
 ### 📖 Reference
 - [Quotas and Limits](reference/quotas-and-limits.md) - File size limits and system constraints
@@ -74,7 +71,6 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - **🆕 Enhanced Metadata**: [Enhanced Metadata Guide](user-guides/README-Enhanced-Metadata.md)
 - **🆕 Stdin / Gateway**: [Stdin Guide](user-guides/README-Stdin.md)
 - **🔒 Redaction**: [Redaction Guide](user-guides/README-Redaction.md)
-<!-- GENAI_DISABLED: - **🤖 AI Features**: [GenAI Integration](development/genai_integration.md) -->
 - **🧪 Testing**: [GitLab CI Testing Tracker](testing/GITLAB_CI_TESTING_TRACKER.md)
 - **🚀 Deployment**: [GitLab Security Scanner Setup](deployment/GITLAB_SECURITY_SCANNER_SETUP.md)
 - **🔧 Troubleshooting**: [GitLab Integration Troubleshooting](troubleshooting/GITLAB_INTEGRATION_TROUBLESHOOTING.md)
