@@ -145,8 +145,17 @@ type medicalLineContext struct {
 	medical    bool // hasMedicalContext
 	mrnKeyword bool // hasMRNKeyword
 	insKeyword bool // hasInsuranceKeyword
-	nonMedKW   bool // nonMedicalKeywordPresent (MRN suppressor keywords)
-	nonInsKW   bool // nonInsuranceKeywordPresent (insurance suppressor keywords)
+	// MRN suppressor keywords, split into two tiers (see the eval in
+	// evaluateMRN). nonMedHardKW marks a different NUMBER TYPE (phone/ssn/zip/
+	// postal/fax/extension) that a bare 6-10 digit run is far likelier to be
+	// than an MRN — always suppresses. nonMedSoftKW marks identifier LABELS
+	// (account/order/invoice/tracking/serial) that legitimately sit beside a
+	// real MRN in hospital records ("Patient account number: 1234567"); it
+	// suppresses only when NO strong MRN keyword is present, so a labelled MRN
+	// is not hard-dropped.
+	nonMedHardKW bool
+	nonMedSoftKW bool
+	nonInsKW     bool // nonInsuranceKeywordPresent (insurance suppressor keywords)
 }
 
 // scanLine scans a single line for all medical ID types.
@@ -173,18 +182,19 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	// medicalid O(n^2) the expanded complexity guard caught. Computed once
 	// here and passed down via lc.
 	lc := medicalLineContext{
-		lineImpact: lineImpact,
-		posKW:      linePositiveKeywords,
-		negKW:      lineNegativeKeywords,
-		phone:      v.hasPhoneContext(lowerLine),
-		provider:   v.hasProviderContext(lowerLine),
-		dea:        v.hasDEAContext(lowerLine),
-		medicare:   v.hasMedicareContext(lowerLine),
-		medical:    v.hasMedicalContext(lowerLine),
-		mrnKeyword: v.hasMRNKeyword(lowerLine),
-		insKeyword: v.hasInsuranceKeyword(lowerLine),
-		nonMedKW:   v.nonMedicalKeywordPresent(lowerLine),
-		nonInsKW:   v.nonInsuranceKeywordPresent(lowerLine),
+		lineImpact:   lineImpact,
+		posKW:        linePositiveKeywords,
+		negKW:        lineNegativeKeywords,
+		phone:        v.hasPhoneContext(lowerLine),
+		provider:     v.hasProviderContext(lowerLine),
+		dea:          v.hasDEAContext(lowerLine),
+		medicare:     v.hasMedicareContext(lowerLine),
+		medical:      v.hasMedicalContext(lowerLine),
+		mrnKeyword:   v.hasMRNKeyword(lowerLine),
+		insKeyword:   v.hasInsuranceKeyword(lowerLine),
+		nonMedHardKW: v.nonMedicalHardKeywordPresent(lowerLine),
+		nonMedSoftKW: v.nonMedicalSoftKeywordPresent(lowerLine),
+		nonInsKW:     v.nonInsuranceKeywordPresent(lowerLine),
 	}
 
 	// scanMatches runs one regex over the line, polling ctx between matches so a
@@ -385,7 +395,13 @@ func (v *Validator) evaluateDashedMBI(match, line, lowerLine string, lc medicalL
 func (v *Validator) evaluateMRN(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	// MRN is very generic (just digits), so only detect with strong medical context.
 	// Skip if it looks like a phone, SSN component, zip code, year, etc.
-	if lc.nonMedKW || v.looksLikeNonMedicalNumberShape(match) {
+	//
+	// Hard suppressors (a different number TYPE) always veto. Soft suppressors
+	// (account/order/invoice/tracking/serial labels) veto ONLY without a strong
+	// MRN keyword: a hospital record line "Patient account number: 1234567"
+	// carries both "patient account" (an MRN keyword) and "account" (a soft
+	// suppressor), and the real MRN must not be hard-dropped by the label.
+	if lc.nonMedHardKW || (lc.nonMedSoftKW && !lc.mrnKeyword) || v.looksLikeNonMedicalNumberShape(match) {
 		return detector.Match{}, false
 	}
 
@@ -676,6 +692,10 @@ func (v *Validator) hasMRNKeyword(lowerLine string) bool {
 	mrnKW := []string{
 		"mrn", "medical record", "patient id", "patient number",
 		"record number", "chart number", "admission number",
+		// "patient account (number)" is the standard hospital-billing label for
+		// the MRN/account identifier; without it, the "account" soft suppressor
+		// would hard-drop the real MRN on this line.
+		"patient account",
 	}
 	for _, kw := range mrnKW {
 		if containsKeyword(lowerLine, kw) {
@@ -713,12 +733,28 @@ func (v *Validator) hasInsuranceKeyword(lowerLine string) bool {
 }
 
 // looksLikeNonMedicalNumber checks if a digit sequence is likely not an MRN.
-// nonMedicalKeywordPresent reports whether the line carries a keyword that
-// makes a digit run more likely a phone/SSN/zip/order number than an MRN.
+// nonMedicalHardKeywordPresent reports whether the line names a different NUMBER
+// TYPE (phone/SSN/zip/postal/fax/extension) — a bare 6-10 digit run beside these
+// is overwhelmingly that, not an MRN, so it suppresses unconditionally.
 // Line-global — hoisted into medicalLineContext (was scanned per match).
-func (v *Validator) nonMedicalKeywordPresent(lowerLine string) bool {
+func (v *Validator) nonMedicalHardKeywordPresent(lowerLine string) bool {
 	for _, kw := range []string{
 		"phone", "ssn", "zip", "postal", "fax", "extension",
+	} {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// nonMedicalSoftKeywordPresent reports whether the line carries an identifier
+// LABEL (account/order/invoice/tracking/serial) that commonly sits beside a real
+// MRN in hospital records. It suppresses only when no strong MRN keyword is
+// present (see evaluateMRN), so "Patient account number: 1234567" is not dropped.
+// Line-global — hoisted into medicalLineContext (was scanned per match).
+func (v *Validator) nonMedicalSoftKeywordPresent(lowerLine string) bool {
+	for _, kw := range []string{
 		"account", "order", "invoice", "tracking", "serial",
 	} {
 		if containsKeyword(lowerLine, kw) {

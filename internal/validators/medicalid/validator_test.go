@@ -317,6 +317,53 @@ func TestMedicalIDValidator_MRN_Positive(t *testing.T) {
 	}
 }
 
+// TestMedicalIDValidator_PatientAccountMRN locks the soft-suppressor fix: a real
+// MRN labelled with "patient account number" must surface even though "account"
+// is a suppressor keyword, because "patient account" is a strong MRN keyword. A
+// bare "Account: <digits>" line (no MRN keyword) must still be suppressed.
+func TestMedicalIDValidator_PatientAccountMRN(t *testing.T) {
+	validator := NewValidator()
+
+	// Recovered: "patient account (number)" is a hospital MRN label.
+	for _, content := range []string{
+		"Patient account number: 1234567",
+		"patient account: 7654321 on file",
+	} {
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if m.Type == "MRN" && m.Confidence >= 60 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected high-confidence MRN for %q, got %d matches", content, len(matches))
+		}
+	}
+
+	// Still suppressed: soft label without a strong MRN keyword, and hard
+	// suppressors regardless of MRN keyword.
+	for _, content := range []string{
+		"Account: 1104332188",               // soft label, no MRN keyword
+		"Order for patient: 12345678",       // soft label + generic "patient" only
+		"patient account phone: 5551234567", // MRN keyword but a hard phone veto
+	} {
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		for _, m := range matches {
+			if m.Type == "MRN" && m.Confidence >= 60 {
+				t.Errorf("expected no high-confidence MRN for %q, got %.1f for %s", content, m.Confidence, m.Text)
+			}
+		}
+	}
+}
+
 func TestMedicalIDValidator_MRN_Negative(t *testing.T) {
 	validator := NewValidator()
 

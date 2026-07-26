@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:context_soft_negative_labels&gt;" classname="security-scan" time="0.001">
+      <failure message="3 security findings detected" type="SECURITY_FINDINGS">Line 2: MASTERCARD detected with 100.0% confidence (HIGH)&#xA;Match: 5425233430109903&#xA;Validator: creditcard&#xA;Line 1: VISA detected with 100.0% confidence (HIGH)&#xA;Match: 4532015112830366&#xA;Validator: creditcard&#xA;Line 3: MRN detected with 65.0% confidence (MEDIUM)&#xA;Match: 1234567&#xA;Validator: medicalid</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

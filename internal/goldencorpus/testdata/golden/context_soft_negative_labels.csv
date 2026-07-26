@@ -1,0 +1,4 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:context_soft_negative_labels>,MASTERCARD,HIGH,100.0,2,5425233430109903
+<golden:context_soft_negative_labels>,VISA,HIGH,100.0,1,4532015112830366
+<golden:context_soft_negative_labels>,MRN,MEDIUM,65.0,3,1234567
