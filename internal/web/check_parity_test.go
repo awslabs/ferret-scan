@@ -15,11 +15,9 @@ import (
 var reChecksPush = regexp.MustCompile(`checks\.push\('([A-Z_]+)'\)`)
 
 // webOnlyChecks are check names the front-end may reference that are not in
-// the core registry. COMPREHEND_PII is the disabled GenAI path: its push is
-// inside a GENAI_DISABLED comment block but still matches the regex.
-var webOnlyChecks = map[string]bool{
-	"COMPREHEND_PII": true,
-}
+// the core registry. Empty today; kept as the extension point for any future
+// UI-only pseudo-check so the parity test below stays a one-line change.
+var webOnlyChecks = map[string]bool{}
 
 // TestWebUI_ChecksMatchCoreRegistry locks the web UI's detection-type list to
 // the core validator registry (core.CheckNames, the same source of truth the

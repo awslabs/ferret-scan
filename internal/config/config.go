@@ -44,11 +44,6 @@ type Config struct {
 			Enabled bool     `yaml:"enabled"`
 			Types   []string `yaml:"types"`
 		} `yaml:"text_extraction"`
-		// GENAI_DISABLED: Textract configuration struct for AWS Textract OCR service
-		// Textract struct {
-		// 	Enabled bool   `yaml:"enabled"`
-		// 	Region  string `yaml:"region"`
-		// } `yaml:"textract"`
 	} `yaml:"preprocessors"`
 
 	// Redaction configurations
@@ -123,10 +118,6 @@ type Profile struct {
 	ShowSuppressed       bool     `yaml:"show_suppressed"`
 	GenerateSuppressions bool     `yaml:"generate_suppressions"`
 	FailOnIncomplete     bool     `yaml:"fail_on_incomplete"`
-	// GENAI_DISABLED: GenAI enablement flag for profiles
-	// EnableGenAI         bool                              `yaml:"enable_genai"`
-	// GENAI_DISABLED: Cost estimation only mode flag
-	// EstimateOnly        bool                              `yaml:"estimate_only"`
 	Description string                            `yaml:"description"`
 	Validators  map[string]map[string]interface{} `yaml:"validators"`
 	// Redaction settings for this profile
@@ -161,9 +152,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Set default preprocessor values
 	config.Preprocessors.TextExtraction.Enabled = true
 	config.Preprocessors.TextExtraction.Types = []string{"pdf", "office"}
-	// GENAI_DISABLED: Textract default configuration values
-	// config.Preprocessors.Textract.Enabled = false // Disabled by default, requires --enable-genai
-	// config.Preprocessors.Textract.Region = "us-east-1"
 
 	// Set default redaction values with platform-aware paths
 	config.Redaction.Enabled = false

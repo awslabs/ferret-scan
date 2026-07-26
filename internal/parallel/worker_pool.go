@@ -51,9 +51,6 @@ type Job struct {
 
 // JobConfig holds configuration for job processing
 type JobConfig struct {
-	// GENAI_DISABLED: EnableGenAI    bool
-	// GENAI_DISABLED: GenAIServices  map[string]bool
-	// GENAI_DISABLED: TextractRegion string
 	Debug bool
 
 	// Dual-path validation configuration
@@ -235,13 +232,7 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 			return resilience.NewPermanentError("no file router available", nil)
 		}
 
-		processingCtx, err := job.FileRouter.CreateProcessingContext(
-			job.FilePath,
-			false, // GENAI_DISABLED: job.Config.EnableGenAI,
-			nil,   // GENAI_DISABLED: job.Config.GenAIServices,
-			"",    // GENAI_DISABLED: job.Config.TextractRegion,
-			job.Config.Debug,
-		)
+		processingCtx, err := job.FileRouter.CreateProcessingContext(job.FilePath, job.Config.Debug)
 		if err != nil {
 			return resilience.ClassifyError(err)
 		}
@@ -267,22 +258,12 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 			defer bl.ReleaseBytes(processingCtx.FileSize)
 		}
 
-		// GENAI_DISABLED: Process file with retry logic for GenAI operations
-		// if job.Config.EnableGenAI {
-		//	// Use AWS retry configuration for GenAI operations
-		//	err = wp.retryManager.Retry(ctx, "aws_service", func(ctx context.Context) error {
-		//		var procErr error
-		//		processedContent, procErr = job.FileRouter.ProcessFile(job.FilePath, processingCtx)
-		//		return procErr
-		//	})
-		// } else {
 		// Use standard retry for local file processing
 		err = wp.retryManager.Retry(ctx, "file_processing", func(ctx context.Context) error {
 			var procErr error
 			processedContent, procErr = job.FileRouter.ProcessFile(job.FilePath, processingCtx)
 			return procErr
 		})
-		// }
 
 		if err != nil {
 			return err

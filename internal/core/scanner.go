@@ -46,8 +46,8 @@ type ScanConfig struct {
 	MaxLiveBytes int64
 	// Explain, when true, attaches an advisory explanation (plain-language
 	// rationale, verdict gloss, drafted suppression reason) to each surfaced
-	// match via internal/explain. Off by default; opt-in like the historical
-	// --enable-genai. It never mutates Confidence and never auto-suppresses.
+	// match via internal/explain. Off by default (opt-in). It never mutates
+	// Confidence and never auto-suppresses.
 	Explain bool
 	Config  *config.Config
 	Profile *config.Profile
@@ -132,11 +132,11 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 	// Initialize file router
 	fileRouter := router.NewFileRouter(scanConfig.Debug)
 	router.RegisterDefaultPreprocessors(fileRouter)
-	fileRouter.InitializePreprocessors(router.CreateRouterConfig(false, nil, "", scanConfig.EnableRedaction))
+	fileRouter.InitializePreprocessors(router.CreateRouterConfig(scanConfig.EnableRedaction))
 	detectorFacade.SetFileRouter(fileRouter)
 
 	// Validate the target file is processable
-	canProcess, _ := fileRouter.CanProcessFile(scanConfig.FilePath, scanConfig.EnablePreprocessors, false)
+	canProcess, _ := fileRouter.CanProcessFile(scanConfig.FilePath, scanConfig.EnablePreprocessors)
 	if !canProcess {
 		return nil, fmt.Errorf("file type not supported for processing: %s", scanConfig.FilePath)
 	}

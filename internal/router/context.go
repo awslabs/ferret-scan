@@ -18,9 +18,6 @@ type ProcessingContext struct {
 	MimeType string `json:"mime_type,omitempty"`
 
 	// Processing Configuration
-	// GENAI_DISABLED: EnableGenAI   bool            `json:"enable_genai"`
-	// GENAI_DISABLED: GenAIServices map[string]bool `json:"genai_services,omitempty"`
-	// GENAI_DISABLED: GenAIRegion   string          `json:"genai_region,omitempty"`
 	MaxFileSize int64 `json:"max_file_size"`
 
 	// Runtime Context

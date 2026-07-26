@@ -210,10 +210,9 @@ var typeDescriptors = func() map[string]TypeDescriptor {
 		"SOCIAL_MEDIA":          "Social Media Handle Detected",
 		"VIN":                   "Vehicle Identification Number Detected",
 		"METADATA":              "Sensitive Metadata Detected",
-		"COMPREHEND":            "AWS Comprehend PII Detected",
 	}
 	for k, name := range gitlabNames {
-		d := m[k] // zero value if k had no SARIF/sensitivity entry (e.g. COMPREHEND)
+		d := m[k] // zero value if k had no SARIF/sensitivity entry
 		d.GitLabName = name
 		m[k] = d
 	}

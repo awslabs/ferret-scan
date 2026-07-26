@@ -159,7 +159,6 @@ func (m *VulnerabilityMapper) generateSanitizedMessage(match detector.Match) str
 		"SOCIAL_MEDIA":          "Social media handle found in source code",
 		"VIN":                   "Potential vehicle identification number found in source code",
 		"METADATA":              "Sensitive metadata found in file",
-		"COMPREHEND":            "AWS Comprehend detected potential PII",
 	}
 
 	if message, exists := messageMap[checkType]; exists {
