@@ -1080,10 +1080,59 @@ func TestPersonNameValidator_AllCapsNames(t *testing.T) {
 	}
 }
 
+// TestPersonNameValidator_VeryCommonTechnicalWords locks the re-wiring of
+// veryCommonNamesMap (previously dead code) into isTechnicalContext. Very common
+// software/operations words (default, root, update, cancel, warning, debug, ...)
+// paired with a known surname scored MEDIUM as false person names. None of these
+// tokens is in the first/last-name databases, so treating them as technical
+// context suppresses the FP without demoting any real name.
+func TestPersonNameValidator_VeryCommonTechnicalWords(t *testing.T) {
+	v := NewValidator()
+
+	best := func(line string) float64 {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		var b float64
+		for _, m := range matches {
+			if m.Confidence > b {
+				b = m.Confidence
+			}
+		}
+		return b
+	}
+
+	// Technical word + known surname must NOT reach MEDIUM.
+	for _, line := range []string{
+		"Default Johnson approved",
+		"Root Johnson approved",
+		"Update Johnson approved",
+		"Cancel Johnson approved",
+		"Warning Johnson approved",
+		"Debug Johnson approved",
+	} {
+		if best(line) >= 60 {
+			t.Errorf("technical-word + surname %q must not reach MEDIUM, got %.1f", line, best(line))
+		}
+	}
+
+	// Real names must be unaffected.
+	for _, line := range []string{
+		"Please contact Maria Delgado",
+		"Grace Hopper invented the compiler",
+		"forward the report to James Whitfield",
+	} {
+		if best(line) < 60 {
+			t.Errorf("real name %q should stay >= MEDIUM, got %.1f", line, best(line))
+		}
+	}
+}
+
 // TestPersonNameValidator_ContextKeywordWordBoundary is a regression test for
-// L25: context keywords were matched as substrings, so "park" fired inside
-// "parking" (-35) and "inc" inside "incident" (-20), nudging confidence. They
-// now match on whole words; a real keyword still applies its penalty.
+// L25: context keywords were matched as substrings, so "parking" (-35) and
+// "inc" inside "incident" (-20) nudged confidence. They now match on whole
+// words; a real geographic keyword still applies its penalty. "valley" is used
+// as the geo example rather than "park": "park" was removed from the geographic
+// keyword set because it is a very common surname (see
+// TestPersonNameValidator_ParkSurnameSurfaces).
 func TestPersonNameValidator_ContextKeywordWordBoundary(t *testing.T) {
 	v := NewValidator()
 	// Substrings inside unrelated words must not trip the penalty.
@@ -1094,8 +1143,52 @@ func TestPersonNameValidator_ContextKeywordWordBoundary(t *testing.T) {
 		}
 	}
 	// A real geographic keyword still penalizes.
-	if imp := v.AnalyzeContext("John Smith", detector.ContextInfo{FullLine: "John Smith visited park today"}); imp >= 0 {
-		t.Errorf("L25: a real 'park' keyword should still penalize, got %.1f", imp)
+	if imp := v.AnalyzeContext("John Smith", detector.ContextInfo{FullLine: "John Smith visited valley today"}); imp >= 0 {
+		t.Errorf("L25: a real geographic keyword should still penalize, got %.1f", imp)
+	}
+}
+
+// TestPersonNameValidator_ParkSurnameSurfaces locks the removal of "park" from
+// the geographic keyword set. "Park" is a very common surname (Korean 박, and
+// English); a standalone -35 geo penalty suppressed every real "... Park" name
+// outright. Real Park names must now surface, while genuine addresses stay
+// suppressed via the accompanying geo word (street/avenue), and bare "park"
+// carries no penalty.
+func TestPersonNameValidator_ParkSurnameSurfaces(t *testing.T) {
+	v := NewValidator()
+
+	best := func(line string) float64 {
+		matches, _ := v.ValidateContent(line, "test.txt")
+		var b float64
+		for _, m := range matches {
+			if m.Confidence > b {
+				b = m.Confidence
+			}
+		}
+		return b
+	}
+
+	// Real Park surnames with a distinctive first name must surface (>= MEDIUM-ish;
+	// they were 0 before the fix).
+	for _, line := range []string{
+		"Sarah Park approved the budget",
+		"Contact Maria Park for approval",
+	} {
+		if best(line) < 50 {
+			t.Errorf("real Park surname should surface for %q, got %.1f", line, best(line))
+		}
+	}
+
+	// Genuine addresses must stay suppressed (via street/avenue).
+	for _, line := range []string{"Park Street is closed", "123 Park Avenue reception"} {
+		if best(line) >= 60 {
+			t.Errorf("address %q must not surface as a name, got %.1f", line, best(line))
+		}
+	}
+
+	// Bare "park" no longer carries a geographic penalty.
+	if imp := v.AnalyzeContext("John Smith", detector.ContextInfo{FullLine: "John Smith visited park today"}); imp < 0 {
+		t.Errorf("bare 'park' should no longer penalize (it is a surname), got %.1f", imp)
 	}
 }
 

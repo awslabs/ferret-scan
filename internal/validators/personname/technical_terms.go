@@ -396,15 +396,19 @@ var productPatternsMap = map[string]bool{
 }
 
 var geoPatternsMap = map[string]bool{
-	"city":      true,
-	"county":    true,
-	"state":     true,
-	"mountain":  true,
-	"lake":      true,
-	"river":     true,
-	"creek":     true,
-	"valley":    true,
-	"park":      true,
+	"city":     true,
+	"county":   true,
+	"state":    true,
+	"mountain": true,
+	"lake":     true,
+	"river":    true,
+	"creek":    true,
+	"valley":   true,
+	// "park" intentionally omitted: it is a very common surname (Korean 박, and
+	// English), so a standalone -35 geo penalty suppressed every real "... Park"
+	// name outright ("Sarah Park approved" scored 0). Genuine addresses are still
+	// caught by the following geo token ("Park Street"/"Park Avenue" via
+	// street/avenue), and "national park" prose lacks a name-shaped bigram.
 	"street":    true,
 	"avenue":    true,
 	"road":      true,
