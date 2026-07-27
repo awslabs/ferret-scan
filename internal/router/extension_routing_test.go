@@ -22,7 +22,7 @@ func TestExtensionRouting_MatchesPreprocessorCapability(t *testing.T) {
 	// Actually instantiate the preprocessors (registration only stores factories;
 	// fr.preprocessors is empty until InitializePreprocessors runs) — mirrors
 	// core.ScanFile's setup.
-	fr.InitializePreprocessors(CreateRouterConfig(false, nil, "", false))
+	fr.InitializePreprocessors(CreateRouterConfig(false))
 
 	// The full set the old router list claimed to support.
 	exts := []string{

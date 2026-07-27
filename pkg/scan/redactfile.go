@@ -112,5 +112,5 @@ func (s RedactStrategy) String() string {
 // (no validator construction).
 func CanProcessFile(path string) (ok bool, reason string) {
 	fr := router.NewFileRouter(false)
-	return fr.CanProcessFile(path, true, false)
+	return fr.CanProcessFile(path, true)
 }

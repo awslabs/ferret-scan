@@ -53,28 +53,16 @@ func (fr *FileRouter) InitializePreprocessors(config map[string]interface{}) {
 }
 
 // CanProcessFile determines if a file can be processed
-func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors, enableGenAI bool) (bool, string) {
+func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) (bool, string) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 
 	// Check file size
 	cleanPath := filepath.Clean(filePath)
 	if info, err := os.Stat(cleanPath); err == nil {
-		maxSize := MaxFileSize
-		// GENAI_DISABLED: if isAudioFile(ext) {
-		//	maxSize = 500 * 1024 * 1024 // 500MB for audio
-		// }
-		if info.Size() > maxSize {
-			return false, fmt.Sprintf("File too large (max: %dMB)", maxSize/(1024*1024))
+		if info.Size() > MaxFileSize {
+			return false, fmt.Sprintf("File too large (max: %dMB)", MaxFileSize/(1024*1024))
 		}
 	}
-
-	// GENAI_DISABLED: Audio files require GenAI
-	// if isAudioFile(ext) {
-	//	if enableGenAI {
-	//		return true, "Audio file"
-	//	}
-	//	return false, "Audio file (requires --enable-genai)"
-	// }
 
 	// Binary documents require preprocessors
 	if isBinaryDocument(ext) {
@@ -115,7 +103,6 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	defer finishTiming(true, map[string]interface{}{
 		"file_size": config.FileSize,
 		"file_ext":  config.FileExt,
-		// GENAI_DISABLED: "enable_genai": config.EnableGenAI,
 	})
 
 	// Find capable preprocessors
@@ -249,8 +236,8 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	return nil, fmt.Errorf("all preprocessors failed for file: %s", filePath)
 }
 
-// GENAI_DISABLED: CreateProcessingContext creates a standardized processing context
-func (fr *FileRouter) CreateProcessingContext(filePath string, enableGenAI bool, genaiServices map[string]bool, genaiRegion string, debug bool) (*ProcessingContext, error) {
+// CreateProcessingContext creates a standardized processing context for a file.
+func (fr *FileRouter) CreateProcessingContext(filePath string, debug bool) (*ProcessingContext, error) {
 	cleanPath := filepath.Clean(filePath)
 	info, err := os.Stat(cleanPath)
 	if err != nil {
@@ -260,12 +247,9 @@ func (fr *FileRouter) CreateProcessingContext(filePath string, enableGenAI bool,
 	requestID := generateRequestID()
 
 	return &ProcessingContext{
-		FilePath: filePath,
-		FileSize: info.Size(),
-		FileExt:  strings.ToLower(filepath.Ext(filePath)),
-		// GENAI_DISABLED: EnableGenAI:   enableGenAI,
-		// GENAI_DISABLED: GenAIServices: genaiServices,
-		// GENAI_DISABLED: GenAIRegion:   genaiRegion,
+		FilePath:    filePath,
+		FileSize:    info.Size(),
+		FileExt:     strings.ToLower(filepath.Ext(filePath)),
 		MaxFileSize: MaxFileSize,
 		RequestID:   requestID,
 		StartTime:   time.Now(),
