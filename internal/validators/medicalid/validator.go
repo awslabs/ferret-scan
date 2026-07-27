@@ -91,6 +91,8 @@ func NewValidator() *Validator {
 			"patient", "physician", "doctor", "medical", "healthcare",
 			"health record", "enrollment", "covered", "copay", "deductible",
 			"claims", "formulary", "prior authorization", "referral",
+			// Legacy Medicare identifier + pharmacy-benefit card fields.
+			"hicn", "rxbin", "rxpcn", "rxgrp",
 		},
 		negativeKeywords: []string{
 			"phone", "ssn", "account", "order", "invoice", "tracking",
@@ -679,6 +681,10 @@ func (v *Validator) hasMedicareContext(lowerLine string) bool {
 	medicareKW := []string{
 		"medicare", "mbi", "beneficiary", "cms", "medicaid",
 		"enrollment", "coverage", "part a", "part b", "part d",
+		// HICN is the legacy Medicare Health Insurance Claim Number (the
+		// SSN-based identifier the MBI replaced); it is still a Medicare
+		// identifier label and appears on older records/exports.
+		"hicn", "health insurance claim",
 	}
 	for _, kw := range medicareKW {
 		if containsKeyword(lowerLine, kw) {
@@ -710,6 +716,9 @@ func (v *Validator) hasInsuranceContext(lowerLine string) bool {
 		"insurance", "member id", "member number", "subscriber",
 		"policy number", "group number", "health plan", "enrollee",
 		"covered", "copay", "deductible", "claims",
+		// Pharmacy-benefit card fields printed alongside the member ID on
+		// insurance cards (RxBIN / RxPCN / RxGRP).
+		"rxbin", "rxpcn", "rxgrp", "rx bin", "rx group",
 	}
 	for _, kw := range insKW {
 		if containsKeyword(lowerLine, kw) {

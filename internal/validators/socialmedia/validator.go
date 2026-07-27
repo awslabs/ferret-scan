@@ -246,6 +246,15 @@ func NewValidator() *Validator {
 				"video", "viral", "trend", "dance", "challenge",
 				"creator", "content", "short", "clip", "sound",
 			},
+			"threads": {
+				"post", "follow", "thread", "reply", "repost",
+			},
+			"bluesky": {
+				"post", "follow", "skeet", "repost", "feed",
+			},
+			"mastodon": {
+				"toot", "boost", "follow", "instance", "fediverse", "federated",
+			},
 		},
 
 		// Initialize false positive prevention
@@ -983,6 +992,16 @@ func (v *Validator) identifyPlatform(match string) string {
 	}
 	if strings.Contains(matchLower, "reddit.com") {
 		return "reddit"
+	}
+	if strings.Contains(matchLower, "threads.net") {
+		return "threads"
+	}
+	if strings.Contains(matchLower, "bsky.app") {
+		return "bluesky"
+	}
+	if strings.Contains(matchLower, "mastodon.social") || strings.Contains(matchLower, "mastodon.online") ||
+		strings.Contains(matchLower, "mstdn.social") || strings.Contains(matchLower, "fosstodon.org") {
+		return "mastodon"
 	}
 
 	return ""
