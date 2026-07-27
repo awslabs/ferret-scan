@@ -38,14 +38,26 @@ type Validator struct {
 
 	// Keywords for context analysis
 	positiveKeywords []string
-	negativeKeywords []string
+	negativeKeywords []string // hard + soft, combined for help/display
+
+	// Two-tier negative keywords. hardNegativeKeywords denote a fundamentally
+	// different mathematical/synthetic object (hashes, timestamps, version
+	// strings, test fixtures) that is NEVER a payment card, so they suppress the
+	// candidate outright. softNegativeKeywords are identifier/label words
+	// (account, order, serial, imei, ...) that legitimately share a line with a
+	// real card ("Order 5678 paid with card 4111...", "Account Number: 4111...");
+	// they suppress ONLY when no positive card keyword co-occurs, so an explicit
+	// card word overrides the label rather than dropping a real card.
+	hardNegativeKeywords []string
+	softNegativeKeywords []string
 
 	// Pre-compiled word-boundary keyword matchers. Built from the slices above,
 	// these match a keyword only as a whole word (\bkw\b) so short tokens like
 	// "id"/"tel"/"sha" no longer match inside "david"/"hotel"/"sha256" — a
 	// substring match there was forcing Luhn-valid cards to -100 (dropped).
-	positiveKeywordRegex *regexp.Regexp
-	negativeKeywordRegex *regexp.Regexp
+	positiveKeywordRegex     *regexp.Regexp
+	hardNegativeKeywordRegex *regexp.Regexp
+	softNegativeKeywordRegex *regexp.Regexp
 
 	// Observability
 	observer observability.Observer
@@ -79,21 +91,36 @@ func NewValidator() *Validator {
 		binRanges: initBINRanges(),
 
 		positiveKeywords: []string{
-			"credit", "card", "visa", "mastercard", "amex", "american express",
+			"credit", "debit", "card", "visa", "mastercard", "amex", "american express",
 			"discover", "jcb", "diners", "cardholder", "payment", "transaction",
 			"purchase", "expiration", "expiry", "exp", "cvv", "cvc", "ccv",
 			"billing", "checkout", "pay", "paid", "pci", "merchant",
 		},
 
-		negativeKeywords: []string{
-			"account", "id", "identifier", "serial", "tracking", "reference",
-			"order", "invoice", "timestamp", "unix", "epoch", "phone", "tel",
+		// hardNegativeKeywords mark a fundamentally different mathematical or
+		// synthetic object — a hash, a timestamp, a version string, a test
+		// fixture — that a Luhn-valid 13-19 digit run may coincidentally match
+		// but that is NEVER a payment card. These suppress outright (-100)
+		// regardless of any positive keyword on the line.
+		hardNegativeKeywords: []string{
+			"timestamp", "unix", "epoch", "phone", "tel",
 			// "telephone" is kept as an explicit keyword: with whole-word
 			// matching "tel" no longer matches inside "telephone", but a phone
 			// label is still a legitimate negative signal.
 			"telephone",
 			"md5", "sha", "hash", "uuid", "guid", "crc", "checksum",
 			"version", "build", "test", "example", "fake", "mock", "sample",
+		},
+
+		// softNegativeKeywords are identifier/label words that frequently sit
+		// on the SAME line as a real card ("Order 5678 paid with card 4111...",
+		// "Account Number: 4111 1111 1111 1111", "serial ... visa 4532..."). They
+		// suppress ONLY when no positive card keyword co-occurs on the line — an
+		// explicit card word overrides the label — so a genuine card labelled
+		// with an account/order/serial number is no longer hard-dropped.
+		softNegativeKeywords: []string{
+			"account", "id", "identifier", "serial", "tracking", "reference",
+			"order", "invoice",
 			// Synonym clusters the reranker-benchmark corpus proved walk
 			// straight past the list above: "S/N" fired at 95 where "serial"
 			// was suppressed; same for shipping/logistics and inventory
@@ -105,15 +132,24 @@ func NewValidator() *Validator {
 			"s/n", "sn#", "nameplate", "waybill", "parcel",
 			"booking", "barcode", "asset", "asset tag", "sku",
 			"part", "designator", "receipt", "session", "token",
+			// Device/loyalty identifiers whose numbers are Luhn-valid and card-
+			// shaped, surfacing as FPs today: IMEI (15-digit Luhn), ICCID (SIM,
+			// 19-20 digit Luhn), and loyalty/rewards/membership program numbers.
+			"imei", "iccid", "loyalty", "rewards", "membership",
 		},
 	}
+
+	// negativeKeywords is the combined hard+soft list, retained for help/display
+	// (help.go) and the NewValidator sanity test.
+	v.negativeKeywords = append(append([]string{}, v.hardNegativeKeywords...), v.softNegativeKeywords...)
 
 	// Compile regex once
 	v.regex = regexp.MustCompile(v.pattern)
 
 	// Build word-boundary keyword matchers from the slices above.
 	v.positiveKeywordRegex = buildKeywordRegex(v.positiveKeywords)
-	v.negativeKeywordRegex = buildKeywordRegex(v.negativeKeywords)
+	v.hardNegativeKeywordRegex = buildKeywordRegex(v.hardNegativeKeywords)
+	v.softNegativeKeywordRegex = buildKeywordRegex(v.softNegativeKeywords)
 
 	// Pre-compile test patterns for fast rejection
 	v.testPatterns = []*regexp.Regexp{
@@ -568,9 +604,12 @@ func buildKeywordRegex(keywords []string) *regexp.Regexp {
 // implementation used strings.Contains, so a negative keyword like "id"/"tel"/"sha"
 // matched inside ordinary words ("david", "hotel", "sha256") and returned -100,
 // dropping Luhn-valid cards outright even under explicit "credit card" context.
-// Whole-word matching is a strict subset of the old substring matching, so this
-// change can only RECOVER cards that were wrongly dropped — it can never newly
-// drop a card or surface one that carries a genuine negative keyword.
+//
+// Negatives are tiered (see analyzeContextLower): HARD negatives (hash/version/
+// test markers) always suppress; SOFT negatives (account/order/serial-style
+// labels that legitimately co-occur with a real card) suppress only when no
+// positive card keyword is present, so "Order 5678 paid with card 4111..." is
+// no longer dropped while a bare "order id: 4111..." still is.
 func (v *Validator) analyzeContext(match string, context detector.ContextInfo) float64 {
 	return v.analyzeContextLower(strings.ToLower(context.FullLine))
 }
@@ -581,13 +620,25 @@ func (v *Validator) analyzeContext(match string, context detector.ContextInfo) f
 // ONCE and calls this directly, instead of lowercasing the whole line again for
 // every match on the line. Behavior is identical to analyzeContext.
 func (v *Validator) analyzeContextLower(lowerLine string) float64 {
-	// Quick negative keyword check (more important for false positive reduction)
-	if v.negativeKeywordRegex != nil && v.negativeKeywordRegex.MatchString(lowerLine) {
+	// Hard negatives suppress outright: the number is a different mathematical/
+	// synthetic object (hash, timestamp, version, test fixture), never a card,
+	// so an incidental positive word cannot rescue it.
+	if v.hardNegativeKeywordRegex != nil && v.hardNegativeKeywordRegex.MatchString(lowerLine) {
 		return -100 // Very strong negative impact to ensure rejection
 	}
 
+	positive := v.positiveKeywordRegex != nil && v.positiveKeywordRegex.MatchString(lowerLine)
+
+	// Soft negatives are identifier/label words that co-occur with REAL cards.
+	// They suppress only when no positive card keyword is present on the line;
+	// an explicit card word ("card"/"paid"/"visa"/...) overrides the label so a
+	// genuine card labelled with an account/order/serial number is not dropped.
+	if !positive && v.softNegativeKeywordRegex != nil && v.softNegativeKeywordRegex.MatchString(lowerLine) {
+		return -100
+	}
+
 	// Quick positive keyword check
-	if v.positiveKeywordRegex != nil && v.positiveKeywordRegex.MatchString(lowerLine) {
+	if positive {
 		return 15 // Boost for positive context (single boost; avoid over-boosting)
 	}
 
