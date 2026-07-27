@@ -24,6 +24,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // maxContentBytes bounds the input this validator will scan. Beyond this size
@@ -486,33 +487,13 @@ func (v *Validator) scoreMatch(match, resourceType string, lineHasNegKeyword, is
 // hasKeywordToken reports whether lowerLine contains any keyword as a whole
 // token (delimited by non-alphanumeric boundaries), so "company-templates" does
 // NOT match "template" but "see example below" does match "example".
+//
+// ModeAlnum preserves this validator's historical boundary semantics: a word
+// byte is alphanumeric, so '_' acts as a word boundary here. The previous local
+// predicate also counted 'A'-'Z', which was unreachable — every caller passes
+// text it has already lowercased.
 func hasKeywordToken(lowerLine string, keywords []string) bool {
-	for _, kw := range keywords {
-		idx := 0
-		for {
-			i := strings.Index(lowerLine[idx:], kw)
-			if i < 0 {
-				break
-			}
-			at := idx + i
-			before := at - 1
-			after := at + len(kw)
-			okBefore := before < 0 || !isWordByte(lowerLine[before])
-			okAfter := after >= len(lowerLine) || !isWordByte(lowerLine[after])
-			if okBefore && okAfter {
-				return true
-			}
-			idx = at + 1
-			if idx >= len(lowerLine) {
-				break
-			}
-		}
-	}
-	return false
-}
-
-func isWordByte(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
+	return kwmatch.ContainsAny(lowerLine, keywords, kwmatch.ModeAlnum)
 }
 
 // CalculateConfidence implements the detector.Validator interface. It mirrors

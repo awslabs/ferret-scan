@@ -12,6 +12,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // Pre-compiled regex patterns used across validator methods.
@@ -34,44 +35,15 @@ var (
 )
 
 // containsKeyword reports whether text contains keyword as a whole word/phrase,
-// case-insensitively. The previous code used strings.Contains, so short keywords
-// matched inside unrelated words — "hr" in "Christopher" (+45 inflation), "ein"
-// in "Einstein", "ext" in "next", "code" in "barcode" — both fabricating context
-// boosts on non-SSN lines and spuriously penalizing real SSNs.
+// case-insensitively. Whole-word matching stops short keywords from firing
+// inside unrelated words — "hr" in "Christopher", "ein" in "Einstein", "ext" in
+// "next", "code" in "barcode" — which both fabricated context boosts on non-SSN
+// lines and spuriously penalized real SSNs.
 //
-// It is implemented as a plain string scan with manual boundary checks rather
-// than a regex: AnalyzeContext/validateSSNByDomain/findKeywords invoke it on the
-// order of a hundred times per matched SSN, and a compiled-regex MatchString per
-// keyword made SSN-dense input ~13x slower. A "word" character here is
-// [a-z0-9_]; a boundary is the string edge or any non-word byte, which also
-// correctly anchors keywords whose own edges are non-word (e.g. "w-2").
+// ModeAlnumUnderscore preserves this validator's historical boundary
+// semantics: '_' counts as a word byte here.
 func containsKeyword(text, keyword string) bool {
-	if keyword == "" {
-		return false
-	}
-	lt := strings.ToLower(text)
-	lk := strings.ToLower(keyword)
-	for from := 0; from+len(lk) <= len(lt); {
-		i := strings.Index(lt[from:], lk)
-		if i < 0 {
-			return false
-		}
-		i += from
-		leftOK := i == 0 || !isWordByte(lt[i-1])
-		right := i + len(lk)
-		rightOK := right >= len(lt) || !isWordByte(lt[right])
-		if leftOK && rightOK {
-			return true
-		}
-		from = i + 1
-	}
-	return false
-}
-
-// isWordByte reports whether b is a word character ([a-z0-9_]) for the purpose
-// of keyword boundary detection. text is already lowercased by the caller.
-func isWordByte(b byte) bool {
-	return b == '_' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+	return kwmatch.Contains(text, keyword, kwmatch.ModeAlnumUnderscore)
 }
 
 // Validator implements the detector.Validator interface for detecting
