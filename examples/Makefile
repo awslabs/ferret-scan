@@ -1,7 +1,7 @@
 .PHONY: build-all clean-examples
 
 # Build all examples
-build-all: build-validators build-text-extractors build-meta-extractors build-textract build-transcribe
+build-all: build-validators build-text-extractors build-meta-extractors
 
 # Build validators
 build-validators:
@@ -11,7 +11,6 @@ build-validators:
 	@cd validators && go build -ldflags="-s -w" -o ssn-example ssn-example.go
 	@cd validators && go build -ldflags="-s -w" -o metadata-example metadata-example.go
 	@cd validators && go build -ldflags="-s -w" -o intellectualproperty-example intellectualproperty-example.go
-	@cd validators && go build -ldflags="-s -w" -o comprehend-example comprehend-example.go
 
 # Build text extractors
 build-text-extractors:
@@ -25,16 +24,6 @@ build-meta-extractors:
 	@cd preprocessors/meta-extractors && go build -ldflags="-s -w" -o exif-example exif-example.go
 	@cd preprocessors/meta-extractors && go build -ldflags="-s -w" -o office-meta-example office-meta-example.go
 	@cd preprocessors/meta-extractors && go build -ldflags="-s -w" -o pdf-meta-example pdf-meta-example.go
-
-# Build textract (AWS SDK v2)
-build-textract:
-	@echo "Building textract..."
-	@cd preprocessors && go build -ldflags="-s -w" -o textract-example textract-example.go
-
-# Build transcribe (AWS SDK v2)
-build-transcribe:
-	@echo "Building transcribe..."
-	@cd preprocessors && go build -ldflags="-s -w" -o transcribe-example transcribe-example.go
 
 # Clean all example binaries
 clean-examples:

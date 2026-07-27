@@ -41,14 +41,12 @@ These enhancements require no configuration changes - they are automatically app
 
 ## Configuration File Structure
 
-The configuration file has six main sections:
+The configuration file has five main sections:
 - `defaults`: Default settings applied when no profile is specified
-- `preprocessors`: Configuration for text extraction <!-- GENAI_DISABLED: and GenAI services -->
+- `preprocessors`: Configuration for text extraction
 - `validators`: Global validator-specific configurations
 - `suppressions`: Suppression system configuration
 - `profiles`: Named configuration profiles for different scanning scenarios
-<!-- GENAI_DISABLED: - `cost_control`: Cost management settings for GenAI services -->
-<!-- GENAI_DISABLED: - `genai`: GenAI service configuration -->
 
 ## File Exclusion Patterns
 
@@ -232,9 +230,7 @@ ferret-scan --file . --recursive --respect-gitignore
 Profiles now support all command-line options and include specialized configurations:
 
 ### Enhanced Profile Options
-<!-- GENAI_DISABLED: - `enable_genai`: Enable GenAI services directly in profiles (no --enable-genai flag needed) -->
-<!-- GENAI_DISABLED: - `estimate_only`: Show cost estimates without processing -->
-<!-- GENAI_DISABLED: - `max_cost`: Set spending limits for GenAI services -->
+
 - `show_match`: Display actual matched text in findings
 - `quiet`: Suppress progress output for automation
 - `show_suppressed`: Include suppressed findings in output

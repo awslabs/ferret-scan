@@ -264,4 +264,3 @@ The Secrets Validator integrates seamlessly with:
 - **Web UI**: Accessible through the web interface
 - **Configuration**: Supports profile-based configuration
 - **Suppressions**: Compatible with the suppression system
-- **GenAI**: Works with preprocessed content from AI services

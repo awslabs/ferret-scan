@@ -27,8 +27,8 @@ The preprocess-only mode (`--preprocess-only` or `-p`) allows you to extract and
 - **JPEG Images**: `.jpg`, `.jpeg` (EXIF metadata extraction)
 - **Other Formats**: `.png`, `.gif`, `.bmp`, `.tiff`, `.webp` (metadata when available)
 
-### Audio Files (GenAI Required)
-- **Audio Formats**: `.mp3`, `.wav`, `.m4a` (requires `--enable-genai` for transcription)
+### Audio Files (Metadata Only)
+- **Audio Formats**: `.mp3`, `.flac`, `.wav`, `.m4a` (metadata extraction, e.g. ID3 tags)
 
 ## Basic Usage
 
@@ -220,8 +220,8 @@ ferret-scan --file document.pdf --preprocess-only > extracted_text.txt
 
 - **No Validation**: Does not detect sensitive data patterns
 - **No Redaction**: Does not redact or modify files
-- **No OCR**: Does not perform optical character recognition on images (unless GenAI is enabled)
-- **No Audio Transcription**: Does not transcribe audio files (unless GenAI is enabled)
+- **No OCR**: Does not perform optical character recognition on images
+- **No Audio Speech-to-Text**: Audio files are processed for metadata only; speech content is not converted to text
 
 ### File Size Limits
 

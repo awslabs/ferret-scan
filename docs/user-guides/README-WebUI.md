@@ -21,7 +21,6 @@ A simple web interface for the Ferret Scan sensitive data detection tool.
 - **Detailed Metadata**: View additional information about detected sensitive data
 - **Progress Tracking**: Real-time progress indicators during scanning
 - **Help System**: Built-in documentation and feature explanations
-<!-- GENAI_DISABLED: AI-Powered Features: OCR for images/PDFs, audio transcription, and AI PII detection -->
 
 ## Quick Start
 
@@ -74,27 +73,25 @@ If you prefer to run the components separately:
 - **Intellectual Property**: Patents, trademarks, copyrights, trade secrets
 - **Cloud Resources**: Cloud resource identifiers (AWS ARNs incl. GovCloud/China, Azure resource IDs, GCP resource names, OCI OCIDs, IBM CRNs, Alibaba ARNs)
 - **Metadata**: EXIF, GPS, document properties extraction
-<!-- GENAI_DISABLED: AI PII Detection with Amazon Comprehend -->
 
 ## Supported File Types
 
 The web UI supports the same file types as the CLI version:
 - **Text files**: .txt, .log, .csv, .json, .xml, .yaml, .yml, .ini, .conf, .config, .cfg, .properties, .env
 - **Documents**: PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), OpenDocument (.odt, .ods, .odp)
-- **Images**: JPEG, PNG, GIF, BMP, TIFF, WebP (metadata extraction and OCR)
-- **Audio**: MP3, WAV, M4A, FLAC, OGG <!-- GENAI_DISABLED: (transcription with AWS Transcribe) -->
-- **Video**: MP4, MOV, AVI, MKV, WMV <!-- GENAI_DISABLED: (audio extraction and transcription) -->
+- **Images**: JPEG, PNG, GIF, BMP, TIFF, WebP (metadata extraction)
+- **Audio**: MP3, WAV, M4A, FLAC, OGG (metadata extraction)
+- **Video**: MP4, MOV, AVI, MKV, WMV (metadata extraction)
 - **Source Code**: Python, JavaScript, TypeScript, Java, C++, C, Go, Rust, and more
 
 ## Security Notes
 
-- **Local Processing**: Files are processed locally on your machine - no data sent to external servers by default
+- **Local Processing**: Files are processed locally on your machine - no data is sent to external servers
 - **Temporary Storage**: Files are temporarily stored during scanning and automatically deleted
 - **Memory Scrubbing**: Secure memory handling for sensitive data
 - **Upload Limits**: Maximum file upload size is 100 MB per file (decompression-bomb guard)
 - **No Data Retention**: Scan results are displayed in browser only, not stored permanently
 - **Audit Trail**: Comprehensive logging for compliance requirements
-<!-- GENAI_DISABLED: When GenAI features are enabled, files may be sent to AWS services (Textract, Transcribe, Comprehend) -->
 
 ## Customization
 

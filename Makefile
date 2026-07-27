@@ -233,26 +233,6 @@ install-config-legacy:
 	@echo "Installing configuration file..."
 	@./scripts/create-config.sh
 
-# Check GenAI prerequisites
-check-genai:
-	@echo "Checking GenAI prerequisites..."
-	@echo "Checking AWS CLI..."
-	@if command -v aws >/dev/null 2>&1; then \
-		echo "✓ AWS CLI installed"; \
-	else \
-		echo "✗ AWS CLI not found. Install from: https://aws.amazon.com/cli/"; \
-	fi
-	@echo "Checking AWS credentials..."
-	@if aws sts get-caller-identity >/dev/null 2>&1; then \
-		echo "✓ AWS credentials configured"; \
-		aws sts get-caller-identity --query 'Account' --output text | sed 's/^/  Account: /'; \
-	else \
-		echo "✗ AWS credentials not configured. Run: aws configure"; \
-	fi
-	@echo "Checking Textract permissions..."
-	@echo "  Note: Cannot verify Textract permissions without making API calls"
-	@echo "  Ensure your IAM user/role has 'textract:DetectDocumentText' permission"
-
 # Build all examples
 build-examples:
 	@echo "Building all examples..."

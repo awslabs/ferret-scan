@@ -6,18 +6,14 @@ This document provides a comprehensive reference for all file size limits, proce
 
 ## File Size Limits
 
-| Component | Limit | AWS Service | Configurable | Notes |
-|-----------|-------|-------------|--------------|-------|
-| **Web UI Upload** | 100MB | No | No | Per-file decompression-bomb guard (`internal/web/server.go`); folder uploads have no count limit |
-| **CLI General** | 100MB | No | Yes | Default for most file types |
-| **Text Files** | 100MB | No | No | Plaintext preprocessor limit |
-<!-- GENAI_DISABLED: | **Audio Files (GenAI)** | 500MB | AWS Transcribe | No | For transcription services | -->
-<!-- GENAI_DISABLED: | **Images (GenAI)** | 10MB | AWS Textract | No | Per image limit | -->
-<!-- GENAI_DISABLED: | **PDF Files (GenAI)** | 500MB | AWS Textract | No | Per PDF limit | -->
-| **Streaming Processor** | 500MB | No | Yes | For large file processing |
-<!-- GENAI_DISABLED: | **Comprehend Chunks** | 100KB | AWS Comprehend | No | Per API call limit | -->
-| **Text Extraction** | 10MB | No | Yes | Document preprocessing |
-| **Theoretical Maximum** | ~214GB | No | No | Int32 overflow protection |
+| Component | Limit | Configurable | Notes |
+|-----------|-------|--------------|-------|
+| **Web UI Upload** | 100MB | No | Per-file decompression-bomb guard (`internal/web/server.go`); folder uploads have no count limit |
+| **CLI General** | 100MB | Yes | Default for most file types |
+| **Text Files** | 100MB | No | Plaintext preprocessor limit |
+| **Streaming Processor** | 500MB | Yes | For large file processing |
+| **Text Extraction** | 10MB | Yes | Document preprocessing |
+| **Theoretical Maximum** | ~214GB | No | Int32 overflow protection |
 
 ## Processing and Performance Limits
 
@@ -30,16 +26,6 @@ This document provides a comprehensive reference for all file size limits, proce
 | **Small File Threshold** | 10MB | Performance | Yes | Allows more workers |
 | **Chunk Size** | 10MB | Performance | Yes | Streaming processor default |
 | **Chunk Overlap** | 1KB | Performance | Yes | Between chunks |
-
-## AWS Service Details
-
-<!-- GENAI_DISABLED: AWS Service Limits
-| Service | Limit | Additional Constraints | Cost Model |
-|---------|-------|----------------------|------------|
-| **AWS Comprehend** | 100KB per request | Rate limits vary by region | Per 100-character unit |
-| **AWS Textract** | 10MB (images), 500MB (PDFs) | Single page for DetectDocumentText | Per page/request |
-| **AWS Transcribe** | 500MB per file | Rate limits vary by region | Per minute of audio |
--->
 
 ## Common Error Messages
 
@@ -70,5 +56,3 @@ export FERRET_DEBUG=1
 | **Large PDFs** | Split into smaller files or use streaming processor |
 | **Many Small Files** | Use batch processing for efficiency |
 | **Memory Issues** | Reduce worker count or process fewer files simultaneously |
-<!-- GENAI_DISABLED: | **AWS Costs** | Enable GenAI only for files that need it | -->
-<!-- GENAI_DISABLED: | **Performance** | Use closest AWS region for GenAI features | -->

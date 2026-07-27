@@ -98,26 +98,23 @@ Each specialized preprocessor has its own detailed documentation:
 - [AudioMetadataPreprocessor README](audio_metadata_preprocessor_README.md)
 - [VideoMetadataPreprocessor README](video_metadata_preprocessor_README.md)
 
-#### Textract Preprocessor (GenAI)
-**Purpose**: AI-powered OCR text extraction from images and scanned documents
-**Supported Files**: PDF, PNG, JPEG, TIFF
-**Usage**: Enabled with `--enable-genai` flag
-**Requirements**: AWS credentials, internet connection, AWS costs apply
-
 ## Supported File Types
 
-### Images (Metadata + OCR with GenAI)
-- JPEG (.jpg, .jpeg) - EXIF metadata + OCR text extraction
-- TIFF (.tif, .tiff) - EXIF metadata + OCR text extraction
-- PNG (.png) - Basic metadata + OCR text extraction
+### Images (Metadata)
+
+- JPEG (.jpg, .jpeg) - EXIF metadata
+- TIFF (.tif, .tiff) - EXIF metadata
+- PNG (.png) - Basic metadata
 - GIF (.gif) - Basic metadata
 - BMP (.bmp) - Basic metadata
 - WEBP (.webp) - Basic metadata
 
-### PDF Documents (Metadata + Text + OCR with GenAI)
-- PDF (.pdf) - Document metadata + text extraction + OCR for scanned/image-based PDFs
+### PDF Documents (Metadata + Text)
+
+- PDF (.pdf) - Document metadata + text extraction
 
 ### Office Documents (Metadata + Text)
+
 - Microsoft Word (.docx) - Document properties + text content
 - Microsoft Excel (.xlsx) - Document properties + text content
 - Microsoft PowerPoint (.pptx) - Document properties + text content
@@ -153,7 +150,6 @@ Each specialized preprocessor handles one file type:
 ### Text Extractors
 - **text-extract-pdftextlib**: Text from PDF documents
 - **text-extract-officetextlib**: Text from Office documents
-- **textract-extractor-lib**: Amazon Textract OCR integration (GenAI)
 
 ### ProcessorType Identification
 Each specialized preprocessor sets a unique ProcessorType value:
@@ -212,49 +208,12 @@ This project uses minimal external dependencies:
 - Standard Go libraries for most functionality
 - `github.com/ledongthuc/pdf` for PDF text extraction
 
-## GenAI Mode (Amazon Textract)
-
-When enabled with `--enable-genai`, Ferret Scan uses Amazon Textract for advanced OCR:
-
-### Benefits
-- **High Accuracy**: Professional-grade OCR with confidence scoring
-- **Scanned Documents**: Extract text from image-based PDFs and scanned documents
-- **Multiple Formats**: Support for PDF, PNG, JPEG, TIFF
-- **Cloud Processing**: Leverages AWS machine learning models
-
-### Requirements
-- AWS account with valid credentials
-- Internet connection
-- `textract:DetectDocumentText` IAM permission
-
-### Cost Considerations
-- ~$0.0015 per page/image processed
-- Charges apply to your AWS account
-- Use `--debug` to see cost estimates
-
-### Usage
-```bash
-# Enable GenAI mode
-./ferret-scan --file scanned-doc.pdf --enable-genai
-
-# Specify AWS region
-./ferret-scan --file image.png --enable-genai --textract-region us-west-2
-```
-
 ## Limitations
 
-### Standard Text Extraction
 - EXIF extraction only works with images that contain EXIF data
 - PDF text extraction may not work with all PDF formats
 - Office document extraction works best with newer formats (DOCX, XLSX, PPTX)
 - Text formatting and layout are not preserved
-
-### GenAI (Textract) Limitations
-- File size limits: 10MB for images, 500MB for PDFs
-- Single page processing for DetectDocumentText API
-- Requires internet connection and AWS credentials
-- Costs apply for each processed page/image
-- Primarily optimized for English text
 
 ## License
 

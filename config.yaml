@@ -10,7 +10,6 @@ defaults:
   confidence_levels: all # Confidence levels to display: high, medium, low, or combinations
   checks:
     all # Specific checks to run: BANK_ACCOUNT, CLOUD_RESOURCES, CREDIT_CARD, DATE_OF_BIRTH, DRIVERS_LICENSE, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, MEDICAL_ID, METADATA, OTP, PASSPORT, PERSON_NAME, PHONE, PHYSICAL_ADDRESS, SECRETS, SOCIAL_MEDIA, SSN, VIN, or combinations
-    # GENAI_DISABLED: COMPREHEND_PII also available with --enable-genai
   verbose: false # Display detailed information for each finding
   debug: false # Enable debug logging to show preprocessing and validation flow
   no_color: false # Disable colored output
@@ -39,9 +38,6 @@ defaults:
   # scanning (.env, *.pem, credentials/). When enabled, .git is always skipped.
   respect_gitignore: false
 
-  # GENAI_DISABLED: max_cost: 0                 # Maximum cost limit for GenAI services (0 = no limit)
-  # GENAI_DISABLED: estimate_only: false        # Show cost estimate and exit without processing
-
 # Preprocessor configurations
 preprocessors:
   # Text extraction from documents
@@ -51,35 +47,14 @@ preprocessors:
       - pdf # Extract text from PDF documents
       - office # Extract text from Office documents (DOCX, XLSX, PPTX, ODT, ODS, ODP)
 
-  # GENAI_DISABLED: Amazon Textract OCR (requires --enable-genai flag)
-  # GENAI_DISABLED: WARNING: Using Textract will send your files to AWS and incur costs
-  # GENAI_DISABLED: textract:
-  # GENAI_DISABLED:   enabled: false            # Disabled by default, enabled with --enable-genai flag
-  # GENAI_DISABLED:   region: us-east-1         # AWS region for Textract service
-
-  # GENAI_DISABLED: Amazon Transcribe for audio file transcription (requires --enable-genai flag)
-  # GENAI_DISABLED: WARNING: Using Transcribe will send your files to AWS and incur costs
-  # GENAI_DISABLED: transcribe:
-  # GENAI_DISABLED:   enabled: false            # Disabled by default, enabled with --enable-genai flag
-  # GENAI_DISABLED:   region: us-east-1         # AWS region for Transcribe service
-  # GENAI_DISABLED:   bucket: ""                # S3 bucket name for audio uploads (optional, creates temporary bucket if not specified)
-
-  # GENAI_DISABLED: Amazon Comprehend for PII detection (requires --enable-genai flag)
-  # GENAI_DISABLED: WARNING: Using Comprehend will send your text to AWS and incur costs
-  # GENAI_DISABLED: comprehend:
-  # GENAI_DISABLED:   enabled: false            # Disabled by default, enabled with --enable-genai flag
-  # GENAI_DISABLED:   region: us-east-1         # AWS region for Comprehend service
-
   # Metadata extraction (automatically enabled when preprocessors are enabled)
   # Supports multiple file types:
   # - Images: JPG, JPEG, TIFF, TIF, PNG, GIF, BMP, WEBP
   #   Extracts EXIF data, camera information, GPS coordinates, timestamps, etc.
-  # GENAI_DISABLED:   With --enable-genai: Also extracts text using Amazon Textract OCR
   # - Office Documents: DOCX, XLSX, PPTX, ODT, ODS, ODP
   #   Extracts author, creator, company, modification history, document properties, etc.
   # - PDF Documents: PDF
   #   Extracts author, creator, producer, creation dates, document properties, etc.
-  # GENAI_DISABLED:   With --enable-genai: Also extracts text from scanned/image-based PDFs using Amazon Textract OCR
 
 # Redaction configurations
 redaction:
@@ -692,18 +667,6 @@ suppressions:
   generate_on_scan: false # Generate suppression rules for all findings during scan
   show_suppressed: false # Include suppressed findings in output
 
-# GENAI_DISABLED: Cost control settings for GenAI services
-# GENAI_DISABLED: NOTE: These settings only apply when --enable-genai flag is used
-# GENAI_DISABLED: cost_control:
-# GENAI_DISABLED:   max_cost: 0                            # Maximum cost limit for GenAI services (0 = no limit)
-# GENAI_DISABLED:   estimate_only: false                   # Show cost estimate and exit without processing
-# GENAI_DISABLED:   prompt_for_costs: true                 # Prompt user before incurring any GenAI costs
-
-# GENAI_DISABLED: GenAI service configuration
-# GENAI_DISABLED: genai:
-# GENAI_DISABLED:   services: "all"                        # Comma-separated list: textract, transcribe, comprehend, or 'all'
-# GENAI_DISABLED:   region: "us-east-1"                    # Default AWS region for all GenAI services
-
 # Profiles for different scanning scenarios
 profiles:
   # Quick scan profile - only high confidence matches, minimal output
@@ -817,21 +780,6 @@ profiles:
           - "http[s]?:\\/\\/monitoring\\.example\\.com" # System monitoring
           - "http[s]?:\\/\\/logs\\.example\\.com" # Log aggregation
 
-  # GENAI_DISABLED: GenAI profile - enables all AWS AI services for advanced analysis
-  # GENAI_DISABLED: WARNING: This profile will send files to AWS and incur costs
-  # GENAI_DISABLED: genai:
-  # GENAI_DISABLED:   format: text
-  # GENAI_DISABLED:   confidence_levels: all
-  # GENAI_DISABLED:   checks: all
-  # GENAI_DISABLED:   verbose: true
-  # GENAI_DISABLED:   no_color: false
-  # GENAI_DISABLED:   recursive: true
-  # GENAI_DISABLED:   enable_preprocessors: true
-  # GENAI_DISABLED:   enable_genai: true
-  # GENAI_DISABLED:   max_cost: 10.0
-  # GENAI_DISABLED:   estimate_only: false
-  # GENAI_DISABLED:   description: "Advanced scan with all AWS AI services: Textract OCR, Transcribe, and Comprehend PII (requires AWS credentials, costs apply)"
-
   # Company-specific profile with custom internal URLs and patterns
   company-specific:
     format: text
@@ -876,18 +824,6 @@ profiles:
           # Custom copyright pattern including company name
           copyright: "(©|\\(c\\)|\\(C\\)|Copyright|\\bCopyright\\b)\\s*\\d{4}[-,]?(\\d{4})?\\s+(Company\\s+Name|Company\\s+Inc|[A-Za-z0-9\\s\\.,]+)"
 
-  # GENAI_DISABLED: Cost-aware GenAI profile - limits spending on AWS services
-  # GENAI_DISABLED: cost-aware-genai:
-  # GENAI_DISABLED:   format: json
-  # GENAI_DISABLED:   confidence_levels: all
-  # GENAI_DISABLED:   checks: all
-  # GENAI_DISABLED:   verbose: true
-  # GENAI_DISABLED:   no_color: true
-  # GENAI_DISABLED:   recursive: true
-  # GENAI_DISABLED:   enable_preprocessors: true
-  # GENAI_DISABLED:   enable_genai: true
-  # GENAI_DISABLED:   max_cost: 5.0
-
   # Redaction profile - scan and redact sensitive data with format preservation
   redaction:
     format: text
@@ -919,21 +855,6 @@ profiles:
       output_dir: "./secure-redacted"
       strategy: "synthetic"
       index_file: "./secure-redaction-index.json"
-    # GENAI_DISABLED: estimate_only: false
-    # GENAI_DISABLED: description: "GenAI scanning with cost controls ($5 limit)"
-
-  # GENAI_DISABLED: Estimate-only profile - shows costs without processing
-  # GENAI_DISABLED: cost-estimate:
-  # GENAI_DISABLED:   format: text
-  # GENAI_DISABLED:   confidence_levels: all
-  # GENAI_DISABLED:   checks: all
-  # GENAI_DISABLED:   verbose: false
-  # GENAI_DISABLED:   no_color: false
-  # GENAI_DISABLED:   recursive: true
-  # GENAI_DISABLED:   enable_preprocessors: true
-  # GENAI_DISABLED:   enable_genai: true
-  # GENAI_DISABLED:   estimate_only: true
-  # GENAI_DISABLED:   description: "Show GenAI cost estimates without processing files"
 
   # Security audit profile - focused on security-sensitive data types
   security-audit:

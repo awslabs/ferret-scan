@@ -48,21 +48,6 @@ docker run -p 8080:8080 ferret-scan
 # With persistent config and suppressions (RECOMMENDED)
 docker run -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
 
-<!-- GENAI_DISABLED: With AWS credentials for GenAI features (using credentials file)
-docker run -p 8080:8080 \
-  -v ~/.ferret-scan:/home/ferret/.ferret-scan \
-  -v ~/.aws:/home/ferret/.aws:ro \
-  ferret-scan
-
-# With AWS credentials for GenAI features (using environment variables)
-docker run -p 8080:8080 \
-  -v ~/.ferret-scan:/home/ferret/.ferret-scan \
-  -e AWS_ACCESS_KEY_ID \
-  -e AWS_SECRET_ACCESS_KEY \
-  -e AWS_SESSION_TOKEN \
-  ferret-scan
--->
-
 # Custom port
 docker run -p 3000:8080 -e PORT=8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
 ```
@@ -76,21 +61,6 @@ docker run --rm -t -v $(pwd):/data ferret-scan ferret-scan --file /data/sample.t
 # With persistent config and suppressions
 docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan ferret-scan --file /data/sample.txt
 
-<!-- GENAI_DISABLED: Run with GenAI enabled (using credentials file)
-docker run --rm -t -v $(pwd):/data \
-  -v ~/.ferret-scan:/home/ferret/.ferret-scan \
-  -v ~/.aws:/home/ferret/.aws:ro \
-  ferret-scan ferret-scan --file /data/sample.pdf --enable-genai
-
-# Run with GenAI enabled (using environment variables)
-docker run --rm -t -v $(pwd):/data \
-  -v ~/.ferret-scan:/home/ferret/.ferret-scan \
-  -e AWS_ACCESS_KEY_ID \
-  -e AWS_SECRET_ACCESS_KEY \
-  -e AWS_SESSION_TOKEN \
-  ferret-scan ferret-scan --file /data/sample.pdf --enable-genai
--->
-
 # Run with debug output
 docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan ferret-scan --file /data/sample.txt --debug
 
@@ -103,48 +73,6 @@ docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan f
 
 **Notes**:
 - When using glob patterns (like `*.pdf`), always quote them to prevent shell expansion
-- AWS credentials can be passed via environment variables or mounted credentials file
-
-<!-- GENAI_DISABLED: AWS Credentials for GenAI Features
-
-To use GenAI features (Textract OCR, Transcribe, Comprehend), provide AWS credentials using one of these methods:
--->
-
-### Method 1: Environment Variables
-```bash
-# Pass current shell environment variables
-docker run -p 8080:8080 \
-  -e AWS_ACCESS_KEY_ID \
-  -e AWS_SECRET_ACCESS_KEY \
-  -e AWS_SESSION_TOKEN \
-  ferret-scan
-
-# Or specify values directly
-docker run -p 8080:8080 \
-  -e AWS_ACCESS_KEY_ID=AKIA... \
-  -e AWS_SECRET_ACCESS_KEY=abc123... \
-  -e AWS_SESSION_TOKEN=token... \
-  ferret-scan
-```
-
-### Method 2: AWS Credentials File
-```bash
-# Mount your ~/.aws directory (read-only)
-docker run -p 8080:8080 -v ~/.aws:/home/ferret/.aws:ro ferret-scan
-```
-
-### Method 3: Environment File
-```bash
-# Create .env file with credentials
-echo "AWS_ACCESS_KEY_ID=AKIA..." > .env
-echo "AWS_SECRET_ACCESS_KEY=abc123..." >> .env
-echo "AWS_SESSION_TOKEN=token..." >> .env
-
-# Use --env-file
-docker run -p 8080:8080 --env-file .env ferret-scan
-```
-
-**Important**: Ensure your AWS credentials are not expired, especially session tokens from temporary credentials.
 
 ## Usage Examples
 
@@ -164,14 +92,13 @@ docker run -p 8080:8080 --env-file .env ferret-scan
 ### Web UI Features
 - **File Upload**: Upload single or multiple files through browser
 - **Real-time Results**: See scan results as files are processed
-- **All CLI Options**: Access to confidence levels, check types<!-- GENAI_DISABLED: , GenAI features -->
+- **All CLI Options**: Access to confidence levels, check types
 - **Progress Tracking**: Visual progress for multi-file scans
 
 ### CLI Features
 - **Batch Processing**: Scan multiple files with quoted glob patterns
 - **Output Formats**: Text, JSON, CSV, YAML, JUnit XML, or GitLab SAST report output
 - **Configuration**: YAML config files and profiles
-<!-- GENAI_DISABLED: - **GenAI Integration**: Amazon Textract, Transcribe, and Comprehend -->
 - **Directory Scanning**: Recursive directory processing
 - **Colored Output**: Use `-t` flag for colored terminal output
 - **Auto Cleanup**: Use `--rm` flag to automatically remove containers after execution
@@ -183,7 +110,6 @@ docker run -p 8080:8080 --env-file .env ferret-scan
 
 ### Optional Volumes
 - `-v ~/.ferret-scan:/home/ferret/.ferret-scan` - Persist config and suppressions
-<!-- GENAI_DISABLED: - `-v ~/.aws:/home/ferret/.aws:ro` - AWS credentials for GenAI features -->
 
 ### Directory Structure in Container
 ```
@@ -197,7 +123,6 @@ docker run -p 8080:8080 --env-file .env ferret-scan
 - `PORT` - Web UI port (default: 8080)
 - `FERRET_CONTAINER_MODE` - Set to `true` in container for optimized operation
 - `FERRET_QUIET_MODE` - Set to `true` in container to reduce debug output
-- AWS credentials: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
 
 ## Troubleshooting
 

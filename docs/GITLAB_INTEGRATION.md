@@ -205,24 +205,7 @@ Project documentation is also hosted on GitLab Pages:
 
 ## GitLab Duo AI Features
 
-<!-- GENAI_DISABLED: Code Suggestions
-GitLab Duo provides AI-powered assistance:
-- **Code Completion**: Intelligent code suggestions while editing
-- **Test Generation**: AI-assisted test case creation
--->
 - **Code Explanation**: AI explanations of complex code sections
-
-<!-- GENAI_DISABLED: Security Insights
-- **Vulnerability Explanations**: AI-powered explanations of security findings
-- **Remediation Suggestions**: AI-suggested fixes for security issues
-- **Risk Assessment**: AI-powered risk analysis
--->
-
-<!-- GENAI_DISABLED: Code Review Assistance
-- **Review Summaries**: AI-generated merge request summaries
-- **Code Quality Suggestions**: AI-powered code improvement suggestions
-- **Documentation Generation**: AI-assisted documentation creation
--->
 
 ## Merge Request Workflow
 
