@@ -844,6 +844,56 @@ func TestSSNValidator_KeywordWordBoundary(t *testing.T) {
 	}
 }
 
+// TestSSNValidator_SnakeCaseKeyword locks the word-byte predicate: '_' is a
+// separator, not a word byte, so a context keyword carried by a snake_case or
+// SCREAMING_SNAKE identifier scores exactly as it would between spaces.
+//
+// Before the fix the boundary check treated '_' as part of the word, so
+// "customer_ssn" contained no "ssn" token: real SSNs in code and config lost
+// their positive boost (recall) and test/sample labels lost their suppression
+// (precision). Both directions are asserted, each against its spaced twin.
+func TestSSNValidator_SnakeCaseKeyword(t *testing.T) {
+	v := NewValidator()
+	const ssn = "449-87-4100" // valid area/group/serial, not denylisted
+
+	for _, tc := range []struct {
+		snake, spaced string
+	}{
+		// Positive keyword: must boost identically.
+		{"customer_ssn: " + ssn, "customer ssn: " + ssn},
+		{"SSN_VALUE=" + ssn, "SSN VALUE=" + ssn},
+		// Negative keyword: must suppress identically.
+		{"sample_ssn = " + ssn, "sample ssn = " + ssn},
+		{"TEST_SSN=" + ssn, "TEST SSN=" + ssn},
+	} {
+		snakeConf := ssnMatchConfidence(t, v, tc.snake)
+		spacedConf := ssnMatchConfidence(t, v, tc.spaced)
+		if snakeConf != spacedConf {
+			t.Errorf("'_' must score as a separator: %q gave %.1f but %q gave %.1f",
+				tc.snake, snakeConf, tc.spaced, spacedConf)
+		}
+	}
+
+	// The equality above must not pass by both sides collapsing to the same
+	// no-keyword score: the snake_case positive has to actually promote, and the
+	// snake_case negative has to actually hold the same identifier back.
+	boosted := ssnMatchConfidence(t, v, "customer_ssn: "+ssn)
+	suppressed := ssnMatchConfidence(t, v, "sample_ssn = "+ssn)
+	if boosted < 90 {
+		t.Errorf("snake_case positive keyword should reach HIGH, got %.1f", boosted)
+	}
+	// "sample_ssn" carries both an "ssn" boost and a "sample" penalty; the
+	// penalty must keep it out of HIGH even though the boost applies.
+	if suppressed >= 90 {
+		t.Errorf("snake_case negative keyword should keep %q below HIGH, got %.1f",
+			"sample_ssn", suppressed)
+	}
+	if suppressed >= boosted {
+		t.Errorf("snake_case negative keyword must cost confidence: sample_ssn=%.1f vs customer_ssn=%.1f",
+			suppressed, boosted)
+	}
+}
+
 // TestSSNValidator_KnownTestSSNStaysLow is a regression test for H3: the
 // denylisted test SSN 123-45-4321 scored 100 (HIGH) whenever a positive keyword
 // like "SSN"/"employee" was nearby, because the flat -25 test penalty left it at

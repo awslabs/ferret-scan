@@ -36,7 +36,7 @@ var positionWeights = [17]int{8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2
 // ModeAlnum preserves this validator's historical boundary semantics: a word
 // byte is [a-z0-9], so '_' acts as a word boundary here.
 func containsKeyword(text, keyword string) bool {
-	return kwmatch.Contains(text, keyword, kwmatch.ModeAlnum)
+	return kwmatch.Contains(text, keyword)
 }
 
 // knownWMIs maps common World Manufacturer Identifier prefixes to manufacturer names.

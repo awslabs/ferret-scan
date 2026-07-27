@@ -601,6 +601,60 @@ func TestDOBValidator_NewValidator(t *testing.T) {
 	}
 }
 
+// TestDOBValidator_SnakeCaseKeyword locks the word-byte predicate: '_' is a
+// separator, not a word byte, so a "dob"/"birth" keyword carried by a
+// snake_case field name scores as it would between spaces. Before the fix
+// "my_dob_field" contained no "dob" token, so a date in a struct field or JSON
+// key — the most common way a DOB actually appears in code — stayed at the
+// bare, below-surfacing score.
+//
+// Scope: single-token keywords only. Multi-word keyword entries ("birth date",
+// "born on") contain a literal space and so still do not match their
+// underscore-joined spellings ("BIRTH_DATE", "born_on") — that needs separator
+// normalization in the keyword lists, which is deliberately not part of this
+// boundary fix.
+func TestDOBValidator_SnakeCaseKeyword(t *testing.T) {
+	validator := NewValidator()
+	const date = "1985-03-14"
+
+	conf := func(line string) float64 {
+		t.Helper()
+		matches, err := validator.ValidateContent(line, "test.txt")
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", line, err)
+		}
+		if len(matches) == 0 {
+			return -1
+		}
+		return matches[0].Confidence
+	}
+
+	for _, tc := range []struct {
+		snake, spaced string
+	}{
+		{"my_dob_field: " + date, "my dob field: " + date},
+		{"date_of_birth=" + date, "date of birth=" + date},
+		{"PATIENT_DOB = " + date, "PATIENT DOB = " + date},
+		{"birthday_value=" + date, "birthday value=" + date},
+	} {
+		if s, p := conf(tc.snake), conf(tc.spaced); s != p {
+			t.Errorf("'_' must score as a separator: %q gave %.1f but %q gave %.1f",
+				tc.snake, s, tc.spaced, p)
+		}
+	}
+
+	// The equality above must not pass by both collapsing to the no-keyword
+	// score: the snake_case field name has to actually promote the date.
+	bare := conf(date)
+	boosted := conf("my_dob_field: " + date)
+	if boosted <= bare {
+		t.Errorf("snake_case DOB field name should boost above the bare score %.1f, got %.1f", bare, boosted)
+	}
+	if boosted < 90 {
+		t.Errorf("snake_case DOB field name should reach HIGH, got %.1f", boosted)
+	}
+}
+
 func TestDOBValidator_FalsePositiveRegression(t *testing.T) {
 	validator := NewValidator()
 

@@ -587,11 +587,19 @@ func (v *Validator) calculateEntropy(number string) float64 {
 }
 
 // buildKeywordRegex compiles a slice of keywords into a single case-insensitive
-// whole-word matcher: \b(kw1|kw2|...)\b. Keywords are lowercased and regex-quoted
-// (so multi-word entries like "american express" still match, with \b sitting at
-// the outer edges and the space matched literally). Matching on word boundaries
-// — rather than strings.Contains — prevents short keywords ("id", "tel", "sha")
-// from matching inside unrelated words ("david", "hotel", "sha256").
+// whole-token matcher. Keywords are lowercased and regex-quoted (so multi-word
+// entries like "american express" still match, with the space matched
+// literally). Matching on token boundaries — rather than strings.Contains —
+// prevents short keywords ("id", "tel", "sha") from matching inside unrelated
+// words ("david", "hotel", "sha256").
+//
+// The boundary is deliberately NOT \b: Go's \b uses \w, which includes '_', so
+// `\btest\b` does not match "account_number_test" and a negative keyword failed
+// to suppress inside a snake_case identifier. Since RE2 has no lookaround, the
+// alphanumeric-only boundary is expressed as an optional non-alphanumeric byte
+// on each side, anchored to the string edges with ^/$ alternatives. This keeps
+// '_' a boundary, matching the kwmatch semantics the other validators
+// use.
 func buildKeywordRegex(keywords []string) *regexp.Regexp {
 	if len(keywords) == 0 {
 		return nil
@@ -600,7 +608,8 @@ func buildKeywordRegex(keywords []string) *regexp.Regexp {
 	for i, k := range keywords {
 		escaped[i] = regexp.QuoteMeta(strings.ToLower(k))
 	}
-	return regexp.MustCompile(`\b(?:` + strings.Join(escaped, "|") + `)\b`)
+	alts := strings.Join(escaped, "|")
+	return regexp.MustCompile(`(?:^|[^0-9a-z])(?:` + alts + `)(?:$|[^0-9a-z])`)
 }
 
 // analyzeContext provides faster context analysis with better false positive detection.

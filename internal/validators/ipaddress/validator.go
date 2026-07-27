@@ -30,7 +30,7 @@ var (
 // ModeAlnum preserves this validator's historical boundary semantics: a word
 // byte is [a-z0-9], so '_' acts as a word boundary here.
 func ipContainsKeyword(text, keyword string) bool {
-	return kwmatch.Contains(text, keyword, kwmatch.ModeAlnum)
+	return kwmatch.Contains(text, keyword)
 }
 
 // Validator implements the detector.Validator interface for detecting

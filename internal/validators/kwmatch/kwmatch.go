@@ -14,13 +14,20 @@
 // times per match (AnalyzeContext, findKeywords, per-line context caches), and
 // a regexp.MatchString per keyword measured ~13x slower on keyword-dense input.
 //
-// # Word bytes and the Mode parameter
+// # Word bytes
 //
-// A "word" byte is what a keyword may not be adjacent to; a boundary is the
-// string edge or any non-word byte. Validators historically disagreed about
-// whether '_' is a word byte, so Mode makes that choice explicit at the call
-// site instead of hiding it in a per-package copy. See Mode's documentation for
-// which to pick.
+// A "word" byte is [a-z0-9]: what a keyword may not be adjacent to. A boundary
+// is the string edge or any other byte. Notably '_' is a boundary, NOT a word
+// byte, so a keyword is found inside a snake_case identifier exactly as it is
+// between spaces: "ssn" matches in "customer_ssn", "test" in
+// "account_number_test". Identifiers in code and config are overwhelmingly
+// snake_case, and those are primary scan targets — treating '_' as a word byte
+// silently cost both recall (positive keywords never fired) and precision
+// (test/sample markers never suppressed).
+//
+// This is also why the scan does not use Go's \b: RE2 defines \b on \w, which
+// includes '_', so `\btest\b` cannot express this boundary and RE2 has no
+// lookaround to work around it.
 //
 // Because boundaries are defined by the *text* bytes surrounding a match, a
 // keyword whose own edges are non-word characters (for example "w-2") is still
@@ -29,34 +36,11 @@ package kwmatch
 
 import "strings"
 
-// Mode selects which bytes count as word characters for boundary detection.
-//
-// The distinction matters for snake_case text: under [ModeAlnum] the keyword
-// "ssn" matches in "customer_ssn" (the '_' is a boundary), while under
-// [ModeAlnumUnderscore] it does not (the '_' continues the word).
-type Mode uint8
-
-const (
-	// ModeAlnum treats [a-z0-9] as word bytes, so '_' acts as a word
-	// boundary. Prefer this for context keywords: identifiers in code and
-	// config are overwhelmingly snake_case, and a keyword should be found in
-	// "customer_ssn" or "test_fixture" just as it is in "customer ssn".
-	ModeAlnum Mode = iota
-
-	// ModeAlnumUnderscore treats [a-z0-9_] as word bytes, so a keyword
-	// adjacent to '_' does not match. Use only where a keyword must bind to a
-	// complete underscore-delimited identifier rather than one of its parts.
-	ModeAlnumUnderscore
-)
-
-// isWordByte reports whether b is a word byte under m. Callers pass
-// already-lowercased text, so the uppercase range is intentionally absent:
-// under ASCII lowercasing no byte in 'A'-'Z' can reach here.
-func (m Mode) isWordByte(b byte) bool {
-	if b >= 'a' && b <= 'z' || b >= '0' && b <= '9' {
-		return true
-	}
-	return b == '_' && m == ModeAlnumUnderscore
+// isWordByte reports whether b is a word byte. Callers pass already-lowercased
+// text, so the uppercase range is intentionally absent: under ASCII lowercasing
+// no byte in 'A'-'Z' can reach here.
+func isWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= '0' && b <= '9'
 }
 
 // Contains reports whether text contains keyword as a whole word or phrase,
@@ -65,8 +49,8 @@ func (m Mode) isWordByte(b byte) bool {
 //
 // An empty keyword never matches, so a stray "" in a keyword list cannot score
 // every line.
-func Contains(text, keyword string, m Mode) bool {
-	return ContainsLower(strings.ToLower(text), strings.ToLower(keyword), m)
+func Contains(text, keyword string) bool {
+	return ContainsLower(strings.ToLower(text), strings.ToLower(keyword))
 }
 
 // ContainsLower is [Contains] for callers that have already lowercased both
@@ -76,8 +60,8 @@ func Contains(text, keyword string, m Mode) bool {
 //
 // Passing text or keyword that is not lowercased will simply fail to match
 // uppercase bytes; it is not otherwise unsafe.
-func ContainsLower(text, keyword string, m Mode) bool {
-	return ContainsFunc(text, keyword, m, nil)
+func ContainsLower(text, keyword string) bool {
+	return ContainsFunc(text, keyword, nil)
 }
 
 // ContainsFunc is [ContainsLower] with an optional filter on where a match may
@@ -91,7 +75,7 @@ func ContainsLower(text, keyword string, m Mode) bool {
 // fabricate matches that the full text would not have produced.
 //
 // A nil accept accepts any occurrence.
-func ContainsFunc(text, keyword string, m Mode, accept func(start, end int) bool) bool {
+func ContainsFunc(text, keyword string, accept func(start, end int) bool) bool {
 	if keyword == "" {
 		return false
 	}
@@ -102,8 +86,8 @@ func ContainsFunc(text, keyword string, m Mode, accept func(start, end int) bool
 		}
 		i += from
 		end := i + len(keyword)
-		leftOK := i == 0 || !m.isWordByte(text[i-1])
-		rightOK := end >= len(text) || !m.isWordByte(text[end])
+		leftOK := i == 0 || !isWordByte(text[i-1])
+		rightOK := end >= len(text) || !isWordByte(text[end])
 		if leftOK && rightOK && (accept == nil || accept(i, end)) {
 			return true
 		}
@@ -114,9 +98,9 @@ func ContainsFunc(text, keyword string, m Mode, accept func(start, end int) bool
 
 // ContainsAny reports whether text contains any of keywords as a whole word.
 // Both text and keywords must already be lowercased.
-func ContainsAny(text string, keywords []string, m Mode) bool {
+func ContainsAny(text string, keywords []string) bool {
 	for _, kw := range keywords {
-		if ContainsLower(text, kw, m) {
+		if ContainsLower(text, kw) {
 			return true
 		}
 	}

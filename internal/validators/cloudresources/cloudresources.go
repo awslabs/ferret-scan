@@ -493,7 +493,7 @@ func (v *Validator) scoreMatch(match, resourceType string, lineHasNegKeyword, is
 // predicate also counted 'A'-'Z', which was unreachable — every caller passes
 // text it has already lowercased.
 func hasKeywordToken(lowerLine string, keywords []string) bool {
-	return kwmatch.ContainsAny(lowerLine, keywords, kwmatch.ModeAlnum)
+	return kwmatch.ContainsAny(lowerLine, keywords)
 }
 
 // CalculateConfidence implements the detector.Validator interface. It mirrors

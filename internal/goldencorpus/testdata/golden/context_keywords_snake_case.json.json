@@ -1,0 +1,144 @@
+{
+  "results": [
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<golden:context_keywords_snake_case>",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Configuration",
+        "context_domain": "Financial",
+        "context_impact": 25,
+        "original_confidence": 100,
+        "original_file": "<golden:context_keywords_snake_case>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "449-87-4100",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<golden:context_keywords_snake_case>",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Configuration",
+        "context_domain": "Financial",
+        "context_impact": 25,
+        "original_confidence": 100,
+        "original_file": "<golden:context_keywords_snake_case>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "449-87-4101",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:context_keywords_snake_case>",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Configuration",
+        "context_domain": "Financial",
+        "context_impact": 75,
+        "original_confidence": 90,
+        "original_file": "<golden:context_keywords_snake_case>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "not_test": true,
+          "plausible_year": true,
+          "valid_date": true
+        },
+        "validation_path": "document"
+      },
+      "text": "1985-03-14",
+      "type": "DATE_OF_BIRTH",
+      "validator": "dob"
+    },
+    {
+      "confidence": 65,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:context_keywords_snake_case>",
+      "line_number": 6,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Configuration",
+        "context_domain": "Financial",
+        "context_impact": -30,
+        "original_confidence": 65,
+        "original_file": "<golden:context_keywords_snake_case>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "449-87-4102",
+      "type": "SSN",
+      "validator": "ssn"
+    }
+  ]
+}

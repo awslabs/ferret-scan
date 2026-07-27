@@ -266,6 +266,25 @@ var Cases = []Case{
 			"imei 490154203237518 on the handset\n" +
 			"order id: 4532015112830366 catalog\n",
 	},
+	{
+		Name: "context_keywords_snake_case",
+		Description: "Context keywords carried by snake_case / SCREAMING_SNAKE identifiers rather " +
+			"than spaced prose — the dominant shape in the code and config files this tool scans. " +
+			"Locks the fix for '_' being treated as a word byte, which made keyword matching miss " +
+			"inside an identifier in BOTH directions: positive keywords did not boost " +
+			"(customer_ssn / my_dob_field scored as bare numbers) and negative keywords did not " +
+			"suppress (a Luhn-valid card in TEST_/_test fixture context stayed MEDIUM). Each line " +
+			"here has a spaced counterpart in the cases above, and the two must score the same; a " +
+			"regression that reinstates '_' as a word byte shows up as the underscore lines " +
+			"dropping back to bare-value confidence.",
+		Checks: []string{"SSN", "CREDIT_CARD", "DATE_OF_BIRTH"},
+		Input: "customer_ssn: 449-87-4100\n" +
+			"SSN_VALUE=449-87-4101\n" +
+			"my_dob_field: 1985-03-14\n" +
+			"TEST_CARD_NUMBER = 4532015112830366\n" +
+			"account_number_test: 4012888888881881\n" +
+			"sample_ssn = 449-87-4102\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory
