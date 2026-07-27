@@ -17,7 +17,7 @@ Uses Shannon entropy to identify random-looking strings that are likely to be cr
 
 Searches for common secret keywords followed by values with context understanding:
 
-```
+```text
 api_key = "sk_live_51H7qYKJ2eZvKYlo2C8nKqp6"
 "password": "super_secret_password_123"
 auth_token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -26,11 +26,13 @@ auth_token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ### 3. Environment Detection & Context Analysis 🚀
 
 **Automatic Environment Recognition:**
+
 - **Development Environment**: Detects dev/staging keywords, applies -15% confidence penalty
 - **Production Environment**: Identifies prod/live keywords, applies +10% confidence boost
 - **Test Environment**: Recognizes test patterns, applies -25% confidence penalty
 
 **Domain-Specific Intelligence:**
+
 - **Financial Domain**: +12% confidence boost for API keys (higher likelihood)
 - **Healthcare Domain**: Variable adjustments based on secret type
 - **Document Type Analysis**: Configuration files (+15%), Code files (+8%), JSON/YAML (+12%)
@@ -38,6 +40,7 @@ auth_token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ### 4. Global Test Pattern Database
 
 **Comprehensive Test Secret Detection:**
+
 - 16+ common test patterns: `test_api_key_here`, `your_api_key_here`, `example_secret_key`
 - Pattern variations: `abcdef123456789`, `xxxxxxxxxxxxxxxx`, `replace_with_actual`
 - Documentation patterns: `tutorial_secret`, `readme_example`, `documentation_key`
@@ -50,29 +53,33 @@ The validator now identifies specific secret types and displays them in the TYPE
 ### **Cryptographic Keys (High Confidence: 95-96%)**
 
 The validator detects various cryptographic key formats:
+
 - **SSH_PRIVATE_KEY** - SSH private key detection
 - **CERTIFICATE** - Certificate and private key detection
 - **PGP_PRIVATE_KEY** - PGP private key detection
 
 ### **Cloud Provider API Keys (High Confidence: 94-95%)**
+
 - **AWS_ACCESS_KEY** - `AKIA[0-9A-Z]{16}` (Amazon Web Services)
 - **GOOGLE_CLOUD_API_KEY** - `AIza[0-9A-Za-z_-]{35}` (Google Cloud Platform)
 
 ### **Development Platform Tokens (High Confidence: 92-94%)**
+
 - **GITHUB_TOKEN** - `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` + 36 characters
 - **GITLAB_TOKEN** - `glpat-[a-zA-Z0-9_-]{20}` (GitLab Personal Access Tokens)
 - **DOCKER_TOKEN** - `dckr_pat_[a-zA-Z0-9_-]{36}` (Docker Hub Personal Access Tokens)
 - **SLACK_TOKEN** - `xoxb-` or `xoxp-` + structured format
 
 ### **Payment Processing Keys (High Confidence: 95%)**
+
 - **STRIPE_API_KEY** - `sk_live_`, `pk_live_`, `sk_test_`, `pk_test_` + 24 characters
 
 ### **Authentication Tokens (High Confidence: 92%)**
+
 - **JWT_TOKEN** - `eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*` (JSON Web Tokens)
 
-
-
 ### **Generic Secrets (Medium-High Confidence: 60-85%)**
+
 - **API Keys** - Keyword patterns like `api_key = "value"`
 - **Passwords** - Password fields like `"password": "value"`
 - **Tokens** - Authentication tokens with keyword patterns
@@ -81,12 +88,14 @@ The validator detects various cryptographic key formats:
 ## Detection Capabilities
 
 ### High Entropy Detection
+
 - **Shannon Entropy Calculation**: Measures randomness in character distribution
 - **Charset-Specific Analysis**: Different thresholds for base64 vs hex strings
 - **Length Filtering**: Minimum lengths to reduce false positives
 - **Quote Detection**: Focuses on quoted strings to reduce noise
 
 ### Keyword Pattern Detection
+
 - **Assignment Patterns**: `keyword = "value"`
 - **JSON/YAML Patterns**: `"keyword": "value"`
 - **Case Insensitive**: Matches regardless of case
@@ -95,14 +104,17 @@ The validator detects various cryptographic key formats:
 ## Confidence Scoring
 
 ### Base Confidence (85%)
+
 Starting confidence level for detected patterns.
 
 ### Positive Factors
+
 - **High Entropy**: +0-15% based on Shannon entropy score
 - **Keyword Context**: +5-10% for relevant keywords nearby
 - **Proper Format**: +0% (maintains base confidence)
 
 ### Negative Factors
+
 - **Short Length**: -30% for strings under 8 characters
 - **Common Words**: -20% for containing "password", "secret", etc.
 - **Low Entropy**: -25% for entropy below threshold
@@ -110,22 +122,43 @@ Starting confidence level for detected patterns.
 - **Invalid Format**: -15% for containing spaces or tabs
 
 ### Context Analysis
-- **Positive Keywords**: api, key, secret, token, auth, credential
-- **Negative Keywords**: test, example, demo, sample, fake, mock
+
+- **Positive Keywords**: `api`, `key`, `secret`, `token`, `password`, `passwd`,
+  `pass`, `pwd`, `passphrase`, `auth`, `credential`, `private`, `access`,
+  `session`, `bearer`, `oauth`, `jwt`, `signature`, `salt`, `nonce`, `seed`,
+  `entropy`, `connectionstring`
+- **Negative Keywords**: `test`, `example`, `demo`, `sample`, `fake`, `mock`,
+  `dummy`, `placeholder`, `template`, `default`, `null`, `empty`, `none`,
+  `public`, `open`, `free`, `guest`, `anonymous`, `debug`
+- **Token-boundary matching**: keywords match as whole tokens (case-insensitive)
+  across `snake_case`, `SCREAMING_SNAKE`, `kebab-case`, and `camelCase`, so
+  `token` matches `authToken` / `AUTH_TOKEN` / `auth-token` but `auth` does **not**
+  match `author`, `pass` does not match `passenger`, and the negative `open` does
+  not penalize `openai_api_key`. This removes a class of substring false positives
+  (and false penalties) that plain containment produced.
+- **Hash-scheme labels are NOT positive**: words like `hash`, `checksum`, `digest`,
+  and `integrity` label the protected (non-reversible) form, not a credential, so
+  they do not lift a nearby high-entropy hex string above the generic-entropy cap.
+  This keeps SBOM content hashes (CycloneDX), SRI digests, and git SHAs out of the
+  HIGH band. A password hash is still flagged because its line carries a real
+  credential word (`password`/`pwd`).
 
 ## Implementation Details
 
 ### Memory Security
+
 - Uses `SecureString` for sensitive data storage
 - Multiple memory overwrite passes during cleanup
 - Automatic memory clearing after processing
 
 ### Pattern Compilation
+
 - Pre-compiled regex patterns for performance
 - Optimized for common secret formats
 - Flexible keyword matching with optional separators
 
 ### Entropy Calculation
+
 ```go
 entropy := 0.0
 for _, char := range charset {
@@ -140,6 +173,7 @@ for _, char := range charset {
 ## Usage Examples
 
 ### Command Line
+
 ```bash
 # Scan for secrets in a file
 ./ferret-scan --file config.json --checks SECRETS
@@ -152,6 +186,7 @@ for _, char := range charset {
 ```
 
 ### Configuration File
+
 ```yaml
 profiles:
   security-audit:
@@ -224,6 +259,7 @@ secret = "password"
 ## Integration
 
 The Secrets Validator integrates seamlessly with:
+
 - **CLI Tool**: Available via `--checks SECRETS`
 - **Web UI**: Accessible through the web interface
 - **Configuration**: Supports profile-based configuration

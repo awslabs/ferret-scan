@@ -1435,7 +1435,7 @@ func TestSecretsValidator_AnalyzeContext_CapsImpact(t *testing.T) {
 
 	// Many positive keywords should be capped at 30
 	positiveContext := detector.ContextInfo{
-		FullLine:   "api key secret token password auth credential private access session bearer oauth jwt signature hash salt nonce seed entropy",
+		FullLine:   "api key secret token password auth credential private access session bearer oauth jwt signature salt nonce seed entropy",
 		BeforeText: "",
 		AfterText:  "",
 	}
@@ -1542,6 +1542,157 @@ func TestSecretsValidator_GenericEntropyNotHighWithoutContext(t *testing.T) {
 		"aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u", withKw, contextInsightsForTest("Configuration"), false, "")
 	if confKw < 60 {
 		t.Errorf("entropy string with a secret keyword should reach MEDIUM/HIGH, got %.1f", confKw)
+	}
+}
+
+// TestSecretsValidator_HashLabelIsNotCredentialContext pins the fix for the
+// SBOM/SRI/git-SHA false positives: the word "hash" (and other hash-scheme
+// labels) must NOT corroborate that a nearby high-entropy hex string is a
+// credential. A content hash labeled with only a hash word stays capped below
+// MEDIUM by the M24 generic-entropy rule; a password hash still reaches HIGH
+// because "password"/"pwd" — real credential words — remain on its line.
+func TestSecretsValidator_HashLabelIsNotCredentialContext(t *testing.T) {
+	v := NewValidator()
+	const sha1Hex = "6675971e5aad0c85017753a71905500ecc18a664" // 40-char SHA-1 content hash
+
+	// A CycloneDX-style content hash: labeled only with a hash-scheme word.
+	// Must stay below MEDIUM (the M24 cap) — it is a checksum, not a secret.
+	hashLine := `"hash": "` + sha1Hex + `"`
+	confHash, _ := v.calculateEnhancedConfidenceWithCacheAndEnv(
+		sha1Hex, hashLine, contextInsightsForTest("Configuration"), false, "")
+	if confHash >= 60 {
+		t.Errorf("hash-labeled content hash should stay below MEDIUM, got %.1f", confHash)
+	}
+
+	// A password hash still carries a genuine credential word ("password"), so it
+	// is corroborated and allowed to reach MEDIUM/HIGH — demoting "hash" loses no
+	// real credential.
+	pwdLine := `"password_hash": "` + sha1Hex + `"`
+	confPwd, _ := v.calculateEnhancedConfidenceWithCacheAndEnv(
+		sha1Hex, pwdLine, contextInsightsForTest("Configuration"), false, "")
+	if confPwd < 60 {
+		t.Errorf("password-hash line should still reach MEDIUM/HIGH via the password keyword, got %.1f", confPwd)
+	}
+}
+
+// TestLineHasKeyword covers the token-boundary matcher that replaced plain
+// strings.Contains for positive/negative keyword corroboration. It must match
+// whole tokens across snake_case, SCREAMING_SNAKE, kebab-case and camelCase
+// while rejecting incidental substrings.
+func TestLineHasKeyword(t *testing.T) {
+	cases := []struct {
+		text, kw string
+		want     bool
+	}{
+		// Positive: distinct token, various delimiters and cases.
+		{"api_key = x", "key", true},
+		{"API_KEY=x", "key", true},
+		{"api-key: x", "key", true},
+		{"apiKey: x", "key", true},          // camelCase hump before "Key"
+		{"authToken = x", "token", true},    // camelCase hump
+		{"accessToken = x", "access", true}, // access at token start, hump after
+		{"AUTH_TOKEN=x", "auth", true},
+		{"the auth: x", "auth", true},
+		{"password: x", "password", true},
+		{"passphrase: x", "passphrase", true},
+		{"connectionString: x", "connectionstring", true},
+
+		// Negative: incidental substrings that plain Contains used to match.
+		{"author: Jane Doe", "auth", false},
+		{"passenger count", "pass", false},
+		{"bypass the check", "pass", false},
+		{"openai_api_key = x", "open", false}, // negative kw must NOT fire on openai
+		{"opentelemetry span", "open", false},
+		{"accessibility label", "access", false},
+		{"a monkey escaped", "key", false},
+		{"proceed to next", "seed", false},
+		{"the latest build", "test", false},
+		{"attestation doc", "test", false},
+
+		// passphrase must not be matched by the shorter "pass" token.
+		{"passphrase: x", "pass", false},
+	}
+	for _, c := range cases {
+		if got := lineHasKeyword(c.text, c.kw); got != c.want {
+			t.Errorf("lineHasKeyword(%q, %q) = %v, want %v", c.text, c.kw, got, c.want)
+		}
+	}
+}
+
+// TestSecretsValidator_SubstringKeywordNoLongerCorroborates pins the FP fix: an
+// incidental substring ("auth" inside "author") on a line must NOT lift an
+// unrelated high-entropy hex string past the generic-entropy cap.
+func TestSecretsValidator_SubstringKeywordNoLongerCorroborates(t *testing.T) {
+	v := NewValidator()
+	const hex = "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u"
+
+	// "author" contains "auth" but is not a credential label — must stay < MEDIUM.
+	authorLine := `"author": "` + hex + `"`
+	conf, checks := v.calculateEnhancedConfidenceWithCacheAndEnv(
+		hex, authorLine, contextInsightsForTest("Configuration"), false, "")
+	if !checks["specific_pattern"] && conf >= 60 {
+		t.Errorf("incidental 'auth' in 'author' must not corroborate; got %.1f", conf)
+	}
+
+	// A real "auth" token label still corroborates and reaches MEDIUM/HIGH.
+	authLine := `auth = "` + hex + `"`
+	confAuth, _ := v.calculateEnhancedConfidenceWithCacheAndEnv(
+		hex, authLine, contextInsightsForTest("Configuration"), false, "")
+	if confAuth < 60 {
+		t.Errorf("genuine 'auth' label should reach MEDIUM/HIGH; got %.1f", confAuth)
+	}
+}
+
+// TestSecretsValidator_CamelCaseLabelCorroborates ensures camelCase credential
+// labels (common in JSON configs) still corroborate under token matching.
+func TestSecretsValidator_CamelCaseLabelCorroborates(t *testing.T) {
+	v := NewValidator()
+	const hex = "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u"
+	line := `"accessToken": "` + hex + `"`
+	conf, _ := v.calculateEnhancedConfidenceWithCacheAndEnv(
+		hex, line, contextInsightsForTest("Configuration"), false, "")
+	if conf < 60 {
+		t.Errorf("camelCase 'accessToken' label should corroborate to MEDIUM/HIGH; got %.1f", conf)
+	}
+}
+
+// TestSecretsValidator_OpenNegativeDoesNotPenalizeOpenAI pins the recall fix: the
+// negative keyword "open" must not fire on "openai_api_key" and drag a real
+// credential line down. The AnalyzeContext impact for such a line must be
+// net-positive (api/key present, open absent as a token).
+func TestSecretsValidator_OpenNegativeDoesNotPenalizeOpenAI(t *testing.T) {
+	v := NewValidator()
+	impact := v.AnalyzeContext("", detector.ContextInfo{
+		FullLine: `openai_api_key = "sk-abcdefghijklmnopqrstuvwx"`,
+	})
+	if impact <= 0 {
+		t.Errorf("openai_api_key line should be net-positive (no 'open' penalty); got %.1f", impact)
+	}
+}
+
+// TestSecretsValidator_GenericContextBoostCapped pins M27: for a generic
+// (non-specific-pattern) match, the stacked positive env/domain/doctype boosts
+// are clamped to +30 so structured-config context cannot manufacture a flat HIGH
+// on shape alone. The match here is corroborated (has a keyword, so it clears the
+// M24 cap) but must not reach HIGH purely from boost stacking.
+func TestSecretsValidator_GenericContextBoostCapped(t *testing.T) {
+	v := NewValidator()
+	const hex = "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2u"
+	line := `token = "` + hex + `"`
+	ci := contextInsightsForTest("Configuration")
+	ci.Domain = "Financial"
+	conf, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(
+		hex, line, line, ci, false, "production")
+	if !checks["generic_context_boost_capped"] {
+		t.Errorf("expected generic boost cap to engage for stacked prod+financial+config")
+	}
+	if checks["specific_pattern"] {
+		t.Fatal("test precondition: match should be generic, not a specific pattern")
+	}
+	// base 85 + capped 30 = 115 -> clamped to 100 is fine; the point is the cap
+	// FLAG fired. Verify the delta did not exceed the cap by reconstructing.
+	if conf > 100 {
+		t.Errorf("confidence must remain bounded; got %.1f", conf)
 	}
 }
 

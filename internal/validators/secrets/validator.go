@@ -88,10 +88,28 @@ func NewValidator() *Validator {
 
 		keywordPatterns: compileKeywordPatterns(),
 
+		// positiveKeywords corroborate that a nearby high-entropy string is a
+		// credential (lifting it past the M24 generic-entropy cap). Matched by
+		// lineHasKeyword with TOKEN boundaries (case-insensitive), so each word
+		// matches its snake_case/kebab/camelCase forms ("token" hits
+		// "authToken"/"AUTH_TOKEN"/"auth-token") but not incidental substrings
+		// ("auth" no longer matches "author"). Because boundaries are enforced,
+		// compound labels that a substring match used to catch for free must be
+		// listed explicitly: "passphrase" and "connectionstring" are their own
+		// tokens ("pass" does not match inside "passphrase").
+		//
+		// Deliberately EXCLUDES hash-scheme words ("hash"/"checksum"/"digest"/
+		// "integrity"): those label the *protected*, non-reversible form, not a
+		// credential, and treating them as positive turned every SBOM content
+		// hash, SRI digest, and git SHA into a HIGH finding. A real password hash
+		// still lifts on the "password"/"pass"/"pwd" token on its line, so
+		// demoting the hash label loses no genuine credential — only bare
+		// checksums, which fall to LOW.
 		positiveKeywords: []string{
-			"api", "key", "secret", "token", "password", "pass", "pwd", "auth",
-			"credential", "private", "access", "session", "bearer", "oauth",
-			"jwt", "signature", "hash", "salt", "nonce", "seed", "entropy",
+			"api", "key", "secret", "token", "password", "passwd", "pass", "pwd",
+			"passphrase", "auth", "credential", "private", "access", "session",
+			"bearer", "oauth", "jwt", "signature", "salt", "nonce", "seed",
+			"entropy", "connectionstring",
 		},
 
 		negativeKeywords: []string{
@@ -807,28 +825,30 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 
 // AnalyzeContext analyzes context around a match
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
-	fullContext := strings.ToLower(context.BeforeText + " " + context.FullLine + " " + context.AfterText)
+	// Token-boundary matching (lineHasKeyword) instead of substring containment:
+	// "auth" no longer scores "author", "pass" no longer scores "passenger", and
+	// negative "open" no longer penalizes "openai_api_key". lineHasKeyword is
+	// case-insensitive, so no ToLower allocation is needed (the previous code
+	// lowercased context.FullLine once PER keyword inside the loop).
+	fullLine := context.FullLine
+	surrounding := context.BeforeText + " " + context.AfterText
 	var confidenceImpact float64 = 0
 
 	// Positive keywords increase confidence
 	for _, keyword := range v.positiveKeywords {
-		if strings.Contains(fullContext, keyword) {
-			if strings.Contains(strings.ToLower(context.FullLine), keyword) {
-				confidenceImpact += 10 // Same line
-			} else {
-				confidenceImpact += 5 // Nearby context
-			}
+		if lineHasKeyword(fullLine, keyword) {
+			confidenceImpact += 10 // Same line
+		} else if lineHasKeyword(surrounding, keyword) {
+			confidenceImpact += 5 // Nearby context
 		}
 	}
 
 	// Negative keywords decrease confidence
 	for _, keyword := range v.negativeKeywords {
-		if strings.Contains(fullContext, keyword) {
-			if strings.Contains(strings.ToLower(context.FullLine), keyword) {
-				confidenceImpact -= 20 // Same line
-			} else {
-				confidenceImpact -= 10 // Nearby context
-			}
+		if lineHasKeyword(fullLine, keyword) {
+			confidenceImpact -= 20 // Same line
+		} else if lineHasKeyword(surrounding, keyword) {
+			confidenceImpact -= 10 // Nearby context
 		}
 	}
 
@@ -942,6 +962,74 @@ func containsWordBoundary(text, keyword string) bool {
 // detection (input is lowercased by the caller).
 func isSecretWordByte(b byte) bool {
 	return b == '_' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// isKeywordAlnum reports whether b is an ASCII letter or digit.
+func isKeywordAlnum(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
+}
+
+// isKeywordUpper reports whether b is an ASCII uppercase letter.
+func isKeywordUpper(b byte) bool { return b >= 'A' && b <= 'Z' }
+
+// isKeywordLowerOrDigit reports whether b is an ASCII lowercase letter or digit.
+func isKeywordLowerOrDigit(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// lineHasKeyword reports whether the lowercase keyword kw appears in text as a
+// distinct token, matched case-insensitively. Unlike a plain strings.Contains,
+// token boundaries are respected: string edges, any non-alphanumeric byte (so
+// "api" and "key" BOTH match "api_key", "api-key", and "API_KEY"), and
+// camelCase humps (so "token" matches "authToken" and "access" matches
+// "accessToken").
+//
+// This eliminates the substring false positives that plain containment caused —
+// "auth" no longer matches "author", "pass" no longer matches "passenger" /
+// "bypass", "open" no longer matches "openai" / "openssl", "access" no longer
+// matches "accessibility" — while still recognizing the snake_case, SCREAMING_
+// SNAKE, kebab, and camelCase credential labels that real configs use. Unlike
+// containsWordBoundary, '_' is treated as a boundary (not a word byte) so the
+// dominant "api_key"/"access_token" labels keep matching their components.
+func lineHasKeyword(text, kw string) bool {
+	n, klen := len(text), len(kw)
+	if klen == 0 || klen > n {
+		return false
+	}
+	first := kw[0] // keywords are lowercase ASCII
+	for from := 0; from+klen <= n; from++ {
+		// Cheap first-byte reject (case-insensitive) before the full compare.
+		c := text[from]
+		if c >= 'A' && c <= 'Z' {
+			c += 32
+		}
+		if c != first {
+			continue
+		}
+		if !strings.EqualFold(text[from:from+klen], kw) {
+			continue
+		}
+		// Left boundary: string start, non-alnum predecessor, or a camelCase
+		// hump where the match begins an uppercase run (e.g. "Token" in
+		// "authToken").
+		leftOK := from == 0 ||
+			!isKeywordAlnum(text[from-1]) ||
+			(isKeywordLowerOrDigit(text[from-1]) && isKeywordUpper(text[from]))
+		if !leftOK {
+			continue
+		}
+		end := from + klen
+		// Right boundary: string end, non-alnum successor, or a camelCase hump
+		// where an uppercase run starts right after the match (e.g. "access"
+		// in "accessToken").
+		rightOK := end == n ||
+			!isKeywordAlnum(text[end]) ||
+			(isKeywordLowerOrDigit(text[end-1]) && isKeywordUpper(text[end]))
+		if rightOK {
+			return true
+		}
+	}
+	return false
 }
 
 // awsSecretContextOpen reports whether line (with its immediate neighbors)
@@ -1474,19 +1562,25 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	contextAdjustment := v.contextAnalyzer.GetConfidenceAdjustment(contextInsights, "secrets")
 	confidence += contextAdjustment
 
+	// Environment / domain / document-type adjustments accumulate into ctxDelta
+	// rather than being applied directly, so the POSITIVE stack can be clamped
+	// for generic matches (see below). Penalties are unbounded — we never want
+	// to cap how far a test/dev signal can pull a candidate down.
+	var ctxDelta float64
+
 	// Environment-specific adjustments (using pre-computed environment type)
 	switch envType {
 	case "development":
 		// Development environments may have test secrets
-		confidence -= 15.0
+		ctxDelta -= 15.0
 		checks["dev_environment_penalty"] = true
 	case "production":
 		// Production environments more likely to have real secrets
-		confidence += 10.0
+		ctxDelta += 10.0
 		checks["prod_environment_boost"] = true
 	case "test":
 		// Test environments likely have fake secrets
-		confidence -= 25.0
+		ctxDelta -= 25.0
 		checks["test_environment_penalty"] = true
 	}
 
@@ -1494,14 +1588,14 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	switch contextInsights.Domain {
 	case "Financial":
 		// Financial domain more likely to have API keys
-		confidence += 12.0
+		ctxDelta += 12.0
 		checks["financial_domain_boost"] = true
 	case "Healthcare":
 		// Healthcare may have fewer API keys, more certificates
 		if v.isCertificate(match) || v.isSSHPrivateKey(match) {
-			confidence += 8.0
+			ctxDelta += 8.0
 		} else {
-			confidence -= 5.0
+			ctxDelta -= 5.0
 		}
 		checks["healthcare_domain_adjustment"] = true
 	}
@@ -1510,17 +1604,31 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	switch contextInsights.DocumentType {
 	case "Configuration":
 		// Configuration files very likely to contain secrets
-		confidence += 15.0
+		ctxDelta += 15.0
 		checks["config_file_boost"] = true
 	case "Code":
 		// Code files may have hardcoded secrets (bad practice)
-		confidence += 8.0
+		ctxDelta += 8.0
 		checks["code_file_boost"] = true
 	case "JSON", "YAML":
 		// Structured config files
-		confidence += 12.0
+		ctxDelta += 12.0
 		checks["structured_config_boost"] = true
 	}
+
+	// For generic matches (no specific typed pattern like AWS/JWT/GitHub), clamp
+	// the NET positive environmental stack to +30 so structured-config boosts
+	// cannot compound (prod +10, Financial +12, Config +15 = +37) into a flat
+	// HIGH on shape alone. Specific patterns are already self-evidently
+	// credentials and keep the full boost. Negative deltas pass through
+	// unchanged. This complements the M24 cap, which handles uncorroborated
+	// generic matches; this handles corroborated-but-only-structurally-boosted
+	// ones (M27).
+	if !checks["specific_pattern"] && ctxDelta > 30.0 {
+		ctxDelta = 30.0
+		checks["generic_context_boost_capped"] = true
+	}
+	confidence += ctxDelta
 
 	// Global test pattern check - hard filter for obvious placeholders
 	if v.matchesGlobalTestPatterns(match) {
@@ -1588,9 +1696,11 @@ func (v *Validator) hasNearbySecretKeyword(fullContent, match, lineHint string) 
 			line = fullContent[start:end]
 		}
 	}
-	lower := strings.ToLower(line)
+	// Token-boundary matching (lineHasKeyword, case-insensitive) so an
+	// incidental substring — "auth" inside "author", "key" inside "monkey" —
+	// no longer corroborates an unrelated high-entropy hash as a credential.
 	for _, kw := range v.positiveKeywords {
-		if strings.Contains(lower, kw) {
+		if lineHasKeyword(line, kw) {
 			return true
 		}
 	}
