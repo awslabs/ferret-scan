@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 
 	"github.com/awslabs/ferret-scan/v2/internal/paths"
 
@@ -103,23 +104,23 @@ type UnixConfig struct {
 
 // Profile represents a scanning profile with specific settings
 type Profile struct {
-	Format               string   `yaml:"format"`
-	ConfidenceLevels     string   `yaml:"confidence_levels"`
-	Checks               string   `yaml:"checks"`
-	Verbose              bool     `yaml:"verbose"`
-	Debug                bool     `yaml:"debug"`
-	NoColor              bool     `yaml:"no_color"`
-	Recursive            bool     `yaml:"recursive"`
-	EnablePreprocessors  bool     `yaml:"enable_preprocessors"`
-	ExcludePatterns      []string `yaml:"exclude_patterns"`
-	RespectGitignore     bool     `yaml:"respect_gitignore"`
-	ShowMatch            bool     `yaml:"show_match"`
-	Quiet                bool     `yaml:"quiet"`
-	ShowSuppressed       bool     `yaml:"show_suppressed"`
-	GenerateSuppressions bool     `yaml:"generate_suppressions"`
-	FailOnIncomplete     bool     `yaml:"fail_on_incomplete"`
-	Description string                            `yaml:"description"`
-	Validators  map[string]map[string]interface{} `yaml:"validators"`
+	Format               string                            `yaml:"format"`
+	ConfidenceLevels     string                            `yaml:"confidence_levels"`
+	Checks               string                            `yaml:"checks"`
+	Verbose              bool                              `yaml:"verbose"`
+	Debug                bool                              `yaml:"debug"`
+	NoColor              bool                              `yaml:"no_color"`
+	Recursive            bool                              `yaml:"recursive"`
+	EnablePreprocessors  bool                              `yaml:"enable_preprocessors"`
+	ExcludePatterns      []string                          `yaml:"exclude_patterns"`
+	RespectGitignore     bool                              `yaml:"respect_gitignore"`
+	ShowMatch            bool                              `yaml:"show_match"`
+	Quiet                bool                              `yaml:"quiet"`
+	ShowSuppressed       bool                              `yaml:"show_suppressed"`
+	GenerateSuppressions bool                              `yaml:"generate_suppressions"`
+	FailOnIncomplete     bool                              `yaml:"fail_on_incomplete"`
+	Description          string                            `yaml:"description"`
+	Validators           map[string]map[string]interface{} `yaml:"validators"`
 	// Redaction settings for this profile
 	Redaction struct {
 		Enabled   bool   `yaml:"enabled"`
@@ -386,12 +387,30 @@ func fileExists(filename string) bool {
 	return !info.IsDir()
 }
 
-// ListProfiles returns a list of available profile names
+// sortedProfileNames returns the profile names in alphabetical order, for loops
+// whose observable behavior depends on which profile is reached first (an error
+// return, a log line) rather than on visiting all of them.
+func sortedProfileNames(profiles map[string]Profile) []string {
+	names := make([]string, 0, len(profiles))
+	for name := range profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ListProfiles returns the available profile names in alphabetical order.
+//
+// Sorted because this feeds `--list-profiles` directly: ranging the Profiles map
+// printed the same config file's profiles in a different sequence on every
+// invocation, which makes the listing impossible to diff and looks like the
+// config changed when it did not.
 func (c *Config) ListProfiles() []string {
 	profiles := make([]string, 0, len(c.Profiles))
 	for name := range c.Profiles {
 		profiles = append(profiles, name)
 	}
+	sort.Strings(profiles)
 	return profiles
 }
 
@@ -704,8 +723,13 @@ func validateConfigPaths(config *Config) error {
 		}
 	}
 
-	// Validate profile-specific paths
-	for profileName, profile := range config.Profiles {
+	// Validate profile-specific paths. Profiles are visited in name order
+	// because this loop returns on the FIRST invalid path: ranging the map meant
+	// a config with two bad profiles reported whichever one Go happened to visit
+	// first, so an operator fixed it, re-ran, and got a fresh complaint about a
+	// different profile with no indication the first fix had worked.
+	for _, profileName := range sortedProfileNames(config.Profiles) {
+		profile := config.Profiles[profileName]
 		if profile.Redaction.OutputDir != "" {
 			if err := paths.ValidatePath(profile.Redaction.OutputDir); err != nil {
 				return fmt.Errorf("invalid redaction output directory in profile '%s': %w", profileName, err)

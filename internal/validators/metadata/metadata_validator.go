@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2343,6 +2344,29 @@ func (v *Validator) isGPSCoordinateComponent(fieldName string) bool {
 	return false
 }
 
+// sortedGPSFields returns the GPS field names in a fixed order so
+// combineGPSCoordinates visits them the same way on every run.
+//
+// The order is longest-name-first, then alphabetical. Length first is not
+// cosmetic: the caller dispatches with strings.Contains, and the field names
+// are substrings of each other ("gpslatitude" contains "latitude",
+// "gpslatituderef" contains "gpslatitude"). Visiting the longest name first
+// means the most specific field is seen before any name it contains, which is
+// the order the switch's case sequence already assumes.
+func sortedGPSFields(gpsCoordinates map[string]string) []string {
+	fields := make([]string, 0, len(gpsCoordinates))
+	for field := range gpsCoordinates {
+		fields = append(fields, field)
+	}
+	sort.Slice(fields, func(i, j int) bool {
+		if len(fields[i]) != len(fields[j]) {
+			return len(fields[i]) > len(fields[j])
+		}
+		return fields[i] < fields[j]
+	})
+	return fields
+}
+
 // combineGPSCoordinates combines latitude and longitude into coordinate pairs
 func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsLineNumbers map[string]int, originalPath, currentEmbeddedMedia string) []detector.Match {
 	var matches []detector.Match
@@ -2357,13 +2381,25 @@ func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsL
 	var latitude, longitude, latRef, longRef string
 	var latLine, longLine int
 
+	// Both loops below used to range gpsCoordinates directly. That is a map, so
+	// the visit order was random per run — and this function assigns to shared
+	// latitude/longitude variables with no precedence, meaning last-writer-wins.
+	// A file carrying BOTH a GPSLatitude/GPSLongitude pair and a plain
+	// Latitude/Longitude pair with different values therefore emitted one of
+	// FOUR different coordinates across runs of the same binary, two of them
+	// mixing the latitude of one pair with the longitude of the other — a
+	// location that appears nowhere in the file. See the precedence handling
+	// below for the fix; the fixed field order here is what makes it reachable.
+	fields := sortedGPSFields(gpsCoordinates)
+
 	// Emit any already-consolidated GPS coordinate entries. We do NOT return
 	// early here (M33): a stray "Coordinates:" field — possibly a placeholder
 	// like "N/A" — must not short-circuit the separate GPSLatitude/GPSLongitude
 	// pairing below, and a placeholder value must not be emitted as a GPS match.
 	// We therefore validate the value looks like a real coordinate before
 	// emitting, and fall through to the component-pairing logic regardless.
-	for field, value := range gpsCoordinates {
+	for _, field := range fields {
+		value := gpsCoordinates[field]
 		fieldLower := strings.ToLower(field)
 		if strings.Contains(fieldLower, "gps_coordinates") || strings.Contains(fieldLower, "coordinates") {
 			// A real coordinate value contains digits; skip placeholders such as
@@ -2401,25 +2437,60 @@ func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsL
 		}
 	}
 
-	// Extract coordinate values for individual components (fallback)
-	for field, value := range gpsCoordinates {
+	// Extract coordinate values for individual components (fallback).
+	//
+	// PRECEDENCE, not just order (this is the part a plain sort would get
+	// wrong): a gps*-prefixed field is the authoritative EXIF/QuickTime tag,
+	// while a bare "latitude"/"longitude" is a looser derived or user-supplied
+	// field. When a file carries both, the gps* value must win, and — crucially
+	// — latitude and longitude must be taken from the SAME source, or the pair
+	// describes a place that is in neither. So each source is collected
+	// separately and the winner chosen afterwards, rather than assigning to one
+	// shared variable and letting whichever field is visited last decide.
+	var gpsLat, gpsLong, plainLat, plainLong string
+	var gpsLatLine, gpsLongLine, plainLatLine, plainLongLine int
+	for _, field := range fields {
+		value := gpsCoordinates[field]
 		switch {
 		case strings.Contains(field, "gpslatitude") && !strings.Contains(field, "ref"):
-			latitude = value
-			latLine = gpsLineNumbers[field]
+			gpsLat = value
+			gpsLatLine = gpsLineNumbers[field]
 		case strings.Contains(field, "gpslongitude") && !strings.Contains(field, "ref"):
-			longitude = value
-			longLine = gpsLineNumbers[field]
+			gpsLong = value
+			gpsLongLine = gpsLineNumbers[field]
 		case strings.Contains(field, "gpslatituderef"):
 			latRef = value
 		case strings.Contains(field, "gpslongituderef"):
 			longRef = value
 		case strings.Contains(field, "latitude") && !strings.Contains(field, "gps"):
-			latitude = value
-			latLine = gpsLineNumbers[field]
+			plainLat = value
+			plainLatLine = gpsLineNumbers[field]
 		case strings.Contains(field, "longitude") && !strings.Contains(field, "gps"):
-			longitude = value
-			longLine = gpsLineNumbers[field]
+			plainLong = value
+			plainLongLine = gpsLineNumbers[field]
+		}
+	}
+
+	// Prefer a complete gps* pair; fall back to a complete plain pair. Only if
+	// neither source is complete on its own do we combine across sources, which
+	// preserves the previous behavior for the files that actually relied on it
+	// (e.g. "GPSLatitude" present but only "Longitude" available) while never
+	// mixing two pairs that are each complete.
+	switch {
+	case gpsLat != "" && gpsLong != "":
+		latitude, longitude = gpsLat, gpsLong
+		latLine, longLine = gpsLatLine, gpsLongLine
+	case plainLat != "" && plainLong != "":
+		latitude, longitude = plainLat, plainLong
+		latLine, longLine = plainLatLine, plainLongLine
+	default:
+		latitude, latLine = gpsLat, gpsLatLine
+		if latitude == "" {
+			latitude, latLine = plainLat, plainLatLine
+		}
+		longitude, longLine = gpsLong, gpsLongLine
+		if longitude == "" {
+			longitude, longLine = plainLong, plainLongLine
 		}
 	}
 
