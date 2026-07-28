@@ -1,0 +1,322 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:keyword_separator_forms>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "member_id: \nmember_id: W1234567801"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 23,
+                  "snippet": {
+                    "text": "member_id: W1234567801"
+                  },
+                  "startColumn": 12,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:keyword_separator_forms> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'W1234567801'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": 10,
+              "original_confidence": 80,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "member id"
+            ],
+            "validator": "medicalid"
+          },
+          "rank": 65,
+          "ruleId": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:keyword_separator_forms>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "member-id: \nmember-id: X9876543210"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 23,
+                  "snippet": {
+                    "text": "member-id: X9876543210"
+                  },
+                  "startColumn": 12,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:keyword_separator_forms> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'X9876543210'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": 10,
+              "original_confidence": 80,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "member id"
+            ],
+            "validator": "medicalid"
+          },
+          "rank": 65,
+          "ruleId": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:keyword_separator_forms>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "member\tid: \nmember\tid: W1122009988"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 23,
+                  "snippet": {
+                    "text": "member\tid: W1122009988"
+                  },
+                  "startColumn": 12,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:keyword_separator_forms> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'W1122009988'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": 10,
+              "original_confidence": 80,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "member id"
+            ],
+            "validator": "medicalid"
+          },
+          "rank": 65,
+          "ruleId": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:keyword_separator_forms>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "subscriber_id: \nsubscriber_id: X5556667778"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 27,
+                  "snippet": {
+                    "text": "subscriber_id: X5556667778"
+                  },
+                  "startColumn": 16,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:keyword_separator_forms> at line 4 (confidence: 80.0% - MEDIUM). Matched text: 'X5556667778'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": 10,
+              "original_confidence": 80,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "subscriber"
+            ],
+            "validator": "medicalid"
+          },
+          "rank": 65,
+          "ruleId": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:keyword_separator_forms>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "member  id: \nmember  id: W3344556677"
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "member  id: W3344556677"
+                  },
+                  "startColumn": 13,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:keyword_separator_forms> at line 5 (confidence: 80.0% - MEDIUM). Matched text: 'W3344556677'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": 10,
+              "original_confidence": 80,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "member id"
+            ],
+            "validator": "medicalid"
+          },
+          "rank": 65,
+          "ruleId": "INSURANCE_MEMBER_ID"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type INSURANCE_MEMBER_ID was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/INSURANCE_MEMBER_ID.md",
+              "id": "INSURANCE_MEMBER_ID",
+              "shortDescription": {
+                "text": "INSURANCE_MEMBER_ID Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

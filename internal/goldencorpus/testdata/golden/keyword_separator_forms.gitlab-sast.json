@@ -1,0 +1,160 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:keyword_separator_forms> (line 1)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember_id: W1234567801\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:keyword_separator_forms>",
+        "start_line": 1
+      },
+      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Insurance Member Id Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:keyword_separator_forms> (line 2)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember-id: X9876543210\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:keyword_separator_forms>",
+        "start_line": 2
+      },
+      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Insurance Member Id Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:keyword_separator_forms> (line 3)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember\tid: W1122009988\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:keyword_separator_forms>",
+        "start_line": 3
+      },
+      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Insurance Member Id Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:keyword_separator_forms> (line 4)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nsubscriber_id: X5556667778\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:keyword_separator_forms>",
+        "start_line": 4
+      },
+      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Insurance Member Id Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:keyword_separator_forms> (line 5)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember  id: W3344556677\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:keyword_separator_forms>",
+        "start_line": 5
+      },
+      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Insurance Member Id Detected",
+      "severity": "High"
+    }
+  ]
+}

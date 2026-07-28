@@ -1,0 +1,17 @@
+=== REDACTED ===
+member_id: [INSURANCE_MEMBER_ID-REDACTED]
+member-id: [INSURANCE_MEMBER_ID-REDACTED]
+member	id: [INSURANCE_MEMBER_ID-REDACTED]
+subscriber_id: [INSURANCE_MEMBER_ID-REDACTED]
+member  id: [INSURANCE_MEMBER_ID-REDACTED]
+memberid: W9998887776
+see member.id in the schema docs: W1231231234
+https://example.com/member/id/lookup?q=W4564564567
+remember id: W7897897890
+member idx column: W3213213210
+=== FINDINGS (sorted) ===
+type=INSURANCE_MEMBER_ID line=1 conf=medium match=W1234567801
+type=INSURANCE_MEMBER_ID line=2 conf=medium match=X9876543210
+type=INSURANCE_MEMBER_ID line=3 conf=medium match=W1122009988
+type=INSURANCE_MEMBER_ID line=4 conf=medium match=X5556667778
+type=INSURANCE_MEMBER_ID line=5 conf=medium match=W3344556677

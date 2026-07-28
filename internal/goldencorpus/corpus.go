@@ -226,6 +226,32 @@ var Cases = []Case{
 			"policy identification for terraform module: MODULEVERSION123\n",
 	},
 	{
+		Name: "keyword_separator_forms",
+		Description: "The same field labels written with the separators real files use: " +
+			"snake_case config keys, kebab-case column headers, tab-separated exports and " +
+			"space-padded aligned columns. Keyword matching split a multi-word keyword on a " +
+			"literal space only, so \"member id\" covered none of \"member_id\", \"member-id\" or " +
+			"\"member\\tid\" — and because the strong keyword gates the uppercase-shape check " +
+			"rather than merely boosting confidence, a labelled ID written the snake_case way " +
+			"produced no finding at all and passed through redaction in cleartext. Decoy lines " +
+			"lock the exclusions: '.' and '/' are NOT separators, because they cross sentence " +
+			"and URL boundaries where the two words are unrelated, and a space in a keyword " +
+			"still means at least one separator, so the run-together \"memberid\" is a different " +
+			"token. The last two lines pin that the outer whole-word rule still applies at both " +
+			"ends of the separator-flexible match.",
+		Checks: []string{"MEDICAL_ID"},
+		Input: "member_id: W1234567801\n" +
+			"member-id: X9876543210\n" +
+			"member\tid: W1122009988\n" +
+			"subscriber_id: X5556667778\n" +
+			"member  id: W3344556677\n" +
+			"memberid: W9998887776\n" +
+			"see member.id in the schema docs: W1231231234\n" +
+			"https://example.com/member/id/lookup?q=W4564564567\n" +
+			"remember id: W7897897890\n" +
+			"member idx column: W3213213210\n",
+	},
+	{
 		Name: "medical_hex_member_ids",
 		Description: "Insurance member IDs whose characters happen to all be hex digits, beside " +
 			"hex decoys that must stay suppressed. The all-hex shape gate used to fire before " +
