@@ -3,7 +3,10 @@
 
 package sarif
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
 // RuleManager manages SARIF rule definitions for detection types
 // It caches rules to avoid duplicate creation and ensures consistent
@@ -49,13 +52,23 @@ func (rm *RuleManager) GetOrCreateRule(detectionType string) *SARIFRule {
 // GetAllRules returns all cached rules for inclusion in the SARIF driver
 // This should be called after all results have been processed to ensure
 // all rules are included in the tool.driver.rules array
+// Rules are returned in ascending rule-ID order. Ranging the cache map directly
+// permuted the tool.driver.rules array between runs, so two SARIF reports of one
+// unchanged scan differed — a problem for any consumer that diffs or hashes the
+// report, and for reviewers reading it as an artifact.
 func (rm *RuleManager) GetAllRules() []SARIFRule {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
 
-	rules := make([]SARIFRule, 0, len(rm.rules))
-	for _, rule := range rm.rules {
-		rules = append(rules, *rule)
+	ids := make([]string, 0, len(rm.rules))
+	for id := range rm.rules {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	rules := make([]SARIFRule, 0, len(ids))
+	for _, id := range ids {
+		rules = append(rules, *rm.rules[id])
 	}
 	return rules
 }

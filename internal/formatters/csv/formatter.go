@@ -37,6 +37,10 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Filter matches by confidence level using shared logic
 	filteredMatches := shared.FilterMatchesByConfidence(matches, options)
 
+	// Give the rows the shared total order. Safe to sort in place: the filter
+	// above returned a fresh slice, so the caller's slice is untouched.
+	shared.SortMatchesByPriority(filteredMatches)
+
 	// Suppressed rows need the same total order as active ones; without it the
 	// suppressed block's row order followed worker completion order and so
 	// changed run to run on an unchanged scan.

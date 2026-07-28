@@ -300,6 +300,21 @@ func SortSuppressedByPriority(suppressed []detector.SuppressedMatch) {
 	})
 }
 
+// SortMatchesByPriority sorts active findings into the shared total display
+// order in place. Formatters that own their own copy of the slice (one returned
+// by FilterMatchesByConfidence, say) can call this directly; those handed the
+// caller's slice should copy first, as gitlab-sast does.
+//
+// The CSV, SARIF and JUnit formatters had no finding order at all: they walked
+// the slice as the scanner handed it over, and that is per-file worker
+// completion order, so every run of one unchanged scan emitted its rows,
+// results and testcases in a different sequence.
+func SortMatchesByPriority(matches []detector.Match) {
+	sort.SliceStable(matches, func(i, j int) bool {
+		return LessByPriority(matches[i], matches[j])
+	})
+}
+
 // ConvertMatchesToJSONFormat converts detector matches to JSON/YAML format
 func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) JSONResponse {
 	totalFindings := len(matches)

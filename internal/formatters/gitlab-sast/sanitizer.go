@@ -6,6 +6,7 @@ package gitlabsast
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/core"
@@ -86,12 +87,22 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 
 	// Add metadata information if available
 	if len(match.Metadata) > 0 {
-		// First, collect safe metadata items
+		// First, collect safe metadata items, in sorted key order. Ranging the
+		// metadata map directly reordered these bullet lines between runs, so
+		// the same finding produced a different description string — and GitLab
+		// keys a vulnerability's identity partly on that description, so an
+		// unchanged finding could read as a new one.
+		keys := make([]string, 0, len(match.Metadata))
+		for key := range match.Metadata {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
 		var safeMetadata []string
-		for key, value := range match.Metadata {
+		for _, key := range keys {
 			// Only include safe metadata keys
 			if s.IsSafeMetadataKey(key) {
-				safeMetadata = append(safeMetadata, fmt.Sprintf("- %s: %v", key, value))
+				safeMetadata = append(safeMetadata, fmt.Sprintf("- %s: %v", key, match.Metadata[key]))
 			}
 		}
 

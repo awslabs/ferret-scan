@@ -13,36 +13,35 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "pay to IBAN \npay to IBAN DE89 3704 0044 0532 0130 00 per invoice\n per invoice"
+                    "text": "medicare beneficiary \nmedicare beneficiary 1EG4-TE5-MK73 on card\n on card"
                   },
-                  "startLine": 2
+                  "startLine": 1
                 },
                 "region": {
-                  "endColumn": 40,
+                  "endColumn": 35,
                   "snippet": {
-                    "text": "pay to IBAN DE89 3704 0044 0532 0130 00 per invoice"
+                    "text": "medicare beneficiary 1EG4-TE5-MK73 on card"
                   },
-                  "startColumn": 13,
-                  "startLine": 2
+                  "startColumn": 22,
+                  "startLine": 1
                 }
               }
             }
           ],
           "message": {
-            "text": "IBAN Detected in <golden:new_validators_display_formats> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'DE89 3704 0044 0532 0130 00'"
+            "text": "MEDICARE_MBI Detected in <golden:new_validators_display_formats> at line 1 (confidence: 95.0% - HIGH). Matched text: '1EG4-TE5-MK73'"
           },
           "properties": {
-            "confidence": 80,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 0.5,
               "context_doctype": "Unknown",
               "context_domain": "Healthcare",
-              "context_impact": -5,
-              "country": "DE",
-              "normalized": "DE89370400440532013000",
-              "original_confidence": 80,
+              "context_impact": 20,
+              "normalized": "1EG4TE5MK73",
+              "original_confidence": 95,
               "semantic_context": {
                 "FinancialData": 0,
                 "MedicalData": 0,
@@ -50,12 +49,74 @@
                 "Production": 0,
                 "TestData": 0
               },
+              "subtype": "MBI",
               "validation_path": "document"
             },
-            "validator": "bank_account"
+            "positiveKeywords": [
+              "medicare",
+              "beneficiary"
+            ],
+            "validator": "medicalid"
           },
-          "rank": 65,
-          "ruleId": "IBAN"
+          "rank": 72.5,
+          "ruleId": "MEDICARE_MBI"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:new_validators_display_formats>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "ship to \nship to 123 42nd Street, New York, NY 10036\n, New York, NY 10036"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 24,
+                  "snippet": {
+                    "text": "ship to 123 42nd Street, New York, NY 10036"
+                  },
+                  "startColumn": 9,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "US_STREET_ADDRESS Detected in <golden:new_validators_display_formats> at line 6 (confidence: 95.0% - HIGH). Matched text: '123 42nd Street'"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "Healthcare",
+              "original_confidence": 95,
+              "original_file": "<golden:new_validators_display_formats>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "street",
+              "ship to"
+            ],
+            "validator": "physical_address"
+          },
+          "rank": 72.5,
+          "ruleId": "US_STREET_ADDRESS"
         },
         {
           "level": "error",
@@ -258,189 +319,6 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "driver's license \ndriver's license D123-4567-8901 verified\n verified"
-                  },
-                  "startLine": 3
-                },
-                "region": {
-                  "endColumn": 32,
-                  "snippet": {
-                    "text": "driver's license D123-4567-8901 verified"
-                  },
-                  "startColumn": 18,
-                  "startLine": 3
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "DRIVERS_LICENSE Detected in <golden:new_validators_display_formats> at line 3 (confidence: 70.0% - MEDIUM). Matched text: 'D123-4567-8901'"
-          },
-          "properties": {
-            "confidence": 70,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0.5,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
-              "context_impact": 65,
-              "format": "IL_1L11D",
-              "normalized": "D12345678901",
-              "original_confidence": 70,
-              "original_file": "<golden:new_validators_display_formats>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "format_match": true,
-                "has_dl_context": false,
-                "not_all_same": true,
-                "not_all_zeros": true,
-                "not_sequential": false
-              },
-              "validation_path": "document"
-            },
-            "positiveKeywords": [
-              "driver",
-              "license",
-              "driver's license"
-            ],
-            "validator": "driverslicense"
-          },
-          "rank": 60,
-          "ruleId": "DRIVERS_LICENSE"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:new_validators_display_formats>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "medicare beneficiary \nmedicare beneficiary 1EG4-TE5-MK73 on card\n on card"
-                  },
-                  "startLine": 1
-                },
-                "region": {
-                  "endColumn": 35,
-                  "snippet": {
-                    "text": "medicare beneficiary 1EG4-TE5-MK73 on card"
-                  },
-                  "startColumn": 22,
-                  "startLine": 1
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "MEDICARE_MBI Detected in <golden:new_validators_display_formats> at line 1 (confidence: 95.0% - HIGH). Matched text: '1EG4-TE5-MK73'"
-          },
-          "properties": {
-            "confidence": 95,
-            "confidenceLevel": "HIGH",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0.5,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
-              "context_impact": 20,
-              "normalized": "1EG4TE5MK73",
-              "original_confidence": 95,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "subtype": "MBI",
-              "validation_path": "document"
-            },
-            "positiveKeywords": [
-              "medicare",
-              "beneficiary"
-            ],
-            "validator": "medicalid"
-          },
-          "rank": 72.5,
-          "ruleId": "MEDICARE_MBI"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:new_validators_display_formats>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "ship to \nship to 123 42nd Street, New York, NY 10036\n, New York, NY 10036"
-                  },
-                  "startLine": 6
-                },
-                "region": {
-                  "endColumn": 24,
-                  "snippet": {
-                    "text": "ship to 123 42nd Street, New York, NY 10036"
-                  },
-                  "startColumn": 9,
-                  "startLine": 6
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:new_validators_display_formats> at line 6 (confidence: 95.0% - HIGH). Matched text: '123 42nd Street'"
-          },
-          "properties": {
-            "confidence": 95,
-            "confidenceLevel": "HIGH",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0.5,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
-              "original_confidence": 95,
-              "original_file": "<golden:new_validators_display_formats>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "source": "preprocessed_content",
-              "validation_path": "document"
-            },
-            "positiveKeywords": [
-              "street",
-              "ship to"
-            ],
-            "validator": "physical_address"
-          },
-          "rank": 72.5,
-          "ruleId": "US_STREET_ADDRESS"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:new_validators_display_formats>"
-                },
-                "contextRegion": {
-                  "snippet": {
                     "text": "mailing address \nmailing address 1234 US Highway 61"
                   },
                   "startLine": 7
@@ -544,6 +422,128 @@
           },
           "rank": 67.5,
           "ruleId": "US_STREET_ADDRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:new_validators_display_formats>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "pay to IBAN \npay to IBAN DE89 3704 0044 0532 0130 00 per invoice\n per invoice"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 40,
+                  "snippet": {
+                    "text": "pay to IBAN DE89 3704 0044 0532 0130 00 per invoice"
+                  },
+                  "startColumn": 13,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "IBAN Detected in <golden:new_validators_display_formats> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'DE89 3704 0044 0532 0130 00'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "Healthcare",
+              "context_impact": -5,
+              "country": "DE",
+              "normalized": "DE89370400440532013000",
+              "original_confidence": 80,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_path": "document"
+            },
+            "validator": "bank_account"
+          },
+          "rank": 65,
+          "ruleId": "IBAN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:new_validators_display_formats>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "driver's license \ndriver's license D123-4567-8901 verified\n verified"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 32,
+                  "snippet": {
+                    "text": "driver's license D123-4567-8901 verified"
+                  },
+                  "startColumn": 18,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "DRIVERS_LICENSE Detected in <golden:new_validators_display_formats> at line 3 (confidence: 70.0% - MEDIUM). Matched text: 'D123-4567-8901'"
+          },
+          "properties": {
+            "confidence": 70,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "Healthcare",
+              "context_impact": 65,
+              "format": "IL_1L11D",
+              "normalized": "D12345678901",
+              "original_confidence": 70,
+              "original_file": "<golden:new_validators_display_formats>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format_match": true,
+                "has_dl_context": false,
+                "not_all_same": true,
+                "not_all_zeros": true,
+                "not_sequential": false
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "driver",
+              "license",
+              "driver's license"
+            ],
+            "validator": "driverslicense"
+          },
+          "rank": 60,
+          "ruleId": "DRIVERS_LICENSE"
         }
       ],
       "tool": {

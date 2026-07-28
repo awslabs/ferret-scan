@@ -6,10 +6,12 @@ package gitlabsast
 import (
 	"encoding/json"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
 	"github.com/awslabs/ferret-scan/v2/internal/version"
 )
 
@@ -129,11 +131,21 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		return string(jsonBytes), nil
 	}
 
+	// Apply the shared total display order before emitting. This is the one
+	// formatter that never sorted its findings at all, so the vulnerabilities
+	// array followed the scanner's arrival order (per-file worker completion) and
+	// every run of one unchanged scan produced a differently-ordered report.
+	sortedMatches := make([]detector.Match, len(matches))
+	copy(sortedMatches, matches)
+	sort.SliceStable(sortedMatches, func(i, j int) bool {
+		return shared.LessByPriority(sortedMatches[i], sortedMatches[j])
+	})
+
 	// Process each match with proper error handling
 	processedCount := 0
 	errorCount := 0
 
-	for i, match := range matches {
+	for i, match := range sortedMatches {
 		// Validate the match before processing
 		if err := f.mapper.ValidateMapping(match); err != nil {
 			errorCount++
