@@ -711,6 +711,12 @@ func (v *Validator) hasMedicareContext(lowerLine string) bool {
 		// SSN-based identifier the MBI replaced); it is still a Medicare
 		// identifier label and appears on older records/exports.
 		"hicn", "health insurance claim",
+		// "Member Identification Number" is the label printed on the physical
+		// Medicare card next to the MBI. Keywords match on whole tokens, so
+		// "member id" does not cover it — "identification" is not the token
+		// "id" — and without an entry here the card's own wording scored the
+		// MBI at LOW instead of HIGH.
+		"member identification",
 	}
 	for _, kw := range medicareKW {
 		if containsKeyword(lowerLine, kw) {
@@ -728,6 +734,9 @@ func (v *Validator) hasMRNKeyword(lowerLine string) bool {
 		// the MRN/account identifier; without it, the "account" soft suppressor
 		// would hard-drop the real MRN on this line.
 		"patient account",
+		// Long form of "patient id" — not reachable from the abbreviation,
+		// since keywords match whole tokens.
+		"patient identification",
 	}
 	for _, kw := range mrnKW {
 		if containsKeyword(lowerLine, kw) {
@@ -742,6 +751,13 @@ func (v *Validator) hasInsuranceContext(lowerLine string) bool {
 		"insurance", "member id", "member number", "subscriber",
 		"policy number", "group number", "health plan", "enrollee",
 		"covered", "copay", "deductible", "claims",
+		// Long-form spellings of the same card/EDI field labels. Keywords match
+		// whole tokens, so the abbreviated entries above do not cover them.
+		// Deliberately excludes "certificate number" and "policy
+		// identification": both are common in crypto (X.509) and IAM/Terraform
+		// contexts, where they produced false positives on build IDs and key
+		// material.
+		"member identification", "subscriber identification", "policyholder",
 		// Pharmacy-benefit card fields printed alongside the member ID on
 		// insurance cards (RxBIN / RxPCN / RxGRP).
 		"rxbin", "rxpcn", "rxgrp", "rx bin", "rx group",
@@ -758,6 +774,14 @@ func (v *Validator) hasInsuranceKeyword(lowerLine string) bool {
 	strongKW := []string{
 		"member id", "member number", "subscriber id", "policy number",
 		"insurance id", "group number", "enrollee id",
+		// Long forms of the same labels. This list also gates the
+		// all-uppercase-ID shape check in looksLikeNonInsuranceIDShape, so a
+		// card-style ID ("W1234567801") beside a long-form label was dropped
+		// outright rather than merely scored low. Kept narrow on purpose:
+		// "certificate number" and a bare "policy identification" also name
+		// X.509 and IAM objects, so they are not included.
+		"member identification", "subscriber identification",
+		"enrollee identification", "policyholder id",
 	}
 	for _, kw := range strongKW {
 		if containsKeyword(lowerLine, kw) {

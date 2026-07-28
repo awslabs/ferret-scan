@@ -1,0 +1,9 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH       FILE
+-------------------------------------------------------------------------------------
+[MEDIUM] medicalid    MEDICARE_MBI           85.00% line     3 1EG4TE5MK73 <golden:medical_long_form_labels>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     2 X9876543210 <golden:medical_long_form_labels>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     3 1EG4TE5MK73 <golden:medical_long_form_labels>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     6 W1122009988 <golden:medical_long_form_labels>
+[MEDIUM] medicalid    MRN                    80.00% line     4 4472901     <golden:medical_long_form_labels>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    70.00% line     1 W1234567801 <golden:medical_long_form_labels>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    70.00% line     5 P5551234567 <golden:medical_long_form_labels>

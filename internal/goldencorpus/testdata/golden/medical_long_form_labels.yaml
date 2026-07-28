@@ -1,0 +1,155 @@
+results:
+    - text: 1EG4TE5MK73
+      line_number: 3
+      type: MEDICARE_MBI
+      confidence: 85
+      confidence_level: MEDIUM
+      filename: <golden:medical_long_form_labels>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 10
+        original_confidence: 85
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: MBI
+        validation_path: document
+    - text: X9876543210
+      line_number: 2
+      type: INSURANCE_MEMBER_ID
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:medical_long_form_labels>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 10
+        original_confidence: 80
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: INSURANCE_MEMBER_ID
+        validation_path: document
+    - text: 1EG4TE5MK73
+      line_number: 3
+      type: INSURANCE_MEMBER_ID
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:medical_long_form_labels>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 10
+        original_confidence: 80
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: INSURANCE_MEMBER_ID
+        validation_path: document
+    - text: W1122009988
+      line_number: 6
+      type: INSURANCE_MEMBER_ID
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:medical_long_form_labels>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 10
+        original_confidence: 80
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: INSURANCE_MEMBER_ID
+        validation_path: document
+    - text: "4472901"
+      line_number: 4
+      type: MRN
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:medical_long_form_labels>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 10
+        original_confidence: 80
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: MRN
+        validation_path: document
+    - text: W1234567801
+      line_number: 1
+      type: INSURANCE_MEMBER_ID
+      confidence: 70
+      confidence_level: MEDIUM
+      filename: <golden:medical_long_form_labels>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 0
+        original_confidence: 70
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: INSURANCE_MEMBER_ID
+        validation_path: document
+    - text: P5551234567
+      line_number: 5
+      type: INSURANCE_MEMBER_ID
+      confidence: 70
+      confidence_level: MEDIUM
+      filename: <golden:medical_long_form_labels>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 0
+        original_confidence: 70
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: INSURANCE_MEMBER_ID
+        validation_path: document
