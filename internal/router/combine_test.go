@@ -73,22 +73,24 @@ func TestCombine_SinglePreprocessor_TextByteIdentical(t *testing.T) {
 
 // TestCombine_MultiPreprocessor_MatchesReferenceConcat locks the combine branch:
 // with 2+ successful preprocessors the output must be byte-identical to the
-// original algorithm's concatenation (first text, then
-// "\n\n--- name ---\n"+text per subsequent processor) FOR THE OBSERVED ARRIVAL
-// ORDER. Because preprocessors run concurrently, arrival order is
-// nondeterministic, so we reconstruct the expected string from the actual
-// ProcessorType (which records the order the results were combined in) rather
-// than assuming a fixed order.
+// reference concatenation (first text, then "\n\n--- name ---\n"+text per
+// subsequent processor) IN SORTED PREPROCESSOR-NAME ORDER.
+//
+// This test previously reconstructed the expectation from the observed
+// ProcessorType, because results were consumed in goroutine completion order and
+// so the arrangement was whatever the race produced. That is exactly the defect
+// behind issue #179, so the order is now pinned instead of accommodated.
 func TestCombine_MultiPreprocessor_MatchesReferenceConcat(t *testing.T) {
 	texts := map[string]string{
 		"alpha": strings.Repeat("A", 500),
 		"beta":  strings.Repeat("B", 700),
 		"gamma": strings.Repeat("C", 300),
 	}
+	// Registered out of order on purpose: the output must not depend on it.
 	fr := routerWithPreprocessors(
+		&fakePreprocessor{name: "gamma", text: texts["gamma"], success: true},
 		&fakePreprocessor{name: "alpha", text: texts["alpha"], success: true},
 		&fakePreprocessor{name: "beta", text: texts["beta"], success: true},
-		&fakePreprocessor{name: "gamma", text: texts["gamma"], success: true},
 	)
 
 	got, err := fr.ProcessFile("x.fake", &ProcessingContext{FilePath: "x.fake"})
@@ -96,16 +98,12 @@ func TestCombine_MultiPreprocessor_MatchesReferenceConcat(t *testing.T) {
 		t.Fatalf("ProcessFile: %v", err)
 	}
 
-	// ProcessorType is "a+b+c" in the exact order results were combined.
-	order := strings.Split(got.ProcessorType, "+")
-	if len(order) != 3 {
-		t.Fatalf("expected 3 combined processors, got %q", got.ProcessorType)
+	if want := "alpha+beta+gamma"; got.ProcessorType != want {
+		t.Errorf("ProcessorType = %q, want %q (sorted by preprocessor name)", got.ProcessorType, want)
 	}
 
-	// Reconstruct the reference concatenation using the SAME rule as the
-	// original loop: first text raw, each subsequent prefixed with a separator.
 	var want strings.Builder
-	for i, name := range order {
+	for i, name := range []string{"alpha", "beta", "gamma"} {
 		if i == 0 {
 			want.WriteString(texts[name])
 		} else {

@@ -6,6 +6,7 @@ package preprocessors
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -60,8 +61,18 @@ func (mf *MetadataFormatter) FormatPropertiesMap(properties map[string]string, e
 		exclude[key] = true
 	}
 
-	for key, value := range properties {
-		if !exclude[key] && value != "" {
+	// Emit in sorted key order. Ranging the map directly would follow Go's
+	// randomized iteration order, so the extracted-text payload — and therefore
+	// the line number every finding below it is reported against — would differ
+	// between two scans of the same file.
+	keys := make([]string, 0, len(properties))
+	for key := range properties {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		if value := properties[key]; !exclude[key] && value != "" {
 			result.WriteString(mf.FormatMetadataField(key, value))
 		}
 	}
