@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -136,8 +137,16 @@ func (imr *ImageMetadataRedactor) GetName() string {
 
 // GetSupportedTypes returns the file types this redactor can handle
 func (imr *ImageMetadataRedactor) GetSupportedTypes() []string {
-	types := make([]string, 0, len(imr.supportedFormats)*2)
+	// Sorted extensions so the reported type list is identical between runs —
+	// it reaches --help-style output and registration logs.
+	exts := make([]string, 0, len(imr.supportedFormats))
 	for ext := range imr.supportedFormats {
+		exts = append(exts, ext)
+	}
+	sort.Strings(exts)
+
+	types := make([]string, 0, len(exts)*2)
+	for _, ext := range exts {
 		types = append(types, ext)
 		types = append(types, strings.TrimPrefix(ext, ".")) // Add without dot
 	}
@@ -456,9 +465,14 @@ func (imr *ImageMetadataRedactor) redactJPEGMetadata(originalFile *os.File, outp
 		return fmt.Errorf("failed to encode JPEG: %w", err)
 	}
 
-	// Create redaction mapping for metadata removal
+	// Create redaction mapping for metadata removal. Field names sorted: these
+	// mappings become audit-log entries whose IDs are assigned from slice
+	// position (doc_N_redaction_I), so a map range gave the same EXIF field a
+	// different ID on every run and made two audit logs of one image
+	// incomparable.
 	if metadata.HasEXIF && len(metadata.EXIFData) > 0 {
-		for fieldName, fieldValue := range metadata.EXIFData {
+		for _, fieldName := range sortedEXIFFieldNames(metadata.EXIFData) {
+			fieldValue := metadata.EXIFData[fieldName]
 			mapping := redactors.RedactionMapping{
 				RedactedText: "[METADATA-REMOVED]",
 				Position: redactors.TextPosition{
@@ -481,6 +495,16 @@ func (imr *ImageMetadataRedactor) redactJPEGMetadata(originalFile *os.File, outp
 	}
 
 	return nil
+}
+
+// sortedEXIFFieldNames returns the EXIF field names in a fixed order.
+func sortedEXIFFieldNames(exifData map[string]string) []string {
+	names := make([]string, 0, len(exifData))
+	for name := range exifData {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // redactPNGMetadata removes metadata from PNG files
@@ -588,6 +612,7 @@ func (imr *ImageMetadataRedactor) GetSupportedImageFormats() []string {
 	for ext := range imr.supportedFormats {
 		formats = append(formats, ext)
 	}
+	sort.Strings(formats)
 	return formats
 }
 

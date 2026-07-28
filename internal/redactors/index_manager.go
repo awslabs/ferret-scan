@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -97,6 +98,24 @@ func (rim *RedactionAuditLogManager) ListAuditLogs() []string {
 	for documentID := range rim.auditLogs {
 		documentIDs = append(documentIDs, documentID)
 	}
+	// Sorted: the caller gets a listing, and a listing that permutes itself
+	// between calls on unchanged state is not usable for display or comparison.
+	sort.Strings(documentIDs)
+	return documentIDs
+}
+
+// sortedDocumentIDs returns the managed document IDs in a fixed order. Callers
+// that walk every audit log use it so their behavior — in particular which
+// document a validation error names when several are invalid — does not depend
+// on Go's randomized map iteration order.
+//
+// Callers must already hold rim.mutex.
+func (rim *RedactionAuditLogManager) sortedDocumentIDs() []string {
+	documentIDs := make([]string, 0, len(rim.auditLogs))
+	for documentID := range rim.auditLogs {
+		documentIDs = append(documentIDs, documentID)
+	}
+	sort.Strings(documentIDs)
 	return documentIDs
 }
 
@@ -200,8 +219,12 @@ func (rim *RedactionAuditLogManager) ExportAllAuditLogs() ([]byte, error) {
 		AuditLogs:       make(map[string]*RedactionAuditLog),
 	}
 
-	// Validate and copy all audit logs
-	for documentID, auditLog := range rim.auditLogs {
+	// Validate and copy all audit logs. Walk in sorted order so that when more
+	// than one log is invalid the reported document is always the same one —
+	// ranging the map made the error message vary run to run on identical input.
+	// The emitted JSON itself is unaffected: encoding/json sorts map keys.
+	for _, documentID := range rim.sortedDocumentIDs() {
+		auditLog := rim.auditLogs[documentID]
 		if err := auditLog.Validate(); err != nil {
 			return nil, fmt.Errorf("audit log validation failed for document %s: %w", documentID, err)
 		}
@@ -318,8 +341,10 @@ func (rim *RedactionAuditLogManager) ValidateAllAuditLogs() error {
 	rim.mutex.RLock()
 	defer rim.mutex.RUnlock()
 
-	for documentID, auditLog := range rim.auditLogs {
-		if err := auditLog.Validate(); err != nil {
+	// Sorted for the same reason as ExportAllAuditLogs: with several invalid logs
+	// a map range named a different document on each call.
+	for _, documentID := range rim.sortedDocumentIDs() {
+		if err := rim.auditLogs[documentID].Validate(); err != nil {
 			return fmt.Errorf("validation failed for document %s: %w", documentID, err)
 		}
 	}

@@ -6,8 +6,20 @@ package redactors
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+// sortedConfigKeys returns a config map's keys in a fixed order, so that
+// validation visits entries in the same sequence on every run.
+func sortedConfigKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
 
 // RedactionConfig contains all redaction configuration settings
 type RedactionConfig struct {
@@ -269,16 +281,18 @@ func (rc *RedactionConfig) Validate() error {
 		return fmt.Errorf("position_correlation.context_window_size must be non-negative")
 	}
 
-	// Validate document type configurations
-	for docType, config := range rc.DocumentTypes {
-		if err := rc.validateDocumentTypeConfig(docType, config); err != nil {
+	// Validate document type configurations. Sorted keys: with more than one
+	// invalid entry, ranging the map reported a different one on every run, so
+	// the user fixed whichever error happened to surface and hit the next.
+	for _, docType := range sortedConfigKeys(rc.DocumentTypes) {
+		if err := rc.validateDocumentTypeConfig(docType, rc.DocumentTypes[docType]); err != nil {
 			return fmt.Errorf("document_types.%s: %w", docType, err)
 		}
 	}
 
 	// Validate data type configurations
-	for dataType, config := range rc.DataTypes {
-		if err := rc.validateDataTypeConfig(dataType, config); err != nil {
+	for _, dataType := range sortedConfigKeys(rc.DataTypes) {
+		if err := rc.validateDataTypeConfig(dataType, rc.DataTypes[dataType]); err != nil {
 			return fmt.Errorf("data_types.%s: %w", dataType, err)
 		}
 	}

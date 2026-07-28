@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -247,6 +248,51 @@ func (or *OfficeRedactor) detectDocumentType(filePath string) (OfficeDocumentTyp
 // OfficeZipContents represents the contents of an Office document ZIP file
 type OfficeZipContents struct {
 	Files map[string][]byte // filename -> content
+
+	// Order is the entry order of the ORIGINAL package, captured while reading
+	// it. Repackaging replays this order instead of ranging Files, which is a
+	// Go map and therefore randomized: without it the redacted .docx/.xlsx/.pptx
+	// was written with its parts in a different sequence on every run, so the
+	// same input produced a different output file each time — no byte
+	// reproducibility for anything that hashes or diffs the artifact. It also
+	// meant [Content_Types].xml frequently landed after the content parts, and
+	// OPC requires it to be the first entry in the package.
+	Order []string
+}
+
+// addFile records a package entry, preserving first-seen order.
+func (c *OfficeZipContents) addFile(name string, content []byte) {
+	if _, exists := c.Files[name]; !exists {
+		c.Order = append(c.Order, name)
+	}
+	c.Files[name] = content
+}
+
+// orderedNames returns the entry names in the original package order, with any
+// entry that is present in Files but absent from Order appended in sorted order.
+// The fallback keeps output deterministic even if a future code path adds a part
+// without going through addFile.
+func (c *OfficeZipContents) orderedNames() []string {
+	names := make([]string, 0, len(c.Files))
+	seen := make(map[string]bool, len(c.Files))
+	for _, name := range c.Order {
+		if _, exists := c.Files[name]; exists && !seen[name] {
+			names = append(names, name)
+			seen[name] = true
+		}
+	}
+	if len(names) == len(c.Files) {
+		return names
+	}
+
+	extra := make([]string, 0, len(c.Files)-len(names))
+	for name := range c.Files {
+		if !seen[name] {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	return append(names, extra...)
 }
 
 // OfficeTextPosition represents text position information in an Office document
@@ -274,7 +320,8 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 	defer reader.Close()
 
 	zipContents := &OfficeZipContents{
-		Files: make(map[string][]byte),
+		Files: make(map[string][]byte, len(reader.File)),
+		Order: make([]string, 0, len(reader.File)),
 	}
 
 	var extractedText strings.Builder
@@ -323,7 +370,9 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 				maxOfficeTotalBytes)
 		}
 
-		zipContents.Files[file.Name] = content
+		// Record the entry with its position in the source package, so the
+		// repackaged document is written in the same order.
+		zipContents.addFile(file.Name, content)
 
 		// Extract text from relevant XML files
 		if or.isTextContainingFile(file.Name, docType) {
@@ -468,12 +517,14 @@ func (or *OfficeRedactor) extractAttributes(element xml.StartElement) map[string
 func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, matches []detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType) ([]redactors.RedactionMapping, *OfficeZipContents, error) {
 	var redactionMap []redactors.RedactionMapping
 	modifiedContents := &OfficeZipContents{
-		Files: make(map[string][]byte),
+		Files: make(map[string][]byte, len(zipContents.Files)),
+		Order: make([]string, 0, len(zipContents.Files)),
 	}
 
-	// Copy all files initially
-	for fileName, content := range zipContents.Files {
-		modifiedContents.Files[fileName] = content
+	// Copy all files initially, walking the recorded order rather than the map
+	// so the copy carries the source package's entry order forward.
+	for _, fileName := range zipContents.orderedNames() {
+		modifiedContents.addFile(fileName, zipContents.Files[fileName])
 	}
 
 	// Restore bounded (display-truncated) consolidated match texts to their
@@ -584,8 +635,10 @@ func (or *OfficeRedactor) applyXMLRedaction(zipContents *OfficeZipContents, posi
 	// This is a simplified approach - in production, you'd want more sophisticated XML manipulation
 	modifiedContent := bytes.ReplaceAll(xmlContent, []byte(originalText), []byte(replacement))
 
-	// Update the ZIP contents
-	zipContents.Files[position.FileName] = modifiedContent
+	// Update the ZIP contents. addFile rather than a bare map write so the entry
+	// order stays consistent with Files even though this path only ever replaces
+	// a part that is already present.
+	zipContents.addFile(position.FileName, modifiedContent)
 
 	or.logEvent("xml_content_modified", true, map[string]interface{}{
 		"file_name":     position.FileName,
@@ -617,8 +670,12 @@ func (or *OfficeRedactor) repackageOfficeDocument(contents *OfficeZipContents, o
 	zipWriter := zip.NewWriter(outFile)
 	defer zipWriter.Close()
 
-	// Write all files to ZIP
-	for fileName, content := range contents.Files {
+	// Write all files to ZIP in the order they appeared in the source package.
+	// Ranging contents.Files directly here made the redacted document's entry
+	// order random per run, which broke byte reproducibility and regularly moved
+	// [Content_Types].xml out of the first slot that OPC requires it to occupy.
+	for _, fileName := range contents.orderedNames() {
+		content := contents.Files[fileName]
 		fileWriter, err := zipWriter.Create(fileName)
 		if err != nil {
 			return fmt.Errorf("failed to create ZIP entry for %s: %w", fileName, err)
