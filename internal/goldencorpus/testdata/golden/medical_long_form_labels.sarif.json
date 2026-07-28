@@ -13,34 +13,34 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "member identification number: \nmember identification number: W1234567801"
+                    "text": "medicare member identification number: \nmedicare member identification number: 1EG4TE5MK73"
                   },
-                  "startLine": 1
+                  "startLine": 3
                 },
                 "region": {
-                  "endColumn": 42,
+                  "endColumn": 51,
                   "snippet": {
-                    "text": "member identification number: W1234567801"
+                    "text": "medicare member identification number: 1EG4TE5MK73"
                   },
-                  "startColumn": 31,
-                  "startLine": 1
+                  "startColumn": 40,
+                  "startLine": 3
                 }
               }
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 1 (confidence: 70.0% - MEDIUM). Matched text: 'W1234567801'"
+            "text": "MEDICARE_MBI Detected in <golden:medical_long_form_labels> at line 3 (confidence: 85.0% - MEDIUM). Matched text: '1EG4TE5MK73'"
           },
           "properties": {
-            "confidence": 70,
+            "confidence": 85,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 0.7,
               "context_doctype": "Unknown",
               "context_domain": "Healthcare",
-              "context_impact": 0,
-              "original_confidence": 70,
+              "context_impact": 10,
+              "original_confidence": 85,
               "semantic_context": {
                 "FinancialData": 0,
                 "MedicalData": 0,
@@ -48,13 +48,16 @@
                 "Production": 0,
                 "TestData": 0
               },
-              "subtype": "INSURANCE_MEMBER_ID",
+              "subtype": "MBI",
               "validation_path": "document"
             },
+            "positiveKeywords": [
+              "medicare"
+            ],
             "validator": "medicalid"
           },
-          "rank": 60,
-          "ruleId": "INSURANCE_MEMBER_ID"
+          "rank": 67.5,
+          "ruleId": "MEDICARE_MBI"
         },
         {
           "level": "error",
@@ -110,59 +113,6 @@
             "validator": "medicalid"
           },
           "rank": 65,
-          "ruleId": "INSURANCE_MEMBER_ID"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:medical_long_form_labels>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "policyholder id: \npolicyholder id: P5551234567"
-                  },
-                  "startLine": 5
-                },
-                "region": {
-                  "endColumn": 29,
-                  "snippet": {
-                    "text": "policyholder id: P5551234567"
-                  },
-                  "startColumn": 18,
-                  "startLine": 5
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 5 (confidence: 70.0% - MEDIUM). Matched text: 'P5551234567'"
-          },
-          "properties": {
-            "confidence": 70,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
-              "context_impact": 0,
-              "original_confidence": 70,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "subtype": "INSURANCE_MEMBER_ID",
-              "validation_path": "document"
-            },
-            "validator": "medicalid"
-          },
-          "rank": 60,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -231,62 +181,6 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "medicare member identification number: \nmedicare member identification number: 1EG4TE5MK73"
-                  },
-                  "startLine": 3
-                },
-                "region": {
-                  "endColumn": 51,
-                  "snippet": {
-                    "text": "medicare member identification number: 1EG4TE5MK73"
-                  },
-                  "startColumn": 40,
-                  "startLine": 3
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "MEDICARE_MBI Detected in <golden:medical_long_form_labels> at line 3 (confidence: 85.0% - MEDIUM). Matched text: '1EG4TE5MK73'"
-          },
-          "properties": {
-            "confidence": 85,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
-              "context_impact": 10,
-              "original_confidence": 85,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "subtype": "MBI",
-              "validation_path": "document"
-            },
-            "positiveKeywords": [
-              "medicare"
-            ],
-            "validator": "medicalid"
-          },
-          "rank": 67.5,
-          "ruleId": "MEDICARE_MBI"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:medical_long_form_labels>"
-                },
-                "contextRegion": {
-                  "snippet": {
                     "text": "patient identification number: \npatient identification number: 4472901"
                   },
                   "startLine": 4
@@ -332,6 +226,112 @@
           },
           "rank": 65,
           "ruleId": "MRN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:medical_long_form_labels>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "member identification number: \nmember identification number: W1234567801"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 42,
+                  "snippet": {
+                    "text": "member identification number: W1234567801"
+                  },
+                  "startColumn": 31,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 1 (confidence: 70.0% - MEDIUM). Matched text: 'W1234567801'"
+          },
+          "properties": {
+            "confidence": 70,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.7,
+              "context_doctype": "Unknown",
+              "context_domain": "Healthcare",
+              "context_impact": 0,
+              "original_confidence": 70,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "validator": "medicalid"
+          },
+          "rank": 60,
+          "ruleId": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:medical_long_form_labels>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "policyholder id: \npolicyholder id: P5551234567"
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "policyholder id: P5551234567"
+                  },
+                  "startColumn": 18,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 5 (confidence: 70.0% - MEDIUM). Matched text: 'P5551234567'"
+          },
+          "properties": {
+            "confidence": 70,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.7,
+              "context_doctype": "Unknown",
+              "context_domain": "Healthcare",
+              "context_impact": 0,
+              "original_confidence": 70,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "validator": "medicalid"
+          },
+          "rank": 60,
+          "ruleId": "INSURANCE_MEMBER_ID"
         }
       ],
       "tool": {

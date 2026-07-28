@@ -80,6 +80,32 @@
     },
     {
       "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected sensitive data (mrn) in this file.\n\n**Location:** <golden:context_soft_negative_labels> (line 3)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nPatient account number: 1234567 on chart\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "MRN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:context_soft_negative_labels>",
+        "start_line": 3
+      },
+      "message": "Sensitive data (mrn) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Mrn Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
       "confidence": "Low",
       "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** <golden:context_soft_negative_labels> (line 4)\n**Confidence:** LOW (15.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nimei 490154203237518 on the handset\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: -100\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
       "id": "ferret-<HASH>",
@@ -129,32 +155,6 @@
       "message": "Visa credit card detected: [HIDDEN] (confidence: LOW)",
       "name": "Visa Detected",
       "severity": "Medium"
-    },
-    {
-      "category": "sast",
-      "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (mrn) in this file.\n\n**Location:** <golden:context_soft_negative_labels> (line 3)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nPatient account number: 1234567 on chart\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "MRN"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "medicalid"
-        }
-      ],
-      "location": {
-        "end_line": 3,
-        "file": "<golden:context_soft_negative_labels>",
-        "start_line": 3
-      },
-      "message": "Sensitive data (mrn) detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Mrn Detected",
-      "severity": "High"
     }
   ]
 }
