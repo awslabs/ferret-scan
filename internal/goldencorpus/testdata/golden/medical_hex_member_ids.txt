@@ -1,0 +1,8 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH        FILE
+--------------------------------------------------------------------------------------
+[HIGH  ] medicalid    DEA_NUMBER            100.00% line    10 AB1234563    <golden:medical_hex_member_ids>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     1 E1122334455  <golden:medical_hex_member_ids>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     2 ABCDEF123456 <golden:medical_hex_member_ids>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     3 BEEF1234567  <golden:medical_hex_member_ids>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     4 1234567890AB <golden:medical_hex_member_ids>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     5 55DEADBEEF12 <golden:medical_hex_member_ids>

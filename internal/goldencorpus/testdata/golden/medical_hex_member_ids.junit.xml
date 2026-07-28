@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:medical_hex_member_ids&gt;" classname="security-scan" time="0.001">
+      <failure message="6 security findings detected" type="SECURITY_FINDINGS">Line 10: DEA_NUMBER detected with 100.0% confidence (HIGH)&#xA;Match: AB1234563&#xA;Validator: medicalid&#xA;Line 1: INSURANCE_MEMBER_ID detected with 80.0% confidence (MEDIUM)&#xA;Match: E1122334455&#xA;Validator: medicalid&#xA;Line 2: INSURANCE_MEMBER_ID detected with 80.0% confidence (MEDIUM)&#xA;Match: ABCDEF123456&#xA;Validator: medicalid&#xA;Line 3: INSURANCE_MEMBER_ID detected with 80.0% confidence (MEDIUM)&#xA;Match: BEEF1234567&#xA;Validator: medicalid&#xA;Line 4: INSURANCE_MEMBER_ID detected with 80.0% confidence (MEDIUM)&#xA;Match: 1234567890AB&#xA;Validator: medicalid&#xA;Line 5: INSURANCE_MEMBER_ID detected with 80.0% confidence (MEDIUM)&#xA;Match: 55DEADBEEF12&#xA;Validator: medicalid</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

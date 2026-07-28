@@ -1,0 +1,7 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:medical_hex_member_ids>,DEA_NUMBER,HIGH,100.0,10,AB1234563
+<golden:medical_hex_member_ids>,INSURANCE_MEMBER_ID,MEDIUM,80.0,1,E1122334455
+<golden:medical_hex_member_ids>,INSURANCE_MEMBER_ID,MEDIUM,80.0,2,ABCDEF123456
+<golden:medical_hex_member_ids>,INSURANCE_MEMBER_ID,MEDIUM,80.0,3,BEEF1234567
+<golden:medical_hex_member_ids>,INSURANCE_MEMBER_ID,MEDIUM,80.0,4,1234567890AB
+<golden:medical_hex_member_ids>,INSURANCE_MEMBER_ID,MEDIUM,80.0,5,55DEADBEEF12

@@ -10,7 +10,6 @@ policy identification for terraform module: MODULEVERSION123
 === FINDINGS (sorted) ===
 type=INSURANCE_MEMBER_ID line=1 conf=medium match=W1234567801
 type=INSURANCE_MEMBER_ID line=2 conf=medium match=X9876543210
-type=INSURANCE_MEMBER_ID line=3 conf=medium match=1EG4TE5MK73
 type=INSURANCE_MEMBER_ID line=5 conf=medium match=P5551234567
 type=INSURANCE_MEMBER_ID line=6 conf=medium match=W1122009988
 type=MEDICARE_MBI line=3 conf=medium match=1EG4TE5MK73

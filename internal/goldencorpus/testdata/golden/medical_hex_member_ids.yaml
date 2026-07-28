@@ -1,36 +1,61 @@
 results:
-    - text: 1EG4TE5MK73
-      line_number: 3
-      type: MEDICARE_MBI
-      confidence: 85
-      confidence_level: MEDIUM
-      filename: <golden:medical_long_form_labels>
+    - text: AB1234563
+      line_number: 10
+      type: DEA_NUMBER
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:medical_hex_member_ids>
       validator: medicalid
       metadata:
+        checksum_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.6666666666666666
+        context_confidence: 1
         context_doctype: Unknown
         context_domain: Healthcare
-        context_impact: 10
-        original_confidence: 85
+        context_impact: 30
+        last_name_initial: B
+        original_confidence: 100
+        registrant_type: A
         semantic_context:
             FinancialData: 0
             MedicalData: 0
             PersonalData: 0
             Production: 0
             TestData: 0
-        subtype: MBI
+        subtype: DEA
         validation_path: document
-    - text: X9876543210
+    - text: E1122334455
+      line_number: 1
+      type: INSURANCE_MEMBER_ID
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:medical_hex_member_ids>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: 10
+        original_confidence: 80
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        subtype: INSURANCE_MEMBER_ID
+        validation_path: document
+    - text: ABCDEF123456
       line_number: 2
       type: INSURANCE_MEMBER_ID
       confidence: 80
       confidence_level: MEDIUM
-      filename: <golden:medical_long_form_labels>
+      filename: <golden:medical_hex_member_ids>
       validator: medicalid
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.6666666666666666
+        context_confidence: 1
         context_doctype: Unknown
         context_domain: Healthcare
         context_impact: 10
@@ -43,16 +68,16 @@ results:
             TestData: 0
         subtype: INSURANCE_MEMBER_ID
         validation_path: document
-    - text: W1122009988
-      line_number: 6
+    - text: BEEF1234567
+      line_number: 3
       type: INSURANCE_MEMBER_ID
       confidence: 80
       confidence_level: MEDIUM
-      filename: <golden:medical_long_form_labels>
+      filename: <golden:medical_hex_member_ids>
       validator: medicalid
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.6666666666666666
+        context_confidence: 1
         context_doctype: Unknown
         context_domain: Healthcare
         context_impact: 10
@@ -65,16 +90,16 @@ results:
             TestData: 0
         subtype: INSURANCE_MEMBER_ID
         validation_path: document
-    - text: "4472901"
+    - text: 1234567890AB
       line_number: 4
-      type: MRN
+      type: INSURANCE_MEMBER_ID
       confidence: 80
       confidence_level: MEDIUM
-      filename: <golden:medical_long_form_labels>
+      filename: <golden:medical_hex_member_ids>
       validator: medicalid
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.6666666666666666
+        context_confidence: 1
         context_doctype: Unknown
         context_domain: Healthcare
         context_impact: 10
@@ -85,44 +110,22 @@ results:
             PersonalData: 0
             Production: 0
             TestData: 0
-        subtype: MRN
-        validation_path: document
-    - text: W1234567801
-      line_number: 1
-      type: INSURANCE_MEMBER_ID
-      confidence: 70
-      confidence_level: MEDIUM
-      filename: <golden:medical_long_form_labels>
-      validator: medicalid
-      metadata:
-        confidence_adjustment: 0
-        context_confidence: 0.6666666666666666
-        context_doctype: Unknown
-        context_domain: Healthcare
-        context_impact: 0
-        original_confidence: 70
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         subtype: INSURANCE_MEMBER_ID
         validation_path: document
-    - text: P5551234567
+    - text: 55DEADBEEF12
       line_number: 5
       type: INSURANCE_MEMBER_ID
-      confidence: 70
+      confidence: 80
       confidence_level: MEDIUM
-      filename: <golden:medical_long_form_labels>
+      filename: <golden:medical_hex_member_ids>
       validator: medicalid
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.6666666666666666
+        context_confidence: 1
         context_doctype: Unknown
         context_domain: Healthcare
-        context_impact: 0
-        original_confidence: 70
+        context_impact: 10
+        original_confidence: 80
         semantic_context:
             FinancialData: 0
             MedicalData: 0

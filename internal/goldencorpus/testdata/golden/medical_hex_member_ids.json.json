@@ -1,17 +1,20 @@
 {
   "results": [
     {
-      "confidence": 85,
-      "confidence_level": "MEDIUM",
-      "filename": "<golden:medical_long_form_labels>",
-      "line_number": 3,
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<golden:medical_hex_member_ids>",
+      "line_number": 10,
       "metadata": {
+        "checksum_valid": true,
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
+        "context_confidence": 1,
         "context_doctype": "Unknown",
         "context_domain": "Healthcare",
-        "context_impact": 10,
-        "original_confidence": 85,
+        "context_impact": 30,
+        "last_name_initial": "B",
+        "original_confidence": 100,
+        "registrant_type": "A",
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -19,103 +22,25 @@
           "Production": 0,
           "TestData": 0
         },
-        "subtype": "MBI",
+        "subtype": "DEA",
         "validation_path": "document"
       },
-      "text": "1EG4TE5MK73",
-      "type": "MEDICARE_MBI",
+      "text": "AB1234563",
+      "type": "DEA_NUMBER",
       "validator": "medicalid"
     },
     {
       "confidence": 80,
       "confidence_level": "MEDIUM",
-      "filename": "<golden:medical_long_form_labels>",
-      "line_number": 2,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
-        "context_impact": 10,
-        "original_confidence": 80,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
-        "subtype": "INSURANCE_MEMBER_ID",
-        "validation_path": "document"
-      },
-      "text": "X9876543210",
-      "type": "INSURANCE_MEMBER_ID",
-      "validator": "medicalid"
-    },
-    {
-      "confidence": 80,
-      "confidence_level": "MEDIUM",
-      "filename": "<golden:medical_long_form_labels>",
-      "line_number": 6,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
-        "context_impact": 10,
-        "original_confidence": 80,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
-        "subtype": "INSURANCE_MEMBER_ID",
-        "validation_path": "document"
-      },
-      "text": "W1122009988",
-      "type": "INSURANCE_MEMBER_ID",
-      "validator": "medicalid"
-    },
-    {
-      "confidence": 80,
-      "confidence_level": "MEDIUM",
-      "filename": "<golden:medical_long_form_labels>",
-      "line_number": 4,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
-        "context_impact": 10,
-        "original_confidence": 80,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
-        "subtype": "MRN",
-        "validation_path": "document"
-      },
-      "text": "4472901",
-      "type": "MRN",
-      "validator": "medicalid"
-    },
-    {
-      "confidence": 70,
-      "confidence_level": "MEDIUM",
-      "filename": "<golden:medical_long_form_labels>",
+      "filename": "<golden:medical_hex_member_ids>",
       "line_number": 1,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
+        "context_confidence": 1,
         "context_doctype": "Unknown",
         "context_domain": "Healthcare",
-        "context_impact": 0,
-        "original_confidence": 70,
+        "context_impact": 10,
+        "original_confidence": 80,
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -126,22 +51,22 @@
         "subtype": "INSURANCE_MEMBER_ID",
         "validation_path": "document"
       },
-      "text": "W1234567801",
+      "text": "E1122334455",
       "type": "INSURANCE_MEMBER_ID",
       "validator": "medicalid"
     },
     {
-      "confidence": 70,
+      "confidence": 80,
       "confidence_level": "MEDIUM",
-      "filename": "<golden:medical_long_form_labels>",
-      "line_number": 5,
+      "filename": "<golden:medical_hex_member_ids>",
+      "line_number": 2,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
+        "context_confidence": 1,
         "context_doctype": "Unknown",
         "context_domain": "Healthcare",
-        "context_impact": 0,
-        "original_confidence": 70,
+        "context_impact": 10,
+        "original_confidence": 80,
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -152,7 +77,85 @@
         "subtype": "INSURANCE_MEMBER_ID",
         "validation_path": "document"
       },
-      "text": "P5551234567",
+      "text": "ABCDEF123456",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:medical_hex_member_ids>",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "BEEF1234567",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:medical_hex_member_ids>",
+      "line_number": 4,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "1234567890AB",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:medical_hex_member_ids>",
+      "line_number": 5,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Healthcare",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "55DEADBEEF12",
       "type": "INSURANCE_MEMBER_ID",
       "validator": "medicalid"
     }

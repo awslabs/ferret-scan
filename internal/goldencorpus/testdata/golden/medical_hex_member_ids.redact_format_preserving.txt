@@ -1,0 +1,18 @@
+=== REDACTED ===
+member id: ***********
+member id: ************
+member id: ***********
+subscriber id: ************
+member id: ************
+commit 9462e98abcdef1234567890abcdef1234567890a
+sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4
+member id verification hash: 1234abcd5678ef90
+cache blob 0xDEADBEEF12345678 evicted
+insurance member id for prescriber: *********
+=== FINDINGS (sorted) ===
+type=DEA_NUMBER line=10 conf=high match=AB1234563
+type=INSURANCE_MEMBER_ID line=1 conf=medium match=E1122334455
+type=INSURANCE_MEMBER_ID line=2 conf=medium match=ABCDEF123456
+type=INSURANCE_MEMBER_ID line=3 conf=medium match=BEEF1234567
+type=INSURANCE_MEMBER_ID line=4 conf=medium match=1234567890AB
+type=INSURANCE_MEMBER_ID line=5 conf=medium match=55DEADBEEF12

@@ -5,6 +5,7 @@ package medicalid
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -939,6 +940,163 @@ func TestLongFormLabelNoTechFalsePositives(t *testing.T) {
 					content, m.Confidence)
 			}
 		}
+	}
+}
+
+// TestHexShapedMemberIDRecall covers the recall half of the hex-gate fix. The
+// all-hex shape check in looksLikeNonInsuranceIDShape used to fire before the
+// strong-keyword check was consulted, so a member ID that happens to use only
+// A-F produced NO finding at all even beside an explicit "member id:" label —
+// and therefore also passed --enable-redaction in cleartext with exit code 0.
+// Real member IDs are commonly a letter prefix plus digits, and 6 of the 26
+// possible leading letters are hex digits, so this was roughly a quarter of
+// that shape.
+//
+// The 12-character cases are here on purpose: a UUID-component check for
+// len 8/12/16 sat below the gate testing the same isHexString condition, so it
+// was unreachable while the gate was unconditional but would have come alive
+// and re-dropped exactly these once the gate deferred to the keyword.
+func TestHexShapedMemberIDRecall(t *testing.T) {
+	v := NewValidator()
+
+	for _, tt := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"hex letter prefix", "member id: E1122334455", "E1122334455"},
+		{"all hex letters then digits, len 12", "member id: ABCDEF123456", "ABCDEF123456"},
+		{"hex word prefix", "member id: BEEF1234567", "BEEF1234567"},
+		{"digits then hex letters, len 12", "subscriber id: 1234567890AB", "1234567890AB"},
+		{"hex embedded, len 12", "member id: 55DEADBEEF12", "55DEADBEEF12"},
+		{"non-hex letter prefix (was already detected)", "member id: W1122334455", "W1122334455"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent: %v", err)
+			}
+			for _, m := range matches {
+				if m.Type == "INSURANCE_MEMBER_ID" && m.Text == tt.want {
+					return
+				}
+			}
+			t.Errorf("no INSURANCE_MEMBER_ID for %q in %q; got %v",
+				tt.want, tt.content, summarize(matches))
+		})
+	}
+}
+
+// TestHexShapedDecoysStillSuppressed is the other half: the hex gate exists to
+// keep hashes, commit SHAs and hex blobs in source and logs from matching, and
+// deferring it to the insurance keyword must not give that up. None of these
+// lines carries a strong insurance label, so every one must still be dropped.
+func TestHexShapedDecoysStillSuppressed(t *testing.T) {
+	v := NewValidator()
+
+	for _, content := range []string{
+		"commit 9462e98abcdef1234567890abcdef1234567890a",
+		"fix(medicalid): recall long-form labels (85705bdcafe1)",
+		"sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4",
+		"etag: \"d41d8cd98f00b204e9800998ecf8427e\"",
+		"0xDEADBEEF12345678",
+		"blob abcdef1234567890 written to cache",
+		"session token: 1234567890abcdef",
+		// The keyword is present here and the value is still a hash. Casing is
+		// the only thing separating these from a real card ID, so they belong
+		// in the decoy set rather than the recall set.
+		"Member id verification: 1234abcd5678ef90",
+		"Insurance claims hash: a1b2c3d4e5f6a7b8",
+		"member id lookup checksum d41d8cd98f00b204",
+	} {
+		matches, err := v.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent: %v", err)
+		}
+		for _, m := range matches {
+			if m.Type == "INSURANCE_MEMBER_ID" {
+				t.Errorf("INSURANCE_MEMBER_ID false positive on %q (matched %q, confidence %.0f)",
+					content, m.Text, m.Confidence)
+			}
+		}
+	}
+}
+
+// TestHexGateDefersOnlyToInsuranceKeyword pins the exact predicate, so a future
+// edit cannot widen the rescue to any medical context. "patient chart" is
+// medical but is not a strong INSURANCE label, so a bare hex blob beside it must
+// stay suppressed while the same value beside "member id:" is recovered.
+func TestHexGateDefersOnlyToInsuranceKeyword(t *testing.T) {
+	v := NewValidator()
+
+	const val = "ABCDEF123456"
+
+	hasIns := func(content string) bool {
+		matches, err := v.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent: %v", err)
+		}
+		for _, m := range matches {
+			if m.Type == "INSURANCE_MEMBER_ID" && m.Text == val {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasIns("member id: " + val) {
+		t.Error("strong insurance keyword did not rescue the hex-shaped ID")
+	}
+	if hasIns("patient chart reference " + val) {
+		t.Error("generic medical context rescued a hex blob; only a strong insurance keyword should")
+	}
+	// Casing is the second half of the predicate: the same value lowercased is a
+	// digest, and no keyword may lift it.
+	if hasIns("member id: " + strings.ToLower(val)) {
+		t.Error("all-lowercase hex was rescued by the keyword; digests must stay suppressed")
+	}
+}
+
+// TestChecksumSubtypeWinsOverInsuranceID locks the arbitration that the hex gate
+// used to provide by accident. A valid DEA number is 2 letters + 7 digits, so
+// "AB1234563" is entirely hex digits and the old unconditional gate suppressed
+// the duplicate INSURANCE_MEMBER_ID as a side effect. That was fragile — it only
+// covered DEAs whose letters fall in A-F — so the veto is now explicit, and
+// checked here for all three checksum/format subtypes.
+func TestChecksumSubtypeWinsOverInsuranceID(t *testing.T) {
+	v := NewValidator()
+
+	for _, tt := range []struct {
+		name     string
+		content  string
+		value    string
+		wantType string
+	}{
+		{"DEA in insurance context", "Insurance member id for prescriber: AB1234563", "AB1234563", "DEA_NUMBER"},
+		{"MBI in insurance context", "member id: 1EG4TE5MK73", "1EG4TE5MK73", "MEDICARE_MBI"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tt.content, "claims.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent: %v", err)
+			}
+			var sawWanted bool
+			for _, m := range matches {
+				if m.Text != tt.value {
+					continue
+				}
+				if m.Type == tt.wantType {
+					sawWanted = true
+				}
+				if m.Type == "INSURANCE_MEMBER_ID" {
+					t.Errorf("%s %q also reported as INSURANCE_MEMBER_ID (confidence %.0f); the specific subtype must win",
+						tt.wantType, tt.value, m.Confidence)
+				}
+			}
+			if !sawWanted {
+				t.Errorf("no %s match for %q in %q; got %v", tt.wantType, tt.value, tt.content, summarize(matches))
+			}
+		})
 	}
 }
 
