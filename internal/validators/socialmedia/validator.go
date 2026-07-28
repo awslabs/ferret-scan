@@ -635,12 +635,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		if os.Getenv("FERRET_DEBUG") == "1" {
 			fmt.Fprintf(os.Stderr, "[WARN] Social Media: Clustering failed: %v\n", err)
 		}
-		// Fallback to flattened individual matches
-		var allMatches []detector.Match
-		for _, matches := range lineMatches {
-			allMatches = append(allMatches, matches...)
-		}
-		processedMatches = allMatches
+		// Fallback to flattened individual matches, in the same deterministic
+		// line order as the clustering path so a clustering failure does not
+		// reintroduce the map-order nondeterminism this fixes.
+		processedMatches = flattenLineMatchesSorted(lineMatches)
 	}
 
 	// Performance monitoring and memory cleanup
@@ -734,15 +732,37 @@ func (v *Validator) processLineMatchesWithClusteringAndErrorHandling(lineMatches
 	return processedMatches, nil
 }
 
+// flattenLineMatchesSorted flattens a line-keyed match map into a single slice
+// in ascending line order. Ranging over the map directly is nondeterministic
+// (Go randomizes map iteration), and every consumer of this slice — the greedy
+// first-wins clustering above all — is order sensitive, so the flatten must be
+// ordered. Within a line the slice is already in a stable order (see
+// processLineForAllPatterns), so preserving it here is enough.
+func flattenLineMatchesSorted(lineMatches map[int][]detector.Match) []detector.Match {
+	lineNums := make([]int, 0, len(lineMatches))
+	total := 0
+	for ln, matches := range lineMatches {
+		lineNums = append(lineNums, ln)
+		total += len(matches)
+	}
+	sort.Ints(lineNums)
+
+	all := make([]detector.Match, 0, total)
+	for _, ln := range lineNums {
+		all = append(all, lineMatches[ln]...)
+	}
+	return all
+}
+
 // processLineMatchesWithClustering processes line-based matches and applies social media profile clustering
 // This method groups related social media matches and reconstructs fragmented profile references
 func (v *Validator) processLineMatchesWithClustering(lineMatches map[int][]detector.Match, originalPath string) []detector.Match {
-	var allMatches []detector.Match
-
-	// Flatten line matches into a single slice for clustering analysis
-	for _, matches := range lineMatches {
-		allMatches = append(allMatches, matches...)
-	}
+	// Flatten line matches into a single slice for clustering analysis, in
+	// ascending line order. Ranging over the map directly would hand the greedy
+	// clustering a randomly-permuted slice, and because cluster seeding is
+	// first-wins over slice position, the partition (and thus how many rows
+	// collapse into a single SOCIAL_MEDIA_CLUSTER) would change every run.
+	allMatches := flattenLineMatchesSorted(lineMatches)
 
 	// If clustering is disabled or we have no matches, return flattened matches
 	if !v.clusteringConfig.Enabled || len(allMatches) == 0 {
@@ -2635,7 +2655,19 @@ func (v *Validator) detectPatternsByLineBatch(ctx stdctx.Context, content string
 
 // processLineForAllPatterns efficiently processes a single line against all patterns
 func (v *Validator) processLineForAllPatterns(line string, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor) []detector.Match {
-	var matches []detector.Match
+	// Each match is kept with the byte offset it was found at, so the returned
+	// slice can be put into a stable, content-independent order below. The outer
+	// loop ranges over v.compiledPatterns, which is a map, so the order matches
+	// are discovered in is randomized run to run. That randomness used to leak
+	// all the way to the output: the downstream clustering is greedy first-wins
+	// over this slice, so a different discovery order produced a different
+	// cluster partition and therefore a different number of collapsed rows —
+	// the same file reported 14–21 findings across runs of one binary.
+	type offsetMatch struct {
+		offset int
+		match  detector.Match
+	}
+	var found []offsetMatch
 
 	// Precompute the line-global lowercase form ONCE per line. analyzeContext...
 	// previously recomputed strings.ToLower(line) for every keyword of every
@@ -2663,12 +2695,30 @@ func (v *Validator) processLineForAllPatterns(line string, lineNum int, original
 				// Process match with optimized confidence calculation
 				processedMatch := v.processMatchOptimized(match, platform, patternIndex, line, lineLower, loc[0], lineNum, originalPath, contextExtractor)
 				if processedMatch != nil {
-					matches = append(matches, *processedMatch)
+					found = append(found, offsetMatch{offset: loc[0], match: *processedMatch})
 				}
 			}
 		}
 	}
 
+	// Order matches within the line deterministically: left to right by byte
+	// offset, then by type and text so two patterns matching at the same offset
+	// still resolve to a fixed order regardless of map iteration.
+	sort.SliceStable(found, func(i, j int) bool {
+		a, b := found[i], found[j]
+		if a.offset != b.offset {
+			return a.offset < b.offset
+		}
+		if a.match.Type != b.match.Type {
+			return a.match.Type < b.match.Type
+		}
+		return a.match.Text < b.match.Text
+	})
+
+	matches := make([]detector.Match, len(found))
+	for i, fm := range found {
+		matches[i] = fm.match
+	}
 	return matches
 }
 
@@ -4101,6 +4151,9 @@ func (v *Validator) identifyPlatformGroupings(matches []detector.Match) []string
 	for platform := range platformSet {
 		platforms = append(platforms, platform)
 	}
+	// Sorted so the cluster metadata (and thus JSON/YAML/SARIF output) is stable
+	// across runs; map iteration order is randomized.
+	sort.Strings(platforms)
 
 	return platforms
 }
@@ -4126,6 +4179,9 @@ func (v *Validator) extractUserIdentifiers(matches []detector.Match) []string {
 	for identifier := range identifierSet {
 		identifiers = append(identifiers, identifier)
 	}
+	// Sorted so the cluster metadata (and thus JSON/YAML/SARIF output) is stable
+	// across runs; map iteration order is randomized.
+	sort.Strings(identifiers)
 
 	return identifiers
 }
@@ -4514,7 +4570,11 @@ func (v *Validator) buildConsolidatedClusterText(matches []detector.Match) strin
 		}
 	}
 
-	// Build consolidated text
+	// Build consolidated text. platforms is a map, so the segment order is
+	// randomized run to run; sort the finished segments so the cluster's Text
+	// (which becomes the emitted finding's value) is identical across runs.
+	// items within a platform are already in the deterministic match order the
+	// caller passed in, so only the cross-platform ordering needs sorting here.
 	var parts []string
 	for platform, items := range platforms {
 		if len(items) == 1 {
@@ -4523,6 +4583,7 @@ func (v *Validator) buildConsolidatedClusterText(matches []detector.Match) strin
 			parts = append(parts, fmt.Sprintf("%s: %s", platform, strings.Join(items, ", ")))
 		}
 	}
+	sort.Strings(parts)
 
 	return strings.Join(parts, " | ")
 }
