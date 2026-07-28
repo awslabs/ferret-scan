@@ -13,6 +13,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
 
 	"github.com/fatih/color"
 )
@@ -67,6 +68,12 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	if options.NoColor {
 		color.NoColor = true
 	}
+
+	// Give the suppressed findings the same total order as the active ones.
+	// Done here, before any of the branches below, because every one of them can
+	// reach an emit path (empty-matches, precommit, and the normal report all
+	// print [SUPP] rows).
+	shared.SortSuppressedByPriority(suppressedMatches)
 
 	// Check if we're in pre-commit mode for optimized output
 	isPrecommitMode := f.isPrecommitMode(options)
@@ -124,13 +131,15 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	return w.(*strings.Builder).String(), nil
 }
 
-// sortMatchesByPriority sorts matches by confidence descending, then type ascending.
+// sortMatchesByPriority sorts matches by the shared total display order:
+// confidence descending, then type, line, filename and text ascending. The
+// tiebreakers past type make it a total order, so the printed sequence is stable
+// run to run even when the caller's input order is not (upstream map iteration
+// can permute same-(confidence,type) findings). Shares shared.LessByPriority
+// with the JSON/YAML path so the two orderings cannot drift apart.
 func (f *Formatter) sortMatchesByPriority(matches []detector.Match) {
 	sort.SliceStable(matches, func(i, j int) bool {
-		if matches[i].Confidence != matches[j].Confidence {
-			return matches[i].Confidence > matches[j].Confidence
-		}
-		return matches[i].Type < matches[j].Type
+		return shared.LessByPriority(matches[i], matches[j])
 	})
 }
 
@@ -504,7 +513,17 @@ func (f *Formatter) appendDetailedMatch(w io.Writer, match detector.Match, confi
 			fmt.Fprintf(w, "Validation results:\n")
 		}
 
-		for check, result := range checks {
+		// Emit in sorted key order. Ranging the map directly made the verbose
+		// block's line order vary run to run, so diffing two --verbose reports of
+		// the same file showed spurious changes.
+		checkNames := make([]string, 0, len(checks))
+		for check := range checks {
+			checkNames = append(checkNames, check)
+		}
+		sort.Strings(checkNames)
+
+		for _, check := range checkNames {
+			result := checks[check]
 			checkName := f.formatCheckName(check)
 			if !options.NoColor {
 				fmt.Fprintf(w, "- %s: ", checkName)
@@ -799,11 +818,21 @@ func (f *Formatter) formatPrecommitOutput(matches []detector.Match, suppressedMa
 	// Sort matches by confidence level for consistent output
 	f.sortMatches(matches)
 
-	// Group matches by file for cleaner pre-commit output
+	// Group matches by file for cleaner pre-commit output, then walk the groups
+	// in sorted filename order. Ranging the map directly reordered the per-file
+	// blocks between runs, which is especially unhelpful here: this is the format
+	// a developer reads in a pre-commit hook, and it made the same staged changes
+	// report their files in a different order each attempt.
 	fileMatches := f.groupMatchesByFile(matches)
+	filenames := make([]string, 0, len(fileMatches))
+	for filename := range fileMatches {
+		filenames = append(filenames, filename)
+	}
+	sort.Strings(filenames)
 
 	// Output format: FILE: ISSUE_COUNT issues found
-	for filename, fileMatchList := range fileMatches {
+	for _, filename := range filenames {
+		fileMatchList := fileMatches[filename]
 		highCount := 0
 		mediumCount := 0
 		lowCount := 0

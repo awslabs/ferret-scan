@@ -248,17 +248,76 @@ func GetConfidenceLevel(confidence float64) string {
 	}
 }
 
+// LessByPriority is the total display order shared by every formatter: highest
+// confidence first, then type, then line number, filename and text ascending.
+// The last three make it a TOTAL order so the emitted sequence is identical run
+// to run even when the caller's input order is not (map iteration upstream can
+// permute same-(confidence,type) findings).
+func LessByPriority(a, b detector.Match) bool {
+	if a.Confidence != b.Confidence {
+		return a.Confidence > b.Confidence
+	}
+	if a.Type != b.Type {
+		return a.Type < b.Type
+	}
+	if a.LineNumber != b.LineNumber {
+		return a.LineNumber < b.LineNumber
+	}
+	if a.Filename != b.Filename {
+		return a.Filename < b.Filename
+	}
+	return a.Text < b.Text
+}
+
+// LessSuppressedByPriority is the total display order for suppressed findings.
+// It defers to LessByPriority on the wrapped finding and then breaks any
+// remaining tie on the suppressing rule, so two rules matching an identical
+// finding still emit in a fixed sequence.
+//
+// Suppressed findings need their own comparator because nothing sorted them at
+// all: every formatter gave `matches` a total order but walked
+// `suppressedMatches` in arrival order, and arrival order is per-file worker
+// completion order — so `--show-suppressed` reordered its [SUPP] rows on every
+// run of the same scan, in text, JSON, YAML and CSV alike.
+func LessSuppressedByPriority(a, b detector.SuppressedMatch) bool {
+	if LessByPriority(a.Match, b.Match) {
+		return true
+	}
+	if LessByPriority(b.Match, a.Match) {
+		return false
+	}
+	if a.SuppressedBy != b.SuppressedBy {
+		return a.SuppressedBy < b.SuppressedBy
+	}
+	return a.RuleReason < b.RuleReason
+}
+
+// SortSuppressedByPriority sorts suppressed findings into the shared total
+// display order in place.
+func SortSuppressedByPriority(suppressed []detector.SuppressedMatch) {
+	sort.SliceStable(suppressed, func(i, j int) bool {
+		return LessSuppressedByPriority(suppressed[i], suppressed[j])
+	})
+}
+
 // ConvertMatchesToJSONFormat converts detector matches to JSON/YAML format
 func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) JSONResponse {
 	totalFindings := len(matches)
 
-	// Sort by confidence descending, then type ascending (same priority order as text)
+	// Sort by confidence descending, then type ascending (same priority order as
+	// text), then line/filename/text ascending as a TOTAL order. The final
+	// tiebreakers matter: confidence+type alone leaves same-(confidence,type)
+	// findings in input order, and the input order can be nondeterministic (map
+	// iteration upstream), so without them the serialized output — and any
+	// consumer diffing it — flaps run to run on unchanged input.
 	sort.SliceStable(matches, func(i, j int) bool {
-		if matches[i].Confidence != matches[j].Confidence {
-			return matches[i].Confidence > matches[j].Confidence
-		}
-		return matches[i].Type < matches[j].Type
+		return LessByPriority(matches[i], matches[j])
 	})
+
+	// The `suppressed` block needs the same treatment, for the same reason: it
+	// was serialized in arrival (worker-completion) order, so two JSON or YAML
+	// reports of one unchanged scan differed inside that block.
+	SortSuppressedByPriority(suppressedMatches)
 
 	// Apply limit
 	truncated := false
