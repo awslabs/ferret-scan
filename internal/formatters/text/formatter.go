@@ -13,6 +13,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
 
 	"github.com/fatih/color"
 )
@@ -124,13 +125,15 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	return w.(*strings.Builder).String(), nil
 }
 
-// sortMatchesByPriority sorts matches by confidence descending, then type ascending.
+// sortMatchesByPriority sorts matches by the shared total display order:
+// confidence descending, then type, line, filename and text ascending. The
+// tiebreakers past type make it a total order, so the printed sequence is stable
+// run to run even when the caller's input order is not (upstream map iteration
+// can permute same-(confidence,type) findings). Shares shared.LessByPriority
+// with the JSON/YAML path so the two orderings cannot drift apart.
 func (f *Formatter) sortMatchesByPriority(matches []detector.Match) {
 	sort.SliceStable(matches, func(i, j int) bool {
-		if matches[i].Confidence != matches[j].Confidence {
-			return matches[i].Confidence > matches[j].Confidence
-		}
-		return matches[i].Type < matches[j].Type
+		return shared.LessByPriority(matches[i], matches[j])
 	})
 }
 
