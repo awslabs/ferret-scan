@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // transliterationMap maps VIN characters to their numeric values for check digit calculation.
@@ -30,34 +31,12 @@ var positionWeights = [17]int{8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2
 // keywords matched inside unrelated words — positive "car"/"vin" inside
 // "carbon"/"moving" fabricated a +50 boost on a random check-digit-passing
 // token, and negative "sha"/"key"/"api" inside "shall"/"monkey"/"rapid" dropped
-// real VINs. A plain string scan (word byte = [a-z0-9]) keeps this cheap.
+// real VINs.
+//
+// ModeAlnum preserves this validator's historical boundary semantics: a word
+// byte is [a-z0-9], so '_' acts as a word boundary here.
 func containsKeyword(text, keyword string) bool {
-	if keyword == "" {
-		return false
-	}
-	lt := strings.ToLower(text)
-	lk := strings.ToLower(keyword)
-	for from := 0; from+len(lk) <= len(lt); {
-		i := strings.Index(lt[from:], lk)
-		if i < 0 {
-			return false
-		}
-		i += from
-		leftOK := i == 0 || !isVINWordByte(lt[i-1])
-		right := i + len(lk)
-		rightOK := right >= len(lt) || !isVINWordByte(lt[right])
-		if leftOK && rightOK {
-			return true
-		}
-		from = i + 1
-	}
-	return false
-}
-
-// isVINWordByte reports whether b is a word character ([a-z0-9]) for keyword
-// boundary detection. text is already lowercased by the caller.
-func isVINWordByte(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+	return kwmatch.Contains(text, keyword, kwmatch.ModeAlnum)
 }
 
 // knownWMIs maps common World Manufacturer Identifier prefixes to manufacturer names.

@@ -16,6 +16,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // Package-level variables for business suffixes and technical phrases to avoid repeated allocations
@@ -843,33 +844,13 @@ func (v *Validator) isTechnicalTerm(match string) bool {
 // phrase (case-insensitive, text already lowercased by callers). The previous
 // substring matching let short context keywords fire inside unrelated words
 // ("park" in "parking" -> -35, "inc" in "incident" -> -20, "name" in
-// "username" -> +12), nudging confidence in both directions (L25). A word byte
-// is [a-z0-9]; multi-word phrases are matched with \b on the outer edges.
+// "username" -> +12), nudging confidence in both directions (L25).
+//
+// ModeAlnum preserves this validator's historical boundary semantics: a word
+// byte is [a-z0-9], so '_' acts as a word boundary here. ContainsLower (rather
+// than Contains) keeps the existing contract that callers pass lowercased text.
 func containsWordKeyword(text, keyword string) bool {
-	if keyword == "" {
-		return false
-	}
-	for from := 0; from+len(keyword) <= len(text); {
-		i := strings.Index(text[from:], keyword)
-		if i < 0 {
-			return false
-		}
-		i += from
-		leftOK := i == 0 || !isNameWordByte(text[i-1])
-		right := i + len(keyword)
-		rightOK := right >= len(text) || !isNameWordByte(text[right])
-		if leftOK && rightOK {
-			return true
-		}
-		from = i + 1
-	}
-	return false
-}
-
-// isNameWordByte reports whether b is a word character ([a-z0-9]) for keyword
-// boundary detection. Callers pass already-lowercased text.
-func isNameWordByte(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+	return kwmatch.ContainsLower(text, keyword, kwmatch.ModeAlnum)
 }
 
 // lineContextCache holds the per-line work shared by every name match found on a

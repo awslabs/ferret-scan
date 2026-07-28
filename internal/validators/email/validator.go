@@ -11,17 +11,19 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // containsKeyword reports whether text contains keyword as a whole word/phrase,
 // case-insensitively. The previous code used strings.Contains, so short negative
 // keywords matched inside ordinary words — "bar" in "barack", "baz" in "bazaar",
 // "temp" in "temptation" — suppressing real emails (and short positives like
-// "to"/"info" spuriously boosting). Implemented as a plain string scan (a word
-// byte is [a-z0-9]) rather than a per-keyword regex to keep context analysis
-// cheap in the hot path.
+// "to"/"info" spuriously boosting).
+//
+// ModeAlnum preserves this validator's historical boundary semantics: a word
+// byte is [a-z0-9], so '_' acts as a word boundary here.
 func containsKeyword(text, keyword string) bool {
-	return containsKeywordLower(strings.ToLower(text), strings.ToLower(keyword))
+	return kwmatch.Contains(text, keyword, kwmatch.ModeAlnum)
 }
 
 // containsKeywordLower is containsKeyword for callers that have already
@@ -30,30 +32,7 @@ func containsKeyword(text, keyword string) bool {
 // out of the hot path matters because the previous code re-lowercased the
 // (potentially huge) line text once per keyword per match.
 func containsKeywordLower(lt, lk string) bool {
-	if lk == "" {
-		return false
-	}
-	for from := 0; from+len(lk) <= len(lt); {
-		i := strings.Index(lt[from:], lk)
-		if i < 0 {
-			return false
-		}
-		i += from
-		leftOK := i == 0 || !isEmailWordByte(lt[i-1])
-		right := i + len(lk)
-		rightOK := right >= len(lt) || !isEmailWordByte(lt[right])
-		if leftOK && rightOK {
-			return true
-		}
-		from = i + 1
-	}
-	return false
-}
-
-// isEmailWordByte reports whether b is a word character ([a-z0-9]) for keyword
-// boundary detection. text is already lowercased by the caller.
-func isEmailWordByte(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+	return kwmatch.ContainsLower(lt, lk, kwmatch.ModeAlnum)
 }
 
 // maxKeywordLen bounds how far past a context-window/full-line junction a
@@ -468,25 +447,11 @@ func buildJunctionWindows(beforeText, lowerLine, afterText string) junctionWindo
 // Matches that fall entirely on the line side past the junction are interior
 // line matches and are intentionally skipped (covered by the *InLine flag), so
 // the bounded-line slice cut cannot fabricate them.
+//
+// ModeAlnum matches the boundary semantics of the other keyword scans in this
+// package; accept is only consulted for whole-word occurrences.
 func containsKeywordCrossing(s, lk string, accept func(start, end int) bool) bool {
-	if lk == "" {
-		return false
-	}
-	for from := 0; from+len(lk) <= len(s); {
-		i := strings.Index(s[from:], lk)
-		if i < 0 {
-			return false
-		}
-		i += from
-		leftOK := i == 0 || !isEmailWordByte(s[i-1])
-		right := i + len(lk)
-		rightOK := right >= len(s) || !isEmailWordByte(s[right])
-		if leftOK && rightOK && accept(i, right) {
-			return true
-		}
-		from = i + 1
-	}
-	return false
+	return kwmatch.ContainsFunc(s, lk, kwmatch.ModeAlnum, accept)
 }
 
 // keywordInContext reports whether keyword (lowercased as lowerKw) appears

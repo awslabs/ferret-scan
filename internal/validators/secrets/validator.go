@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/help"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // Multi-line PEM-style secret patterns. Compiled once at package init —
@@ -936,32 +937,13 @@ var (
 )
 
 // containsWordBoundary reports whether keyword appears in text as a whole
-// word (text must already be lowercased). Same boundary semantics as the
-// containsKeyword helper in the other validator packages: a word byte is
-// [a-z0-9_]; boundaries are string edges or non-word bytes. Prevents "test"
-// from matching inside "latest" or "attestation".
+// word (text must already be lowercased). Prevents "test" from matching inside
+// "latest" or "attestation".
+//
+// ModeAlnumUnderscore preserves this validator's historical boundary
+// semantics: a word byte is [a-z0-9_], so '_' counts as a word byte here.
 func containsWordBoundary(text, keyword string) bool {
-	for from := 0; from+len(keyword) <= len(text); {
-		i := strings.Index(text[from:], keyword)
-		if i < 0 {
-			return false
-		}
-		i += from
-		leftOK := i == 0 || !isSecretWordByte(text[i-1])
-		right := i + len(keyword)
-		rightOK := right >= len(text) || !isSecretWordByte(text[right])
-		if leftOK && rightOK {
-			return true
-		}
-		from = i + 1
-	}
-	return false
-}
-
-// isSecretWordByte reports whether b is a word character for boundary
-// detection (input is lowercased by the caller).
-func isSecretWordByte(b byte) bool {
-	return b == '_' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+	return kwmatch.ContainsLower(text, keyword, kwmatch.ModeAlnumUnderscore)
 }
 
 // isKeywordAlnum reports whether b is an ASCII letter or digit.
