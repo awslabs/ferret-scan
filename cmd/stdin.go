@@ -400,7 +400,7 @@ func runStdinRedaction(
 	//     they run the command without redirects. In that case suppress
 	//     the findings emit and print a one-line tip pointing at the
 	//     pipe shapes that capture them.
-	formatted, formatErr := formatStdinFindings(matches, suppressedMatches, finalCfg, precommitConfig)
+	formatted, formatErr := formatStdinFindings(matches, suppressedMatches, finalCfg, in.limit, precommitConfig)
 	if formatErr != nil {
 		printPrecommitError(precommitConfig,
 			fmt.Sprintf("Error formatting results: %v", formatErr),
@@ -452,18 +452,24 @@ func formatStdinFindings(
 	matches []detector.Match,
 	suppressedMatches []detector.SuppressedMatch,
 	finalCfg *finalConfiguration,
+	limit int,
 	precommitConfig *precommit.PrecommitConfig,
 ) (string, error) {
 	formatter, exists := formatters.Get(finalCfg.format)
 	if !exists {
 		return "", fmt.Errorf("unsupported output format %q", finalCfg.format)
 	}
+	// Limit is passed through so the findings report from the redaction path is
+	// capped exactly like the non-redaction path's. It only ever bounds the
+	// report: the caller already redacted against the FULL match set, so a
+	// smaller report can never mean less redacted content.
 	opts := formatters.FormatterOptions{
 		ConfidenceLevel: parseConfidenceLevels(finalCfg.confidenceLevels),
 		Verbose:         finalCfg.verbose,
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
 		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
+		Limit:           limit,
 	}
 	if finalCfg.showSuppressed {
 		return formatter.Format(matches, suppressedMatches, opts)

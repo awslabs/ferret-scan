@@ -236,6 +236,21 @@ func FilterMatchesByConfidence(matches []detector.Match, options formatters.Form
 	return filtered
 }
 
+// ApplyLimit truncates an already-filtered, already-sorted slice to
+// options.Limit, reporting the pre-truncation total and whether anything was
+// dropped. A Limit of 0 or less means unlimited.
+//
+// Order matters: callers must filter by confidence and sort by priority BEFORE
+// truncating, or the surviving findings are an arbitrary subset rather than the
+// highest-confidence ones the user asked to see.
+func ApplyLimit(matches []detector.Match, options formatters.FormatterOptions) (display []detector.Match, total int, truncated bool) {
+	total = len(matches)
+	if options.Limit > 0 && total > options.Limit {
+		return matches[:options.Limit], total, true
+	}
+	return matches, total, false
+}
+
 // GetConfidenceLevel returns the confidence level as a string
 func GetConfidenceLevel(confidence float64) string {
 	switch {
@@ -317,8 +332,6 @@ func SortMatchesByPriority(matches []detector.Match) {
 
 // ConvertMatchesToJSONFormat converts detector matches to JSON/YAML format
 func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) JSONResponse {
-	totalFindings := len(matches)
-
 	// Sort by confidence descending, then type ascending (same priority order as
 	// text), then line/filename/text ascending as a TOTAL order. The final
 	// tiebreakers matter: confidence+type alone leaves same-(confidence,type)
@@ -335,11 +348,7 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 	SortSuppressedByPriority(suppressedMatches)
 
 	// Apply limit
-	truncated := false
-	if options.Limit > 0 && totalFindings > options.Limit {
-		matches = matches[:options.Limit]
-		truncated = true
-	}
+	matches, totalFindings, truncated := ApplyLimit(matches, options)
 
 	var jsonMatches []JSONMatch
 	for _, match := range matches {

@@ -77,6 +77,12 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		log.Printf("GitLab SAST Formatter: Processing %d matches, %d suppressed matches", len(matches), len(suppressedMatches))
 	}
 
+	// Apply the confidence filter every other formatter applies. This one never
+	// did, so `--confidence high` still shipped every LOW-confidence finding into
+	// GitLab's security dashboard — the operator's filter was silently ignored on
+	// the one output a security dashboard consumes.
+	matches = shared.FilterMatchesByConfidence(matches, options)
+
 	// Create the GitLab security report structure with proper metadata
 	report := &GitLabSecurityReport{
 		Version:         GitLabSASTSchemaVersion, // Use constant from models.go
@@ -140,6 +146,10 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	sort.SliceStable(sortedMatches, func(i, j int) bool {
 		return shared.LessByPriority(sortedMatches[i], sortedMatches[j])
 	})
+
+	// Honor --limit, after the sort so the vulnerabilities kept are the
+	// highest-confidence ones rather than an arbitrary prefix.
+	sortedMatches, _, _ = shared.ApplyLimit(sortedMatches, options)
 
 	// Process each match with proper error handling
 	processedCount := 0
