@@ -110,10 +110,22 @@ func RedactFile(cfg RedactConfig) (*RedactResult, error) {
 		RedactionStrategy: cfg.Strategy,
 	}
 	pp := parallel.NewParallelProcessor(observer)
-	matches, _, err := pp.ProcessFilesWithProgress(
+	matches, stats, err := pp.ProcessFilesWithProgress(
 		[]string{cfg.FilePath}, validatorsList, fileRouter, jobConfig, redactionManager, nil)
 	if err != nil {
 		return nil, fmt.Errorf("redaction processing failed: %w", err)
+	}
+
+	// A file whose findings could not be redacted must be a hard error, never a
+	// result. Returning success here would hand the caller a path its own doc
+	// comment calls safe to share while the sensitive values sit in it verbatim
+	// — and RedactionCount would read 0, indistinguishable from a genuinely
+	// clean file. Checked BEFORE the clean-file passthrough below precisely
+	// because that passthrough copies the original: reaching it with a file that
+	// has unredacted findings is what turned this into a silent cleartext copy.
+	if stats != nil && len(stats.UnredactedFiles) > 0 {
+		return nil, fmt.Errorf("could not redact %s: %s",
+			stats.UnredactedFiles[0].FilePath, stats.UnredactedFiles[0].Reason)
 	}
 
 	// The worker pool only writes an output file when there is at least one
