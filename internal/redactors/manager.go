@@ -35,6 +35,13 @@ type RedactionManager struct {
 	// mutex protects concurrent access to redactors map
 	mu sync.RWMutex
 
+	// documentCounter assigns audit-log document IDs. It is incremented under
+	// documentMu, never read from the clock: two files finishing within the same
+	// clock tick used to receive the same ID, and the loser's audit entry was
+	// dropped. See nextDocumentID.
+	documentCounter int
+	documentMu      sync.Mutex
+
 	// stats tracks redaction statistics
 	stats *RedactionStats
 }
@@ -844,18 +851,41 @@ func (rm *RedactionManager) GetObserver() observability.Observer {
 	return rm.observer
 }
 
+// nextDocumentID returns a fresh audit-log document ID.
+//
+// IDs come from a counter rather than time.Now().UnixNano(). The clock has
+// microsecond resolution in practice, so two files whose redaction finished in the
+// same tick were handed the same ID; CreateAuditLog rejects a duplicate and the
+// caller treated that as a soft failure, so the second file's audit entry was
+// silently discarded. A counter cannot collide, and it also makes the IDs
+// reproducible for a given traversal order, so two audit logs of the same input can
+// be compared.
+//
+// The worker pool calls in from several goroutines, hence the dedicated mutex — it
+// is separate from rm.mu, which guards the redactors map.
+func (rm *RedactionManager) nextDocumentID() string {
+	rm.documentMu.Lock()
+	defer rm.documentMu.Unlock()
+
+	rm.documentCounter++
+	return fmt.Sprintf("doc_%d", rm.documentCounter)
+}
+
 // AddRedactionResult adds a redaction result to the index manager
 func (rm *RedactionManager) AddRedactionResult(originalPath, redactedPath string, result *RedactionResult) {
 	if rm.auditLogManager != nil && result != nil {
 		// Generate document ID
-		documentID := fmt.Sprintf("doc_%d", time.Now().UnixNano())
+		documentID := rm.nextDocumentID()
 
-		// Create audit log for this document
+		// Create audit log for this document. A failure here loses the compliance
+		// record for a file that was still redacted on disk, so report it as an
+		// error rather than a debug event.
 		_, err := rm.auditLogManager.CreateAuditLog(documentID, originalPath, redactedPath)
 		if err != nil {
 			rm.logEvent("index_creation_failed", false, map[string]interface{}{
-				"error":       err.Error(),
-				"document_id": documentID,
+				"error":         err.Error(),
+				"document_id":   documentID,
+				"original_path": originalPath,
 			})
 			return
 		}
