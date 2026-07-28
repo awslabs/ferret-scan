@@ -144,10 +144,42 @@ func ExtractVideoMetadataWithContext(ctx context.Context, filePath string) (*Vid
 	return metadata, nil
 }
 
-// searchForGPSInMetadata searches for GPS data in all metadata properties and values
+// searchForGPSInMetadata searches for GPS data in all metadata properties and values.
+//
+// This is a heuristic scrape: it guesses at coordinates from any property whose
+// key or value merely mentions "location"/"gps"/"deg", or whose value carries two
+// or more signs. Both parse helpers write the SCALAR GPSLatitude/GPSLongitude/
+// GPSAltitude fields, which are emitted as the single "GPS_Coordinates" line, so
+// two candidate properties compete for one output value. Iterating the map
+// directly made that competition a coin flip: the emitted coordinate could differ
+// run to run for the same file. Properties are therefore walked in sorted key
+// order, and the first complete pair wins.
+//
+// First-complete-wins also protects precision, which a bare sort would not. By
+// the time this runs, the container parse has already handled the authoritative
+// '©xyz' GPS atom, so a real coordinate may already be present. The properties
+// scanned here are mostly free text — the udta string boxes (Information,
+// Warning, URL, Lyrics, Source, ...) and unrecognized four-character ilst tags —
+// and any of them can mention "deg" or carry two signs and parse into a
+// meaningless coordinate. Sorting alone would still let such a value overwrite
+// the atom's; stopping at the first complete pair keeps the better value instead
+// of merely making the worse one repeatable.
 func searchForGPSInMetadata(metadata *VideoMetadata) {
+	keys := make([]string, 0, len(metadata.Properties))
+	for key := range metadata.Properties {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
 	// Search in existing properties
-	for key, value := range metadata.Properties {
+	for _, key := range keys {
+		if metadata.GPSLatitude != 0 && metadata.GPSLongitude != 0 {
+			// A complete coordinate is already known (from the container atom or
+			// an earlier property); do not let a later guess overwrite it.
+			return
+		}
+		value := metadata.Properties[key]
+
 		if strings.Contains(strings.ToLower(key), "location") ||
 			strings.Contains(strings.ToLower(key), "gps") ||
 			strings.Contains(strings.ToLower(value), "location") ||
