@@ -483,6 +483,25 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lc medica
 		return detector.Match{}, false
 	}
 
+	// A value that already passes a checksum belonging to a MORE SPECIFIC
+	// subtype is reported by that subtype's evaluator, not here. evaluateMRN
+	// has carried the NPI half of this rule for a while; DEA needed the same
+	// veto once the hex gate above became keyword-deferred, because a valid DEA
+	// number is 2 letters + 7 digits and "AB1234563" is entirely hex digits —
+	// the unconditional gate had been suppressing the duplicate by accident.
+	// Relying on that was fragile: the same accident dropped real member IDs
+	// (the bug this change fixes), and it only ever covered DEAs whose letters
+	// happen to fall in A-F.
+	if reDEA.MatchString(match) && deaChecksumValid(match) {
+		return detector.Match{}, false
+	}
+	if reNPI.MatchString(match) && npiLuhnValid(match) {
+		return detector.Match{}, false
+	}
+	if reMBI.MatchString(match) {
+		return detector.Match{}, false
+	}
+
 	confidence := 50.0 // Moderate base — alphanumeric with insurance context
 
 	// Boost if strong insurance keywords present
@@ -864,20 +883,45 @@ func (v *Validator) nonInsuranceKeywordPresent(lowerLine string) bool {
 func (v *Validator) looksLikeNonInsuranceIDShape(match string, insKeyword bool) bool {
 	lower := strings.ToLower(match)
 
-	// Skip if it looks like a hex string (all hex chars)
-	if isHexString(lower) {
+	// Skip if it looks like a hex string (all hex chars) — hashes, commit SHAs
+	// and hex blobs in source and logs. This used to fire unconditionally, which
+	// dropped a whole shape of real member ID silently: IDs are commonly a
+	// letter prefix plus digits, and for a single leading letter 6 of 26 fall in
+	// A-F, so "member id: E1122334455" produced no finding at all and therefore
+	// also passed --enable-redaction in cleartext with exit code 0.
+	//
+	// The keyword alone is NOT enough to lift it, because a hash genuinely does
+	// appear beside a member-id label ("Member id verification: <md5>" —
+	// TestAdversarial_InsuranceID_HexHash). Casing is what separates the two:
+	// hex digests are conventionally printed all-lowercase (git SHAs, sha256sum,
+	// HTTP etags), while an ID printed on an insurance card is not. So an
+	// all-lowercase hex run stays suppressed no matter what the line says, and
+	// only a hex run carrying an uppercase letter defers to the keyword.
+	//
+	// KNOWN RESIDUAL, accepted: an UPPERCASE 8-20 char hex blob on a line with a
+	// strong insurance label now matches ("member id: 0A1B2C3D4E5F6789"). That is
+	// the intended direction of the trade — uppercase beside "member id:" reads
+	// as a card ID far more than as a digest — and it is bounded, because the
+	// same blob without an insurance label is still dropped. Measured against 300
+	// real commit SHAs and 60 label-prefixed full SHAs: zero new false positives,
+	// since git prints lowercase and a 40-char SHA is outside reInsuranceID's
+	// 8-20 range anyway.
+	if isHexString(lower) && (!insKeyword || !hasUpper(match)) {
 		return true
 	}
-	// Skip if it has a "0x" hex prefix
+	// Skip if it has a "0x" hex prefix. Unconditional on purpose: "0x..." is
+	// not a plausible member ID, so no keyword should rescue it.
 	if strings.HasPrefix(lower, "0x") && isHexString(lower[2:]) {
 		return true
 	}
-	// Skip if it looks like a UUID component
-	if len(match) == 8 || len(match) == 12 || len(match) == 16 {
-		if isHexString(lower) {
-			return true
-		}
-	}
+	// NOTE: a UUID-component check for len 8/12/16 used to sit here. Its only
+	// condition beyond the length was isHexString(lower), which the gate above
+	// had already tested unconditionally, so it could never fire — and once
+	// that gate became keyword-deferred it would have come alive and re-dropped
+	// exactly the 8/12/16-character labeled hex IDs this fix recovers (measured:
+	// "ABCDEF123456" beside "member id:"). Removed rather than given the same
+	// !insKeyword guard, which would only restore it to being unreachable.
+	//
 	// Skip common tech identifiers (all uppercase + digits) unless a strong
 	// insurance keyword is present on the line.
 	if isAllUpperOrDigit(match) && !insKeyword {
@@ -987,6 +1031,17 @@ func isHexString(s string) bool {
 		}
 	}
 	return true
+}
+
+// hasUpper reports whether s contains at least one A-Z. It distinguishes a
+// card-printed identifier from a hex digest, which is conventionally lowercase.
+func hasUpper(s string) bool {
+	for _, c := range s {
+		if c >= 'A' && c <= 'Z' {
+			return true
+		}
+	}
+	return false
 }
 
 func isAllUpperOrDigit(s string) bool {

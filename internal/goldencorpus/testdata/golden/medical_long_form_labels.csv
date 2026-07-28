@@ -1,7 +1,6 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
 <golden:medical_long_form_labels>,INSURANCE_MEMBER_ID,MEDIUM,70.0,1,W1234567801
 <golden:medical_long_form_labels>,INSURANCE_MEMBER_ID,MEDIUM,80.0,2,X9876543210
-<golden:medical_long_form_labels>,INSURANCE_MEMBER_ID,MEDIUM,80.0,3,1EG4TE5MK73
 <golden:medical_long_form_labels>,INSURANCE_MEMBER_ID,MEDIUM,70.0,5,P5551234567
 <golden:medical_long_form_labels>,INSURANCE_MEMBER_ID,MEDIUM,80.0,6,W1122009988
 <golden:medical_long_form_labels>,MEDICARE_MBI,MEDIUM,85.0,3,1EG4TE5MK73

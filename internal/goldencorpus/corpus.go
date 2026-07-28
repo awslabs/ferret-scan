@@ -226,6 +226,32 @@ var Cases = []Case{
 			"policy identification for terraform module: MODULEVERSION123\n",
 	},
 	{
+		Name: "medical_hex_member_ids",
+		Description: "Insurance member IDs whose characters happen to all be hex digits, beside " +
+			"hex decoys that must stay suppressed. The all-hex shape gate used to fire before " +
+			"the strong-keyword check, so a labelled ID like \"member id: E1122334455\" produced " +
+			"no finding at all and passed through redaction in cleartext with exit code 0 — real " +
+			"IDs are commonly a letter prefix plus digits and 6 of 26 leading letters are hex, " +
+			"so this was a whole slice of that shape. The keyword alone cannot lift the gate, " +
+			"because a digest genuinely does appear beside a member-id label; casing is the " +
+			"discriminator, since hex digests are conventionally all-lowercase (git SHAs, " +
+			"sha256sum, HTTP etags) while a card-printed ID is not. Lines 1-5 must be detected " +
+			"and redacted; lines 6-9 must stay clean. Line 10 pins the subtype arbitration a " +
+			"valid DEA (2 letters + 7 digits, so entirely hex) must win over INSURANCE_MEMBER_ID " +
+			"— the old gate had been suppressing that duplicate by accident.",
+		Checks: []string{"MEDICAL_ID"},
+		Input: "member id: E1122334455\n" +
+			"member id: ABCDEF123456\n" +
+			"member id: BEEF1234567\n" +
+			"subscriber id: 1234567890AB\n" +
+			"member id: 55DEADBEEF12\n" +
+			"commit 9462e98abcdef1234567890abcdef1234567890a\n" +
+			"sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4\n" +
+			"member id verification hash: 1234abcd5678ef90\n" +
+			"cache blob 0xDEADBEEF12345678 evicted\n" +
+			"insurance member id for prescriber: AB1234563\n",
+	},
+	{
 		Name: "context_decoys_original",
 		Description: "Real-context vs decoy-context pairs for the ORIGINAL validators (SSN, " +
 			"PHONE, CREDIT_CARD, EMAIL): the same shaped value framed as PII on one line and " +
