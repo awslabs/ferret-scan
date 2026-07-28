@@ -205,6 +205,27 @@ var Cases = []Case{
 			"3 items in way of progress\n",
 	},
 	{
+		Name: "medical_long_form_labels",
+		Description: "Long-form field labels as printed on physical insurance/Medicare cards and " +
+			"used in EDI 837 exports (\"member identification number\") alongside the abbreviated " +
+			"forms already covered (\"member id\"). Keyword matching is whole-token, so the " +
+			"abbreviations did not cover the long forms: the card's own wording scored the MBI " +
+			"and MRN LOW, and an all-uppercase insurance ID was dropped entirely (the strong " +
+			"keyword gates the uppercase-shape check), which meant it passed through redaction " +
+			"in cleartext. Decoy lines lock the deliberate exclusions: a bare \"certificate " +
+			"number\" names an X.509 certificate and \"policy identification\" names an IAM or " +
+			"Terraform policy far more often than an insurance one, so neither is a keyword.",
+		Checks: []string{"MEDICAL_ID"},
+		Input: "member identification number: W1234567801\n" +
+			"subscriber identification number: X9876543210\n" +
+			"medicare member identification number: 1EG4TE5MK73\n" +
+			"patient identification number: 4472901\n" +
+			"policyholder id: P5551234567\n" +
+			"member id: W1122009988\n" +
+			"X.509 certificate serial number: 0A1B2C3D4E5F6789\n" +
+			"policy identification for terraform module: MODULEVERSION123\n",
+	},
+	{
 		Name: "context_decoys_original",
 		Description: "Real-context vs decoy-context pairs for the ORIGINAL validators (SSN, " +
 			"PHONE, CREDIT_CARD, EMAIL): the same shaped value framed as PII on one line and " +

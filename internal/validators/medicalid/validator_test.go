@@ -872,3 +872,80 @@ func TestMedicalIDValidator_IntrinsicValueFloor(t *testing.T) {
 		t.Errorf("floor %.1f must be inside the LOW band (0 < floor < 60)", intrinsicValueFloor)
 	}
 }
+
+// TestLongFormLabelRecall covers the label spellings printed on physical
+// insurance and Medicare cards and used in EDI 837 exports. Keyword matching is
+// whole-token, so "member id" cannot match "member identification number" —
+// "identification" is not the token "id". Before the long forms were added, the
+// wording on the card itself either scored LOW or, for an all-uppercase card ID,
+// produced no finding at all: hasInsuranceKeyword gates the uppercase-shape
+// check in looksLikeNonInsuranceIDShape, so the ID was dropped outright and
+// would have passed through redaction in cleartext.
+func TestLongFormLabelRecall(t *testing.T) {
+	v := NewValidator()
+
+	tests := []struct {
+		name     string
+		content  string
+		wantType string
+		minConf  float64
+	}{
+		{"medicare card member identification", "member identification number: 1EG4TE5MK73", "MEDICARE_MBI", 60},
+		{"insurance member identification", "member identification number: W1234567801", "INSURANCE_MEMBER_ID", 60},
+		{"subscriber identification", "subscriber identification number: W1234567801", "INSURANCE_MEMBER_ID", 60},
+		{"enrollee identification", "enrollee identification number: W1234567801", "INSURANCE_MEMBER_ID", 60},
+		{"policyholder id", "policyholder id: W1234567801", "INSURANCE_MEMBER_ID", 60},
+		{"patient identification", "patient identification number: 4472901", "MRN", 60},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent: %v", err)
+			}
+			for _, m := range matches {
+				if m.Type == tt.wantType && m.Confidence >= tt.minConf {
+					return
+				}
+			}
+			t.Errorf("no %s match with confidence >= %.0f in %q; got %v",
+				tt.wantType, tt.minConf, tt.content, summarize(matches))
+		})
+	}
+}
+
+// TestLongFormLabelNoTechFalsePositives locks the deliberate exclusions. A bare
+// "certificate number" names an X.509 certificate far more often than an
+// insurance one, and "policy identification" names an IAM or Terraform policy,
+// so neither is a keyword — adding them made build IDs and key material match
+// as insurance member IDs.
+func TestLongFormLabelNoTechFalsePositives(t *testing.T) {
+	v := NewValidator()
+
+	for _, content := range []string{
+		"X.509 certificate serial number: 0A1B2C3D4E5F6789",
+		"signing certificate number: SHA256ABCDEF1234",
+		"policy identification for terraform module: MODULEVERSION123",
+		"IAM policy identification number: AKIAIOSFODNN7EXAMPLE",
+	} {
+		matches, err := v.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent: %v", err)
+		}
+		for _, m := range matches {
+			if m.Type == "INSURANCE_MEMBER_ID" {
+				t.Errorf("INSURANCE_MEMBER_ID false positive on %q (confidence %.0f)",
+					content, m.Confidence)
+			}
+		}
+	}
+}
+
+func summarize(matches []detector.Match) []string {
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
+		out = append(out, m.Type)
+	}
+	return out
+}
