@@ -39,6 +39,125 @@ var (
 	}
 )
 
+// candidate is a secret-shaped substring of a single line together with the
+// byte span it occupies in that line. The span is what makes duplicate claims
+// distinguishable from genuine repetition: several detection patterns hitting
+// the same bytes is one secret, whereas the same value appearing twice on a
+// line (`a = "AKIA…" and b = "AKIA…"`) is two, and detector.Match carries no
+// offset to tell those apart after the fact.
+type candidate struct {
+	text  string
+	start int
+	end   int
+}
+
+// scopedCandidate is a candidate tagged with the detection path that produced
+// it, so both single-line paths can be arbitrated in one pass while each keeps
+// its own confidence threshold and reported detection_method.
+type scopedCandidate struct {
+	candidate
+	method    string
+	threshold float64
+}
+
+// spannedMatch is an emitted finding that still remembers the byte span of the
+// line it came from, so same-span findings produced by different detection
+// paths can be arbitrated before the span information is discarded (detector.
+// Match has no offset field).
+type spannedMatch struct {
+	match detector.Match
+	start int
+	end   int
+}
+
+// genericSecretType is the label getSecretType falls back to when a value is
+// secret-shaped but matches no provider signature. Any other type identifies
+// what the secret actually is, which is strictly more useful to a reviewer.
+const genericSecretType = "API_KEY_OR_SECRET"
+
+// mergeBySpanKeepStrongest folds src into dst, treating findings that cover the
+// identical byte span as one secret discovered twice: a quoted 40-char AWS
+// secret is matched both by the context-gated AWS path (AWS_SECRET_ACCESS_KEY)
+// and by the generic entropy path (API_KEY_OR_SECRET), and reporting both
+// double-counts one leak.
+//
+// The survivor keeps the more specific type and the highest confidence either
+// path assigned. Both are needed, and confidence alone is not enough to pick a
+// winner: the entropy path's confidence is context-derived and routinely exceeds
+// the AWS path's fixed 90, so ranking on confidence would discard the very label
+// that says "this is an AWS secret key". Taking the maximum confidence also
+// means a merge can never demote a finding into a lower severity band than it
+// would have had before — the leak-safe direction.
+//
+// Ties keep the incumbent, so the outcome depends only on the order paths are
+// merged in, never on map iteration order. A surviving finding stays at its
+// original position, so byte order (and line numbering downstream) is stable.
+func mergeBySpanKeepStrongest(dst, src []spannedMatch) []spannedMatch {
+	if len(src) == 0 {
+		return dst
+	}
+	type span struct{ start, end int }
+	index := make(map[span]int, len(dst)+len(src))
+	for i, m := range dst {
+		index[span{m.start, m.end}] = i
+	}
+	for _, s := range src {
+		key := span{s.start, s.end}
+		i, exists := index[key]
+		if !exists {
+			index[key] = len(dst)
+			dst = append(dst, s)
+			continue
+		}
+
+		incumbentGeneric := dst[i].match.Type == genericSecretType
+		challengerGeneric := s.match.Type == genericSecretType
+		best := dst[i].match.Confidence
+		if s.match.Confidence > best {
+			best = s.match.Confidence
+		}
+
+		// Replace only when the challenger is more specific, or when neither is
+		// generic and the challenger is strictly more confident. A generic
+		// challenger never displaces a specific incumbent.
+		if (incumbentGeneric && !challengerGeneric) ||
+			(incumbentGeneric == challengerGeneric && s.match.Confidence > dst[i].match.Confidence) {
+			dst[i] = s
+		}
+		dst[i].match.Confidence = best
+	}
+	return dst
+}
+
+// dedupeScopedBySpan collapses candidates that claim exactly the same bytes,
+// keeping the first claim. Callers list the lower-threshold detection path
+// first so that winning a tie can never drop a span the losing path would have
+// reported. Order is preserved rather than sorted: the input is already in
+// per-path byte order, and stable order keeps line numbers — and therefore
+// suppression hashes — stable across runs.
+//
+// Overlapping-but-unequal spans are deliberately left alone. A shorter token
+// nested in a longer one is a different question (which span is the real
+// secret) from a literal double report of one span, and narrowing spans here
+// would risk dropping a genuine distinct secret.
+func dedupeScopedBySpan(cands []scopedCandidate) []scopedCandidate {
+	if len(cands) < 2 {
+		return cands
+	}
+	type span struct{ start, end int }
+	seen := make(map[span]struct{}, len(cands))
+	out := cands[:0:0] // fresh backing array: never alias the caller's slice
+	for _, c := range cands {
+		key := span{c.start, c.end}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, c)
+	}
+	return out
+}
+
 // Validator detects secrets using entropy analysis and keyword patterns
 type Validator struct {
 	// High entropy detection
@@ -307,19 +426,28 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// Pre-check if this line contains shell variable references to optimize performance
 		lineHasShellVars := v.LineContainsShellVariableReferences(line)
 
-		// Process entropy matches
-		entropyMatches := v.findHighEntropyStrings(line)
-		if len(entropyMatches) > 0 {
-			entropyResults := v.processMatches(entropyMatches, line, lineNum, originalPath, content, contextInsights, "high_entropy", 50, lineHasShellVars, envType, isShellScript)
-			matches = append(matches, entropyResults...)
+		// Collect this line's candidates from both single-line detection paths
+		// and collapse claims on identical bytes. One secret is routinely
+		// matched several ways — `github_token = "ghp_…"` is hit by the ghp_
+		// provider literal, by the token assignment pattern, and by the base64
+		// entropy pattern — and each hit used to become its own finding, which
+		// inflates finding counts and writes several byte-identical suppression
+		// rules for a single leak. The same value appearing twice on one line
+		// occupies different spans and is still reported twice.
+		//
+		// The entropy pass is listed first so it wins a tie, which is the
+		// leak-safe direction: its confidence threshold (50) is the lower of
+		// the two, so every span main reported is still reported here. Type and
+		// confidence derive from the matched text alone, so the surviving
+		// finding is identical apart from detection_method.
+		cands := make([]scopedCandidate, 0, 8)
+		for _, c := range v.findHighEntropyStrings(line) {
+			cands = append(cands, scopedCandidate{candidate: c, method: "high_entropy", threshold: 50})
 		}
-
-		// Process keyword matches
-		keywordMatches := v.findKeywordSecrets(line)
-		if len(keywordMatches) > 0 {
-			keywordResults := v.processMatches(keywordMatches, line, lineNum, originalPath, content, contextInsights, "keyword_pattern", 60, lineHasShellVars, envType, isShellScript)
-			matches = append(matches, keywordResults...)
+		for _, c := range v.findKeywordSecrets(line) {
+			cands = append(cands, scopedCandidate{candidate: c, method: "keyword_pattern", threshold: 60})
 		}
+		lineResults := v.processScopedCandidates(dedupeScopedBySpan(cands), line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript)
 
 		// Process AWS secret access keys (context-gated; see findAWSSecretKeys).
 		// Adjacent lines provide the AKIA-pairing context: credentials files list
@@ -331,42 +459,53 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		if lineNum+1 < len(lines) {
 			nextLine = lines[lineNum+1]
 		}
-		matches = append(matches, v.findAWSSecretKeys(line, prevLine, nextLine, lineNum, originalPath)...)
+		// The AWS path can claim bytes the entropy path already claimed (a
+		// quoted 40-char secret is both), so merge rather than concatenate: the
+		// specific, higher-confidence AWS_SECRET_ACCESS_KEY row replaces the
+		// generic API_KEY_OR_SECRET row for that span instead of joining it.
+		lineResults = mergeBySpanKeepStrongest(lineResults, v.findAWSSecretKeys(line, prevLine, nextLine, lineNum, originalPath))
+
+		for _, r := range lineResults {
+			matches = append(matches, r.match)
+		}
 	}
 
 	return matches, nil
 }
 
 // findHighEntropyStrings finds strings with high Shannon entropy
-func (v *Validator) findHighEntropyStrings(line string) []string {
+func (v *Validator) findHighEntropyStrings(line string) []candidate {
 	// Early exit: if line doesn't have quotes, it can't have quoted high-entropy strings
 	// This is safe because both base64Pattern and hexPattern explicitly match quoted strings
 	if !strings.Contains(line, `"`) && !strings.Contains(line, `'`) {
 		return nil
 	}
 
-	var matches []string
+	var matches []candidate
 
 	// Base64 pattern: quoted strings with base64 characters (using pre-compiled pattern)
 	// Pattern requires 20+ characters, so this will naturally filter short strings
-	base64Matches := v.base64Pattern.FindAllStringSubmatch(line, -1)
-	for _, match := range base64Matches {
-		if len(match) > 1 {
-			entropy := v.calculateShannonEntropy(match[1], v.base64Charset)
-			if entropy > v.base64Limit {
-				matches = append(matches, match[1])
+	base64Matches := v.base64Pattern.FindAllStringSubmatchIndex(line, -1)
+	for _, m := range base64Matches {
+		if len(m) > 3 && m[2] >= 0 {
+			text := line[m[2]:m[3]]
+			if v.calculateShannonEntropy(text, v.base64Charset) > v.base64Limit {
+				matches = append(matches, candidate{text: text, start: m[2], end: m[3]})
 			}
 		}
 	}
 
 	// Hex pattern: quoted strings with hex characters (using pre-compiled pattern)
-	// Pattern requires 16+ characters, so this will naturally filter short strings
-	hexMatches := v.hexPattern.FindAllStringSubmatch(line, -1)
-	for _, match := range hexMatches {
-		if len(match) > 1 {
-			entropy := v.calculateShannonEntropy(match[1], v.hexCharset)
-			if entropy > v.hexLimit {
-				matches = append(matches, match[1])
+	// Pattern requires 16+ characters, so this will naturally filter short strings.
+	// A hex string is a subset of the base64 charset, so a quoted digest matches
+	// both patterns on the same bytes; the caller's span dedup collapses that to
+	// one claim.
+	hexMatches := v.hexPattern.FindAllStringSubmatchIndex(line, -1)
+	for _, m := range hexMatches {
+		if len(m) > 3 && m[2] >= 0 {
+			text := line[m[2]:m[3]]
+			if v.calculateShannonEntropy(text, v.hexCharset) > v.hexLimit {
+				matches = append(matches, candidate{text: text, start: m[2], end: m[3]})
 			}
 		}
 	}
@@ -567,24 +706,32 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 	return false
 }
 
-// findKeywordSecrets finds secrets using keyword patterns
-func (v *Validator) findKeywordSecrets(line string) []string {
+// findKeywordSecrets finds secrets using keyword patterns.
+//
+// Every pattern that hits contributes a candidate, and several patterns
+// routinely claim the very same bytes: `apiKey = "AKIA…"` matches both the
+// AKIA provider literal (full-match branch) and the api_?key assignment
+// pattern (capture-group branch). Candidates therefore carry their byte span
+// so the caller can collapse same-span claims instead of reporting one secret
+// two or three times; see dedupeBySpan.
+func (v *Validator) findKeywordSecrets(line string) []candidate {
 	// Early exit: skip lines that clearly don't contain secrets
 	if !v.containsSecretIndicators(line) {
 		return nil
 	}
 
-	var matches []string
+	var matches []candidate
 
 	for _, pattern := range v.keywordPatterns {
-		found := pattern.FindAllStringSubmatch(line, -1)
-		for _, match := range found {
-			if len(match) > 1 && len(match[1]) >= 8 {
-				// Capture group match (keyword patterns)
-				matches = append(matches, match[1])
-			} else if len(match) > 0 && len(match[0]) >= 8 {
-				// Full match (SSH keys, JWT tokens, etc.)
-				matches = append(matches, match[0])
+		found := pattern.FindAllStringSubmatchIndex(line, -1)
+		for _, m := range found {
+			// Capture group match (keyword patterns) when the pattern has one
+			// that participated in this match; otherwise the full match (SSH
+			// keys, JWT tokens, provider literals).
+			if len(m) > 3 && m[2] >= 0 && m[3]-m[2] >= 8 {
+				matches = append(matches, candidate{text: line[m[2]:m[3]], start: m[2], end: m[3]})
+			} else if m[1]-m[0] >= 8 {
+				matches = append(matches, candidate{text: line[m[0]:m[1]], start: m[0], end: m[1]})
 			}
 		}
 	}
@@ -1036,7 +1183,7 @@ func (v *Validator) awsSecretContextOpen(line, prevLine, nextLine string) bool {
 // placeholders typically don't); and a Shannon-entropy floor reusing the
 // validator's base64 machinery. AKIA-prefixed tokens are excluded (they are
 // the ID half, already detected). Runs O(line length) once per line.
-func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum int, originalPath string) []detector.Match {
+func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum int, originalPath string) []spannedMatch {
 	if len(line) < 40 {
 		return nil
 	}
@@ -1055,7 +1202,7 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 		}
 	}
 
-	var results []detector.Match
+	var results []spannedMatch
 	for _, m := range reAWSSecretCandidate.FindAllStringSubmatchIndex(line, -1) {
 		start, end := m[4], m[5] // capture group 2: the 40-char token
 		candidate := line[start:end]
@@ -1097,18 +1244,22 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 			confidence = 65
 		}
 
-		results = append(results, detector.Match{
-			Text:       candidate,
-			LineNumber: lineNum + 1,
-			Type:       "AWS_SECRET_ACCESS_KEY",
-			Confidence: confidence,
-			Filename:   originalPath,
-			Validator:  "secrets",
-			Metadata: map[string]any{
-				"detection_method": "aws_secret_context",
-				"source":           "preprocessed_content",
-				"secret_type":      "AWS_SECRET_ACCESS_KEY",
-				"example_embedded": exampleEmbedded,
+		results = append(results, spannedMatch{
+			start: start,
+			end:   end,
+			match: detector.Match{
+				Text:       candidate,
+				LineNumber: lineNum + 1,
+				Type:       "AWS_SECRET_ACCESS_KEY",
+				Confidence: confidence,
+				Filename:   originalPath,
+				Validator:  "secrets",
+				Metadata: map[string]any{
+					"detection_method": "aws_secret_context",
+					"source":           "preprocessed_content",
+					"secret_type":      "AWS_SECRET_ACCESS_KEY",
+					"example_embedded": exampleEmbedded,
+				},
 			},
 		})
 	}
@@ -1291,12 +1442,19 @@ func (v *Validator) isObviousPlaceholderPattern(pattern string) bool {
 	return false
 }
 
-// processMatches is a unified method for processing both entropy and keyword matches
-// This eliminates code duplication between the two detection methods
-func (v *Validator) processMatches(matches []string, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, detectionMethod string, confidenceThreshold float64, lineHasShellVars bool, envType string, isShellScript bool) []detector.Match {
-	var results []detector.Match
+// processScopedCandidates is a unified method for processing both entropy and
+// keyword matches. This eliminates code duplication between the two detection
+// methods; each candidate carries the detection path it came from, so both can
+// be arbitrated against each other by span (see dedupeScopedBySpan) and still
+// be judged against their own confidence threshold and labelled with their own
+// detection_method.
+func (v *Validator) processScopedCandidates(matches []scopedCandidate, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, lineHasShellVars bool, envType string, isShellScript bool) []spannedMatch {
+	var results []spannedMatch
 
-	for _, match := range matches {
+	for _, cand := range matches {
+		match := cand.text
+		detectionMethod := cand.method
+		confidenceThreshold := cand.threshold
 		// Skip shell variable references that aren't actual secret values
 		// Only perform expensive regex checks if the line potentially has shell variables
 		if lineHasShellVars && v.isMatchShellVariableReference(line, match) {
@@ -1318,21 +1476,25 @@ func (v *Validator) processMatches(matches []string, line string, lineNum int, o
 
 		if confidence > confidenceThreshold {
 			secretType := v.getSecretType(match)
-			results = append(results, detector.Match{
-				Text:       match,
-				LineNumber: lineNum + 1,
-				Type:       secretType,
-				Confidence: confidence,
-				Filename:   originalPath,
-				Validator:  "secrets",
-				Metadata: map[string]any{
-					"validation_checks": checks,
-					"detection_method":  detectionMethod,
-					"source":            "preprocessed_content",
-					"context_domain":    contextInsights.Domain,
-					"context_doc_type":  contextInsights.DocumentType,
-					"environment_type":  envType,
-					"secret_type":       secretType,
+			results = append(results, spannedMatch{
+				start: cand.start,
+				end:   cand.end,
+				match: detector.Match{
+					Text:       match,
+					LineNumber: lineNum + 1,
+					Type:       secretType,
+					Confidence: confidence,
+					Filename:   originalPath,
+					Validator:  "secrets",
+					Metadata: map[string]any{
+						"validation_checks": checks,
+						"detection_method":  detectionMethod,
+						"source":            "preprocessed_content",
+						"context_domain":    contextInsights.Domain,
+						"context_doc_type":  contextInsights.DocumentType,
+						"environment_type":  envType,
+						"secret_type":       secretType,
+					},
 				},
 			})
 		}
