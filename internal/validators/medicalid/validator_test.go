@@ -758,3 +758,117 @@ func TestMedicalIDValidator_FalsePositiveSuppression(t *testing.T) {
 		})
 	}
 }
+
+// TestMedicalIDValidator_IntrinsicValueFloor locks the value-intrinsic floor for
+// the two checksum-bearing subtypes here, NPI and DEA, against the
+// keyword-padding evasion (threat model TM-11).
+//
+// Context keywords could drive either score to zero, and the `confidence <= 0`
+// gate then returned no match at all. That made a checksum-valid identifier
+// INVISIBLE rather than low-ranked, and because redaction only rewrites what was
+// emitted, the value passed through --enable-redaction in cleartext. Measured
+// before the fix: "NPI 1234567893" scored 90 and vanished entirely under heavy
+// negative padding.
+//
+// The CMS NPI-Luhn and DEA checksums are intrinsic to the value and not
+// attacker-deniable, so they earn a floor: context may demote to the bottom of
+// LOW, but it may not erase.
+//
+// MRN and insurance member IDs are deliberately NOT floored — they have no
+// value-intrinsic check, so context is the only evidence they have and
+// suppressing them to nothing stays correct. That residual is documented in
+// THREAT_MODEL.md section 4.7.
+func TestMedicalIDValidator_IntrinsicValueFloor(t *testing.T) {
+	v := NewValidator()
+
+	// Heavy negative padding, well past the point where any single keyword
+	// threshold trips. "phone" is excluded on purpose: phone context is a
+	// separate hard drop that survives this change (a 10-digit number near
+	// "phone" really is more likely a phone number), and the reason it is not
+	// fixed here is recorded at the drop site in evaluateNPI.
+	const pad = "test example fake mock sample serial tracking invoice order " +
+		"timestamp unix epoch hash uuid guid crc checksum version build"
+
+	for _, tc := range []struct {
+		name    string
+		clean   string
+		typ     string
+		minBase float64
+	}{
+		{"NPI", "NPI 1234567893", "NPI", 80},
+		{"DEA", "DEA number AB1234563", "DEA_NUMBER", 80},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Baseline, so the padded assertion cannot pass vacuously.
+			base, err := v.ValidateContent(tc.clean, "clean.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent() error = %v", err)
+			}
+			var baseConf float64
+			for _, m := range base {
+				if m.Type == tc.typ {
+					baseConf = m.Confidence
+				}
+			}
+			if baseConf < tc.minBase {
+				t.Fatalf("baseline %s: want >= %.0f, got %.1f", tc.typ, tc.minBase, baseConf)
+			}
+
+			matches, err := v.ValidateContent(tc.clean+" "+pad, "padded.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent() error = %v", err)
+			}
+			found := false
+			for _, m := range matches {
+				if m.Type != tc.typ {
+					continue
+				}
+				found = true
+				if m.Confidence < intrinsicValueFloor {
+					t.Errorf("%s: confidence %.1f fell below the floor %.1f",
+						tc.typ, m.Confidence, intrinsicValueFloor)
+				}
+				if m.Confidence >= baseConf {
+					t.Errorf("%s: padding must still demote (base %.1f, padded %.1f)",
+						tc.typ, baseConf, m.Confidence)
+				}
+			}
+			if !found {
+				t.Errorf("padding erased a checksum-valid %s (%d matches) — TM-11 evasion regressed",
+					tc.typ, len(matches))
+			}
+		})
+	}
+
+	// The floor is earned by the checksum, not granted to anything NPI-shaped: a
+	// 10-digit number that fails NPI-Luhn is still rejected outright.
+	bad, err := v.ValidateContent("NPI 1234567890 test", "bad.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	for _, m := range bad {
+		if m.Type == "NPI" {
+			t.Errorf("NPI-Luhn-invalid value must not receive the floor, got %.1f", m.Confidence)
+		}
+	}
+
+	// MRN has no value-intrinsic check, so it must not be floored: a label that
+	// hard-suppresses it still erases it. "account" is a non-medical hard keyword
+	// for MRN, which is the shape a real suppression takes.
+	mrn, err := v.ValidateContent("account 1234567", "mrn.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	for _, m := range mrn {
+		if m.Type == "MRN" {
+			t.Errorf("MRN has no value-intrinsic check and must stay suppressible to nothing, got %.1f",
+				m.Confidence)
+		}
+	}
+
+	// The floor must sit in LOW: emitted (so redaction covers it) but below a
+	// `--confidence high,medium` cut, which starts at 60.
+	if intrinsicValueFloor <= 0 || intrinsicValueFloor >= 60 {
+		t.Errorf("floor %.1f must be inside the LOW band (0 < floor < 60)", intrinsicValueFloor)
+	}
+}

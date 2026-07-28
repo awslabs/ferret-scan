@@ -13,6 +13,136 @@
                 },
                 "contextRegion": {
                   "snippet": {
+                    "text": "TEST_CARD_NUMBER = \nTEST_CARD_NUMBER = 4532015112830366"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 36,
+                  "snippet": {
+                    "text": "TEST_CARD_NUMBER = 4532015112830366"
+                  },
+                  "startColumn": 20,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "VISA Detected in <golden:context_keywords_snake_case> at line 4 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Configuration",
+              "context_domain": "Financial",
+              "context_impact": -100,
+              "original_confidence": 15,
+              "original_file": "<golden:context_keywords_snake_case>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 32.5,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_keywords_snake_case>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "account_number_test: \naccount_number_test: 4012888888881881"
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 38,
+                  "snippet": {
+                    "text": "account_number_test: 4012888888881881"
+                  },
+                  "startColumn": 22,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "VISA Detected in <golden:context_keywords_snake_case> at line 5 (confidence: 15.0% - LOW). Matched text: '4012888888881881'"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Configuration",
+              "context_domain": "Financial",
+              "context_impact": -100,
+              "original_confidence": 15,
+              "original_file": "<golden:context_keywords_snake_case>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 32.5,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_keywords_snake_case>"
+                },
+                "contextRegion": {
+                  "snippet": {
                     "text": "my_dob_field: \nmy_dob_field: 1985-03-14"
                   },
                   "startLine": 3
@@ -296,6 +426,19 @@
               "id": "SSN",
               "shortDescription": {
                 "text": "Social Security Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type VISA was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "id": "VISA",
+              "shortDescription": {
+                "text": "VISA Detected"
               }
             }
           ],

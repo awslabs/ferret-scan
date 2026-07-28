@@ -2,11 +2,13 @@
 customer_ssn: [SSN-REDACTED]
 SSN_VALUE=[SSN-REDACTED]
 my_dob_field: [DATE_OF_BIRTH-REDACTED]
-TEST_CARD_NUMBER = 4532015112830366
-account_number_test: 4012888888881881
+TEST_CARD_NUMBER = [CREDIT-CARD-REDACTED]
+account_number_test: [CREDIT-CARD-REDACTED]
 sample_ssn = [SSN-REDACTED]
 === FINDINGS (sorted) ===
 type=DATE_OF_BIRTH line=3 conf=high match=1985-03-14
 type=SSN line=1 conf=high match=449-87-4100
 type=SSN line=2 conf=high match=449-87-4101
 type=SSN line=6 conf=medium match=449-87-4102
+type=VISA line=4 conf=low match=4532015112830366
+type=VISA line=5 conf=low match=4012888888881881

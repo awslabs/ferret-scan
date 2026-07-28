@@ -256,9 +256,15 @@ var Cases = []Case{
 		Description: "Real PII labelled with an identifier word that is a SOFT suppressor " +
 			"(account/order for CREDIT_CARD, patient-account for MEDICAL_ID MRN). Locks the " +
 			"two-tier negative fix: a soft label must NOT hard-drop a real value when a strong " +
-			"positive keyword co-occurs (card word / MRN keyword), while a bare label line and " +
-			"a device-identifier decoy (IMEI: Luhn-valid, card-shaped) must stay suppressed. " +
-			"A future regression that reinstates the old -100 hard-drop shows up here.",
+			"positive keyword co-occurs (card word / MRN keyword), so lines 1-2 stay HIGH. " +
+			"Lines 4-5 (bare IMEI decoy, bare 'order id' label) are suppressed to zero by the " +
+			"keyword and then held at the CREDIT_CARD intrinsic-value floor of 15.00 LOW rather " +
+			"than erased: a keyword is document content, so letting one zero out a Luhn-valid PAN " +
+			"let anyone who could add a word to a line both hide the card and skip redaction " +
+			"(threat model TM-11). Demotion to the bottom of LOW is the intended outcome; " +
+			"disappearance is not. A regression that reinstates the old -100 hard-drop shows up " +
+			"here as lines 4-5 vanishing; one that ignores the keyword shows up as them returning " +
+			"to HIGH.",
 		Checks: []string{"CREDIT_CARD", "MEDICAL_ID"},
 		Input: "Order 5678 paid with card 4532015112830366\n" +
 			"Account Number for visa 5425233430109903\n" +
@@ -276,7 +282,12 @@ var Cases = []Case{
 			"suppress (a Luhn-valid card in TEST_/_test fixture context stayed MEDIUM). Each line " +
 			"here has a spaced counterpart in the cases above, and the two must score the same; a " +
 			"regression that reinstates '_' as a word byte shows up as the underscore lines " +
-			"dropping back to bare-value confidence.",
+			"dropping back to bare-value confidence. The two card lines land at the CREDIT_CARD " +
+			"intrinsic-value floor of 15.00 LOW: the keyword suppressed them to zero, and the floor " +
+			"then keeps them emitted so redaction still covers them (TM-11). Note what the " +
+			"pre-floor snapshot of this very case recorded -- 'TEST_CARD_NUMBER = 4532015112830366' " +
+			"and 'account_number_test: 4012888888881881' survived --enable-redaction in cleartext, " +
+			"because redaction can only rewrite what was reported.",
 		Checks: []string{"SSN", "CREDIT_CARD", "DATE_OF_BIRTH"},
 		Input: "customer_ssn: 449-87-4100\n" +
 			"SSN_VALUE=449-87-4101\n" +

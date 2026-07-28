@@ -1,6 +1,8 @@
-LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH       FILE
--------------------------------------------------------------------------------------
-[HIGH  ] ssn          SSN                   100.00% line     1 449-87-4100 <golden:context_keywords_snake_case>
-[HIGH  ] ssn          SSN                   100.00% line     2 449-87-4101 <golden:context_keywords_snake_case>
-[HIGH  ] dob          DATE_OF_BIRTH          90.00% line     3 1985-03-14  <golden:context_keywords_snake_case>
-[MEDIUM] ssn          SSN                    65.00% line     6 449-87-4102 <golden:context_keywords_snake_case>
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            FILE
+------------------------------------------------------------------------------------------
+[HIGH  ] ssn          SSN                   100.00% line     1 449-87-4100      <golden:context_keywords_snake_case>
+[HIGH  ] ssn          SSN                   100.00% line     2 449-87-4101      <golden:context_keywords_snake_case>
+[HIGH  ] dob          DATE_OF_BIRTH          90.00% line     3 1985-03-14       <golden:context_keywords_snake_case>
+[MEDIUM] ssn          SSN                    65.00% line     6 449-87-4102      <golden:context_keywords_snake_case>
+[LOW   ] creditcard   VISA                   15.00% line     4 4532015112830366 <golden:context_keywords_snake_case>
+[LOW   ] creditcard   VISA                   15.00% line     5 4012888888881881 <golden:context_keywords_snake_case>

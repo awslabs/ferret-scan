@@ -14,6 +14,14 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
+// intrinsicValueFloor is the confidence a checksum-valid identifier keeps even
+// when the line's keywords score it to zero. It applies to NPI and DEA only —
+// the two subtypes here with a value-intrinsic check (CMS NPI-Luhn, DEA
+// checksum). MRN and insurance member IDs have no such check, so context is the
+// only evidence they have and suppressing them to nothing stays correct; that
+// residual is documented in THREAT_MODEL.md §4.7.
+const intrinsicValueFloor = 15.0
+
 // Pre-compiled regex patterns for medical identifier detection.
 var (
 	// NPI: exactly 10 digits starting with 1 or 2
@@ -241,10 +249,33 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 		return detector.Match{}, false
 	}
 
-	// If the line has phone/contact context, suppress NPI entirely.
-	// A 10-digit number in a "contact", "call", "phone", or "fax" context
-	// is overwhelmingly more likely to be a phone number than an NPI,
-	// even if medical keywords are also present on the line.
+	// Phone/contact context suppresses NPI entirely. A 10-digit number near
+	// "contact"/"call"/"phone"/"fax" is overwhelmingly more likely to be a phone
+	// number, and roughly 1 in 10 phone-shaped 10-digit numbers starting 1 or 2
+	// pass the NPI-Luhn check, so this carries real false-positive weight — see
+	// TestAdversarial_NPI_PhoneNumbers and TestAdversarial_PhoneLike_InMedicalContext,
+	// which pin phone-shaped NPI-Luhn-valid values like 1212555126.
+	//
+	// KNOWN RESIDUAL, deliberately not fixed here. This drop is a
+	// cross-validator arbitration (NPI vs PHONE over the same bytes) implemented
+	// as a keyword veto inside one validator, and it has two costs:
+	//
+	//   1. Recall: "Provider NPI 1234567893, phone 555-0100" reports no NPI,
+	//      because one "phone" anywhere on the line vetoes a checksum-valid,
+	//      explicitly labelled NPI that is not the phone number.
+	//   2. TM-11: the veto is attacker-controlled document content, so appending
+	//      the single word "phone" erases the NPI, which then passes through
+	//      --enable-redaction in cleartext.
+	//
+	// Gating on provider context was tried and rejected: "physician"/"hospital"
+	// is provider context, so it readmitted exactly the phone-number FPs the
+	// adversarial tests exist to prevent. A correct fix needs same-span
+	// arbitration between the medicalid and phone validators (which number does
+	// the phone keyword actually bind to), not a better keyword rule here. Today
+	// nothing arbitrates: internal/parallel/validator_runner.go concatenates each
+	// validator's matches, so "NPI 1234567893" already emits both NPI 90 and
+	// PHONE 10 for the same bytes. Tracked separately; the floor below covers the
+	// scoring half of TM-11, which is what this change is scoped to.
 	if lc.phone {
 		return detector.Match{}, false
 	}
@@ -260,9 +291,20 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 		confidence -= 40
 	}
 
+	// Value-intrinsic floor (TM-11). An NPI that passes the CMS NPI-Luhn check
+	// above is validated by the value itself; the keywords that pushed the score
+	// to zero are document content, so without this floor anyone who could add
+	// words to the line could erase the finding entirely — and because redaction
+	// only rewrites what was emitted, the NPI then passed through
+	// --enable-redaction in cleartext. Measured: "NPI 1234567893" scores 90, and
+	// the same line padded with test/example/fake/... produced no finding at all.
+	// Context may demote to the bottom of LOW; it may not erase. The `lc.phone`
+	// return above is deliberately left as a hard drop: that is a *structural*
+	// disambiguation (a 10-digit number in phone context is a phone number), not
+	// an attacker's claim about sensitivity.
 	confidence = clamp(confidence)
 	if confidence <= 0 {
-		return detector.Match{}, false
+		confidence = intrinsicValueFloor
 	}
 
 	return detector.Match{
@@ -298,9 +340,11 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lc medicalLineCon
 		confidence -= 30
 	}
 
+	// Value-intrinsic floor (TM-11) — see evaluateNPI. The DEA checksum is
+	// verified above, so context may demote but not erase.
 	confidence = clamp(confidence)
 	if confidence <= 0 {
-		return detector.Match{}, false
+		confidence = intrinsicValueFloor
 	}
 
 	return detector.Match{
