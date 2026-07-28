@@ -331,7 +331,7 @@ func (sm *SuppressionManager) AddSuppression(match detector.Match, reason, creat
 			"finding_type":    match.Type,
 			"filename":        filepath.Base(match.Filename),
 			"line_number":     fmt.Sprintf("%d", match.LineNumber),
-			"confidence":      fmt.Sprintf("%.0f", match.Confidence),
+			"confidence":      fmt.Sprintf("%.2f", match.Confidence),
 			"context_hash":    sm.hashSensitiveData(match.Context.BeforeText + match.Context.AfterText),
 			"match_text_hash": sm.hashSensitiveData(match.Text),
 		},
@@ -491,10 +491,15 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		}
 	}
 
-	// Create a map of existing hashes for quick lookup
-	existingHashes := make(map[string]*SuppressionRule)
+	// Index existing hashes by their POSITION in sm.config.Rules, not by
+	// pointer. The loop below appends to sm.config.Rules, which reallocates the
+	// backing array once capacity is exceeded; a *SuppressionRule captured here
+	// would then point into the abandoned array and every LastSeenAt write
+	// through it would be silently lost. IsSuppressed already indexes by
+	// position for the same reason.
+	existingHashes := make(map[string]int, len(sm.config.Rules))
 	for i := range sm.config.Rules {
-		existingHashes[sm.config.Rules[i].Hash] = &sm.config.Rules[i]
+		existingHashes[sm.config.Rules[i].Hash] = i
 	}
 
 	addedCount := 0
@@ -516,9 +521,10 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		findingHash := sm.generateFindingHash(match)
 
 		// Check if already exists
-		if existingRule, exists := existingHashes[findingHash]; exists {
-			// Update last_seen_at for existing rule
-			existingRule.LastSeenAt = &now
+		if idx, exists := existingHashes[findingHash]; exists {
+			// Update last_seen_at for existing rule. Written through the live
+			// slice so it survives any reallocation caused by the appends below.
+			sm.config.Rules[idx].LastSeenAt = &now
 			updatedCount++
 			continue
 		}
@@ -551,13 +557,18 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 				"finding_type":    match.Type,
 				"filename":        filepath.Base(match.Filename),
 				"line_number":     fmt.Sprintf("%d", match.LineNumber),
-				"confidence":      fmt.Sprintf("%.0f", match.Confidence),
+				"confidence":      fmt.Sprintf("%.2f", match.Confidence),
 				"context_hash":    sm.hashSensitiveData(match.Context.BeforeText + match.Context.AfterText),
 				"match_text_hash": sm.hashSensitiveData(match.Text),
 			},
 		}
 
 		sm.config.Rules = append(sm.config.Rules, rule)
+		// Record the new hash so a second occurrence of the SAME finding in this
+		// batch is treated as existing (last_seen_at touch) rather than emitting
+		// a second identical rule. Without this, a value repeated N times in a
+		// scan produced N byte-identical rules differing only in ID.
+		existingHashes[findingHash] = len(sm.config.Rules) - 1
 		addedCount++
 	}
 
@@ -677,7 +688,7 @@ func (sm *SuppressionManager) CreateSuppressionFromFindingWithExpiration(hash, r
 		"finding_type":    getString(findingData, "type"),
 		"filename":        filepath.Base(getString(findingData, "filename")),
 		"line_number":     fmt.Sprintf("%.0f", getFloat(findingData, "line_number")),
-		"confidence":      fmt.Sprintf("%.0f", getFloat(findingData, "confidence")),
+		"confidence":      fmt.Sprintf("%.2f", getFloat(findingData, "confidence")),
 		"context_hash":    sm.hashSensitiveData(""), // Empty context for web UI
 		"match_text_hash": sm.hashSensitiveData(getString(findingData, "text")),
 	}
@@ -767,7 +778,7 @@ func (sm *SuppressionManager) CreateSuppressionFromFindingWithState(hash, reason
 		"finding_type":    getString(findingData, "type"),
 		"filename":        filepath.Base(getString(findingData, "filename")),
 		"line_number":     fmt.Sprintf("%.0f", getFloat(findingData, "line_number")),
-		"confidence":      fmt.Sprintf("%.0f", getFloat(findingData, "confidence")),
+		"confidence":      fmt.Sprintf("%.2f", getFloat(findingData, "confidence")),
 		"context_hash":    "",
 		"match_text_hash": sm.hashSensitiveData(getString(findingData, "text")),
 	}

@@ -62,7 +62,7 @@ rules:
       finding_type: "EMAIL"
       filename: "test-file.txt"
       line_number: "5"
-      confidence: "85"
+      confidence: "85.00"
       context_hash: "a1b2c3d4e5f6g7h8"
       match_text_hash: "h8g7f6e5d4c3b2a1"
 ```
