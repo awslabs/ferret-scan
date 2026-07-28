@@ -36,20 +36,23 @@ func TestContainsWholeWord(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, m := range []Mode{ModeAlnum, ModeAlnumUnderscore} {
-				if got := Contains(tc.text, tc.kw, m); got != tc.want {
-					t.Errorf("Contains(%q, %q, mode=%d) = %v, want %v", tc.text, tc.kw, m, got, tc.want)
-				}
+			if got := Contains(tc.text, tc.kw); got != tc.want {
+				t.Errorf("Contains(%q, %q) = %v, want %v", tc.text, tc.kw, got, tc.want)
 			}
 		})
 	}
 }
 
-// TestUnderscoreModeDivergence pins the ONLY behavioral difference between the
-// two modes. These are the cases that made the per-package copies disagree:
-// under ModeAlnum a keyword is found inside a snake_case identifier, under
-// ModeAlnumUnderscore it is not.
-func TestUnderscoreModeDivergence(t *testing.T) {
+// TestUnderscoreIsABoundary pins the single most consequential property of the
+// matcher: '_' is a boundary, not a word byte, so a keyword is found inside a
+// snake_case or SCREAMING_SNAKE identifier exactly as it is between spaces.
+//
+// The per-validator copies this package replaced disagreed on precisely this
+// byte, and the ones treating '_' as a word byte were wrong in both directions:
+// positive keywords in "customer_ssn" never boosted real findings, and fixture
+// markers in "TEST_CARD_NUMBER" / "account_number_test" never suppressed false
+// ones — in code and config, where those identifiers are how labels are spelled.
+func TestUnderscoreIsABoundary(t *testing.T) {
 	cases := []struct{ text, kw string }{
 		{"test_ssn = 123-45-6789", "test"},
 		{"ssn_value: 123-45-6789", "ssn"},
@@ -63,13 +66,22 @@ func TestUnderscoreModeDivergence(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.text+"/"+tc.kw, func(t *testing.T) {
-			if !Contains(tc.text, tc.kw, ModeAlnum) {
-				t.Errorf("ModeAlnum: Contains(%q, %q) = false, want true ('_' must be a boundary)", tc.text, tc.kw)
-			}
-			if Contains(tc.text, tc.kw, ModeAlnumUnderscore) {
-				t.Errorf("ModeAlnumUnderscore: Contains(%q, %q) = true, want false ('_' must be a word byte)", tc.text, tc.kw)
+			if !Contains(tc.text, tc.kw) {
+				t.Errorf("Contains(%q, %q) = false, want true ('_' must be a boundary)", tc.text, tc.kw)
 			}
 		})
+	}
+
+	// The boundary rule must not degrade into plain substring matching: an
+	// alphanumeric neighbor still blocks the match even next to underscores.
+	for _, tc := range []struct{ text, kw string }{
+		{"latest_value", "test"},
+		{"my_attestation_field", "test"},
+		{"_assn_", "ssn"},
+	} {
+		if Contains(tc.text, tc.kw) {
+			t.Errorf("Contains(%q, %q) = true, want false (alphanumeric neighbor must block)", tc.text, tc.kw)
+		}
 	}
 }
 
@@ -79,11 +91,11 @@ func TestUnderscoreModeDivergence(t *testing.T) {
 func TestUppercaseInputIsNotSilentlyMatched(t *testing.T) {
 	// ContainsLower with un-lowercased text simply does not match; it must not
 	// panic or match partially.
-	if ContainsLower("Customer SSN", "ssn", ModeAlnum) {
+	if ContainsLower("Customer SSN", "ssn") {
 		t.Error("ContainsLower must not match uppercase text (caller contract is lowercased input)")
 	}
 	// Contains lowercases internally, so the same input matches.
-	if !Contains("Customer SSN", "ssn", ModeAlnum) {
+	if !Contains("Customer SSN", "ssn") {
 		t.Error("Contains must lowercase its arguments")
 	}
 }
@@ -93,10 +105,10 @@ func TestUppercaseInputIsNotSilentlyMatched(t *testing.T) {
 // a caller passes mixed case the neighbor must still be treated as a word byte
 // after lowercasing by Contains.
 func TestBoundaryAdjacentToUppercaseNeighbor(t *testing.T) {
-	if Contains("XSSN", "ssn", ModeAlnum) {
+	if Contains("XSSN", "ssn") {
 		t.Error(`Contains("XSSN", "ssn") must be false: 'x' is a word byte after lowercasing`)
 	}
-	if Contains("SSNX", "ssn", ModeAlnum) {
+	if Contains("SSNX", "ssn") {
 		t.Error(`Contains("SSNX", "ssn") must be false: 'x' is a word byte after lowercasing`)
 	}
 }
@@ -104,23 +116,23 @@ func TestBoundaryAdjacentToUppercaseNeighbor(t *testing.T) {
 func TestContainsFuncAcceptFilter(t *testing.T) {
 	const text = "ssn alpha ssn"
 
-	if !ContainsFunc(text, "ssn", ModeAlnum, nil) {
+	if !ContainsFunc(text, "ssn", nil) {
 		t.Error("nil accept must accept any occurrence")
 	}
 
 	// Accept only the occurrence at or past offset 5 — i.e. skip the first.
-	if !ContainsFunc(text, "ssn", ModeAlnum, func(start, end int) bool { return start >= 5 }) {
+	if !ContainsFunc(text, "ssn", func(start, end int) bool { return start >= 5 }) {
 		t.Error("accept must keep scanning past a rejected occurrence")
 	}
 
 	// Reject everything: scanning must terminate and report false.
-	if ContainsFunc(text, "ssn", ModeAlnum, func(start, end int) bool { return false }) {
+	if ContainsFunc(text, "ssn", func(start, end int) bool { return false }) {
 		t.Error("accept returning false for every occurrence must yield false")
 	}
 
 	// The reported range must delimit the keyword exactly.
 	var gotStart, gotEnd int
-	ContainsFunc("xx ssn yy", "ssn", ModeAlnum, func(start, end int) bool {
+	ContainsFunc("xx ssn yy", "ssn", func(start, end int) bool {
 		gotStart, gotEnd = start, end
 		return true
 	})
@@ -135,7 +147,7 @@ func TestContainsFuncAcceptFilter(t *testing.T) {
 func TestContainsFuncSkipsNonWholeWordBeforeAccept(t *testing.T) {
 	var calls int
 	// "assn" contains "ssn" as a substring but not as a whole word.
-	ContainsFunc("assn", "ssn", ModeAlnum, func(start, end int) bool {
+	ContainsFunc("assn", "ssn", func(start, end int) bool {
 		calls++
 		return true
 	})
@@ -147,24 +159,21 @@ func TestContainsFuncSkipsNonWholeWordBeforeAccept(t *testing.T) {
 func TestContainsAny(t *testing.T) {
 	kws := []string{"test", "example", "sample"}
 
-	if !ContainsAny("see the example below", kws, ModeAlnum) {
+	if !ContainsAny("see the example below", kws) {
 		t.Error("ContainsAny must match a keyword present as a whole word")
 	}
-	if ContainsAny("company-templates bucket", kws, ModeAlnum) {
+	if ContainsAny("company-templates bucket", kws) {
 		t.Error(`ContainsAny must not match "template" inside "templates" for keyword "test"/"sample"`)
 	}
-	if ContainsAny("attestation of latest", kws, ModeAlnum) {
+	if ContainsAny("attestation of latest", kws) {
 		t.Error(`ContainsAny must not match "test" inside "attestation"/"latest"`)
 	}
-	if ContainsAny("nothing here", nil, ModeAlnum) {
+	if ContainsAny("nothing here", nil) {
 		t.Error("ContainsAny over an empty list must be false")
 	}
-	// Underscore mode: the snake_case identifier must NOT match.
-	if ContainsAny("run_test_case", kws, ModeAlnumUnderscore) {
-		t.Error("ContainsAny must respect ModeAlnumUnderscore")
-	}
-	if !ContainsAny("run_test_case", kws, ModeAlnum) {
-		t.Error("ContainsAny must respect ModeAlnum")
+	// '_' is a boundary, so a keyword inside a snake_case identifier matches.
+	if !ContainsAny("run_test_case", kws) {
+		t.Error(`ContainsAny must match "test" inside "run_test_case" ('_' is a boundary)`)
 	}
 }
 
@@ -172,10 +181,10 @@ func TestContainsAny(t *testing.T) {
 // occurrences overlap must still be found when a later one is whole-word.
 func TestNoOverlappingMatchMissed(t *testing.T) {
 	// "aaa" inside "aaaa" is never whole-word; inside "aaaa aaa" the second is.
-	if !Contains("aaaa aaa", "aaa", ModeAlnum) {
+	if !Contains("aaaa aaa", "aaa") {
 		t.Error("overlapping-prefix scan must still find the later whole-word occurrence")
 	}
-	if Contains("aaaa", "aaa", ModeAlnum) {
+	if Contains("aaaa", "aaa") {
 		t.Error(`"aaa" must not match inside "aaaa"`)
 	}
 }
@@ -184,10 +193,10 @@ func TestNoOverlappingMatchMissed(t *testing.T) {
 // length and always terminates (the loop advance must make progress).
 func TestLongTextTerminates(t *testing.T) {
 	text := strings.Repeat("ssnx ", 20000)
-	if Contains(text, "ssn", ModeAlnum) {
+	if Contains(text, "ssn") {
 		t.Error(`"ssn" must not match inside repeated "ssnx"`)
 	}
-	if !Contains(text+" ssn", "ssn", ModeAlnum) {
+	if !Contains(text+" ssn", "ssn") {
 		t.Error("whole-word occurrence at the end of a long text must be found")
 	}
 }
@@ -195,13 +204,13 @@ func TestLongTextTerminates(t *testing.T) {
 func BenchmarkContainsLowerMiss(b *testing.B) {
 	text := strings.Repeat("some ordinary log line with no keyword at all ", 20)
 	for i := 0; i < b.N; i++ {
-		ContainsLower(text, "ssn", ModeAlnum)
+		ContainsLower(text, "ssn")
 	}
 }
 
 func BenchmarkContainsLowerHit(b *testing.B) {
 	text := strings.Repeat("some ordinary log line with no keyword at all ", 20) + "ssn"
 	for i := 0; i < b.N; i++ {
-		ContainsLower(text, "ssn", ModeAlnum)
+		ContainsLower(text, "ssn")
 	}
 }

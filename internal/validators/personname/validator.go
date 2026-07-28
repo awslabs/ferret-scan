@@ -850,7 +850,7 @@ func (v *Validator) isTechnicalTerm(match string) bool {
 // byte is [a-z0-9], so '_' acts as a word boundary here. ContainsLower (rather
 // than Contains) keeps the existing contract that callers pass lowercased text.
 func containsWordKeyword(text, keyword string) bool {
-	return kwmatch.ContainsLower(text, keyword, kwmatch.ModeAlnum)
+	return kwmatch.ContainsLower(text, keyword)
 }
 
 // lineContextCache holds the per-line work shared by every name match found on a

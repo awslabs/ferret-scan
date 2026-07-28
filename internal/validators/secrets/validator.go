@@ -940,10 +940,12 @@ var (
 // word (text must already be lowercased). Prevents "test" from matching inside
 // "latest" or "attestation".
 //
-// ModeAlnumUnderscore preserves this validator's historical boundary
-// semantics: a word byte is [a-z0-9_], so '_' counts as a word byte here.
+// ModeAlnum treats '_' as a word boundary, so a keyword is found inside a
+// snake_case identifier ("customer_ssn", "TEST_VALUE") exactly as it is
+// between spaces. Code and config — where those identifiers dominate — are
+// primary scan targets for this tool.
 func containsWordBoundary(text, keyword string) bool {
-	return kwmatch.ContainsLower(text, keyword, kwmatch.ModeAlnumUnderscore)
+	return kwmatch.ContainsLower(text, keyword)
 }
 
 // isKeywordAlnum reports whether b is an ASCII letter or digit.

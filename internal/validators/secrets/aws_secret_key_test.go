@@ -83,6 +83,27 @@ func TestAWSSecretAccessKey(t *testing.T) {
 		}
 	})
 
+	t.Run("test keyword in snake_case identifier suppresses", func(t *testing.T) {
+		// '_' is a separator, not a word byte, so a fixture marker carried by a
+		// snake_case identifier suppresses exactly as the spaced spelling does.
+		// Before the fix "unit_test_fixture" contained no "test" token, so a
+		// hardcoded fixture secret in a Go/Python test file was reported at 90.
+		for _, line := range []string{
+			"unit_test_fixture secret_access_key = " + secret + "\n",
+			"MOCK_CREDS: aws_secret_access_key=" + secret + "\n",
+			"my_example_config secret_access_key " + secret + "\n",
+		} {
+			if c := find(t, line); len(c) != 0 {
+				t.Errorf("snake_case fixture marker must suppress %q, got %d detections at %v", line, len(c), c)
+			}
+		}
+		// Control: the same shape with no fixture marker is still reported, so
+		// the suppression above is not blanket.
+		if c := find(t, "prod_config secret_access_key = "+secret+"\n"); len(c) != 1 {
+			t.Fatalf("unmarked secret must still be detected, got %d detections", len(c))
+		}
+	})
+
 	t.Run("EXAMPLE embedded demotes below HIGH", func(t *testing.T) {
 		c := find(t, "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n")
 		if len(c) != 1 {

@@ -64,10 +64,12 @@ var monthMap = map[string]int{
 // containsKeyword reports whether text contains keyword as a whole word/phrase,
 // case-insensitively.
 //
-// ModeAlnumUnderscore preserves this validator's historical boundary
-// semantics: '_' counts as a word byte here.
+// ModeAlnum treats '_' as a word boundary, so a keyword is found inside a
+// snake_case identifier ("customer_ssn", "TEST_VALUE") exactly as it is
+// between spaces. Code and config — where those identifiers dominate — are
+// primary scan targets for this tool.
 func containsKeyword(text, keyword string) bool {
-	return kwmatch.Contains(text, keyword, kwmatch.ModeAlnumUnderscore)
+	return kwmatch.Contains(text, keyword)
 }
 
 // Validator implements the detector.Validator interface for detecting

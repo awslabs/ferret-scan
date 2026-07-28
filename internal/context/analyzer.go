@@ -169,12 +169,17 @@ func (sd *StructureDetector) DetectStructure(content, filePath string) (string, 
 		scores[structType] = confidence
 	}
 
-	// Find the highest scoring structure type
+	// Find the highest scoring structure type. Ties are broken by type name so
+	// the result is deterministic: ranging a map with a strict > let Go's
+	// randomized iteration order decide between equal scores, so the same
+	// content was detected as "TSV" on one run and "Code" on the next. That
+	// choice feeds calculateConfidenceAdjustments (tabular_boost is +20), so the
+	// flapping moved every finding in the document across a confidence band.
 	bestType := "Unknown"
 	bestScore := 0.0
 
 	for structType, score := range scores {
-		if score > bestScore {
+		if score > bestScore || (score == bestScore && score > 0 && structType < bestType) {
 			bestScore = score
 			bestType = structType
 		}
@@ -256,12 +261,16 @@ func (dc *DomainClassifier) ClassifyDomain(content string) (string, float64) {
 		return "Unknown", 0.0
 	}
 
-	// Find the highest scoring domain
+	// Find the highest scoring domain. Ties are broken by domain name so the
+	// result is deterministic: ranging a map with a strict > let Go's randomized
+	// iteration order decide between equal scores, so the same input classified
+	// as (for example) Financial on one run and Retail on the next — the domain
+	// lands in reported metadata, which made output non-reproducible.
 	bestDomain := "Unknown"
 	bestScore := 0
 
 	for domain, score := range domainScores {
-		if score > bestScore {
+		if score > bestScore || (score == bestScore && score > 0 && domain < bestDomain) {
 			bestScore = score
 			bestDomain = domain
 		}

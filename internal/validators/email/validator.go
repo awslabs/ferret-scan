@@ -23,7 +23,7 @@ import (
 // ModeAlnum preserves this validator's historical boundary semantics: a word
 // byte is [a-z0-9], so '_' acts as a word boundary here.
 func containsKeyword(text, keyword string) bool {
-	return kwmatch.Contains(text, keyword, kwmatch.ModeAlnum)
+	return kwmatch.Contains(text, keyword)
 }
 
 // containsKeywordLower is containsKeyword for callers that have already
@@ -32,7 +32,7 @@ func containsKeyword(text, keyword string) bool {
 // out of the hot path matters because the previous code re-lowercased the
 // (potentially huge) line text once per keyword per match.
 func containsKeywordLower(lt, lk string) bool {
-	return kwmatch.ContainsLower(lt, lk, kwmatch.ModeAlnum)
+	return kwmatch.ContainsLower(lt, lk)
 }
 
 // maxKeywordLen bounds how far past a context-window/full-line junction a
@@ -451,7 +451,7 @@ func buildJunctionWindows(beforeText, lowerLine, afterText string) junctionWindo
 // ModeAlnum matches the boundary semantics of the other keyword scans in this
 // package; accept is only consulted for whole-word occurrences.
 func containsKeywordCrossing(s, lk string, accept func(start, end int) bool) bool {
-	return kwmatch.ContainsFunc(s, lk, kwmatch.ModeAlnum, accept)
+	return kwmatch.ContainsFunc(s, lk, accept)
 }
 
 // keywordInContext reports whether keyword (lowercased as lowerKw) appears

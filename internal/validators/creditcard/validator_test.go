@@ -847,6 +847,62 @@ func TestCreditCardValidator_NegativeKeywordWordBoundary(t *testing.T) {
 	}
 }
 
+// TestCreditCardValidator_SnakeCaseKeyword locks the keyword boundary against
+// snake_case identifiers. buildKeywordRegex used \b, and Go's \b is defined on
+// \w — which includes '_' — so `\btest\b` did not match "TEST_CARD_NUMBER" and
+// `\border\b` did not match "order_id". Negative labels therefore failed to
+// suppress, and positive card words failed to boost, exactly in the code and
+// config files where snake_case identifiers dominate. The boundary is now
+// alphanumeric-only, so each identifier below must score as its spaced twin.
+func TestCreditCardValidator_SnakeCaseKeyword(t *testing.T) {
+	validator := NewValidator()
+	const card = "4532015112830366" // Luhn-valid, not a known test pattern
+
+	for _, tc := range []struct {
+		snake, spaced string
+	}{
+		{"card_number: " + card, "card number: " + card},
+		{"TEST_CARD_NUMBER = " + card, "test card number = " + card},
+		{"account_number_test: " + card, "account number test: " + card},
+		{"order_id: " + card, "order id: " + card},
+	} {
+		snakeImpact := validator.AnalyzeContext(card, detector.ContextInfo{FullLine: tc.snake})
+		spacedImpact := validator.AnalyzeContext(card, detector.ContextInfo{FullLine: tc.spaced})
+		if snakeImpact != spacedImpact {
+			t.Errorf("'_' must score as a separator: %q gave %.1f but %q gave %.1f",
+				tc.snake, snakeImpact, tc.spaced, spacedImpact)
+		}
+	}
+
+	// The equality above must not pass by every line scoring the same: the
+	// snake_case negatives have to actually reach the -100 rejection, and the
+	// snake_case positive has to actually boost.
+	for _, line := range []string{
+		"TEST_CARD_NUMBER = " + card,
+		"account_number_test: " + card,
+		"order_id: " + card,
+	} {
+		if impact := validator.AnalyzeContext(card, detector.ContextInfo{FullLine: line}); impact > -100 {
+			t.Errorf("snake_case negative keyword should suppress %q, got impact %.1f", line, impact)
+		}
+	}
+	if impact := validator.AnalyzeContext(card, detector.ContextInfo{FullLine: "card_number: " + card}); impact <= 0 {
+		t.Errorf("snake_case positive keyword should boost, got impact %.1f", impact)
+	}
+
+	// End-to-end: a Luhn-valid card labeled as a test fixture in SCREAMING_SNAKE
+	// must not be reported at all.
+	matches, err := validator.ValidateContent("TEST_CARD_NUMBER = "+card, "config.py")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, m := range matches {
+		if strings.Contains(m.Text, card) {
+			t.Errorf("TEST_CARD_NUMBER fixture should be suppressed, got %s at %.1f", m.Type, m.Confidence)
+		}
+	}
+}
+
 // TestCreditCardValidator_SoftNegativeOverride locks the two-tier negative
 // behavior: SOFT negatives (account/order/serial-style identifier labels that
 // legitimately co-occur with a real card) suppress ONLY when no positive card

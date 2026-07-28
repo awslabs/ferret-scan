@@ -281,6 +281,80 @@ func TestOTPValidator_RecoveryCodes(t *testing.T) {
 	}
 }
 
+// TestOTPValidator_SnakeCaseKeyword covers both directions of treating '_' as a
+// word boundary, measured against real vulnerability-report exports.
+//
+// The win: a suppression keyword inside a SCREAMING_SNAKE placeholder now fires.
+// "<MFA_SERIAL_NUMBER>" hides "serial" from a matcher that counts '_' as a word
+// byte, so seven project and resource names on that line ("engagement-artifacts",
+// "shopping-assistant", "bucket-versioning") used to be reported as recovery
+// codes at 85-95% confidence.
+//
+// The cost: a positive keyword inside a placeholder fires too. In the AWS CLI
+// lines below "mfa" is only present inside "<no_mfa_console_signin_metric>", and
+// exposing it admits every hyphenated flag name on the line as a candidate. The
+// candidates themselves are extracted by reRecoveryCodeBlock either way — this
+// change only decides whether the line has recovery context — so the fix belongs
+// in the block regex (it matches mid-token, e.g. "metric-filter" out of
+// "put-metric-filter"), not in the boundary rule. Tracked separately; pinned
+// here so the tradeoff is visible rather than silent.
+func TestOTPValidator_SnakeCaseKeyword(t *testing.T) {
+	validator := NewValidator()
+
+	t.Run("suppression keyword inside placeholder suppresses", func(t *testing.T) {
+		const line = "aws s3api put-bucket-versioning --bucket=<BUCKET_NAME> --mfa=<MFA_SERIAL_NUMBER>"
+		matches, err := validator.ValidateContent(line, "report.csv")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		for _, m := range matches {
+			if m.Type == "RECOVERY_CODES" {
+				t.Errorf("'serial' inside <MFA_SERIAL_NUMBER> must suppress recovery codes, got %s at %.0f%%",
+					m.Type, m.Confidence)
+			}
+		}
+	})
+
+	t.Run("positive keyword inside placeholder grants context", func(t *testing.T) {
+		// Documents the known cost above: "mfa" appears only inside the
+		// placeholder, and that is enough to give the line recovery context.
+		const line = "aws logs put-metric-filter --log-group-name <lg> --filter-name <no_mfa_console_signin_metric>"
+		matches, err := validator.ValidateContent(line, "runbook.md")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		var got int
+		for _, m := range matches {
+			if m.Type == "RECOVERY_CODES" {
+				got++
+			}
+		}
+		if got == 0 {
+			t.Skip("no recovery-code candidates on this line; the block regex changed")
+		}
+		t.Logf("known false positives on AWS CLI flag names: %d (see doc comment)", got)
+	})
+
+	t.Run("real recovery codes still detected", func(t *testing.T) {
+		// The gains and losses above must not come at the cost of the true
+		// positive this validator exists for.
+		const line = "MFA recovery codes: XYZW-ABCD-1234 EFGH-IJKL-5678 MNOP-QRST-9012"
+		matches, err := validator.ValidateContent(line, "secrets.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		var best float64
+		for _, m := range matches {
+			if m.Type == "RECOVERY_CODES" && m.Confidence > best {
+				best = m.Confidence
+			}
+		}
+		if best < 60 {
+			t.Errorf("real recovery codes must stay at MEDIUM or above, got %.0f%%", best)
+		}
+	})
+}
+
 func TestOTPValidator_FalsePositives(t *testing.T) {
 	validator := NewValidator()
 
