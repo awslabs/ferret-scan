@@ -59,6 +59,10 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Apply confidence filtering before conversion
 	filteredMatches := shared.FilterMatchesByConfidence(matches, options)
 
+	// Suppressed results carry the same total order as active ones, so the
+	// `results` array of two SARIF reports of one unchanged scan is comparable.
+	shared.SortSuppressedByPriority(suppressedMatches)
+
 	// Fresh per-call rule manager + mapper so the rules array derives only from
 	// THIS call's matches (no cross-call accumulation).
 	ruleManager := NewRuleManager()

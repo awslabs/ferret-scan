@@ -11,6 +11,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
 )
 
 // JUnit XML structures based on the standard JUnit XML schema
@@ -75,6 +76,11 @@ func (f *Formatter) FileExtension() string {
 func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) (string, error) {
 	// Filter matches by confidence level
 	filteredMatches := f.filterMatchesByConfidence(matches, options)
+
+	// Suppressed testcases share the active findings' total order, so re-running
+	// the same scan produces a comparable report rather than one whose skipped
+	// testcases moved around.
+	shared.SortSuppressedByPriority(suppressedMatches)
 
 	// Group matches by file for better organization
 	fileGroups := f.groupMatchesByFile(filteredMatches)

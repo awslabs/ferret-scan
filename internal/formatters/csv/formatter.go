@@ -37,6 +37,11 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Filter matches by confidence level using shared logic
 	filteredMatches := shared.FilterMatchesByConfidence(matches, options)
 
+	// Suppressed rows need the same total order as active ones; without it the
+	// suppressed block's row order followed worker completion order and so
+	// changed run to run on an unchanged scan.
+	shared.SortSuppressedByPriority(suppressedMatches)
+
 	// In pre-commit mode, return empty string if no matches to reduce noise
 	if options.PrecommitMode && len(filteredMatches) == 0 && len(suppressedMatches) == 0 {
 		return "", nil

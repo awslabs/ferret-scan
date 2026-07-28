@@ -269,6 +269,37 @@ func LessByPriority(a, b detector.Match) bool {
 	return a.Text < b.Text
 }
 
+// LessSuppressedByPriority is the total display order for suppressed findings.
+// It defers to LessByPriority on the wrapped finding and then breaks any
+// remaining tie on the suppressing rule, so two rules matching an identical
+// finding still emit in a fixed sequence.
+//
+// Suppressed findings need their own comparator because nothing sorted them at
+// all: every formatter gave `matches` a total order but walked
+// `suppressedMatches` in arrival order, and arrival order is per-file worker
+// completion order — so `--show-suppressed` reordered its [SUPP] rows on every
+// run of the same scan, in text, JSON, YAML and CSV alike.
+func LessSuppressedByPriority(a, b detector.SuppressedMatch) bool {
+	if LessByPriority(a.Match, b.Match) {
+		return true
+	}
+	if LessByPriority(b.Match, a.Match) {
+		return false
+	}
+	if a.SuppressedBy != b.SuppressedBy {
+		return a.SuppressedBy < b.SuppressedBy
+	}
+	return a.RuleReason < b.RuleReason
+}
+
+// SortSuppressedByPriority sorts suppressed findings into the shared total
+// display order in place.
+func SortSuppressedByPriority(suppressed []detector.SuppressedMatch) {
+	sort.SliceStable(suppressed, func(i, j int) bool {
+		return LessSuppressedByPriority(suppressed[i], suppressed[j])
+	})
+}
+
 // ConvertMatchesToJSONFormat converts detector matches to JSON/YAML format
 func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) JSONResponse {
 	totalFindings := len(matches)
@@ -282,6 +313,11 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 	sort.SliceStable(matches, func(i, j int) bool {
 		return LessByPriority(matches[i], matches[j])
 	})
+
+	// The `suppressed` block needs the same treatment, for the same reason: it
+	// was serialized in arrival (worker-completion) order, so two JSON or YAML
+	// reports of one unchanged scan differed inside that block.
+	SortSuppressedByPriority(suppressedMatches)
 
 	// Apply limit
 	truncated := false

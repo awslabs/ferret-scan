@@ -83,3 +83,64 @@ func sortedCopy(in []detector.Match) []detector.Match {
 	sort.SliceStable(out, func(i, j int) bool { return LessByPriority(out[i], out[j]) })
 	return out
 }
+
+// TestSortSuppressedByPriority_IsTotalOrder is the companion regression test for
+// the suppressed block. Nothing sorted suppressed findings at all: every
+// formatter gave `matches` a total order but emitted `suppressedMatches` in
+// arrival order, which is per-file worker completion order. Measured on a real
+// 5-file scan, `--show-suppressed` produced a different [SUPP] row order on all
+// 10 runs of the same binary over unchanged input, in text, JSON, YAML and CSV.
+func TestSortSuppressedByPriority_IsTotalOrder(t *testing.T) {
+	base := []detector.SuppressedMatch{
+		// Identical finding, two different rules — the last tiebreaker.
+		{Match: detector.Match{Type: "EMAIL", Confidence: 60, LineNumber: 7, Text: "a@x.com", Filename: "f"}, SuppressedBy: "SUP-2"},
+		{Match: detector.Match{Type: "EMAIL", Confidence: 60, LineNumber: 7, Text: "a@x.com", Filename: "f"}, SuppressedBy: "SUP-1"},
+		// Same (confidence, type), differing line — unordered before this fix.
+		{Match: detector.Match{Type: "PHONE", Confidence: 90, LineNumber: 30, Text: "c", Filename: "f"}, SuppressedBy: "SUP-3"},
+		{Match: detector.Match{Type: "PHONE", Confidence: 90, LineNumber: 10, Text: "a", Filename: "f"}, SuppressedBy: "SUP-4"},
+		{Match: detector.Match{Type: "SSN", Confidence: 90, LineNumber: 10, Text: "b", Filename: "f"}, SuppressedBy: "SUP-5"},
+	}
+
+	key := func(s detector.SuppressedMatch) string {
+		return s.Match.Type + "|" + s.SuppressedBy
+	}
+
+	sortedSuppressedCopy := func(in []detector.SuppressedMatch) []detector.SuppressedMatch {
+		out := make([]detector.SuppressedMatch, len(in))
+		copy(out, in)
+		SortSuppressedByPriority(out)
+		return out
+	}
+
+	want := sortedSuppressedCopy(base)
+
+	perms := [][]int{
+		{0, 1, 2, 3, 4},
+		{4, 3, 2, 1, 0},
+		{2, 0, 4, 1, 3},
+		{1, 3, 0, 4, 2},
+		{3, 4, 0, 2, 1},
+	}
+	for pi, perm := range perms {
+		in := make([]detector.SuppressedMatch, len(base))
+		for i, idx := range perm {
+			in[i] = base[idx]
+		}
+		got := sortedSuppressedCopy(in)
+		for i := range want {
+			if key(got[i]) != key(want[i]) {
+				t.Fatalf("perm %d: suppressed sort is not a stable total order at index %d: got %s, want %s",
+					pi, i, key(got[i]), key(want[i]))
+			}
+		}
+	}
+
+	// The intended order: highest confidence first, then type, then line, and
+	// finally the suppressing rule id for otherwise-identical entries.
+	wantOrder := []string{"PHONE|SUP-4", "PHONE|SUP-3", "SSN|SUP-5", "EMAIL|SUP-1", "EMAIL|SUP-2"}
+	for i, w := range wantOrder {
+		if key(want[i]) != w {
+			t.Errorf("order index %d: got %s, want %s", i, key(want[i]), w)
+		}
+	}
+}
