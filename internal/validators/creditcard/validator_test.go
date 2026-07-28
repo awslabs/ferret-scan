@@ -891,14 +891,20 @@ func TestCreditCardValidator_SnakeCaseKeyword(t *testing.T) {
 	}
 
 	// End-to-end: a Luhn-valid card labeled as a test fixture in SCREAMING_SNAKE
-	// must not be reported at all.
+	// is demoted to the intrinsic-value floor, not erased. It used to be dropped
+	// entirely; see TestCreditCardValidator_IntrinsicValueFloor for why silent
+	// erasure of a Luhn-valid number was a leak. The assertion that matters for
+	// *this* test is that the snake_case label was recognised at all, i.e. the
+	// card is no longer scored as an unlabelled card — hence the floor value
+	// rather than the >15 a real labelled card gets.
 	matches, err := validator.ValidateContent("TEST_CARD_NUMBER = "+card, "config.py")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	for _, m := range matches {
-		if strings.Contains(m.Text, card) {
-			t.Errorf("TEST_CARD_NUMBER fixture should be suppressed, got %s at %.1f", m.Type, m.Confidence)
+		if strings.Contains(m.Text, card) && m.Confidence > intrinsicValueFloor {
+			t.Errorf("TEST_CARD_NUMBER fixture should be demoted to the %.1f floor, got %s at %.1f",
+				intrinsicValueFloor, m.Type, m.Confidence)
 		}
 	}
 }
@@ -1118,4 +1124,85 @@ func TestCreditCardValidator_SingleLineDoSPerformance(t *testing.T) {
 			len(line)/1024, elapsed, budget)
 	}
 	t.Logf("processed %d-byte single line with %d matches in %s", len(line), len(matches), elapsed)
+}
+
+// TestCreditCardValidator_IntrinsicValueFloor locks the value-intrinsic floor
+// against the keyword-padding evasion (threat model TM-11).
+//
+// A hard negative keyword contributes -100, which clamped the score to 0 and hit
+// the `confidence <= 0 { continue }` gate. For a Luhn-valid PAN that made the
+// finding INVISIBLE rather than low-ranked: no match was emitted, the suppressed
+// counter stayed 0, and because redaction only rewrites what was emitted, the
+// number passed through --enable-redaction in cleartext. Measured end to end
+// before the fix: "Payment card 4532015112830366" produced a redacted file
+// containing ************0366, while the same line with " test" appended produced
+// no redacted file at all.
+//
+// The keyword is part of the document, so anyone who can put a word on the line
+// could suppress the card on it. Luhn validity is intrinsic to the value and not
+// attacker-deniable, so it earns a floor: demotion to the bottom of LOW is
+// allowed, erasure is not.
+func TestCreditCardValidator_IntrinsicValueFloor(t *testing.T) {
+	v := NewValidator()
+	const card = "4532015112830366" // Luhn-valid, NOT a known test pattern
+
+	// Baseline: unpadded, the card is a high-confidence finding. If this ever
+	// stops holding, the padded assertions below would pass vacuously.
+	base, err := v.ValidateContent("Payment card "+card, "clean.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(base) != 1 || base[0].Confidence < 90 {
+		t.Fatalf("baseline: want 1 high-confidence match, got %d matches (%v)", len(base), base)
+	}
+
+	// Every hard negative keyword individually zeroed the score. None of them may
+	// erase the finding; each must leave exactly one match at the floor.
+	for _, kw := range v.hardNegativeKeywords {
+		line := "Payment card " + card + " " + kw
+		if impact := v.AnalyzeContext(card, detector.ContextInfo{FullLine: line}); impact > -100 {
+			t.Fatalf("precondition: %q should score -100, got %.1f — test no longer covers the evasion", kw, impact)
+		}
+
+		matches, err := v.ValidateContent(line, "padded.txt")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if !strings.Contains(m.Text, card) {
+				continue
+			}
+			found = true
+			if m.Confidence != intrinsicValueFloor {
+				t.Errorf("keyword %q: want floor %.1f, got %.1f", kw, intrinsicValueFloor, m.Confidence)
+			}
+		}
+		if !found {
+			t.Errorf("keyword %q erased a Luhn-valid PAN (%d matches) — TM-11 evasion regressed",
+				kw, len(matches))
+		}
+	}
+
+	// The floor must stay in LOW: high enough to be emitted and redacted, low
+	// enough to sit below a `--confidence high,medium` cut (MEDIUM starts at 60).
+	if intrinsicValueFloor <= 0 || intrinsicValueFloor >= 60 {
+		t.Errorf("floor %.1f must be inside the LOW band (0 < floor < 60)", intrinsicValueFloor)
+	}
+
+	// The floor must not touch scores that were already positive: a genuine card
+	// keeps its full confidence, so ranking and the golden corpus are unchanged.
+	if base[0].Confidence == intrinsicValueFloor {
+		t.Errorf("floor must not apply to an unsuppressed card, got %.1f", base[0].Confidence)
+	}
+
+	// A non-Luhn number is still rejected outright — the floor is earned by the
+	// checksum, not granted to anything card-shaped.
+	nonLuhn, err := v.ValidateContent("Payment card 4532015112830367 test", "nonluhn.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nonLuhn) != 0 {
+		t.Errorf("non-Luhn candidate must not receive the floor, got %d matches (%v)", len(nonLuhn), nonLuhn)
+	}
 }

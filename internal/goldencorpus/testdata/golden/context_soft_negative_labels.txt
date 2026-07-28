@@ -3,3 +3,5 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            
 [HIGH  ] creditcard   MASTERCARD            100.00% line     2 5425233430109903 <golden:context_soft_negative_labels>
 [HIGH  ] creditcard   VISA                  100.00% line     1 4532015112830366 <golden:context_soft_negative_labels>
 [MEDIUM] medicalid    MRN                    65.00% line     3 1234567          <golden:context_soft_negative_labels>
+[LOW   ] creditcard   VISA                   15.00% line     4 490154203237518  <golden:context_soft_negative_labels>
+[LOW   ] creditcard   VISA                   15.00% line     5 4532015112830366 <golden:context_soft_negative_labels>

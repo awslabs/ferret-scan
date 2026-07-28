@@ -22,6 +22,16 @@ var (
 	financialPattern    = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\d{4}[\s-]?\d{4}`)
 )
 
+// intrinsicValueFloor is the confidence a Luhn-valid candidate keeps even when
+// the line's keywords score it to zero. The value is deliberately the same 15.0
+// the block below uses as the hard *cap* for known test patterns: a candidate
+// whose line says "hash"/"timestamp"/"test" is treated as no more credible than
+// the most credible known-suspect value, so it sorts to the bottom of LOW and
+// out of any `--confidence high,medium` view — but it is still emitted, which is
+// what makes redaction cover it. See the application site for why erasure was a
+// leak rather than a low-ranked finding.
+const intrinsicValueFloor = 15.0
+
 // Validator implements the detector.Validator interface for detecting
 // credit card numbers using optimized regex patterns, contextual analysis, and validation algorithms.
 // This is the main validator with improved boundary detection, performance, and reduced false positives.
@@ -344,9 +354,51 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				}
 			}
 
-			// Skip only matches with 0 confidence
+			// Value-intrinsic floor.
+			//
+			// A negative keyword — hard, or soft with no positive card word on the
+			// line — contributes -100, which zeroed the score and dropped the
+			// candidate at the gate below. For a Luhn-valid number that made the
+			// finding INVISIBLE rather than low-ranked: nothing was emitted,
+			// stats.suppressed stayed 0, and — because redaction only rewrites
+			// what was emitted — the number passed through --enable-redaction in
+			// cleartext. Verified: "Payment card 4532015112830366" redacts to
+			// "************0366", while the same line with the word "test"
+			// appended produced no redacted output at all.
+			//
+			// Since the keyword is part of the document, anyone who can put a word
+			// on the line can suppress the card on it. Luhn validity, by contrast,
+			// is intrinsic to the value and not attacker-deniable, so it earns a
+			// floor: the keyword may demote the finding as far as the bottom of
+			// LOW, but it may not erase it. That is enough for redaction to cover
+			// it (confirmed: a 15-confidence VISA is rewritten to
+			// ************0366) and low enough to stay out of a
+			// `--confidence high,medium` triage view. It does show up in the
+			// default `--confidence all` listing, marked [LOW] — the intended
+			// trade: a visible low-ranked line beats a silent cleartext pass.
+			//
+			// This mirrors the forced minimum directly above, which already refuses
+			// to let a known test pattern be zeroed away, and is deliberately
+			// narrow: the score is unchanged whenever it was going to be positive
+			// anyway, so nothing that was already reported is re-ranked. What it
+			// does change is the set of *suppressed-to-zero* candidates, which now
+			// appear at the floor instead of vanishing — measured over 600 real
+			// plain-text files that is +6 findings in 1 file, all LOW, all decoy
+			// labels (UUID / MD5 / config-hash), with 0 findings lost and 0
+			// confidences changed. Those are FPs the keyword was right about; the
+			// trade is deliberate, because the value alone cannot separate them
+			// from a real PAN (the "MD5 hash" decoy is a Luhn-valid Mastercard
+			// BIN), and the alternative is the cleartext pass above.
+			//
+			// No Luhn re-check is needed here — a candidate only reaches this point
+			// by passing luhnCheck above, and known test patterns were already
+			// pinned to at least 1.0, so they never fall through to this branch.
+			// This replaces the previous `if confidence <= 0 { continue }` drop:
+			// with the floor in place no Luhn-valid candidate can reach zero, so
+			// that gate became unreachable and kept the misleading appearance that
+			// suppression-to-nothing was still possible here.
 			if confidence <= 0 {
-				continue
+				confidence = intrinsicValueFloor
 			}
 
 			cardType := v.getCreditCardType(cleanMatch)

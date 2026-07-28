@@ -1,4 +1,6 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:context_keywords_snake_case>,VISA,LOW,15.0,4,4532015112830366
+<golden:context_keywords_snake_case>,VISA,LOW,15.0,5,4012888888881881
 <golden:context_keywords_snake_case>,DATE_OF_BIRTH,HIGH,90.0,3,1985-03-14
 <golden:context_keywords_snake_case>,SSN,HIGH,100.0,1,449-87-4100
 <golden:context_keywords_snake_case>,SSN,HIGH,100.0,2,449-87-4101

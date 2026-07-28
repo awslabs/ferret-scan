@@ -2,7 +2,7 @@
 <testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
   <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
     <testcase name="&lt;golden:context_keywords_snake_case&gt;" classname="security-scan" time="0.001">
-      <failure message="4 security findings detected" type="SECURITY_FINDINGS">Line 1: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4100&#xA;Validator: ssn&#xA;Line 2: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4101&#xA;Validator: ssn&#xA;Line 3: DATE_OF_BIRTH detected with 90.0% confidence (HIGH)&#xA;Match: 1985-03-14&#xA;Validator: dob&#xA;Line 6: SSN detected with 65.0% confidence (MEDIUM)&#xA;Match: 449-87-4102&#xA;Validator: ssn</failure>
+      <failure message="6 security findings detected" type="SECURITY_FINDINGS">Line 1: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4100&#xA;Validator: ssn&#xA;Line 2: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4101&#xA;Validator: ssn&#xA;Line 3: DATE_OF_BIRTH detected with 90.0% confidence (HIGH)&#xA;Match: 1985-03-14&#xA;Validator: dob&#xA;Line 6: SSN detected with 65.0% confidence (MEDIUM)&#xA;Match: 449-87-4102&#xA;Validator: ssn&#xA;Line 4: VISA detected with 15.0% confidence (LOW)&#xA;Match: 4532015112830366&#xA;Validator: creditcard&#xA;Line 5: VISA detected with 15.0% confidence (LOW)&#xA;Match: 4012888888881881&#xA;Validator: creditcard</failure>
     </testcase>
   </testsuite>
 </testsuites>
