@@ -17,6 +17,18 @@ import (
 )
 
 // Pre-compiled regex patterns for bank account detection.
+// intrinsicValueFloor is the confidence a checksum-valid value keeps even when
+// the line's keywords score it to zero. It applies to IBAN only — the mod-97
+// checksum is the one value-intrinsic proof in this validator that an attacker
+// cannot forge away, since a real IBAN they want to exfiltrate must pass it.
+// SWIFT/BIC is format-only, and bare US account numbers have no checksum, so
+// context is the only evidence those have and suppressing them stays correct.
+// ABA has a checksum but also passes for roughly 1 in 10 random 9-digit numbers,
+// so its banking-context requirement is load-bearing against false positives
+// rather than an attacker-controlled suppressor; see THREAT_MODEL.md §4.7 for the
+// residual.
+const intrinsicValueFloor = 15.0
+
 var (
 	// ABA routing number: 9 digits, word-boundary anchored.
 	reABA = regexp.MustCompile(`\b\d{9}\b`)
@@ -229,11 +241,8 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 			continue
 		}
 
-		// Check for negative context (per-line invariant)
+		// Context adjustment (per-line invariant)
 		contextInfo := v.buildContextInfo(line, loc[0], loc[1]-loc[0])
-		if lc.strongNegative {
-			continue
-		}
 
 		confidence := 85.0 // IBAN with valid checksum is high confidence
 
@@ -241,9 +250,21 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 		contextImpact := lc.keywordImpact
 		confidence += contextImpact
 
+		// Value-intrinsic floor (TM-11). The mod-97 checksum was verified by
+		// isValidIBAN above, so this IBAN is validated by the value itself.
+		// Keywords are document content: the strongNegative hard-drop that used
+		// to sit here, and the confidence<=0 drop below, let anyone who could add
+		// three negative words to the line erase the finding — and since
+		// redaction only rewrites what was emitted, the IBAN then passed through
+		// --enable-redaction in cleartext. Measured: "IBAN GB82WEST12345698765432"
+		// scores 100, +1 keyword 80, +2 keywords 60, and +3 keywords produced no
+		// finding at all. Context may now demote to the bottom of LOW; it may not
+		// erase. Note isValidIBAN itself still rejects outright — that is
+		// value-intrinsic *fakeness*, which an attacker cannot use to hide a real
+		// IBAN, because a real one must pass mod-97.
 		confidence = clampConfidence(confidence)
-		if confidence <= 0 {
-			continue
+		if lc.strongNegative || confidence <= 0 {
+			confidence = intrinsicValueFloor
 		}
 
 		matches = append(matches, detector.Match{
@@ -272,13 +293,12 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 		if !v.isValidIBAN(normalized) {
 			continue
 		}
-		if lc.strongNegative {
-			continue
-		}
 
+		// Value-intrinsic floor (TM-11) — same reasoning as the compact-form pass
+		// above; mod-97 is verified, so context may demote but not erase.
 		confidence := clampConfidence(85.0 + lc.keywordImpact)
-		if confidence <= 0 {
-			continue
+		if lc.strongNegative || confidence <= 0 {
+			confidence = intrinsicValueFloor
 		}
 
 		matches = append(matches, detector.Match{

@@ -874,3 +874,104 @@ func matchTypes(matches []detector.Match) []string {
 	}
 	return types
 }
+
+// TestBankAccountValidator_IBAN_IntrinsicValueFloor locks the value-intrinsic
+// floor for IBAN against the keyword-padding evasion (threat model TM-11).
+//
+// Two gates used to erase a mod-97-valid IBAN outright: hasStrongNegativeContext
+// (3+ negative keywords with at most 1 positive) hard-continued before scoring,
+// and the keyword impact could drive the score to zero. Both are
+// attacker-controlled document content, so anyone who could add three words to a
+// line could make the IBAN on it vanish — and because redaction only rewrites
+// what was emitted, the IBAN then passed through --enable-redaction in cleartext.
+//
+// Measured before the fix: "IBAN GB82WEST12345698765432" scored 100, +1 keyword
+// 80, +2 keywords 60, and +3 keywords produced no finding at all.
+//
+// mod-97 is intrinsic to the value and not attacker-deniable — a real IBAN being
+// exfiltrated must pass it — so it earns a floor: context may demote to the
+// bottom of LOW, but it may not erase.
+func TestBankAccountValidator_IBAN_IntrinsicValueFloor(t *testing.T) {
+	v := NewValidator()
+	const iban = "GB82WEST12345698765432" // mod-97 valid
+
+	// Baseline: unpadded, this is a high-confidence finding. Without this the
+	// padded assertions below could pass vacuously.
+	base, err := v.ValidateContent("IBAN "+iban, "clean.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	if len(base) == 0 || base[0].Confidence < 90 {
+		t.Fatalf("baseline: want a high-confidence IBAN, got %v", base)
+	}
+
+	// Escalating negative padding, including well past the 3-keyword threshold
+	// that used to trip hasStrongNegativeContext, must never erase the IBAN.
+	pads := []string{
+		"test",
+		"test example",
+		"test example fake",
+		"test example fake mock sample serial tracking invoice order",
+	}
+	for _, pad := range pads {
+		matches, err := v.ValidateContent("IBAN "+iban+" "+pad, "padded.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent() error = %v", err)
+		}
+		found := false
+		for _, m := range matches {
+			if m.Type != "IBAN" {
+				continue
+			}
+			found = true
+			if m.Confidence < intrinsicValueFloor {
+				t.Errorf("pad %q: confidence %.1f fell below the floor %.1f",
+					pad, m.Confidence, intrinsicValueFloor)
+			}
+		}
+		if !found {
+			t.Errorf("pad %q erased a mod-97-valid IBAN (%d matches) — TM-11 evasion regressed",
+				pad, len(matches))
+		}
+	}
+
+	// The display-format (space-grouped) pass must be floored identically —
+	// otherwise the evasion just moves to the spaced spelling of the same IBAN.
+	spaced := "GB82 WEST 1234 5698 7654 32"
+	matches, err := v.ValidateContent("IBAN "+spaced+" test example fake mock sample", "spaced.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	found := false
+	for _, m := range matches {
+		if m.Type == "IBAN" {
+			found = true
+			if m.Confidence < intrinsicValueFloor {
+				t.Errorf("spaced IBAN: confidence %.1f fell below the floor %.1f",
+					m.Confidence, intrinsicValueFloor)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("padding erased a mod-97-valid spaced IBAN (%d matches)", len(matches))
+	}
+
+	// The floor is earned by the checksum, not granted to anything IBAN-shaped:
+	// a mod-97 failure is still rejected outright. That direction is safe because
+	// an attacker cannot make a real IBAN fail mod-97 while keeping it usable.
+	bad, err := v.ValidateContent("IBAN GB00NWBK60161331926819 test", "bad.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	for _, m := range bad {
+		if m.Type == "IBAN" {
+			t.Errorf("mod-97-invalid IBAN must not receive the floor, got %.1f", m.Confidence)
+		}
+	}
+
+	// The floor must sit in LOW: emitted (so redaction covers it) but below a
+	// `--confidence high,medium` cut, which starts at 60.
+	if intrinsicValueFloor <= 0 || intrinsicValueFloor >= 60 {
+		t.Errorf("floor %.1f must be inside the LOW band (0 < floor < 60)", intrinsicValueFloor)
+	}
+}
