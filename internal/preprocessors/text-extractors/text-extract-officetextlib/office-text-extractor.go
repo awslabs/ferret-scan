@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -328,23 +329,31 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 	}
 	defer reader.Close()
 
-	// Find all presentation content files
+	// Find all presentation content files. byName lets us resolve a slide's notes
+	// through its relationships part, rather than guessing by position.
 	var slides []*zip.File
-	var notes []*zip.File
 	var masters []*zip.File
 	var corePropsFile *zip.File
+	byName := make(map[string]*zip.File, len(reader.File))
 
 	for _, file := range reader.File {
+		byName[file.Name] = file
 		if strings.HasPrefix(file.Name, "ppt/slides/slide") && strings.HasSuffix(file.Name, ".xml") {
 			slides = append(slides, file)
-		} else if strings.HasPrefix(file.Name, "ppt/notesSlides/notesSlide") && strings.HasSuffix(file.Name, ".xml") {
-			notes = append(notes, file)
 		} else if strings.HasPrefix(file.Name, "ppt/slideMasters/") && strings.HasSuffix(file.Name, ".xml") {
 			masters = append(masters, file)
 		} else if file.Name == "docProps/core.xml" {
 			corePropsFile = file
 		}
 	}
+
+	// Order slides and masters by their numeric index. zip.OpenReader returns
+	// entries in the archive's central-directory order, which the producer
+	// controls and is NOT guaranteed to be slideN order — a re-saved or
+	// tool-generated deck can interleave them, which would both mislabel
+	// "--- Slide N ---" and emit content out of reading order.
+	sortByNumericSuffix(slides)
+	sortByNumericSuffix(masters)
 
 	// Process slides, notes, and masters
 	var allText strings.Builder
@@ -363,9 +372,14 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 			allText.WriteString(slideText)
 		}
 
-		// Add corresponding notes if available
-		if i < len(notes) {
-			notesText, err := extractTextFromXML(notes[i], "//a:t")
+		// Attach the notes that actually belong to THIS slide, resolved through
+		// the slide's .rels. The previous code paired notes[i] with slides[i] by
+		// position, but notesSlideN is not aligned with slideN — decks routinely
+		// have notes on only some slides and in a different order — so a slide
+		// got another slide's speaker notes (or none), mislabeling where that
+		// text, and any PII in it, came from.
+		if notesFile := pptxNotesForSlide(slide, byName); notesFile != nil {
+			notesText, err := extractTextFromXML(notesFile, "//a:t")
 			if err == nil && notesText != "" {
 				allText.WriteString("\n[SPEAKER NOTES]\n")
 				allText.WriteString(notesText)
@@ -903,6 +917,78 @@ func extractWorksheetText(file *zip.File, sharedStrings []string) string {
 	}
 
 	return result.String()
+}
+
+// numericSuffixRe pulls the trailing integer out of an OOXML part name such as
+// "ppt/slides/slide12.xml" (→ 12) so parts can be ordered by index rather than
+// by the archive's central-directory order.
+var numericSuffixRe = regexp.MustCompile(`(\d+)\.xml$`)
+
+// partNumber returns the trailing numeric index of a part name, or a large
+// sentinel for non-standard names so they sort to the end deterministically.
+func partNumber(name string) int {
+	if m := numericSuffixRe.FindStringSubmatch(name); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil {
+			return n
+		}
+	}
+	return 1 << 30
+}
+
+// sortByNumericSuffix orders zip parts by their trailing numeric index (slide2
+// before slide10), then by name as a stable tiebreak.
+func sortByNumericSuffix(files []*zip.File) {
+	sort.SliceStable(files, func(i, j int) bool {
+		ni, nj := partNumber(files[i].Name), partNumber(files[j].Name)
+		if ni != nj {
+			return ni < nj
+		}
+		return files[i].Name < files[j].Name
+	})
+}
+
+// slideRelTargetRe matches a notesSlide relationship target inside a slide's
+// .rels part, e.g. Target="../notesSlides/notesSlide3.xml".
+var slideRelTargetRe = regexp.MustCompile(`Target="([^"]*notesSlides/notesSlide\d+\.xml)"`)
+
+// pptxNotesForSlide resolves the notesSlide part that belongs to the given slide
+// by reading the slide's relationships (ppt/slides/_rels/slideN.xml.rels), which
+// is the authoritative link. Returns nil if the slide has no notes or the rels
+// part is missing/unreadable. This replaces the previous positional pairing of
+// notes[i] with slides[i], which mis-attached notes because notesSlideN is not
+// aligned with slideN.
+func pptxNotesForSlide(slide *zip.File, byName map[string]*zip.File) *zip.File {
+	// ppt/slides/slideN.xml -> ppt/slides/_rels/slideN.xml.rels
+	base := slide.Name[strings.LastIndex(slide.Name, "/")+1:]
+	relsName := "ppt/slides/_rels/" + base + ".rels"
+	relsFile := byName[relsName]
+	if relsFile == nil {
+		return nil
+	}
+
+	rc, err := relsFile.Open()
+	if err != nil {
+		return nil
+	}
+	defer rc.Close()
+
+	data, err := readZipEntryLimited(rc)
+	if err != nil {
+		return nil
+	}
+
+	m := slideRelTargetRe.FindSubmatch(data)
+	if len(m) != 2 {
+		return nil
+	}
+
+	// Resolve the (possibly relative) target against the ppt/ base and look it up.
+	target := string(m[1])
+	target = strings.TrimPrefix(target, "../")
+	if !strings.HasPrefix(target, "ppt/") {
+		target = "ppt/" + target
+	}
+	return byName[target]
 }
 
 // sortWorksheets sorts worksheets by sheet number
