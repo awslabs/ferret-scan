@@ -86,8 +86,22 @@ func RunValidators(
 	}
 
 	var wg sync.WaitGroup
-	matchesChan := make(chan []detector.Match, len(validators))
+	// Results carry the launch slot they belong to. Draining the channel appends
+	// in goroutine-completion order, which varies run to run; the slot lets the
+	// collector restore the caller's validator order. See collectMatches.
+	type indexedMatches struct {
+		slot    int
+		matches []detector.Match
+	}
+	matchesChan := make(chan indexedMatches, len(validators))
 	errorChan := make(chan error, len(validators))
+
+	// launched counts the goroutines actually started. It is NOT the loop index:
+	// a validator that matches no dispatch interface, or a non-metadata validator
+	// skipped on pure-metadata content, launches nothing and must not consume a
+	// slot (an unused slot would be a harmless empty gap, but keeping the count
+	// exact means len(slots) == number of results expected).
+	launched := 0
 
 	for _, validator := range validators {
 		// Prefer the context-aware ProcessedContent path when available: it
@@ -98,7 +112,9 @@ func RunValidators(
 			ValidateProcessedContentCtx(ctx context.Context, content *preprocessors.ProcessedContent) ([]detector.Match, error)
 		}); ok {
 			wg.Add(1)
-			go func(pccv interface {
+			slot := launched
+			launched++
+			go func(slot int, pccv interface {
 				ValidateProcessedContentCtx(ctx context.Context, content *preprocessors.ProcessedContent) ([]detector.Match, error)
 			}) {
 				defer wg.Done()
@@ -119,15 +135,15 @@ func RunValidators(
 					// Preserve partial matches on a budget/deadline outcome; drop
 					// them on a hard error (historical behavior).
 					if partialMatchesSurvive(err) {
-						matchesChan <- matches
+						matchesChan <- indexedMatches{slot: slot, matches: matches}
 					} else {
-						matchesChan <- []detector.Match{}
+						matchesChan <- indexedMatches{slot: slot, matches: []detector.Match{}}
 					}
 					errorChan <- err
 					return
 				}
-				matchesChan <- matches
-			}(pccv)
+				matchesChan <- indexedMatches{slot: slot, matches: matches}
+			}(slot, pccv)
 			continue
 		}
 
@@ -135,7 +151,9 @@ func RunValidators(
 			ValidateProcessedContent(content *preprocessors.ProcessedContent) ([]detector.Match, error)
 		}); ok {
 			wg.Add(1)
-			go func(pcv interface {
+			slot := launched
+			launched++
+			go func(slot int, pcv interface {
 				ValidateProcessedContent(content *preprocessors.ProcessedContent) ([]detector.Match, error)
 			}) {
 				defer wg.Done()
@@ -151,15 +169,15 @@ func RunValidators(
 
 				if err := runOne(ctx, op); err != nil {
 					if partialMatchesSurvive(err) {
-						matchesChan <- matches
+						matchesChan <- indexedMatches{slot: slot, matches: matches}
 					} else {
-						matchesChan <- []detector.Match{}
+						matchesChan <- indexedMatches{slot: slot, matches: []detector.Match{}}
 					}
 					errorChan <- err
 					return
 				}
-				matchesChan <- matches
-			}(processedContentValidator)
+				matchesChan <- indexedMatches{slot: slot, matches: matches}
+			}(slot, processedContentValidator)
 			continue
 		}
 
@@ -172,7 +190,9 @@ func RunValidators(
 			}
 
 			wg.Add(1)
-			go func(cv interface {
+			slot := launched
+			launched++
+			go func(slot int, cv interface {
 				ValidateContent(content string, originalPath string) ([]detector.Match, error)
 			}) {
 				defer wg.Done()
@@ -193,15 +213,15 @@ func RunValidators(
 
 				if err := runOne(ctx, op); err != nil {
 					if partialMatchesSurvive(err) {
-						matchesChan <- matches
+						matchesChan <- indexedMatches{slot: slot, matches: matches}
 					} else {
-						matchesChan <- []detector.Match{}
+						matchesChan <- indexedMatches{slot: slot, matches: []detector.Match{}}
 					}
 					errorChan <- err
 					return
 				}
-				matchesChan <- matches
-			}(contentValidator)
+				matchesChan <- indexedMatches{slot: slot, matches: matches}
+			}(slot, contentValidator)
 		}
 	}
 
@@ -223,15 +243,47 @@ func RunValidators(
 	var allMatches []detector.Match
 	var firstErr error
 
+	// slots holds each goroutine's matches in its launch position, so the union
+	// is concatenated in the caller's validator order rather than in the order
+	// the goroutines happened to finish. Arrival order is a race: the same
+	// content validated twice yielded its matches in a different sequence, and
+	// downstream that is not cosmetic — the redactors apply matches by searching
+	// for each match's text in turn, so of two partially overlapping matches
+	// (neither contained in the other, so both survive overlap resolution)
+	// whichever is applied second can no longer be found, leaving a different
+	// substring in cleartext depending on which goroutine won.
+	slots := make([][]detector.Match, launched)
+	collect := func(im indexedMatches) {
+		if im.slot < 0 || im.slot >= len(slots) {
+			// Defensive: never expected, and appending beats panicking or dropping.
+			allMatches = append(allMatches, im.matches...)
+			return
+		}
+		slots[im.slot] = im.matches
+	}
+	// flatten concatenates the slots in launch order. Called on both the
+	// completed and the cancelled path (the latter returns early).
+	flatten := func() {
+		total := len(allMatches)
+		for _, m := range slots {
+			total += len(m)
+		}
+		out := make([]detector.Match, 0, total)
+		for _, m := range slots {
+			out = append(out, m...)
+		}
+		allMatches = append(out, allMatches...)
+	}
+
 	select {
 	case <-done:
-		// All validators completed: safe to close and drain fully (the
-		// pre-existing behavior, byte-for-byte).
+		// All validators completed: safe to close and drain fully.
 		close(matchesChan)
 		close(errorChan)
-		for matches := range matchesChan {
-			allMatches = append(allMatches, matches...)
+		for im := range matchesChan {
+			collect(im)
 		}
+		flatten()
 		for err := range errorChan {
 			if firstErr == nil {
 				firstErr = err
@@ -246,8 +298,8 @@ func RunValidators(
 		// degraded/incomplete coverage rather than a silent clean result.
 		for draining := true; draining; {
 			select {
-			case matches := <-matchesChan:
-				allMatches = append(allMatches, matches...)
+			case im := <-matchesChan:
+				collect(im)
 			case err := <-errorChan:
 				if firstErr == nil {
 					firstErr = err
@@ -256,6 +308,7 @@ func RunValidators(
 				draining = false
 			}
 		}
+		flatten()
 		if firstErr == nil {
 			firstErr = ctx.Err()
 		}
