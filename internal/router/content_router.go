@@ -790,7 +790,7 @@ func (cr *ContentRouter) isCombinedPreprocessorOutput(processedContent *preproce
 // separateCombinedPreprocessorOutput separates combined preprocessor output into document body and metadata
 func (cr *ContentRouter) separateCombinedPreprocessorOutput(processedContent *preprocessors.ProcessedContent) (string, []MetadataContent, error) {
 	content := processedContent.Text
-	var documentBody strings.Builder
+	var bodySections []string
 	var metadataItems []MetadataContent
 
 	// Split by preprocessor separators (e.g., "--- pdf_metadata ---", "--- text ---")
@@ -805,7 +805,7 @@ func (cr *ContentRouter) separateCombinedPreprocessorOutput(processedContent *pr
 					metadataItems = append(metadataItems, *metadataContent)
 				}
 			} else {
-				documentBody.WriteString(section.content)
+				bodySections = append(bodySections, section.content)
 			}
 		} else if cr.isMetadataPreprocessor(section.preprocessorName) {
 			// This is metadata content - determine the correct preprocessor type
@@ -823,11 +823,17 @@ func (cr *ContentRouter) separateCombinedPreprocessorOutput(processedContent *pr
 			}
 		} else {
 			// This is document body content
-			documentBody.WriteString(section.content)
+			bodySections = append(bodySections, section.content)
 		}
 	}
 
-	return strings.TrimSpace(documentBody.String()), metadataItems, nil
+	// Join body sections with a blank line between them. splitByPreprocessorSeparators
+	// TrimSpace-es each section, so concatenating them directly would run the last
+	// line of one section into the first line of the next on a single logical line —
+	// fusing two adjacent values (or splitting one) and breaking line-based detection
+	// at every section seam. A blank-line separator keeps each section's lines intact
+	// and mirrors the paragraph spacing the other combine path already uses.
+	return strings.TrimSpace(strings.Join(bodySections, "\n\n")), metadataItems, nil
 }
 
 // preprocessorSection represents a section of content from a specific preprocessor
