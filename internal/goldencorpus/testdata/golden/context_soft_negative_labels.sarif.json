@@ -143,6 +143,65 @@
                 },
                 "contextRegion": {
                   "snippet": {
+                    "text": "Patient account number: \nPatient account number: 1234567 on chart\n on chart"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 32,
+                  "snippet": {
+                    "text": "Patient account number: 1234567 on chart"
+                  },
+                  "startColumn": 25,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "MRN Detected in <golden:context_soft_negative_labels> at line 3 (confidence: 65.0% - MEDIUM). Matched text: '1234567'"
+          },
+          "properties": {
+            "confidence": 65,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.3,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -5,
+              "original_confidence": 65,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "subtype": "MRN",
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "account"
+            ],
+            "positiveKeywords": [
+              "patient"
+            ],
+            "validator": "medicalid"
+          },
+          "rank": 57.5,
+          "ruleId": "MRN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_soft_negative_labels>"
+                },
+                "contextRegion": {
+                  "snippet": {
                     "text": "imei \nimei 490154203237518 on the handset\n on the handset"
                   },
                   "startLine": 4
@@ -262,65 +321,6 @@
           },
           "rank": 32.5,
           "ruleId": "VISA"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:context_soft_negative_labels>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Patient account number: \nPatient account number: 1234567 on chart\n on chart"
-                  },
-                  "startLine": 3
-                },
-                "region": {
-                  "endColumn": 32,
-                  "snippet": {
-                    "text": "Patient account number: 1234567 on chart"
-                  },
-                  "startColumn": 25,
-                  "startLine": 3
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "MRN Detected in <golden:context_soft_negative_labels> at line 3 (confidence: 65.0% - MEDIUM). Matched text: '1234567'"
-          },
-          "properties": {
-            "confidence": 65,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0.3,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
-              "context_impact": -5,
-              "original_confidence": 65,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "subtype": "MRN",
-              "validation_path": "document"
-            },
-            "negativeKeywords": [
-              "account"
-            ],
-            "positiveKeywords": [
-              "patient"
-            ],
-            "validator": "medicalid"
-          },
-          "rank": 57.5,
-          "ruleId": "MRN"
         }
       ],
       "tool": {
