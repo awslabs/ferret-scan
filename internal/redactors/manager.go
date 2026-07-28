@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -335,7 +336,8 @@ func (rm *RedactionManager) UnregisterRedactor(redactorName string) error {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
-	// Find and remove all registrations for this redactor
+	// Find and remove all registrations for this redactor. removedTypes is
+	// logged, so it is built in sorted order rather than map order.
 	removedTypes := []string{}
 	for fileType, redactor := range rm.redactors {
 		if redactor.GetName() == redactorName {
@@ -343,6 +345,7 @@ func (rm *RedactionManager) UnregisterRedactor(redactorName string) error {
 			removedTypes = append(removedTypes, fileType)
 		}
 	}
+	sort.Strings(removedTypes)
 
 	if len(removedTypes) == 0 {
 		return fmt.Errorf("redactor %s not found", redactorName)
@@ -385,9 +388,17 @@ func (rm *RedactionManager) GetRegisteredRedactors() map[string][]string {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
 
+	// Sorted file types: the per-redactor slices are caller-visible listings, and
+	// ranging the map put them in a different order on every call.
+	fileTypes := make([]string, 0, len(rm.redactors))
+	for fileType := range rm.redactors {
+		fileTypes = append(fileTypes, fileType)
+	}
+	sort.Strings(fileTypes)
+
 	redactorTypes := make(map[string][]string)
-	for fileType, redactor := range rm.redactors {
-		redactorName := redactor.GetName()
+	for _, fileType := range fileTypes {
+		redactorName := rm.redactors[fileType].GetName()
 		redactorTypes[redactorName] = append(redactorTypes[redactorName], fileType)
 	}
 
@@ -916,12 +927,25 @@ func (rm *RedactionManager) ProcessMatches(matches []detector.Match, filePaths [
 		matchesByFile[filePath] = append(matchesByFile[filePath], match)
 	}
 
+	// Walk the files in sorted order. Ranging matchesByFile directly made two
+	// things vary run to run on identical input: the order of ProcessedFiles in
+	// the returned results, and — worse — the audit log's document IDs, which are
+	// assigned from the loop position (doc_0, doc_1, …), so the same file was
+	// labelled differently on each run and the audit log could not be compared
+	// against a previous one.
+	orderedPaths := make([]string, 0, len(matchesByFile))
+	for filePath := range matchesByFile {
+		orderedPaths = append(orderedPaths, filePath)
+	}
+	sort.Strings(orderedPaths)
+
 	// Process each file with its matches
 	var processedFiles []ProcessedFile
 	var allErrors []RedactionError
 	totalRedactions := 0
 
-	for filePath, fileMatches := range matchesByFile {
+	for _, filePath := range orderedPaths {
+		fileMatches := matchesByFile[filePath]
 		// Create output path
 		outputPath, err := rm.outputManager.CreateMirroredPath(filePath)
 		if err != nil {
