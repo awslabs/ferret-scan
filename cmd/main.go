@@ -1737,10 +1737,8 @@ func main() {
 	// Enable streaming for text format writing to stdout (no output file).
 	// The text formatter writes directly to os.Stdout, avoiding a multi-GB
 	// string buffer for large result sets.
-	streamingActive := false
 	if finalConfig.format == "text" && *outputFile == "" {
 		formatterOptions.StreamWriter = os.Stdout
-		streamingActive = true
 	}
 
 	// Format and display results
@@ -1798,9 +1796,16 @@ func main() {
 				"Check file permissions and available disk space")
 			os.Exit(1)
 		}
-	} else if !streamingActive {
-		// When streaming was active, the text formatter already wrote to
-		// os.Stdout — skip the redundant (and potentially empty) Println.
+	} else if result != "" {
+		// A streaming formatter signals "already written to StreamWriter" by
+		// returning "", so an empty result means there is nothing left to print.
+		// Keying on the result rather than on whether streaming was *requested*
+		// matters because Format has several early returns that produce a string
+		// and never touch StreamWriter: "No matches found.", "No matches found
+		// at the specified confidence levels.", the suppressed-only report, and
+		// pre-commit output. Suppressing those unconditionally meant a text scan
+		// to stdout printed zero bytes — including a pre-commit run that found
+		// blocking secrets and exited 1 with no explanation.
 		fmt.Println(result)
 	}
 
