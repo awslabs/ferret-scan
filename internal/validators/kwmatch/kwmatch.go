@@ -79,6 +79,9 @@ func ContainsFunc(text, keyword string, accept func(start, end int) bool) bool {
 	if keyword == "" {
 		return false
 	}
+	if fw := firstWordLen(keyword); fw != len(keyword) {
+		return containsSepFlex(text, keyword, fw, accept)
+	}
 	for from := 0; from+len(keyword) <= len(text); {
 		i := strings.Index(text[from:], keyword)
 		if i < 0 {
@@ -103,6 +106,95 @@ func ContainsAny(text string, keywords []string) bool {
 		if ContainsLower(text, kw) {
 			return true
 		}
+	}
+	return false
+}
+
+// --- PR6 separator-flexible multi-word matching -------------------------------
+
+// isSepByte is the separator class a keyword space may match. Deliberately
+// narrow: '.' and '/' produced measured false positives across sentence and URL
+// boundaries.
+func isSepByte(b byte) bool {
+	return b == ' ' || b == '\t' || b == '_' || b == '-'
+}
+
+// firstWordLen returns the length of the keyword prefix before its first space.
+func firstWordLen(keyword string) int {
+	if i := strings.IndexByte(keyword, ' '); i >= 0 {
+		return i
+	}
+	return len(keyword)
+}
+
+// lazyPrefilterAfter bounds the repeated-anchor adversarial shape.
+const lazyPrefilterAfter = 4
+
+// allWordsPresent reports whether every space-delimited word of keyword occurs
+// verbatim in text. Sound as a negative filter: separator flexibility only
+// widens what a SPACE may match; non-space bytes stay literal.
+func allWordsPresent(text, keyword string) bool {
+	for _, w := range strings.Fields(keyword) {
+		if !strings.Contains(text, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// matchSepFlexAt walks keyword against text[start:], letting each space RUN in
+// the keyword consume a run of 1+ separator bytes. Returns the end offset or -1.
+func matchSepFlexAt(text, keyword string, start int) int {
+	ti, ki := start, 0
+	for ki < len(keyword) {
+		if keyword[ki] == ' ' {
+			for ki < len(keyword) && keyword[ki] == ' ' {
+				ki++
+			}
+			n := 0
+			for ti < len(text) && isSepByte(text[ti]) {
+				ti++
+				n++
+			}
+			if n == 0 {
+				return -1
+			}
+			continue
+		}
+		if ti >= len(text) || text[ti] != keyword[ki] {
+			return -1
+		}
+		ti++
+		ki++
+	}
+	return ti
+}
+
+// containsSepFlex anchors on the keyword's first word and verifies the rest with
+// separator flexibility, applying the same outer word-boundary rule.
+func containsSepFlex(text, keyword string, fw int, accept func(start, end int) bool) bool {
+	anchor := keyword[:fw]
+	misses := 0
+	for from := 0; from+fw <= len(text); {
+		i := strings.Index(text[from:], anchor)
+		if i < 0 {
+			return false
+		}
+		i += from
+		if i == 0 || !isWordByte(text[i-1]) {
+			if end := matchSepFlexAt(text, keyword, i); end > 0 {
+				if end >= len(text) || !isWordByte(text[end]) {
+					if accept == nil || accept(i, end) {
+						return true
+					}
+				}
+			}
+		}
+		misses++
+		if misses == lazyPrefilterAfter && !allWordsPresent(text, keyword) {
+			return false
+		}
+		from = i + 1
 	}
 	return false
 }

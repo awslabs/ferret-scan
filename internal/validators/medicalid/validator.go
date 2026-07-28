@@ -40,7 +40,7 @@ var (
 	// dashes at the card positions; the match is normalized (dashes stripped)
 	// and re-validated against reMBI before being reported, and the reported
 	// span is the original dashed text so redaction covers the whole token.
-	reMBIDashed = regexp.MustCompile(`\b[1-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9]-[AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9]-[AC-HJ-KM-NP-RT-Y][AC-HJ-KM-NP-RT-Y][0-9][0-9]\b`)
+	reMBIDashed = regexp.MustCompile(`\b[1-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][ -][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][ -][AC-HJ-KM-NP-RT-Y][AC-HJ-KM-NP-RT-Y][0-9][0-9]\b`)
 
 	// MRN: 6-10 digits (very generic, requires strong medical context)
 	reMRN = regexp.MustCompile(`\b\d{6,10}\b`)
@@ -402,7 +402,7 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lc medicalLineCon
 // MBI rules; scoring is identical to evaluateMBI. The reported Text keeps the
 // original dashed form so redaction masks the token as printed.
 func (v *Validator) evaluateDashedMBI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
-	normalized := strings.ReplaceAll(match, "-", "")
+	normalized := strings.NewReplacer("-", "", " ", "").Replace(match)
 	if !reMBI.MatchString(normalized) {
 		return detector.Match{}, false
 	}

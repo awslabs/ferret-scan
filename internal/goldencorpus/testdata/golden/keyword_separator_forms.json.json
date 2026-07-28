@@ -1,0 +1,134 @@
+{
+  "results": [
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:keyword_separator_forms>",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Configuration",
+        "context_domain": "Unknown",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "W1234567801",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:keyword_separator_forms>",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Configuration",
+        "context_domain": "Unknown",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "X9876543210",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:keyword_separator_forms>",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Configuration",
+        "context_domain": "Unknown",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "W1122009988",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:keyword_separator_forms>",
+      "line_number": 4,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Configuration",
+        "context_domain": "Unknown",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "X5556667778",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:keyword_separator_forms>",
+      "line_number": 5,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Configuration",
+        "context_domain": "Unknown",
+        "context_impact": 10,
+        "original_confidence": 80,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "subtype": "INSURANCE_MEMBER_ID",
+        "validation_path": "document"
+      },
+      "text": "W3344556677",
+      "type": "INSURANCE_MEMBER_ID",
+      "validator": "medicalid"
+    }
+  ]
+}
