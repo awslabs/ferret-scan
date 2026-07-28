@@ -606,16 +606,6 @@ func (imr *ImageMetadataRedactor) IsImageFile(filePath string) bool {
 	return imr.supportedFormats[ext]
 }
 
-// GetSupportedImageFormats returns a list of supported image formats
-func (imr *ImageMetadataRedactor) GetSupportedImageFormats() []string {
-	formats := make([]string, 0, len(imr.supportedFormats))
-	for ext := range imr.supportedFormats {
-		formats = append(formats, ext)
-	}
-	sort.Strings(formats)
-	return formats
-}
-
 // GetEXIFFields returns a list of common EXIF fields that may contain sensitive data
 func (imr *ImageMetadataRedactor) GetEXIFFields() []string {
 	return []string{
