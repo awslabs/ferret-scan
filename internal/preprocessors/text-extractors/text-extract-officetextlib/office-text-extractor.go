@@ -686,31 +686,28 @@ func extractSharedStringsSimple(file *zip.File) []string {
 	// Extract strings using regex
 	var result []string
 
-	// Match <si> elements
-	siRe := regexp.MustCompile(`<si>(.*?)</si>`)
-	siMatches := siRe.FindAllSubmatch(content, -1)
+	// Match <si> elements. The (?s) flag is mandatory, not cosmetic: a cell whose
+	// text contains a line break (very common for multi-line answer lists) has
+	// literal newlines inside its <si>, and without (?s) the `.` stops at them so
+	// the element does not match at all. Because the shared-string table is
+	// referenced *positionally* by <v> indices, a skipped entry does not merely
+	// lose one string — it shifts every subsequent index, so unrelated cells
+	// silently resolve to the wrong text. Measured on a real 15 KB spreadsheet:
+	// 12 of 123 entries were skipped, first divergence at index 89.
+	siMatches := sharedStringSiRe.FindAllSubmatch(content, -1)
 
 	for _, siMatch := range siMatches {
 		if len(siMatch) < 2 {
 			continue
 		}
 
-		// Extract text from <t> elements
-		tRe := regexp.MustCompile(`<t[^>]*>(.*?)</t>`)
-		tMatches := tRe.FindAllSubmatch(siMatch[1], -1)
+		// Extract text from <t> elements. Same (?s) requirement, same reason.
+		tMatches := sharedStringTRe.FindAllSubmatch(siMatch[1], -1)
 
 		var combinedText strings.Builder
 		for _, tMatch := range tMatches {
 			if len(tMatch) >= 2 {
-				text := string(tMatch[1])
-				// Clean up XML entities
-				text = strings.Replace(text, "&lt;", "<", -1)
-				text = strings.Replace(text, "&gt;", ">", -1)
-				text = strings.Replace(text, "&amp;", "&", -1)
-				text = strings.Replace(text, "&quot;", "\"", -1)
-				text = strings.Replace(text, "&apos;", "'", -1)
-
-				combinedText.WriteString(text)
+				combinedText.WriteString(decodeXMLEntities(string(tMatch[1])))
 			}
 		}
 
@@ -718,6 +715,85 @@ func extractSharedStringsSimple(file *zip.File) []string {
 	}
 
 	return result
+}
+
+// Shared-string and worksheet patterns are compiled once at package level rather
+// than inside the per-element loops they are used in; the previous code rebuilt
+// them for every <si> and every <row>.
+var (
+	sharedStringSiRe = regexp.MustCompile(`(?s)<si>(.*?)</si>`)
+	sharedStringTRe  = regexp.MustCompile(`(?s)<t[^>]*>(.*?)</t>`)
+
+	worksheetRowRe = regexp.MustCompile(`(?s)<row[^>]*>(.*?)</row>`)
+
+	// Cells are matched in two stages because Go's RE2 has no lookahead and a
+	// self-closing `<c r="B2"/>` must not be treated as an opening tag. The
+	// attribute group deliberately requires the last character before `>` to not
+	// be `/`, which is the RE2-compatible way to say "not self-closing".
+	worksheetCellRe = regexp.MustCompile(`(?s)<c((?:[^>]*[^/>])?)>(.*?)</c>`)
+
+	// Value extraction inside a single cell body.
+	cellValueRe  = regexp.MustCompile(`(?s)<v>(.*?)</v>`)
+	cellInlineRe = regexp.MustCompile(`(?s)<is>.*?<t[^>]*>(.*?)</t>.*?</is>`)
+	cellTextRe   = regexp.MustCompile(`(?s)<t[^>]*>(.*?)</t>`)
+
+	worksheetFormControlRe = regexp.MustCompile(`<formControlPr[^>]*defaultValue="([^"]*)"|<dataValidation[^>]*formula1="([^"]*)"`)
+
+	sharedStringTypeRe = regexp.MustCompile(`\bt="s"`)
+
+	// Named entities and numeric character references, matched in one alternation
+	// so decodeXMLEntities can resolve each in a single non-overlapping pass.
+	entityRe = regexp.MustCompile(`&(?:lt|gt|quot|apos|amp|#x[0-9a-fA-F]+|#[0-9]+);`)
+)
+
+// decodeXMLEntities expands the XML entities that appear in OOXML text runs.
+//
+// Every entity is decoded in a SINGLE pass, because any two-pass scheme
+// re-reads its own output and invents markup that was never in the document.
+// Both orderings are wrong in the same way:
+//
+//	`&amp;lt;`  is the encoded *literal* "&lt;" — expanding &amp; first, then
+//	            &lt;, yields "<".
+//	`&#38;lt;`  is the same literal written with a numeric reference —
+//	            expanding numeric refs first, then &lt;, also yields "<".
+//
+// A single left-to-right pass that consumes each reference exactly once and
+// never revisits the text it just wrote gets both cases right.
+func decodeXMLEntities(s string) string {
+	if !strings.ContainsRune(s, '&') {
+		return s
+	}
+
+	return entityRe.ReplaceAllStringFunc(s, func(m string) string {
+		switch m {
+		case "&lt;":
+			return "<"
+		case "&gt;":
+			return ">"
+		case "&quot;":
+			return "\""
+		case "&apos;":
+			return "'"
+		case "&amp;":
+			return "&"
+		}
+
+		// Numeric character reference: &#NNN; or &#xHHH;. Excel emits these for
+		// characters outside the sheet's encoding.
+		body := m[2 : len(m)-1]
+		base, digits := 10, body
+		if body[0] == 'x' || body[0] == 'X' {
+			base, digits = 16, body[1:]
+		}
+		cp, err := strconv.ParseInt(digits, base, 32)
+		// Leave anything unparseable or outside the valid Unicode scalar range
+		// as written rather than emitting U+FFFD, so the raw form still reaches
+		// the validators instead of becoming an unsearchable placeholder.
+		if err != nil || cp <= 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+			return m
+		}
+		return string(rune(cp))
+	})
 }
 
 // extractWorksheetText extracts text from a worksheet
@@ -743,8 +819,7 @@ func extractWorksheetText(file *zip.File, sharedStrings []string) string {
 	var result strings.Builder
 
 	// Find rows
-	rowRe := regexp.MustCompile(`<row[^>]*>(.*?)</row>`)
-	rowMatches := rowRe.FindAllSubmatch(content, -1)
+	rowMatches := worksheetRowRe.FindAllSubmatch(content, -1)
 
 	for _, rowMatch := range rowMatches {
 		if len(rowMatch) < 2 {
@@ -754,45 +829,52 @@ func extractWorksheetText(file *zip.File, sharedStrings []string) string {
 		var rowText strings.Builder
 		rowContent := rowMatch[1]
 
-		// Find cells and form controls
-		cellRe := regexp.MustCompile(`<c[^>]*>.*?(?:<v>(.*?)</v>|<is>.*?<t>(.*?)</t>.*?</is>|<t>(.*?)</t>).*?</c>`)
-		cellMatches := cellRe.FindAllSubmatch(rowContent, -1)
+		// Find cells. This is a two-stage match: locate each non-self-closing
+		// <c>…</c> first, then pull the value out of its body. The previous
+		// single-pattern approach had two defects on real spreadsheets:
+		//
+		//  1. `<c[^>]*>` also matched a self-closing `<c r="B2"/>` (an empty,
+		//     styled cell — 16 of 52 cells in one real sheet). Having consumed
+		//     it as an opening tag, `.*?</c>` then ran on to the *next* cell's
+		//     closing tag and reported that neighbour's value under the empty
+		//     cell, dropping cells in the process.
+		//  2. The inline-string and direct-text branches used a bare `<t>`,
+		//     which does not match the attributed `<t xml:space="preserve">`
+		//     Excel writes whenever a value has leading or trailing spaces.
+		cellMatches := worksheetCellRe.FindAllSubmatch(rowContent, -1)
 
 		// Also look for form controls in Excel
-		formControlRe := regexp.MustCompile(`<formControlPr[^>]*defaultValue="([^"]*)"|<dataValidation[^>]*formula1="([^"]*)"`)
-		formMatches := formControlRe.FindAllSubmatch(rowContent, -1)
+		formMatches := worksheetFormControlRe.FindAllSubmatch(rowContent, -1)
 
 		for _, cellMatch := range cellMatches {
-			if len(cellMatch) < 4 {
+			if len(cellMatch) < 3 {
 				continue
 			}
 
-			// Get cell content
+			attrs, body := cellMatch[1], cellMatch[2]
+
+			// Check if it's a shared string. Matched on a word boundary so a
+			// different attribute ending in `t="s"` cannot be mistaken for the
+			// cell type.
+			isSharedString := sharedStringTypeRe.Match(attrs)
+
 			var cellText string
-
-			// Check if it's a shared string
-			cellStr := string(cellMatch[0])
-			isSharedString := strings.Contains(cellStr, `t="s"`)
-
-			// Extract value from <v> tag
-			if cellMatch[1] != nil {
-				value := string(cellMatch[1])
-
+			switch {
+			case cellValueRe.Match(body):
+				value := string(cellValueRe.FindSubmatch(body)[1])
 				if isSharedString && len(sharedStrings) > 0 {
-					// Convert to shared string
-					index, err := strconv.Atoi(value)
+					// Shared strings are referenced positionally.
+					index, err := strconv.Atoi(strings.TrimSpace(value))
 					if err == nil && index >= 0 && index < len(sharedStrings) {
 						cellText = sharedStrings[index]
 					}
 				} else {
-					cellText = value
+					cellText = decodeXMLEntities(value)
 				}
-			} else if cellMatch[2] != nil {
-				// Inline string
-				cellText = string(cellMatch[2])
-			} else if cellMatch[3] != nil {
-				// Direct text
-				cellText = string(cellMatch[3])
+			case cellInlineRe.Match(body):
+				cellText = decodeXMLEntities(string(cellInlineRe.FindSubmatch(body)[1]))
+			case cellTextRe.Match(body):
+				cellText = decodeXMLEntities(string(cellTextRe.FindSubmatch(body)[1]))
 			}
 
 			if cellText != "" {
