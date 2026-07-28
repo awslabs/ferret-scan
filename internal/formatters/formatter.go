@@ -96,15 +96,6 @@ func (r *Registry) List() []string {
 	return names
 }
 
-// GetAll returns all registered formatters
-func (r *Registry) GetAll() map[string]Formatter {
-	result := make(map[string]Formatter)
-	for name, formatter := range r.formatters {
-		result[name] = formatter
-	}
-	return result
-}
-
 // FormatInfo provides metadata about a formatter for web UI integration
 type FormatInfo struct {
 	Name         string

@@ -89,21 +89,6 @@ func (rim *RedactionAuditLogManager) GetAuditLogByPath(originalPath string) (*Re
 	return auditLog, exists
 }
 
-// ListAuditLogs returns all document IDs that have audit logs
-func (rim *RedactionAuditLogManager) ListAuditLogs() []string {
-	rim.mutex.RLock()
-	defer rim.mutex.RUnlock()
-
-	documentIDs := make([]string, 0, len(rim.auditLogs))
-	for documentID := range rim.auditLogs {
-		documentIDs = append(documentIDs, documentID)
-	}
-	// Sorted: the caller gets a listing, and a listing that permutes itself
-	// between calls on unchanged state is not usable for display or comparison.
-	sort.Strings(documentIDs)
-	return documentIDs
-}
-
 // sortedDocumentIDs returns the managed document IDs in a fixed order. Callers
 // that walk every audit log use it so their behavior — in particular which
 // document a validation error names when several are invalid — does not depend
@@ -255,27 +240,6 @@ func (rim *RedactionAuditLogManager) SaveAuditLog(documentID, filePath string) e
 	return nil
 }
 
-// SaveAllAuditLogs saves all redaction audit logs to a single file
-func (rim *RedactionAuditLogManager) SaveAllAuditLogs(filePath string) error {
-	jsonData, err := rim.ExportAllAuditLogs()
-	if err != nil {
-		return fmt.Errorf("failed to export all indexes: %w", err)
-	}
-
-	// Ensure the directory exists with secure permissions (owner only)
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
-	}
-
-	// Write the file with secure permissions (owner read/write only)
-	if err := os.WriteFile(filePath, jsonData, 0600); err != nil {
-		return fmt.Errorf("failed to write index file %s: %w", filePath, err)
-	}
-
-	return nil
-}
-
 // LoadAuditLog loads a redaction audit log from a JSON file
 func (rim *RedactionAuditLogManager) LoadAuditLog(filePath string) (*RedactionAuditLog, error) {
 	data, err := os.ReadFile(filePath)
@@ -334,22 +298,6 @@ func (rim *RedactionAuditLogManager) GetRedactionStatistics() RedactionStatistic
 	stats.TotalRedactions = stats.TotalContentRedactions + stats.TotalMetadataRedactions
 
 	return stats
-}
-
-// ValidateAllAuditLogs validates all managed audit logs
-func (rim *RedactionAuditLogManager) ValidateAllAuditLogs() error {
-	rim.mutex.RLock()
-	defer rim.mutex.RUnlock()
-
-	// Sorted for the same reason as ExportAllAuditLogs: with several invalid logs
-	// a map range named a different document on each call.
-	for _, documentID := range rim.sortedDocumentIDs() {
-		if err := rim.auditLogs[documentID].Validate(); err != nil {
-			return fmt.Errorf("validation failed for document %s: %w", documentID, err)
-		}
-	}
-
-	return nil
 }
 
 // Clear removes all audit logs from the manager

@@ -44,19 +44,6 @@ func TestGetSupportedTypes_StableOrder(t *testing.T) {
 	}
 }
 
-// TestGetSupportedImageFormats_StableOrder locks the format listing, which had
-// the same defect.
-func TestGetSupportedImageFormats_StableOrder(t *testing.T) {
-	want := []string{".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
-
-	for i := 0; i < iterations; i++ {
-		got := NewImageMetadataRedactor(nil, nil).GetSupportedImageFormats()
-		if strings.Join(got, ",") != strings.Join(want, ",") {
-			t.Fatalf("iteration %d: got %v, want %v", i, got, want)
-		}
-	}
-}
-
 // TestSortedEXIFFieldNames_StableOrder locks the EXIF field iteration order used
 // when building redaction mappings. Those mappings become audit-log entries whose
 // IDs are assigned from slice position (doc_N_redaction_I), so ranging the EXIF

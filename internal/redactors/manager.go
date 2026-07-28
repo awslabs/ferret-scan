@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -331,40 +330,6 @@ func (rm *RedactionManager) RegisterRedactor(redactor Redactor) error {
 	return nil
 }
 
-// UnregisterRedactor removes a redactor from the manager
-func (rm *RedactionManager) UnregisterRedactor(redactorName string) error {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
-
-	// Find and remove all registrations for this redactor. removedTypes is
-	// logged, so it is built in sorted order rather than map order.
-	removedTypes := []string{}
-	for fileType, redactor := range rm.redactors {
-		if redactor.GetName() == redactorName {
-			delete(rm.redactors, fileType)
-			removedTypes = append(removedTypes, fileType)
-		}
-	}
-	sort.Strings(removedTypes)
-
-	if len(removedTypes) == 0 {
-		return fmt.Errorf("redactor %s not found", redactorName)
-	}
-
-	// Remove stats for this redactor
-	rm.stats.mu.Lock()
-	delete(rm.stats.RedactorStats, redactorName)
-	rm.stats.mu.Unlock()
-
-	rm.logEvent("redactor_unregistered", true, map[string]interface{}{
-		"redactor_name":   redactorName,
-		"removed_types":   removedTypes,
-		"total_redactors": len(rm.redactors),
-	})
-
-	return nil
-}
-
 // GetRedactorForFile returns the appropriate redactor for a given file
 func (rm *RedactionManager) GetRedactorForFile(filePath string) (Redactor, error) {
 	rm.mu.RLock()
@@ -381,28 +346,6 @@ func (rm *RedactionManager) GetRedactorForFile(filePath string) (Redactor, error
 	}
 
 	return redactor, nil
-}
-
-// GetRegisteredRedactors returns a list of all registered redactors
-func (rm *RedactionManager) GetRegisteredRedactors() map[string][]string {
-	rm.mu.RLock()
-	defer rm.mu.RUnlock()
-
-	// Sorted file types: the per-redactor slices are caller-visible listings, and
-	// ranging the map put them in a different order on every call.
-	fileTypes := make([]string, 0, len(rm.redactors))
-	for fileType := range rm.redactors {
-		fileTypes = append(fileTypes, fileType)
-	}
-	sort.Strings(fileTypes)
-
-	redactorTypes := make(map[string][]string)
-	for _, fileType := range fileTypes {
-		redactorName := rm.redactors[fileType].GetName()
-		redactorTypes[redactorName] = append(redactorTypes[redactorName], fileType)
-	}
-
-	return redactorTypes
 }
 
 // RedactFile redacts a single file using the appropriate redactor
@@ -905,127 +848,6 @@ func (rm *RedactionManager) AddRedactionResult(originalPath, redactedPath string
 			"document_id":     documentID,
 		})
 	}
-}
-
-// ProcessMatches processes validation matches and performs redaction on the associated files
-func (rm *RedactionManager) ProcessMatches(matches []detector.Match, filePaths []string) (*RedactionResults, error) {
-	if len(matches) == 0 {
-		return &RedactionResults{
-			ProcessedFiles:  []ProcessedFile{},
-			TotalRedactions: 0,
-			ProcessingTime:  0,
-			Errors:          []RedactionError{},
-		}, nil
-	}
-
-	startTime := time.Now()
-
-	// Group matches by file path
-	matchesByFile := make(map[string][]detector.Match)
-	for _, match := range matches {
-		filePath := match.Filename
-		matchesByFile[filePath] = append(matchesByFile[filePath], match)
-	}
-
-	// Walk the files in sorted order. Ranging matchesByFile directly made two
-	// things vary run to run on identical input: the order of ProcessedFiles in
-	// the returned results, and — worse — the audit log's document IDs, which are
-	// assigned from the loop position (doc_0, doc_1, …), so the same file was
-	// labelled differently on each run and the audit log could not be compared
-	// against a previous one.
-	orderedPaths := make([]string, 0, len(matchesByFile))
-	for filePath := range matchesByFile {
-		orderedPaths = append(orderedPaths, filePath)
-	}
-	sort.Strings(orderedPaths)
-
-	// Process each file with its matches
-	var processedFiles []ProcessedFile
-	var allErrors []RedactionError
-	totalRedactions := 0
-
-	for _, filePath := range orderedPaths {
-		fileMatches := matchesByFile[filePath]
-		// Create output path
-		outputPath, err := rm.outputManager.CreateMirroredPath(filePath)
-		if err != nil {
-			allErrors = append(allErrors, RedactionError{
-				Type:      ErrorFileSystem,
-				Message:   fmt.Sprintf("failed to create output path: %v", err),
-				FilePath:  filePath,
-				Component: "redaction_manager",
-			})
-			continue
-		}
-
-		// Redact the file
-		result, err := rm.RedactFile(filePath, outputPath, fileMatches, rm.config.DefaultStrategy)
-		if err != nil {
-			allErrors = append(allErrors, RedactionError{
-				Type:      ErrorDocumentProcessing,
-				Message:   fmt.Sprintf("redaction failed: %v", err),
-				FilePath:  filePath,
-				Component: "redaction_manager",
-			})
-			processedFiles = append(processedFiles, ProcessedFile{
-				OriginalPath:   filePath,
-				RedactedPath:   outputPath,
-				RedactionCount: 0,
-				ProcessingTime: 0,
-				Success:        false,
-				Error:          err,
-			})
-			continue
-		}
-
-		// Create redaction audit log for this file
-		if rm.auditLogManager != nil {
-			documentID := fmt.Sprintf("doc_%d", len(processedFiles))
-			auditLog, err := rm.auditLogManager.CreateAuditLog(documentID, filePath, outputPath)
-			if err == nil {
-				// Add content redactions to the audit log
-				for i, redactionMapping := range result.RedactionMap {
-					contentRedaction := ContentRedaction{
-						ID:           fmt.Sprintf("%s_redaction_%d", documentID, i),
-						TargetType:   "parent_document",
-						DataType:     redactionMapping.DataType,
-						RedactedText: redactionMapping.RedactedText,
-						Strategy:     redactionMapping.Strategy,
-						Confidence:   redactionMapping.Confidence,
-						Timestamp:    time.Now(),
-					}
-					auditLog.AddContentRedaction(contentRedaction)
-				}
-
-				// Calculate and store hash of the redacted file
-				if redactedContent, err := os.ReadFile(outputPath); err == nil {
-					redactedHash := GenerateDocumentHash(redactedContent)
-					auditLog.SetRedactedFileHash(redactedHash)
-				}
-			}
-		}
-
-		// Record successful processing
-		processedFiles = append(processedFiles, ProcessedFile{
-			OriginalPath:   filePath,
-			RedactedPath:   outputPath,
-			RedactionCount: len(result.RedactionMap),
-			ProcessingTime: result.ProcessingTime,
-			Success:        true,
-			Error:          nil,
-		})
-
-		totalRedactions += len(result.RedactionMap)
-	}
-
-	processingTime := time.Since(startTime)
-
-	return &RedactionResults{
-		ProcessedFiles:  processedFiles,
-		TotalRedactions: totalRedactions,
-		ProcessingTime:  processingTime,
-		Errors:          allErrors,
-	}, nil
 }
 
 // ExportAuditLog exports the redaction audit log to the specified file path
