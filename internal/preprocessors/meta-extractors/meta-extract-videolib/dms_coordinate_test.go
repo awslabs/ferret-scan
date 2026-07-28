@@ -304,22 +304,29 @@ func TestExtractVideoMetadata_NoiseDoesNotSuppressCoordinate(t *testing.T) {
 // out of the file. dmsSearchWindow bounds the slice the regex sees, which makes
 // the cost of the match itself independent of how long the value is.
 //
-// Note on what is asserted: an unwindowed regex here is still LINEAR in the
-// input, just with a per-byte constant roughly 120x worse, so comparing per-byte
-// cost across two input sizes does not separate the two implementations — it
-// passes either way. The assertion is instead against a baseline measured in this
-// same test run: one strings.Index over the same string, which is the work the
-// windowed path is supposed to reduce to. That keeps the test machine- and
-// load-independent without being vacuous. Measured: ~4x the baseline windowed,
-// ~6000x unwindowed.
+// What is asserted, and why it is this and not a comparison against some other
+// operation: the property being guarded is that cost does not GROW with the
+// length of the value. So the measurement is the same code path timed at two
+// input sizes — windowed is flat (~1x for a 64x longer value), unwindowed grows
+// with the input (~60x). Measured both ways, with and without -race.
+//
+// Comparing against a different operation (an earlier version of this test used
+// one strings.Index over the same string) does not survive instrumentation: CI
+// runs the suite under -race, which leaves strings.Index as uninstrumented
+// assembly while every regex step gets a race-detector callback. That inflated
+// the ratio ~30x — 1.5x locally, 45x under -race, 54x and 66x on the CI runners —
+// and failed a threshold the implementation had not regressed against. Two sizes
+// of the SAME path share whatever instrumentation is in effect, so the ratio is
+// stable across build modes.
 func TestParseDMSCoordinate_BoundedByWindowNotInputLength(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing test")
 	}
 
-	// Worst case for a scan: nothing matches until the very end of the value.
-	const n = 64_000
-	in := strings.Repeat("x", n) + ` 36 deg 21' 2.16" N`
+	// Worst case for a scan: nothing matches until the very end of the value, so
+	// an unwindowed regex has to walk the whole thing before it succeeds.
+	const smallLen, largeLen = 1_000, 64_000
+	withPrefix := func(n int) string { return strings.Repeat("x", n) + ` 36 deg 21' 2.16" N` }
 
 	// Best-of-N with the minimum taken, which is the sample least polluted by
 	// scheduling noise on a loaded machine.
@@ -338,29 +345,35 @@ func TestParseDMSCoordinate_BoundedByWindowNotInputLength(t *testing.T) {
 		return best
 	}
 
-	var sink int
-	baseline := bestOf(func() { sink += strings.Index(in, "deg") })
-	if sink == 0 {
-		t.Fatal("baseline did not run")
+	measure := func(in string) time.Duration {
+		var ok bool
+		d := bestOf(func() { _, ok = parseDMSCoordinate(in) })
+		if !ok {
+			t.Fatalf("setup: a %d-byte value ending in a coordinate should parse", len(in))
+		}
+		return d
 	}
 
-	var okAll bool
-	got := bestOf(func() { _, okAll = parseDMSCoordinate(in) })
-	if !okAll {
-		t.Fatalf("setup: a %d-byte value ending in a coordinate should parse", n)
+	small := measure(withPrefix(smallLen))
+	large := measure(withPrefix(largeLen))
+
+	// Non-vacuity: below the clock's resolution the ratio is meaningless.
+	if small <= 0 || large <= 0 {
+		t.Fatalf("timing resolution too coarse to assert on: small=%v large=%v", small, large)
 	}
 
-	// Non-vacuity: without measurable baseline time the comparison is meaningless.
-	if baseline <= 0 || got <= 0 {
-		t.Fatalf("timing resolution too coarse to assert on: baseline=%v parse=%v", baseline, got)
-	}
+	inputGrowth := float64(largeLen) / float64(smallLen)
+	costGrowth := float64(large.Nanoseconds()) / float64(small.Nanoseconds())
+	t.Logf("value grew %.0fx (%d -> %d bytes): parse cost %v -> %v, %.2fx",
+		inputGrowth, smallLen, largeLen, small, large, costGrowth)
 
-	ratio := float64(got.Nanoseconds()) / float64(baseline.Nanoseconds())
-	t.Logf("%d bytes: parse %v vs strings.Index baseline %v — %.1fx", n, got, baseline, ratio)
-
-	if ratio > 50 {
-		t.Errorf("parse cost %.1fx a single strings.Index over the same %d-byte value (%v vs %v): the regex is scanning the whole value instead of the window",
-			ratio, n, got, baseline)
+	// Flat is ~1x and measures below 1x as often as above. The bound is set well
+	// under the growth an unwindowed regex shows (~60x) and well over measurement
+	// noise, so it separates the two implementations without being load-sensitive.
+	const maxCostGrowth = 8.0
+	if costGrowth > maxCostGrowth {
+		t.Errorf("parse cost grew %.2fx for a %.0fx longer value (%v -> %v): the regex is scanning the whole value instead of the %d-byte window around \"deg\"",
+			costGrowth, inputGrowth, small, large, dmsWindowBefore+dmsWindowAfter)
 	}
 }
 
