@@ -6,6 +6,7 @@ package formatters
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -87,12 +88,16 @@ func (r *Registry) Get(name string) (Formatter, bool) {
 	return formatter, exists
 }
 
-// List returns all registered formatter names
+// List returns all registered formatter names in ascending order. The order is
+// user-visible: this backs the "Use one of: ..." hint on an unsupported --format
+// and the equivalent web export error, both of which listed the formats in a
+// different order on every invocation.
 func (r *Registry) List() []string {
-	var names []string
+	names := make([]string, 0, len(r.formatters))
 	for name := range r.formatters {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 

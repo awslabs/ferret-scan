@@ -59,6 +59,10 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Apply confidence filtering before conversion
 	filteredMatches := shared.FilterMatchesByConfidence(matches, options)
 
+	// Give the results the shared total order. Safe to sort in place: the filter
+	// above returned a fresh slice, so the caller's slice is untouched.
+	shared.SortMatchesByPriority(filteredMatches)
+
 	// Suppressed results carry the same total order as active ones, so the
 	// `results` array of two SARIF reports of one unchanged scan is comparable.
 	shared.SortSuppressedByPriority(suppressedMatches)

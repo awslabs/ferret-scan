@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -77,6 +78,11 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Filter matches by confidence level
 	filteredMatches := f.filterMatchesByConfidence(matches, options)
 
+	// Give the findings the shared total order before grouping, so the detail
+	// lines inside each <failure> are emitted in a fixed sequence. Safe to sort
+	// in place: the filter above returned a fresh slice.
+	shared.SortMatchesByPriority(filteredMatches)
+
 	// Suppressed testcases share the active findings' total order, so re-running
 	// the same scan produces a comparable report rather than one whose skipped
 	// testcases moved around.
@@ -105,9 +111,12 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		TestCases: []TestCase{},
 	}
 
-	// Process each file
-	for filename, fileMatches := range fileGroups {
-		testCase := f.createTestCaseForFile(filename, fileMatches, options)
+	// Process each file, in sorted filename order. Ranging the group map
+	// directly reordered the <testcase> elements between runs, so two JUnit
+	// reports of one unchanged scan were not comparable — and CI systems that
+	// diff or fingerprint the report treated the reshuffle as new results.
+	for _, filename := range sortedKeys(fileGroups) {
+		testCase := f.createTestCaseForFile(filename, fileGroups[filename], options)
 		securitySuite.TestCases = append(securitySuite.TestCases, testCase)
 		securitySuite.Tests++
 
@@ -128,8 +137,8 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		}
 
 		suppressedGroups := f.groupSuppressedMatchesByFile(suppressedMatches)
-		for filename, suppressed := range suppressedGroups {
-			testCase := f.createTestCaseForSuppressedFile(filename, suppressed, options)
+		for _, filename := range sortedKeys(suppressedGroups) {
+			testCase := f.createTestCaseForSuppressedFile(filename, suppressedGroups[filename], options)
 			suppressedSuite.TestCases = append(suppressedSuite.TestCases, testCase)
 			suppressedSuite.Tests++
 		}
@@ -166,6 +175,17 @@ func (f *Formatter) filterMatchesByConfidence(matches []detector.Match, options 
 		}
 	}
 	return filtered
+}
+
+// sortedKeys returns a group map's filenames in ascending order, so the
+// <testcase> elements derived from them are emitted in a fixed sequence.
+func sortedKeys[V any](groups map[string]V) []string {
+	keys := make([]string, 0, len(groups))
+	for k := range groups {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // groupMatchesByFile groups matches by filename
@@ -250,8 +270,10 @@ func (f *Formatter) createFailureFromMatches(matches []detector.Match, options f
 	var messageBuilder strings.Builder
 	var contentBuilder strings.Builder
 
-	// Sort matches by confidence level for consistent output
-	f.sortMatches(matches)
+	// Matches arrive already in the shared total order (Format sorts before
+	// grouping, and grouping preserves it), so no re-sort is needed here. The
+	// local bubble sort this replaced ordered only on confidence band and score,
+	// which left same-confidence findings in whatever order the scanner produced.
 
 	// Create summary message
 	if len(matches) == 1 {
@@ -304,32 +326,6 @@ func (f *Formatter) getFailureType(matches []detector.Match) string {
 
 	// Multiple matches - use a generic type
 	return "SECURITY_FINDINGS"
-}
-
-// sortMatches sorts matches by confidence level (HIGH, MEDIUM, LOW) and then by confidence score
-func (f *Formatter) sortMatches(matches []detector.Match) {
-	// Sort using a custom comparison function
-	for i := 0; i < len(matches)-1; i++ {
-		for j := i + 1; j < len(matches); j++ {
-			// Get confidence levels
-			level1 := f.getConfidenceLevel(matches[i].Confidence)
-			level2 := f.getConfidenceLevel(matches[j].Confidence)
-
-			// Define level priority (lower number = higher priority)
-			levelPriority := map[string]int{"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-
-			// Compare by level first
-			if levelPriority[level1] > levelPriority[level2] {
-				// Swap if level1 has lower priority than level2
-				matches[i], matches[j] = matches[j], matches[i]
-			} else if levelPriority[level1] == levelPriority[level2] {
-				// Same level, sort by confidence score (higher first)
-				if matches[i].Confidence < matches[j].Confidence {
-					matches[i], matches[j] = matches[j], matches[i]
-				}
-			}
-		}
-	}
 }
 
 // getConfidenceLevel returns the confidence level as a string

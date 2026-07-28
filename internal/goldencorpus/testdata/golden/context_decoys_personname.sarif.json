@@ -12,6 +12,162 @@
                   "uri": "<golden:context_decoys_personname>"
                 },
                 "region": {
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 3 (confidence: 92.0% - HIGH). Matched text: 'James Whitfield'"
+          },
+          "properties": {
+            "confidence": 92,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "James",
+                "FullName": "James Whitfield",
+                "LastName": "Whitfield",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 92,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 76,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:context_decoys_personname> at line 7 (confidence: 92.0% - HIGH). Matched text: 'Daniel Moreau'"
+          },
+          "properties": {
+            "confidence": 92,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Retail",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "Daniel",
+                "FullName": "Daniel Moreau",
+                "LastName": "Moreau",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 92,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 76,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:context_decoys_personname>"
+                },
+                "region": {
                   "startLine": 1
                 }
               }
@@ -81,84 +237,6 @@
             "validator": "PERSON_NAME"
           },
           "rank": 70,
-          "ruleId": "PERSON_NAME"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:context_decoys_personname>"
-                },
-                "region": {
-                  "startLine": 3
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Person Name Detected in <golden:context_decoys_personname> at line 3 (confidence: 92.0% - HIGH). Matched text: 'James Whitfield'"
-          },
-          "properties": {
-            "confidence": 92,
-            "confidenceLevel": "HIGH",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Retail",
-              "context_impact": 0,
-              "context_keywords": null,
-              "cultural_context": [
-                "western",
-                "english",
-                "european"
-              ],
-              "name_components": {
-                "Cultural": [
-                  "western",
-                  "english",
-                  "european"
-                ],
-                "FirstName": "James",
-                "FullName": "James Whitfield",
-                "LastName": "Whitfield",
-                "MiddleName": "",
-                "Pattern": "basic_western_name",
-                "Suffix": "",
-                "Title": ""
-              },
-              "original_confidence": 92,
-              "pattern": "basic_western_name",
-              "pattern_priority": 5,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "validation_checks": {
-                "both_names_known": true,
-                "has_known_name_component": true,
-                "has_middle_name": false,
-                "has_suffix": false,
-                "has_title": false,
-                "known_first_name": true,
-                "known_last_name": true,
-                "not_business_name": true,
-                "not_technical_term": true,
-                "not_test_data": true,
-                "proper_case": true,
-                "reasonable_length": true,
-                "valid_pattern": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "PERSON_NAME"
-          },
-          "rank": 76,
           "ruleId": "PERSON_NAME"
         },
         {
@@ -317,84 +395,6 @@
             "validator": "PERSON_NAME"
           },
           "rank": 63.5,
-          "ruleId": "PERSON_NAME"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:context_decoys_personname>"
-                },
-                "region": {
-                  "startLine": 7
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Person Name Detected in <golden:context_decoys_personname> at line 7 (confidence: 92.0% - HIGH). Matched text: 'Daniel Moreau'"
-          },
-          "properties": {
-            "confidence": 92,
-            "confidenceLevel": "HIGH",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Retail",
-              "context_impact": 0,
-              "context_keywords": null,
-              "cultural_context": [
-                "western",
-                "english",
-                "european"
-              ],
-              "name_components": {
-                "Cultural": [
-                  "western",
-                  "english",
-                  "european"
-                ],
-                "FirstName": "Daniel",
-                "FullName": "Daniel Moreau",
-                "LastName": "Moreau",
-                "MiddleName": "",
-                "Pattern": "basic_western_name",
-                "Suffix": "",
-                "Title": ""
-              },
-              "original_confidence": 92,
-              "pattern": "basic_western_name",
-              "pattern_priority": 5,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
-              "validation_checks": {
-                "both_names_known": true,
-                "has_known_name_component": true,
-                "has_middle_name": false,
-                "has_suffix": false,
-                "has_title": false,
-                "known_first_name": true,
-                "known_last_name": true,
-                "not_business_name": true,
-                "not_technical_term": true,
-                "not_test_data": true,
-                "proper_case": true,
-                "reasonable_length": true,
-                "valid_pattern": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "PERSON_NAME"
-          },
-          "rank": 76,
           "ruleId": "PERSON_NAME"
         },
         {

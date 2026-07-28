@@ -13,136 +13,6 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "b,bob@example.org,529-11-2233,\nBob,bob@example.org,529-11-2233,5425233430109903"
-                  },
-                  "startLine": 3
-                },
-                "region": {
-                  "endColumn": 49,
-                  "snippet": {
-                    "text": "Bob,bob@example.org,529-11-2233,5425233430109903"
-                  },
-                  "startColumn": 33,
-                  "startLine": 3
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "MASTERCARD Detected in people.csv at line 3 (confidence: 25.0% - LOW). Matched text: '5425233430109903'"
-          },
-          "properties": {
-            "confidence": 25,
-            "confidenceLevel": "LOW",
-            "metadata": {
-              "card_type": "MASTERCARD",
-              "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
-              "context_impact": -100,
-              "original_confidence": 5,
-              "original_file": "<TMPDIR>/people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "digits": true,
-                "entropy": true,
-                "length": true,
-                "luhn": true,
-                "not_repeating": true,
-                "not_test": true,
-                "vendor": true
-              },
-              "validation_path": "document",
-              "vendor": "MasterCard"
-            },
-            "validator": "creditcard"
-          },
-          "rank": 37.5,
-          "ruleId": "MASTERCARD"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "file://<TMPDIR>/people.csv"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "alice@example.com,449-87-4100,\nAlice,alice@example.com,449-87-4100,4532015112830366"
-                  },
-                  "startLine": 2
-                },
-                "region": {
-                  "endColumn": 53,
-                  "snippet": {
-                    "text": "Alice,alice@example.com,449-87-4100,4532015112830366"
-                  },
-                  "startColumn": 37,
-                  "startLine": 2
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "VISA Detected in people.csv at line 2 (confidence: 25.0% - LOW). Matched text: '4532015112830366'"
-          },
-          "properties": {
-            "confidence": 25,
-            "confidenceLevel": "LOW",
-            "metadata": {
-              "card_type": "VISA",
-              "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
-              "context_impact": -100,
-              "original_confidence": 5,
-              "original_file": "<TMPDIR>/people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "digits": true,
-                "entropy": true,
-                "length": true,
-                "luhn": true,
-                "not_repeating": true,
-                "not_test": true,
-                "vendor": true
-              },
-              "validation_path": "document",
-              "vendor": "Visa"
-            },
-            "validator": "creditcard"
-          },
-          "rank": 37.5,
-          "ruleId": "VISA"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "file://<TMPDIR>/people.csv"
-                },
-                "contextRegion": {
-                  "snippet": {
                     "text": "Alice,\nAlice,alice@example.com,449-87-4100,4532015112830366\n,449-87-4100,4532015112830366"
                   },
                   "startLine": 2
@@ -406,6 +276,136 @@
           },
           "rank": 87.5,
           "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "b,bob@example.org,529-11-2233,\nBob,bob@example.org,529-11-2233,5425233430109903"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 49,
+                  "snippet": {
+                    "text": "Bob,bob@example.org,529-11-2233,5425233430109903"
+                  },
+                  "startColumn": 33,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "MASTERCARD Detected in people.csv at line 3 (confidence: 25.0% - LOW). Matched text: '5425233430109903'"
+          },
+          "properties": {
+            "confidence": 25,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "MASTERCARD",
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -100,
+              "original_confidence": 5,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "MasterCard"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 37.5,
+          "ruleId": "MASTERCARD"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "alice@example.com,449-87-4100,\nAlice,alice@example.com,449-87-4100,4532015112830366"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 53,
+                  "snippet": {
+                    "text": "Alice,alice@example.com,449-87-4100,4532015112830366"
+                  },
+                  "startColumn": 37,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "VISA Detected in people.csv at line 2 (confidence: 25.0% - LOW). Matched text: '4532015112830366'"
+          },
+          "properties": {
+            "confidence": 25,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -100,
+              "original_confidence": 5,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 37.5,
+          "ruleId": "VISA"
         }
       ],
       "tool": {

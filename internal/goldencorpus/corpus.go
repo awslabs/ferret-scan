@@ -543,16 +543,20 @@ var timestampPatterns = []struct {
 // removing sources of run-to-run variance that are NOT behavior:
 //
 //   - wall-clock timestamps (gitlab-sast) → "<TIMESTAMP>" sentinel;
-//   - JSON object-key order and reorderable arrays (SARIF rules) → canonical
-//     sorted form, because Go map iteration order is randomized;
-//   - the gitlab-sast "Additional Information" bullet list, which is rendered
-//     from a Go map into a description STRING (so JSON canonicalization can't
-//     reach it) → bullets sorted.
+//   - JSON object-key order → canonical sorted form;
+//   - the per-run temp-dir-derived gitlab-sast vulnerability id hash.
 //
 // These normalizations lock the *content* of the output, not the incidental
 // ordering the current formatters happen to emit. If a future change alters
 // what data appears (a new field, a changed message, a different detection),
 // the snapshot still catches it. format is the formatter name (e.g. "sarif").
+//
+// Deliberately NOT normalized any more: the SARIF tool.driver.rules array and
+// the gitlab-sast "Additional Information" bullet list. Both used to be sorted
+// here to paper over Go map iteration order in the formatters themselves. The
+// formatters now emit both in sorted order at the source, so re-sorting here
+// would only re-hide a regression — this snapshot is the guard for those two
+// emit paths.
 func NormalizeOutput(format, s string) string {
 	for _, p := range timestampPatterns {
 		s = p.re.ReplaceAllString(s, p.replacement)
@@ -565,7 +569,6 @@ func NormalizeOutput(format, s string) string {
 		}
 	}
 	if format == "gitlab-sast" {
-		s = sortAdditionalInfoBullets(s)
 		s = ferretIDPattern.ReplaceAllString(s, "ferret-<HASH>")
 	}
 	return s
@@ -579,16 +582,15 @@ func NormalizeOutput(format, s string) string {
 var ferretIDPattern = regexp.MustCompile(`ferret-[0-9a-f]{16}`)
 
 // canonicalizeJSON re-marshals a JSON document with object keys sorted
-// (encoding/json sorts map keys deterministically) and the SARIF rules array
-// sorted by "id". Returns (normalized, true) on success, or ("", false) if the
-// input is not valid JSON (in which case the caller keeps the original).
+// (encoding/json sorts map keys deterministically). Array order is left alone:
+// every array the formatters emit is now ordered at the source, so the snapshot
+// should hold them to it. Returns (normalized, true) on success, or ("", false)
+// if the input is not valid JSON (in which case the caller keeps the original).
 func canonicalizeJSON(s string) (string, bool) {
 	var v any
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
 		return "", false
 	}
-	v = sortReorderableArrays(v)
-
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -599,63 +601,6 @@ func canonicalizeJSON(s string) (string, bool) {
 	// Unmarshaling into any -> map[string]any means re-marshaling already emits
 	// keys in sorted order, so object key order is now canonical.
 	return buf.String(), true
-}
-
-// sortReorderableArrays walks a decoded JSON value and sorts arrays whose order
-// is not semantically meaningful but is emitted from a Go map (currently the
-// SARIF tool.driver.rules array, keyed by "id"). It recurses through all
-// objects/arrays.
-func sortReorderableArrays(v any) any {
-	switch t := v.(type) {
-	case map[string]any:
-		for k, child := range t {
-			t[k] = sortReorderableArrays(child)
-			if k == "rules" {
-				if arr, ok := t[k].([]any); ok {
-					sortByStringField(arr, "id")
-				}
-			}
-		}
-		return t
-	case []any:
-		for i := range t {
-			t[i] = sortReorderableArrays(t[i])
-		}
-		return t
-	default:
-		return v
-	}
-}
-
-// sortByStringField sorts a slice of JSON objects by a top-level string field.
-func sortByStringField(arr []any, field string) {
-	sort.SliceStable(arr, func(i, j int) bool {
-		mi, _ := arr[i].(map[string]any)
-		mj, _ := arr[j].(map[string]any)
-		si, _ := mi[field].(string)
-		sj, _ := mj[field].(string)
-		return si < sj
-	})
-}
-
-// additionalInfoBlock matches the gitlab-sast "Additional Information" bullet
-// list inside a description string. The bullets are rendered from a Go map, so
-// their order is randomized; we sort them to a stable order.
-var additionalInfoBlock = regexp.MustCompile(`(\*\*Additional Information:\*\*\\n)((?:- [^\n]*?\\n)+)`)
-
-// sortAdditionalInfoBullets finds each "Additional Information" block in the
-// (JSON-escaped) gitlab-sast output and sorts its "- key: value\n" bullet lines.
-func sortAdditionalInfoBullets(s string) string {
-	return additionalInfoBlock.ReplaceAllStringFunc(s, func(block string) string {
-		m := additionalInfoBlock.FindStringSubmatch(block)
-		if len(m) != 3 {
-			return block
-		}
-		header, bullets := m[1], m[2]
-		lines := strings.Split(strings.TrimSuffix(bullets, `\n`), `\n`)
-		sort.Strings(lines)
-		return header + strings.Join(lines, `\n`) + `\n`
-	})
 }
 
 // sortFindings imposes a deterministic total order on redact findings so the

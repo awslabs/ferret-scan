@@ -13,6 +13,72 @@
                 },
                 "contextRegion": {
                   "snippet": {
+                    "text": "SSN \nSSN 449-87-4100 on file.\n on file."
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 16,
+                  "snippet": {
+                    "text": "SSN 449-87-4100 on file."
+                  },
+                  "startColumn": 5,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in <golden:mixed_pii_basic> at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 25,
+              "original_confidence": 100,
+              "original_file": "<golden:mixed_pii_basic>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:mixed_pii_basic>"
+                },
+                "contextRegion": {
+                  "snippet": {
                     "text": "Card \nCard 4532-0151-1283-0366 expires soon.\n expires soon."
                   },
                   "startLine": 4
@@ -67,80 +133,6 @@
           },
           "rank": 75,
           "ruleId": "VISA"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:mixed_pii_basic>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Contact \nContact john.doe@example.com or call 212-555-0142.\n or call 212-555-0142."
-                  },
-                  "startLine": 1
-                },
-                "region": {
-                  "endColumn": 29,
-                  "snippet": {
-                    "text": "Contact john.doe@example.com or call 212-555-0142."
-                  },
-                  "startColumn": 9,
-                  "startLine": 1
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "BUSINESS Detected in <golden:mixed_pii_basic> at line 1 (confidence: 33.0% - LOW). Matched text: 'john.doe@example.com'"
-          },
-          "properties": {
-            "confidence": 33,
-            "confidenceLevel": "LOW",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
-              "context_impact": -12,
-              "domain": "example.com",
-              "email_provider": "BUSINESS",
-              "original_confidence": 33,
-              "original_file": "<golden:mixed_pii_basic>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "tld": "com",
-              "username": "john.doe",
-              "validation_checks": {
-                "business_pattern": true,
-                "no_consecutive_dots": true,
-                "not_test_email": false,
-                "reasonable_length": true,
-                "valid_domain": true,
-                "valid_format": true,
-                "valid_tld": true,
-                "valid_username": true
-              },
-              "validation_path": "document"
-            },
-            "negativeKeywords": [
-              "example"
-            ],
-            "positiveKeywords": [
-              "contact"
-            ],
-            "validator": "email"
-          },
-          "rank": 41.5,
-          "ruleId": "BUSINESS"
         },
         {
           "level": "error",
@@ -282,34 +274,36 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "SSN \nSSN 449-87-4100 on file.\n on file."
+                    "text": "Contact \nContact john.doe@example.com or call 212-555-0142.\n or call 212-555-0142."
                   },
-                  "startLine": 3
+                  "startLine": 1
                 },
                 "region": {
-                  "endColumn": 16,
+                  "endColumn": 29,
                   "snippet": {
-                    "text": "SSN 449-87-4100 on file."
+                    "text": "Contact john.doe@example.com or call 212-555-0142."
                   },
-                  "startColumn": 5,
-                  "startLine": 3
+                  "startColumn": 9,
+                  "startLine": 1
                 }
               }
             }
           ],
           "message": {
-            "text": "Social Security Number Detected in <golden:mixed_pii_basic> at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+            "text": "BUSINESS Detected in <golden:mixed_pii_basic> at line 1 (confidence: 33.0% - LOW). Matched text: 'john.doe@example.com'"
           },
           "properties": {
-            "confidence": 100,
-            "confidenceLevel": "HIGH",
+            "confidence": 33,
+            "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 0,
               "context_doctype": "Unknown",
               "context_domain": "Unknown",
-              "context_impact": 25,
-              "original_confidence": 100,
+              "context_impact": -12,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 33,
               "original_file": "<golden:mixed_pii_basic>",
               "semantic_context": {
                 "FinancialData": 0,
@@ -319,24 +313,30 @@
                 "TestData": 0.1
               },
               "source": "preprocessed_content",
+              "tld": "com",
+              "username": "john.doe",
               "validation_checks": {
-                "digits": true,
-                "format": true,
-                "not_common_pattern": true,
-                "not_repeating": true,
-                "not_sequential": true,
-                "not_test_number": true,
-                "valid_area": true
+                "business_pattern": true,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
               },
               "validation_path": "document"
             },
-            "positiveKeywords": [
-              "ssn"
+            "negativeKeywords": [
+              "example"
             ],
-            "validator": "ssn"
+            "positiveKeywords": [
+              "contact"
+            ],
+            "validator": "email"
           },
-          "rank": 100,
-          "ruleId": "SSN"
+          "rank": 41.5,
+          "ruleId": "BUSINESS"
         }
       ],
       "tool": {
