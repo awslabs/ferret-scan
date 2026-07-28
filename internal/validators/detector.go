@@ -5,6 +5,7 @@ package validators
 
 import (
 	stdctx "context"
+	"sort"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
@@ -75,11 +76,25 @@ func NewDetector(observer observability.Observer) *Detector {
 // DualPathIntegration.SetMetadataValidator). Non-PreprocessorAware metadata
 // validators are wrapped in a MetadataValidatorAdapter, exactly as before.
 func (d *Detector) SetupValidators(validators map[string]detector.Validator) error {
-	for name, v := range validators {
+	// Register in check-name order. Ranging the map directly made registration
+	// order random per process, and registration order decides which validator
+	// gets to claim a span of text first: NPI 1234567893 is a valid NPI AND a
+	// valid 10-digit phone number, so the same input was redacted as
+	// [NPI-REDACTED] on one run and [PHONE-REDACTED] on the next. Nothing
+	// arbitrates between validators claiming the same bytes today (see the
+	// cross-validator overlap follow-up), so until something does, the order
+	// must at least be fixed rather than a coin flip.
+	names := make([]string, 0, len(validators))
+	for name := range validators {
 		if name == "METADATA" {
 			continue // handled separately below
 		}
-		d.bridge.RegisterDocumentValidator(name, v)
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		d.bridge.RegisterDocumentValidator(name, validators[name])
 	}
 
 	if mv, exists := validators["METADATA"]; exists {

@@ -651,8 +651,15 @@ func (dvb *DocumentValidatorBridge) SetObserver(observer observability.Observer)
 	dvb.observer = observer
 }
 
-// validatorResult holds the result from a single validator execution
+// validatorResult holds the result from a single validator execution.
+//
+// index is the validator's position in the registration slice. The fan-out
+// collects results through a channel, so they arrive in goroutine-completion
+// order — a race whose winner changes run to run. Carrying the index lets the
+// collector put each result back where it belongs, making the concatenated
+// match order depend on registration order alone.
 type validatorResult struct {
+	index   int
 	matches []detector.Match
 	err     error
 }
@@ -721,10 +728,12 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 	var errorsMu sync.Mutex
 	validationErrors := make([]error, 0)
 
-	// Launch goroutines for each validator
-	for _, validator := range validators {
+	// Launch goroutines for each validator. The loop index travels with the
+	// result so the collector can restore registration order (see
+	// validatorResult.index).
+	for i, validator := range validators {
 		wg.Add(1)
-		go func(nv namedValidator) {
+		go func(idx int, nv namedValidator) {
 			defer wg.Done()
 
 			// Bound process-wide concurrent validator work (v2 gap 2.1): file
@@ -738,7 +747,7 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 				errorsMu.Lock()
 				validationErrors = append(validationErrors, lerr)
 				errorsMu.Unlock()
-				resultsChan <- validatorResult{matches: nil, err: lerr}
+				resultsChan <- validatorResult{index: idx, matches: nil, err: lerr}
 				return
 			}
 
@@ -773,10 +782,10 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 				// validator error (which discards its partial slice). The error is
 				// still recorded above so the scan is flagged incomplete.
 				if errors.Is(err, execguard.ErrMatchBudgetExceeded) {
-					resultsChan <- validatorResult{matches: matches, err: err}
+					resultsChan <- validatorResult{index: idx, matches: matches, err: err}
 					return
 				}
-				resultsChan <- validatorResult{matches: nil, err: err}
+				resultsChan <- validatorResult{index: idx, matches: nil, err: err}
 				return
 			}
 
@@ -826,8 +835,8 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 				}
 			}
 
-			resultsChan <- validatorResult{matches: matches, err: nil}
-		}(validator)
+			resultsChan <- validatorResult{index: idx, matches: matches, err: nil}
+		}(i, validator)
 	}
 
 	// Wait for all goroutines to complete, but do not block indefinitely on a
@@ -852,25 +861,61 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 		return r.matches != nil && (r.err == nil || errors.Is(r.err, execguard.ErrMatchBudgetExceeded))
 	}
 
+	// Collect into a slot per validator rather than appending in arrival order,
+	// then concatenate by registration order. Results arrive off resultsChan in
+	// goroutine-completion order, which is a race: the same file scanned twice
+	// produced its matches in a different sequence, and that sequence is not
+	// cosmetic downstream. The redactors apply matches by sequentially searching
+	// for each match's text, so with two partially overlapping matches (neither
+	// contained in the other, so both survive overlap resolution) whichever is
+	// applied second can no longer be found — leaving a different substring in
+	// cleartext depending on which goroutine happened to win.
+	perValidator := make([][]detector.Match, len(validators))
+	collect := func(r validatorResult) {
+		if !keepMatches(r) {
+			return
+		}
+		// Defensive: a malformed index would otherwise panic here. Out-of-range
+		// results are appended after the ordered ones rather than dropped.
+		if r.index < 0 || r.index >= len(perValidator) {
+			allMatches = append(allMatches, r.matches...)
+			return
+		}
+		perValidator[r.index] = r.matches
+	}
+
+	// flatten concatenates the collected slots in registration order. Called on
+	// both the completed and the cancelled path (the latter returns early).
+	flatten := func() {
+		total := 0
+		for _, m := range perValidator {
+			total += len(m)
+		}
+		out := make([]detector.Match, 0, total+len(allMatches))
+		for _, m := range perValidator {
+			out = append(out, m...)
+		}
+		// allMatches holds only out-of-range salvage at this point; keep it last.
+		allMatches = append(out, allMatches...)
+	}
+
 	select {
 	case <-done:
 		close(resultsChan)
 		for result := range resultsChan {
-			if keepMatches(result) {
-				allMatches = append(allMatches, result.matches...)
-			}
+			collect(result)
 		}
+		flatten()
 	case <-ctx.Done():
 		for draining := true; draining; {
 			select {
 			case result := <-resultsChan:
-				if keepMatches(result) {
-					allMatches = append(allMatches, result.matches...)
-				}
+				collect(result)
 			default:
 				draining = false
 			}
 		}
+		flatten()
 		if finishTiming != nil {
 			finishTiming(false, map[string]interface{}{
 				"match_count":     len(allMatches),
