@@ -60,6 +60,15 @@ var (
 type Validator struct {
 	patterns         map[string]string
 	compiledPatterns map[string]*regexp.Regexp
+	// patternOrder fixes the order the patterns are applied in. The scan used to
+	// range the patterns map, and Go randomizes map iteration, so when two
+	// patterns matched the SAME span the resulting findings came out in a random
+	// sequence. A real TD3 MRZ line is matched by both "MRZ" and "MRZ_TD3", and
+	// the country name reaches the text report ("Country: MRZ" vs
+	// "Country: MRZ_TD3"), so the same file produced two different reports.
+	// Ordered most-specific-first, so the tightest matching format is the one
+	// reported first.
+	patternOrder []string
 
 	// Keywords that suggest a passport context
 	positiveKeywords []string
@@ -124,13 +133,33 @@ func NewValidator() *Validator {
 		"MRZ_TD3": `\bP<[A-Z]{3}[A-Z0-9<]{39}`,    // MRZ TD3 line 1 (exactly 44 chars)
 	}
 
+	// Application order, most specific format first. MRZ_TD3 (exactly 44 chars)
+	// before MRZ (44-46), and the fixed-shape national formats before the
+	// broadest one (EU's 2 letters + 7 alphanumerics also matches Canada-shaped
+	// and some US-shaped tokens). See Validator.patternOrder for why this is a
+	// slice and not the map's own iteration order.
+	patternOrder := []string{"MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU"}
+
 	compiledPatterns := make(map[string]*regexp.Regexp, len(patterns))
 	for country, pattern := range patterns {
 		compiledPatterns[country] = regexp.MustCompile(pattern)
 	}
 
+	// Guard against patternOrder drifting out of sync with patterns: a pattern
+	// missing from the order would silently stop being applied, which for a
+	// scanner means a passport format that is no longer detected at all.
+	if len(patternOrder) != len(patterns) {
+		panic("passport: patternOrder does not cover every pattern")
+	}
+	for _, name := range patternOrder {
+		if _, ok := patterns[name]; !ok {
+			panic("passport: patternOrder names unknown pattern " + name)
+		}
+	}
+
 	return &Validator{
 		patterns:         patterns,
+		patternOrder:     patternOrder,
 		compiledPatterns: compiledPatterns,
 		positiveKeywords: []string{
 			// High-confidence passport-specific keywords
@@ -359,9 +388,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		lineIsTabular := v.isTabularDataLine(line)
 		lineIsForm := v.isInFormContextLine(lineLower)
 
-		// Check each pattern against the line
-		for country := range v.patterns {
+		// Check each pattern against the line, in the fixed order (see
+		// Validator.patternOrder) rather than the patterns map's random one.
+		for _, country := range v.patternOrder {
 			re := v.compiledPatterns[country]
+			if re == nil {
+				continue
+			}
 			// Use FindAllStringIndex so each match's byte offset is known up
 			// front. This eliminates the per-match strings.Index(line, match)
 			// rescan (O(lineLength) each) AND fixes a latent correctness bug:

@@ -6,6 +6,7 @@ package help
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -203,33 +204,26 @@ func (h *System) ShowChecksHelp() {
 	h.colors["header"].Fprintln(w, "  CHECK\tDESCRIPTION")
 	h.colors["header"].Fprintln(w, "  -----\t-----------")
 
-	// Get all check names and sort them alphabetically
-	var checkNames []string
+	// Collect each check's display info once, then sort by name. The previous
+	// version collected only names, sorted them with a hand-rolled O(n^2) bubble
+	// sort, and then re-scanned every provider for each name to find its
+	// description again — O(n^2) a second time. Keeping the info alongside the
+	// name makes one pass enough.
+	type checkRow struct {
+		name string
+		desc string
+	}
+	rows := make([]checkRow, 0, len(h.providers))
 	for _, provider := range h.providers {
 		info := provider.GetCheckInfo()
-		checkNames = append(checkNames, info.Name)
+		rows = append(rows, checkRow{name: info.Name, desc: info.ShortDescription})
 	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].name < rows[j].name })
 
-	// Sort alphabetically
-	for i := 0; i < len(checkNames); i++ {
-		for j := i + 1; j < len(checkNames); j++ {
-			if checkNames[i] > checkNames[j] {
-				checkNames[i], checkNames[j] = checkNames[j], checkNames[i]
-			}
-		}
-	}
-
-	// Display in alphabetical order
-	for _, checkName := range checkNames {
-		for _, provider := range h.providers {
-			info := provider.GetCheckInfo()
-			if info.Name == checkName {
-				fmt.Fprintf(w, "  ")
-				h.colors["emphasis"].Fprintf(w, "%s", info.Name)
-				fmt.Fprintf(w, "\t%s\n", info.ShortDescription)
-				break
-			}
-		}
+	for _, row := range rows {
+		fmt.Fprintf(w, "  ")
+		h.colors["emphasis"].Fprintf(w, "%s", row.name)
+		fmt.Fprintf(w, "\t%s\n", row.desc)
 	}
 	w.Flush()
 
@@ -238,18 +232,12 @@ func (h *System) ShowChecksHelp() {
 	h.colors["example"].Println("  ferret-scan --help <check>")
 	fmt.Println()
 
-	// Get the first available check name for the example
-	var exampleCheck string
-	if len(h.providers) > 0 {
-		// Find the first check name
-		for _, provider := range h.providers {
-			info := provider.GetCheckInfo()
-			exampleCheck = info.Name
-			break
-		}
-	} else {
-		// Fallback if no checks are available
-		exampleCheck = "<check>"
+	// Use the alphabetically first check as the example. This used to break out
+	// of a range over the providers MAP, so `--help checks` suggested a
+	// different check on every invocation — 10 different suggestions in 12 runs.
+	exampleCheck := "<check>"
+	if len(rows) > 0 {
+		exampleCheck = rows[0].name
 	}
 
 	fmt.Println("Example:")

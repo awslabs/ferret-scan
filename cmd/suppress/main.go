@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 )
@@ -74,8 +75,16 @@ func listSuppressions(manager *suppressions.SuppressionManager) {
 		}
 		if len(rule.Metadata) > 0 {
 			fmt.Println("Metadata:")
-			for k, v := range rule.Metadata {
-				fmt.Printf("  %s: %s\n", k, v)
+			// Sorted: this is printed output, and ranging the map listed the same
+			// rule's metadata in a different order each run, so `--action list`
+			// could not be diffed between invocations.
+			keys := make([]string, 0, len(rule.Metadata))
+			for k := range rule.Metadata {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Printf("  %s: %s\n", k, rule.Metadata[k])
 			}
 		}
 		fmt.Println("---")

@@ -6,6 +6,7 @@ package preprocessors
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -287,11 +288,19 @@ func (el *ErrorLogger) LogError(err *MediaProcessingError) {
 
 	message := fmt.Sprintf("[%s] %s", el.getLevelString(level), err.Error())
 
-	// Add context information
+	// Add context information. Keys are sorted because this string is printed:
+	// ranging the map directly put the same error's context fields in a
+	// different order on every run, so two logs of the identical failure could
+	// not be diffed or grep-matched with a fixed pattern.
 	if len(err.Context) > 0 {
-		var contextParts []string
-		for key, value := range err.Context {
-			contextParts = append(contextParts, fmt.Sprintf("%s=%v", key, value))
+		keys := make([]string, 0, len(err.Context))
+		for key := range err.Context {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		contextParts := make([]string, 0, len(keys))
+		for _, key := range keys {
+			contextParts = append(contextParts, fmt.Sprintf("%s=%v", key, err.Context[key]))
 		}
 		message += fmt.Sprintf(" context=[%s]", strings.Join(contextParts, " "))
 	}

@@ -203,6 +203,21 @@ func ValidatePath(path string) error {
 
 // validateWindowsPath validates a Windows path
 func validateWindowsPath(path string) error {
+	// A NUL byte is invalid in a path on every platform: Win32 treats it as the
+	// string terminator, and Go's own syscall layer rejects it outright, so a
+	// path containing one can never open the file the caller named. The Unix
+	// validator already rejected it; this one silently accepted it, so a config
+	// with an embedded NUL passed validation on Windows and failed later at the
+	// syscall with a far less obvious error.
+	for _, char := range path {
+		if char == 0 {
+			return &PathValidationError{
+				Path:   path,
+				Reason: "contains null byte",
+			}
+		}
+	}
+
 	// Check for invalid characters
 	invalidChars := []rune{'<', '>', ':', '"', '|', '?', '*'}
 	for i, char := range path {
