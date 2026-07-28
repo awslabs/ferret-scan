@@ -5,6 +5,7 @@ package preprocessors
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
@@ -120,8 +121,16 @@ func (omp *OfficeMetadataPreprocessor) formatOfficeMetadata(meta *meta_extract_o
 	// HIGH-RISK FIELDS: Custom properties (critical organizational metadata)
 	if len(meta.CustomProps) > 0 {
 		result.WriteString("\n--- Custom Properties ---\n")
-		for key, value := range meta.CustomProps {
-			result.WriteString(formatter.FormatMetadataField("Custom_"+key, value))
+		// Sorted, not map order: see FormatPropertiesMap. Purview/SharePoint
+		// labelled documents carry a dozen-plus sibling keys here, so a random
+		// permutation moves every line below this block.
+		customKeys := make([]string, 0, len(meta.CustomProps))
+		for key := range meta.CustomProps {
+			customKeys = append(customKeys, key)
+		}
+		sort.Strings(customKeys)
+		for _, key := range customKeys {
+			result.WriteString(formatter.FormatMetadataField("Custom_"+key, meta.CustomProps[key]))
 		}
 	}
 

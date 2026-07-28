@@ -4,6 +4,8 @@
 package router
 
 import (
+	"sort"
+
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 )
 
@@ -35,19 +37,26 @@ func (r *PreprocessorRegistry) Create(name string, config map[string]interface{}
 	return nil
 }
 
-// GetRegisteredNames returns all registered preprocessor names
+// GetRegisteredNames returns all registered preprocessor names, sorted.
+//
+// Sorted rather than map order: callers use this to create and then run
+// preprocessors, and Go randomizes map iteration per range, so an unsorted
+// result made the preprocessor set order differ between processes.
 func (r *PreprocessorRegistry) GetRegisteredNames() []string {
 	names := make([]string, 0, len(r.factories))
 	for name := range r.factories {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 
-// CreateAll creates all registered preprocessors with given configuration
+// CreateAll creates all registered preprocessors with given configuration, in a
+// stable (name-sorted) order.
 func (r *PreprocessorRegistry) CreateAll(config map[string]interface{}) []preprocessors.Preprocessor {
-	var processors []preprocessors.Preprocessor
-	for name := range r.factories {
+	names := r.GetRegisteredNames()
+	processors := make([]preprocessors.Preprocessor, 0, len(names))
+	for _, name := range names {
 		if processor := r.Create(name, config); processor != nil {
 			processors = append(processors, processor)
 		}

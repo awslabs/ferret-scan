@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -117,8 +118,18 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 		return nil, fmt.Errorf("no preprocessor can handle file: %s", filePath)
 	}
 
+	// Sort by name so the assembly order below is a property of the file type,
+	// not of how the registry happened to be iterated. For Office and PDF files
+	// this puts "Text Extractor" ahead of "office_metadata"/"pdf_metadata", so
+	// the document body is the leading section and each metadata block carries
+	// an explicit "--- name ---" header.
+	sort.Slice(capable, func(i, j int) bool {
+		return capable[i].GetName() < capable[j].GetName()
+	})
+
 	// Run ALL capable preprocessors in parallel
 	type preprocessorResult struct {
+		idx      int
 		name     string
 		result   *preprocessors.ProcessedContent
 		err      error
@@ -128,8 +139,8 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	resultChan := make(chan preprocessorResult, len(capable))
 
 	// Start all preprocessors in parallel
-	for _, p := range capable {
-		go func(processor preprocessors.Preprocessor) {
+	for i, p := range capable {
+		go func(idx int, processor preprocessors.Preprocessor) {
 			processStart := time.Now()
 
 			// Recover from any panics in preprocessors to prevent crashing the whole scan
@@ -147,15 +158,24 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 			processingTime := time.Since(processStart)
 
 			resultChan <- preprocessorResult{
+				idx:      idx,
 				name:     processor.GetName(),
 				result:   result,
 				err:      err,
 				duration: processingTime,
 			}
-		}(p)
+		}(i, p)
 	}
 
 	// Collect results.
+	//
+	// Drain into a slice indexed by LAUNCH position, not by arrival position.
+	// Preprocessors run concurrently, so consuming the channel in completion
+	// order made the assembled text — and therefore every line number reported
+	// against it — depend on which goroutine won the race. For a .docx both
+	// "Text Extractor" and "office_metadata" are capable, so the metadata block
+	// landed above or below the body at random, and findings shifted by the
+	// height of that block between two scans of the same file (issue #179).
 	//
 	// The overwhelmingly common case is a single successful preprocessor (one
 	// file type → one extractor). For that case we must NOT copy the extracted
@@ -164,21 +184,24 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	// extracted PDF), even though String() itself is zero-copy. So we keep a
 	// direct reference to the sole result's text (firstText) and only fall back
 	// to the strings.Builder when a SECOND successful preprocessor arrives and
-	// we genuinely have to concatenate with separators. The builder path
-	// reproduces the original output byte-for-byte (first text, then
-	// "\n\n--- name ---\n" + text for each subsequent processor, in arrival
-	// order); the single-processor path yields Text == firstText exactly, since
-	// the original never prepends a separator to the first write. (v2 gap 2.3:
-	// eliminate the combine-step second copy.)
+	// we genuinely have to concatenate with separators. The builder path emits
+	// the first successful text, then "\n\n--- name ---\n" + text for each
+	// subsequent processor, in sorted-name order; the single-processor path
+	// yields Text == firstText exactly, since no separator is prepended to the
+	// first write. (v2 gap 2.3: eliminate the combine-step second copy.)
+	ordered := make([]preprocessorResult, len(capable))
+	for i := 0; i < len(capable); i++ {
+		pResult := <-resultChan
+		ordered[pResult.idx] = pResult
+	}
+
 	var combinedContent strings.Builder
 	var firstText string
 	var combinedMetadata = make(map[string]interface{})
 	var totalWordCount, totalCharCount, totalLineCount int
 	var successfulProcessors []string
 
-	for i := 0; i < len(capable); i++ {
-		pResult := <-resultChan
-
+	for _, pResult := range ordered {
 		if pResult.err == nil && pResult.result != nil && pResult.result.Success && pResult.result.Text != "" {
 			if len(successfulProcessors) == 0 {
 				// First success: reference its text directly (no copy).
@@ -186,7 +209,7 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 			} else {
 				// Second+ success: we are truly combining. Flush the stashed
 				// first text into the builder once, then append this one with a
-				// separator — identical bytes to the original loop.
+				// separator.
 				if combinedContent.Len() == 0 {
 					combinedContent.WriteString(firstText)
 				}
