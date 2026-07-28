@@ -246,6 +246,40 @@ func TestExtractVideoMetadata_RecognizedIlstTagsFillTypedFields(t *testing.T) {
 	}
 }
 
+// TestExtractIlstGPS_ReportedOnceNotTwice pins the one user-visible change in
+// finding COUNT, so nobody reading a 2 -> 1 drop mistakes it for lost recall.
+//
+// With the ©xyz arm unreachable, the ilst default arm stored the coordinate under
+// the raw atom type as a property name. The emitted text then carried the same
+// location twice: once as the real GPS_Coordinates line (the Apple raw-byte
+// fallback still found it) and once as "\xa9xyz: 36 deg 21' 2.16\" N, ...", which
+// the metadata validator flagged as a second, separate VIDEO_METADATA finding.
+// One coordinate in the file, two findings in the report, one of them keyed on
+// mojibake. Routing the atom to its handler reports it once.
+func TestExtractIlstGPS_ReportedOnceNotTwice(t *testing.T) {
+	const dms = `36 deg 21' 2.16" N, 82 deg 41' 54.60" W`
+	path := writeTestMP4(t, "clip.mp4", mp4ItunesTag(wireAtom("xyz"), dms))
+
+	md, err := ExtractVideoMetadata(path)
+	if err != nil {
+		t.Fatalf("ExtractVideoMetadata: %v", err)
+	}
+
+	out := md.ToProcessedContent()
+	if !strings.Contains(out, "GPS_Coordinates: 36.350600, -82.698500") {
+		t.Errorf("the coordinate is not reported in its typed field:\n%s", out)
+	}
+
+	// The duplicate was a whole extra emitted line keyed on the raw atom type.
+	// Assert on the wire form, since that is what leaked into the key.
+	if strings.Contains(out, "\xa9xyz") || strings.Contains(out, "©xyz") {
+		t.Errorf("the raw atom type is still emitted as a property, so the coordinate is reported twice:\n%s", out)
+	}
+	if n := strings.Count(out, dms); n != 0 {
+		t.Errorf("the unparsed DMS string is emitted %d time(s) alongside the parsed coordinate:\n%s", n, out)
+	}
+}
+
 // TestExtractVideoMetadata_UdtaDeterministic: this fix newly populates several
 // properties, and Properties is a map. Emitted text must still be stable.
 //
