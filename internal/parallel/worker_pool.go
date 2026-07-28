@@ -107,6 +107,17 @@ type Result struct {
 	// that Error drives in parallel_processor. Nil when validation completed.
 	ValidationError error
 
+	// RedactionError is the error from the post-scan redaction step, if any
+	// (e.g. no redactor is registered for this file's extension, or writing the
+	// redacted copy failed). Like ValidationError it is kept SEPARATE from
+	// Error, and for the same reason turned up the other way round: redaction
+	// runs strictly AFTER the file has been read, extracted and validated, so a
+	// redaction failure cannot invalidate matches that were already found.
+	// Folding it into Error made the collector discard them — the file's
+	// findings vanished from every output while the run still reported success.
+	// Nil when redaction was disabled, skipped (no matches) or succeeded.
+	RedactionError error
+
 	// Redaction results
 	RedactionResult *redactors.RedactionResult
 	RedactedPath    string
@@ -224,6 +235,7 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	var allMatches []detector.Match
 	var lastError error
 	var validationErr error // captured for Result.ValidationError, always (not just --debug)
+	var redactionErr error  // captured for Result.RedactionError; never folded into lastError
 	var processedContent *preprocessors.ProcessedContent
 
 	// Wrap file processing with resilience
@@ -321,11 +333,19 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	var redactedPath string
 
 	if job.Config.EnableRedaction && job.RedactionManager != nil && len(allMatches) > 0 && processedContent != nil {
-		// Perform redaction using the same extracted content
+		// Perform redaction using the same extracted content. A failure here is
+		// recorded in redactionErr ONLY — it must never reach lastError. This
+		// step runs after the file has already been read, extracted and
+		// validated, so the matches in allMatches are complete and correct
+		// regardless of whether a redacted copy could be produced. Promoting a
+		// redaction failure to Result.Error made the collector take its
+		// error branch, which drops the file's matches and does not count the
+		// file: a source file with no registered redactor (.go, .py, ...) had
+		// its findings erased from every output format while the scan still
+		// reported "0 skipped" and exited 0.
 		redactionResult, redactedPath, err = wp.performInlineRedaction(job, allMatches, processedContent)
-		if err != nil && lastError == nil {
-			// Only set error if we didn't already have one
-			lastError = err
+		if err != nil {
+			redactionErr = err
 		}
 	}
 
@@ -333,11 +353,12 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 
 	if finishTiming != nil {
 		finishTiming(lastError == nil, map[string]interface{}{
-			"worker_id":   workerID,
-			"match_count": len(allMatches),
-			"duration_ms": duration.Milliseconds(),
-			"had_error":   lastError != nil,
-			"redacted":    redactionResult != nil,
+			"worker_id":       workerID,
+			"match_count":     len(allMatches),
+			"duration_ms":     duration.Milliseconds(),
+			"had_error":       lastError != nil,
+			"redacted":        redactionResult != nil,
+			"redaction_error": redactionErr != nil,
 		})
 	}
 
@@ -347,6 +368,7 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		Matches:         allMatches,
 		Error:           lastError,
 		ValidationError: validationErr,
+		RedactionError:  redactionErr,
 		Duration:        duration,
 		RedactionResult: redactionResult,
 		RedactedPath:    redactedPath,

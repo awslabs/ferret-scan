@@ -37,6 +37,15 @@ type ProcessingStats struct {
 	// to set ScanResult.Incomplete — distinguishing "scanned clean" from "did
 	// not finish scanning".
 	IncompleteFiles []FileDiagnostic `json:"incomplete_files,omitempty"`
+
+	// UnredactedFiles lists files that HAVE findings but for which no redacted
+	// copy could be produced (populated from Result.RedactionError; empty unless
+	// --enable-redaction is on). These files' findings are reported normally —
+	// the scan saw them — but the sensitive values remain in cleartext at the
+	// original path with no output artifact. Callers must surface this: a
+	// redaction run whose whole purpose is to produce shareable copies has
+	// silently not done so for these files.
+	UnredactedFiles []FileDiagnostic `json:"unredacted_files,omitempty"`
 }
 
 // FileDiagnostic records that a single file's validation did not complete
@@ -103,6 +112,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 	processedCount := 0
 	totalDuration := time.Duration(0)
 	var incompleteFiles []FileDiagnostic
+	var unredactedFiles []FileDiagnostic
 
 	for i := 0; i < jobCount; i++ {
 		result := <-pp.workerPool.Results()
@@ -116,6 +126,27 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 				FilePath: result.FilePath,
 				Reason:   result.ValidationError.Error(),
 			})
+		}
+		// Record a file whose findings could not be redacted. Handled the same
+		// way as degraded validator coverage — as a diagnostic, NOT as a fatal
+		// error — so the file still contributes its matches below. Redaction
+		// runs after validation, so a redaction failure says nothing about the
+		// correctness of what was found; treating it as fatal is what silently
+		// erased findings for every file type with no registered redactor.
+		if result.RedactionError != nil {
+			unredactedFiles = append(unredactedFiles, FileDiagnostic{
+				FilePath: result.FilePath,
+				Reason:   result.RedactionError.Error(),
+			})
+			if pp.observer != nil {
+				pp.observer.LogOperation(observability.StandardObservabilityData{
+					Component: "parallel_processor",
+					Operation: "file_redaction",
+					FilePath:  result.FilePath,
+					Success:   false,
+					Error:     result.RedactionError.Error(),
+				})
+			}
 		}
 		if result.Error != nil {
 			if pp.observer != nil {
@@ -150,6 +181,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 		WorkerCount:     pp.workerPool.workers,
 		AvgFileTime:     totalDuration / time.Duration(max(processedCount, 1)),
 		IncompleteFiles: incompleteFiles,
+		UnredactedFiles: unredactedFiles,
 	}
 
 	if finishTiming != nil {

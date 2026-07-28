@@ -82,6 +82,56 @@ func TestRedactFile_CleanFileIsCopiedThrough(t *testing.T) {
 	}
 }
 
+// TestRedactFile_UnredactableFileTypeIsAnError pins the hard-error guard. A
+// source file has no registered redactor, so its findings cannot be masked. The
+// only safe outcome is an error: returning success would hand the caller a path
+// that RedactFile's own doc comment calls "safe to share", and RedactionCount
+// would read 0 — indistinguishable from a genuinely clean file. The clean-file
+// passthrough made that worse by copying the original there verbatim.
+func TestRedactFile_UnredactableFileTypeIsAnError(t *testing.T) {
+	in := t.TempDir()
+	out := t.TempDir()
+	// Reserved documentation values, in a file type with no redactor.
+	src := writeTemp(t, in, "creds.go",
+		"package main\n\nconst key = \"AKIAIOSFODNN7EXAMPLE\" // jordan@example.com\n")
+
+	res, err := RedactFile(RedactConfig{
+		FilePath:  src,
+		OutputDir: out,
+		Checks:    []string{"all"},
+		Config:    config.LoadConfigOrDefault(""),
+		LogWriter: io.Discard,
+	})
+	if err == nil {
+		t.Fatalf("expected an error for an unredactable file type; got result %+v", res)
+	}
+	if !strings.Contains(err.Error(), "could not redact") {
+		t.Errorf("error should say redaction failed, got: %v", err)
+	}
+	if res != nil {
+		t.Errorf("no result may be returned alongside the error, got %+v", res)
+	}
+
+	// And nothing may have been written under the output dir — the leak was a
+	// cleartext copy at a path the caller treats as sanitized.
+	err = filepath.Walk(out, func(path string, info os.FileInfo, werr error) error {
+		if werr != nil || info.IsDir() {
+			return werr
+		}
+		data, rerr := os.ReadFile(path) // #nosec G304 - test-controlled temp path
+		if rerr != nil {
+			return rerr
+		}
+		if strings.Contains(string(data), "AKIAIOSFODNN7EXAMPLE") {
+			t.Errorf("cleartext value was copied to the output path %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking output dir: %v", err)
+	}
+}
+
 func TestRedactFile_DefaultsToFormatPreserving(t *testing.T) {
 	in := t.TempDir()
 	out := t.TempDir()

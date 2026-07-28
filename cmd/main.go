@@ -649,6 +649,30 @@ func writeIncompleteCoverageWarning(w io.Writer, incompleteFiles []parallel.File
 	return true
 }
 
+// writeUnredactedFilesWarning emits a warning to w for every file that HAS
+// findings but for which no redacted copy could be written (no redactor is
+// registered for the extension, or the write failed). It returns true if a
+// warning was written.
+//
+// This is the counterpart to writeIncompleteCoverageWarning, and the two mean
+// opposite things: incomplete coverage says findings may be MISSING, this says
+// the findings were found and reported but the sensitive values were NOT
+// redacted anywhere — they remain in cleartext at the original path with no
+// shareable artifact. Silence here is the dangerous case, because the point of
+// --enable-redaction is to produce those artifacts. Goes to stderr (never
+// stdout/JSON) and never changes the exit code.
+func writeUnredactedFilesWarning(w io.Writer, unredactedFiles []parallel.FileDiagnostic, totalFiles int) bool {
+	if len(unredactedFiles) == 0 {
+		return false
+	}
+	fmt.Fprintf(w, "WARNING: redaction incomplete — %d of %d file(s) have findings but no redacted copy was written; the original values remain in cleartext:\n",
+		len(unredactedFiles), totalFiles)
+	for _, fd := range unredactedFiles {
+		fmt.Fprintf(w, "  %s: %s\n", fd.FilePath, fd.Reason)
+	}
+	return true
+}
+
 // extractedFlags holds safely extracted flag values to avoid repeated nil checks
 type extractedFlags struct {
 	webMode              bool
@@ -1457,6 +1481,12 @@ func main() {
 	// Populated from ProcessingStats.IncompleteFiles below and surfaced as a
 	// stderr warning so a partially-scanned run is never silently reported clean.
 	var incompleteFiles []parallel.FileDiagnostic
+	// unredactedFiles captures files that HAVE findings but for which no redacted
+	// copy could be written (no registered redactor for the extension, or a write
+	// failure). Only ever non-empty with --enable-redaction. Surfaced as its own
+	// stderr warning: the findings are still reported, but the sensitive values
+	// remain in cleartext at the original path with no shareable artifact.
+	var unredactedFiles []parallel.FileDiagnostic
 
 	// Suppress progress messages in pre-commit mode or quiet mode
 	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
@@ -1573,6 +1603,7 @@ func main() {
 			allMatches = append(allMatches, parallelMatches...)
 			processedFiles = stats.ProcessedFiles
 			incompleteFiles = stats.IncompleteFiles
+			unredactedFiles = stats.UnredactedFiles
 
 			// Handle inline redaction results if redaction was enabled
 			if finalConfig.enableRedaction && redactionManager != nil {
@@ -1636,6 +1667,7 @@ func main() {
 	// unchanged (default still 0) — this is an advisory warning.
 	if precommitConfig == nil {
 		writeIncompleteCoverageWarning(os.Stderr, incompleteFiles, len(supportedFiles))
+		writeUnredactedFilesWarning(os.Stderr, unredactedFiles, len(supportedFiles))
 	}
 
 	// Advisory explanation pass (opt-in via --explain). Annotate the full
