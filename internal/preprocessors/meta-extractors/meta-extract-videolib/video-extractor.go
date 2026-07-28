@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1195,9 +1196,17 @@ func (vm *VideoMetadata) ToProcessedContent() string {
 		content.WriteString(fmt.Sprintf("Software: %s\n", vm.Software))
 	}
 
-	// Additional properties
-	for key, value := range vm.Properties {
-		if value != "" {
+	// Additional properties, emitted in sorted key order. Ranging over the map
+	// directly made the extracted text (and therefore finding line numbers and
+	// the byte-for-byte redaction output) vary run to run — verified on a real
+	// .mov. The image metadata path already sorts its keys for this reason.
+	propKeys := make([]string, 0, len(vm.Properties))
+	for key := range vm.Properties {
+		propKeys = append(propKeys, key)
+	}
+	sort.Strings(propKeys)
+	for _, key := range propKeys {
+		if value := vm.Properties[key]; value != "" {
 			content.WriteString(fmt.Sprintf("%s: %s\n", key, value))
 		}
 	}
