@@ -6,6 +6,7 @@ package audiolib
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -144,9 +145,18 @@ func (am *AudioMetadata) ToProcessedContent() string {
 		content.WriteString(fmt.Sprintf("Engineer: %s\n", am.Engineer))
 	}
 
-	// Additional properties
-	for key, value := range am.Properties {
-		if value != "" {
+	// Additional properties, emitted in sorted key order. Ranging over the map
+	// directly made the extracted text (and therefore every finding's line
+	// number, and the byte-for-byte redaction output) vary run to run — verified
+	// on a real .m4a where EncodingTool jumped lines between runs. The image
+	// metadata path already sorts its keys for exactly this reason.
+	propKeys := make([]string, 0, len(am.Properties))
+	for key := range am.Properties {
+		propKeys = append(propKeys, key)
+	}
+	sort.Strings(propKeys)
+	for _, key := range propKeys {
+		if value := am.Properties[key]; value != "" {
 			content.WriteString(fmt.Sprintf("%s: %s\n", key, value))
 		}
 	}
