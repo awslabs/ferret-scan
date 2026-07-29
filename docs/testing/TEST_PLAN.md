@@ -246,3 +246,37 @@ It executes what it can and prints one line per dimension — `RAN`, `N/A becaus
 NEEDS-MANUAL whenever production code changed, because those need a fixture that exercises *your*
 change and no script can invent one. Paste the output in the PR; leaving a NEEDS-MANUAL item unrun
 is how a cleartext leak ships.
+
+## Green individually is not green together
+
+Every dimension above tests one change against `main`. That is necessary and not sufficient: two
+changes can each be correct against `main`, merge with no textual conflict, and still be wrong
+together. GitHub will report "no conflicts" for both, because it only compares text.
+
+This is not hypothetical. One PR added a golden case that snapshotted a duplicate MRZ finding;
+another PR made the duplicate stop happening. Different files, clean merge, both green alone, red
+together — and nothing in CI looked at the pair.
+
+So before a batch lands, test the union:
+
+```bash
+make integration-branch                  # merge every open PR, run the gates on the result
+make integration-branch PAIRWISE=1       # also build the conflict matrix (slower, N^2/2 merges)
+make integration-branch NO_TEST=1        # merges only, when you just want the conflict report
+```
+
+It leaves the merged result on a local branch (`integration/all-open-prs`) so a red union is
+something you can check out and look at, rather than a log line.
+
+Two things worth knowing when it reports a problem:
+
+- **A textual conflict is usually an anchor collision, not a disagreement.** Two PRs appending a
+  case at the tail of the same list, or a subsection under the same heading, conflict without
+  contradicting each other. Fix it by moving one to a distinct anchor — a new top-level heading, a
+  different insertion point — not by picking a winner. Note that a blind "keep both" on adjacent Go
+  struct literals glues them into one literal and fails to compile; the resolution needs the `},{`.
+- **A semantic collision belongs to whichever change lands second.** If the union is red because a
+  behavior fix moved a snapshot another PR recorded, merge the fix into the snapshot branch and
+  regenerate there, with the case description updated to say what the row gates *now*. Regenerating
+  a golden to make red go away, without establishing which change is right, converts a caught
+  collision into a shipped one.
