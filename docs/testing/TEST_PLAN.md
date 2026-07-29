@@ -218,7 +218,19 @@ Work lands as a conflict-free sequence, so:
 When in doubt, run more. The cost of an extra `go test ./...` is seconds; the cost of a
 shipped redaction bypass is a cleartext leak.
 
-### Run the checklist mechanically
+---
+
+## Security reporting
+
+A newly discovered vulnerability is reported to AWS/Amazon Security via the
+[vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/)
+**before** any public write-up — never as a public GitHub issue (`CONTRIBUTING.md`).
+A remediation for an *already-documented* threat-model item (e.g. a `THREAT_MODEL.md`
+row) is ordinary tracked work and ships as a normal PR.
+
+---
+
+## Run the checklist mechanically
 
 Reciting these dimensions is not the same as running them, and a dimension that is simply absent
 from a PR description is indistinguishable from one that was considered and dismissed. So enumerate
@@ -234,13 +246,3 @@ It executes what it can and prints one line per dimension — `RAN`, `N/A becaus
 NEEDS-MANUAL whenever production code changed, because those need a fixture that exercises *your*
 change and no script can invent one. Paste the output in the PR; leaving a NEEDS-MANUAL item unrun
 is how a cleartext leak ships.
-
----
-
-## Security reporting
-
-A newly discovered vulnerability is reported to AWS/Amazon Security via the
-[vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/)
-**before** any public write-up — never as a public GitHub issue (`CONTRIBUTING.md`).
-A remediation for an *already-documented* threat-model item (e.g. a `THREAT_MODEL.md`
-row) is ordinary tracked work and ships as a normal PR.
