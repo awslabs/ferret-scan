@@ -218,6 +218,38 @@ Work lands as a conflict-free sequence, so:
 When in doubt, run more. The cost of an extra `go test ./...` is seconds; the cost of a
 shipped redaction bypass is a cleartext leak.
 
+### Ask what SINK consumes what you changed
+
+The table above is easy to recite and easy to misapply. Reciting a dimension is not
+running it. The reliable question is not "which row am I in?" but **"what downstream sink
+consumes the thing I just changed?"**:
+
+| Changed | Sinks that must be exercised |
+|---|---|
+| Byte offsets / spans | redaction (writes at those offsets) **and** the suppression hash (embeds position) |
+| Match order | redaction — replacement is a destructive sequential rewrite, so order decides the result |
+| Confidence | suppression hash (embeds `%.2f`) **and** every band filter (`--confidence`, exit codes) |
+| Match text | `--show-match`, the suppression `context_hash`, redaction token length |
+| Detection (new/lost findings) | redaction output, `stats.suppressed` counts, all 7 formats |
+
+**Before opening any PR, write the checklist out and mark every dimension either
+`RAN <command> → <result>` or `N/A because <reason>`.** "Probably unaffected" is not a
+reason. This exists because a perf change that only moved offset *computation* shipped
+with no redaction or suppression run: scan output was byte-identical, which felt like
+proof, but the offsets it rewrote are exactly what the redactor writes at and what the
+suppression hash embeds.
+
+Two traps specific to this repo:
+
+- **Container formats.** Grepping a redacted `.xlsx`/`.docx` for cleartext PII searches
+  *compressed* bytes and returns zero — indistinguishable from a clean pass. Read the part
+  inside the zip (`xl/sharedStrings.xml`, `word/document.xml`) and also count redaction
+  tokens, to prove the redactor rewrote content instead of copying the container through.
+- **Suppression must be tested cross-binary.** Generate the suppression file with the
+  **parent** binary and apply it with the **fixed** one. Same-binary round-tripping passes
+  even when the hash inputs changed; the cross-binary run is what proves existing
+  suppression files in the wild still match.
+
 ---
 
 ## Security reporting
