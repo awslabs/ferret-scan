@@ -439,6 +439,82 @@ var disqualifierKeywords = map[string]bool{
 	"placeholder": true, "fake": true, "mock": true, "demo": true,
 }
 
+// dobLabelForms are the label spellings that mark a value as a date of birth.
+// Used to decide whether a disqualifier modifies the label (see
+// disqualifierModifiesLabel); the earliest occurrence wins, so order is for
+// readability only.
+var dobLabelForms = []string{
+	"date of birth", "date-of-birth", "date_of_birth",
+	"patient dob", "applicant dob", "member dob",
+	"birthdate", "birth date", "dob",
+}
+
+// disqualifierModifiesLabel reports whether a synthetic-data keyword is
+// positioned so that it describes THE DATE, rather than merely appearing
+// somewhere in the same context.
+//
+// Two positions qualify:
+//
+//   - BEFORE the DOB label. Synthetic fixtures attach the marker to the label:
+//     "Test DOB: 01/01/2000", "sample patient dob 3/14/87", "example date of
+//     birth". Real records put the label first.
+//
+//   - As the FIRST WORD of an aside immediately after the value, separated only
+//     by punctuation: "DOB: 03/14/1987 (test)", "dob 3/14/87 -- sample data".
+//
+// A clause with its own subject after the value does not qualify, which is what
+// keeps "Patient DOB: 03/14/1987, blood sample collected at intake" reported.
+//
+// This is the same rule driverslicense uses. It was chosen there over two
+// alternatives that were measured and rejected: a plain distance threshold (the
+// real and synthetic classes interleave, so no cutoff separates them) and a
+// compound-noun list of clinical terms (overfit -- it scored 6/12 on held-out
+// phrasings, and every miss was a REAL record classified as synthetic).
+func disqualifierModifiesLabel(lowerLine string, context detector.ContextInfo) bool {
+	labelAt := -1
+	for _, form := range dobLabelForms {
+		if i := strings.Index(lowerLine, form); i >= 0 && (labelAt < 0 || i < labelAt) {
+			labelAt = i
+		}
+	}
+
+	// No recognizable label in the line: keep the old conservative behavior.
+	if labelAt < 0 {
+		return true
+	}
+
+	// A disqualifier anywhere before the label modifies it.
+	if labelAt > 0 {
+		prefix := lowerLine[:labelAt]
+		for kw := range disqualifierKeywords {
+			if containsKeyword(prefix, kw) {
+				return true
+			}
+		}
+	}
+
+	// A disqualifier opening an aside right after the value is an apposition on
+	// the value. AfterText is the post-match window the caller already computed,
+	// so this needs no rescan of the line.
+	after := strings.ToLower(context.AfterText)
+	j := 0
+	for j < len(after) && strings.IndexByte(" \t-/(<[|,;:#>", after[j]) >= 0 {
+		j++
+	}
+	word := after[j:]
+	end := 0
+	for end < len(word) && isWordByteASCII(word[end]) {
+		end++
+	}
+	return disqualifierKeywords[word[:end]]
+}
+
+// isWordByteASCII reports whether b is a letter, digit or underscore.
+func isWordByteASCII(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') || b == '_'
+}
+
 // dobLineKeywords holds the keyword tallies for one line. Every field is a pure
 // function of the line, so they are computed ONCE per line and reused for every
 // candidate date on it.
@@ -515,9 +591,29 @@ func (v *Validator) analyzeContextWith(lowerLine string, context detector.Contex
 	contextNegativeCount := lk.contextNegativeCount
 	hasDisqualifier := lk.hasDisqualifier
 
-	// Disqualifiers (test/example/fake/mock) ALWAYS suppress, even with strong
-	// positive keywords. "Test DOB: 01/01/2000" is synthetic data, not real PII.
-	if hasDisqualifier {
+	// Disqualifiers (test/example/fake/mock) suppress even a strong positive
+	// label, because "Test DOB: 01/01/2000" is synthetic data rather than real
+	// PII -- but only when the disqualifier actually MODIFIES the label.
+	//
+	// It used to fire on the disqualifier appearing anywhere in the context, with
+	// no positional bound at all, which deleted real records:
+	//
+	//   "Patient DOB: 03/14/1987, blood sample collected at intake"  -> nothing
+	//   "Patient DOB: 03/14/1987, blood collected at intake"         -> reported
+	//
+	// "sample collected", "sample submitted" and "specimen sample" are ordinary
+	// clinical vocabulary that co-occurs with a patient's date of birth on every
+	// lab requisition. Because only reported findings are handed to the redactor,
+	// and a file with no findings has no redacted output written at all, the DOB
+	// stayed in cleartext.
+	//
+	// The positional rule is the one already used for driver's licences: the
+	// disqualifier counts when it precedes the DOB label ("Test DOB:", "sample
+	// patient dob") or opens an aside immediately after the value ("DOB:
+	// 03/14/1987 (test)"). A disqualifier sitting in a following clause with its
+	// own subject does not. When there is NO strong positive label the old
+	// behavior is kept: the disqualifier is then the best signal available.
+	if hasDisqualifier && (!hasStrongPositive || disqualifierModifiesLabel(lowerLine, context)) {
 		impact -= 50.0
 		return impact
 	}

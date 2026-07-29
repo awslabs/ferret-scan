@@ -147,7 +147,8 @@ type medicalLineContext struct {
 	// is not hard-dropped.
 	nonMedHardKW bool
 	nonMedSoftKW bool
-	nonInsKW     bool // nonInsuranceKeywordPresent (insurance suppressor keywords)
+	nonInsKW     bool // nonInsuranceKeywordPresent (different NUMBER TYPE; always suppresses)
+	nonInsSoftKW bool // nonInsuranceSoftKeywordPresent (identifier LABELS; suppress only without an insurance keyword)
 }
 
 // scanLine scans a single line for all medical ID types.
@@ -187,6 +188,7 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 		nonMedHardKW: v.nonMedicalHardKeywordPresent(lowerLine),
 		nonMedSoftKW: v.nonMedicalSoftKeywordPresent(lowerLine),
 		nonInsKW:     v.nonInsuranceKeywordPresent(lowerLine),
+		nonInsSoftKW: v.nonInsuranceSoftKeywordPresent(lowerLine),
 	}
 
 	// scanMatches runs one regex over the line, polling ctx between matches so a
@@ -479,7 +481,11 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lc medica
 	}
 
 	// Skip if it looks like a common non-insurance pattern
-	if lc.nonInsKW || v.looksLikeNonInsuranceIDShape(match, lc.insKeyword) {
+	// Two tiers, mirroring evaluateMRN: a different number type always
+	// suppresses; an identifier LABEL suppresses only when no insurance keyword
+	// is present, so a labelled member ID beside "patient account 88213" survives.
+	if lc.nonInsKW || (lc.nonInsSoftKW && !lc.insKeyword) ||
+		v.looksLikeNonInsuranceIDShape(match, lc.insKeyword) {
 		return detector.Match{}, false
 	}
 
@@ -865,10 +871,44 @@ func (v *Validator) looksLikeNonMedicalNumberShape(match string) bool {
 // nonInsuranceKeywordPresent reports whether the line carries a keyword that
 // makes an alphanumeric token more likely a non-insurance identifier.
 // Line-global — hoisted into medicalLineContext (was scanned per match).
+// nonInsuranceKeywordPresent reports whether the line names a different NUMBER
+// TYPE, which a member-ID-shaped value is far likelier to be. These always
+// suppress, the same tier as nonMedicalHardKeywordPresent for MRN.
 func (v *Validator) nonInsuranceKeywordPresent(lowerLine string) bool {
 	for _, kw := range []string{
-		"phone", "ssn", "account", "order", "invoice", "tracking",
-		"serial", "model", "version", "ip address",
+		"phone", "ssn", "serial", "model", "version", "ip address",
+	} {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// nonInsuranceSoftKeywordPresent reports whether the line carries an identifier
+// LABEL that commonly sits BESIDE a real member ID rather than describing it.
+//
+// These four were previously in the hard list above, which made them delete a
+// member ID even when the line also carried an explicit insurance label. That is
+// wrong on the same grounds evaluateMRN already documents for its own soft tier:
+// "account", "order", "invoice" and "tracking" are the definitional content of a
+// claim form, an EOB and a remittance advice, so they co-occur with a real member
+// ID constantly. "Subscriber member id W1234567801; patient account 88213 has a
+// zero balance" reported nothing, while the same line without the word "account"
+// reported a finding.
+//
+// A dropped finding is never handed to the redactor, and a file that yields no
+// findings has no redacted output written at all, so the member ID stayed in
+// cleartext.
+//
+// Split rather than deleted: with NO insurance keyword on the line these words
+// are still the best available signal that a mixed alphanumeric token is an order
+// number rather than a member ID, so they keep suppressing in that case. This
+// mirrors the hard/soft split evaluateMRN has carried for a while; the insurance
+// path simply never adopted it.
+func (v *Validator) nonInsuranceSoftKeywordPresent(lowerLine string) bool {
+	for _, kw := range []string{
+		"account", "order", "invoice", "tracking",
 	} {
 		if containsKeyword(lowerLine, kw) {
 			return true
