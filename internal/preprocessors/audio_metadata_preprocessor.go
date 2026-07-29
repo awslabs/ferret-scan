@@ -328,14 +328,17 @@ func (amp *AudioMetadataPreprocessor) logSuccessfulProcessing(filePath string, a
 				audioMeta.Duration.String(), audioMeta.Bitrate, audioMeta.SampleRate, audioMeta.Channels))
 	}
 
-	// Log interesting metadata if present (but be careful about privacy-sensitive information)
+	// Log the presence of interesting metadata, not its values: artist/title/album
+	// are document content that the metadata validator scans for PII (a personal
+	// name in an Artist tag is a finding), so they must not reach the log (BSC4).
 	if audioMeta.Artist != "" && audioMeta.Title != "" {
 		amp.observer.Debug().LogDetail("audio_metadata_preprocessor",
-			fmt.Sprintf("Track info found: %s - %s", audioMeta.Artist, audioMeta.Title))
+			fmt.Sprintf("Track info found: artist [HIDDEN] (len=%d) - title [HIDDEN] (len=%d)",
+				len(audioMeta.Artist), len(audioMeta.Title)))
 	}
 
 	if audioMeta.Album != "" && audioMeta.Year > 0 {
 		amp.observer.Debug().LogDetail("audio_metadata_preprocessor",
-			fmt.Sprintf("Album info: %s (%d)", audioMeta.Album, audioMeta.Year))
+			fmt.Sprintf("Album info: [HIDDEN] (len=%d) (%d)", len(audioMeta.Album), audioMeta.Year))
 	}
 }
