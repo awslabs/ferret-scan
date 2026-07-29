@@ -27,9 +27,13 @@ Each dimension names what it protects, the minimum bar, and how to run it.
 
 - `go build ./...` — compiles.
 - `go vet ./...` — clean.
-- `gofmt -l <touched dirs>` — empty output. (Known pre-existing exception:
-  `internal/config/config.go` reports under gofmt on `main`; prove any gofmt hit is
-  pre-existing by stashing your change and re-running before dismissing it.)
+- `gofmt -l ./cmd ./internal ./pkg` — empty output, with **no exceptions**. The
+  previously documented `internal/config/config.go` exception is gone: that file was
+  reformatted by an unrelated change and `main` is now gofmt-clean. CI enforces this
+  on every PR (`Gofmt` step in `go-test.yml`), so an unformatted file is a build
+  failure rather than a judgement call.
+- Note `gofmt -l` prints offending files but still **exits 0**, so never trust its
+  exit status — inspect the output.
 
 ### 2. Unit + full regression suite
 
