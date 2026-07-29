@@ -218,6 +218,23 @@ Work lands as a conflict-free sequence, so:
 When in doubt, run more. The cost of an extra `go test ./...` is seconds; the cost of a
 shipped redaction bypass is a cleartext leak.
 
+### Run the checklist mechanically
+
+Reciting these dimensions is not the same as running them, and a dimension that is simply absent
+from a PR description is indistinguishable from one that was considered and dismissed. So enumerate
+them:
+
+```bash
+make pr-checklist              # vs origin/main
+scripts/pr-checklist.sh <ref>  # vs another base
+```
+
+It executes what it can and prints one line per dimension — `RAN`, `N/A because …`, or
+`NEEDS-MANUAL`. The sink dimensions (redaction, suppression) and the timing curve print
+NEEDS-MANUAL whenever production code changed, because those need a fixture that exercises *your*
+change and no script can invent one. Paste the output in the PR; leaving a NEEDS-MANUAL item unrun
+is how a cleartext leak ships.
+
 ---
 
 ## Security reporting
