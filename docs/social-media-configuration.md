@@ -24,7 +24,7 @@ validators:
       # Configure patterns for platforms you want to detect
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
-        - "(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])"  # Avoids email false positives
+        - "(?i)\\B@[a-zA-Z0-9_]{1,15}\\b"  # Bare @handles; email/federated forms vetoed in code
 
       github:
         - "(?i)https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)?"
@@ -85,7 +85,7 @@ validators:
       # Twitter/X - Microblogging (email-safe patterns)
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+"
-        - "(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])"  # Avoids @gmail from emails
+        - "(?i)\\B@[a-zA-Z0-9_]{1,15}\\b"  # Bare @handles; @gmail-from-email vetoed in code
         - "(?i)(twitter|x)\\.com/[a-zA-Z0-9_]+"
 
       # GitHub - Code repositories
@@ -189,7 +189,19 @@ validators:
 ### Email vs Social Media
 - **DO NOT** include email patterns in social media configuration
 - The dedicated EMAIL validator handles email addresses
-- The Twitter pattern `(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])` prevents matching email domains like `@gmail`
+- The Twitter pattern `(?i)\\B@[a-zA-Z0-9_]{1,15}\\b` matches bare `@handles`. The leading
+  `\\B` is what keeps it off email domains like the `@gmail` in `user@gmail.com`: `@` is a
+  non-word character, so `\\B` holds only where the preceding character is also
+  non-word (or the line starts).
+- **Go uses RE2, which has no lookahead, lookbehind or backreferences.** A pattern
+  using them does not fail loudly — it fails to compile at use time, is skipped, and
+  is reported only under `FERRET_DEBUG=1`, so the check silently detects nothing.
+  This exact pattern previously shipped as `(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])`
+  and never matched anything. `internal/config/yaml_regex_test.go` now compiles every
+  shipped pattern under RE2 to prevent a repeat.
+- Constraints RE2 cannot express are enforced in code instead, in
+  `isFalsePositiveHandle`: a handle immediately followed by `.`, `-` or `@` is a
+  domain or a federated (Mastodon-style) address rather than a bare handle.
 
 ### Pattern Guidelines
 - Use case-insensitive patterns: `(?i)`
