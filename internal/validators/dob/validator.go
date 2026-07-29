@@ -149,6 +149,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 		lowerLine := strings.ToLower(line)
 
+		// Keyword tallies for this line, computed once and shared by every
+		// candidate date on it. See dobLineKeywords for the measured cost of not
+		// doing this.
+		lineKW := v.newDOBLineKeywords(lowerLine)
+
 		for _, cand := range candidates {
 			// Structural validation: must be a plausible DOB date
 			if !v.isPlausibleDOB(cand) {
@@ -177,12 +182,12 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			}
 
 			// Context analysis: keyword presence is the primary signal
-			contextImpact := v.analyzeContext(lowerLine, contextInfo)
+			contextImpact := v.analyzeContextWith(lowerLine, contextInfo, lineKW)
 			confidence += contextImpact
 
-			// Store keywords found
-			contextInfo.PositiveKeywords = v.findKeywords(lowerLine, v.positiveKeywords)
-			contextInfo.NegativeKeywords = v.findKeywords(lowerLine, v.negativeKeywords)
+			// Store keywords found (per-line invariant, already tallied above).
+			contextInfo.PositiveKeywords = lineKW.positives
+			contextInfo.NegativeKeywords = lineKW.negatives
 			contextInfo.ConfidenceImpact = contextImpact
 
 			// Cap and floor
@@ -434,40 +439,81 @@ var disqualifierKeywords = map[string]bool{
 	"placeholder": true, "fake": true, "mock": true, "demo": true,
 }
 
-// analyzeContext performs keyword-based context analysis.
+// dobLineKeywords holds the keyword tallies for one line. Every field is a pure
+// function of the line, so they are computed ONCE per line and reused for every
+// candidate date on it.
+//
+// They used to be recomputed inside analyzeContext for every candidate, and each
+// recomputation scanned the whole line against ~40 keywords. On a dense line that
+// is O(candidates x line length x keywords) -- the single-long-line
+// CPU-exhaustion shape. Measured before the hoist, on one line of distinct dates:
+// 250 -> 0.14s, 500 -> 0.30s, 1000 -> 0.86s, 2000 -> 3.34s, 4000 -> 15.68s, i.e.
+// ~4x per doubling.
+//
+// BeforeText and AfterText are windows INSIDE the same line, so the old
+// "fullContext" (BeforeText + line + AfterText) contained no token the line did
+// not already contain. Scanning the line alone is therefore equivalent, not an
+// approximation.
+type dobLineKeywords struct {
+	positiveCount        int
+	hasStrongPositive    bool
+	contextNegativeCount int
+	hasDisqualifier      bool
+	hasNonHuman          bool
+	positives            []string
+	negatives            []string
+}
+
+// newDOBLineKeywords tallies every keyword class for the line in a single pass
+// over the keyword lists.
+func (v *Validator) newDOBLineKeywords(lowerLine string) *dobLineKeywords {
+	lk := &dobLineKeywords{}
+
+	for _, kw := range v.positiveKeywords {
+		if containsKeyword(lowerLine, kw) {
+			lk.positiveCount++
+			lk.positives = append(lk.positives, kw)
+			if strongPositiveKeywords[kw] {
+				lk.hasStrongPositive = true
+			}
+		}
+	}
+	for _, kw := range v.negativeKeywords {
+		if containsKeyword(lowerLine, kw) {
+			lk.negatives = append(lk.negatives, kw)
+			if disqualifierKeywords[kw] {
+				lk.hasDisqualifier = true
+			} else {
+				lk.contextNegativeCount++
+			}
+		}
+	}
+	for _, ind := range nonHumanIndicators {
+		if containsKeyword(lowerLine, ind) {
+			lk.hasNonHuman = true
+			break
+		}
+	}
+	return lk
+}
+
+// analyzeContext performs keyword-based context analysis. Retained with its
+// original signature for external callers and tests; it builds the per-line
+// keyword cache and delegates.
 func (v *Validator) analyzeContext(lowerLine string, context detector.ContextInfo) float64 {
+	return v.analyzeContextWith(lowerLine, context, v.newDOBLineKeywords(lowerLine))
+}
+
+// analyzeContextWith is analyzeContext with the per-line keyword tallies supplied
+// by the caller, so a line with many candidate dates pays for the keyword scan
+// once rather than once per candidate.
+func (v *Validator) analyzeContextWith(lowerLine string, context detector.ContextInfo, lk *dobLineKeywords) float64 {
 	var impact float64
 
-	// Full text to scan for keywords: combine available context
-	fullContext := lowerLine
-	if context.BeforeText != "" || context.AfterText != "" {
-		fullContext = strings.ToLower(context.BeforeText) + " " + lowerLine + " " + strings.ToLower(context.AfterText)
-	}
-
-	// Check positive keywords first to identify strong DOB signals
-	positiveCount := 0
-	hasStrongPositive := false
-	for _, kw := range v.positiveKeywords {
-		if containsKeyword(fullContext, kw) {
-			positiveCount++
-			if strongPositiveKeywords[kw] {
-				hasStrongPositive = true
-			}
-		}
-	}
-
-	// Check negative keywords, separating disqualifiers from context negatives
-	contextNegativeCount := 0
-	hasDisqualifier := false
-	for _, kw := range v.negativeKeywords {
-		if containsKeyword(fullContext, kw) {
-			if disqualifierKeywords[kw] {
-				hasDisqualifier = true
-			} else {
-				contextNegativeCount++
-			}
-		}
-	}
+	positiveCount := lk.positiveCount
+	hasStrongPositive := lk.hasStrongPositive
+	contextNegativeCount := lk.contextNegativeCount
+	hasDisqualifier := lk.hasDisqualifier
 
 	// Disqualifiers (test/example/fake/mock) ALWAYS suppress, even with strong
 	// positive keywords. "Test DOB: 01/01/2000" is synthetic data, not real PII.
@@ -500,16 +546,9 @@ func (v *Validator) analyzeContext(lowerLine string, context detector.ContextInf
 	}
 
 	// Weak positive keywords present (born, birthday, age, years old, birth).
-	// Check for non-human subject indicators that reduce their signal.
-	hasNonHuman := false
-	for _, ind := range nonHumanIndicators {
-		if containsKeyword(fullContext, ind) {
-			hasNonHuman = true
-			break
-		}
-	}
-
-	if hasNonHuman {
+	// Check for non-human subject indicators that reduce their signal
+	// (per-line invariant, computed once in newDOBLineKeywords).
+	if lk.hasNonHuman {
 		// Non-human subject detected with only weak keywords — suppress.
 		// "The project was born on..." or "Server age: 5 years" are not DOBs.
 		return -10.0
