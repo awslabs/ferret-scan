@@ -188,64 +188,6 @@
           },
           "rank": 90,
           "ruleId": "PASSPORT"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:passport_shapes>"
-                },
-                "region": {
-                  "endColumn": 45,
-                  "snippet": {
-                    "text": "P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<"
-                  },
-                  "startColumn": 1,
-                  "startLine": 3
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Passport Number Detected in <golden:passport_shapes> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<'"
-          },
-          "properties": {
-            "confidence": 80,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
-              "context_impact": 0,
-              "country": "MRZ",
-              "original_confidence": 80,
-              "original_file": "<golden:passport_shapes>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "format": true,
-                "length": true,
-                "not_common_word": true,
-                "not_sequential": true,
-                "not_test_number": true,
-                "valid_characters": true,
-                "valid_country_code": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "passport"
-          },
-          "rank": 90,
-          "ruleId": "PASSPORT"
         }
       ],
       "tool": {

@@ -376,8 +376,10 @@ var Cases = []Case{
 			"(an unlabelled bare number, and a labelled value on a line that says 'sample'). " +
 			"The MRZ line is deliberately included because the MRZ and MRZ_TD3 patterns OVERLAP " +
 			"by construction -- MRZ_TD3's {39} sits inside MRZ's {38,40} -- so one physical " +
-			"document is claimed by two patterns. This snapshot is what makes that duplicate " +
-			"emission, and any future change to the arbitration between them, visible.",
+			"document is claimed by two patterns. The snapshot records ONE row for that line: " +
+			"span arbitration keeps the outermost claim. Before that arbitration existed the " +
+			"same MRZ was reported twice, so this row is also the gate that catches the " +
+			"duplicate coming back.",
 		Checks: []string{"PASSPORT"},
 		Input: "Passport Number: 512345678\n" +
 			"passport no 987654321\n" +

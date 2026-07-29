@@ -110,43 +110,6 @@
       "text": "P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<",
       "type": "PASSPORT",
       "validator": "passport"
-    },
-    {
-      "confidence": 80,
-      "confidence_level": "MEDIUM",
-      "filename": "<golden:passport_shapes>",
-      "line_number": 3,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Government",
-        "context_impact": 0,
-        "country": "MRZ",
-        "original_confidence": 80,
-        "original_file": "<golden:passport_shapes>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "format": true,
-          "length": true,
-          "not_common_word": true,
-          "not_sequential": true,
-          "not_test_number": true,
-          "valid_characters": true,
-          "valid_country_code": true
-        },
-        "validation_path": "document"
-      },
-      "text": "P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<",
-      "type": "PASSPORT",
-      "validator": "passport"
     }
   ]
 }

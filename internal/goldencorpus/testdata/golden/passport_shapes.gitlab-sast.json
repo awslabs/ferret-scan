@@ -103,32 +103,6 @@
       "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Passport Number Detected",
       "severity": "High"
-    },
-    {
-      "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_shapes> (line 3)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nP<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "PASSPORT"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "passport"
-        }
-      ],
-      "location": {
-        "end_line": 3,
-        "file": "<golden:passport_shapes>",
-        "start_line": 3
-      },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Passport Number Detected",
-      "severity": "High"
     }
   ]
 }
