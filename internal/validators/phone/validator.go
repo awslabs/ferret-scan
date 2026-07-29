@@ -1348,44 +1348,57 @@ func (v *Validator) isEmbeddedInIdentifierAt(match, line string, matchIndex int)
 	// Check character before the match
 	if matchIndex > 0 {
 		charBefore := line[matchIndex-1]
+
+		// A colon immediately before the match is NOT evidence of embedding. It is
+		// how a label is written when the author omits the space: "Tel:415-267-1234",
+		// "Phone:415-555-0142". This arm ran before the label logic below, so the
+		// phone LABEL was acting as the veto -- the worst possible polarity, and it
+		// applied to every label form (Tel:, Fax:, Mobile:, Cell:, ...).
+		//
+		// The label check that follows already distinguishes "Tel:" from
+		// "session:", so hand the colon case to it instead of rejecting outright.
+		// True embedding still needs an alphanumeric, '-' or '_' neighbour.
+		if charBefore == ':' {
+			if label, ok := labelBeforeColon(line, matchIndex-1); ok {
+				return classifyLabel(label)
+			}
+			return false
+		}
+
+		// A '-' immediately before the match is usually a resource ID
+		// (ami-050451375729, i-057034242931). But "1-415-267-1234" is standard
+		// NANP long-distance notation, so a lone country-code digit before the
+		// dash is a phone, not an identifier prefix.
+		//
+		// The word governing the whole token still overrules this: "version
+		// 1-415-267-1234" and "build 1-415-267-1234" are releases, not phone
+		// numbers, and without this check the NANP rescue admitted both. Checking
+		// the governing word here rather than relying on the label arm below
+		// matters because that arm is only reached when the match is preceded by
+		// a space, which the "1-" prefix prevents.
+		if charBefore == '-' && isNANPCountryCodePrefix(line, matchIndex-1) {
+			if word, ok := wordGoverning(line, matchIndex-1); ok {
+				if identifier, decided := classifyLabelVerdict(word); decided {
+					return identifier
+				}
+			}
+			return false
+		}
+
 		// If the character before is alphanumeric or common identifier separators, this phone is embedded
 		if (charBefore >= 'a' && charBefore <= 'z') ||
 			(charBefore >= 'A' && charBefore <= 'Z') ||
 			(charBefore >= '0' && charBefore <= '9') ||
-			charBefore == '-' || charBefore == '_' || charBefore == ':' {
+			charBefore == '-' || charBefore == '_' {
 			return true
 		}
 
-		// Check for patterns like "Timestamp: 1234567890" where there's a space before the number
-		// But exclude phone-related labels like "Phone:", "Tel:", etc.
-		if charBefore == ' ' && matchIndex >= 2 {
-			charBeforeSpace := line[matchIndex-2]
-			if charBeforeSpace == ':' {
-				// Extract the word before the colon to check if it's a phone-related label
-				wordStart := matchIndex - 3
-				for wordStart >= 0 && line[wordStart] != ' ' && line[wordStart] != '\t' {
-					wordStart--
-				}
-				wordStart++ // Move to start of word
-
-				if wordStart < matchIndex-2 {
-					wordBeforeColon := strings.ToLower(line[wordStart : matchIndex-2])
-
-					// Don't filter if this is a phone-related label
-					phoneLabels := []string{"phone", "tel", "telephone", "mobile", "cell", "fax", "contact", "call", "emergency", "support", "office", "home", "work"}
-					for _, label := range phoneLabels {
-						if wordBeforeColon == label || strings.HasSuffix(wordBeforeColon, label) {
-							return false // Don't filter - this is likely a real phone
-						}
-					}
-
-					// Filter out non-phone identifier patterns
-					identifierLabels := []string{"timestamp", "build", "version", "revision", "id", "key", "hash", "uuid", "guid", "token", "session", "request", "response"}
-					for _, label := range identifierLabels {
-						if wordBeforeColon == label || strings.HasSuffix(wordBeforeColon, label) {
-							return true // Filter - this is an identifier
-						}
-					}
+		// Check for patterns like "Timestamp: 1234567890" where there's a space
+		// before the number, but exclude phone labels like "Phone:", "Tel:".
+		if charBefore == ' ' && matchIndex >= 2 && line[matchIndex-2] == ':' {
+			if label, ok := labelBeforeColon(line, matchIndex-2); ok {
+				if verdict, decided := classifyLabelVerdict(label); decided {
+					return verdict
 				}
 			}
 		}
@@ -1395,7 +1408,23 @@ func (v *Validator) isEmbeddedInIdentifierAt(match, line string, matchIndex int)
 	matchEnd := matchIndex + len(match)
 	if matchEnd < len(line) {
 		charAfter := line[matchEnd]
-		// If the character after is alphanumeric or common identifier separators, this phone is embedded
+
+		// A TRAILING colon is deliberately still treated as embedding, unlike a
+		// leading one. "Reception 415-267-1234: ask for Dana" is a real phone that
+		// this drops, and the arm to rescue it was written and then MEASURED OUT:
+		// allowing a trailing colon recovered that 1 finding and admitted 4 false
+		// positives ("ratio 415-267-1234: 1", "error 415-267-1234: connection
+		// refused", "key 415-267-1234: value", "range 100-200-3000: allowed") --
+		// every one of them a log line where "<value>:" is a key, which is exactly
+		// the shape this check exists to reject.
+		//
+		// Gating the rescue on hasPhonePunctuation does not separate them either;
+		// the log keys are punctuated identically. All five landed at LOW 5.00%, so
+		// confidence cannot triage them apart afterwards.
+		//
+		// A LEADING colon is different and IS rescued above, because there the
+		// preceding word says which kind of value follows ("Tel:" vs "session:").
+		// Nothing after the match carries equivalent information.
 		if (charAfter >= 'a' && charAfter <= 'z') ||
 			(charAfter >= 'A' && charAfter <= 'Z') ||
 			(charAfter >= '0' && charAfter <= '9') ||
@@ -1457,6 +1486,169 @@ func (v *Validator) isEmbeddedInIdentifierAt(match, line string, matchIndex int)
 		}
 	}
 
+	return false
+}
+
+// phoneLabelWords are labels that introduce a real phone number.
+var phoneLabelWords = []string{
+	"phone", "tel", "telephone", "mobile", "cell", "fax", "contact", "call",
+	"emergency", "support", "office", "home", "work",
+}
+
+// identifierLabelWords are labels that introduce a machine identifier rather
+// than a phone number.
+var identifierLabelWords = []string{
+	"timestamp", "build", "version", "revision", "id", "key", "hash",
+	"uuid", "guid", "token", "session", "request", "response",
+}
+
+// labelBeforeColon returns the lower-cased word immediately preceding the colon
+// at colonAt, or ok=false when there is no such word.
+func labelBeforeColon(line string, colonAt int) (string, bool) {
+	if colonAt <= 0 || colonAt >= len(line) || line[colonAt] != ':' {
+		return "", false
+	}
+	start := colonAt - 1
+	for start >= 0 && line[start] != ' ' && line[start] != '\t' {
+		start--
+	}
+	start++
+	if start >= colonAt {
+		return "", false
+	}
+	return strings.ToLower(line[start:colonAt]), true
+}
+
+// classifyLabelVerdict decides whether a "<label>:" prefix marks the value that
+// follows as an identifier (true) or a phone number (false). decided is false
+// when the label matches neither vocabulary, leaving the caller's other signals
+// to make the call.
+//
+// Matching is by whole word or by a separator-delimited tail ("mobile" in
+// "work-mobile", "id" in "trace_id"), NOT by strings.HasSuffix. HasSuffix was
+// the previous rule and it is why "Escalation contact Madrid: +34 91 496 0345"
+// reported nothing: "madrid" ends in "id", so a city name was read as an
+// identifier label and the phone was dropped. The same fired for any word
+// ending in a label -- Cupid, Enid, Sid, and by symmetry every "...call",
+// "...home" or "...work" word on the phone side.
+func classifyLabelVerdict(label string) (identifier bool, decided bool) {
+	// Phone labels win ties: mislabelling a phone as an identifier deletes a real
+	// finding, while the reverse only costs precision on a value that still has
+	// to pass the rest of the scoring.
+	for _, want := range phoneLabelWords {
+		if labelMatchesWord(label, want) {
+			return false, true
+		}
+	}
+	for _, want := range identifierLabelWords {
+		if labelMatchesWord(label, want) {
+			return true, true
+		}
+	}
+	return false, false
+}
+
+// classifyLabel is classifyLabelVerdict for callers that need a plain bool. An
+// unrecognized label is treated as NOT an identifier, because the colon alone is
+// no evidence of embedding.
+func classifyLabel(label string) bool {
+	identifier, _ := classifyLabelVerdict(label)
+	return identifier
+}
+
+// labelMatchesWord reports whether label is want, or ends with want preceded by
+// a separator. This is the word-boundary form of the old HasSuffix check: it
+// still matches compound labels people really write ("work-mobile", "trace_id",
+// "x.session") without matching words that merely happen to end in the same
+// letters ("madrid", "overcall").
+func labelMatchesWord(label, want string) bool {
+	if label == want {
+		return true
+	}
+	if len(label) <= len(want) || !strings.HasSuffix(label, want) {
+		return false
+	}
+	switch label[len(label)-len(want)-1] {
+	case '-', '_', '.', '/', ')', ']':
+		return true
+	}
+	return false
+}
+
+// wordGoverning returns the lower-cased word immediately preceding the token
+// that starts at or before tokenAt, skipping the token's own leading characters
+// and one run of whitespace or punctuation. It answers "what word introduces
+// this value?" for cases where there is no colon to anchor on:
+// "version 1-415-267-1234" yields "version".
+func wordGoverning(line string, tokenAt int) (string, bool) {
+	// Clamp: callers derive tokenAt from match arithmetic, so an out-of-range or
+	// negative offset is reachable and must not panic.
+	if tokenAt >= len(line) {
+		tokenAt = len(line) - 1
+	}
+	if tokenAt < 0 {
+		return "", false
+	}
+
+	// Walk left off the token itself (digits, '+', '-', '(' and ')').
+	i := tokenAt
+	for i >= 0 && isPhoneTokenByte(line[i]) {
+		i--
+	}
+	// Skip the separating whitespace or punctuation.
+	for i >= 0 && (line[i] == ' ' || line[i] == '\t' || line[i] == ':' || line[i] == '=') {
+		i--
+	}
+	if i < 0 {
+		return "", false
+	}
+	end := i + 1
+	for i >= 0 && isWordByteASCII(line[i]) {
+		i--
+	}
+	start := i + 1
+	if start >= end {
+		return "", false
+	}
+	return strings.ToLower(line[start:end]), true
+}
+
+// isPhoneTokenByte reports whether b can appear inside a written phone number.
+func isPhoneTokenByte(b byte) bool {
+	return (b >= '0' && b <= '9') || b == '-' || b == '+' || b == '(' || b == ')' || b == '.'
+}
+
+// isWordByteASCII reports whether b is a letter, digit or underscore.
+func isWordByteASCII(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') || b == '_'
+}
+
+// isNANPCountryCodePrefix reports whether the '-' at dashAt is the separator in
+// NANP long-distance notation -- a lone "1" before the dash, as in
+// "1-415-267-1234" or "Dial 1-800-555-0199".
+//
+// The general rule that a '-' before the match means a resource identifier
+// (ami-050451375729, i-057034242931) is right, but it also swallowed every
+// number written the way North American numbers are dictated. A resource prefix
+// is alphabetic or multi-character; a bare single "1" is not one.
+func isNANPCountryCodePrefix(line string, dashAt int) bool {
+	if dashAt <= 0 || dashAt >= len(line) || line[dashAt] != '-' {
+		return false
+	}
+	if line[dashAt-1] != '1' {
+		return false
+	}
+	// The "1" must itself stand alone: preceded by start-of-line, whitespace, or
+	// a '+' (as in "+1-415-..."). Anything else means the 1 is part of a longer
+	// token, e.g. "sku-401-415-267-1234".
+	if dashAt-1 == 0 {
+		return true
+	}
+	switch line[dashAt-2] {
+	case ' ', '\t', '+', '(':
+		return true
+	}
 	return false
 }
 
