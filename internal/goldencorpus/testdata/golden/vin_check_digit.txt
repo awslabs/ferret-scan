@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH             FILE
+-------------------------------------------------------------------------------------------
+[HIGH  ] vin          VIN                   100.00% line     1 1HGCM82633A004352 <golden:vin_check_digit>
+[HIGH  ] vin          VIN                   100.00% line     3 JH4KA7561PC008269 <golden:vin_check_digit>

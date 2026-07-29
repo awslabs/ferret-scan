@@ -387,6 +387,55 @@ var Cases = []Case{
 			"Amy,amy.lee@acmecorp.io,512345671,CA\n" +
 			"Sam,sam.roe@acmecorp.io,987654322,AU\n",
 	},
+	{
+		Name: "passport_shapes",
+		Description: "PASSPORT had ZERO golden coverage, so nothing here was gated at all. Locks the " +
+			"labelled 9-digit form, the ICAO 9303 TD3 machine-readable zone, and two negatives " +
+			"(an unlabelled bare number, and a labelled value on a line that says 'sample'). " +
+			"The MRZ line is deliberately included because the MRZ and MRZ_TD3 patterns OVERLAP " +
+			"by construction -- MRZ_TD3's {39} sits inside MRZ's {38,40} -- so one physical " +
+			"document is claimed by two patterns. The snapshot records ONE row for that line: " +
+			"span arbitration keeps the outermost claim. Before that arbitration existed the " +
+			"same MRZ was reported twice, so this row is also the gate that catches the " +
+			"duplicate coming back.",
+		Checks: []string{"PASSPORT"},
+		Input: "Passport Number: 512345678\n" +
+			"passport no 987654321\n" +
+			"P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<\n" +
+			"512345670\n" +
+			"passport 123456789 sample data\n",
+	},
+	{
+		Name: "passport_label_above_value",
+		Description: "The cross-line shape: a label on its own line with the value on the next, which " +
+			"is how a form, a config block and every CSV export are written. PASSPORT is " +
+			"label-GATED -- it reports nothing without a nearby label -- and the label search " +
+			"stops at the newline, so all three of these currently produce NOTHING while the " +
+			"identical text inline scores HIGH. Snapshotted as the CURRENT (leaking) behavior on " +
+			"purpose: an unreported value is never handed to the redactor, so this case is the " +
+			"gate that will show a cross-line context fix working, and will fail loudly if such " +
+			"a fix regresses.",
+		Checks: []string{"PASSPORT"},
+		Input: "passport_number\n" +
+			"987654321\n" +
+			"Field: Passport Number\n" +
+			"Value: 512345678\n" +
+			"name,email,passport_number,country\n" +
+			"Jane,jane.smith@acmecorp.io,512345671,US\n",
+	},
+	{
+		Name: "vin_check_digit",
+		Description: "VIN had ZERO golden coverage. Locks that the ISO 3779 check digit (position 9) " +
+			"is actually verified: the first and third VINs are valid and must be reported, the " +
+			"fourth is the first VIN with its check digit incremented and must NOT be. That pairing " +
+			"is what makes this non-vacuous -- a snapshot of positives alone would still pass if " +
+			"check-digit validation were deleted.",
+		Checks: []string{"VIN"},
+		Input: "vin 1HGCM82633A004352\n" +
+			"vehicle identification number 2FMDK3GC4BBA12345\n" +
+			"VIN: JH4KA7561PC008269\n" +
+			"vin 1HGCM82633A004353\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

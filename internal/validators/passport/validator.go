@@ -344,6 +344,99 @@ func hasMRZStructure(s string) bool {
 	return fillers >= 5
 }
 
+// spannedMatch is an emitted finding that still remembers the byte span it
+// occupied in its line, so overlapping claims from different patterns can be
+// arbitrated before that information is discarded — detector.Match carries no
+// offset, so afterwards two patterns claiming one document are indistinguishable
+// from the same value genuinely appearing twice.
+type spannedMatch struct {
+	match detector.Match
+	start int
+	end   int
+}
+
+// keepOutermostSpans folds away claims contained within another claim on the same
+// line, so one physical document yields one finding.
+//
+// The MRZ patterns overlap by construction: MRZ is `P<[A-Z]{3}[A-Z0-9<]{38,40}`
+// and MRZ_TD3 is `P<[A-Z]{3}[A-Z0-9<]{39}`, so {39} is inside {38,40} and EVERY
+// MRZ_TD3 hit is also an MRZ hit. Each pattern runs independently, and the emit
+// loop appended every surviving hit, so a single ICAO 9303 TD3 line 1 produced two
+// PASSPORT findings. Two shapes, both reproduced:
+//
+//   - line 1 exactly 44 chars: both patterns return the IDENTICAL span, giving two
+//     findings with the same text differing only in metadata["country"]
+//     ("MRZ_TD3" vs "MRZ" — the pattern name, not an issuing state).
+//   - line 1 45+ chars: MRZ_TD3 returns [0:44] and MRZ returns [0:45], a strict
+//     PREFIX. Exact-span keying would miss this one, which is why containment is
+//     the test and not equality.
+//
+// The nested case is the more damaging of the two: --generate-suppressions wrote
+// two rules with two different match_text_hash values for one leak, and one of
+// them keyed a truncated 44-byte prefix that is not a complete token anywhere in
+// the file — a baseline entry that can never match the document it came from.
+//
+// Longest span wins, which is the honest choice here: the widest match is the one
+// that covers the whole token, so the reported Text is a complete MRZ line rather
+// than a truncation. Confidence is deliberately NOT the tiebreak — both MRZ arms
+// of CalculateConfidence score identically (same +20 valid-country-code boost,
+// both land at 80/100), so ranking on confidence would pick arbitrarily. On an
+// exact-span tie the incumbent survives, and patternOrder is a fixed slice
+// ("MRZ_TD3" before "MRZ", most specific first) rather than the map's random
+// order, so the winner is deterministic run to run.
+//
+// Confidence is carried up to the maximum of the folded claims. That keeps a merge
+// from ever demoting a finding into a lower severity band than it would have had —
+// the leak-safe direction, and the same rule the secrets validator's
+// mergeBySpanKeepStrongest applies.
+//
+// Surviving findings keep their original relative order, so byte order downstream
+// is unchanged. O(n^2) in claims per line, which is bounded and tiny: at most one
+// hit per pattern per position and only six patterns.
+func keepOutermostSpans(claims []spannedMatch) []spannedMatch {
+	if len(claims) < 2 {
+		return claims
+	}
+
+	keep := make([]spannedMatch, 0, len(claims))
+	for i, c := range claims {
+		contained := false
+		for j, other := range claims {
+			if i == j {
+				continue
+			}
+			// Strictly wider span that covers this one: this claim is redundant.
+			if other.start <= c.start && other.end >= c.end &&
+				(other.end-other.start) > (c.end-c.start) {
+				contained = true
+				break
+			}
+			// Identical span: the earlier claim (more specific pattern, per
+			// patternOrder) is the incumbent and survives.
+			if other.start == c.start && other.end == c.end && j < i {
+				contained = true
+				break
+			}
+		}
+		if contained {
+			continue
+		}
+		// Carry up the strongest confidence any folded claim assigned, so folding
+		// cannot lower the reported severity.
+		for j, other := range claims {
+			if i == j {
+				continue
+			}
+			if other.start >= c.start && other.end <= c.end &&
+				other.match.Confidence > c.match.Confidence {
+				c.match.Confidence = other.match.Confidence
+			}
+		}
+		keep = append(keep, c)
+	}
+	return keep
+}
+
 // maxMatchesPerLinePerPattern bounds how many regex hits we will fully process
 // for a single (line, pattern) pair. A single pathologically long line packed
 // with thousands of passport-shaped tokens would otherwise drive the validator
@@ -404,6 +497,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		if table.IsTable() && lineNum != table.HeaderLine() {
 			lineBounds = table.Bounds(line)
 		}
+
+		// Collected per line, with byte spans retained, so overlapping claims can
+		// be arbitrated before the spans are lost (detector.Match has no offset
+		// field). See keepOutermostSpans.
+		var lineMatches []spannedMatch
 
 		// Check each pattern against the line, in the fixed order (see
 		// Validator.patternOrder) rather than the patterns map's random one.
@@ -501,23 +599,32 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					continue
 				}
 
-				matches = append(matches, detector.Match{
-					Text:       match,
-					LineNumber: lineNum + 1, // 1-based line numbering
-					Type:       "PASSPORT",
-					Confidence: confidence,
-					Filename:   originalPath,
-					Validator:  "passport",
-					Context:    contextInfo,
-					Metadata: map[string]any{
-						"country":           country,
-						"validation_checks": checks,
-						"context_impact":    contextImpact,
-						"source":            "preprocessed_content",
-						"original_file":     originalPath,
+				lineMatches = append(lineMatches, spannedMatch{
+					start: loc[0],
+					end:   loc[1],
+					match: detector.Match{
+						Text:       match,
+						LineNumber: lineNum + 1, // 1-based line numbering
+						Type:       "PASSPORT",
+						Confidence: confidence,
+						Filename:   originalPath,
+						Validator:  "passport",
+						Context:    contextInfo,
+						Metadata: map[string]any{
+							"country":           country,
+							"validation_checks": checks,
+							"context_impact":    contextImpact,
+							"source":            "preprocessed_content",
+							"original_file":     originalPath,
+						},
 					},
 				})
 			}
+		}
+
+		// One document, one finding: fold away claims that cover the same bytes.
+		for _, sm := range keepOutermostSpans(lineMatches) {
+			matches = append(matches, sm.match)
 		}
 	}
 
