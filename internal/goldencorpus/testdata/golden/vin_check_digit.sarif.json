@@ -1,0 +1,172 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:vin_check_digit>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "vin \nvin 1HGCM82633A004352"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 22,
+                  "snippet": {
+                    "text": "vin 1HGCM82633A004352"
+                  },
+                  "startColumn": 5,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Vehicle Identification Number Detected in <golden:vin_check_digit> at line 1 (confidence: 100.0% - HIGH). Matched text: '1HGCM82633A004352'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 25,
+              "manufacturer": "Honda",
+              "original_confidence": 100,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "check_digit": true,
+                "format": true,
+                "known_wmi": true,
+                "not_repeating": true,
+                "not_test": true,
+                "valid_year": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "vin"
+            ],
+            "validator": "vin"
+          },
+          "rank": 80,
+          "ruleId": "VIN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:vin_check_digit>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "VIN: \nVIN: JH4KA7561PC008269"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 23,
+                  "snippet": {
+                    "text": "VIN: JH4KA7561PC008269"
+                  },
+                  "startColumn": 6,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Vehicle Identification Number Detected in <golden:vin_check_digit> at line 3 (confidence: 100.0% - HIGH). Matched text: 'JH4KA7561PC008269'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": 50,
+              "original_confidence": 100,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "check_digit": true,
+                "format": true,
+                "known_wmi": false,
+                "not_repeating": true,
+                "not_test": true,
+                "valid_year": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "vin",
+              "vin:"
+            ],
+            "validator": "vin"
+          },
+          "rank": 80,
+          "ruleId": "VIN"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A Vehicle Identification Number (VIN) was detected in the scanned content. VINs can be used to identify vehicle owners and access personal information such as registration, insurance, and accident history."
+              },
+              "help": {
+                "text": "VINs are linked to vehicle owner identity and can reveal personal information through public databases. They should not be stored in source code or logs. Remove VINs and use anonymized identifiers for testing. For production systems, store VINs in encrypted databases with appropriate access controls."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VIN.md",
+              "id": "VIN",
+              "shortDescription": {
+                "text": "Vehicle Identification Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

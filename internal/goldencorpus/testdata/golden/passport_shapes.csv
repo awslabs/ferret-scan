@@ -1,0 +1,5 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:passport_shapes>,PASSPORT,HIGH,100.0,1,512345678
+<golden:passport_shapes>,PASSPORT,HIGH,100.0,2,987654321
+<golden:passport_shapes>,PASSPORT,MEDIUM,80.0,3,P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<
+<golden:passport_shapes>,PASSPORT,MEDIUM,80.0,3,P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<
