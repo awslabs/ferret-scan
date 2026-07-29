@@ -369,6 +369,24 @@ var Cases = []Case{
 			"account_number_test: 4012888888881881\n" +
 			"sample_ssn = 449-87-4102\n",
 	},
+	{
+		Name: "passport_csv_header_column",
+		Description: "A pure delimited export whose ONLY passport label is the header row. PASSPORT is " +
+			"label-gated and its label search stops at the newline, so before header-aware " +
+			"context this produced zero findings on every data row while the identical text " +
+			"written inline as 'Passport Number: 987654321' scored HIGH -- and an unreported " +
+			"value is never handed to the redactor, so the redacted output kept every passport " +
+			"number in cleartext. Four data rows on purpose: a fix that only reaches the first " +
+			"one leaves the rest of the export leaking. The email column is present so the case " +
+			"also shows the pre-fix state was not 'nothing detected' but 'the wrong things " +
+			"detected'.",
+		Checks: []string{"PASSPORT", "EMAIL"},
+		Input: "name,email,passport_number,country\n" +
+			"Jane,jane.smith@acmecorp.io,987654321,US\n" +
+			"Bob,bob.jones@acmecorp.io,512345678,GB\n" +
+			"Amy,amy.lee@acmecorp.io,512345671,CA\n" +
+			"Sam,sam.roe@acmecorp.io,987654322,AU\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

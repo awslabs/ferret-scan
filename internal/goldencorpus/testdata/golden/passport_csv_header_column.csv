@@ -1,0 +1,9 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:passport_csv_header_column>,BUSINESS,HIGH,100.0,2,jane.smith@acmecorp.io
+<golden:passport_csv_header_column>,BUSINESS,HIGH,100.0,3,bob.jones@acmecorp.io
+<golden:passport_csv_header_column>,BUSINESS,HIGH,100.0,4,amy.lee@acmecorp.io
+<golden:passport_csv_header_column>,BUSINESS,HIGH,100.0,5,sam.roe@acmecorp.io
+<golden:passport_csv_header_column>,PASSPORT,HIGH,100.0,2,987654321
+<golden:passport_csv_header_column>,PASSPORT,HIGH,100.0,3,512345678
+<golden:passport_csv_header_column>,PASSPORT,HIGH,100.0,4,512345671
+<golden:passport_csv_header_column>,PASSPORT,HIGH,100.0,5,987654322
