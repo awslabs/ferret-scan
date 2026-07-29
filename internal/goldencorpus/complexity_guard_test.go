@@ -24,7 +24,6 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/validators/personname"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/phone"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/secrets"
-	"github.com/awslabs/ferret-scan/v2/internal/validators/socialmedia"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/ssn"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/vin"
 )
@@ -52,42 +51,79 @@ type validatorUnderTest interface {
 // so the timing reflects the validator's own scanning cost, not orchestration.
 // Each builder returns a fresh validator and a single-line unit of input that
 // the validator will scan densely.
+//
+// A target supplies its input EITHER as `unit` (repeated verbatim) or as `gen`
+// (called with 0..reps-1 to emit a distinct value per repetition). Prefer `gen`:
+// complexity_generators_test.go documents why identical repeats can silently
+// defeat this whole guard. `unit` is kept for the validators whose per-match cost
+// does not depend on value distinctness.
 var complexityTargets = []struct {
-	name      string
-	new       func() validatorUnderTest
-	unit      string // one "row" of input; repeated to scale size
+	name string
+	new  func() validatorUnderTest
+	unit string // one "row" of input; repeated to scale size (mutually exclusive with gen)
+	// gen builds repetition i. Use when the validator dedups candidates, so
+	// repeating one value would pin the match count flat as the input grows.
+	gen       func(i int) string
 	threshold time.Duration
+	// minMatches, when > 0, is the floor asserted at BOTH measured sizes. It is
+	// what makes the timing numbers mean something: see TestValidatorComplexityIsSubQuadratic.
+	minMatches int
+	// wantMatchGrowth requires the big input to yield strictly more matches than
+	// the base input. Set for targets whose per-match cost is the thing under
+	// test; leave false where the validator legitimately consolidates.
+	wantMatchGrowth bool
+	// baseReps overrides the default base repetition count. Needed when a target
+	// has to land on a particular side of an internal size/count cap for the two
+	// measurements to exercise the SAME code path (see socialmedia).
+	baseReps int
 }{
 	{
 		name: "ssn",
 		new:  func() validatorUnderTest { return ssn.NewValidator() },
 		// Dense near-SSN tokens on one line stress the per-match context rescan.
-		unit:      "ssn 449-87-4100 and 555-12-3456 and 111-22-3333 ",
-		threshold: 5 * time.Second,
+		unit:            "ssn 449-87-4100 and 555-12-3456 and 111-22-3333 ",
+		minMatches:      800,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "ipaddress",
-		new:       func() validatorUnderTest { return ipaddress.NewValidator() },
-		unit:      "ip 203.0.113.42 host 10.0.0.5 gw 192.168.1.1 dns 8.8.8.8 ",
-		threshold: 5 * time.Second,
+		name: "ipaddress",
+		new:  func() validatorUnderTest { return ipaddress.NewValidator() },
+		// The old unit ("203.0.113.42 / 10.0.0.5 / 192.168.1.1 / 8.8.8.8") produced
+		// ZERO matches: TEST-NET-3, RFC1918 and the well-known public resolver are
+		// all vetoed, so this subtest timed the reject path and asserted nothing.
+		// genPublicIP emits distinct routable addresses that survive the vetoes.
+		gen:             genPublicIP,
+		threshold:       5 * time.Second,
+		minMatches:      500,
+		wantMatchGrowth: true,
 	},
 	{
-		name:      "email",
-		new:       func() validatorUnderTest { return email.NewValidator() },
-		unit:      "mail a@b.com x@y.org user@example.net admin@corp.co ",
-		threshold: 5 * time.Second,
+		name:            "email",
+		new:             func() validatorUnderTest { return email.NewValidator() },
+		unit:            "mail a@b.com x@y.org user@example.net admin@corp.co ",
+		minMatches:      1000,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "phone",
-		new:       func() validatorUnderTest { return phone.NewValidator() },
-		unit:      "call 212-555-0142 or 415-555-0199 or 312-555-0123 ",
-		threshold: 5 * time.Second,
+		name: "phone",
+		new:  func() validatorUnderTest { return phone.NewValidator() },
+		// The old unit repeated three numbers, so per-line dedup pinned the match
+		// count at 3 at EVERY size: the per-match cost never grew and a quadratic
+		// per-match path would have measured as linear.
+		gen:             genPhone,
+		threshold:       5 * time.Second,
+		minMatches:      500,
+		wantMatchGrowth: true,
 	},
 	{
-		name:      "creditcard",
-		new:       func() validatorUnderTest { return creditcard.NewValidator() },
-		unit:      "card 4532015112830366 5425233430109903 374245455400126 ",
-		threshold: 5 * time.Second,
+		name:            "creditcard",
+		new:             func() validatorUnderTest { return creditcard.NewValidator() },
+		unit:            "card 4532015112830366 5425233430109903 374245455400126 ",
+		minMatches:      800,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	// The 13 remaining text-mode validators (METADATA excluded — it scans
 	// extracted file metadata, not text windows). Each unit is a dense,
@@ -96,63 +132,90 @@ var complexityTargets = []struct {
 	// keyword so the per-match context scan — the O(n^2)-prone path — is
 	// actually exercised, not short-circuited by an empty candidate set.
 	{
-		name:      "address",
-		new:       func() validatorUnderTest { return address.NewValidator() },
-		unit:      "ship to 123 Main St and 456 Oak Ave and 789 Elm Blvd, Springfield IL 62704 ",
-		threshold: 5 * time.Second,
+		name:            "address",
+		new:             func() validatorUnderTest { return address.NewValidator() },
+		unit:            "ship to 123 Main St and 456 Oak Ave and 789 Elm Blvd, Springfield IL 62704 ",
+		minMatches:      800,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "bankaccount",
-		new:       func() validatorUnderTest { return bankaccount.NewValidator() },
-		unit:      "routing 026009593 account 1234567890 iban DE89370400440532013000 swift BOFAUS3N ",
-		threshold: 5 * time.Second,
+		name:            "bankaccount",
+		new:             func() validatorUnderTest { return bankaccount.NewValidator() },
+		unit:            "routing 026009593 account 1234567890 iban DE89370400440532013000 swift BOFAUS3N ",
+		minMatches:      1000,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "cloudresources",
-		new:       func() validatorUnderTest { return cloudresources.NewValidator() },
-		unit:      "arn:aws:iam::123456789012:role/Admin arn:aws:s3:::my-bucket/key i-0abcd1234ef567890 ",
-		threshold: 5 * time.Second,
+		name:            "cloudresources",
+		new:             func() validatorUnderTest { return cloudresources.NewValidator() },
+		unit:            "arn:aws:iam::123456789012:role/Admin arn:aws:s3:::my-bucket/key i-0abcd1234ef567890 ",
+		minMatches:      500,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "dob",
-		new:       func() validatorUnderTest { return dob.NewValidator() },
-		unit:      "dob 03/14/1987 born 05/22/1990 birthdate 1978-11-02 date of birth 12/01/1985 ",
-		threshold: 5 * time.Second,
+		name: "dob",
+		new:  func() validatorUnderTest { return dob.NewValidator() },
+		// The old unit repeated four dates, which extractDates dedups per line: the
+		// match count was 4 at every size. This validator was in fact quadratic
+		// (22s on a 64KB single line) while THIS SUBTEST reported normal growth —
+		// the concrete miss that motivated hardening the whole file.
+		gen:             genDOB,
+		threshold:       5 * time.Second,
+		minMatches:      300,
+		wantMatchGrowth: true,
 	},
 	{
-		name:      "driverslicense",
-		new:       func() validatorUnderTest { return driverslicense.NewValidator() },
-		unit:      "driver license D1234567 dl 12345678 licence D123-4567-8901 dmv A9876543 ",
-		threshold: 5 * time.Second,
+		name:            "driverslicense",
+		new:             func() validatorUnderTest { return driverslicense.NewValidator() },
+		unit:            "driver license D1234567 dl 12345678 licence D123-4567-8901 dmv A9876543 ",
+		minMatches:      1000,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "intellectualproperty",
-		new:       func() validatorUnderTest { return intellectualproperty.NewValidator() },
-		unit:      "Copyright 2026 Acme. Confidential and Proprietary. Trade Secret. Patent Pending. ",
-		threshold: 5 * time.Second,
+		name: "intellectualproperty",
+		new:  func() validatorUnderTest { return intellectualproperty.NewValidator() },
+		gen:  genIntellectualProperty,
+		// This validator CONSOLIDATES: thousands of candidates become one
+		// aggregate finding, so a match-growth requirement would be wrong here.
+		// The floor still holds the timing honest (1 real finding, not 0).
+		threshold:  5 * time.Second,
+		minMatches: 1,
 	},
 	{
-		name:      "medicalid",
-		new:       func() validatorUnderTest { return medicalid.NewValidator() },
-		unit:      "npi 1234567893 dea FC9825487 mbi 1EG4-TE5-MK73 mrn 8432197 patient record ",
-		threshold: 5 * time.Second,
+		name:            "medicalid",
+		new:             func() validatorUnderTest { return medicalid.NewValidator() },
+		unit:            "npi 1234567893 dea FC9825487 mbi 1EG4-TE5-MK73 mrn 8432197 patient record ",
+		minMatches:      1000,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "otp",
-		new:       func() validatorUnderTest { return otp.NewValidator() },
-		unit:      "2fa secret JBSWY3DPEHPK3PXP totp KRUGKIDROVUWG2ZA backup code abcd-efgh-1234 ",
-		threshold: 5 * time.Second,
+		name:            "otp",
+		new:             func() validatorUnderTest { return otp.NewValidator() },
+		unit:            "2fa secret JBSWY3DPEHPK3PXP totp KRUGKIDROVUWG2ZA backup code abcd-efgh-1234 ",
+		minMatches:      800,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
-		name:      "passport",
-		new:       func() validatorUnderTest { return passport.NewValidator() },
-		unit:      "passport 512345678 travel document L8837362 visa passport no 987654321 ",
-		threshold: 5 * time.Second,
+		name:            "passport",
+		new:             func() validatorUnderTest { return passport.NewValidator() },
+		unit:            "passport 512345678 travel document L8837362 visa passport no 987654321 ",
+		minMatches:      500,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 	{
 		name: "personname",
 		new:  func() validatorUnderTest { return personname.NewValidator() },
-		unit: "contact Maria Delgado and James Wilson and Sarah Chen and Robert Brown ",
+		// The old unit repeated four names -> 4 matches at every size.
+		gen:             genPersonName,
+		minMatches:      300,
+		wantMatchGrowth: true,
 		// personname and secrets are the heaviest validators per byte
 		// (dictionary lookups per candidate token; entropy + multi-pattern
 		// secret scanning). They scale LINEARLY — the ratio check below is the
@@ -164,22 +227,44 @@ var complexityTargets = []struct {
 		threshold: 15 * time.Second,
 	},
 	{
-		name:      "secrets",
-		new:       func() validatorUnderTest { return secrets.NewValidator() },
-		unit:      "AWS_KEY=AKIAIOSFODNN7EXAMPLE token=ghp_1234567890abcdefghij1234567890abcdef ",
-		threshold: 15 * time.Second, // see personname note: heavy-but-linear
+		name:            "secrets",
+		new:             func() validatorUnderTest { return secrets.NewValidator() },
+		unit:            "AWS_KEY=AKIAIOSFODNN7EXAMPLE token=ghp_1234567890abcdefghij1234567890abcdef ",
+		minMatches:      500,
+		wantMatchGrowth: true,
+		threshold:       15 * time.Second, // see personname note: heavy-but-linear
 	},
 	{
-		name:      "socialmedia",
-		new:       func() validatorUnderTest { return socialmedia.NewValidator() },
-		unit:      "follow @alice_smith and @bob.jones and twitter.com/carol on socials ",
-		threshold: 5 * time.Second,
+		name: "socialmedia",
+		// This validator is CONFIG-GATED: NewValidator alone leaves
+		// patternsConfigured false, so ValidateContent returns immediately at
+		// validator.go's "patterns configured" check. The old subtest measured
+		// that early return — a ~42ns no-op that could never fail. Configure it
+		// from the shipped config.yaml so the real scan runs.
+		new: newConfiguredSocialMedia,
+		// URL-shaped profiles, one per line. Two constraints, both measured:
+		//   - "@handle" text does NOT match: the shipped config's handle regex is
+		//     PCRE and RE2 rejects it, so it is silently dropped (tracked
+		//     separately). Only URL patterns actually fire.
+		//   - Both sizes must sit on the SAME side of maxClusterMatches (1000),
+		//     because above it clustering is skipped. Straddling the cap compared
+		//     two different code paths and made the big input measure 4x FASTER
+		//     than the base (226ms at 400 matches vs 213ms at 1600). These sizes
+		//     stay above it, where the path is linear.
+		gen: genSocialMediaProfile,
+		// 1200 base / 4800 big: both above maxClusterMatches, per the note above.
+		baseReps:        1200,
+		threshold:       5 * time.Second,
+		minMatches:      1100,
+		wantMatchGrowth: true,
 	},
 	{
-		name:      "vin",
-		new:       func() validatorUnderTest { return vin.NewValidator() },
-		unit:      "vin 1HGCM82633A004352 vehicle 2FMDK3GC4BBA12345 vin JH4KA7561PC008269 ",
-		threshold: 5 * time.Second,
+		name:            "vin",
+		new:             func() validatorUnderTest { return vin.NewValidator() },
+		unit:            "vin 1HGCM82633A004352 vehicle 2FMDK3GC4BBA12345 vin JH4KA7561PC008269 ",
+		minMatches:      500,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
 	},
 }
 
@@ -196,15 +281,43 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 		t.Run(tgt.name, func(t *testing.T) {
 			// Two single-line inputs: base and 4x. A single long line is the
 			// worst case for the per-line rescan pattern.
-			const baseReps = 400
-			baseLine := strings.Repeat(tgt.unit, baseReps)
-			bigLine := strings.Repeat(tgt.unit, baseReps*4) // 4x size
+			baseReps := 400
+			if tgt.baseReps > 0 {
+				baseReps = tgt.baseReps
+			}
+			baseLine := buildComplexityInput(tgt.unit, tgt.gen, baseReps)
+			bigLine := buildComplexityInput(tgt.unit, tgt.gen, baseReps*4) // 4x size
 
 			// Absolute ceiling: even the big input must finish quickly. With
 			// bounded execution and linear scanning this is generous; an O(n^2)
 			// blowup on a dense line would blow past it.
-			tBase := timeValidate(t, tgt.new(), baseLine)
-			tBig := timeValidate(t, tgt.new(), bigLine)
+			tBase, nBase := timeValidate(t, tgt.new(), baseLine)
+			tBig, nBig := timeValidate(t, tgt.new(), bigLine)
+
+			// NON-VACUITY FLOOR. Both assertions below are ceilings or ratios, and
+			// both pass trivially when the validator matches nothing: a reject path
+			// is fast and its ratio is noise. Three subtests in this file were
+			// silently in that state (ipaddress and socialmedia matched nothing;
+			// dob matched a flat 4) while dob was quadratic in production. Assert
+			// the measurement had something to measure BEFORE trusting the timing.
+			if tgt.minMatches > 0 {
+				if nBase < tgt.minMatches {
+					t.Fatalf("%s: base input produced %d matches, want >= %d — the timing "+
+						"assertions below would be measuring a reject path, not the scan",
+						tgt.name, nBase, tgt.minMatches)
+				}
+				if nBig < tgt.minMatches {
+					t.Fatalf("%s: 4x input produced %d matches, want >= %d — a validator that "+
+						"stops matching as input grows makes a timing ceiling meaningless",
+						tgt.name, nBig, tgt.minMatches)
+				}
+			}
+			if tgt.wantMatchGrowth && nBig <= nBase {
+				t.Errorf("%s: 4x input produced %d matches vs %d at base — the match count "+
+					"must grow with the input, otherwise per-match cost is constant and a "+
+					"per-match O(n^2) path passes the ratio check below",
+					tgt.name, nBig, nBase)
+			}
 
 			if tBig > tgt.threshold {
 				t.Errorf("%s: 4x input took %v (> %v ceiling) — possible O(n^2) regression on a single long line",
@@ -227,12 +340,32 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 	}
 }
 
-// timeValidate runs ValidateContent once and returns the wall-clock duration.
-func timeValidate(t *testing.T, v validatorUnderTest, content string) time.Duration {
+// timeValidate runs ValidateContent once and returns the wall-clock duration AND
+// the match count. The count is not decoration: it is what the caller uses to
+// prove the duration measured real scanning work rather than an early return.
+// Discarding it (as this helper used to) is how three subtests in this file
+// became no-ops without any test failing.
+func timeValidate(t *testing.T, v validatorUnderTest, content string) (time.Duration, int) {
 	t.Helper()
 	start := time.Now()
-	if _, err := v.ValidateContent(content, "<complexity>"); err != nil {
+	matches, err := v.ValidateContent(content, "<complexity>")
+	elapsed := time.Since(start)
+	if err != nil {
 		t.Fatalf("ValidateContent error: %v", err)
 	}
-	return time.Since(start)
+	return elapsed, len(matches)
+}
+
+// buildComplexityInput scales a target's input to reps repetitions, from either a
+// static unit or a per-index generator. Exactly one of the two is set; the
+// non-vacuity test enforces that.
+func buildComplexityInput(unit string, gen func(int) string, reps int) string {
+	if gen == nil {
+		return strings.Repeat(unit, reps)
+	}
+	var sb strings.Builder
+	for i := 0; i < reps; i++ {
+		sb.WriteString(gen(i))
+	}
+	return sb.String()
 }
