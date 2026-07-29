@@ -1290,39 +1290,45 @@ func (v *Validator) analyzeSpecificPatternsLineGlobal(contextLine string) float6
 	return adjustment
 }
 
-// specificPatternIndices locates the first whole-word occurrence of each penalty
-// family on the line. Locating is line-global (identical for every match on the
-// line, so it stays hoisted out of the per-match loop and the validator stays
-// linear); APPLYING the penalty is per match, by distance.
+// specificPatternIndices locates EVERY pattern of each penalty family present on
+// the line. Locating is line-global (identical for every match on the line, so it
+// stays hoisted out of the per-match loop and the validator stays linear);
+// APPLYING the penalty is per match, by distance.
 //
-// Only the first occurrence of each family is needed, because the penalty is
-// awarded once per family — matching the previous `break`-after-first-hit shape.
+// Every offset, not just the first, because under proximity gating the recorded
+// offsets decide whether a name is penalized — so keeping only one per family lets
+// a distant match mask an adjacent one. With `break` after the first hit:
+//
+//	"oak drive sarah brooks"                    -> geo=[4],  penalty FIRES
+//	"avenue" + 60 dots + " oak drive sarah brooks" -> geo=[0],  penalty SILENT
+//
+// Identical adjacent "oak drive", but prepending the alphabetically-earlier
+// "avenue" far away suppressed the penalty entirely (-50 became -15, and the
+// finding rose from 57 to 69 through the CLI). That is attacker-controllable, and
+// it is the same class of hazard as the map-order issue below: what changed was
+// never the score for a given pattern, but WHICH offset got recorded.
+//
+// The penalty itself is still awarded at most once per family (see
+// analyzeLineContextForMatch), so collecting more offsets cannot double-penalize;
+// it only stops one from hiding another.
 //
 // The geographic loop also stops ranging over geoPatternsMap directly. Ranging a
-// Go map with `break` picks an arbitrary winner among several present patterns;
-// the score was the same either way, so this was invisible, but the recorded
-// offset is not order-independent. Iterating a sorted slice makes which pattern
-// is found deterministic.
+// Go map picks an arbitrary winner among several present patterns; the score was
+// the same either way, so this was invisible, but the recorded offset is not
+// order-independent. Iterating a sorted slice makes it deterministic.
 func (v *Validator) specificPatternIndices(lowerLine string) (business, product, geo []int) {
-	for _, pattern := range v.getSortedBusinessPatterns() {
-		if i := firstWordKeywordIndex(lowerLine, pattern); i >= 0 {
-			business = append(business, i)
-			break
+	collect := func(patterns []string) []int {
+		var out []int
+		for _, pattern := range patterns {
+			if i := firstWordKeywordIndex(lowerLine, pattern); i >= 0 {
+				out = append(out, i)
+			}
 		}
+		return out
 	}
-	for _, pattern := range v.getSortedProductPatterns() {
-		if i := firstWordKeywordIndex(lowerLine, pattern); i >= 0 {
-			product = append(product, i)
-			break
-		}
-	}
-	for _, pattern := range v.getSortedGeoPatterns() {
-		if i := firstWordKeywordIndex(lowerLine, pattern); i >= 0 {
-			geo = append(geo, i)
-			break
-		}
-	}
-	return business, product, geo
+	return collect(v.getSortedBusinessPatterns()),
+		collect(v.getSortedProductPatterns()),
+		collect(v.getSortedGeoPatterns())
 }
 
 // These complex pattern matching methods are no longer needed

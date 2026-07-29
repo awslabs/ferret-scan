@@ -147,6 +147,52 @@ func TestSpecificPatternPenaltyIsProximityGated(t *testing.T) {
 	}
 }
 
+// TestDistantPatternCannotMaskAnAdjacentOne guards against penalty evasion.
+//
+// specificPatternIndices originally recorded only the FIRST matching pattern per
+// family (a `break` after the first hit). That was harmless while the penalty was
+// line-global, but under proximity gating the recorded offsets decide whether a
+// name is penalized — so one distant match could hide an adjacent one:
+//
+//	"oak drive sarah brooks"                        geo=[4]  -> penalty FIRES
+//	"avenue" + 60 dots + " oak drive sarah brooks"  geo=[0]  -> penalty SILENT
+//
+// Identical adjacent "oak drive", but prepending the alphabetically-earlier
+// "avenue" far away suppressed the penalty entirely (-50 became -15; through the
+// CLI the finding rose from 57 to 69). Attacker-controllable, and the same class
+// of hazard as the map-order issue: what changed was never the score for a given
+// pattern, only WHICH offset got recorded.
+func TestDistantPatternCannotMaskAnAdjacentOne(t *testing.T) {
+	v := NewValidator()
+	v.ensureNamesLoaded()
+
+	const control = "oak drive sarah brooks"
+	// "avenue" sorts before "oak drive"'s "drive", and sits far from the name.
+	padded := "avenue" + strings.Repeat(".", 60) + " oak drive sarah brooks"
+
+	score := func(line string) float64 {
+		cache := v.newLineContextCache(strings.ToLower(line))
+		nameIndex := strings.Index(cache.lowerLine, "sarah")
+		if nameIndex < 0 {
+			t.Fatalf("premise broken: name not found in %q", line)
+		}
+		if len(cache.geoIndices) == 0 {
+			t.Fatalf("premise broken: no geographic pattern located in %q", line)
+		}
+		return v.analyzeContextCached("sarah brooks", nameIndex, cache)
+	}
+
+	controlScore := score(control)
+	paddedScore := score(padded)
+
+	if paddedScore != controlScore {
+		t.Errorf("padding the line with a distant, alphabetically-earlier geographic "+
+			"pattern changed the score for an IDENTICAL adjacent one: control=%.1f "+
+			"padded=%.1f. Every offset per family must be collected, or a far match "+
+			"masks a near one and the penalty can be evaded.", controlScore, paddedScore)
+	}
+}
+
 // TestGeoPatternIterationIsDeterministic guards the map-order fix.
 //
 // The geographic scan used to range geoPatternsMap directly and break on the first
