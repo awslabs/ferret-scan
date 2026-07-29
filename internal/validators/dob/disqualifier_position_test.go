@@ -3,11 +3,7 @@
 
 package dob
 
-import (
-	"testing"
-
-	"github.com/awslabs/ferret-scan/v2/internal/detector"
-)
+import "testing"
 
 // TestClinicalSampleVocabularyKeepsTheDOB is the leak this file exists for.
 //
@@ -125,12 +121,12 @@ func TestDisqualifierModifiesLabel(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := disqualifierModifiesLabel(c.line, detector.ContextInfo{
-				FullLine:  c.line,
-				AfterText: c.after,
-			})
+			// The rule is now split into a per-line half and a per-match half,
+			// mirroring how the scan loop consumes them.
+			got := markerBeforeDOBLabel(c.line) ||
+				disqualifierOpensAsideAfter(c.line, len(c.line)-len(c.after))
 			if got != c.want {
-				t.Errorf("disqualifierModifiesLabel(%q, after=%q) = %v, want %v",
+				t.Errorf("positional disqualifier(%q, after=%q) = %v, want %v",
 					c.line, c.after, got, c.want)
 			}
 		})
@@ -140,10 +136,12 @@ func TestDisqualifierModifiesLabel(t *testing.T) {
 // TestDisqualifierModifiesLabelBoundsAreSafe feeds degenerate input, since
 // AfterText is derived from match arithmetic and can be empty.
 func TestDisqualifierModifiesLabelBoundsAreSafe(t *testing.T) {
-	for _, after := range []string{"", " ", "   ", "-", "((", ","} {
-		// Should not panic, and with a clean label none of these is an aside.
-		if disqualifierModifiesLabel("patient dob: 03/14/1987", detector.ContextInfo{AfterText: after}) {
-			t.Errorf("AfterText %q was read as a disqualifier aside", after)
+	const line = "patient dob: 03/14/1987"
+	// Out-of-range and boundary offsets must be inert rather than panic: the
+	// caller derives them from match arithmetic.
+	for _, off := range []int{-5, -1, len(line), len(line) + 1, len(line) + 100} {
+		if disqualifierOpensAsideAfter(line, off) {
+			t.Errorf("offset %d was read as a disqualifier aside", off)
 		}
 	}
 }

@@ -170,6 +170,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			lineContextImpact    float64
 			linePositiveKeywords []string
 			lineNegativeKeywords []string
+			lowerLineCached      string
+			lineHasDisqualifier  bool
 		)
 
 		for _, cand := range candidates {
@@ -179,10 +181,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			}
 
 			if !lineScanned {
-				lowerLine := strings.ToLower(line)
-				lineContextImpact = v.analyzeContext(lowerLine)
-				linePositiveKeywords = v.findKeywords(lowerLine, v.positiveKeywords)
-				lineNegativeKeywords = v.findKeywords(lowerLine, v.negativeKeywords)
+				lowerLineCached = strings.ToLower(line)
+				lineContextImpact = v.analyzeContext(lowerLineCached)
+				linePositiveKeywords = v.findKeywords(lowerLineCached, v.positiveKeywords)
+				lineNegativeKeywords = v.findKeywords(lowerLineCached, v.negativeKeywords)
+				lineHasDisqualifier = hasDisqualifierOnLine(lowerLineCached)
 				lineScanned = true
 			}
 
@@ -210,6 +213,17 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// Context analysis: keyword presence is the primary signal. Computed
 			// once per line above; identical for every candidate on this line.
 			contextImpact := lineContextImpact
+
+			// Per-match half of the disqualifier rule: a synthetic-data marker
+			// opening an aside immediately after THIS value ("DOB: 03/14/1987
+			// (test)") means the value is not real, regardless of the line-global
+			// verdict. Uses the candidate's own end offset, so it reads only the
+			// few bytes after the span.
+			if lineHasDisqualifier && cand.start >= 0 &&
+				disqualifierOpensAsideAfter(lowerLineCached, cand.start+len(cand.text)) {
+				contextImpact = -50.0
+			}
+
 			confidence += contextImpact
 
 			// Store keywords found. Also line-global, so reused rather than
@@ -503,7 +517,20 @@ var dobLabelForms = []string{
 // real and synthetic classes interleave, so no cutoff separates them) and a
 // compound-noun list of clinical terms (overfit -- it scored 6/12 on held-out
 // phrasings, and every miss was a REAL record classified as synthetic).
-func disqualifierModifiesLabel(lowerLine string, context detector.ContextInfo) bool {
+// hasDisqualifierOnLine reports whether any synthetic-data keyword is present on
+// the line at all. This is a per-LINE property, so it is computed once alongside
+// the other line scans; the POSITIONAL decisions are made separately by
+// markerBeforeDOBLabel (per line) and disqualifierOpensAsideAfter (per match).
+func hasDisqualifierOnLine(lowerLine string) bool {
+	for kw := range disqualifierKeywords {
+		if containsKeywordLower(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func markerBeforeDOBLabel(lowerLine string) bool {
 	labelAt := -1
 	for _, form := range dobLabelForms {
 		if i := strings.Index(lowerLine, form); i >= 0 && (labelAt < 0 || i < labelAt) {
@@ -520,16 +547,33 @@ func disqualifierModifiesLabel(lowerLine string, context detector.ContextInfo) b
 	if labelAt > 0 {
 		prefix := lowerLine[:labelAt]
 		for kw := range disqualifierKeywords {
-			if containsKeyword(prefix, kw) {
+			if containsKeywordLower(prefix, kw) {
 				return true
 			}
 		}
 	}
 
-	// A disqualifier opening an aside right after the value is an apposition on
-	// the value. AfterText is the post-match window the caller already computed,
-	// so this needs no rescan of the line.
-	after := strings.ToLower(context.AfterText)
+	return false
+}
+
+// disqualifierOpensAsideAfter reports whether a synthetic-data keyword is the
+// first word of an aside that begins immediately after the value ending at
+// matchEnd: "DOB: 03/14/1987 (test)", "dob 3/14/87 -- sample data".
+//
+// This is the per-MATCH half of the rule, so it takes the match's own end offset
+// and reads the LINE -- never a BeforeText/AfterText window. Those windows are
+// cut at arbitrary byte offsets, so a fragment can start mid-word and gain a word
+// boundary it does not have; a "test" sliced out of "contest" is exactly how a
+// genuine "patient date of birth" was dropped before (see analyzeContext).
+// Slicing the real line at a real token boundary cannot fabricate a word.
+//
+// It reads only the handful of bytes after the span, so it does not reintroduce
+// per-match whole-line work.
+func disqualifierOpensAsideAfter(lowerLine string, matchEnd int) bool {
+	if matchEnd < 0 || matchEnd >= len(lowerLine) {
+		return false
+	}
+	after := lowerLine[matchEnd:]
 	j := 0
 	for j < len(after) && strings.IndexByte(" \t-/(<[|,;:#>", after[j]) >= 0 {
 		j++
@@ -622,7 +666,23 @@ func (v *Validator) analyzeContext(lowerLine string) float64 {
 	// 03/14/1987 (test)"). A disqualifier sitting in a following clause with its
 	// own subject does not. When there is NO strong positive label the old
 	// behavior is kept: the disqualifier is then the best signal available.
-	if hasDisqualifier && (!hasStrongPositive || disqualifierModifiesLabel(lowerLine, context)) {
+	// A disqualifier suppresses even a strong positive label -- "Test DOB:
+	// 01/01/2000" is synthetic data, not real PII -- but ONLY when it is
+	// positioned so that it describes the date.
+	//
+	// This used to fire on the keyword appearing anywhere on the line, which
+	// deleted real records: "Patient DOB: 03/14/1987, blood sample collected at
+	// intake" reported nothing while the same line without "sample" reported a
+	// finding. "sample collected", "sample submitted" and "specimen sample" are
+	// ordinary clinical vocabulary on every lab requisition, and because only
+	// reported findings reach the redactor, the DOB stayed in cleartext.
+	//
+	// The line-global half is decided here (a marker before the label). The
+	// per-match half -- a marker opening an aside immediately after THIS value --
+	// cannot be a per-line property, so it is applied by the caller via
+	// disqualifierOpensAsideAfter. With no strong label the old unconditional
+	// behavior is kept: the disqualifier is then the only signal available.
+	if hasDisqualifier && (!hasStrongPositive || markerBeforeDOBLabel(lowerLine)) {
 		impact -= 50.0
 		return impact
 	}
