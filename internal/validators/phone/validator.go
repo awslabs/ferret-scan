@@ -1432,10 +1432,66 @@ func (v *Validator) isEmbeddedInIdentifierAt(match, line string, matchIndex int)
 
 	for _, pattern := range identifierPatterns {
 		if strings.Contains(fullContext, pattern) {
+			// One of these words sits within 10 bytes of the match. That is
+			// evidence, not proof: "hash", "token", "build" and "session" are
+			// ordinary English, so this window also fires on prose that merely
+			// mentions them near a real phone number ("Reached her at
+			// 415-555-0123 -- hash noted" reported nothing).
+			//
+			// The tie-breaker is the match's own punctuation. Resource IDs,
+			// timestamps and build numbers are runs of digits: i-057034242931,
+			// 1735689600, 20260714093012. None of them is ever written
+			// 415-555-0123, (415) 555-0123 or +1 415 555 0123. So a match
+			// carrying phone punctuation is a phone that happens to sit near one
+			// of these words, and suppressing it drops a real value — which,
+			// because only reported findings are handed to the redactor, leaves
+			// it in cleartext in the "redacted" output.
+			//
+			// Bare digit runs stay suppressed: for those the keyword really is
+			// the only signal available, and every one of the words above was
+			// measured to be load-bearing against a bare 10-digit string.
+			if hasPhonePunctuation(match) {
+				return false
+			}
 			return true
 		}
 	}
 
+	return false
+}
+
+// hasPhonePunctuation reports whether the match is written in a human phone
+// format rather than as a bare run of digits.
+//
+// It is deliberately about SHAPE, not length or value: the separators and
+// grouping a person uses when writing a phone number down. A resource
+// identifier, epoch timestamp or build number is a contiguous digit run (or is
+// prefixed like "i-", which the adjacent-character check already catches before
+// this is reached), so the presence of internal grouping punctuation is what
+// distinguishes the two.
+//
+// A leading "+" alone counts, because "+1 4155550123" is a phone and nothing
+// else writes a leading plus.
+func hasPhonePunctuation(match string) bool {
+	if strings.HasPrefix(match, "+") {
+		return true
+	}
+
+	// Look for grouping punctuation BETWEEN digits. Requiring a digit on the
+	// left keeps a trailing or leading separator (already trimmed by the caller,
+	// but cheap to be strict about) from counting on its own.
+	sawDigit := false
+	for i := 0; i < len(match); i++ {
+		c := match[i]
+		switch {
+		case c >= '0' && c <= '9':
+			sawDigit = true
+		case c == '-' || c == '.' || c == ' ' || c == '(' || c == ')':
+			if sawDigit {
+				return true
+			}
+		}
+	}
 	return false
 }
 
