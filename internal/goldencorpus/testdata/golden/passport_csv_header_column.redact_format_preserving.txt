@@ -1,0 +1,15 @@
+=== REDACTED ===
+name,email,passport_number,country
+Jane,j*********@acmecorp.io,*********,US
+Bob,b********@acmecorp.io,*********,GB
+Amy,a******@acmecorp.io,*********,CA
+Sam,s******@acmecorp.io,*********,AU
+=== FINDINGS (sorted) ===
+type=BUSINESS line=2 conf=high match=jane.smith@acmecorp.io
+type=BUSINESS line=3 conf=high match=bob.jones@acmecorp.io
+type=BUSINESS line=4 conf=high match=amy.lee@acmecorp.io
+type=BUSINESS line=5 conf=high match=sam.roe@acmecorp.io
+type=PASSPORT line=2 conf=high match=987654321
+type=PASSPORT line=3 conf=high match=512345678
+type=PASSPORT line=4 conf=high match=512345671
+type=PASSPORT line=5 conf=high match=987654322

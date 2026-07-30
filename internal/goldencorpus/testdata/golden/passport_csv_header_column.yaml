@@ -1,0 +1,273 @@
+results:
+    - text: jane.smith@acmecorp.io
+      line_number: 2
+      type: BUSINESS
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: email
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 15
+        domain: acmecorp.io
+        email_provider: BUSINESS
+        original_confidence: 100
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        tld: io
+        username: jane.smith
+        validation_checks:
+            business_pattern: true
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: bob.jones@acmecorp.io
+      line_number: 3
+      type: BUSINESS
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: email
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 15
+        domain: acmecorp.io
+        email_provider: BUSINESS
+        original_confidence: 100
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        tld: io
+        username: bob.jones
+        validation_checks:
+            business_pattern: true
+            no_consecutive_dots: true
+            not_test_email: true
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: amy.lee@acmecorp.io
+      line_number: 4
+      type: BUSINESS
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: email
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 15
+        domain: acmecorp.io
+        email_provider: BUSINESS
+        original_confidence: 100
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        tld: io
+        username: amy.lee
+        validation_checks:
+            business_pattern: true
+            no_consecutive_dots: true
+            not_test_email: true
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: sam.roe@acmecorp.io
+      line_number: 5
+      type: BUSINESS
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: email
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 15
+        domain: acmecorp.io
+        email_provider: BUSINESS
+        original_confidence: 100
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        tld: io
+        username: sam.roe
+        validation_checks:
+            business_pattern: true
+            no_consecutive_dots: true
+            not_test_email: true
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: "987654321"
+      line_number: 2
+      type: PASSPORT
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: passport
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 30
+        country: UK
+        original_confidence: 90
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            format: true
+            length: true
+            not_common_word: true
+            not_sequential: true
+            not_test_number: true
+            valid_characters: true
+            valid_country_code: false
+        validation_path: document
+    - text: "512345678"
+      line_number: 3
+      type: PASSPORT
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: passport
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 30
+        country: UK
+        original_confidence: 90
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            format: true
+            length: true
+            not_common_word: true
+            not_sequential: true
+            not_test_number: true
+            valid_characters: true
+            valid_country_code: false
+        validation_path: document
+    - text: "512345671"
+      line_number: 4
+      type: PASSPORT
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: passport
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 30
+        country: UK
+        original_confidence: 90
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            format: true
+            length: true
+            not_common_word: true
+            not_sequential: true
+            not_test_number: true
+            valid_characters: true
+            valid_country_code: false
+        validation_path: document
+    - text: "987654322"
+      line_number: 5
+      type: PASSPORT
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:passport_csv_header_column>
+      validator: passport
+      metadata:
+        confidence_adjustment: 20
+        context_confidence: 1
+        context_doctype: CSV
+        context_domain: Government
+        context_impact: 30
+        country: UK
+        original_confidence: 90
+        original_file: <golden:passport_csv_header_column>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            format: true
+            length: true
+            not_common_word: true
+            not_sequential: true
+            not_test_number: true
+            valid_characters: true
+            valid_country_code: false
+        validation_path: document

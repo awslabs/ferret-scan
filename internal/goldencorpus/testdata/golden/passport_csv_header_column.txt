@@ -1,0 +1,10 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                  FILE
+------------------------------------------------------------------------------------------------
+[HIGH  ] email        BUSINESS              100.00% line     2 jane.smith@acmecorp.io <golden:passport_csv_header_column>
+[HIGH  ] email        BUSINESS              100.00% line     3 bob.jones@acmecorp.io  <golden:passport_csv_header_column>
+[HIGH  ] email        BUSINESS              100.00% line     4 amy.lee@acmecorp.io    <golden:passport_csv_header_column>
+[HIGH  ] email        BUSINESS              100.00% line     5 sam.roe@acmecorp.io    <golden:passport_csv_header_column>
+[HIGH  ] passport     PASSPORT              100.00% line     2 987654321              <golden:passport_csv_header_column>
+[HIGH  ] passport     PASSPORT              100.00% line     3 512345678              <golden:passport_csv_header_column>
+[HIGH  ] passport     PASSPORT              100.00% line     4 512345671              <golden:passport_csv_header_column>
+[HIGH  ] passport     PASSPORT              100.00% line     5 987654322              <golden:passport_csv_header_column>
