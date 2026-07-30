@@ -65,9 +65,15 @@ type ScanConfig struct {
 	// enforce no-payload-bytes at the destination, futureproofing the
 	// no-leak guarantee against any change that might accidentally start
 	// logging content. In-process callers should pass io.Discard or a
-	// structured logger writer that filters payload bytes; the internal
-	// observer never emits PII today, but LogWriter is the chokepoint
-	// that makes the no-leak property enforceable rather than aspirational.
+	// structured logger writer that filters payload bytes.
+	//
+	// Note the scope of that guarantee: LogWriter is NOT what enforces it.
+	// Individual validators and preprocessors receive their observer only
+	// from cmd/main.go, which hardcodes os.Stderr, so no-payload-bytes on
+	// this path is upheld by the per-package TestNoPayloadInDebugLog gates
+	// (which assert on input bytes, not on writer identity), not by the
+	// writer wired here. A test that captures LogWriter and finds no
+	// payload proves nothing about validator debug output.
 	LogWriter io.Writer
 }
 

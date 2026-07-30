@@ -254,7 +254,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 		// Public-by-design resources are not sensitive; drop them outright.
 		if isPublicResource(text) {
-			v.logDetail(fmt.Sprintf("Match filtered (public-by-design resource): %q", text))
+			// The resource type is tool-owned; the text is document content and
+			// must not reach the log (BSC4).
+			v.logDetail(fmt.Sprintf("Match filtered (public-by-design resource): %s [HIDDEN] (len=%d)", resourceType, len(text)))
 			continue
 		}
 
@@ -276,7 +278,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			} else {
 				suppressedLowConf++
 			}
-			v.logDetail(fmt.Sprintf("Match filtered (confidence %.1f%% < %.0f): %q", confidence, acceptThreshold, text))
+			v.logDetail(fmt.Sprintf("Match filtered (confidence %.1f%% < %.0f): %s [HIDDEN] (len=%d)", confidence, acceptThreshold, resourceType, len(text)))
 			continue
 		}
 
