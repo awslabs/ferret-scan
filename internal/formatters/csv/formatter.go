@@ -46,6 +46,11 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// changed run to run on an unchanged scan.
 	shared.SortSuppressedByPriority(suppressedMatches)
 
+	// Honor --limit, after the sort so the rows kept are the highest-confidence
+	// ones. Without this the CSV emitted every finding while the same scan's
+	// text and JSON output stopped at the cap.
+	filteredMatches, _, _ = shared.ApplyLimit(filteredMatches, options)
+
 	// In pre-commit mode, return empty string if no matches to reduce noise
 	if options.PrecommitMode && len(filteredMatches) == 0 && len(suppressedMatches) == 0 {
 		return "", nil
