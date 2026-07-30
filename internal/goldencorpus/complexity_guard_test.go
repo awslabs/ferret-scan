@@ -319,9 +319,27 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 					tgt.name, nBig, nBase)
 			}
 
-			if tBig > tgt.threshold {
-				t.Errorf("%s: 4x input took %v (> %v ceiling) — possible O(n^2) regression on a single long line",
-					tgt.name, tBig, tgt.threshold)
+			// The absolute ceiling is scaled when the race detector is active.
+			//
+			// CI runs this suite with -race, which instruments every memory access
+			// and costs 10-20x on scan-heavy code. Measured on the socialmedia
+			// target: 0.33s without -race, 4.97s with it, against a 5s ceiling —
+			// passing by 30ms on a developer machine and failing at 7-13s on the
+			// slower CI runners. That is a property of the instrumentation, not an
+			// O(n^2) regression.
+			//
+			// The RATIO check below is the assertion that actually detects quadratic
+			// behaviour, and it is unaffected: -race inflates both measurements
+			// equally, so the growth factor is preserved. Keeping a tight ceiling for
+			// normal runs preserves its value as a backstop against a pathological
+			// absolute blow-up.
+			ceiling := tgt.threshold
+			if raceDetectorEnabled {
+				ceiling *= raceCeilingMultiplier
+			}
+			if tBig > ceiling {
+				t.Errorf("%s: 4x input took %v (> %v ceiling%s) — possible O(n^2) regression on a single long line",
+					tgt.name, tBig, ceiling, raceNote())
 			}
 
 			// Relative growth: 4x input under linear scaling is ~4x time; under
