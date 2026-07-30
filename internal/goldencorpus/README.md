@@ -49,27 +49,42 @@ snapshots are byte-stable:
 
 - `CanonicalSort` imposes a total order on matches before formatting.
 - A **fresh formatter instance per case** (not the global `formatters.DefaultRegistry`
-  singleton). This is required because the SARIF formatter's `RuleManager`
-  **accumulates rules across `Format()` calls** — see the caveat below.
+  singleton), for case isolation. This originally worked around the SARIF
+  formatter's `RuleManager` accumulating rules across `Format()` calls; that is
+  fixed in product code now (see the resolved note below), but per-case instances
+  stay so the snapshot cannot be polluted by per-instance state in any formatter.
 - `NormalizePaths` replaces the per-run `t.TempDir()` path (stamped into
   `Match.Filename` and metadata `source_file`/`original_file`) with `<TMPDIR>`.
 - `NormalizeOutput` replaces timestamps with `<TIMESTAMP>`, canonicalizes JSON
-  object-key order, sorts the SARIF `rules` array by `id`, sorts the gitlab-sast
-  "Additional Information" bullets, and normalizes the gitlab-sast `ferret-<hash>`
-  vulnerability id (a SHA256 over `filename:line:type`, so path-coupled).
+  object-key order, and normalizes the gitlab-sast `ferret-<hash>` vulnerability
+  id (a SHA256 over `filename:line:type`, so path-coupled).
+
+  It deliberately does **not** normalize array order any more. It used to sort the
+  SARIF `tool.driver.rules` array and the gitlab-sast "Additional Information"
+  bullets, which papered over Go map iteration order in the formatters themselves.
+  Both now emit in sorted order at the source, so re-sorting here would only
+  re-hide a regression — **this snapshot is the guard for those two emit paths.**
+  Reverting the sort in `sarif/rules.go` alone fails the corpus.
 
 These normalizations lock the *content* of the output, not incidental ordering.
 A change to *what data appears* is still caught.
 
-> **Caveat / latent bug surfaced while building this net.** The SARIF formatter
-> registered in `formatters.DefaultRegistry` is a process singleton whose
-> `RuleManager` is never reset between `Format()` calls, so the rules array it
-> emits depends on everything formatted earlier in the same process. This is
-> benign for the CLI (one format call per process) but is a real
-> cross-invocation contamination bug for any long-lived embedder that formats
-> SARIF repeatedly (e.g. the web server). The harness sidesteps it with a fresh
-> formatter per case; fixing it in product code (reset-per-call, or build rules
-> from the match set) is a candidate for the v2 work.
+> **Resolved.** This section used to describe a latent bug surfaced while building
+> this net: the SARIF formatter registered in `formatters.DefaultRegistry` is a
+> process singleton whose `RuleManager` was never reset between `Format()` calls,
+> so the rules array it emitted depended on everything formatted earlier in the
+> same process — benign for the CLI (one format call per process) but real
+> cross-invocation contamination for a long-lived embedder such as the web server.
+>
+> `sarif.Formatter.Format` now builds a fresh `RuleManager` and mapper per call, so
+> the rules array derives only from that call's matches. Covered by
+> `TestSARIF_NoRuleAccumulationAcrossCalls` and
+> `TestSARIF_FormatIsIdempotentAcrossCalls` in
+> `internal/formatters/sarif/accumulation_test.go`.
+>
+> The harness still uses a fresh formatter per case. That is no longer a
+> workaround — it is case isolation, and it keeps the snapshot honest if a future
+> formatter grows per-instance state.
 
 ## Workflow
 
