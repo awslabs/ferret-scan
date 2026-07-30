@@ -1,4 +1,4 @@
-.PHONY: build clean vet fmt run install-config install check-go-version
+.PHONY: build clean vet fmt run install-config install check-go-version pr-checklist
 
 # Default target
 all: check-go-version fmt vet build
@@ -44,6 +44,7 @@ help:
 	@echo "  test-git-commit    - Test real git commit blocking"
 	@echo "  test-cleanup       - Test cleanup functionality"
 	@echo "  container-test     - Test container health"
+	@echo "  pr-checklist       - Pre-PR audit: prints RAN/N-A/NEEDS-MANUAL per TEST_PLAN dimension"
 	@echo ""
 	@echo "🔧 Development:"
 	@echo "  clean              - Clean build artifacts"
@@ -222,6 +223,16 @@ vet:
 fmt:
 	@echo "Formatting..."
 	@go fmt ./...
+
+# Pre-PR self-audit: run every TEST_PLAN dimension and print an explicit
+# RAN / N-A / NEEDS-MANUAL line for each, so a skipped dimension is visible
+# instead of silently absent. Paste the output in the pull request.
+#
+# Not a CI gate — CI already runs the suite. The value is that it enumerates the
+# dimensions a reviewer cannot otherwise tell were considered, particularly the
+# redaction and suppression sinks.
+pr-checklist:
+	@./scripts/pr-checklist.sh $(BASE)
 
 # Run the application
 run: build
