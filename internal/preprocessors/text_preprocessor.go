@@ -217,6 +217,32 @@ func (tp *TextPreprocessor) createOfficePositionMappings(content *ProcessedConte
 func (tp *TextPreprocessor) createBasicLineMappings(content *ProcessedContent, method string) {
 	lines := splitLines(content.Text)
 
+	// Precompute each line's absolute offset once.
+	//
+	// CalculateAbsoluteOffset re-runs splitLines over the ENTIRE text on every
+	// call, and this loop called it TWICE per line with identical arguments. On a
+	// 10k-row spreadsheet that is 20,000 full-document splits, which made
+	// extraction quadratic: measured 166ms / 607ms / 2.79s / 10.15s at 1250 /
+	// 2500 / 5000 / 10000 lines — ~3.6-4.6x per doubling where linear is 2x.
+	// Nearly all of an .xlsx scan's wall time was spent here.
+	//
+	// A prefix sum is the same arithmetic the helper performs internally, hoisted
+	// out of the loop. The plaintext preprocessor already does exactly this
+	// (preCalculateLineOffsets), so this brings the two paths into line.
+	//
+	// Exactly equal, not approximately: for charPos=0 and 1 <= line <= len(lines),
+	// CalculateAbsoluteOffset returns the sum of len(lines[i])+1 for i < line-1.
+	// The charPos clamp is a no-op at 0, and the line > len(lines) early return is
+	// unreachable because lineNum indexes lines. Both call sites passed the same
+	// arguments, so collapsing them to one lookup is also a plain subexpression
+	// elimination.
+	lineOffsets := make([]int, len(lines))
+	offset := 0
+	for i, line := range lines {
+		lineOffsets[i] = offset
+		offset += len(line) + 1 // +1 for the newline separator
+	}
+
 	for lineNum, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue // Skip empty lines
@@ -227,14 +253,14 @@ func (tp *TextPreprocessor) createBasicLineMappings(content *ProcessedContent, m
 			Line:           lineNum + 1,
 			StartChar:      0,
 			EndChar:        len(line),
-			AbsoluteOffset: CalculateAbsoluteOffset(content.Text, lineNum+1, 0),
+			AbsoluteOffset: lineOffsets[lineNum],
 		}
 
 		// For extracted documents, we estimate the original position
 		// In a real implementation, this would use document structure information
 		originalPos := DocumentPosition{
 			Page:       tp.estimatePageNumber(lineNum, content.LineCount, content.PageCount),
-			CharOffset: CalculateAbsoluteOffset(content.Text, lineNum+1, 0),
+			CharOffset: lineOffsets[lineNum],
 			LineNumber: lineNum + 1,
 		}
 
