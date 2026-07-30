@@ -189,10 +189,12 @@ func (pmp *PDFMetadataPreprocessor) buildPDFMetadataText(meta *metaextractpdflib
 	metadataText.WriteString(formatter.FormatMetadataField("Keywords", meta.Keywords))
 	metadataText.WriteString(formatter.FormatMetadataField("Creator", meta.Creator))
 
-	// Producer field with debug logging
+	// Producer field with debug logging. The value is document metadata that the
+	// metadata validator scans (Producer strings carry internal tool and host
+	// names), so log only its length (BSC4).
 	if meta.Producer != "" {
 		metadataText.WriteString(formatter.FormatMetadataField("Producer", meta.Producer))
-		pmp.LogDebugInfo(fmt.Sprintf("Adding Producer to metadata content: %s", meta.Producer))
+		pmp.LogDebugInfo(fmt.Sprintf("Adding Producer to metadata content: [HIDDEN] (len=%d)", len(meta.Producer)))
 	}
 
 	// Dates
