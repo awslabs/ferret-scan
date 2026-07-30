@@ -1,0 +1,78 @@
+{
+  "results": [
+    {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:passport_mrz_line2_check_digits>",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": 0,
+        "country": "MRZ_TD3_L2",
+        "original_confidence": 85,
+        "original_file": "<golden:passport_mrz_line2_check_digits>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "format": true,
+          "length": true,
+          "not_common_word": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_characters": true,
+          "valid_country_code": true
+        },
+        "validation_path": "document"
+      },
+      "text": "L898902C36GBR7408122M1204159ZE184226B<<<<<10",
+      "type": "PASSPORT",
+      "validator": "passport"
+    },
+    {
+      "confidence": 80,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:passport_mrz_line2_check_digits>",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0,
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "context_impact": 0,
+        "country": "MRZ_TD3",
+        "original_confidence": 80,
+        "original_file": "<golden:passport_mrz_line2_check_digits>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "format": true,
+          "length": true,
+          "not_common_word": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_characters": true,
+          "valid_country_code": true
+        },
+        "validation_path": "document"
+      },
+      "text": "P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<",
+      "type": "PASSPORT",
+      "validator": "passport"
+    }
+  ]
+}

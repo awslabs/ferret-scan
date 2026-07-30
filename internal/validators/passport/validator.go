@@ -132,6 +132,39 @@ func NewValidator() *Validator {
 		// the surfacing logic additionally checks (see hasMRZStructure).
 		"MRZ":     `\bP<[A-Z]{3}[A-Z0-9<]{38,40}`, // Machine Readable Zone line 1 (~44-46 chars)
 		"MRZ_TD3": `\bP<[A-Z]{3}[A-Z0-9<]{39}`,    // MRZ TD3 line 1 (exactly 44 chars)
+
+		// MRZ line 2 (ICAO 9303 TD3). Line 1 carries the holder's NAME; line 2
+		// carries the passport NUMBER, date of birth, sex, expiry date and
+		// personal number — so line 2 is the line with the identifiers on it, and
+		// it was not matched by anything at all.
+		//
+		// The consequence is a cleartext leak on the most ordinary passport shape
+		// there is. A scan, an OCR pipeline or any ICAO-compliant record emits
+		// BOTH lines, and redaction covered only the first:
+		//
+		//   [PASSPORT-REDACTED]                            <- line 1, redacted
+		//   L898902C36GBR7408122M1204159ZE184226B<<<<<9<   <- line 2, CLEARTEXT
+		//
+		// Fixed 44-character layout, positionally:
+		//   [0:9]   document number (may be "<"-padded)
+		//   [9]     document-number check digit
+		//   [10:13] 3-letter issuing state
+		//   [13:19] date of birth YYMMDD
+		//   [19]    date-of-birth check digit
+		//   [20]    sex: M, F or "<"
+		//   [21:27] expiry date YYMMDD
+		//   [27]    expiry check digit
+		//   [28:42] personal number (may be "<"-padded)
+		//   [42]    personal-number check digit
+		//   [43]    composite check digit over the fields above
+		//
+		// The pattern is intentionally only a shape gate. Any run of 44 MRZ
+		// characters matches it, including a base32 secret or a hash, so on its
+		// own it would be a false-positive machine. What makes it safe is that
+		// every candidate must then pass mrzLine2ChecksValid — five independent
+		// 7-3-1 check digits. That is a value-intrinsic test: unlike a keyword it
+		// cannot be defeated by anything an attacker writes NEAR the value.
+		"MRZ_TD3_L2": `\b[A-Z0-9<]{44}`,
 	}
 
 	// Application order, most specific format first. MRZ_TD3 (exactly 44 chars)
@@ -139,7 +172,11 @@ func NewValidator() *Validator {
 	// broadest one (EU's 2 letters + 7 alphanumerics also matches Canada-shaped
 	// and some US-shaped tokens). See Validator.patternOrder for why this is a
 	// slice and not the map's own iteration order.
-	patternOrder := []string{"MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU"}
+	// MRZ_TD3_L2 goes first: it is the most specific claim (a fixed 44-char
+	// layout that must satisfy five check digits), and putting it ahead of the
+	// national formats stops "US" or "EU" claiming a substring of a line-2 MRZ
+	// and reporting a fragment instead of the whole line.
+	patternOrder := []string{"MRZ_TD3_L2", "MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU"}
 
 	compiledPatterns := make(map[string]*regexp.Regexp, len(patterns))
 	for country, pattern := range patterns {
@@ -319,6 +356,122 @@ func mrzCountryCode(mrz string) (string, bool) {
 		return "", false
 	}
 	return mrz[2:5], true
+}
+
+// mrzCharValue returns the ICAO 9303 numeric value of an MRZ character: digits
+// are themselves, letters are A=10..Z=35, and the filler "<" is 0. Any other
+// byte is invalid and reported as -1 so callers can reject the candidate rather
+// than silently scoring it as a filler.
+func mrzCharValue(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'A' && c <= 'Z':
+		return int(c-'A') + 10
+	case c == '<':
+		return 0
+	default:
+		return -1
+	}
+}
+
+// mrzCheckDigit computes the ICAO 9303 check digit for s using the 7-3-1
+// repeating weights. Returns -1 if s contains a character with no defined MRZ
+// value.
+//
+// This is the whole reason a 44-character shape gate is safe to add: the digit is
+// a property of the VALUE. A keyword veto can be defeated by typing a word next
+// to a secret; a check digit cannot be talked out of.
+func mrzCheckDigit(s string) int {
+	weights := [3]int{7, 3, 1}
+	sum := 0
+	for i := 0; i < len(s); i++ {
+		v := mrzCharValue(s[i])
+		if v < 0 {
+			return -1
+		}
+		sum += v * weights[i%3]
+	}
+	return sum % 10
+}
+
+// mrzLine2ChecksValid reports whether s is a well-formed ICAO 9303 TD3 line-2
+// MRZ: exactly 44 characters whose five check digits all verify.
+//
+// The five are the document number, date of birth, expiry date, personal number,
+// and the composite over all of them. Requiring all five is what turns
+// `[A-Z0-9<]{44}` from a false-positive machine into a precise test — the odds of
+// 44 arbitrary MRZ characters satisfying five independent mod-10 digits are
+// 1 in 100,000, and any real base32 secret or hash of that length fails on the
+// first digit.
+//
+// The date fields are additionally range-checked (month 01-12, day 01-31). A
+// check digit only proves internal consistency, so without this a 44-character
+// token could satisfy the arithmetic while carrying "99" as a month; the range
+// test costs nothing and removes that class.
+func mrzLine2ChecksValid(s string) bool {
+	if len(s) != 44 {
+		return false
+	}
+
+	docNum, docCD := s[0:9], s[9]
+	dob, dobCD := s[13:19], s[19]
+	exp, expCD := s[21:27], s[27]
+	personal, personalCD := s[28:42], s[42]
+	compositeCD := s[43]
+
+	// Sex must be M, F or the filler.
+	switch s[20] {
+	case 'M', 'F', '<':
+	default:
+		return false
+	}
+
+	// Issuing state is three letters (or "<"-padded for a stateless document).
+	for i := 10; i < 13; i++ {
+		if !(s[i] >= 'A' && s[i] <= 'Z') && s[i] != '<' {
+			return false
+		}
+	}
+
+	if !mrzDatePlausible(dob) || !mrzDatePlausible(exp) {
+		return false
+	}
+
+	type field struct {
+		text string
+		want byte
+	}
+	for _, f := range []field{
+		{docNum, docCD},
+		{dob, dobCD},
+		{exp, expCD},
+		{personal, personalCD},
+		{docNum + string(docCD) + dob + string(dobCD) + exp + string(expCD) + personal + string(personalCD), compositeCD},
+	} {
+		got := mrzCheckDigit(f.text)
+		if got < 0 || byte('0'+got) != f.want {
+			return false
+		}
+	}
+	return true
+}
+
+// mrzDatePlausible reports whether a 6-character MRZ date field is a plausible
+// YYMMDD. All six must be digits ("<" padding is not valid in a date), the month
+// must be 01-12 and the day 01-31.
+func mrzDatePlausible(s string) bool {
+	if len(s) != 6 {
+		return false
+	}
+	for i := 0; i < 6; i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	month := int(s[2]-'0')*10 + int(s[3]-'0')
+	day := int(s[4]-'0')*10 + int(s[5]-'0')
+	return month >= 1 && month <= 12 && day >= 1 && day <= 31
 }
 
 // hasMRZStructure reports whether s has the structural fingerprint of an ICAO
@@ -529,6 +682,15 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// O(log fields) rather than a rescan. Empty for non-tabular
 				// documents, which leaves scoring exactly as it was.
 				lc.columnHeader = table.HeaderAt(lineBounds, matchIndex)
+
+				// A line-2 MRZ candidate is only a passport if its check digits
+				// verify. The pattern is a 44-character shape gate that any base32
+				// secret or hash of that length also satisfies, so this test is what
+				// makes it precise rather than a false-positive machine. Five
+				// independent mod-10 digits have to line up.
+				if country == "MRZ_TD3_L2" && !mrzLine2ChecksValid(match) {
+					continue
+				}
 
 				// Skip if it's a common word or test pattern
 				if v.isCommonWord(match) || v.isTestPattern(match) {
@@ -1002,6 +1164,20 @@ func (v *Validator) hasStrongPassportContextWith(match string, context *detector
 		}
 	}
 
+	// A line-2 MRZ needs the same bypass, and has a stronger claim to it. Line 1
+	// is recognized structurally ("P<" plus filler padding); line 2 is recognized
+	// ARITHMETICALLY — five independent 7-3-1 check digits over the document
+	// number, dates and personal number all have to verify.
+	//
+	// Without this it does not matter that the checks pass: line 2 carries no
+	// "passport" keyword (it is pure machine-readable data), so the prose-context
+	// requirement drops it and the number stays in cleartext. That is the whole
+	// leak — a scanned passport emits both lines, line 1 was redacted and line 2
+	// was not.
+	if mrzLine2ChecksValid(match) {
+		return true
+	}
+
 	beforeLower := strings.ToLower(context.BeforeText)
 	afterLower := strings.ToLower(context.AfterText)
 
@@ -1223,6 +1399,35 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 			checks["valid_country_code"] = false
 		}
 
+	case "MRZ_TD3_L2":
+		// Machine Readable Zone (ICAO 9303) line 2: document number, its check
+		// digit, 3-letter issuing state, date of birth + check digit, sex, expiry
+		// + check digit, personal number + check digit, composite check digit.
+		//
+		// The candidate has already satisfied all five check digits by the time
+		// it reaches here (mrzLine2ChecksValid gates both the emit loop and
+		// determineCountry), so this is a stronger claim than any of the shape-only
+		// national formats: five independent mod-10 digits over the document's own
+		// bytes. +25 puts a verified line 2 clear of the surfacing threshold on its
+		// own merit, which it has to be — line 2 is pure machine-readable data and
+		// carries no prose keyword to lean on.
+		confidence += 25
+
+		if !reMRZChars.MatchString(cleanMatch) {
+			confidence -= 15
+			checks["valid_characters"] = false
+		}
+
+		// Issuing state sits at [10:13] on line 2 (not [2:5] as on line 1), which
+		// is why the generic 2-letter validCountryCodes lookup used elsewhere
+		// reports it as invalid and docked the score.
+		if len(cleanMatch) >= 13 && v.validMRZCountryCodes[cleanMatch[10:13]] {
+			checks["valid_country_code"] = true
+		} else {
+			confidence -= 10
+			checks["valid_country_code"] = false
+		}
+
 	case "Generic":
 		// Generic passport: 6-10 alphanumeric chars
 		// This is a catch-all with lower confidence
@@ -1309,6 +1514,13 @@ func (v *Validator) determineCountry(match string) string {
 			return "MRZ_TD3"
 		}
 		return "MRZ"
+	} else if mrzLine2ChecksValid(cleanMatch) {
+		// A TD3 line-2 MRZ has no "P" prefix — it starts with the document
+		// number — so it reaches this branch. Identify it by the check digits
+		// rather than by shape: this function's result gates emission (the caller
+		// skips a match whose country is ""), so without this arm every line-2
+		// finding would be silently dropped after passing the checks above.
+		return "MRZ_TD3_L2"
 	}
 
 	// No generic fallback - only match specific passport formats

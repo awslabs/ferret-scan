@@ -436,6 +436,24 @@ var Cases = []Case{
 			"VIN: JH4KA7561PC008269\n" +
 			"vin 1HGCM82633A004353\n",
 	},
+	{
+		Name: "passport_mrz_line2_check_digits",
+		Description: "A complete ICAO 9303 TD3 machine-readable zone: line 1 (the holder's NAME) " +
+			"followed by line 2 (the passport NUMBER, date of birth, sex, expiry and personal " +
+			"number). Line 2 was matched by NOTHING, so on the most ordinary passport shape " +
+			"there is -- a scan or OCR pipeline emits both lines -- line 1 was redacted and " +
+			"line 2 passed through in cleartext. The redaction snapshot is the real gate here. " +
+			"The fourth line is the same line 2 with ONE check digit corrupted and must NOT be " +
+			"reported: the 44-character pattern matches any run of MRZ characters, so the five " +
+			"7-3-1 check digits are the only thing separating a passport from a base32 secret. " +
+			"Pairing them is what makes this case non-vacuous -- a snapshot of the positive " +
+			"alone would still pass if check-digit validation were deleted.",
+		Checks: []string{"PASSPORT"},
+		Input: "P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<\n" +
+			"L898902C36GBR7408122M1204159ZE184226B<<<<<10\n" +
+			"corrupted check digit, must not be reported:\n" +
+			"L898902C30GBR7408122M1204159ZE184226B<<<<<10\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

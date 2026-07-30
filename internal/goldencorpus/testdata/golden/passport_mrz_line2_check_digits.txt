@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                          FILE
+--------------------------------------------------------------------------------------------------------
+[MEDIUM] passport     PASSPORT               85.00% line     2 L898902C36GBR7408122M120415... <golden:passport_mrz_line2_check_digits>
+[MEDIUM] passport     PASSPORT               80.00% line     1 P<GBRSMITH<<JOHN<ALBERT<<<<... <golden:passport_mrz_line2_check_digits>
