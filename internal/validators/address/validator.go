@@ -136,6 +136,25 @@ var (
 	reMathExpr      = regexp.MustCompile(`\b\d+\s*[+\-*/=<>]+\s*\d+\b`)
 	reAllDigitsLine = regexp.MustCompile(`^\s*\d+\s*$`)
 
+	// Independent evidence that a line is an address, established WITHOUT looking
+	// at the street name's own words. Either an explicit address label, or the
+	// ", City ST ZIP" tail that ends a written US address.
+	//
+	// This is what lets the month/stopword heuristics below be overruled: those
+	// heuristics inspect the street NAME, so on their own they cannot tell "1420
+	// May Street" (a real street in several US cities) from "Due 15 January Road".
+	// A label or a city/state/ZIP tail is orthogonal to the name, so it can
+	// arbitrate between them.
+	//
+	// reCityStateZIP deliberately requires the comma and a capitalized city
+	// before the state and ZIP. A bare "IL 62704" occurs in ordinary log text
+	// ("Error IL 62704 returned by 3 processes on Server Way") and matching it
+	// would hand the rescue to lines that are not addresses at all.
+	reAddressLabel = regexp.MustCompile(
+		`(?i)\b(?:mailing|home|business|billing|shipping|street|physical|postal|residence|work)\s+address\b|(?i)\baddress\s*:`)
+	reCityStateZIP = regexp.MustCompile(
+		`,\s*[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?\b`)
+
 	// Month names and day names that should not be street names by themselves.
 	monthNames = map[string]bool{
 		"january": true, "february": true, "march": true, "april": true,
@@ -778,6 +797,26 @@ type streetFPContext struct {
 	verLocs  [][]int
 	codeLocs [][]int
 	mathLocs [][]int
+
+	// addrEvidence is whether the line carries independent evidence that it is an
+	// address (see reAddressLabel / reCityStateZIP). It is a per-LINE property, so
+	// it is computed lazily at most once and reused for every match on the line --
+	// evaluating it per match would put two whole-line regex scans back inside the
+	// per-match path, which is the O(matches x line length) shape this type exists
+	// to remove.
+	addrEvidence     bool
+	addrEvidenceDone bool
+}
+
+// hasAddressEvidence reports whether this line looks like an address for reasons
+// independent of the street name's own words: an explicit address label, or the
+// ", City ST ZIP" tail. Memoized per line.
+func (c *streetFPContext) hasAddressEvidence() bool {
+	if !c.addrEvidenceDone {
+		c.addrEvidence = reAddressLabel.MatchString(c.line) || reCityStateZIP.MatchString(c.line)
+		c.addrEvidenceDone = true
+	}
+	return c.addrEvidence
 }
 
 func (v *Validator) newStreetFPContext(line string) *streetFPContext {
@@ -869,18 +908,23 @@ func (c *streetFPContext) isFalsePositive(match string, matchStart int) bool {
 
 	// Check if the trailing dot of the match is actually part of a file extension
 	// e.g., "100 North Dr.go" — the "Dr." is part of "Dr.go"
+	//
+	// The word after the dot must actually BE a source-file extension. Testing
+	// only "is it alphabetic" also swallowed the abbreviation-plus-unit form that
+	// real addresses use when the space is omitted: "4821 Maple Dr.Suite 200" and
+	// "1 Oak St.Apt 4" reported nothing, while the same lines with a space
+	// reported a finding. That is a leak, not a scoring nit -- an unreported
+	// address is never handed to the redactor, and a file with no findings has no
+	// redacted output written at all.
 	matchEnd := matchStart + len(match)
 	if matchEnd < len(line) && line[matchEnd-1] == '.' {
-		// The match ended with a dot; check if it continues with alpha chars (file extension)
-		rest := line[matchEnd:]
-		if len(rest) > 0 && rest[0] >= 'a' && rest[0] <= 'z' || (len(rest) > 0 && rest[0] >= 'A' && rest[0] <= 'Z') {
+		if isSourceFileExtension(line[matchEnd:]) {
 			return true
 		}
 	}
 	// Also check: match without dot but next char after match is a dot then alpha
 	if matchEnd < len(line) && line[matchEnd] == '.' {
-		rest := line[matchEnd+1:]
-		if len(rest) > 0 && ((rest[0] >= 'a' && rest[0] <= 'z') || (rest[0] >= 'A' && rest[0] <= 'Z')) {
+		if isSourceFileExtension(line[matchEnd+1:]) {
 			return true
 		}
 	}
@@ -895,10 +939,18 @@ func (c *streetFPContext) isFalsePositive(match string, matchStart int) bool {
 			return true // Single-character street names are suspicious
 		}
 
-		// Reject if the street name is a month/day name (e.g., "12 January Dr")
+		// Reject if the street name is a month/day name (e.g., "12 January Dr"),
+		// UNLESS the line carries independent address evidence.
+		//
+		// May Street, March Street, August Avenue and June Court are all real US
+		// streets, so this heuristic deleted real addresses: "Mailing address: 1420
+		// May Street, Springfield IL 62704" reported nothing while the identical
+		// line with "Oak" reported a finding. Because only reported findings are
+		// handed to the redactor -- and a file with no findings has no redacted
+		// output written at all -- the whole address stayed in cleartext.
 		nameWords := strings.Fields(streetName)
 		if len(nameWords) == 1 {
-			if monthNames[strings.ToLower(nameWords[0])] {
+			if monthNames[strings.ToLower(nameWords[0])] && !c.hasAddressEvidence() {
 				return true
 			}
 		}
@@ -918,17 +970,66 @@ func (c *streetFPContext) isFalsePositive(match string, matchStart int) bool {
 			}
 		}
 		// If the name part has unlikely words and the overall structure looks like
-		// "N things preposition Name Suffix", reject it.
+		// "N things preposition Name Suffix", reject it -- UNLESS the line carries
+		// independent address evidence.
+		//
+		// The exemption matters because articles are ordinary in real street names:
+		// "The Meadows Drive", "The Oaks Boulevard", "Isle of Wight Road", "Avenue
+		// of the Americas". Those all begin (or contain) a word in
+		// unlikelyStreetWords, so "Mailing address: 88 The Meadows Drive,
+		// Springfield IL 62704" reported nothing while "88 Meadows Drive" reported
+		// a finding.
+		//
+		// "100 connections on Main Loop" has neither a label nor a city/state/ZIP
+		// tail, so it stays suppressed and the heuristic keeps doing its job.
 		if hasUnlikely && hasRealName && len(nameWords) >= 2 {
 			// Check if the first word of the street name is an unlikely word
 			// Pattern: "100 connections on Main Loop" — "connections" is first, unlikely
-			if unlikelyStreetWords[strings.ToLower(nameWords[0])] {
+			if unlikelyStreetWords[strings.ToLower(nameWords[0])] && !c.hasAddressEvidence() {
 				return true
 			}
 		}
 	}
 
 	return false
+}
+
+// sourceFileExtensions are the extensions that make "<StreetType>.<word>" a code
+// reference rather than an address. Kept in sync with reCodeLineRef, which does
+// the same job for the whole-line form ("42 handler.go").
+var sourceFileExtensions = map[string]bool{
+	"go": true, "py": true, "js": true, "ts": true, "java": true, "rb": true,
+	"rs": true, "c": true, "cpp": true, "h": true, "cs": true, "swift": true,
+	"kt": true, "php": true, "scala": true, "m": true, "mm": true,
+}
+
+// isSourceFileExtension reports whether rest BEGINS with a source-file extension
+// as a complete token, i.e. the text after a dot really is an extension and not
+// the next word of an address.
+//
+// "Dr.go handler"    -> "go"    -> true  (a code reference)
+// "Dr.Suite 200"     -> "suite" -> false (an address with the space omitted)
+// "St.Apt 4"         -> "apt"   -> false
+//
+// The token must END at a non-word byte, so "Dr.gopher Lane" is not read as ".go".
+func isSourceFileExtension(rest string) bool {
+	if rest == "" {
+		return false
+	}
+	end := 0
+	for end < len(rest) && isWordByteASCII(rest[end]) {
+		end++
+	}
+	if end == 0 {
+		return false
+	}
+	return sourceFileExtensions[strings.ToLower(rest[:end])]
+}
+
+// isWordByteASCII reports whether b is a letter, digit or underscore.
+func isWordByteASCII(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') || b == '_'
 }
 
 // getAdjacentLines returns concatenated text from lines adjacent to lineNum.
