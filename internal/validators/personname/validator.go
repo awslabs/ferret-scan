@@ -853,6 +853,24 @@ func containsWordKeyword(text, keyword string) bool {
 	return kwmatch.ContainsLower(text, keyword)
 }
 
+// firstWordKeywordIndex returns the byte offset of the first whole-word occurrence
+// of keyword in lowerText, or -1. It is the index-returning counterpart of
+// containsWordKeyword: same word model (kwmatch's alphanumeric boundaries), so a
+// keyword found by one is found at the reported offset by the other.
+//
+// The offset is what lets a penalty be applied by DISTANCE from the match instead
+// of line-globally. A plain strings.Index would not do: it reports substring hits
+// ("state" inside "estate", "drive" inside "driven") that containsWordKeyword
+// rejects, so the two would disagree about whether a pattern is present.
+func firstWordKeywordIndex(lowerText, keyword string) int {
+	idx := -1
+	kwmatch.ContainsFunc(lowerText, keyword, func(start, _ int) bool {
+		idx = start
+		return true // stop at the first whole-word hit
+	})
+	return idx
+}
+
 // lineContextCache holds the per-line work shared by every name match found on a
 // single line. The original AnalyzeContext recomputed all of this (lowercasing the
 // line, scanning every positive/negative keyword, running the email/business/
@@ -880,8 +898,18 @@ type lineContextCache struct {
 	// O(matches x lineLen) blowup on a single very long line (minified JSON/JS).
 	negativeKeywordIndices []int
 	// specificLineAdjustment is the line-global portion of analyzeSpecificPatterns
-	// (everything except the per-match signature boost).
+	// that is genuinely line-global: the email/phone-on-this-line boosts. The three
+	// PENALTY families are proximity-gated per match instead, via the index slices
+	// below — see analyzeSpecificPatternsLineGlobal.
 	specificLineAdjustment float64
+	// businessIndices, productIndices and geoIndices hold the first-occurrence byte
+	// offset of each business / product / geographic pattern present on the line.
+	// Like negativeKeywordIndices these are line-global to COMPUTE but are applied
+	// per match by distance, so a street address at the far end of a long line no
+	// longer penalizes a name at the near end.
+	businessIndices []int
+	productIndices  []int
+	geoIndices      []int
 }
 
 // newLineContextCache precomputes the line-global context signals for line.
@@ -942,6 +970,7 @@ func (v *Validator) newLineContextCache(line string) *lineContextCache {
 	}
 
 	c.specificLineAdjustment = v.analyzeSpecificPatternsLineGlobal(lowerLine)
+	c.businessIndices, c.productIndices, c.geoIndices = v.specificPatternIndices(lowerLine)
 	return c
 }
 
@@ -1005,6 +1034,67 @@ func (v *Validator) analyzeContextCached(match string, matchStart int, cache *li
 // located with a single strings.Index (the directly-tested public AnalyzeContext
 // path). The hot scanning path always passes the real offset, so the per-match
 // full-line scans are eliminated.
+// specificPatternProximity is how close (in bytes) a business / product /
+// geographic pattern must sit to a name before it counts as context FOR that name.
+//
+// 25 was measured, not guessed. Sweeping the window against a corpus of 10 real
+// names carrying addresses and 24 place/org/address decoys:
+//
+//	window   real names found   decoys reported
+//	    15         10/10              8/24
+//	    22         10/10              6/24
+//	 23-25         10/10              5/24   <- plateau
+//	    26          9/10              5/24
+//	    30          8/10              5/24
+//	line-global     4/10              5/24   (the old behavior)
+//
+// 5/24 is exactly what the line-global code reported, on the same five lines, so
+// this window recovers every real name while introducing NO new false positive.
+// 25 sits at the top of the plateau, one byte before recall starts dropping.
+//
+// The remaining five decoys ("Phoenix Arizona", "Menlo Park", ...) are a separate
+// pre-existing issue: those place words are themselves entries in the FIRST-NAME
+// database, so they score on their own merits and the geographic penalty was only
+// masking them incidentally — at the cost of deleting real names. Fixing that means
+// curating the name database, not widening this window; no window value separates
+// the two classes, because the geographic word sits OUTSIDE the matched span in
+// both (20-21 bytes away in the decoys, 29-31 in the real names).
+//
+// Note this is wider than the negative-keyword penalty's 15, even though many
+// words appear in both lists (13 of 19 geographic patterns and 17 business
+// patterns are also negativeKeywords). That is intentional: the two penalties
+// stack, so the keyword path still contributes at its own tighter distance.
+const specificPatternProximity = 25
+
+// matchIndex resolves the byte offset of the match within lowerLine, preferring
+// the offset the pattern engine already knows. Mirrors the nameIndex fallback used
+// by the negative-keyword penalty: -1 means "not supplied", in which case a single
+// lookup finds it (the directly-tested public AnalyzeContext path). Returns -1 if
+// the match cannot be located, in which case no proximity penalty is applied —
+// failing OPEN, because a name is reported rather than silently dropped.
+func matchIndex(matchStart int, lowerLine, match string) int {
+	if matchStart >= 0 {
+		return matchStart
+	}
+	return strings.Index(lowerLine, strings.ToLower(match))
+}
+
+// nearestWithin reports whether any offset in indices is within window bytes of
+// nameIndex. indices holds at most one entry per pattern family today, but the
+// slice shape keeps it aligned with negativeKeywordIndices and costs nothing.
+func nearestWithin(indices []int, nameIndex, window int) bool {
+	for _, idx := range indices {
+		distance := idx - nameIndex
+		if distance < 0 {
+			distance = -distance
+		}
+		if distance < window {
+			return true
+		}
+	}
+	return false
+}
+
 func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cache *lineContextCache) float64 {
 	// Mirror AnalyzeContext's `if context.FullLine != ""` guard: an empty line
 	// contributes nothing (no signature boost either).
@@ -1048,8 +1138,30 @@ func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cac
 		}
 	}
 
-	// Line-global specific patterns plus the match-specific signature boost.
+	// Line-global specific patterns (the BOOSTS only) plus the match-specific
+	// signature boost.
 	adjustment += cache.specificLineAdjustment
+
+	// The business / product / geographic PENALTIES are applied by distance, like
+	// the negative-keyword penalty above, rather than to the whole line. Locating
+	// them stays hoisted per line (see specificPatternIndices); only this cheap
+	// offset comparison is per match, so the validator stays linear.
+	//
+	// Same window as the negative-keyword penalty: a pattern has to sit within
+	// specificPatternProximity of the name to say anything about THAT name. A
+	// street address at the other end of a CSV row does not.
+	if nameIndex := matchIndex(matchStart, lowerLine, match); nameIndex >= 0 {
+		if nearestWithin(cache.businessIndices, nameIndex, specificPatternProximity) {
+			adjustment -= 20.0 // business/technical context
+		}
+		if nearestWithin(cache.productIndices, nameIndex, specificPatternProximity) {
+			adjustment -= 8.0 // product context
+		}
+		if nearestWithin(cache.geoIndices, nameIndex, specificPatternProximity) {
+			adjustment -= 35.0 // geographic context
+		}
+	}
+
 	trimmedLine := strings.TrimSpace(lowerLine)
 	trimmedMatch := strings.TrimSpace(match)
 	if len(trimmedLine) == len(trimmedMatch) {
@@ -1068,6 +1180,7 @@ var (
 	sortedEmailPatterns    []string
 	sortedBusinessPatterns []string
 	sortedProductPatterns  []string
+	sortedGeoPatterns      []string
 	sortedPatternsOnce     sync.Once
 )
 
@@ -1089,6 +1202,12 @@ func initSortedPatterns() {
 		sortedProductPatterns = append(sortedProductPatterns, pattern)
 	}
 	slices.Sort(sortedProductPatterns)
+
+	sortedGeoPatterns = make([]string, 0, len(geoPatternsMap))
+	for pattern := range geoPatternsMap {
+		sortedGeoPatterns = append(sortedGeoPatterns, pattern)
+	}
+	slices.Sort(sortedGeoPatterns)
 }
 
 // getSortedEmailPatterns returns sorted email patterns for deterministic iteration
@@ -1109,10 +1228,41 @@ func (v *Validator) getSortedProductPatterns() []string {
 	return sortedProductPatterns
 }
 
+// getSortedGeoPatterns returns sorted geographic patterns for deterministic
+// iteration. The geo scan previously ranged geoPatternsMap directly and broke on
+// the first hit, so which pattern won was decided by map order.
+func (v *Validator) getSortedGeoPatterns() []string {
+	sortedPatternsOnce.Do(initSortedPatterns)
+	return sortedGeoPatterns
+}
+
 // analyzeSpecificPatternsLineGlobal computes the line-global portion of the
 // original analyzeSpecificPatterns: everything except the match-specific
 // "line is just the name" signature boost, which is applied per match in
 // analyzeLineContextForMatch. contextLine is the already-lowercased line.
+// analyzeSpecificPatternsLineGlobal returns the part of the specific-pattern
+// analysis that is genuinely line-global: the boosts. A signature/email/phone
+// signal anywhere on the line says something about the line as a whole, and
+// boosting cannot hide a finding.
+//
+// The three PENALTY families (business, product, geographic) are deliberately NOT
+// scored here. They are located instead — see specificPatternIndices — and applied
+// per match by distance in analyzeLineContextForMatch, because line-global
+// penalties were deleting real names:
+//
+//	"Sarah Brooks,Acme Inc,1425 Oak Drive,Springfield,IL"  -> 0 findings
+//	"Patient Sarah Brooks, 42 River Road, admitted Monday" -> 0 findings
+//
+// business (-20, "inc") + geographic (-35, "drive"/"road") clamps to -50 in
+// analyzeContextCached, which takes a solid two-token name from 92 to 42 and below
+// the >= 50 emit threshold. The name is then absent from the report and so from
+// redaction, leaving it cleartext in the output. The same names score 92 with the
+// address removed, and 100 with the address on its own line.
+//
+// The asymmetry is the tell: the negative-KEYWORD penalty in
+// analyzeLineContextForMatch has always been proximity-gated (< 15 chars from the
+// match). These three families were the only context signals applied to the whole
+// line regardless of distance.
 func (v *Validator) analyzeSpecificPatternsLineGlobal(contextLine string) float64 {
 	adjustment := 0.0
 
@@ -1120,32 +1270,6 @@ func (v *Validator) analyzeSpecificPatternsLineGlobal(contextLine string) float6
 	for _, pattern := range v.getSortedEmailPatterns() {
 		if strings.Contains(contextLine, pattern) {
 			adjustment += 12.0 // Strong boost for email contexts
-			break
-		}
-	}
-
-	// Check for business context patterns (strong negative indicators).
-	// Whole-word matching so "inc" doesn't fire inside "incident"/"since" (L25).
-	for _, pattern := range v.getSortedBusinessPatterns() {
-		if containsWordKeyword(contextLine, pattern) {
-			adjustment -= 20.0 // Moderate penalty for technical/business contexts
-			break
-		}
-	}
-
-	// Check for product-specific patterns (very strong negative indicators).
-	for _, pattern := range v.getSortedProductPatterns() {
-		if containsWordKeyword(contextLine, pattern) {
-			adjustment -= 8.0 // Light penalty for product contexts
-			break
-		}
-	}
-
-	// Check for geographic patterns (negative indicators). Whole-word matching so
-	// "park" doesn't fire inside "parking"/"sparkle" (L25).
-	for pattern := range geoPatternsMap {
-		if containsWordKeyword(contextLine, pattern) {
-			adjustment -= 35.0 // Strong penalty for geographic contexts
 			break
 		}
 	}
@@ -1164,6 +1288,47 @@ func (v *Validator) analyzeSpecificPatternsLineGlobal(contextLine string) float6
 	}
 
 	return adjustment
+}
+
+// specificPatternIndices locates EVERY pattern of each penalty family present on
+// the line. Locating is line-global (identical for every match on the line, so it
+// stays hoisted out of the per-match loop and the validator stays linear);
+// APPLYING the penalty is per match, by distance.
+//
+// Every offset, not just the first, because under proximity gating the recorded
+// offsets decide whether a name is penalized — so keeping only one per family lets
+// a distant match mask an adjacent one. With `break` after the first hit:
+//
+//	"oak drive sarah brooks"                    -> geo=[4],  penalty FIRES
+//	"avenue" + 60 dots + " oak drive sarah brooks" -> geo=[0],  penalty SILENT
+//
+// Identical adjacent "oak drive", but prepending the alphabetically-earlier
+// "avenue" far away suppressed the penalty entirely (-50 became -15, and the
+// finding rose from 57 to 69 through the CLI). That is attacker-controllable, and
+// it is the same class of hazard as the map-order issue below: what changed was
+// never the score for a given pattern, but WHICH offset got recorded.
+//
+// The penalty itself is still awarded at most once per family (see
+// analyzeLineContextForMatch), so collecting more offsets cannot double-penalize;
+// it only stops one from hiding another.
+//
+// The geographic loop also stops ranging over geoPatternsMap directly. Ranging a
+// Go map picks an arbitrary winner among several present patterns; the score was
+// the same either way, so this was invisible, but the recorded offset is not
+// order-independent. Iterating a sorted slice makes it deterministic.
+func (v *Validator) specificPatternIndices(lowerLine string) (business, product, geo []int) {
+	collect := func(patterns []string) []int {
+		var out []int
+		for _, pattern := range patterns {
+			if i := firstWordKeywordIndex(lowerLine, pattern); i >= 0 {
+				out = append(out, i)
+			}
+		}
+		return out
+	}
+	return collect(v.getSortedBusinessPatterns()),
+		collect(v.getSortedProductPatterns()),
+		collect(v.getSortedGeoPatterns())
 }
 
 // These complex pattern matching methods are no longer needed

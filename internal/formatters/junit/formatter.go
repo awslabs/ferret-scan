@@ -88,6 +88,11 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// testcases moved around.
 	shared.SortSuppressedByPriority(suppressedMatches)
 
+	// Honor --limit before grouping, so the per-file <testcase> split and the
+	// suite's Tests/Failures counters describe the findings the report actually
+	// carries.
+	filteredMatches, _, _ = shared.ApplyLimit(filteredMatches, options)
+
 	// Group matches by file for better organization
 	fileGroups := f.groupMatchesByFile(filteredMatches)
 
