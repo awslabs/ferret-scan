@@ -124,7 +124,15 @@ also a redaction change**. Test it explicitly, do not infer it.
 - The public redaction API (`pkg/redact`) is a separate external contract — a bump
   that external consumers pin to must keep `redact.ValidCheckNames()` and friends
   stable. Most `internal/formatter` and `internal/web` changes do not touch it; say so
-  when true.
+  when true. If a change does alter that list, it needs an explicit `CHANGELOG`
+  entry naming the added/removed names and the consumer impact.
+- Adding a validator to `internal/core/factory.go` is enough to add it to
+  `redact.ValidCheckNames()`, so it must also be able to detect on that package's
+  in-memory, no-config path. `TestValidCheckNames_AllDetectAndRedact` enforces this
+  by driving a positive fixture through `Engine.Redact` for every advertised name and
+  asserting both that a finding is produced and that the output changed. A validator
+  that genuinely cannot work there (needs the filesystem, or gets its patterns only
+  from config) belongs in `checksUnsupportedInMemory` instead.
 
 ### 9. TP / FP and recall (real-world documents)
 
