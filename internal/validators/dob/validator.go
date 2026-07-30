@@ -61,15 +61,22 @@ var monthMap = map[string]int{
 	"sep": 9, "oct": 10, "nov": 11, "dec": 12,
 }
 
-// containsKeyword reports whether text contains keyword as a whole word/phrase,
-// case-insensitively.
+// containsKeywordLower reports whether lowerText contains lowerKeyword as a
+// whole word/phrase. BOTH arguments must already be lowercased — every keyword
+// list in this package is a lowercase literal, which TestKeywordListsAreLowercase
+// enforces, and callers lowercase the line once per line.
 //
-// ModeAlnum treats '_' as a word boundary, so a keyword is found inside a
-// snake_case identifier ("customer_ssn", "TEST_VALUE") exactly as it is
-// between spaces. Code and config — where those identifiers dominate — are
-// primary scan targets for this tool.
-func containsKeyword(text, keyword string) bool {
-	return kwmatch.Contains(text, keyword)
+// ContainsLower rather than Contains: Contains lowercases its text argument on
+// every call, and the keyword scan runs once per keyword (79 of them). Passing
+// an already-lowercased line makes that redundant work disappear; it measured as
+// 80% of this validator's CPU on a dense line.
+//
+// kwmatch's alphanumeric word model treats '_' as a boundary, so a keyword is
+// found inside a snake_case identifier ("date_of_birth", "TEST_VALUE") exactly
+// as it is between spaces. Code and config — where those identifiers dominate —
+// are primary scan targets for this tool.
+func containsKeywordLower(lowerText, lowerKeyword string) bool {
+	return kwmatch.ContainsLower(lowerText, lowerKeyword)
 }
 
 // Validator implements the detector.Validator interface for detecting
@@ -147,12 +154,36 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			continue
 		}
 
-		lowerLine := strings.ToLower(line)
+		// Keyword analysis is line-global: analyzeContext and findKeywords read
+		// only the lowercased line, so their results are identical for every
+		// candidate on it. Each walks the whole line once per keyword (79 of
+		// them), so running them per MATCH made the validator quadratic in line
+		// length (~4x per doubling: 5.2s at 32KB, 22s at 64KB). Computing them
+		// once per line is what keeps a dense line linear.
+		//
+		// Deferred to the first PLAUSIBLE candidate rather than done up-front, so
+		// a line whose only dates are implausible (a changelog of 2024 releases,
+		// a column of far-future dates) still pays nothing — the same work the
+		// per-match version skipped by `continue`-ing before analyzeContext.
+		var (
+			lineScanned          bool
+			lineContextImpact    float64
+			linePositiveKeywords []string
+			lineNegativeKeywords []string
+		)
 
 		for _, cand := range candidates {
 			// Structural validation: must be a plausible DOB date
 			if !v.isPlausibleDOB(cand) {
 				continue
+			}
+
+			if !lineScanned {
+				lowerLine := strings.ToLower(line)
+				lineContextImpact = v.analyzeContext(lowerLine)
+				linePositiveKeywords = v.findKeywords(lowerLine, v.positiveKeywords)
+				lineNegativeKeywords = v.findKeywords(lowerLine, v.negativeKeywords)
+				lineScanned = true
 			}
 
 			// Calculate base confidence (very low without keywords)
@@ -176,13 +207,17 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				contextInfo.AfterText = line[matchIndex+len(cand.text) : end]
 			}
 
-			// Context analysis: keyword presence is the primary signal
-			contextImpact := v.analyzeContext(lowerLine, contextInfo)
+			// Context analysis: keyword presence is the primary signal. Computed
+			// once per line above; identical for every candidate on this line.
+			contextImpact := lineContextImpact
 			confidence += contextImpact
 
-			// Store keywords found
-			contextInfo.PositiveKeywords = v.findKeywords(lowerLine, v.positiveKeywords)
-			contextInfo.NegativeKeywords = v.findKeywords(lowerLine, v.negativeKeywords)
+			// Store keywords found. Also line-global, so reused rather than
+			// recomputed per match. The slices are shared across the matches on
+			// this line — read-only on every consumer (Match.Clear does not touch
+			// them, and nothing downstream appends to or mutates them).
+			contextInfo.PositiveKeywords = linePositiveKeywords
+			contextInfo.NegativeKeywords = lineNegativeKeywords
 			contextInfo.ConfidenceImpact = contextImpact
 
 			// Cap and floor
@@ -402,10 +437,13 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	return confidence, checks
 }
 
-// AnalyzeContext analyzes the context around a match and returns a confidence adjustment.
+// AnalyzeContext analyzes the context around a match and returns a confidence
+// adjustment. Scoring reads context.FullLine; BeforeText/AfterText are not
+// consulted, because for this validator they are always slices of FullLine and
+// re-joining them fabricated keywords (see analyzeContext).
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
 	lowerLine := strings.ToLower(context.FullLine)
-	return v.analyzeContext(lowerLine, context)
+	return v.analyzeContext(lowerLine)
 }
 
 // nonHumanIndicators are words that indicate a non-human subject is being
@@ -435,20 +473,37 @@ var disqualifierKeywords = map[string]bool{
 }
 
 // analyzeContext performs keyword-based context analysis.
-func (v *Validator) analyzeContext(lowerLine string, context detector.ContextInfo) float64 {
+//
+// Keyword presence is evaluated against the LINE, not against a
+// BeforeText+line+AfterText concatenation. BeforeText and AfterText are slices
+// of the very same line (see ValidateContentCtx), so re-joining them onto the
+// line adds no keyword the line does not already contain — it only adds two
+// artifacts, both of which changed scoring:
+//
+//   - The synthetic " " joins let a multi-word keyword match across a junction,
+//     e.g. a line ending "...that date" whose head is "of birth..." matched the
+//     strong label "date of birth" that appears nowhere in the document,
+//     scoring 90/HIGH instead of being dropped.
+//   - The 50-byte windows are cut at arbitrary byte offsets, so a fragment can
+//     start mid-word and gain a word boundary it does not have. That fired in
+//     both directions: a fabricated "dob" boosted a bare date to HIGH, and a
+//     fabricated "test" (cut out of "contest") pushed a genuine
+//     "patient date of birth: 05/06/1990" to impact -50, dropping the finding
+//     entirely — a real DOB missing from the report, and so from redaction.
+//
+// Both artifacts depended only on where the match happened to sit in the line,
+// which is why identical text scored differently at different byte offsets.
+// Scanning the line alone is the honest question ("is this keyword in the
+// document near this match?") and is what the recorded PositiveKeywords /
+// NegativeKeywords on the finding have always reflected.
+func (v *Validator) analyzeContext(lowerLine string) float64 {
 	var impact float64
-
-	// Full text to scan for keywords: combine available context
-	fullContext := lowerLine
-	if context.BeforeText != "" || context.AfterText != "" {
-		fullContext = strings.ToLower(context.BeforeText) + " " + lowerLine + " " + strings.ToLower(context.AfterText)
-	}
 
 	// Check positive keywords first to identify strong DOB signals
 	positiveCount := 0
 	hasStrongPositive := false
 	for _, kw := range v.positiveKeywords {
-		if containsKeyword(fullContext, kw) {
+		if containsKeywordLower(lowerLine, kw) {
 			positiveCount++
 			if strongPositiveKeywords[kw] {
 				hasStrongPositive = true
@@ -460,7 +515,7 @@ func (v *Validator) analyzeContext(lowerLine string, context detector.ContextInf
 	contextNegativeCount := 0
 	hasDisqualifier := false
 	for _, kw := range v.negativeKeywords {
-		if containsKeyword(fullContext, kw) {
+		if containsKeywordLower(lowerLine, kw) {
 			if disqualifierKeywords[kw] {
 				hasDisqualifier = true
 			} else {
@@ -503,7 +558,7 @@ func (v *Validator) analyzeContext(lowerLine string, context detector.ContextInf
 	// Check for non-human subject indicators that reduce their signal.
 	hasNonHuman := false
 	for _, ind := range nonHumanIndicators {
-		if containsKeyword(fullContext, ind) {
+		if containsKeywordLower(lowerLine, ind) {
 			hasNonHuman = true
 			break
 		}
@@ -526,10 +581,12 @@ func (v *Validator) analyzeContext(lowerLine string, context detector.ContextInf
 }
 
 // findKeywords returns all keywords from the list that appear in the text.
+// lowerText must already be lowercased; see containsKeywordLower for why that
+// precondition is load-bearing on this path.
 func (v *Validator) findKeywords(lowerText string, keywords []string) []string {
 	var found []string
 	for _, kw := range keywords {
-		if containsKeyword(lowerText, kw) {
+		if containsKeywordLower(lowerText, kw) {
 			found = append(found, kw)
 		}
 	}
