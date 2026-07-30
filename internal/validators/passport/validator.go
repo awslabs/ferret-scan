@@ -13,6 +13,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 )
 
 // Package-level pre-compiled regexps for static patterns
@@ -462,6 +463,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
+	// Recognise delimited tabular content ONCE per document. In a CSV export the
+	// only passport label is the header row, so without this the whole file scans
+	// as unlabelled values and reports nothing. Analyze is conservative: anything
+	// ambiguous (ragged rows, unbalanced quotes, no header-ish cells) returns a
+	// non-table and leaves behavior exactly as before.
+	table := tabular.Analyze(content)
+
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
 		if execguard.LineLoopCancelled(ctx, lineNum) {
@@ -480,6 +488,15 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// (the match argument was never used in their bodies), so precompute.
 		lineIsTabular := v.isTabularDataLine(line)
 		lineIsForm := v.isInFormContextLine(lineLower)
+
+		// Field offsets for this line, computed once and reused for every match on
+		// it, so mapping a match to its column stays a binary search rather than a
+		// per-match rescan. Nil when the document is not tabular, or on the header
+		// row itself (a header cell is a label, not a value to report).
+		var lineBounds *tabular.LineBounds
+		if table.IsTable() && lineNum != table.HeaderLine() {
+			lineBounds = table.Bounds(line)
+		}
 
 		// Collected per line, with byte spans retained, so overlapping claims can
 		// be arbitrated before the spans are lost (detector.Match has no offset
@@ -505,6 +522,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			for _, loc := range foundIdx {
 				matchIndex := loc[0]
 				match := line[loc[0]:loc[1]]
+
+				// The column header naming THIS match's column. Set per match
+				// because the column varies along the row; resolved by binary
+				// search over the per-line bounds computed above, so this is
+				// O(log fields) rather than a rescan. Empty for non-tabular
+				// documents, which leaves scoring exactly as it was.
+				lc.columnHeader = table.HeaderAt(lineBounds, matchIndex)
 
 				// Skip if it's a common word or test pattern
 				if v.isCommonWord(match) || v.isTestPattern(match) {
@@ -677,6 +701,28 @@ const edgeWindow = 64
 type lineContext struct {
 	lineLower   string          // lower-cased full line (computed once per line)
 	inLineCache map[string]bool // memoized "keyword present in lineLower"
+
+	// columnHeader is the lowercased header cell naming the column this match
+	// sits in, when the document is delimited tabular data and the match is on a
+	// data row. Empty otherwise.
+	//
+	// This exists because PASSPORT is label-GATED — it reports nothing without a
+	// nearby label — and the label search stops at the newline. In a CSV export
+	// the label IS the header row, one or more lines above the value, so
+	//
+	//	name,email,passport_number,country
+	//	Jane,jane@corp.example,987654321,US
+	//
+	// produced NO passport finding at all, while the identical text written inline
+	// as "Passport Number: 987654321" scores HIGH. An unreported value is never
+	// handed to the redactor, so the redacted output of that CSV still contained
+	// the passport number in cleartext.
+	//
+	// Treating the column header as context for its own column's values is what
+	// closes that. It is set per match (the column varies along the row) but
+	// resolved by binary search over per-line bounds, so the per-match cost is
+	// logarithmic rather than a rescan.
+	columnHeader string
 }
 
 func newLineContext(lineLower string) *lineContext {
@@ -709,6 +755,12 @@ func (c *lineContext) inLine(kw string) bool {
 // catch any keyword that straddles a context boundary — making the per-match
 // cost independent of the line length.
 func (c *lineContext) contains(kw, beforeLower, afterLower string) bool {
+	// The column header names this value's column, so a keyword in it is context
+	// FOR this value in exactly the way a same-line label is. Checked first
+	// because it is a short string and the common case is a miss.
+	if c.columnHeader != "" && strings.Contains(c.columnHeader, kw) {
+		return true
+	}
 	if len(c.lineLower) <= 256 {
 		return strings.Contains(beforeLower+" "+c.lineLower+" "+afterLower, kw)
 	}
