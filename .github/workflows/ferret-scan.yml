@@ -4,9 +4,11 @@
 name: Ferret Scan Security Check
 
 on:
-  # Run on pull requests
+  # Run on pull requests. No `branches:` filter on purpose — see go-test.yml: a
+  # [main, master, develop] filter gave stacked PRs (base = another feature branch)
+  # zero checks, and a secret introduced on a stacked branch would have reached main
+  # having never been scanned by the tool itself.
   pull_request:
-    branches: [main, master, develop]
     paths:
       - '**.py'
       - '**.js'
