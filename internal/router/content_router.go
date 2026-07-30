@@ -157,8 +157,36 @@ func (cr *ContentRouter) RouteContent(processedContent *preprocessors.ProcessedC
 			routedContent.Metadata = append(routedContent.Metadata, *metadataContent)
 		}
 
-		// No document body content for pure metadata
-		routedContent.DocumentBody = ""
+		// The metadata text is ALSO the document body, so the text validators see it.
+		//
+		// This used to be set to "", and dual_path_bridge.go gates the entire
+		// document path on `DocumentBody != ""` — so for a file whose only text is
+		// its metadata, exactly 1 of the 19 validators ran: METADATA. That is the
+		// routing outcome for every media type (.jpg/.png/.gif/.tiff/.webp,
+		// .wav/.mp3/.flac/.m4a, .mp4/.mov), because only one preprocessor is capable
+		// for those extensions, so ProcessorType has no "+" and lands in this arm.
+		// (.pdf/.docx/.xlsx are unaffected: two preprocessors are capable, so they
+		// route through "combined_preprocessors", which keeps a body.)
+		//
+		// The METADATA validator cannot cover for that. It is a field-NAME allowlist
+		// scanner: validateWithPreprocessorRules skips any line whose key is not in
+		// the per-preprocessor SensitiveFields list, and for a line that does match
+		// it emits ONE coarse type for the whole field value. So an SSN, a PAN or an
+		// AWS key sitting inside a metadata value is either skipped outright or
+		// reported as a single AUTHOR_INFO/DOCUMENT_COMMENTS row — never typed, and
+		// never individually redactable.
+		//
+		// Measured: an EXIF ImageDescription carrying an SSN, an email and a phone
+		// number produced ZERO findings at any confidence, and because there were no
+		// findings the redaction pipeline wrote no output file at all — the tool
+		// affirmatively reported the file clean while the PII sat in it. The
+		// byte-identical text saved as .txt yielded SSN 83 / PHONE 47 / EMAIL 33.
+		//
+		// This is also what the golden corpus was locking in: the file_wav_metadata_pii
+		// case declares Checks EMAIL, PHONE and SECRETS, and its committed snapshot
+		// contained none of them — an AKIA-prefixed access key went undetected inside
+		// a DOCUMENT_COMMENTS blob.
+		routedContent.DocumentBody = processedContent.Text
 
 	case PreprocessorTypePlainText, PreprocessorTypeDocumentText:
 		// This is document body content - route to document validators

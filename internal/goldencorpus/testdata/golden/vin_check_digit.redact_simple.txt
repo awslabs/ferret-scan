@@ -1,0 +1,8 @@
+=== REDACTED ===
+vin [VIN-REDACTED]
+vehicle identification number 2FMDK3GC4BBA12345
+VIN: [VIN-REDACTED]
+vin 1HGCM82633A004353
+=== FINDINGS (sorted) ===
+type=VIN line=1 conf=high match=1HGCM82633A004352
+type=VIN line=3 conf=high match=JH4KA7561PC008269

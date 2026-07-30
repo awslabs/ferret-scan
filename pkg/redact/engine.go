@@ -94,10 +94,13 @@ func NewEngine(opts EngineOptions) (*Engine, error) {
 	// expose those types. Validator-specific tuning is a v2 concern.
 	standardValidators := core.BuildValidatorSet(enabledChecks, nil, nil)
 
-	// METADATA needs filesystem access; the CLI deletes it from the set
-	// on its in-memory path for the same reason. ValidCheckNames excludes
-	// it for the same reason, via the same constant.
-	delete(standardValidators, checkUnsupportedInMemory)
+	// Drop the validators that cannot produce a finding on this path, so a
+	// caller who selects only those gets the "no validators enabled" error
+	// below rather than a live engine that silently finds nothing.
+	// ValidCheckNames omits the same names, via the same map.
+	for name := range checksUnsupportedInMemory {
+		delete(standardValidators, name)
+	}
 
 	if len(standardValidators) == 0 {
 		return nil, fmt.Errorf("redact: no validators enabled (Checks=%v)", opts.Checks)
@@ -131,19 +134,42 @@ func NewEngine(opts EngineOptions) (*Engine, error) {
 	return e, nil
 }
 
-// checkUnsupportedInMemory names the one validator that exists in the core
-// validator set but cannot run on this in-memory path because it requires
-// filesystem access. NewEngine deletes it from the constructed set, and
-// ValidCheckNames omits it, so the two stay consistent: a name advertised as
-// valid is always a name that actually contributes a validator here.
-const checkUnsupportedInMemory = "METADATA"
+// checksUnsupportedInMemory names the validators that exist in the core
+// validator set but cannot produce a finding on this in-memory path.
+// NewEngine deletes them from the constructed set, and ValidCheckNames omits
+// them, so the two stay consistent: a name advertised as valid is always a
+// name that can actually detect something here.
+//
+//	METADATA     — requires filesystem access to read document/EXIF metadata,
+//	               which this path (a string in memory) does not have. The CLI
+//	               deletes it from its own in-memory path for the same reason.
+//	SOCIAL_MEDIA — ships NO built-in patterns. Its only pattern source is
+//	               Configure(cfg), and NewEngine deliberately passes a nil
+//	               config (see above: validator-specific tuning is a v2
+//	               concern), so the validator is unconditionally inert here.
+//
+// Both are "cannot work on this path", so both fail closed. Before this map
+// existed, METADATA errored while SOCIAL_MEDIA constructed a live engine and
+// silently returned zero findings plus the input verbatim — a redaction
+// library reporting success on cleartext, indistinguishable from clean input.
+// Callers that need SOCIAL_MEDIA should use pkg/scan, which loads project
+// config and therefore configures the validator.
+var checksUnsupportedInMemory = map[string]bool{
+	"METADATA":     true,
+	"SOCIAL_MEDIA": true,
+}
 
 // ValidCheckNames returns the sorted set of canonical validator IDs accepted
 // in EngineOptions.Checks (e.g. "CREDIT_CARD", "EMAIL", "SSN"). It does NOT
 // include the "all" sentinel or the empty default, both of which select every
-// validator, nor "METADATA" — that validator needs filesystem access and is a
-// no-op on this in-memory path, so selecting only METADATA would error with
-// "no validators enabled".
+// validator, nor the names in checksUnsupportedInMemory ("METADATA", which
+// needs filesystem access, and "SOCIAL_MEDIA", which has no built-in patterns)
+// — selecting only those would error with "no validators enabled".
+//
+// Every name returned here can actually produce a finding on this path; that
+// is enforced by TestValidCheckNames_AllDetectAndRedact, which drives a
+// positive fixture through Engine.Redact for each one. The list is an honest
+// advertisement, not a list of names the engine merely tolerates.
 //
 // NewEngine deliberately tolerates unrecognized names — it drops them and only
 // errors when the resulting set is empty (see EngineOptions.Checks). That makes
@@ -152,11 +178,15 @@ const checkUnsupportedInMemory = "METADATA"
 // fail-closed behavior should validate their Checks against this list before
 // calling NewEngine and reject anything unrecognized. The names are
 // case-sensitive and match the project's internal validator IDs.
+//
+// Note that this list is narrower than what the CLI's --checks flag accepts and
+// than what a config file may reference: both of those come from
+// core.CheckNames() and legitimately include SOCIAL_MEDIA and METADATA.
 func ValidCheckNames() []string {
 	all := core.CheckNames()
 	out := make([]string, 0, len(all))
 	for _, n := range all {
-		if n == checkUnsupportedInMemory {
+		if checksUnsupportedInMemory[n] {
 			continue
 		}
 		out = append(out, n)

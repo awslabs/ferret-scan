@@ -3103,8 +3103,9 @@ func (v *Validator) logReconstructionDetails(originalMatches []detector.Match, r
 	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Original matches: %d", len(originalMatches)))
 
+	// The reconstructed text is document content (BSC4: never log matched values).
 	v.observer.Debug().LogDetail("intellectualproperty",
-		fmt.Sprintf("  Reconstructed text: '%s'", reconstructedMatch.Text))
+		fmt.Sprintf("  Reconstructed text: [HIDDEN] (len=%d)", len(reconstructedMatch.Text)))
 
 	v.observer.Debug().LogDetail("intellectualproperty",
 		fmt.Sprintf("  Final confidence: %.1f%%", reconstructedMatch.Confidence))
@@ -3152,8 +3153,8 @@ func (v *Validator) logReconstructionDetails(originalMatches []detector.Match, r
 			}
 		}
 		v.observer.Debug().LogDetail("intellectualproperty",
-			fmt.Sprintf("    Match %d: '%s' (type: %s, confidence: %.1f%%, line: %d)",
-				i+1, match.Text, ipType, match.Confidence, match.LineNumber))
+			fmt.Sprintf("    Match %d: [HIDDEN] (len=%d) (type: %s, confidence: %.1f%%, line: %d)",
+				i+1, len(match.Text), ipType, match.Confidence, match.LineNumber))
 	}
 
 	// Also log to stderr in debug mode for comprehensive audit trail
@@ -3211,8 +3212,8 @@ func (v *Validator) logLegalNoticeAnalysis(matches []detector.Match, analysis Le
 			}
 		}
 		v.observer.Debug().LogDetail("intellectualproperty",
-			fmt.Sprintf("  Match %d: '%s' (type: %s, line: %d, confidence: %.1f%%, position: %d)",
-				i+1, match.Text, ipType, match.LineNumber, match.Confidence, v.calculateCharacterPosition(match)))
+			fmt.Sprintf("  Match %d: [HIDDEN] (len=%d) (type: %s, line: %d, confidence: %.1f%%, position: %d)",
+				i+1, len(match.Text), ipType, match.LineNumber, match.Confidence, v.calculateCharacterPosition(match)))
 	}
 
 	// Log decision tree reasoning

@@ -1,0 +1,5 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                          FILE
+--------------------------------------------------------------------------------------------------------
+[HIGH  ] passport     PASSPORT              100.00% line     1 512345678                      <golden:passport_shapes>
+[HIGH  ] passport     PASSPORT              100.00% line     2 987654321                      <golden:passport_shapes>
+[MEDIUM] passport     PASSPORT               80.00% line     3 P<GBRSMITH<<JOHN<ALBERT<<<<... <golden:passport_shapes>

@@ -242,8 +242,13 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				confidence = correlatedPos.ConfidenceScore
 				correlationUsed = true
 
+				// The match's own bytes are the sensitive value being redacted, so
+				// they must not reach the log (BSC4) — the line, span and length
+				// locate it precisely without disclosing it, which is what the
+				// sibling match_skip event below already does.
 				ptr.logEvent("position_correlation_success", true, map[string]interface{}{
-					"match_text":         match.Text,
+					"match_line":         match.LineNumber,
+					"match_length":       len(match.Text),
 					"match_type":         match.Type,
 					"confidence":         confidence,
 					"correlation_method": correlatedPos.Method.String(),
@@ -253,7 +258,8 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			} else {
 				// Log correlation failure
 				logData := map[string]interface{}{
-					"match_text":       match.Text,
+					"match_line":       match.LineNumber,
+					"match_length":     len(match.Text),
 					"match_type":       match.Type,
 					"error":            correlationErr,
 					"threshold":        ptr.confidenceThreshold,
@@ -296,9 +302,10 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			if err != nil {
 				// Log warning but continue with other matches
 				ptr.logEvent("position_warning", false, map[string]interface{}{
-					"warning":    err.Error(),
-					"match_text": match.Text,
-					"match_type": match.Type,
+					"warning":      err.Error(),
+					"match_line":   match.LineNumber,
+					"match_length": len(match.Text),
+					"match_type":   match.Type,
 				})
 				continue
 			}

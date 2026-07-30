@@ -13,6 +13,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 )
 
 // Package-level pre-compiled regexps for static patterns
@@ -343,6 +344,99 @@ func hasMRZStructure(s string) bool {
 	return fillers >= 5
 }
 
+// spannedMatch is an emitted finding that still remembers the byte span it
+// occupied in its line, so overlapping claims from different patterns can be
+// arbitrated before that information is discarded — detector.Match carries no
+// offset, so afterwards two patterns claiming one document are indistinguishable
+// from the same value genuinely appearing twice.
+type spannedMatch struct {
+	match detector.Match
+	start int
+	end   int
+}
+
+// keepOutermostSpans folds away claims contained within another claim on the same
+// line, so one physical document yields one finding.
+//
+// The MRZ patterns overlap by construction: MRZ is `P<[A-Z]{3}[A-Z0-9<]{38,40}`
+// and MRZ_TD3 is `P<[A-Z]{3}[A-Z0-9<]{39}`, so {39} is inside {38,40} and EVERY
+// MRZ_TD3 hit is also an MRZ hit. Each pattern runs independently, and the emit
+// loop appended every surviving hit, so a single ICAO 9303 TD3 line 1 produced two
+// PASSPORT findings. Two shapes, both reproduced:
+//
+//   - line 1 exactly 44 chars: both patterns return the IDENTICAL span, giving two
+//     findings with the same text differing only in metadata["country"]
+//     ("MRZ_TD3" vs "MRZ" — the pattern name, not an issuing state).
+//   - line 1 45+ chars: MRZ_TD3 returns [0:44] and MRZ returns [0:45], a strict
+//     PREFIX. Exact-span keying would miss this one, which is why containment is
+//     the test and not equality.
+//
+// The nested case is the more damaging of the two: --generate-suppressions wrote
+// two rules with two different match_text_hash values for one leak, and one of
+// them keyed a truncated 44-byte prefix that is not a complete token anywhere in
+// the file — a baseline entry that can never match the document it came from.
+//
+// Longest span wins, which is the honest choice here: the widest match is the one
+// that covers the whole token, so the reported Text is a complete MRZ line rather
+// than a truncation. Confidence is deliberately NOT the tiebreak — both MRZ arms
+// of CalculateConfidence score identically (same +20 valid-country-code boost,
+// both land at 80/100), so ranking on confidence would pick arbitrarily. On an
+// exact-span tie the incumbent survives, and patternOrder is a fixed slice
+// ("MRZ_TD3" before "MRZ", most specific first) rather than the map's random
+// order, so the winner is deterministic run to run.
+//
+// Confidence is carried up to the maximum of the folded claims. That keeps a merge
+// from ever demoting a finding into a lower severity band than it would have had —
+// the leak-safe direction, and the same rule the secrets validator's
+// mergeBySpanKeepStrongest applies.
+//
+// Surviving findings keep their original relative order, so byte order downstream
+// is unchanged. O(n^2) in claims per line, which is bounded and tiny: at most one
+// hit per pattern per position and only six patterns.
+func keepOutermostSpans(claims []spannedMatch) []spannedMatch {
+	if len(claims) < 2 {
+		return claims
+	}
+
+	keep := make([]spannedMatch, 0, len(claims))
+	for i, c := range claims {
+		contained := false
+		for j, other := range claims {
+			if i == j {
+				continue
+			}
+			// Strictly wider span that covers this one: this claim is redundant.
+			if other.start <= c.start && other.end >= c.end &&
+				(other.end-other.start) > (c.end-c.start) {
+				contained = true
+				break
+			}
+			// Identical span: the earlier claim (more specific pattern, per
+			// patternOrder) is the incumbent and survives.
+			if other.start == c.start && other.end == c.end && j < i {
+				contained = true
+				break
+			}
+		}
+		if contained {
+			continue
+		}
+		// Carry up the strongest confidence any folded claim assigned, so folding
+		// cannot lower the reported severity.
+		for j, other := range claims {
+			if i == j {
+				continue
+			}
+			if other.start >= c.start && other.end <= c.end &&
+				other.match.Confidence > c.match.Confidence {
+				c.match.Confidence = other.match.Confidence
+			}
+		}
+		keep = append(keep, c)
+	}
+	return keep
+}
+
 // maxMatchesPerLinePerPattern bounds how many regex hits we will fully process
 // for a single (line, pattern) pair. A single pathologically long line packed
 // with thousands of passport-shaped tokens would otherwise drive the validator
@@ -369,6 +463,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
+	// Recognise delimited tabular content ONCE per document. In a CSV export the
+	// only passport label is the header row, so without this the whole file scans
+	// as unlabelled values and reports nothing. Analyze is conservative: anything
+	// ambiguous (ragged rows, unbalanced quotes, no header-ish cells) returns a
+	// non-table and leaves behavior exactly as before.
+	table := tabular.Analyze(content)
+
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
 		if execguard.LineLoopCancelled(ctx, lineNum) {
@@ -387,6 +488,20 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// (the match argument was never used in their bodies), so precompute.
 		lineIsTabular := v.isTabularDataLine(line)
 		lineIsForm := v.isInFormContextLine(lineLower)
+
+		// Field offsets for this line, computed once and reused for every match on
+		// it, so mapping a match to its column stays a binary search rather than a
+		// per-match rescan. Nil when the document is not tabular, or on the header
+		// row itself (a header cell is a label, not a value to report).
+		var lineBounds *tabular.LineBounds
+		if table.IsTable() && lineNum != table.HeaderLine() {
+			lineBounds = table.Bounds(line)
+		}
+
+		// Collected per line, with byte spans retained, so overlapping claims can
+		// be arbitrated before the spans are lost (detector.Match has no offset
+		// field). See keepOutermostSpans.
+		var lineMatches []spannedMatch
 
 		// Check each pattern against the line, in the fixed order (see
 		// Validator.patternOrder) rather than the patterns map's random one.
@@ -407,6 +522,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			for _, loc := range foundIdx {
 				matchIndex := loc[0]
 				match := line[loc[0]:loc[1]]
+
+				// The column header naming THIS match's column. Set per match
+				// because the column varies along the row; resolved by binary
+				// search over the per-line bounds computed above, so this is
+				// O(log fields) rather than a rescan. Empty for non-tabular
+				// documents, which leaves scoring exactly as it was.
+				lc.columnHeader = table.HeaderAt(lineBounds, matchIndex)
 
 				// Skip if it's a common word or test pattern
 				if v.isCommonWord(match) || v.isTestPattern(match) {
@@ -477,23 +599,32 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					continue
 				}
 
-				matches = append(matches, detector.Match{
-					Text:       match,
-					LineNumber: lineNum + 1, // 1-based line numbering
-					Type:       "PASSPORT",
-					Confidence: confidence,
-					Filename:   originalPath,
-					Validator:  "passport",
-					Context:    contextInfo,
-					Metadata: map[string]any{
-						"country":           country,
-						"validation_checks": checks,
-						"context_impact":    contextImpact,
-						"source":            "preprocessed_content",
-						"original_file":     originalPath,
+				lineMatches = append(lineMatches, spannedMatch{
+					start: loc[0],
+					end:   loc[1],
+					match: detector.Match{
+						Text:       match,
+						LineNumber: lineNum + 1, // 1-based line numbering
+						Type:       "PASSPORT",
+						Confidence: confidence,
+						Filename:   originalPath,
+						Validator:  "passport",
+						Context:    contextInfo,
+						Metadata: map[string]any{
+							"country":           country,
+							"validation_checks": checks,
+							"context_impact":    contextImpact,
+							"source":            "preprocessed_content",
+							"original_file":     originalPath,
+						},
 					},
 				})
 			}
+		}
+
+		// One document, one finding: fold away claims that cover the same bytes.
+		for _, sm := range keepOutermostSpans(lineMatches) {
+			matches = append(matches, sm.match)
 		}
 	}
 
@@ -570,6 +701,28 @@ const edgeWindow = 64
 type lineContext struct {
 	lineLower   string          // lower-cased full line (computed once per line)
 	inLineCache map[string]bool // memoized "keyword present in lineLower"
+
+	// columnHeader is the lowercased header cell naming the column this match
+	// sits in, when the document is delimited tabular data and the match is on a
+	// data row. Empty otherwise.
+	//
+	// This exists because PASSPORT is label-GATED — it reports nothing without a
+	// nearby label — and the label search stops at the newline. In a CSV export
+	// the label IS the header row, one or more lines above the value, so
+	//
+	//	name,email,passport_number,country
+	//	Jane,jane@corp.example,987654321,US
+	//
+	// produced NO passport finding at all, while the identical text written inline
+	// as "Passport Number: 987654321" scores HIGH. An unreported value is never
+	// handed to the redactor, so the redacted output of that CSV still contained
+	// the passport number in cleartext.
+	//
+	// Treating the column header as context for its own column's values is what
+	// closes that. It is set per match (the column varies along the row) but
+	// resolved by binary search over per-line bounds, so the per-match cost is
+	// logarithmic rather than a rescan.
+	columnHeader string
 }
 
 func newLineContext(lineLower string) *lineContext {
@@ -602,6 +755,12 @@ func (c *lineContext) inLine(kw string) bool {
 // catch any keyword that straddles a context boundary — making the per-match
 // cost independent of the line length.
 func (c *lineContext) contains(kw, beforeLower, afterLower string) bool {
+	// The column header names this value's column, so a keyword in it is context
+	// FOR this value in exactly the way a same-line label is. Checked first
+	// because it is a short string and the common case is a miss.
+	if c.columnHeader != "" && strings.Contains(c.columnHeader, kw) {
+		return true
+	}
 	if len(c.lineLower) <= 256 {
 		return strings.Contains(beforeLower+" "+c.lineLower+" "+afterLower, kw)
 	}

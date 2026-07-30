@@ -1,8 +1,13 @@
 name: Go Tests
 
 on:
+  # No `branches:` filter. This job must run on EVERY pull request, including one
+  # whose base is another feature branch. Stacked PRs are how larger changes land
+  # here, and with a [main, master, develop] filter they received literally zero
+  # checks: `gh pr checks` reported "no checks reported on the branch" while a
+  # sibling PR based on main got the full matrix. A stacked PR is exactly the case
+  # that most needs testing, because it carries its own diff plus its base's.
   pull_request:
-    branches: [main, master, develop]
     paths:
       - '**.go'
       - 'go.mod'
@@ -50,6 +55,24 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+
+      - name: Gofmt
+        # Formatting is platform-independent, so gate it on one runner instead of
+        # failing three times for the same file. Linux is the fastest of the three.
+        #
+        # `gofmt -l` prints offending files and exits 0, so the exit status alone
+        # proves nothing — the output has to be inspected. Restricted to first-party
+        # trees so a vendored or generated file cannot fail the build.
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          unformatted="$(gofmt -l ./cmd ./internal ./pkg)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt reported unformatted files; run 'gofmt -w' on them:"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt clean"
+        shell: bash
 
       - name: Go vet
         run: go vet ./...
