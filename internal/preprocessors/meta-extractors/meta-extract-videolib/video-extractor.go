@@ -578,6 +578,35 @@ func parseMvhdBox(data []byte, metadata *VideoMetadata) error {
 	return nil
 }
 
+// itunesAtomPrefix is the byte QuickTime/iTunes atom types are prefixed with —
+// "©nam", "©ART", "©xyz" and friends. On the wire it is this SINGLE byte inside a
+// four-byte type, but the Go source literal "©" is its two-byte UTF-8 encoding
+// (c2 a9), which makes `"©nam"` a FIVE-byte string. Comparing a four-byte wire
+// type against it can never be true, so every such case arm was unreachable:
+//
+//	string([]byte{0xA9, 'n', 'a', 'm'}) == "©nam"  // false
+//
+// canonicalBoxType translates the wire form into the spelling the case arms use,
+// so they compare equal without every literal in the file having to be written as
+// an escape.
+const itunesAtomPrefix = 0xA9
+
+// canonicalBoxType returns the four-byte box type as the case arms below spell
+// it: a leading 0xA9 becomes the "©" rune. Any other type is returned unchanged,
+// so plain types ("meta", "data", "desc") are unaffected.
+func canonicalBoxType(raw []byte) string {
+	if len(raw) == 4 && raw[0] == itunesAtomPrefix {
+		return "©" + string(raw[1:])
+	}
+	return string(raw)
+}
+
+// isFourCC reports whether raw is a well-formed four-byte box type. Callers use
+// this instead of len() on a canonicalized type, whose "©" prefix is two bytes.
+func isFourCC(raw []byte) bool {
+	return len(raw) == 4
+}
+
 // parseUdtaBoxWithContext parses the user data box containing metadata with context
 func parseUdtaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMetadata) error {
 	offset := 0
@@ -595,7 +624,7 @@ func parseUdtaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		}
 
 		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
+		boxType := canonicalBoxType(data[offset+4 : offset+8])
 
 		if size < BoxHeaderSize || offset+int(size) > len(data) {
 			break
@@ -663,11 +692,14 @@ func parseUdtaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		case "©url":
 			metadata.Properties["URL"] = parseStringBox(boxData)
 		case "©ed1", "©ed2", "©ed3", "©ed4", "©ed5", "©ed6", "©ed7", "©ed8", "©ed9":
-			// Edit dates
-			editNum := boxType[3:]
+			// Edit dates. Index off the END, not a fixed offset: "©" is two bytes
+			// in Go source, so boxType[3:] sliced into the middle of the type and
+			// produced "d1" instead of "1" — harmless only while these arms were
+			// unreachable.
+			editNum := boxType[len(boxType)-1:]
 			dateStr := parseStringBox(boxData)
 			if date, err := parseDate(dateStr); err == nil {
-				metadata.Properties["EditDate"+string(editNum)] = date.Format("2006-01-02 15:04:05")
+				metadata.Properties["EditDate"+editNum] = date.Format("2006-01-02 15:04:05")
 			}
 		}
 
@@ -738,7 +770,7 @@ func parseIlstBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		}
 
 		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
+		boxType := canonicalBoxType(data[offset+4 : offset+8])
 
 		if size < BoxHeaderSize || offset+int(size) > len(data) {
 			break
@@ -771,8 +803,11 @@ func parseIlstBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			case "©xyz":
 				parseGPSString(value, metadata)
 			default:
-				// Store unknown tags in properties
-				if len(boxType) == 4 {
+				// Store unknown tags in properties. The length test is on the raw
+				// four-byte wire type, not on boxType: a canonicalized "©too" is
+				// five bytes in Go, and testing len(boxType) == 4 here would drop
+				// every unrecognized iTunes tag instead of recording it.
+				if isFourCC(data[offset+4 : offset+8]) {
 					metadata.Properties[boxType] = value
 				}
 			}
@@ -814,11 +849,32 @@ func parseItunesTag(data []byte) string {
 	return ""
 }
 
-// parseStringBox parses a simple string box
+// parseStringBox parses a QuickTime udta string box.
+//
+// These boxes are not raw text: the payload is a 2-byte big-endian text length
+// followed by a 2-byte language code, then the characters. ffmpeg writes exactly
+// this form, so returning the whole payload prefixed every extracted title,
+// author and comment with four bytes of binary — e.g. "\x00\x0cU\xc4Jordan
+// Ellis" rendered as " U<?>Jordan Ellis". That corrupts the text the validators
+// then scan and the redactor must rewrite, and it is why the leading bytes showed
+// up as replacement characters in reports.
+//
+// The header is only honored when it is self-consistent; some writers emit bare
+// text, so an implausible declared length falls back to the raw payload rather
+// than truncating real content.
 func parseStringBox(data []byte) string {
 	if len(data) == 0 {
 		return ""
 	}
+
+	const textHeaderSize = 4
+	if len(data) >= textHeaderSize {
+		textLen := int(binary.BigEndian.Uint16(data[0:2]))
+		if textLen > 0 && textHeaderSize+textLen <= len(data) {
+			return strings.TrimSpace(string(data[textHeaderSize : textHeaderSize+textLen]))
+		}
+	}
+
 	return strings.TrimSpace(string(data))
 }
 
