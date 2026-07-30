@@ -35,6 +35,8 @@
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
               "context_impact": -0,
+              "correlation_boost": 5,
+              "cross_path_correlation": true,
               "full_field": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
               "metadata_type": "DOCUMENT_COMMENTS",
               "original_confidence": 100,
@@ -73,6 +75,140 @@
                   "uri": "file://<TMPDIR>/clip.wav"
                 },
                 "region": {
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "AWS_ACCESS_KEY Detected in clip.wav at line 7 (confidence: 89.0% - MEDIUM). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
+          },
+          "properties": {
+            "confidence": 89,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doc_type": "Configuration",
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "correlation_boost": 5,
+              "cross_path_correlation": true,
+              "detection_method": "keyword_pattern",
+              "environment_type": "test",
+              "original_confidence": 84,
+              "secret_type": "AWS_ACCESS_KEY",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "config_file_boost": true,
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": true,
+                "specific_pattern": true,
+                "test_environment_penalty": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 69.5,
+          "ruleId": "AWS_ACCESS_KEY"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/clip.wav"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Comment: contact \nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 30,
+                  "snippet": {
+                    "text": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startColumn": 18,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in clip.wav at line 7 (confidence: 87.0% - MEDIUM). Matched text: '212-555-0142'"
+          },
+          "properties": {
+            "confidence": 87,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "clean_number": "2125550142",
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": -3,
+              "correlation_boost": 5,
+              "country": "US/CA",
+              "cross_path_correlation": true,
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 82,
+              "original_file": "<TMPDIR>/clip.wav",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "positiveKeywords": [
+              "contact"
+            ],
+            "validator": "phone"
+          },
+          "rank": 68.5,
+          "ruleId": "PHONE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/clip.wav"
+                },
+                "region": {
                   "endColumn": 29,
                   "snippet": {
                     "text": "Artist: john.doe@example.com"
@@ -84,10 +220,10 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in clip.wav at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'john.doe@example.com'"
+            "text": "AUTHOR_INFO Detected in clip.wav at line 6 (confidence: 85.0% - MEDIUM). Matched text: 'john.doe@example.com'"
           },
           "properties": {
-            "confidence": 80,
+            "confidence": 85,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -95,6 +231,8 @@
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
               "context_impact": 0,
+              "correlation_boost": 5,
+              "cross_path_correlation": true,
               "full_field": "Artist: john.doe@example.com",
               "metadata_type": "AUTHOR_INFO",
               "original_confidence": 80,
@@ -123,8 +261,81 @@
             },
             "validator": "metadata"
           },
-          "rank": 65,
+          "rank": 67.5,
           "ruleId": "AUTHOR_INFO"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/clip.wav"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Artist: \nArtist: john.doe@example.com"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "Artist: john.doe@example.com"
+                  },
+                  "startColumn": 9,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "BUSINESS Detected in clip.wav at line 6 (confidence: 30.0% - LOW). Matched text: 'john.doe@example.com'"
+          },
+          "properties": {
+            "confidence": 30,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": -20,
+              "correlation_boost": 5,
+              "cross_path_correlation": true,
+              "domain": "example.com",
+              "email_provider": "BUSINESS",
+              "original_confidence": 25,
+              "original_file": "<TMPDIR>/clip.wav",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "com",
+              "username": "john.doe",
+              "validation_checks": {
+                "business_pattern": true,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 40,
+          "ruleId": "BUSINESS"
         }
       ],
       "tool": {
@@ -147,6 +358,32 @@
             },
             {
               "fullDescription": {
+                "text": "Sensitive data of type AWS_ACCESS_KEY was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/AWS_ACCESS_KEY.md",
+              "id": "AWS_ACCESS_KEY",
+              "shortDescription": {
+                "text": "AWS_ACCESS_KEY Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/BUSINESS.md",
+              "id": "BUSINESS",
+              "shortDescription": {
+                "text": "BUSINESS Detected"
+              }
+            },
+            {
+              "fullDescription": {
                 "text": "Sensitive data of type DOCUMENT_COMMENTS was detected in the scanned content."
               },
               "help": {
@@ -156,6 +393,19 @@
               "id": "DOCUMENT_COMMENTS",
               "shortDescription": {
                 "text": "DOCUMENT_COMMENTS Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A phone number was detected in the scanned content. Phone numbers can be considered personally identifiable information (PII) depending on context and jurisdiction."
+              },
+              "help": {
+                "text": "Phone numbers may be considered PII under various privacy regulations. Evaluate whether this phone number should be present in the code. If it's for testing purposes, use clearly fake numbers (e.g., 555-0100 to 555-0199 in North America). For production use, store phone numbers in secure configuration systems with appropriate access controls."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PHONE.md",
+              "id": "PHONE",
+              "shortDescription": {
+                "text": "Phone Number Detected"
               }
             }
           ],
