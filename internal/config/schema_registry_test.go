@@ -19,18 +19,22 @@ import (
 	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
-// metadataCheck is the one validator redact.ValidCheckNames() omits (it is not
-// supported by the in-memory redaction engine) but which a file-based config
-// may still reference, so schema.go's validCheckNames includes it.
-const metadataCheck = "METADATA"
+// checksNotInRedactAPI are the validators redact.ValidCheckNames() omits
+// because the in-memory redaction engine cannot make them produce a finding —
+// METADATA needs filesystem access, and SOCIAL_MEDIA has no built-in patterns
+// (its only pattern source is project config, which pkg/redact does not
+// accept). A FILE-BASED config may legitimately reference both, so schema.go's
+// validCheckNames must keep them; that asymmetry is deliberate and is exactly
+// what this constant records.
+var checksNotInRedactAPI = []string{"METADATA", "SOCIAL_MEDIA"}
 
 // TestSchemaCheckNames_MatchRegistry ensures schema.go's validCheckNames domain
 // stays in sync with the canonical validator ID list. It reconstructs the
 // expected set from redact.ValidCheckNames() (which is core.CheckNames() minus
-// METADATA) plus METADATA, and compares it to what ValidateSchema actually
-// accepts, probed field-by-field.
+// checksNotInRedactAPI) plus those names back, and compares it to what
+// ValidateSchema actually accepts, probed field-by-field.
 func TestSchemaCheckNames_MatchRegistry(t *testing.T) {
-	expected := append(redact.ValidCheckNames(), metadataCheck)
+	expected := append(redact.ValidCheckNames(), checksNotInRedactAPI...)
 	sort.Strings(expected)
 
 	for _, name := range expected {

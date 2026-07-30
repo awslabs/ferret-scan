@@ -57,11 +57,17 @@ var validatorConstructors = map[string]func() detector.Validator{
 }
 
 // CheckNames returns the sorted set of canonical validator IDs recognized by
-// ParseChecksToRun and BuildValidatorSet. It is re-exported publicly as
+// ParseChecksToRun and BuildValidatorSet. It backs the public
 // redact.ValidCheckNames so consumers can validate Checks input against the
 // real list instead of hardcoding (and drifting from) a private copy. The
 // "all" sentinel and the empty default are handled by the callers and are not
 // included here.
+//
+// redact.ValidCheckNames is a strict SUBSET of this list, not a re-export: it
+// omits the validators that cannot produce a finding on that package's
+// in-memory, no-config path (see checksUnsupportedInMemory there). This list
+// is the right one for the CLI's --checks flag and for config-file validation,
+// both of which do support those validators.
 func CheckNames() []string {
 	names := make([]string, 0, len(validatorConstructors))
 	for name := range validatorConstructors {
