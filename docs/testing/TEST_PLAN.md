@@ -271,3 +271,22 @@ A newly discovered vulnerability is reported to AWS/Amazon Security via the
 **before** any public write-up — never as a public GitHub issue (`CONTRIBUTING.md`).
 A remediation for an *already-documented* threat-model item (e.g. a `THREAT_MODEL.md`
 row) is ordinary tracked work and ships as a normal PR.
+
+---
+
+## Run the checklist mechanically
+
+Reciting these dimensions is not the same as running them, and a dimension that is simply absent
+from a PR description is indistinguishable from one that was considered and dismissed. So enumerate
+them:
+
+```bash
+make pr-checklist              # vs origin/main
+scripts/pr-checklist.sh <ref>  # vs another base
+```
+
+It executes what it can and prints one line per dimension — `RAN`, `N/A because …`, or
+`NEEDS-MANUAL`. The sink dimensions (redaction, suppression) and the timing curve print
+NEEDS-MANUAL whenever production code changed, because those need a fixture that exercises *your*
+change and no script can invent one. Paste the output in the PR; leaving a NEEDS-MANUAL item unrun
+is how a cleartext leak ships.
