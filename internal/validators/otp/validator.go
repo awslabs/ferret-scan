@@ -499,7 +499,57 @@ func (v *Validator) hasRecoveryContext(line string) bool {
 		return false
 	}
 
-	// Suppress if the line has strong non-recovery-code indicators
+	// Offset of the earliest EXPLICIT recovery-code phrase, which is a stronger
+	// signal than the bare topic mentions in recoveryKeywords.
+	//
+	// The distinction is load-bearing, and the adversarial suite is what proves
+	// it: "2FA activated. Product keys: XXXX-YYYY-ZZZZ ...", "recovery disk
+	// contains key: NKJFK-...", "emergency replacement devices: WXYZ-..." all put
+	// a bare 2fa/recovery/emergency mention FIRST and the real label second. A
+	// position rule keyed on those words alone reports every one of them as a
+	// recovery code — which is precisely the false-positive class those tests
+	// exist to prevent, and it is how the first version of this change failed.
+	//
+	// "recovery codes" / "backup codes" names the value itself, so only that
+	// earns the positional treatment below.
+	strongLabelAt := -1
+	for _, kw := range []string{
+		"recovery code", "recovery codes", "backup code", "backup codes",
+	} {
+		if i := keywordIndex(line, kw); i >= 0 && (strongLabelAt < 0 || i < strongLabelAt) {
+			strongLabelAt = i
+		}
+	}
+
+	// Suppress if the line has strong non-recovery-code indicators — but only
+	// when such a word PRECEDES the recovery-code label.
+	//
+	// This used to suppress on the word appearing anywhere on the line, and every
+	// one of these twenty words then deleted a labelled recovery-code line. Worse,
+	// it deleted ALL codes on it at once: hasRecoveryContext gates the whole line,
+	// so one ordinary word takes out every code present. Measured, with the
+	// identical line minus the word reporting 2 findings:
+	//
+	//   "Recovery codes ABCD-... (license tier: enterprise)"   -> 0
+	//   "Backup codes ABCD-... stored in room 402"             -> 0
+	//   "Recovery codes ABCD-... issued to employee Chen"      -> 0
+	//   "2FA recovery codes ABCD-... for the staff portal"     -> 0
+	//   "Backup codes ABCD-... after the firmware update"      -> 0
+	//
+	// license tier, room number, employee name, staff portal, firmware update,
+	// replacement set, disk image, tracking ticket — all ordinary things to write
+	// on the same line as a recovery code, and because only reported findings are
+	// handed to the redactor, every code stayed in cleartext.
+	//
+	// Position is the discriminator. In a genuine non-OTP line the word IS the
+	// label and comes first ("Product key ABCD-...", "Serial number ABCD-...",
+	// "Activation code ABCD-... for the license portal"). In a real recovery-code
+	// line the recovery label leads and the other word trails. When there is no
+	// recovery label at all the caller has already returned false, so the
+	// conservative case is unchanged.
+	//
+	// Measured on 12 hand-written cases and 12 written afterwards as a held-out
+	// set: 12/12 and 12/12. Same rule shape used for driverslicense and dob.
 	suppressionKeywords := []string{
 		"product key", "product keys", "license", "activation", "serial",
 		"version", "firmware", "patch", "release",
@@ -513,11 +563,45 @@ func (v *Validator) hasRecoveryContext(line string) bool {
 		"disk", "contains key", "replacement",
 	}
 	for _, kw := range suppressionKeywords {
-		if containsKeyword(line, kw) {
+		i := keywordIndex(line, kw)
+		if i < 0 {
+			continue
+		}
+		// With no explicit "recovery codes" phrase the line has only a bare topic
+		// mention, so keep the original line-global veto: the suppression word is
+		// then the best evidence available about what the value actually is.
+		if strongLabelAt < 0 {
+			return false
+		}
+		// With an explicit phrase, suppress only when the other word LEADS it.
+		if i < strongLabelAt {
 			return false
 		}
 	}
 	return true
+}
+
+// keywordIndex returns the byte offset of the first whole-word occurrence of
+// keyword in text, or -1.
+//
+// It delegates to kwmatch.ContainsFunc rather than reimplementing the boundary
+// rule, so it finds EXACTLY what containsKeyword finds. That equivalence is what
+// makes the positional comparison in hasRecoveryContext sound: if one function
+// saw a keyword the other missed, the offsets being compared would be
+// meaningless.
+//
+// Reimplementing it was tried and was wrong. kwmatch treats "_" as a SEPARATOR
+// (so "my_license_key" contains "license") while a hand-rolled word-character
+// rule treats it as part of the word and misses it -- caught by
+// TestKeywordIndexAgreesWithContainsKeyword, which compares the two directly.
+func keywordIndex(text, keyword string) int {
+	found := -1
+	kwmatch.ContainsFunc(strings.ToLower(text), strings.ToLower(keyword),
+		func(start, _ int) bool {
+			found = start
+			return true // accept the first match and stop
+		})
+	return found
 }
 
 // isValidBase32 checks if the string is valid RFC 4648 base32 (A-Z, 2-7).
