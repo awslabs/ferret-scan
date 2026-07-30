@@ -37,6 +37,16 @@ func writeConfig(t *testing.T, body string) string {
 // `audit_log_file`. Setting the documented name wrote to a field nothing read,
 // so no log was produced and no error was reported.
 func TestAuditLogFileIsHonored(t *testing.T) {
+	// LoadConfig runs ApplyPlatformDefaults, which normalizes IndexFile — on
+	// Windows "/tmp/x.json" comes back as "\tmp\x.json". Compare on the
+	// normalized form so these assertions test the ALIAS rather than the
+	// separator convention of whichever OS runs the suite.
+	//
+	// filepath.Clean, not FromSlash: it is what both platform normalizers
+	// actually call, so the expectation cannot drift from the implementation on
+	// inputs where the two differ (".", "..", repeated separators).
+	norm := filepath.Clean
+
 	t.Run("alias fills an empty index_file", func(t *testing.T) {
 		cfg, err := LoadConfig(writeConfig(t, `
 redaction:
@@ -45,7 +55,7 @@ redaction:
 		if err != nil {
 			t.Fatalf("LoadConfig: %v", err)
 		}
-		if cfg.Redaction.IndexFile != "/tmp/ferret-audit.json" {
+		if cfg.Redaction.IndexFile != norm("/tmp/ferret-audit.json") {
 			t.Errorf("audit_log_file did not reach IndexFile: got %q — the redaction log "+
 				"is driven by IndexFile, so an unread alias means no log file is written",
 				cfg.Redaction.IndexFile)
@@ -61,7 +71,7 @@ redaction:
 		if err != nil {
 			t.Fatalf("LoadConfig: %v", err)
 		}
-		if cfg.Redaction.IndexFile != "/tmp/from-index.json" {
+		if cfg.Redaction.IndexFile != norm("/tmp/from-index.json") {
 			t.Errorf("IndexFile = %q, want the explicit index_file value: it is the name "+
 				"the loader has always honored, so it must not be clobbered by the alias",
 				cfg.Redaction.IndexFile)
@@ -80,7 +90,7 @@ profiles:
 			t.Fatalf("LoadConfig: %v", err)
 		}
 		got := cfg.Profiles["audited"].Redaction.IndexFile
-		if got != "/tmp/profile-audit.json" {
+		if got != norm("/tmp/profile-audit.json") {
 			t.Errorf("profile audit_log_file did not reach IndexFile: got %q", got)
 		}
 	})
