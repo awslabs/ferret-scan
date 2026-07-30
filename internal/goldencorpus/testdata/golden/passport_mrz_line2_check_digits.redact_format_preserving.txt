@@ -1,0 +1,8 @@
+=== REDACTED ===
+********************************************
+********************************************
+corrupted check digit, must not be reported:
+L898902C30GBR7408122M1204159ZE184226B<<<<<10
+=== FINDINGS (sorted) ===
+type=PASSPORT line=1 conf=medium match=P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<
+type=PASSPORT line=2 conf=medium match=L898902C36GBR7408122M1204159ZE184226B<<<<<10

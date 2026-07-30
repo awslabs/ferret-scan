@@ -4725,6 +4725,39 @@ func (v *Validator) getPlatformDisplayName(platform string) string {
 
 // isPartOfEmailAddress checks if a social media match is actually part of an email address
 // This prevents false positives where email domain parts are detected as social media handles
+// earliestCommentMarker returns the byte offset of the first code-comment marker
+// in lowerLine, or -1 if there is none.
+//
+// A "//" that is part of a URL scheme ("https://", "s3://") is NOT a comment
+// marker: skipping those is what stops a link on the line from discarding an
+// unrelated handle. The scheme test is "the // is immediately preceded by ':'",
+// which is what every URL scheme looks like and what no line comment looks like.
+func earliestCommentMarker(lowerLine string) int {
+	best := -1
+	consider := func(idx int) {
+		if idx >= 0 && (best < 0 || idx < best) {
+			best = idx
+		}
+	}
+
+	for from := 0; ; {
+		i := strings.Index(lowerLine[from:], "//")
+		if i < 0 {
+			break
+		}
+		i += from
+		if i == 0 || lowerLine[i-1] != ':' { // ':' => URL scheme, not a comment
+			consider(i)
+			break
+		}
+		from = i + 2
+	}
+
+	consider(strings.Index(lowerLine, "/*"))
+	consider(strings.Index(lowerLine, "*/"))
+	return best
+}
+
 func (v *Validator) isPartOfEmailAddress(match, line string) bool {
 	// This is specifically designed to catch cases where Twitter handle patterns (@username)
 	// match the domain part of email addresses (e.g., @example from user@example.com)
@@ -4793,8 +4826,17 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 		}
 	}
 
-	// Code comment context (// @something or /* @something)
-	if strings.Contains(lineLower, "//") || strings.Contains(lineLower, "/*") || strings.Contains(lineLower, "*/") {
+	// Code comment context (// @something or /* @something).
+	//
+	// The comment marker must appear BEFORE the handle to be commenting on it. The
+	// previous form asked only whether the line contained "//" anywhere, which is
+	// true of every line carrying a URL ("https://") — so a handle in ordinary
+	// prose alongside a link was discarded:
+	//
+	//	"Follow @sarah_devops - details at https://example.com/team"
+	//
+	// A comment marker to the RIGHT of the handle says nothing about it.
+	if idx := earliestCommentMarker(lineLower); idx >= 0 && matchOffset >= 0 && idx < matchOffset {
 		if v.observer != nil && v.observer.Debug() != nil {
 			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Filtered code comment annotation: handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
@@ -4814,12 +4856,19 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 		return true
 	}
 
-	// Partial domain matches (e.g., @my from contact@my-company.com)
-	// Look for patterns where the handle is immediately followed by a hyphen or dot
+	// Partial domain matches (e.g., @my from contact@my-company.com) and federated
+	// addresses (@user@mastodon.social).
+	//
+	// This is where the trailing half of the handle pattern's intent lives. The
+	// config pattern originally spelled it as a lookahead, (?!@|\.[a-zA-Z]), which
+	// RE2 cannot express — so the check has to happen here. '@' covers the
+	// federated form: a bare @user@instance is a Mastodon-style address, and the
+	// mastodon patterns claim the URL forms of it, so emitting the leading @user as
+	// a Twitter handle would be both wrong and a duplicate span.
 	matchIndex := matchOffset
 	if matchIndex >= 0 && matchIndex+len(match) < len(line) {
 		nextChar := line[matchIndex+len(match)]
-		if nextChar == '-' || nextChar == '.' {
+		if nextChar == '-' || nextChar == '.' || nextChar == '@' {
 			if v.observer != nil && v.observer.Debug() != nil {
 				v.observer.Debug().LogDetail("socialmedia",
 					fmt.Sprintf("Filtered partial domain match (followed by %q): handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
