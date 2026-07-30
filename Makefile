@@ -1,4 +1,4 @@
-.PHONY: build clean vet fmt run install-config install check-go-version pr-checklist
+.PHONY: build clean vet fmt run install-config install check-go-version pr-checklist integration-branch
 
 # Default target
 all: check-go-version fmt vet build
@@ -45,6 +45,7 @@ help:
 	@echo "  test-cleanup       - Test cleanup functionality"
 	@echo "  container-test     - Test container health"
 	@echo "  pr-checklist       - Pre-PR audit: prints RAN/N-A/NEEDS-MANUAL per TEST_PLAN dimension"
+	@echo "  integration-branch - Merge ALL open PRs and test the union (catches cross-PR breakage)"
 	@echo ""
 	@echo "🔧 Development:"
 	@echo "  clean              - Clean build artifacts"
@@ -233,6 +234,18 @@ fmt:
 # redaction and suppression sinks.
 pr-checklist:
 	@./scripts/pr-checklist.sh $(BASE)
+
+# Merge every open PR into one branch and run the gates on the UNION.
+#
+# Each PR is tested against main in isolation, so two PRs can both be green,
+# merge with no textual conflict, and still turn the suite red together. GitHub
+# reports "no conflicts" for both, because it only knows about text. This is the
+# only check that looks at the combined result.
+#
+# PAIRWISE=1 also builds the conflict matrix, which localizes a conflict to a
+# pair instead of blaming whichever branch merged second.
+integration-branch:
+	@./scripts/integration-branch.sh $(if $(PAIRWISE),--pairwise,) $(if $(NO_TEST),--no-test,)
 
 # Run the application
 run: build
