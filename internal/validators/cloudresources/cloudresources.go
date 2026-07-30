@@ -555,8 +555,61 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 // publicProjectPrefixes are GCP project IDs published by Google (public datasets
 // / public artifact projects); a resource scoped to one of these is not a leak.
-var publicProjectPrefixes = []string{
-	"bigquery-public-data", "gcp-public-data", "google.com:", "public-data",
+//
+// Matching is EXACT on the project segment. A bare substring test over the whole
+// match suppressed ordinary private projects:
+//
+//	projects/public-database-prod/...     -> silently dropped ("public-data" prefix)
+//	projects/public-datastore-pii/...     -> silently dropped
+//	projects/bigquery-public-data-evilcorp/... -> silently dropped
+//	projects/gcp-public-data-internal-acme/... -> silently dropped
+//
+// The first two need no attacker at all — "public-database-prod" is an ordinary
+// project name — and a suppressed cloud resource is a finding the report never
+// shows, which is the same class of miss as a detection failure.
+//
+// Allowing a "-" extension is NOT the fix either: "gcp-public-data-landsat" is a
+// REAL Google public project (asserted in cloudresources_test.go) and
+// "gcp-public-data-internal-acme" is not, yet the two are indistinguishable in
+// FORM. So form cannot be the test — the real projects are enumerated instead.
+// The list is EXACT project IDs, not prefixes. Google's public projects are a
+// small, enumerable set, and matching them exactly is what makes the unknown case
+// fail SAFE: an ID this list has not heard of is reported, not silently dropped.
+// Adding a new Google public project is a one-line change; failing to report a
+// private one is a finding the user never sees.
+var publicProjectIDs = map[string]bool{
+	// BigQuery public datasets all live under this single project.
+	"bigquery-public-data": true,
+	// Google's public-artifact projects. These are individually published, so they
+	// are listed individually rather than matched as "gcp-public-data-*" — an
+	// attacker-chosen "gcp-public-data-internal-acme" is indistinguishable in FORM
+	// from a real one, so form cannot be the test.
+	"gcp-public-data-landsat":    true,
+	"gcp-public-data-sentinel-2": true,
+	"gcp-public-data-nexrad-l2":  true,
+	// Historical/short form seen in older docs and samples.
+	"public-data": true,
+}
+
+// publicProjectScopePrefix is the one case where a prefix IS the right test:
+// "google.com:<project>" is a Google-internal scoping form where the colon is
+// itself the segment boundary, so the part after it varies by design.
+const publicProjectScopePrefix = "google.com:"
+
+// projectSegmentIsPublic reports whether the GCP project segment beginning at the
+// start of seg is a public-by-design project.
+//
+// seg is the text immediately after "projects/", so it may be followed by "/" and
+// the rest of the resource path; only the segment up to the first "/" is the
+// project ID.
+func projectSegmentIsPublic(seg string) bool {
+	if i := strings.IndexByte(seg, '/'); i >= 0 {
+		seg = seg[:i]
+	}
+	if publicProjectIDs[seg] {
+		return true
+	}
+	return strings.HasPrefix(seg, publicProjectScopePrefix)
 }
 
 // isPublicResource reports whether a matched identifier is public-by-design and
@@ -573,9 +626,16 @@ func isPublicResource(match string) bool {
 			return true
 		}
 	}
-	// Public GCP datasets / projects.
-	for _, p := range publicProjectPrefixes {
-		if strings.Contains(match, "projects/"+p) {
+	// Public GCP datasets / projects. Each "projects/" occurrence is checked, and
+	// only the project SEGMENT is compared — a substring test over the whole match
+	// let a broad prefix swallow unrelated private projects.
+	for rest := match; ; {
+		i := strings.Index(rest, "projects/")
+		if i < 0 {
+			break
+		}
+		rest = rest[i+len("projects/"):]
+		if projectSegmentIsPublic(rest) {
 			return true
 		}
 	}
