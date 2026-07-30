@@ -1,0 +1,82 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected vehicle identification number in this file.\n\n**Location:** <golden:vin_check_digit> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** vin validator\n\n**Context:**\n```\nvin 1HGCM82633A004352\n```\n\n**Additional Information:**\n- context_impact: 25\n- manufacturer: Honda\n- source: preprocessed_content\n\n**Remediation:**\nRemove Vehicle Identification Numbers from code and documentation. VINs can be used to identify vehicle owners and their personal information.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "VIN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "vin"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:vin_check_digit>",
+        "start_line": 1
+      },
+      "message": "Vehicle Identification Number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Vehicle Identification Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected vehicle identification number in this file.\n\n**Location:** <golden:vin_check_digit> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** vin validator\n\n**Context:**\n```\nVIN: JH4KA7561PC008269\n```\n\n**Additional Information:**\n- context_impact: 50\n- source: preprocessed_content\n\n**Remediation:**\nRemove Vehicle Identification Numbers from code and documentation. VINs can be used to identify vehicle owners and their personal information.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "VIN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "vin"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:vin_check_digit>",
+        "start_line": 3
+      },
+      "message": "Vehicle Identification Number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Vehicle Identification Number Detected",
+      "severity": "Critical"
+    }
+  ]
+}

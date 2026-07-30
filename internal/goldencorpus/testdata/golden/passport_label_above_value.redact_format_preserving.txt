@@ -1,0 +1,8 @@
+=== REDACTED ===
+passport_number
+987654321
+Field: Passport Number
+Value: 512345678
+name,email,passport_number,country
+Jane,jane.smith@acmecorp.io,512345671,US
+=== FINDINGS (sorted) ===

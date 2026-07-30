@@ -1,0 +1,228 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:passport_shapes>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Passport Number: \nPassport Number: 512345678"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 27,
+                  "snippet": {
+                    "text": "Passport Number: 512345678"
+                  },
+                  "startColumn": 18,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Passport Number Detected in <golden:passport_shapes> at line 1 (confidence: 100.0% - HIGH). Matched text: '512345678'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 40,
+              "country": "UK",
+              "original_confidence": 100,
+              "original_file": "<golden:passport_shapes>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format": true,
+                "length": true,
+                "not_common_word": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_characters": true,
+                "valid_country_code": false
+              },
+              "validation_path": "document"
+            },
+            "validator": "passport"
+          },
+          "rank": 100,
+          "ruleId": "PASSPORT"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:passport_shapes>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "passport no \npassport no 987654321"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 22,
+                  "snippet": {
+                    "text": "passport no 987654321"
+                  },
+                  "startColumn": 13,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Passport Number Detected in <golden:passport_shapes> at line 2 (confidence: 100.0% - HIGH). Matched text: '987654321'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 40,
+              "country": "UK",
+              "original_confidence": 100,
+              "original_file": "<golden:passport_shapes>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format": true,
+                "length": true,
+                "not_common_word": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_characters": true,
+                "valid_country_code": false
+              },
+              "validation_path": "document"
+            },
+            "validator": "passport"
+          },
+          "rank": 100,
+          "ruleId": "PASSPORT"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:passport_shapes>"
+                },
+                "region": {
+                  "endColumn": 45,
+                  "snippet": {
+                    "text": "P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<"
+                  },
+                  "startColumn": 1,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Passport Number Detected in <golden:passport_shapes> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "country": "MRZ_TD3",
+              "original_confidence": 80,
+              "original_file": "<golden:passport_shapes>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format": true,
+                "length": true,
+                "not_common_word": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_characters": true,
+                "valid_country_code": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "passport"
+          },
+          "rank": 90,
+          "ruleId": "PASSPORT"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A passport number pattern was detected in the scanned content. Passport numbers are highly sensitive personally identifiable information that must be protected."
+              },
+              "help": {
+                "text": "Passport numbers are protected under various privacy and identity theft prevention regulations. They should never be stored in source code or logs. Remove this passport number immediately and ensure it is stored in a secure, encrypted system with strict access controls and audit logging."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PASSPORT.md",
+              "id": "PASSPORT",
+              "shortDescription": {
+                "text": "Passport Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

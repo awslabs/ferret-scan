@@ -1,0 +1,10 @@
+=== REDACTED ===
+Passport Number: [PASSPORT-REDACTED]
+passport no [PASSPORT-REDACTED]
+[PASSPORT-REDACTED]
+512345670
+passport 123456789 sample data
+=== FINDINGS (sorted) ===
+type=PASSPORT line=1 conf=high match=512345678
+type=PASSPORT line=2 conf=high match=987654321
+type=PASSPORT line=3 conf=medium match=P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<
