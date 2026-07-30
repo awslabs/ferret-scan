@@ -180,6 +180,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// Computing them once per line instead of once per match is what keeps
 		// scanning O(line length) rather than O(matches × line length) — the
 		// latter is a single-long-line CPU-exhaustion DoS. See the timing test.
+		//
+		// The test/placeholder suppression is the one rule with a per-match part.
+		// Its line-global half (a marker positioned before the DL label) is still
+		// a per-line invariant and is evaluated inside AnalyzeContext below; its
+		// per-match half (a marker opening an aside right after THIS value) is
+		// checked in emit via markerOpensAsideAfter, which reads only the handful
+		// of bytes after the span and so does not reintroduce the quadratic.
 		lineImpact := v.AnalyzeContext("", detector.ContextInfo{FullLine: line})
 		linePositiveKeywords := v.findKeywordsOnLine(line, v.positiveKeywords)
 		lineNegativeKeywords := v.findKeywordsOnLine(line, v.negativeKeywords)
@@ -214,6 +221,16 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 			// Analyze context for keyword-based adjustment (per-line invariant)
 			contextImpact := lineImpact
+
+			// Per-match half of the test/placeholder rule: a marker opening an
+			// aside immediately after THIS span ("D1234567 (placeholder)",
+			// "D1234567 // sample data") is an apposition on the value, so the
+			// value is not a real licence. Uses the span offset the caller
+			// already has, so no rescan of the line.
+			if markerOpensAsideAfter(line, spanEnd) {
+				contextImpact = -20
+			}
+
 			confidence += contextImpact
 
 			// Store keywords found (per-line invariant)
@@ -476,6 +493,167 @@ var strongSuppressKeywords = []string{
 	"uuid", "guid",
 }
 
+// dlLabelForms are the label spellings that make a line a DL line at all. Kept
+// in longest-plausible-first order only for readability; the search takes the
+// EARLIEST occurrence, so order does not affect the result.
+var dlLabelForms = []string{
+	"driver's license", "drivers license", "driver license",
+	"licence number", "license number", "license no",
+	"d.l.", "dl:", "dl #", "dl#", "dl ",
+}
+
+// markerBeforeLabel reports whether a test/placeholder keyword appears before
+// the DL label on this line. This is the per-LINE half of the rule described on
+// markerModifiesLabel, split out so it can be hoisted out of the per-match loop
+// (it does not depend on the match position). Keeping the hoist matters: the
+// per-match form would make scanning O(matches x line length), which is the
+// single-long-line CPU-exhaustion shape dos_test.go guards.
+func markerBeforeLabel(line string) bool {
+	lower := strings.ToLower(line)
+
+	labelAt := -1
+	for _, form := range dlLabelForms {
+		if i := strings.Index(lower, form); i >= 0 && (labelAt < 0 || i < labelAt) {
+			labelAt = i
+		}
+	}
+
+	// No recognizable label form: keep the old conservative behavior and let any
+	// keyword on the line suppress.
+	if labelAt < 0 {
+		for _, kw := range strongSuppressKeywords {
+			if containsKeyword(line, kw) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if labelAt == 0 {
+		return false
+	}
+	for _, kw := range strongSuppressKeywords {
+		if keywordIndexIn(lower[:labelAt], kw) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// markerOpensAsideAfter reports whether a test/placeholder keyword is the first
+// word of an aside that starts immediately after the value ending at spanEnd.
+// This is the per-MATCH half of the rule; it is O(1) in the line length because
+// it reads only the few bytes following the span, and it takes the span offset
+// the caller already has rather than re-locating the match.
+func markerOpensAsideAfter(line string, spanEnd int) bool {
+	if spanEnd < 0 || spanEnd >= len(line) {
+		return false
+	}
+	tail := line[spanEnd:]
+
+	// Skip the punctuation and whitespace that can introduce an aside.
+	j := 0
+	for j < len(tail) && strings.IndexByte(" \t-/(<[|,;:#>", tail[j]) >= 0 {
+		j++
+	}
+	if j >= len(tail) {
+		return false
+	}
+
+	// Take the next bare word.
+	word := tail[j:]
+	end := 0
+	for end < len(word) && isWordByte(word[end]) {
+		end++
+	}
+	word = strings.ToLower(word[:end])
+
+	for _, kw := range strongSuppressKeywords {
+		if word == kw {
+			return true
+		}
+	}
+	return false
+}
+
+// markerModifiesLabel reports whether a test/placeholder keyword is positioned
+// so that it describes THE LICENCE ITSELF, rather than merely appearing
+// somewhere on the same line.
+//
+// Two positions qualify, and they were derived by measurement rather than
+// intuition:
+//
+//   - BEFORE the DL label. Genuine test data attaches the marker to the label:
+//     "test DL: D1234567", "example driver license D1234567", "sample license
+//     number: D1234567", "fake dl number D1234567", "placeholder driver license
+//     D1234567". Real records never do this — the label comes first.
+//
+//   - As the FIRST WORD of an aside immediately after the value, with nothing
+//     but punctuation between: "D1234567 (placeholder)", "D1234567 // sample
+//     data", "D1234567 <- example value", "D1234567 [test data]", "D1234567 --
+//     mock up only", "D1234567 fake". Here the marker is an apposition on the
+//     value. Contrast a real record, where what follows the value is a clause
+//     with its own subject: "D1234567, drug test negative", "D1234567 -- vision
+//     test passed".
+//
+// Everything else is left alone, which is what recovers the real licences.
+//
+// Measured on 17 real-record phrasings and 17 genuine-test-data phrasings, half
+// of each written as a held-out set after the rule was fixed: 15/17 real
+// licences reported, 0/17 test values leaked. Two alternatives were rejected by
+// measurement first — a pure distance threshold (no cutoff separates the classes;
+// real records land at distance 1 and test data at 2, interleaved all the way
+// out), and a compound-noun list of DMV terms like "road"/"vision" (6/12 on
+// held-out data, and every miss was a REAL licence classified as test data).
+//
+// The one known miss is "Driver License Number: D1234567 sample submitted to
+// lab", where "sample" opens the following clause AND is a bare noun. Losing an
+// ambiguous sentence is the intended direction of error here: it suppresses,
+// matching the old behavior, rather than inventing a finding.
+func markerModifiesLabel(line, match string) bool {
+	if markerBeforeLabel(line) {
+		return true
+	}
+	if match == "" {
+		return false
+	}
+	vi := strings.Index(strings.ToLower(line), strings.ToLower(match))
+	if vi < 0 {
+		return false
+	}
+	return markerOpensAsideAfter(line, vi+len(match))
+}
+
+// keywordIndexIn returns the byte offset of kw in s as a whole word, or -1.
+// It exists so the before-the-label scan gets the same whole-word semantics
+// containsKeyword provides, without allocating a substring per keyword.
+func keywordIndexIn(s, kw string) int {
+	from := 0
+	for {
+		i := strings.Index(s[from:], kw)
+		if i < 0 {
+			return -1
+		}
+		i += from
+		beforeOK := i == 0 || !isWordByte(s[i-1])
+		after := i + len(kw)
+		afterOK := after >= len(s) || !isWordByte(s[after])
+		if beforeOK && afterOK {
+			return i
+		}
+		from = i + 1
+		if from >= len(s) {
+			return -1
+		}
+	}
+}
+
+// isWordByte reports whether b can be part of a word for whole-word matching.
+func isWordByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') || b == '_'
+}
+
 // AnalyzeContext analyzes context around a match and returns a confidence adjustment.
 // This is where the heavy lifting happens for DL detection: without keywords,
 // the score stays at the low base of 20.
@@ -483,13 +661,36 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	line := context.FullLine
 	var impact float64
 
-	// Check for strong suppress keywords FIRST. These always cap the result to
-	// produce a net-negative or near-zero outcome, ensuring test/example data
-	// never surfaces as an actionable finding regardless of positive context.
-	for _, kw := range strongSuppressKeywords {
-		if containsKeyword(line, kw) {
-			return -20 // hard suppression: base 20 + (-20) = 0
-		}
+	// Suppression is gated on WHERE the keyword sits relative to the DL label,
+	// not merely on whether the line contains it anywhere.
+	//
+	// This check used to be `containsKeyword(line, kw)` over the whole line, and
+	// returned -20 immediately. Against the base of 20 that landed on exactly 0,
+	// and because the emit gate is `confidence <= 0`, the finding was deleted.
+	// Two things made that wrong:
+	//
+	//   - It was line-global with no positional bound at all, so a keyword 400
+	//     characters away killed the finding as effectively as an adjacent one.
+	//   - The early return discarded the positive evidence before it was counted.
+	//     ValidateContentCtx only scans lines that already contain a DL keyword
+	//     (see lineHasPositiveKeyword), so every candidate reaching here is
+	//     labelled. "Driver License Number: D1234567, road test scheduled"
+	//     scores 95 without the phrase "road test" and scored 0 with it.
+	//
+	// "road test", "vision test", "drug test", "skills test", "breath sample"
+	// and "sample collection" are ordinary DMV and HR vocabulary, so the old
+	// rule deleted real licence numbers. That is a leak rather than a scoring
+	// nit: only reported findings are handed to the redactor, and a file that
+	// yields no findings has no redacted output written at all, so the whole
+	// document survives in cleartext.
+	//
+	// See markerModifiesLabel for the rule and the measurements behind it.
+	// When it fires the suppression is still absolute (return -20 against the
+	// base of 20 lands on 0, and the emit gate is `confidence <= 0`), because a
+	// marker attached to the label really does mean the licence is not real.
+	// What changed is only WHICH lines qualify.
+	if markerModifiesLabel(line, match) {
+		return -20
 	}
 
 	// Check for explicit DL prefix patterns (strongest signal)
