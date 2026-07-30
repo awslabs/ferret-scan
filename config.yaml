@@ -340,7 +340,20 @@ validators:
       # Twitter/X - Microblogging platform
       twitter:
         - "(?i)https?://(?:www\\.)?(twitter|x)\\.com/[a-zA-Z0-9_]+" # Profile URLs
-        - "(?i)(?<!\\w)@[a-zA-Z0-9_]{1,15}(?!@|\\.[a-zA-Z])" # @mentions and handles
+        # @mentions and handles. Go uses RE2, which has NO lookaround: the previous
+        # form used a lookbehind (?<!\w) and a lookahead (?!@|\.[a-zA-Z]), so it
+        # failed to compile and was silently DROPPED — twitter loaded 2 of its 3
+        # patterns and no bare @handle was ever detected.
+        #
+        # \B before @ reproduces the lookbehind: @ is a non-word char, so \B holds
+        # only when the preceding char is also a non-word char (or start of line),
+        # which is what "not preceded by \w" means here. That alone rejects the
+        # email/domain case (bob@example.com).
+        #
+        # The trailing exclusions cannot be expressed in RE2 and are enforced in
+        # code instead, by isFalsePositiveHandle: a handle immediately followed by
+        # '.', '-' or '@' is a domain or federated address, not a bare handle.
+        - "(?i)\\B@[a-zA-Z0-9_]{1,15}\\b" # @mentions and handles
         - "(?i)(twitter|x)\\.com/[a-zA-Z0-9_]+"
 
       # GitHub - Code repository platform
