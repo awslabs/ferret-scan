@@ -146,16 +146,9 @@ func (f *Formatter) sortMatchesByPriority(matches []detector.Match) {
 // writeFormattedOutput writes the formatted text output to the given writer,
 // applying limit truncation and summary header/footer.
 func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) {
-	totalFindings := len(matches)
-
-	// Apply limit: determine how many findings to show
-	limit := options.Limit
-	truncated := false
-	displayMatches := matches
-	if limit > 0 && totalFindings > limit {
-		displayMatches = matches[:limit]
-		truncated = true
-	}
+	// Apply limit: determine how many findings to show. The summary keeps
+	// reporting the pre-truncation total.
+	displayMatches, totalFindings, truncated := shared.ApplyLimit(matches, options)
 
 	// Add headers for non-verbose mode
 	if !options.Verbose && (len(displayMatches) > 0 || len(suppressedMatches) > 0) {
@@ -191,7 +184,7 @@ func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, 
 
 	// Print truncation footer
 	if truncated {
-		remaining := totalFindings - limit
+		remaining := totalFindings - len(displayMatches)
 		footer := fmt.Sprintf("\n... and %d more findings (use --limit 0 to show all)\n", remaining)
 		fmt.Fprint(w, footer)
 	}
