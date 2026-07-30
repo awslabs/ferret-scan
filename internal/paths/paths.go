@@ -6,9 +6,44 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/awslabs/ferret-scan/v2/internal/platform"
 )
+
+// tempDirOverride is the platform-specific temp directory from the config file's
+// `platform:` block, if one was set.
+//
+// It is package state rather than a parameter because internal/config imports
+// this package, so this package cannot import internal/config to read the value
+// directly. The loader pushes it in with SetTempDirOverride once the config is
+// parsed. This mirrors the FERRET_CONFIG_DIR environment override below: a
+// process-wide setting, read from everywhere.
+//
+// The mutex is load-bearing, not defensive. Config loading is not confined to
+// startup: the web server falls back to a per-request LoadConfigOrDefault, and
+// pkg/scan calls it on every exported entry point, so a caller scanning from
+// several goroutines writes this while other goroutines read it.
+var (
+	tempDirMu       sync.RWMutex
+	tempDirOverride string
+)
+
+// SetTempDirOverride records the config file's platform-specific temp directory.
+// An empty value clears the override. Called by the config loader; the config's
+// `platform:` block was previously validated and then ignored.
+func SetTempDirOverride(dir string) {
+	tempDirMu.Lock()
+	defer tempDirMu.Unlock()
+	tempDirOverride = dir
+}
+
+// tempDirOverrideValue reads the override under the lock.
+func tempDirOverrideValue() string {
+	tempDirMu.RLock()
+	defer tempDirMu.RUnlock()
+	return tempDirOverride
+}
 
 // GetConfigDir returns the ferret-scan configuration directory
 // Uses platform-specific logic for Windows APPDATA directories and Unix home directories
@@ -33,8 +68,12 @@ func GetSuppressionsFile() string {
 	return filepath.Join(GetConfigDir(), "suppressions.yaml")
 }
 
-// GetTempDir returns the platform-appropriate temporary directory
+// GetTempDir returns the temporary directory, preferring the config file's
+// platform-specific override when one is set.
 func GetTempDir() string {
+	if dir := tempDirOverrideValue(); dir != "" {
+		return dir
+	}
 	p := platform.GetPlatform()
 	return p.GetTempDir()
 }

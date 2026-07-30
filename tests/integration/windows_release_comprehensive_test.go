@@ -349,8 +349,6 @@ defaults:
 
 platform:
   windows:
-    use_appdata: true
-    long_path_support: false
     temp_dir: "%TEMP%\\ferret-scan"
 
 profiles:

@@ -408,8 +408,6 @@ defaults:
 # Platform-specific settings
 platform:
   windows:
-    use_appdata: true
-    long_path_support: true
     temp_dir: "C:\\Windows\\Temp\\ferret-scan"
 `
 

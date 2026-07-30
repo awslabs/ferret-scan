@@ -361,7 +361,7 @@ defaults:
   checks: "all"
 platform:
   windows:
-    use_appdata: true
+    temp_dir: "%TEMP%\ferret-scan"
 "@ | Out-File "testdata\windows_config.yaml" -Encoding UTF8
 ```
 

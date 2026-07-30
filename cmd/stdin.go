@@ -133,6 +133,7 @@ func runStdinScan(in stdinScanInputs) int {
 		showSuppressed:       in.flags.showSuppressed,
 		generateSuppressions: in.flags.generateSuppressions,
 		failOnIncomplete:     in.flags.failOnIncomplete,
+		suppressionFile:      in.flags.suppressionFile,
 		enableRedaction:      in.flags.enableRedaction,
 		redactionOutputDir:   "",
 		redactionStrategy:    in.flags.redactionStrategy,
@@ -164,7 +165,10 @@ func runStdinScan(in stdinScanInputs) int {
 	}
 
 	// Suppression manager mirrors file mode.
-	suppressionManager := suppressions.NewSuppressionManager(in.flags.suppressionFile)
+	// Use the resolved path, not the raw flag, so suppressions.file in the config
+	// file is honored here too. Reading the flag directly reintroduces exactly the
+	// defect this resolution chain exists to prevent.
+	suppressionManager := suppressions.NewSuppressionManager(finalCfg.suppressionFile)
 
 	// Parse checks list into a []string for ScanContent.
 	checks := parseChecksList(finalCfg.checksToRun)
@@ -241,6 +245,11 @@ func runStdinScan(in stdinScanInputs) int {
 	}
 
 	if !shouldSuppressStdinProse(finalCfg, precommitConfig, in.outputFile) {
+		// Unknown-key warnings are prose, so they ride the same gate: with
+		// --enable-redaction and no --output, stderr carries the findings
+		// document and anything else on it breaks `2> findings.json`.
+		warnUnknownConfigKeys(os.Stderr, cfg)
+
 		fmt.Fprintf(os.Stderr, "Scan complete: stdin scanned in %s\n", elapsed.Round(time.Millisecond))
 		// Mirror file-mode's suppression notice so users see the same
 		// signal regardless of input source.

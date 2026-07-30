@@ -110,13 +110,8 @@ defaults:
 # ─────────────────────────────────────────────────────────────────────────────
 platform:
   windows:
-    use_appdata: true           # Store config in %APPDATA%\ferret-scan\
-    system_wide_install: false  # Per-user install (set true for enterprise GPO deployment)
-    create_shortcuts: false
-    add_to_path: false
     config_dir: ""              # Leave empty to use default (%APPDATA%\ferret-scan)
     temp_dir: ""                # Leave empty to use %TEMP%
-    long_path_support: false    # Enable for repos with paths >260 chars
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Preprocessors
@@ -124,9 +119,6 @@ platform:
 preprocessors:
   text_extraction:
     enabled: true
-    types:
-      - pdf
-      - office
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Redaction (Windows paths)
@@ -135,18 +127,12 @@ redaction:
   enabled: false
   output_dir: "%USERPROFILE%\\Documents\\ferret-redacted"
   strategy: format_preserving
-  audit_log_file: "%LOCALAPPDATA%\\ferret-scan\\audit.log"
-  memory_scrub: true
-  audit_trail: true
+  audit_log_file: "%LOCALAPPDATA%\\ferret-scan\\audit.log"  # alias: index_file
 
-  strategies:
-    simple:
-      replacement: "[REDACTED]"
-    format_preserving:
-      preserve_length: true
-      preserve_format: true
-    synthetic:
-      secure: true
+  # Each strategy's behavior is fixed and takes no options:
+  #   simple            per-type markers, e.g. [SSN-REDACTED]
+  #   format_preserving keeps length and separators, e.g. ***-**-4100
+  #   synthetic         a realistic fake value, generated with crypto/rand
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Validators
@@ -229,8 +215,7 @@ profiles:
     description: "Default CLI scan — human-readable text output"
     platform:
       windows:
-        use_appdata: true
-        long_path_support: true
+        temp_dir: "%TEMP%\\ferret-scan"
 
   # ── Web ──────────────────────────────────────────────────────────────────
   web:
@@ -261,7 +246,6 @@ profiles:
     description: "CI/CD pipeline — quiet, machine-readable output (change format to junit/sarif as needed)"
     platform:
       windows:
-        use_appdata: false
         temp_dir: "%TEMP%\\ferret-scan"
 
   # ── Pre-commit ───────────────────────────────────────────────────────────

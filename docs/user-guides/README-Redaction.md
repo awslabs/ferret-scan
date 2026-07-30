@@ -126,20 +126,12 @@ redaction:
   output_dir: "./redacted"          # Where to write redacted files
   strategy: "format_preserving"     # simple | format_preserving | synthetic
   audit_log_file: ""                # Path for JSON audit log (optional)
-  memory_scrub: true                # Scrub sensitive data from memory after processing
-  audit_trail: true                 # Generate audit trail
-
-  strategies:
-    simple:
-      replacement: "[REDACTED]"     # Custom placeholder text
-
-    format_preserving:
-      preserve_length: true
-      preserve_format: true
-
-    synthetic:
-      secure: true                  # Use cryptographically secure random generation
+                                    # (alias: index_file)
 ```
+
+The strategies themselves take no options: `simple` writes per-type markers like
+`[SSN-REDACTED]`, `format_preserving` keeps the value's length and separators, and
+`synthetic` generates a realistic replacement with `crypto/rand`.
 
 ## Audit Log
 
