@@ -516,10 +516,16 @@ func TestValidCheckNames(t *testing.T) {
 		}
 	}
 
-	// Every returned name must actually construct a working engine — this
-	// is the property that makes the list safe to validate against. If a
+	// Every returned name must actually construct an engine — this is half
+	// of the property that makes the list safe to validate against. If a
 	// name were parseable but not buildable (or vice versa), NewEngine
 	// would error here.
+	//
+	// Constructing without error is NOT sufficient: a validator with no
+	// patterns constructs fine and then detects nothing forever. The other
+	// half — that each name can actually produce a finding and change the
+	// output — is TestValidCheckNames_AllDetectAndRedact in
+	// checknames_detection_test.go.
 	for _, n := range names {
 		e, err := redact.NewEngine(redact.EngineOptions{Checks: []string{n}})
 		if err != nil {

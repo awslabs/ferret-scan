@@ -67,6 +67,11 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// `results` array of two SARIF reports of one unchanged scan is comparable.
 	shared.SortSuppressedByPriority(suppressedMatches)
 
+	// Honor --limit before the report is built, so tool.driver.rules is derived
+	// from the results actually emitted rather than from findings the report
+	// never mentions.
+	filteredMatches, _, _ = shared.ApplyLimit(filteredMatches, options)
+
 	// Fresh per-call rule manager + mapper so the rules array derives only from
 	// THIS call's matches (no cross-call accumulation).
 	ruleManager := NewRuleManager()

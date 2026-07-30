@@ -4647,8 +4647,10 @@ func (v *Validator) logClusteringAnalysis(matches []detector.Match, analysis Soc
 		fmt.Sprintf("  Proximity Score: %.2f", analysis.ProximityScore))
 	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Platforms: %v", analysis.PlatformGrouping))
+	// UserIdentifiers holds usernames extracted from the document, so only the
+	// count may be logged (BSC4).
 	v.observer.Debug().LogDetail("socialmedia",
-		fmt.Sprintf("  User Identifiers: %v", analysis.UserIdentifiers))
+		fmt.Sprintf("  User Identifiers: %d [HIDDEN]", len(analysis.UserIdentifiers)))
 	v.observer.Debug().LogDetail("socialmedia",
 		fmt.Sprintf("  Should Reconstruct: %t", analysis.ShouldReconstruct))
 	v.observer.Debug().LogDetail("socialmedia",
@@ -4742,11 +4744,13 @@ func (v *Validator) isPartOfEmailAddress(match, line string) bool {
 
 	// If we find a complete email address that contains our match, it's a false positive
 	if emailRegex.MatchString(line) {
-		// Log the filtering for debugging
+		// Log the filtering for debugging. Neither the handle nor the line may be
+		// logged (BSC4): the line is whole-document content and routinely carries
+		// other sensitive values. The reason plus lengths is enough to debug.
 		if v.observer != nil && v.observer.Debug() != nil {
 			v.observer.Debug().LogDetail("socialmedia",
-				fmt.Sprintf("Filtered social media false positive: '%s' is part of email address in line: %s",
-					match, line))
+				fmt.Sprintf("Filtered social media false positive: handle [HIDDEN] (len=%d) is part of an email address in line [HIDDEN] (len=%d)",
+					len(match), len(line)))
 		}
 		return true
 	}
@@ -4777,9 +4781,13 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 	usernameLower := strings.ToLower(username)
 	for _, pattern := range docPatterns {
 		if usernameLower == pattern {
+			// The annotation keyword comes from the tool-owned docPatterns list
+			// above, not from the document, so naming it discloses nothing. The
+			// match and the line must still be masked (BSC4).
 			if v.observer != nil && v.observer.Debug() != nil {
 				v.observer.Debug().LogDetail("socialmedia",
-					fmt.Sprintf("Filtered documentation annotation: '%s' in line: %s", match, line))
+					fmt.Sprintf("Filtered documentation annotation %q: handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
+						pattern, len(match), len(line)))
 			}
 			return true
 		}
@@ -4789,7 +4797,8 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 	if strings.Contains(lineLower, "//") || strings.Contains(lineLower, "/*") || strings.Contains(lineLower, "*/") {
 		if v.observer != nil && v.observer.Debug() != nil {
 			v.observer.Debug().LogDetail("socialmedia",
-				fmt.Sprintf("Filtered code comment annotation: '%s' in line: %s", match, line))
+				fmt.Sprintf("Filtered code comment annotation: handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
+					len(match), len(line)))
 		}
 		return true
 	}
@@ -4799,7 +4808,8 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 	if len(username) < 2 || strings.HasPrefix(username, "_") || regexp.MustCompile(`^\d`).MatchString(username) {
 		if v.observer != nil && v.observer.Debug() != nil {
 			v.observer.Debug().LogDetail("socialmedia",
-				fmt.Sprintf("Filtered invalid handle format: '%s' in line: %s", match, line))
+				fmt.Sprintf("Filtered invalid handle format: handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
+					len(match), len(line)))
 		}
 		return true
 	}
@@ -4812,7 +4822,8 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 		if nextChar == '-' || nextChar == '.' {
 			if v.observer != nil && v.observer.Debug() != nil {
 				v.observer.Debug().LogDetail("socialmedia",
-					fmt.Sprintf("Filtered partial domain match: '%s' in line: %s", match, line))
+					fmt.Sprintf("Filtered partial domain match (followed by %q): handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
+						string(nextChar), len(match), len(line)))
 			}
 			return true
 		}

@@ -324,8 +324,15 @@ type EngineOptions struct {
 	// names match the project's internal validator IDs (e.g.
 	// "CLOUD_RESOURCES", "CREDIT_CARD", "EMAIL", "SSN", "PHONE",
 	// "PASSPORT", "VIN", "SECRETS", "INTELLECTUAL_PROPERTY",
-	// "SOCIAL_MEDIA", "IP_ADDRESS", "PERSON_NAME"). The METADATA validator requires filesystem access
-	// and is not available on this in-memory path; passing it is a no-op.
+	// "IP_ADDRESS", "PERSON_NAME"). Call ValidCheckNames for the
+	// authoritative list.
+	//
+	// Two validators are NOT available on this in-memory path and are
+	// dropped from the set: "METADATA" (requires filesystem access) and
+	// "SOCIAL_MEDIA" (has no built-in patterns; its only pattern source is
+	// project config, which this API does not accept — use pkg/scan if you
+	// need it). Naming only those returns a "no validators enabled" error
+	// rather than an engine that silently detects nothing.
 	Checks []string
 
 	// Strategy is the default redaction strategy for Redact calls that

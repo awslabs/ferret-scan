@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:vin_check_digit&gt;" classname="security-scan" time="0.001">
+      <failure message="2 security findings detected" type="SECURITY_FINDINGS">Line 1: VIN detected with 100.0% confidence (HIGH)&#xA;Match: 1HGCM82633A004352&#xA;Validator: vin&#xA;Line 3: VIN detected with 100.0% confidence (HIGH)&#xA;Match: JH4KA7561PC008269&#xA;Validator: vin</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

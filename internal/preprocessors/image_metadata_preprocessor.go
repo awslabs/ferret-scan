@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -130,13 +131,24 @@ func (imp *ImageMetadataPreprocessor) processImageMetadataWithRetry(filePath str
 func (imp *ImageMetadataPreprocessor) formatImageMetadata(exifData *meta_extract_exiflib.ExifData) string {
 	var metadataText strings.Builder
 
-	// Debug: Log all GPS-related tags
+	// Debug: log which GPS tags are present, never their values (BSC4 — a
+	// coordinate is location PII and the metadata validator reports it as a
+	// finding). Tag names are sorted so the log is stable across runs; ranging
+	// the map directly emitted them in a different order every time.
+	//
+	// Deliberately not exifData.GetSortedKeys(): that helper drops GPSLatitude,
+	// GPSLongitude and GPSTimeStamp, which are the tags this loop exists to show.
 	if imp.observer != nil && imp.observer.Debug() != nil {
-		for key, value := range exifData.Tags {
+		gpsKeys := make([]string, 0, len(exifData.Tags))
+		for key := range exifData.Tags {
 			if strings.Contains(strings.ToLower(key), "gps") {
-				imp.observer.Debug().LogDetail("image_metadata_preprocessor",
-					fmt.Sprintf("GPS tag found: %s = %s", key, value))
+				gpsKeys = append(gpsKeys, key)
 			}
+		}
+		sort.Strings(gpsKeys)
+		for _, key := range gpsKeys {
+			imp.observer.Debug().LogDetail("image_metadata_preprocessor",
+				fmt.Sprintf("GPS tag found: %s = [HIDDEN] (len=%d)", key, len(exifData.Tags[key])))
 		}
 	}
 
@@ -173,7 +185,7 @@ func (imp *ImageMetadataPreprocessor) formatImageMetadata(exifData *meta_extract
 
 			if imp.observer != nil && imp.observer.Debug() != nil {
 				imp.observer.Debug().LogDetail("image_metadata_preprocessor",
-					fmt.Sprintf("Consolidated GPS coordinates: %s", consolidatedGPS))
+					fmt.Sprintf("Consolidated GPS coordinates: [HIDDEN] (len=%d)", len(consolidatedGPS)))
 			}
 		}
 	}
@@ -401,18 +413,20 @@ func (imp *ImageMetadataPreprocessor) logSuccessfulProcessing(filePath string, e
 	imp.observer.Debug().LogDetail("image_metadata_preprocessor",
 		fmt.Sprintf("Successfully extracted %d metadata tags from %s image: %s", tagCount, ext, filepath.Base(filePath)))
 
-	// Log interesting metadata if present
-	if camera, exists := exifData.Tags["Make"]; exists {
-		if model, exists := exifData.Tags["Model"]; exists {
+	// Log the PRESENCE of interesting metadata, not its values: camera make/model
+	// is reported as a DEVICE_INFO finding and a coordinate is location PII, so
+	// neither may reach the log (BSC4).
+	if _, exists := exifData.Tags["Make"]; exists {
+		if _, exists := exifData.Tags["Model"]; exists {
 			imp.observer.Debug().LogDetail("image_metadata_preprocessor",
-				fmt.Sprintf("Camera info: %s %s", camera, model))
+				"Camera info present (Make + Model): [HIDDEN]")
 		}
 	}
 
-	if gpsLat, hasLat := exifData.Tags["GPSLatitudeDecimal"]; hasLat {
-		if gpsLong, hasLong := exifData.Tags["GPSLongitudeDecimal"]; hasLong {
+	if _, hasLat := exifData.Tags["GPSLatitudeDecimal"]; hasLat {
+		if _, hasLong := exifData.Tags["GPSLongitudeDecimal"]; hasLong {
 			imp.observer.Debug().LogDetail("image_metadata_preprocessor",
-				fmt.Sprintf("GPS coordinates found: %s, %s", gpsLat, gpsLong))
+				"GPS coordinates found: [HIDDEN]")
 		}
 	}
 }

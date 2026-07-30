@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:passport_shapes&gt;" classname="security-scan" time="0.001">
+      <failure message="3 security findings detected" type="SECURITY_FINDINGS">Line 1: PASSPORT detected with 100.0% confidence (HIGH)&#xA;Match: 512345678&#xA;Validator: passport&#xA;Line 2: PASSPORT detected with 100.0% confidence (HIGH)&#xA;Match: 987654321&#xA;Validator: passport&#xA;Line 3: PASSPORT detected with 80.0% confidence (MEDIUM)&#xA;Match: P&lt;GBRSMITH&lt;&lt;JOHN&lt;ALBERT&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&#xA;Validator: passport</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

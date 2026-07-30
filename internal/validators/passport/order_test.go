@@ -37,13 +37,26 @@ func signature(t *testing.T, content string) string {
 	return strings.Join(parts, ",")
 }
 
-// TestPatternOrderIsFixed pins the emitted order for a span two patterns claim.
-// Before the fix the scan ranged v.patterns (a map), so this produced either
-// "MRZ_TD3,MRZ" or "MRZ,MRZ_TD3" at random.
+// TestPatternOrderIsFixed pins which pattern wins a span two patterns claim.
+//
+// This test has covered two successive defects on the same overlap. Originally
+// the scan ranged v.patterns (a map), so the emitted order was random —
+// "MRZ_TD3,MRZ" or "MRZ,MRZ_TD3" — and it pinned the order to make that
+// deterministic. It then asserted TWO findings, which was the deterministic form
+// of a second bug: one physical MRZ reported twice, differing only in the
+// "country" metadata (which is the pattern name, not an issuing state).
+//
+// keepOutermostSpans now folds claims that cover the same bytes, so the expected
+// signature is the single winner. patternOrder still decides WHICH one that is —
+// "MRZ_TD3" is listed first as the more specific pattern and is the incumbent on
+// an exact-span tie — so this remains a test of the fixed order, not just of the
+// dedup.
 func TestPatternOrderIsFixed(t *testing.T) {
 	got := signature(t, mrzContent())
-	if got != "MRZ_TD3,MRZ" {
-		t.Fatalf("pattern order = %q, want %q (patternOrder puts the more specific TD3 pattern first)", got, "MRZ_TD3,MRZ")
+	if got != "MRZ_TD3" {
+		t.Fatalf("pattern signature = %q, want %q — one MRZ is one document, and on an "+
+			"exact-span tie the first entry of patternOrder (the more specific TD3 pattern) "+
+			"must win", got, "MRZ_TD3")
 	}
 }
 

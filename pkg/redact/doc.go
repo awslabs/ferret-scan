@@ -21,6 +21,15 @@
 // performance. Use it when you need both detection and redaction and want the
 // fastest per-request latency on repeated calls.
 //
+// One capability difference is worth knowing up front: this package builds its
+// validator set with no project config (validator-specific tuning is a v2
+// concern), so the two validators whose detection depends on config or on
+// filesystem access are unavailable here and are excluded from
+// ValidCheckNames — METADATA (needs a file to read metadata from) and
+// SOCIAL_MEDIA (ships no built-in patterns; platform patterns come only from
+// validators.social_media.platform_patterns in a config file). pkg/scan loads
+// project config and supports both.
+//
 // # Design goals
 //
 //   - Reusable Engine. Validators, the enhanced manager, and dual-path
