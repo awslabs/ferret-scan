@@ -93,6 +93,29 @@ func loadConfiguration(configFile string) *config.Config {
 	return cfg
 }
 
+// warnUnknownConfigKeys reports config keys the schema does not recognize.
+//
+// Unknown keys are not an error — rejecting them would break any config written
+// against an older or newer version, including this project's own shipped
+// config.yaml before these keys were reconciled. But silence is worse: a typo'd
+// option name looks exactly like a working one, so the setting is never applied
+// and the user has no way to tell. This is the same courtesy the cloud_resources
+// validator already extends for its own sub-keys.
+//
+// The warnings go to w rather than straight to os.Stderr because stderr is not
+// always a human channel: in stdin redaction mode the findings document IS
+// stderr, and prose there breaks `2> findings.json`. Callers pass io.Discard when
+// shouldSuppressStdinProse says to stay quiet.
+func warnUnknownConfigKeys(w io.Writer, cfg *config.Config) {
+	if cfg == nil || w == nil {
+		return
+	}
+	for _, key := range cfg.UnknownKeys {
+		fmt.Fprintf(w,
+			"Warning: unknown config key %q — ignored (check for a typo)\n", key)
+	}
+}
+
 // configFlags holds command line flag values
 type configFlags struct {
 	outputFormat         string
@@ -112,6 +135,7 @@ type configFlags struct {
 	showSuppressed       bool
 	generateSuppressions bool
 	failOnIncomplete     bool
+	suppressionFile      string
 	// Redaction flags
 	enableRedaction    bool
 	redactionOutputDir string
@@ -144,6 +168,7 @@ type finalConfiguration struct {
 	showSuppressed       bool
 	generateSuppressions bool
 	failOnIncomplete     bool
+	suppressionFile      string
 	disableIPTypes       string
 }
 
@@ -352,10 +377,17 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 		final.quiet = flags.quiet
 	}
 
-	// Include suppressed findings in output
+	// Include suppressed findings in output. The dedicated `suppressions:` block
+	// is a peer of `defaults:`, so it is applied after it and before the profile.
+	//
+	// The two keys OR together: either can switch the behavior on, neither can
+	// switch it back off. Both default to false and both mean "turn this on", so
+	// there is no way to tell `suppressions.show_suppressed: false` apart from the
+	// key being absent — treating an explicit false as an override would make
+	// omitting the key silently disable defaults.show_suppressed.
 	final.showSuppressed = false // default fallback
 	if cfg != nil {
-		final.showSuppressed = cfg.Defaults.ShowSuppressed
+		final.showSuppressed = cfg.Defaults.ShowSuppressed || cfg.Suppressions.ShowSuppressed
 	}
 	if activeProfile != nil {
 		final.showSuppressed = activeProfile.ShowSuppressed
@@ -364,10 +396,11 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 		final.showSuppressed = flags.showSuppressed
 	}
 
-	// Auto-generate suppression rules for all findings
+	// Auto-generate suppression rules for all findings. Same OR semantics as
+	// show_suppressed above.
 	final.generateSuppressions = false // default fallback
 	if cfg != nil {
-		final.generateSuppressions = cfg.Defaults.GenerateSuppressions
+		final.generateSuppressions = cfg.Defaults.GenerateSuppressions || cfg.Suppressions.GenerateOnScan
 	}
 	if activeProfile != nil {
 		final.generateSuppressions = activeProfile.GenerateSuppressions
@@ -386,6 +419,16 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 	}
 	if isFlagSet("fail-on-incomplete") {
 		final.failOnIncomplete = flags.failOnIncomplete
+	}
+
+	// Suppression file: suppressions.file -> flag (flag wins). Empty means the
+	// suppression manager picks its own platform default.
+	final.suppressionFile = ""
+	if cfg != nil {
+		final.suppressionFile = cfg.Suppressions.File
+	}
+	if isFlagSet("suppression-file") && flags.suppressionFile != "" {
+		final.suppressionFile = flags.suppressionFile
 	}
 
 	// Disable IP types
@@ -1013,6 +1056,7 @@ func main() {
 		showSuppressed:       flags.showSuppressed,
 		generateSuppressions: flags.generateSuppressions,
 		failOnIncomplete:     flags.failOnIncomplete,
+		suppressionFile:      flags.suppressionFile,
 		disableIPTypes:       flags.disableIPTypes,
 	})
 
@@ -1352,8 +1396,9 @@ func main() {
 		}
 	}
 
-	// Initialize suppression manager
-	suppressionManager := suppressions.NewSuppressionManager(*suppressionFile)
+	// Initialize suppression manager. The path comes from resolveConfiguration so
+	// that suppressions.file in the config file is honored, not just the flag.
+	suppressionManager := suppressions.NewSuppressionManager(finalConfig.suppressionFile)
 	if mainDebugObs != nil {
 		mainDebugObs.LogDetail("main", "Suppression manager initialized")
 	}
@@ -1487,6 +1532,17 @@ func main() {
 	// stderr warning: the findings are still reported, but the sensitive values
 	// remain in cleartext at the original path with no shareable artifact.
 	var unredactedFiles []parallel.FileDiagnostic
+
+	// Report config keys the schema does not recognize. Gated only on pre-commit
+	// mode, NOT on quiet/non-interactive — the same rule as the
+	// incomplete-coverage warning below, and for the same reason: CI is exactly
+	// where a config that silently fails to apply is most dangerous, and CI is
+	// never interactive. --quiet documents suppressing *progress* output, which
+	// this is not. It writes to stderr, so scripts parsing results on stdout are
+	// unaffected, and it never changes the exit code.
+	if precommitConfig == nil {
+		warnUnknownConfigKeys(os.Stderr, cfg)
+	}
 
 	// Suppress progress messages in pre-commit mode or quiet mode
 	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {

@@ -863,17 +863,7 @@ redaction:
   enabled: false
   output_dir: ./redacted
   strategy: format_preserving
-  audit_log_file: ""
-  memory_scrub: true
-  audit_trail: true
-  strategies:
-    simple:
-      replacement: "[REDACTED]"
-    format_preserving:
-      preserve_length: true
-      preserve_format: true
-    synthetic:
-      secure: true
+  audit_log_file: "" # alias: index_file
 
 # Profiles — use with: ferret-scan --profile <name> --file <target>
 profiles:
@@ -940,20 +930,18 @@ redaction:
   output_dir: "./redacted"          # Where redacted copies are written
   strategy: "format_preserving"     # simple | format_preserving | synthetic
   audit_log_file: ""                # Optional path for JSON compliance log
-  memory_scrub: true                # Scrub sensitive data from memory after processing
-  audit_trail: true                 # Write audit trail alongside redacted files
-
-  strategies:
-    simple:
-      replacement: "[REDACTED]"     # Placeholder text for simple strategy
-
-    format_preserving:
-      preserve_length: true         # Keep original character count
-      preserve_format: true         # Keep separators (dashes, dots, @, etc.)
-
-    synthetic:
-      secure: true                  # Use crypto/rand for generation
+                                    # (alias: index_file; --redaction-audit-log wins)
 ```
+
+Each strategy's behaviour is fixed and takes no options:
+
+- `simple` writes a per-type placeholder such as `[SSN-REDACTED]`. The marker
+  names the type on purpose, so it is not configurable — a single replacement
+  string for every type would discard that information.
+- `format_preserving` masks the value while keeping its length and separators,
+  e.g. `***-**-4100`.
+- `synthetic` substitutes a realistic fake value, always generated with
+  `crypto/rand`.
 
 ### Strategy Behaviour
 

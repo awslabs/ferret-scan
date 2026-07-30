@@ -119,9 +119,6 @@ defaults:
 preprocessors:
   text_extraction:
     enabled: true
-    types:
-      - pdf
-      - office
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Redaction configurations (activated with --enable-redaction or profile)
@@ -130,18 +127,12 @@ redaction:
   enabled: false
   output_dir: ./redacted
   strategy: format_preserving   # Options: simple, format_preserving, synthetic
-  audit_log_file: ""
-  memory_scrub: true
-  audit_trail: true
+  audit_log_file: ""            # JSON compliance log (alias: index_file)
 
-  strategies:
-    simple:
-      replacement: "[REDACTED]"
-    format_preserving:
-      preserve_length: true
-      preserve_format: true
-    synthetic:
-      secure: true
+  # Each strategy's behavior is fixed and takes no options:
+  #   simple            per-type markers, e.g. [SSN-REDACTED]
+  #   format_preserving keeps length and separators, e.g. ***-**-4100
+  #   synthetic         a realistic fake value, generated with crypto/rand
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Validator configurations

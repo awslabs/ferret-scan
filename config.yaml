@@ -43,9 +43,6 @@ preprocessors:
   # Text extraction from documents
   text_extraction:
     enabled: true # Enable text extraction preprocessor
-    types: # Types of text extraction to perform
-      - pdf # Extract text from PDF documents
-      - office # Extract text from Office documents (DOCX, XLSX, PPTX, ODT, ODS, ODP)
 
   # Metadata extraction (automatically enabled when preprocessors are enabled)
   # Supports multiple file types:
@@ -61,21 +58,16 @@ redaction:
   enabled: false # Enable redaction of sensitive data (can be overridden with --enable-redaction)
   output_dir: "./redacted" # Directory where redacted files will be stored
   strategy: "format_preserving" # Default redaction strategy: simple, format_preserving, or synthetic
-  audit_log_file: "" # Path to save redaction audit log file (JSON format for compliance)
-  memory_scrub: true # Enable secure memory scrubbing after processing sensitive data
-  audit_trail: true # Enable audit trail generation for redaction operations
+  audit_log_file: "" # Path to save redaction audit log file (JSON format for compliance).
+  # `index_file` is an accepted alias for the same setting.
 
-  # Strategy-specific configurations
-  strategies:
-    simple:
-      replacement: "[REDACTED]" # Text to replace sensitive data with
-
-    format_preserving:
-      preserve_length: true # Maintain original text length
-      preserve_format: true # Maintain original text format (e.g., XXX-XX-XXXX for SSN)
-
-    synthetic:
-      secure: true # Use cryptographically secure synthetic data generation
+  # Each strategy's behavior is fixed and needs no configuration:
+  #   simple            per-type placeholders, e.g. [SSN-REDACTED]. The marker
+  #                     names the type deliberately, so it is not configurable.
+  #   format_preserving masks the value but keeps its length and separators,
+  #                     e.g. ***-**-4100.
+  #   synthetic         substitutes a realistic fake value, generated with
+  #                     crypto/rand.
 
 # Validator-specific configurations
 validators:

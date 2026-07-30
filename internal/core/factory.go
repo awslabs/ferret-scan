@@ -85,24 +85,35 @@ func BuildValidatorSet(enabledChecks map[string]bool, cfg *config.Config, profil
 
 	// Apply global config-level validator settings
 	if cfg != nil {
-		if v, ok := result["CLOUD_RESOURCES"].(*cloudresources.Validator); ok {
-			v.Configure(cfg)
-		}
-		if v, ok := result["INTELLECTUAL_PROPERTY"].(*intellectualproperty.Validator); ok {
-			v.Configure(cfg)
-		}
-		if v, ok := result["SOCIAL_MEDIA"].(*socialmedia.Validator); ok {
-			v.Configure(cfg)
-		}
+		configureConfigurableValidators(result, cfg)
 	}
 
-	// Apply profile-level overrides
+	// Apply profile-level overrides. This must cover the SAME validators as the
+	// global pass: it previously reached only INTELLECTUAL_PROPERTY, so a profile
+	// that configured cloud_resources or social_media was silently ignored while
+	// the identical block at the top level worked.
+	//
+	// Each Configure returns early when its own section is absent, so passing a
+	// profile-only config overrides just the sections the profile actually sets
+	// and leaves the global settings for the others in place.
 	if profile != nil && profile.Validators != nil {
-		profileCfg := &config.Config{Validators: profile.Validators}
-		if v, ok := result["INTELLECTUAL_PROPERTY"].(*intellectualproperty.Validator); ok {
-			v.Configure(profileCfg)
-		}
+		configureConfigurableValidators(result, &config.Config{Validators: profile.Validators})
 	}
 
 	return result
+}
+
+// configureConfigurableValidators hands cfg to every validator that reads the
+// `validators:` config block. Keeping this in one place is what stops the
+// global and profile passes from drifting apart again.
+func configureConfigurableValidators(result map[string]detector.Validator, cfg *config.Config) {
+	if v, ok := result["CLOUD_RESOURCES"].(*cloudresources.Validator); ok {
+		v.Configure(cfg)
+	}
+	if v, ok := result["INTELLECTUAL_PROPERTY"].(*intellectualproperty.Validator); ok {
+		v.Configure(cfg)
+	}
+	if v, ok := result["SOCIAL_MEDIA"].(*socialmedia.Validator); ok {
+		v.Configure(cfg)
+	}
 }

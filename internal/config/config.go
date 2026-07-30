@@ -4,11 +4,14 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/paths"
 
@@ -42,38 +45,40 @@ type Config struct {
 	// Preprocessor configurations
 	Preprocessors struct {
 		TextExtraction struct {
-			Enabled bool     `yaml:"enabled"`
-			Types   []string `yaml:"types"`
+			Enabled bool `yaml:"enabled"`
 		} `yaml:"text_extraction"`
 	} `yaml:"preprocessors"`
 
 	// Redaction configurations
 	Redaction struct {
-		Enabled     bool   `yaml:"enabled"`
-		OutputDir   string `yaml:"output_dir"`
-		Strategy    string `yaml:"strategy"`
-		IndexFile   string `yaml:"index_file"`
-		MemoryScrub bool   `yaml:"memory_scrub"`
-		AuditTrail  bool   `yaml:"audit_trail"`
-		Strategies  struct {
-			Simple struct {
-				Replacement string `yaml:"replacement"`
-			} `yaml:"simple"`
-			FormatPreserving struct {
-				PreserveLength bool `yaml:"preserve_length"`
-				PreserveFormat bool `yaml:"preserve_format"`
-			} `yaml:"format_preserving"`
-			Synthetic struct {
-				Secure bool `yaml:"secure"`
-			} `yaml:"synthetic"`
-		} `yaml:"strategies"`
+		Enabled   bool   `yaml:"enabled"`
+		OutputDir string `yaml:"output_dir"`
+		Strategy  string `yaml:"strategy"`
+		// IndexFile is the JSON redaction log. `audit_log_file` is the name the
+		// shipped config, the docs and the --redaction-audit-log flag all use,
+		// so it is accepted as an alias; see resolveAuditLogAlias.
+		IndexFile    string `yaml:"index_file"`
+		AuditLogFile string `yaml:"audit_log_file"`
 	} `yaml:"redaction"`
+
+	// Suppression configurations. These are the config-file equivalents of
+	// --suppression-file, --generate-suppressions and --show-suppressed.
+	Suppressions struct {
+		File           string `yaml:"file"`
+		GenerateOnScan bool   `yaml:"generate_on_scan"`
+		ShowSuppressed bool   `yaml:"show_suppressed"`
+	} `yaml:"suppressions"`
 
 	// Platform-specific configurations
 	Platform *PlatformConfig `yaml:"platform,omitempty"`
 
 	// Profiles for different scanning scenarios
 	Profiles map[string]Profile `yaml:"profiles"`
+
+	// UnknownKeys lists config keys the schema does not recognize. Populated by
+	// LoadConfig so callers can warn; a typo'd option is otherwise invisible.
+	// Not itself a config key.
+	UnknownKeys []string `yaml:"-"`
 }
 
 // PlatformConfig holds platform-specific configuration settings
@@ -84,22 +89,36 @@ type PlatformConfig struct {
 	Unix *UnixConfig `yaml:"unix,omitempty"`
 }
 
-// WindowsConfig holds Windows-specific configuration settings
+// WindowsConfig holds Windows-specific configuration settings.
+//
+// This block once also carried use_appdata, system_wide_install,
+// create_shortcuts, add_to_path and long_path_support. Those describe an
+// installer, not a scanner: nothing in this repo (including the install-system
+// scripts) ever read them, so they were validated and then ignored. They are
+// gone; the directory overrides below are the two that have a meaning here.
 type WindowsConfig struct {
-	UseAppData        bool   `yaml:"use_appdata"`         // Use APPDATA directory for configuration
-	SystemWideInstall bool   `yaml:"system_wide_install"` // Install system-wide vs user-specific
-	CreateShortcuts   bool   `yaml:"create_shortcuts"`    // Create desktop/start menu shortcuts
-	AddToPath         bool   `yaml:"add_to_path"`         // Add to PATH environment variable
-	ConfigDir         string `yaml:"config_dir"`          // Override default config directory
-	TempDir           string `yaml:"temp_dir"`            // Override default temp directory
-	LongPathSupport   bool   `yaml:"long_path_support"`   // Enable long path support (>260 chars)
-}
-
-// UnixConfig holds Unix-specific configuration settings
-type UnixConfig struct {
-	UseXDG    bool   `yaml:"use_xdg"`    // Use XDG Base Directory specification
 	ConfigDir string `yaml:"config_dir"` // Override default config directory
 	TempDir   string `yaml:"temp_dir"`   // Override default temp directory
+}
+
+// UnixConfig holds Unix-specific configuration settings. See WindowsConfig for
+// why use_xdg is no longer here.
+type UnixConfig struct {
+	ConfigDir string `yaml:"config_dir"` // Override default config directory
+	TempDir   string `yaml:"temp_dir"`   // Override default temp directory
+}
+
+// ProfileRedaction holds a profile's redaction settings. It is a named type
+// rather than an anonymous struct so that constructing a default profile does
+// not require restating every field and tag verbatim at each site.
+type ProfileRedaction struct {
+	Enabled   bool   `yaml:"enabled"`
+	OutputDir string `yaml:"output_dir"`
+	Strategy  string `yaml:"strategy"`
+	// IndexFile / AuditLogFile are the same slot under two names; see
+	// resolveAuditLogAlias.
+	IndexFile    string `yaml:"index_file"`
+	AuditLogFile string `yaml:"audit_log_file"`
 }
 
 // Profile represents a scanning profile with specific settings
@@ -122,12 +141,7 @@ type Profile struct {
 	Description          string                            `yaml:"description"`
 	Validators           map[string]map[string]interface{} `yaml:"validators"`
 	// Redaction settings for this profile
-	Redaction struct {
-		Enabled   bool   `yaml:"enabled"`
-		OutputDir string `yaml:"output_dir"`
-		Strategy  string `yaml:"strategy"`
-		IndexFile string `yaml:"index_file"`
-	} `yaml:"redaction"`
+	Redaction ProfileRedaction `yaml:"redaction"`
 	// Platform-specific settings for this profile
 	Platform *PlatformConfig `yaml:"platform,omitempty"`
 }
@@ -152,19 +166,17 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	// Set default preprocessor values
 	config.Preprocessors.TextExtraction.Enabled = true
-	config.Preprocessors.TextExtraction.Types = []string{"pdf", "office"}
 
 	// Set default redaction values with platform-aware paths
 	config.Redaction.Enabled = false
 	config.Redaction.OutputDir = normalizePlatformPath("./redacted")
 	config.Redaction.Strategy = "format_preserving"
 	config.Redaction.IndexFile = ""
-	config.Redaction.MemoryScrub = true
-	config.Redaction.AuditTrail = true
-	config.Redaction.Strategies.Simple.Replacement = "[HIDDEN]"
-	config.Redaction.Strategies.FormatPreserving.PreserveLength = true
-	config.Redaction.Strategies.FormatPreserving.PreserveFormat = true
-	config.Redaction.Strategies.Synthetic.Secure = true
+
+	// Set default suppression values
+	config.Suppressions.File = ""
+	config.Suppressions.GenerateOnScan = false
+	config.Suppressions.ShowSuppressed = false
 
 	// Set platform-specific defaults
 	config.Platform = getDefaultPlatformConfig()
@@ -181,12 +193,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		EnablePreprocessors: true,
 		Description:         "Optimized for pre-commit hooks with concise output and essential checks",
 		Validators:          make(map[string]map[string]interface{}),
-		Redaction: struct {
-			Enabled   bool   `yaml:"enabled"`
-			OutputDir string `yaml:"output_dir"`
-			Strategy  string `yaml:"strategy"`
-			IndexFile string `yaml:"index_file"`
-		}{
+		Redaction: ProfileRedaction{
 			Enabled:   false,
 			OutputDir: normalizePlatformPath("./redacted"),
 			Strategy:  "format_preserving",
@@ -238,15 +245,107 @@ func LoadConfig(configPath string) (*Config, error) {
 	// See backfillProfileBools for the list of fields this handles.
 	backfillProfileBools(yamlTree, config)
 
+	// Fold `audit_log_file` into the slot that actually drives the redaction log.
+	resolveAuditLogAlias(config)
+
 	// Apply platform-specific defaults and path normalization
 	ApplyPlatformDefaults(config)
+
+	// Collect (but do not fail on) keys the schema does not recognize, so a
+	// typo'd option is visible instead of silently ignored.
+	config.UnknownKeys = collectUnknownKeys(data)
 
 	// Validate the configuration
 	if err := ValidateConfig(config); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
 
+	// Publish the platform block's temp directory so paths.GetTempDir honors it.
+	// Without this the whole `platform:` block was validated and then ignored.
+	//
+	// This runs AFTER validation, and only on success: the override is
+	// process-wide, so publishing it earlier would let a config that is about to
+	// be rejected — for a bad path, possibly that very temp_dir — leave the
+	// process pointing at a directory no accepted config ever named.
+	paths.SetTempDirOverride(platformTempDirOverride(config))
+
 	return config, nil
+}
+
+// resolveAuditLogAlias folds redaction.audit_log_file into redaction.index_file.
+//
+// These are one feature with two names: the struct field has always been
+// `index_file`, while the shipped config.yaml, every doc that mentions it, and
+// the --redaction-audit-log flag all call it `audit_log_file`. The mismatch dates
+// to the initial commit, so setting the documented name wrote to a field nothing
+// read and produced no log and no error.
+//
+// index_file wins when both are set, because it is the name the loader has always
+// honored — a user who set both is most likely mid-migration.
+func resolveAuditLogAlias(config *Config) {
+	if config.Redaction.IndexFile == "" {
+		config.Redaction.IndexFile = config.Redaction.AuditLogFile
+	}
+	for name, profile := range config.Profiles {
+		if profile.Redaction.IndexFile == "" && profile.Redaction.AuditLogFile != "" {
+			profile.Redaction.IndexFile = profile.Redaction.AuditLogFile
+			config.Profiles[name] = profile
+		}
+	}
+}
+
+// collectUnknownKeys reports config keys the schema does not recognize.
+//
+// The authoritative decode above is deliberately lenient: erroring on an unknown
+// key would be a breaking change, and would reject this project's own shipped
+// config.yaml. So this makes a second, strict pass purely to collect the key
+// names and throws its result away. Callers surface these as warnings.
+//
+// Returns paths like "redaction.typo" in file order.
+func collectUnknownKeys(data []byte) []string {
+	var throwaway Config
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+
+	err := dec.Decode(&throwaway)
+	if err == nil {
+		return nil
+	}
+	typeErr := &yaml.TypeError{}
+	if !errors.As(err, &typeErr) {
+		// A malformed document, not an unknown key. The lenient decode above
+		// already succeeded, so there is nothing to report.
+		return nil
+	}
+
+	var keys []string
+	for _, msg := range typeErr.Errors {
+		if name, ok := unknownFieldName(msg); ok {
+			keys = append(keys, name)
+		}
+	}
+	return keys
+}
+
+// unknownFieldName pulls the key name out of a yaml.v3 "field X not found"
+// message. Anything else (a type mismatch, say) is not an unknown key and is
+// reported as such so the caller can ignore it.
+func unknownFieldName(msg string) (string, bool) {
+	const marker = "field "
+	i := strings.Index(msg, marker)
+	if i < 0 {
+		return "", false
+	}
+	rest := msg[i+len(marker):]
+	j := strings.Index(rest, " not found in type")
+	if j < 0 {
+		return "", false
+	}
+	name := strings.TrimSpace(rest[:j])
+	if name == "" {
+		return "", false
+	}
+	return name, true
 }
 
 // FindConfigFile looks for a configuration file in standard locations using platform-aware paths
@@ -440,12 +539,7 @@ func (c *Config) GetPrecommitProfile() *Profile {
 		EnablePreprocessors: true,
 		Description:         "Optimized for pre-commit hooks with concise output and essential checks",
 		Validators:          make(map[string]map[string]interface{}),
-		Redaction: struct {
-			Enabled   bool   `yaml:"enabled"`
-			OutputDir string `yaml:"output_dir"`
-			Strategy  string `yaml:"strategy"`
-			IndexFile string `yaml:"index_file"`
-		}{
+		Redaction: ProfileRedaction{
 			Enabled:   false,
 			OutputDir: normalizePlatformPath("./redacted"),
 			Strategy:  "format_preserving",
@@ -614,22 +708,19 @@ func normalizePlatformPath(path string) string {
 	return paths.NormalizePath(path)
 }
 
-// getDefaultPlatformConfig returns default platform-specific configuration
+// getDefaultPlatformConfig returns default platform-specific configuration.
+//
+// Both directory overrides default to empty, which means "use the platform's own
+// location" (see paths.GetConfigDir / paths.GetTempDir). The struct is still
+// populated for the current OS so that a config file setting only one of the two
+// keys merges into a non-nil block.
 func getDefaultPlatformConfig() *PlatformConfig {
 	platformConfig := &PlatformConfig{}
 
 	if runtime.GOOS == "windows" {
-		platformConfig.Windows = &WindowsConfig{
-			UseAppData:        true,  // Use APPDATA by default on Windows
-			SystemWideInstall: false, // User-specific install by default
-			CreateShortcuts:   false, // Don't create shortcuts by default
-			AddToPath:         false, // Don't modify PATH by default
-			LongPathSupport:   false, // Disabled by default for compatibility
-		}
+		platformConfig.Windows = &WindowsConfig{}
 	} else {
-		platformConfig.Unix = &UnixConfig{
-			UseXDG: true, // Use XDG Base Directory specification by default
-		}
+		platformConfig.Unix = &UnixConfig{}
 	}
 
 	return platformConfig
@@ -763,18 +854,30 @@ func GetEffectiveConfigDir(config *Config) string {
 
 // GetEffectiveTempDir returns the effective temporary directory based on platform and config
 func GetEffectiveTempDir(config *Config) string {
-	// Check for platform-specific override
-	if config.Platform != nil {
-		if runtime.GOOS == "windows" && config.Platform.Windows != nil && config.Platform.Windows.TempDir != "" {
-			return normalizePlatformPath(config.Platform.Windows.TempDir)
-		}
-		if runtime.GOOS != "windows" && config.Platform.Unix != nil && config.Platform.Unix.TempDir != "" {
-			return normalizePlatformPath(config.Platform.Unix.TempDir)
-		}
+	if dir := platformTempDirOverride(config); dir != "" {
+		return dir
 	}
 
 	// Fall back to default platform-aware temp directory
 	return paths.GetTempDir()
+}
+
+// platformTempDirOverride returns the config file's temp directory for the
+// current OS, or "" when the platform block does not set one.
+func platformTempDirOverride(config *Config) string {
+	if config == nil || config.Platform == nil {
+		return ""
+	}
+	if runtime.GOOS == "windows" {
+		if config.Platform.Windows != nil && config.Platform.Windows.TempDir != "" {
+			return normalizePlatformPath(config.Platform.Windows.TempDir)
+		}
+		return ""
+	}
+	if config.Platform.Unix != nil && config.Platform.Unix.TempDir != "" {
+		return normalizePlatformPath(config.Platform.Unix.TempDir)
+	}
+	return ""
 }
 
 // ApplyPlatformDefaults applies platform-specific defaults to paths in the configuration
