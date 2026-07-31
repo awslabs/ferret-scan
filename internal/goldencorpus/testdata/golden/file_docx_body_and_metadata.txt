@@ -1,0 +1,6 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH               FILE
+---------------------------------------------------------------------------------------------
+[HIGH  ] ssn          SSN                   100.00% line     3 449-87-4100         report.docx
+[HIGH  ] creditcard   VISA                  100.00% line     5 4532-0151-1283-0366 report.docx
+[MEDIUM] metadata     AUTHOR_INFO            65.00% line     1 Jane Analyst        report.docx
+[MEDIUM] metadata     LAST_MODIFIED_BY       65.00% line     2 Ops Reviewer        report.docx

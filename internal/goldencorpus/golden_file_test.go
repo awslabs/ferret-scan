@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/core"
@@ -23,7 +24,7 @@ func TestGoldenFileScanFormats(t *testing.T) {
 	for _, fc := range FileCases {
 		fc := fc
 		t.Run(fc.Name, func(t *testing.T) {
-			tmpDir := t.TempDir()
+			tmpDir := caseTempDir(t, fc)
 			path := writeFixture(t, tmpDir, fc) // forward-slash scan path
 
 			res, err := core.ScanFile(core.ScanConfig{
@@ -126,6 +127,47 @@ func writeFixture(t *testing.T, tmpDir string, fc FileCase) string {
 		t.Fatalf("write fixture %q: %v", fc.Filename, err)
 	}
 	return filepath.ToSlash(nativePath) // "/"-normalized path for the scan
+}
+
+// caseTempDir returns the directory a case's fixture is written to.
+//
+// It is NOT always t.TempDir(). The Office metadata extractor validates the path it
+// is handed and refuses anything under /var/, /tmp/, /home/ or C:\Users\ as a system
+// directory (meta-extract-officelib/office-extractor.go validateFilePath). t.TempDir()
+// resolves under exactly those roots on all three CI platforms — /var/folders/... on
+// macOS, /tmp/... on Linux, C:\Users\...\AppData on Windows — so an Office fixture
+// written there silently loses the office_metadata extractor. The file then has only
+// ONE capable preprocessor, takes the single-extractor fast path, and never reaches
+// the combined_preprocessors routing arm these cases exist to lock. Nothing fails; the
+// snapshot just records a scan that skipped the code under test.
+//
+// So OOXML cases get a repo-relative directory, which the guard permits, following
+// internal/router/determinism_test.go. Everything else keeps t.TempDir().
+func caseTempDir(t *testing.T, fc FileCase) string {
+	t.Helper()
+	if !needsGuardFreePath(fc.Filename) {
+		return t.TempDir()
+	}
+	dir, err := os.MkdirTemp(".", "golden-ooxml-")
+	if err != nil {
+		t.Fatalf("creating repo-relative fixture dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("resolving fixture dir: %v", err)
+	}
+	return abs
+}
+
+// needsGuardFreePath reports whether a fixture's extension routes through the
+// path-validating Office metadata extractor.
+func needsGuardFreePath(filename string) bool {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm":
+		return true
+	}
+	return false
 }
 
 // matchKeys reduces a match slice to a sorted, path-independent identity list
