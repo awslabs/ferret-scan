@@ -6,9 +6,7 @@ package router
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -19,46 +17,15 @@ import (
 // and /dev/zero never ends.
 //
 // This check replaced a path-prefix denylist that lived in the Office metadata
-// extractor and named /proc/, /sys/ and /dev/. Two tests below pin the reasons a mode
+// extractor and named /proc/, /sys/ and /dev/. The tests below pin the reasons a mode
 // check is the right shape: it catches kinds the name-based list missed (and would
 // have had to enumerate per platform), and it accepts the ordinary files that merely
 // happen to live under one of those prefixes.
-
-// TestFifoIsRejectedAsIrregular is the positive case for the mode check. A named pipe
-// is the cheapest non-regular file to create portably, and it is the one that would
-// actually hang a scan.
-func TestFifoIsRejectedAsIrregular(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("no mkfifo on Windows; the mode check still applies there via ModeDevice/ModeIrregular")
-	}
-
-	dir := t.TempDir()
-	fifo := filepath.Join(dir, "pipe.txt")
-	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
-		t.Skipf("cannot create a FIFO here: %v", err)
-	}
-
-	fr := NewFileRouter(false)
-
-	// Deliberately named .txt: without the mode check this would be routed as a text
-	// file and isTextFile would then block on the open, since a FIFO with no writer
-	// never returns.
-	ok, reason := fr.CanProcessFile(fifo, true)
-
-	if ok {
-		t.Fatalf("a FIFO was accepted for processing (reason %q); reading it would block "+
-			"the scan indefinitely", reason)
-	}
-	if !strings.HasPrefix(reason, ReasonUnreadable) {
-		t.Errorf("reason = %q, want the %q prefix: the file exists but could not be examined, "+
-			"which is the same class as a permission error rather than an unsupported type",
-			reason, ReasonUnreadable)
-	}
-	if !strings.Contains(reason, "named pipe") {
-		t.Errorf("reason = %q, want it to name what the path actually was, so the user can tell "+
-			"a mistyped path from a rejected format", reason)
-	}
-}
+//
+// The FIFO case lives in irregular_file_unix_test.go. It cannot be guarded by a
+// runtime GOOS check in this file: syscall.Mkfifo does not exist on Windows, so the
+// reference fails to COMPILE there long before any skip could run — which is exactly
+// how it broke windows-latest.
 
 // TestDirectoryIsRejectedWithItsOwnReason covers the mistake a user is most likely to
 // make — pointing --file at a directory.
