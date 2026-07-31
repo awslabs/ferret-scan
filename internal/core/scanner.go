@@ -201,6 +201,11 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 	// Incomplete so a partially-scanned run is never mistaken for a clean one.
 	// Matches are still returned (the worker pool keeps the partial results);
 	// this only adds the signal. Defaults false when every file completed.
+	//
+	// A file that extracted to NOTHING counts as incomplete for the same reason
+	// and is checked second: it produces no error at all, so without this the
+	// library path reported a document whose body was never extracted as a
+	// complete, clean scan.
 	incomplete := false
 	incompleteReason := ""
 	if stats != nil && len(stats.IncompleteFiles) > 0 {
@@ -211,6 +216,15 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		} else {
 			incompleteReason = fmt.Sprintf("validation did not complete for %d of %d files",
 				len(stats.IncompleteFiles), stats.TotalFiles)
+		}
+	} else if stats != nil && len(stats.EmptyExtractionFiles) > 0 {
+		incomplete = true
+		if len(stats.EmptyExtractionFiles) == 1 {
+			incompleteReason = fmt.Sprintf("no document text extracted from %s: %s",
+				stats.EmptyExtractionFiles[0].FilePath, stats.EmptyExtractionFiles[0].Reason)
+		} else {
+			incompleteReason = fmt.Sprintf("no document text extracted from %d of %d files",
+				len(stats.EmptyExtractionFiles), stats.TotalFiles)
 		}
 	}
 

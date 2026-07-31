@@ -153,6 +153,15 @@ func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedConten
 func (tp *TextPreprocessor) processOffice(filePath string, content *ProcessedContent) (*ProcessedContent, error) {
 	officeContent, err := textextractofficetextlib.ExtractText(filePath)
 	if err != nil {
+		// Carry the extractor's note across the error return. The most consequential
+		// empty-extraction case — the archive has no recognizable document body part —
+		// is BOTH an error and a warning, and the warning is the half that reaches the
+		// user. Returning before copying it meant a .docx whose body was never found
+		// reported metadata-only findings at exit 0 with nothing said about the missing
+		// body.
+		if officeContent != nil {
+			content.ExtractionWarning = officeContent.ExtractionWarning
+		}
 		content.Error = fmt.Errorf("failed to extract text from Office document: %w", err)
 		return content, content.Error
 	}
@@ -165,6 +174,7 @@ func (tp *TextPreprocessor) processOffice(filePath string, content *ProcessedCon
 	content.CharCount = officeContent.CharCount
 	content.LineCount = officeContent.LineCount
 	content.Paragraphs = officeContent.Paragraphs
+	content.ExtractionWarning = officeContent.ExtractionWarning
 	content.Success = true
 
 	// Enable position tracking for Office documents

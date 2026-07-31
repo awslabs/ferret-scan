@@ -717,6 +717,36 @@ func writeUnredactedFilesWarning(w io.Writer, unredactedFiles []parallel.FileDia
 	return true
 }
 
+// writeEmptyExtractionWarning emits a warning to w for every file whose
+// extraction succeeded but produced no document-body text, for a file type that
+// carries one. It returns true if a warning was written.
+//
+// This is the fourth member of the family, and it covers the quietest failure of
+// the four. The other three describe something that went wrong; this one describes
+// a scan that reported success over nothing. An OOXML container's body is selected
+// by part name, and a name we do not recognize — one differing only in case, say —
+// yields zero extracted text. Zero extracted text was indistinguishable from a
+// genuinely empty document: extraction returned Success with textLen 0, the router
+// stamped Success:true, no output format mentioned it, and --fail-on-incomplete
+// exited 0. So a 40-page document that contributed nothing to the scan read
+// exactly like a blank one.
+//
+// Gated only on pre-commit mode, like its siblings. Goes to stderr (never
+// stdout/JSON). It does not change the exit code by itself; these files are
+// counted toward --fail-on-incomplete alongside cut-short and unreadable ones,
+// which is the same opt-in escalation PR #235 gave unreadable files.
+func writeEmptyExtractionWarning(w io.Writer, emptyFiles []parallel.FileDiagnostic, totalFiles int) bool {
+	if len(emptyFiles) == 0 {
+		return false
+	}
+	fmt.Fprintf(w, "WARNING: extraction empty — %d of %d file(s) yielded no document text, so their contents were NOT scanned; any sensitive data in them was NOT detected:\n",
+		len(emptyFiles), totalFiles)
+	for _, fd := range emptyFiles {
+		fmt.Fprintf(w, "  %s: %s\n", fd.FilePath, fd.Reason)
+	}
+	return true
+}
+
 // writeUnreadableFilesWarning emits a warning to w for every file that could not
 // be opened or stat'ed — a permission error, a dangling symlink, a file deleted
 // mid-scan. It returns true if a warning was written.
@@ -902,7 +932,7 @@ func main() {
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
 	quiet := flag.Bool("quiet", false, "Suppress progress output (useful for scripts and CI/CD)")
 	precommitMode := flag.Bool("pre-commit-mode", false, "Enable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
-	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file was not fully scanned — coverage cut short (timeout, cancellation, or budget) or the file could not be opened at all. Default off: both conditions only warn on stderr.")
+	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file was not fully scanned — coverage cut short (timeout, cancellation, or budget), the file could not be opened at all, or a document yielded no extractable text. Default off: all three conditions only warn on stderr.")
 
 	// Redaction flags
 	enableRedaction := flag.Bool("enable-redaction", false, "Enable redaction of sensitive data found in documents")
@@ -1563,6 +1593,11 @@ func main() {
 	// stderr warning: the findings are still reported, but the sensitive values
 	// remain in cleartext at the original path with no shareable artifact.
 	var unredactedFiles []parallel.FileDiagnostic
+	// emptyExtractionFiles captures files whose extraction succeeded but produced
+	// no document text, for a file type that carries some. Surfaced as its own
+	// stderr warning and counted as a coverage gap: nothing was extracted, so no
+	// validator saw anything, so the file reported clean.
+	var emptyExtractionFiles []parallel.FileDiagnostic
 
 	// Report config keys the schema does not recognize. Gated only on pre-commit
 	// mode, NOT on quiet/non-interactive — the same rule as the
@@ -1701,6 +1736,7 @@ func main() {
 			processedFiles = stats.ProcessedFiles
 			incompleteFiles = stats.IncompleteFiles
 			unredactedFiles = stats.UnredactedFiles
+			emptyExtractionFiles = stats.EmptyExtractionFiles
 
 			// Handle inline redaction results if redaction was enabled
 			if finalConfig.enableRedaction && redactionManager != nil {
@@ -1764,6 +1800,7 @@ func main() {
 	// unchanged (default still 0) — this is an advisory warning.
 	if precommitConfig == nil {
 		writeUnreadableFilesWarning(os.Stderr, unreadableFiles, len(filesToProcess))
+		writeEmptyExtractionWarning(os.Stderr, emptyExtractionFiles, len(supportedFiles))
 		writeIncompleteCoverageWarning(os.Stderr, incompleteFiles, len(supportedFiles))
 		writeUnredactedFilesWarning(os.Stderr, unredactedFiles, len(supportedFiles))
 	}
@@ -1973,7 +2010,11 @@ func main() {
 	// more severe case: a cut-short scan looked at part of the file, an unreadable
 	// one was never looked at. Both mean findings may be missing, so both feed the
 	// same opt-in escalation.
-	coverageGaps := len(incompleteFiles) + len(unreadableFiles)
+	//
+	// A file that was opened and extracted to NOTHING is the third member of that
+	// set and the hardest to notice without help: unlike the other two it produces
+	// no error anywhere, just an empty document body and a clean report.
+	coverageGaps := len(incompleteFiles) + len(unreadableFiles) + len(emptyExtractionFiles)
 	if precommitConfig != nil {
 		exitCode := precommit.GetExitCode(hasFindings, hasErrors, highestConfidence, precommitConfig)
 		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps))

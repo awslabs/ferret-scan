@@ -38,6 +38,14 @@ type ProcessingStats struct {
 	// not finish scanning".
 	IncompleteFiles []FileDiagnostic `json:"incomplete_files,omitempty"`
 
+	// EmptyExtractionFiles lists files whose extraction SUCCEEDED but produced no
+	// document-body text, for a file type that carries one. These are the files a
+	// scan is most likely to have silently under-covered: nothing was extracted, so
+	// no validator saw anything, so the file reports clean. Populated from
+	// Result.ExtractionWarning; empty on a normal run. Counted as a coverage gap
+	// alongside IncompleteFiles so --fail-on-incomplete can catch it.
+	EmptyExtractionFiles []FileDiagnostic `json:"empty_extraction_files,omitempty"`
+
 	// UnredactedFiles lists files that HAVE findings but for which no redacted
 	// copy could be produced (populated from Result.RedactionError; empty unless
 	// --enable-redaction is on). These files' findings are reported normally —
@@ -113,6 +121,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 	totalDuration := time.Duration(0)
 	var incompleteFiles []FileDiagnostic
 	var unredactedFiles []FileDiagnostic
+	var emptyExtractionFiles []FileDiagnostic
 
 	for i := 0; i < jobCount; i++ {
 		result := <-pp.workerPool.Results()
@@ -133,6 +142,16 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 		// runs after validation, so a redaction failure says nothing about the
 		// correctness of what was found; treating it as fatal is what silently
 		// erased findings for every file type with no registered redactor.
+		// Record a file that extracted to nothing. Not an error — the file was read
+		// and its (empty) content validated — but the single strongest signal that
+		// a file was not really covered, so it is collected here rather than left
+		// to a debug log nobody reads.
+		if result.ExtractionWarning != "" {
+			emptyExtractionFiles = append(emptyExtractionFiles, FileDiagnostic{
+				FilePath: result.FilePath,
+				Reason:   result.ExtractionWarning,
+			})
+		}
 		if result.RedactionError != nil {
 			unredactedFiles = append(unredactedFiles, FileDiagnostic{
 				FilePath: result.FilePath,
@@ -182,6 +201,8 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 		AvgFileTime:     totalDuration / time.Duration(max(processedCount, 1)),
 		IncompleteFiles: incompleteFiles,
 		UnredactedFiles: unredactedFiles,
+
+		EmptyExtractionFiles: emptyExtractionFiles,
 	}
 
 	if finishTiming != nil {

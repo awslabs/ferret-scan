@@ -664,7 +664,8 @@ var FileCases = []FileCase{
 	{
 		Name: "file_docx_main_part_alternate_case",
 		Description: "Tier 3: the document body at \"word/Document.xml\" instead of \"word/document.xml\" — a part name that differs only in case. " +
-			"Locks whether body text at a non-conventional part name is still extracted and scanned. Diff against file_docx_body_and_metadata.",
+			"Locks that body text at a non-conventional part name is still extracted and scanned; it previously was not, which cost this case its SSN and VISA findings. " +
+			"Diff against file_docx_body_and_metadata.",
 		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
 		Filename: "alt_case.docx",
 		Content: BuildDOCXWithMainPart("word/Document.xml", "Jane Analyst", "Ops Reviewer", []string{
@@ -801,10 +802,15 @@ func BuildDOCX(creator, lastModifiedBy string, paras []string) []byte {
 
 // BuildDOCXWithMainPart is BuildDOCX with control over the main part's NAME, so a
 // case can lock what happens when the document body is not at the conventional
-// path. The text extractor matches part names as literal, case-sensitive strings,
-// so "word/Document.xml" is a different part to it than "word/document.xml" — the
-// golden then records whether the body is still extracted (and therefore still
-// scanned) or silently skipped.
+// path. It also points the package relationship at that name, as a real producer
+// would.
+//
+// The text extractor used to match part names as literal, case-SENSITIVE strings,
+// so "word/Document.xml" was a different part from "word/document.xml" and the
+// body was never extracted — one capital letter took the case from 4 findings to 2
+// and put the SSN and card number outside everything the scanner could see.
+// Selection is now driven by the relationships and by case-insensitive
+// conventional names, so this case records the body being scanned.
 func BuildDOCXWithMainPart(mainPart, creator, lastModifiedBy string, paras []string) []byte {
 	return buildOOXML(docxParts(mainPart, creator, lastModifiedBy, paras))
 }
