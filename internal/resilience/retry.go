@@ -5,7 +5,6 @@ package resilience
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -104,122 +103,12 @@ func RetryWithBackoff(ctx context.Context, config RetryConfig, operation Retryab
 	return lastErr
 }
 
-// RetryStats holds statistics about retry operations.
-type RetryStats struct {
-	TotalAttempts   int           `json:"total_attempts"`
-	SuccessfulAfter int           `json:"successful_after"` // 0 if failed, attempt number if succeeded
-	TotalDuration   time.Duration `json:"total_duration"`
-	LastError       string        `json:"last_error,omitempty"`
-	ErrorTypes      []string      `json:"error_types,omitempty"`
-}
-
-// RetryWithStats executes an operation with retry and collects statistics.
-func RetryWithStats(ctx context.Context, config RetryConfig, operation RetryableOperation) (*RetryStats, error) {
-	stats := &RetryStats{
-		ErrorTypes: make([]string, 0),
-	}
-
-	start := time.Now()
-
-	wrappedOperation := func(ctx context.Context) error {
-		stats.TotalAttempts++
-		err := operation(ctx)
-		if err != nil {
-			classified := ClassifyError(err)
-			stats.LastError = err.Error()
-			stats.ErrorTypes = append(stats.ErrorTypes, classified.Type.String())
-		}
-		return err
-	}
-
-	originalOnRetry := config.OnRetry
-	config.OnRetry = func(attempt int, err error) {
-		if originalOnRetry != nil {
-			originalOnRetry(attempt, err)
-		}
-	}
-
-	err := RetryWithBackoff(ctx, config, wrappedOperation)
-
-	stats.TotalDuration = time.Since(start)
-	if err == nil {
-		stats.SuccessfulAfter = stats.TotalAttempts
-	}
-
-	return stats, err
-}
-
-// RetryWithCircuitBreaker combines retry logic with circuit breaker protection.
-func RetryWithCircuitBreaker(ctx context.Context, retryConfig RetryConfig, cb *CircuitBreaker, operation RetryableOperation) error {
-	return RetryWithBackoff(ctx, retryConfig, func(ctx context.Context) error {
-		return cb.Execute(ctx, operation)
-	})
-}
-
-// ErrorType extensions for retry logic.
-func (et ErrorType) String() string {
-	switch et {
-	case ErrorTypeUnknown:
-		return "Unknown"
-	case ErrorTypeTransient:
-		return "Transient"
-	case ErrorTypePermanent:
-		return "Permanent"
-	case ErrorTypeTimeout:
-		return "Timeout"
-	case ErrorTypeRateLimit:
-		return "RateLimit"
-	case ErrorTypeQuotaExceeded:
-		return "QuotaExceeded"
-	case ErrorTypeServiceUnavailable:
-		return "ServiceUnavailable"
-	case ErrorTypeInvalidInput:
-		return "InvalidInput"
-	case ErrorTypeResourceNotFound:
-		return "ResourceNotFound"
-	default:
-		return fmt.Sprintf("ErrorType(%d)", int(et))
-	}
-}
-
-// RetryableFunc is a convenience type for retryable functions that return a value.
-type RetryableFunc[T any] func(ctx context.Context) (T, error)
-
-// RetryWithResult executes a function that returns a result and error with retry logic.
-func RetryWithResult[T any](ctx context.Context, config RetryConfig, fn RetryableFunc[T]) (T, error) {
-	var result T
-	err := RetryWithBackoff(ctx, config, func(ctx context.Context) error {
-		var e error
-		result, e = fn(ctx)
-		return e
-	})
-	return result, err
-}
-
 // IsRetryable reports whether an error should be retried.
 func IsRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
 	return ClassifyError(err).IsRetryable()
-}
-
-// ShouldRetryAfter returns a suggested wait duration for rate-limit style errors.
-func ShouldRetryAfter(err error) (time.Duration, bool) {
-	if err == nil {
-		return 0, false
-	}
-	classified := ClassifyError(err)
-	switch classified.Type {
-	case ErrorTypeRateLimit:
-		return 30 * time.Second, true
-	case ErrorTypeServiceUnavailable:
-		return 10 * time.Second, true
-	case ErrorTypeTimeout:
-		return 5 * time.Second, true
-	default:
-		return 0, false
-	}
 }
 
 // RetryManager manages retry configurations for different services.
