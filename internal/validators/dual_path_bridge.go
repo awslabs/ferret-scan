@@ -372,13 +372,42 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 	var documentErr, metadataErr error
 	var documentProcessingTime, metadataProcessingTime time.Duration
 
+	// The document path scans every extracted byte, not the routed subset.
+	//
+	// Routing decides which content is called "metadata", and it decides it by
+	// reading section headers out of the extracted text — which document authors
+	// supply. The two paths do not run the same validators: this one runs the full
+	// set, while the metadata path runs a single field-name scanner with no SSN,
+	// card, phone or email logic. Feeding it the subset therefore let a section
+	// header delete findings rather than relabel them, and a finding that is never
+	// reported is never redacted, so the value stayed in the output in cleartext.
+	//
+	// Two details here are load-bearing and were both wrong in the obvious version
+	// of this fix:
+	//
+	//   - the INPUT is FullText, so content classified as metadata is still seen by
+	//     the document validators;
+	//   - the GATE is on documentText, not on routedContent.DocumentBody. When a
+	//     section header is the FIRST line of extracted text, the pre-header body is
+	//     empty, so a `DocumentBody != ""` gate skips this goroutine entirely and
+	//     FullText is never read. Gating on the text actually being scanned is what
+	//     makes the guarantee hold for that placement.
+	//
+	// Fall back to DocumentBody when FullText is empty so an older caller that
+	// constructs RoutedContent directly (without going through RouteContent) keeps
+	// its previous behavior rather than silently scanning nothing.
+	documentText := routedContent.FullText
+	if documentText == "" {
+		documentText = routedContent.DocumentBody
+	}
+
 	// Process document body content in parallel
-	if routedContent.DocumentBody != "" {
+	if documentText != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			docStartTime := time.Now()
-			matches, err := evb.documentBridge.ProcessDocumentContentCtx(ctx, routedContent.DocumentBody, routedContent.OriginalPath, contextInsights)
+			matches, err := evb.documentBridge.ProcessDocumentContentCtx(ctx, documentText, routedContent.OriginalPath, contextInsights)
 			documentProcessingTime = time.Since(docStartTime)
 
 			if err != nil {

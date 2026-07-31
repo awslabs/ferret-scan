@@ -23,6 +23,26 @@ type RoutedContent struct {
 	DocumentBody string            // Combined plain text + document text
 	Metadata     []MetadataContent // Separated metadata by preprocessor
 	OriginalPath string
+
+	// FullText is every byte the preprocessors extracted, captured BEFORE any
+	// routing decision is made.
+	//
+	// It exists because routing is decided by inspecting the extracted text itself
+	// — section headers of the form "--- name ---" — and document authors control
+	// that text. DocumentBody is therefore an attacker-influenced SUBSET, while the
+	// document validator set is the larger of the two (the metadata path runs a
+	// single field-name scanner that has no SSN, card, phone or email logic). So
+	// whenever the split moved content from the document path to the metadata path,
+	// it moved it from ~19 validators to 1 that cannot detect it, and the finding
+	// vanished. Since only reported findings reach the redactor, a vanished finding
+	// is a value left in cleartext.
+	//
+	// Keeping the pre-routing text lets the document path scan the union, which
+	// makes routing a LABELLING decision rather than a COVERAGE decision: a forged
+	// or merely unlucky section header can still change how a finding is described,
+	// but it can no longer delete one. That property holds for section names nobody
+	// has thought of yet, which a per-marker fix would not.
+	FullText string
 }
 
 // MetadataContent represents metadata content with preprocessor context
@@ -102,10 +122,18 @@ func (cr *ContentRouter) RouteContent(processedContent *preprocessors.ProcessedC
 		finishTiming = cr.observer.StartTiming("content_router", "route_content", processedContent.OriginalPath)
 	}
 
-	// Initialize routed content
+	// Initialize routed content.
+	//
+	// FullText is populated HERE, in the struct literal, deliberately: this is above
+	// the CanContainMetadata early return below and above the whole
+	// `switch preprocessorType`, including its graceful-degradation arms. Assigning
+	// it inside any branch would leave some path emitting an empty FullText, and an
+	// empty FullText silently disables the coverage guarantee for exactly the inputs
+	// that took the unusual path.
 	routedContent := &RoutedContent{
 		OriginalPath: processedContent.OriginalPath,
 		Metadata:     make([]MetadataContent, 0),
+		FullText:     processedContent.Text,
 	}
 
 	// Check if file can contain metadata using FileRouter

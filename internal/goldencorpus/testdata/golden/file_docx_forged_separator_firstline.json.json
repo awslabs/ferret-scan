@@ -1,7 +1,85 @@
 {
   "results": [
     {
-      "confidence": 60.00000000000001,
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/forged_first.docx",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 45,
+        "correlation_boost": 5,
+        "cross_path_correlation": true,
+        "original_confidence": 100,
+        "original_file": "<TMPDIR>/forged_first.docx",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "449-87-4100",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/forged_first.docx",
+      "line_number": 5,
+      "metadata": {
+        "card_type": "VISA",
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 15,
+        "correlation_boost": 5,
+        "cross_path_correlation": true,
+        "original_confidence": 100,
+        "original_file": "<TMPDIR>/forged_first.docx",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "entropy": true,
+          "length": true,
+          "luhn": true,
+          "not_repeating": true,
+          "not_test": true,
+          "vendor": true
+        },
+        "validation_path": "document",
+        "vendor": "Visa"
+      },
+      "text": "4532-0151-1283-0366",
+      "type": "VISA",
+      "validator": "creditcard"
+    },
+    {
+      "confidence": 65,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/forged_first.docx",
       "line_number": 1,
@@ -11,6 +89,8 @@
         "context_doctype": "Unknown",
         "context_domain": "HR_Payroll",
         "context_impact": 0,
+        "correlation_boost": 5,
+        "cross_path_correlation": true,
         "full_field": "Author: Jane Analyst",
         "metadata_type": "AUTHOR_INFO",
         "original_confidence": 60.00000000000001,
@@ -39,7 +119,7 @@
       "validator": "metadata"
     },
     {
-      "confidence": 60.00000000000001,
+      "confidence": 65,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/forged_first.docx",
       "line_number": 2,
@@ -49,6 +129,8 @@
         "context_doctype": "Unknown",
         "context_domain": "HR_Payroll",
         "context_impact": 0,
+        "correlation_boost": 5,
+        "cross_path_correlation": true,
         "full_field": "LastModifiedBy: Ops Reviewer",
         "metadata_type": "LAST_MODIFIED_BY",
         "original_confidence": 60.00000000000001,

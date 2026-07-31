@@ -15,7 +15,7 @@
                   "snippet": {
                     "text": "Employee SSN \nEmployee SSN 449-87-4100\t\n\t"
                   },
-                  "startLine": 1
+                  "startLine": 2
                 },
                 "region": {
                   "endColumn": 25,
@@ -23,13 +23,13 @@
                     "text": "Employee SSN 449-87-4100\t"
                   },
                   "startColumn": 14,
-                  "startLine": 1
+                  "startLine": 2
                 }
               }
             }
           ],
           "message": {
-            "text": "Social Security Number Detected in books.xlsx at line 1 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+            "text": "Social Security Number Detected in books.xlsx at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
           "properties": {
             "confidence": 100,
@@ -81,23 +81,23 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "Card \nCard 4532-0151-1283-0366"
+                    "text": "Card \nCard 4532-0151-1283-0366\t\n\t"
                   },
-                  "startLine": 2
+                  "startLine": 3
                 },
                 "region": {
                   "endColumn": 25,
                   "snippet": {
-                    "text": "Card 4532-0151-1283-0366"
+                    "text": "Card 4532-0151-1283-0366\t"
                   },
                   "startColumn": 6,
-                  "startLine": 2
+                  "startLine": 3
                 }
               }
             }
           ],
           "message": {
-            "text": "VISA Detected in books.xlsx at line 2 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
+            "text": "VISA Detected in books.xlsx at line 3 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
           "properties": {
             "confidence": 100,
