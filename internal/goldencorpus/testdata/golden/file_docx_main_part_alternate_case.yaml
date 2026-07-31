@@ -1,0 +1,67 @@
+results:
+    - text: Jane Analyst
+      line_number: 1
+      type: AUTHOR_INFO
+      confidence: 60.00000000000001
+      confidence_level: MEDIUM
+      filename: <TMPDIR>/alt_case.docx
+      validator: metadata
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Configuration
+        context_domain: Unknown
+        context_impact: 0
+        full_field: 'Author: Jane Analyst'
+        metadata_type: AUTHOR_INFO
+        original_confidence: 60.00000000000001
+        original_file: <TMPDIR>/alt_case.docx
+        preprocessor_adjustment: 0
+        preprocessor_name: Office Metadata Extractor
+        preprocessor_type: office_metadata
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        source_file: <TMPDIR>/alt_case.docx
+        source_preprocessor: office_metadata
+        total_adjustment: 0
+        validation_checks:
+            contains_author_field: true
+        validation_path: metadata
+    - text: Ops Reviewer
+      line_number: 2
+      type: LAST_MODIFIED_BY
+      confidence: 60.00000000000001
+      confidence_level: MEDIUM
+      filename: <TMPDIR>/alt_case.docx
+      validator: metadata
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Configuration
+        context_domain: Unknown
+        context_impact: 0
+        full_field: 'LastModifiedBy: Ops Reviewer'
+        metadata_type: LAST_MODIFIED_BY
+        original_confidence: 60.00000000000001
+        original_file: <TMPDIR>/alt_case.docx
+        preprocessor_adjustment: 0
+        preprocessor_name: Office Metadata Extractor
+        preprocessor_type: office_metadata
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        source_file: <TMPDIR>/alt_case.docx
+        source_preprocessor: office_metadata
+        total_adjustment: 0
+        validation_checks:
+            contains_modifier_field: true
+        validation_path: metadata

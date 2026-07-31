@@ -1,0 +1,80 @@
+{
+  "results": [
+    {
+      "confidence": 60.00000000000001,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/forged_first.docx",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 0,
+        "full_field": "Author: Jane Analyst",
+        "metadata_type": "AUTHOR_INFO",
+        "original_confidence": 60.00000000000001,
+        "original_file": "<TMPDIR>/forged_first.docx",
+        "preprocessor_adjustment": 0,
+        "preprocessor_name": "Office Metadata Extractor",
+        "preprocessor_type": "office_metadata",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "source_file": "<TMPDIR>/forged_first.docx",
+        "source_preprocessor": "office_metadata",
+        "total_adjustment": 0,
+        "validation_checks": {
+          "contains_author_field": true
+        },
+        "validation_path": "metadata"
+      },
+      "text": "Jane Analyst",
+      "type": "AUTHOR_INFO",
+      "validator": "metadata"
+    },
+    {
+      "confidence": 60.00000000000001,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/forged_first.docx",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 0,
+        "full_field": "LastModifiedBy: Ops Reviewer",
+        "metadata_type": "LAST_MODIFIED_BY",
+        "original_confidence": 60.00000000000001,
+        "original_file": "<TMPDIR>/forged_first.docx",
+        "preprocessor_adjustment": 0,
+        "preprocessor_name": "Office Metadata Extractor",
+        "preprocessor_type": "office_metadata",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "source_file": "<TMPDIR>/forged_first.docx",
+        "source_preprocessor": "office_metadata",
+        "total_adjustment": 0,
+        "validation_checks": {
+          "contains_modifier_field": true
+        },
+        "validation_path": "metadata"
+      },
+      "text": "Ops Reviewer",
+      "type": "LAST_MODIFIED_BY",
+      "validator": "metadata"
+    }
+  ]
+}

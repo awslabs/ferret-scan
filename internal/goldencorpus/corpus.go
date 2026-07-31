@@ -21,14 +21,18 @@
 package goldencorpus
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/pkg/redact"
@@ -576,6 +580,101 @@ var FileCases = []FileCase{
 		Tier1Parity:         false, // metadata branch has no content-mode equivalent
 		EnablePreprocessors: true,  // required: .wav is a binary document
 	},
+	// --- Tier 3: OOXML containers — the combined_preprocessors routing arm -------
+	//
+	// These are the corpus's first Office cases. They exist because the arm where
+	// the FileRouter concatenates two extractors' output with "--- name ---"
+	// separators, and the ContentRouter re-splits that text to decide what is
+	// document body versus metadata, had NO coverage at all: every prior case is a
+	// single-extractor .txt/.go/.json/.csv or a .wav. A change could therefore
+	// rewrite which validators see a document's body and the whole corpus would
+	// stay green.
+	//
+	// Each pair is (control, variant) differing in ONE input, so a diff isolates
+	// that input's effect. Per the README, these lock ferret-scan's own routing and
+	// validation — not a third-party extractor's byte output — which is why the
+	// containers are synthesized in-test rather than committed.
+	{
+		Name:        "file_docx_body_and_metadata",
+		Description: "Tier 3 control: a .docx with PII in the body AND in core properties — locks the combined_preprocessors arm where both the text and office_metadata extractors claim one file.",
+		Checks:      []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename:    "report.docx",
+		Content: BuildDOCX("Jane Analyst", "Ops Reviewer", []string{
+			"Quarterly summary follows.",
+			"Employee SSN 449-87-4100 on file.",
+			"Card 4532-0151-1283-0366 expires soon.",
+		}),
+		Tier1Parity:         false, // container extraction has no content-mode equivalent
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_docx_forged_separator_midbody",
+		Description: "Tier 3: same .docx as the control plus ONE body paragraph that is exactly the router's own section separator. " +
+			"Locks what the document path is given when document text forges a section boundary. Diff against file_docx_body_and_metadata.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename: "forged_mid.docx",
+		Content: BuildDOCX("Jane Analyst", "Ops Reviewer", []string{
+			"Quarterly summary follows.",
+			"--- office_metadata ---",
+			"Employee SSN 449-87-4100 on file.",
+			"Card 4532-0151-1283-0366 expires soon.",
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_docx_forged_separator_firstline",
+		Description: "Tier 3: the forged separator as the FIRST paragraph, so the pre-separator body is empty. " +
+			"A distinct routing state from the mid-body case (empty document body vs a short one), which is why it gets its own snapshot.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename: "forged_first.docx",
+		Content: BuildDOCX("Jane Analyst", "Ops Reviewer", []string{
+			"--- office_metadata ---",
+			"Employee SSN 449-87-4100 on file.",
+			"Card 4532-0151-1283-0366 expires soon.",
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name:        "file_xlsx_sheet_cells",
+		Description: "Tier 3 control: an .xlsx with PII in worksheet cells at the conventional sheet part name.",
+		Checks:      []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename:    "books.xlsx",
+		Content: BuildXLSX("xl/worksheets/sheet1.xml", "Jane Analyst", []string{
+			"Employee SSN 449-87-4100",
+			"Card 4532-0151-1283-0366",
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_xlsx_sheet_part_named_metadata",
+		Description: "Tier 3: identical cells, but the worksheet PART is named so the extractor's emitted section label collides with a metadata section name. " +
+			"No body text is involved — the collision comes from the archive member name, which a document producer controls. Diff against file_xlsx_sheet_cells.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename: "books_named.xlsx",
+		Content: BuildXLSX("xl/worksheets/sheet_office_metadata.xml", "Jane Analyst", []string{
+			"Employee SSN 449-87-4100",
+			"Card 4532-0151-1283-0366",
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_docx_main_part_alternate_case",
+		Description: "Tier 3: the document body at \"word/Document.xml\" instead of \"word/document.xml\" — a part name that differs only in case. " +
+			"Locks whether body text at a non-conventional part name is still extracted and scanned. Diff against file_docx_body_and_metadata.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename: "alt_case.docx",
+		Content: BuildDOCXWithMainPart("word/Document.xml", "Jane Analyst", "Ops Reviewer", []string{
+			"Quarterly summary follows.",
+			"Employee SSN 449-87-4100 on file.",
+			"Card 4532-0151-1283-0366 expires soon.",
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
 }
 
 // BuildWAVWithInfo synthesizes a minimal but valid WAV file (RIFF/WAVE + fmt +
@@ -631,6 +730,198 @@ func BuildWAVWithInfo(info map[string]string) []byte {
 	writeLE(out, uint32(body.Len()))
 	out.Write(body.Bytes())
 	return out.Bytes()
+}
+
+// --- Office (OOXML) builders -------------------------------------------------
+//
+// Until these existed the corpus had NO .docx/.xlsx/.pptx/.pdf case at all (the
+// census was 2 .txt, 1 .go, 1 .json, 1 .csv, 1 .wav). That mattered because the
+// interesting routing arm is `combined_preprocessors`: it is reached only when
+// TWO OR MORE preprocessors claim the same file, which no single-extractor type
+// does. So the whole path where the FileRouter concatenates extractor output with
+// "--- name ---" separators, and the ContentRouter re-splits it, was unsnapshotted
+// — a change could rewrite what the document path sees and the corpus would stay
+// green. These builders close that gap with in-test deterministic zips rather than
+// committed binaries, matching the BuildWAVWithInfo precedent.
+//
+// Determinism: zip.Writer stamps a modtime per entry, and archive/zip writes
+// whatever Modified holds, so an unset FileHeader would embed "now" and the bytes
+// would differ every run. Every entry here pins Modified to a fixed UTC instant and
+// parts are written in a fixed order, so the archive is byte-stable. (The
+// ScanFile-side ModTime of the temp file is separately normalized in
+// NormalizeOutput.)
+
+// ooxmlEpoch is the fixed timestamp stamped into every synthesized OOXML entry.
+// Any constant works; it only has to be stable and not depend on the clock.
+var ooxmlEpoch = time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// ooxmlPart is one archive member, written in slice order.
+type ooxmlPart struct {
+	name string
+	body string
+}
+
+// buildOOXML zips the given parts with pinned modtimes, yielding byte-identical
+// output for identical input.
+func buildOOXML(parts []ooxmlPart) []byte {
+	out := new(bytes.Buffer)
+	zw := zip.NewWriter(out)
+	for _, p := range parts {
+		w, err := zw.CreateHeader(&zip.FileHeader{
+			Name:     p.name,
+			Method:   zip.Deflate,
+			Modified: ooxmlEpoch,
+		})
+		if err != nil {
+			panic(err)
+		}
+		if _, err := io.WriteString(w, p.body); err != nil {
+			panic(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		panic(err)
+	}
+	return out.Bytes()
+}
+
+// BuildDOCX synthesizes a minimal .docx whose body is one paragraph per element of
+// paras, and which ALSO carries docProps/core.xml. The core properties are what
+// make this a dual-preprocessor file: the text extractor and the office metadata
+// extractor both claim it, so the FileRouter takes the combined_preprocessors arm
+// and the ContentRouter's document/metadata split actually runs. A .docx with only
+// word/document.xml takes the single-extractor fast path and would not exercise it.
+//
+// creator/lastModifiedBy land in the metadata path; paras land in the document
+// path. Passing a paragraph that is exactly "--- office_metadata ---" is how a
+// case locks the forged-separator behavior.
+func BuildDOCX(creator, lastModifiedBy string, paras []string) []byte {
+	return buildOOXML(docxParts("word/document.xml", creator, lastModifiedBy, paras))
+}
+
+// BuildDOCXWithMainPart is BuildDOCX with control over the main part's NAME, so a
+// case can lock what happens when the document body is not at the conventional
+// path. The text extractor matches part names as literal, case-sensitive strings,
+// so "word/Document.xml" is a different part to it than "word/document.xml" — the
+// golden then records whether the body is still extracted (and therefore still
+// scanned) or silently skipped.
+func BuildDOCXWithMainPart(mainPart, creator, lastModifiedBy string, paras []string) []byte {
+	return buildOOXML(docxParts(mainPart, creator, lastModifiedBy, paras))
+}
+
+func docxParts(mainPart, creator, lastModifiedBy string, paras []string) []ooxmlPart {
+	var body strings.Builder
+	for _, p := range paras {
+		body.WriteString(`<w:p><w:r><w:t xml:space="preserve">`)
+		body.WriteString(escapeXML(p))
+		body.WriteString(`</w:t></w:r></w:p>`)
+	}
+	doc := xmlDecl + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>` +
+		body.String() + `</w:body></w:document>`
+
+	contentTypes := xmlDecl + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Override PartName="/` + mainPart + `" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
+		`<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
+		`</Types>`
+
+	rels := xmlDecl + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="` + mainPart + `"/>` +
+		`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
+		`</Relationships>`
+
+	return []ooxmlPart{
+		{"[Content_Types].xml", contentTypes},
+		{"_rels/.rels", rels},
+		{"docProps/core.xml", coreProps(creator, lastModifiedBy)},
+		{mainPart, doc},
+	}
+}
+
+// BuildXLSX synthesizes a minimal .xlsx with one worksheet whose single column
+// holds cells, plus docProps/core.xml so the file is dual-preprocessor like
+// BuildDOCX.
+//
+// sheetPart is the worksheet's archive name (conventionally
+// "xl/worksheets/sheet1.xml"). It is a parameter because the office text extractor
+// derives its emitted section label from that name — it strips the
+// "xl/worksheets/" prefix and ".xml" suffix and writes "--- <rest> ---" into the
+// same text stream the ContentRouter re-parses. A sheet part named
+// "sheet_office_metadata.xml" therefore emits a label the router reads as a
+// metadata section boundary, with no document body text involved at all. Cases use
+// it to lock that behavior.
+func BuildXLSX(sheetPart, creator string, cells []string) []byte {
+	var siBuf, rowBuf strings.Builder
+	for i, c := range cells {
+		siBuf.WriteString(`<si><t xml:space="preserve">` + escapeXML(c) + `</t></si>`)
+		rowBuf.WriteString(fmt.Sprintf(`<row r="%d"><c r="A%d" t="s"><v>%d</v></c></row>`, i+1, i+1, i))
+	}
+	shared := xmlDecl + fmt.Sprintf(
+		`<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="%d" uniqueCount="%d">%s</sst>`,
+		len(cells), len(cells), siBuf.String())
+	sheet := xmlDecl + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>` +
+		rowBuf.String() + `</sheetData></worksheet>`
+
+	contentTypes := xmlDecl + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+		`<Override PartName="/` + sheetPart + `" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+		`<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>` +
+		`<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
+		`</Types>`
+
+	rels := xmlDecl + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+		`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
+		`</Relationships>`
+
+	// The sheet name shown in Excel is independent of the part name; keep it fixed
+	// so only the part name varies between cases.
+	workbook := xmlDecl + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ` +
+		`xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+		`<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>`
+
+	sheetTarget := strings.TrimPrefix(sheetPart, "xl/")
+	workbookRels := xmlDecl + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="` + sheetTarget + `"/>` +
+		`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>` +
+		`</Relationships>`
+
+	return buildOOXML([]ooxmlPart{
+		{"[Content_Types].xml", contentTypes},
+		{"_rels/.rels", rels},
+		{"docProps/core.xml", coreProps(creator, "")},
+		{"xl/workbook.xml", workbook},
+		{"xl/_rels/workbook.xml.rels", workbookRels},
+		{"xl/sharedStrings.xml", shared},
+		{sheetPart, sheet},
+	})
+}
+
+const xmlDecl = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+
+// coreProps renders docProps/core.xml. lastModifiedBy is omitted when empty.
+func coreProps(creator, lastModifiedBy string) string {
+	s := xmlDecl +
+		`<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ` +
+		`xmlns:dc="http://purl.org/dc/elements/1.1/">` +
+		`<dc:creator>` + escapeXML(creator) + `</dc:creator>`
+	if lastModifiedBy != "" {
+		s += `<cp:lastModifiedBy>` + escapeXML(lastModifiedBy) + `</cp:lastModifiedBy>`
+	}
+	return s + `</cp:coreProperties>`
+}
+
+// escapeXML escapes text for an XML text node. Cases deliberately contain "---"
+// and "<"-free payloads, but escaping keeps the builder honest for any input.
+func escapeXML(s string) string {
+	var b strings.Builder
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		panic(err)
+	}
+	return b.String()
 }
 
 // writeLE writes each value to buf in little-endian order, panicking on error

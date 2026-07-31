@@ -1,0 +1,3 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH        FILE
+--------------------------------------------------------------------------------------
+[MEDIUM] metadata     AUTHOR_INFO            60.00% line     1 Jane Analyst books_named.xlsx
