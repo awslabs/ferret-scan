@@ -5,7 +5,6 @@ package metadata
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -680,32 +679,42 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	seenGPSFields := make(map[string]bool)
 	// Track if we've seen author/creator info to avoid duplicate matches
 	seenAuthor := false
-	// Track current embedded media context
-	currentEmbeddedMedia := ""
 	// Track GPS coordinate components for combining
 	gpsCoordinates := make(map[string]string) // field -> value
 	gpsLineNumbers := make(map[string]int)    // field -> line number
 
+	// Every match this function emits is attributed to originalPath, the path the
+	// CALLER supplied.
+	//
+	// This used to be conditional. A line containing "--- Embedded Media" switched
+	// attribution for every subsequent line to filepath.Base(originalPath) + " -> " +
+	// filepath.Base(text between the first "(" and the first ")"), so the reported
+	// source of a finding was read out of the content being scanned. A document
+	// author writes that content, so the author chose the filename: typing
+	// "--- Embedded Media 1 (/etc/passwd) ---" in a Word paragraph produced
+	// "report.docx -> passwd", and "(evil_test.go)" produced a name that
+	// internal/explain's looksLikeTestPath reads as fixture data and downgrades the
+	// verdict toward "likely test data" — advice to ignore a real finding.
+	// filepath.Base did neutralize traversal in the DISPLAYED string
+	// ("../../secrets.txt" showed as "secrets.txt", not as an escaping path), which
+	// is why this never looked like a path-handling bug; what it did not do is stop
+	// the value from being attacker-chosen in the first place.
+	//
+	// Filename is also an input to the suppression identity: generateFindingHash
+	// folds in filepath.Base(match.Filename), so a forged name moved a finding's
+	// hash — either off an existing rule (a genuinely suppressed finding reappears)
+	// or onto one (a real finding is silently dropped by a rule written for
+	// something else).
+	//
+	// The provenance is real structure, not text: the preprocessor that actually
+	// read the archive member records it in ContentSection.SourceFile, the content
+	// router copies that into MetadataContent.SourceFile, and it arrives here as the
+	// originalPath argument. So the correct value is already in hand on the routed
+	// path, and re-deriving it from the text could only ever produce a WORSE answer
+	// than the one the caller passed in.
+	filename := originalPath
+
 	for lineNumber, line := range lines {
-		// Check if we're entering an embedded media section
-		if strings.Contains(line, "--- Embedded Media") {
-			if idx := strings.Index(line, "("); idx != -1 {
-				if endIdx := strings.Index(line[idx:], ")"); endIdx != -1 {
-					embeddedName := line[idx+1 : idx+endIdx]
-					// Extract just the image filename from the path
-					imageName := filepath.Base(embeddedName)
-					currentEmbeddedMedia = fmt.Sprintf("%s -> %s", filepath.Base(originalPath), imageName)
-				}
-			}
-			continue
-		}
-
-		// Determine filename based on context
-		filename := originalPath
-		if currentEmbeddedMedia != "" {
-			filename = currentEmbeddedMedia
-		}
-
 		// Skip empty lines
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -1091,7 +1100,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 	}
 
 	// After processing all lines, combine GPS coordinate components
-	combinedMatches := v.combineGPSCoordinates(gpsCoordinates, gpsLineNumbers, originalPath, currentEmbeddedMedia)
+	combinedMatches := v.combineGPSCoordinates(gpsCoordinates, gpsLineNumbers, originalPath)
 	matches = append(matches, combinedMatches...)
 
 	return matches, nil
@@ -2367,15 +2376,16 @@ func sortedGPSFields(gpsCoordinates map[string]string) []string {
 	return fields
 }
 
-// combineGPSCoordinates combines latitude and longitude into coordinate pairs
-func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsLineNumbers map[string]int, originalPath, currentEmbeddedMedia string) []detector.Match {
+// combineGPSCoordinates combines latitude and longitude into coordinate pairs.
+//
+// It took a currentEmbeddedMedia override that the caller derived by parsing
+// "--- Embedded Media N (name) ---" out of the scanned text; see ValidateContent
+// for why that made the reported source attacker-chosen. Coordinates are
+// attributed to originalPath, which the caller already receives as real structure.
+func (v *Validator) combineGPSCoordinates(gpsCoordinates map[string]string, gpsLineNumbers map[string]int, originalPath string) []detector.Match {
 	var matches []detector.Match
 
-	// Determine filename based on context
 	filename := originalPath
-	if currentEmbeddedMedia != "" {
-		filename = currentEmbeddedMedia
-	}
 
 	// Look for latitude/longitude pairs
 	var latitude, longitude, latRef, longRef string

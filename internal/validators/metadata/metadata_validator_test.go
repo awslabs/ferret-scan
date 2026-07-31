@@ -102,7 +102,7 @@ func TestMetadata_CombineGPSNoEarlyReturn(t *testing.T) {
 	v := NewValidator()
 	gps := map[string]string{"coordinates": "N/A", "gpslatitude": "40.7128", "gpslongitude": "-74.0060"}
 	lines := map[string]int{"coordinates": 1, "gpslatitude": 2, "gpslongitude": 3}
-	res := v.combineGPSCoordinates(gps, lines, "f.jpg", "")
+	res := v.combineGPSCoordinates(gps, lines, "f.jpg")
 
 	pairFound := false
 	for _, r := range res {
@@ -133,7 +133,7 @@ func TestMetadata_GPSPairValidation(t *testing.T) {
 	} {
 		res := v.combineGPSCoordinates(
 			map[string]string{"gpslatitude": tc.lat, "gpslongitude": tc.long},
-			map[string]int{"gpslatitude": 1, "gpslongitude": 2}, "f.jpg", "")
+			map[string]int{"gpslatitude": 1, "gpslongitude": 2}, "f.jpg")
 		if len(res) > 0 {
 			t.Errorf("L17: invalid pair (%s,%s) should not be emitted, got %d", tc.lat, tc.long, len(res))
 		}
@@ -141,7 +141,7 @@ func TestMetadata_GPSPairValidation(t *testing.T) {
 	// A valid in-range pair is still HIGH.
 	res := v.combineGPSCoordinates(
 		map[string]string{"gpslatitude": "40.7128", "gpslongitude": "-74.0060"},
-		map[string]int{"gpslatitude": 1, "gpslongitude": 2}, "f.jpg", "")
+		map[string]int{"gpslatitude": 1, "gpslongitude": 2}, "f.jpg")
 	if len(res) != 1 || res[0].Confidence < 90 {
 		t.Errorf("L17: valid pair should be one HIGH GPS match, got %d", len(res))
 	}
