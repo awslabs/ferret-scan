@@ -289,6 +289,21 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	// never been read. Measured before this: such a file produced
 	// {PERSON_NAME, AUTHOR_INFO} and no warning at all.
 	var extractionWarnings []string
+	// sections records the structure of the concatenation OUT OF BAND, one entry
+	// per successful preprocessor, built in this same loop so it cannot drift from
+	// the text it describes.
+	//
+	// The name comes from Preprocessor.GetName(), which is our own code's constant
+	// — not a byte from the scanned document. That is what makes a boundary here
+	// unforgeable, and it is the whole reason for this field: the content router
+	// used to recover this same structure by scanning the assembled text for
+	// "--- name ---" lines, which a document author can simply type.
+	//
+	// sectionLine tracks where the next section starts, as a line index into the
+	// text assembled so far, so it is maintained incrementally rather than by
+	// re-scanning the (potentially multi-megabyte) result.
+	var sections []preprocessors.ContentSection
+	sectionLine := 0
 
 	for _, pResult := range ordered {
 		if pResult.result != nil && pResult.result.ExtractionWarning != "" {
@@ -308,7 +323,42 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 				}
 				combinedContent.WriteString("\n\n--- " + pResult.name + " ---\n")
 				combinedContent.WriteString(pResult.result.Text)
+				// The separator "\n\n--- name ---\n" advances the line cursor by 3
+				// (it closes the previous section's last line, adds a blank line,
+				// and adds the header line itself).
+				sectionLine += 3
 			}
+
+			// Prefer the preprocessor's OWN declared sections. A metadata
+			// extractor can carry sub-structure the router cannot see: the Office
+			// extractor appends each embedded media item's text to its own, and
+			// those items route to a DIFFERENT metadata rule set (a .wav inside a
+			// .docx has an "Artist:" field, which is on the audio field list but
+			// not the office one). Only that extractor knows where the split is,
+			// so re-anchor what it declared instead of overwriting it with one
+			// coarse section.
+			if declared := pResult.result.Sections; len(declared) > 0 {
+				for _, s := range declared {
+					if s.SourceFile == "" {
+						s.SourceFile = filePath
+					}
+					s.LineOffset += sectionLine
+					sections = append(sections, s)
+				}
+			} else {
+				kind, metaType := preprocessors.ClassifySection(pResult.name)
+				sections = append(sections, preprocessors.ContentSection{
+					Name:       pResult.name,
+					Kind:       kind,
+					Type:       metaType,
+					SourceFile: filePath,
+					// A substring reference, not a copy: Go strings share backing
+					// storage, so recording every section costs pointers, not bytes.
+					Text:       pResult.result.Text,
+					LineOffset: sectionLine,
+				})
+			}
+			sectionLine += strings.Count(pResult.result.Text, "\n")
 
 			// Accumulate metadata
 			for k, v := range pResult.result.Metadata {
@@ -349,6 +399,10 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 			// office_metadata result, so the file reported Success with only
 			// metadata findings and nothing said the document body was missing.
 			ExtractionWarning: strings.Join(extractionWarnings, "; "),
+			// The out-of-band structure of Text. Set unconditionally on this
+			// success path so the content router never has to fall back to
+			// re-parsing the text for separators.
+			Sections: sections,
 		}
 
 		return result, nil

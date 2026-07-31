@@ -10,40 +10,40 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 )
 
-// TestSeparateCombinedOutput_BodySectionsAreNotFused is the regression test for
-// the section-join defect.
+// TestRouteSections_BodySectionsAreNotFused is the regression test for the
+// section-join defect, carried over to the out-of-band routing path.
 //
-// splitByPreprocessorSeparators TrimSpace-es each section, so a section carries
-// no trailing newline. separateCombinedPreprocessorOutput then wrote consecutive
-// document-body sections back to back with nothing between them, so the last line
-// of one section and the first line of the next collapsed onto a single logical
-// line. A validator that scans line by line then sees one fused line instead of
-// two — which can merge two adjacent values into one unrecognized token or split
-// a boundary value, i.e. a recall bug at every body-section seam.
-func TestSeparateCombinedOutput_BodySectionsAreNotFused(t *testing.T) {
+// The defect: consecutive document-body sections were concatenated with nothing
+// between them, so the last line of one and the first line of the next collapsed
+// onto a single logical line. A validator that scans line by line then sees one
+// fused line instead of two, which can merge two adjacent values into one
+// unrecognized token or split a boundary value — a recall bug at every seam.
+//
+// The property is unchanged by the switch to declared sections, and so is the way
+// to get it wrong (strings.Join with "" instead of "\n\n"), which is why the test
+// survives its original subject: it now drives routeSections through the exported
+// RouteContent with two declared body sections.
+func TestRouteSections_BodySectionsAreNotFused(t *testing.T) {
 	cr := NewContentRouter()
 
-	// Two document-body sections (a non-metadata preprocessor name). The last line
-	// of the first and the first line of the second must stay on separate lines.
-	content := strings.Join([]string{
-		"--- text ---",
-		"first body line",
-		"LAST-LINE-OF-SECTION-A",
-		"--- text ---",
-		"FIRST-LINE-OF-SECTION-B",
-		"second body line",
-	}, "\n")
+	sectionA := "first body line\nLAST-LINE-OF-SECTION-A"
+	sectionB := "FIRST-LINE-OF-SECTION-B\nsecond body line"
 
 	pc := &preprocessors.ProcessedContent{
-		Text:          content,
+		Text:          sectionA + "\n\n--- text ---\n" + sectionB,
 		OriginalPath:  "combined.txt",
 		ProcessorType: "text+text",
+		Sections: []preprocessors.ContentSection{
+			{Name: "text", Kind: preprocessors.SectionKindBody, Text: sectionA, LineOffset: 0},
+			{Name: "text", Kind: preprocessors.SectionKindBody, Text: sectionB, LineOffset: 4},
+		},
 	}
 
-	body, _, err := cr.separateCombinedPreprocessorOutput(pc)
+	routed, err := cr.RouteContent(pc)
 	if err != nil {
-		t.Fatalf("separateCombinedPreprocessorOutput: %v", err)
+		t.Fatalf("RouteContent: %v", err)
 	}
+	body := routed.DocumentBody
 
 	// The fusion signature: the two boundary tokens adjacent with no newline.
 	fused := "LAST-LINE-OF-SECTION-AFIRST-LINE-OF-SECTION-B"
