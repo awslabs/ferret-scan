@@ -53,16 +53,34 @@ func (fr *FileRouter) InitializePreprocessors(config map[string]interface{}) {
 	fr.preprocessors = fr.registry.CreateAll(config)
 }
 
-// CanProcessFile determines if a file can be processed
+// ReasonUnreadable prefixes the reason returned when a file exists but cannot be
+// opened or stat'ed — a permission error, a broken symlink, a vanished file.
+//
+// It is deliberately distinct from "Unsupported file type". Those two are opposite
+// facts: an unsupported type is a file we looked at and chose not to scan, while an
+// unreadable file is one we never saw. Reporting the second as the first tells the
+// user their .txt is an unrecognized format and invites them to ignore it — when in
+// truth a file that may be full of PII went unscanned. Callers can test for this
+// prefix to separate "nothing to find here" from "we could not look".
+const ReasonUnreadable = "Unreadable"
+
+// CanProcessFile determines if a file can be processed. The second return value is
+// a human-readable reason; when it begins with ReasonUnreadable the file was not
+// examined at all, as opposed to examined and skipped.
 func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) (bool, string) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 
-	// Check file size
+	// Check file size. A stat error here is the first sign the file cannot be read
+	// (permissions, a dangling symlink, a race with deletion). Previously it was
+	// swallowed by `err == nil` and execution fell through to the generic
+	// "Unsupported file type" at the bottom of this function.
 	cleanPath := filepath.Clean(filePath)
-	if info, err := os.Stat(cleanPath); err == nil {
-		if info.Size() > MaxFileSize {
-			return false, fmt.Sprintf("File too large (max: %dMB)", MaxFileSize/(1024*1024))
-		}
+	info, err := os.Stat(cleanPath)
+	if err != nil {
+		return false, fmt.Sprintf("%s: %v", ReasonUnreadable, err)
+	}
+	if info.Size() > MaxFileSize {
+		return false, fmt.Sprintf("File too large (max: %dMB)", MaxFileSize/(1024*1024))
 	}
 
 	// Binary documents require preprocessors
@@ -73,8 +91,15 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) 
 		return false, "Binary document (requires preprocessors)"
 	}
 
-	// Check if it's a text file
-	if isText, err := isTextFile(filePath); err == nil && isText {
+	// Check if it's a text file. Distinguish "read it, it is not text" from "could
+	// not read it": the old condition (err == nil && isText) collapsed both into
+	// the unsupported-type reason below, so a permission-denied .txt was reported
+	// as an unrecognized file format.
+	isText, err := isTextFile(filePath)
+	if err != nil {
+		return false, fmt.Sprintf("%s: %v", ReasonUnreadable, err)
+	}
+	if isText {
 		return true, "Text file"
 	}
 

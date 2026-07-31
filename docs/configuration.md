@@ -236,7 +236,7 @@ Profiles now support all command-line options and include specialized configurat
 - `show_suppressed`: Include suppressed findings in output
 - `respect_gitignore`: Honor `.gitignore` files when scanning (opt-in; see [File Exclusion Patterns](#file-exclusion-patterns))
 - `generate_suppressions`: Auto-generate suppression rules
-- `fail_on_incomplete`: Exit with code `3` when a scan's validator coverage was cut short (timeout, cancellation, or a per-validator budget). Off by default; equivalent to the `--fail-on-incomplete` flag, which overrides this setting. See the README [Exit Codes](../README.md#exit-codes).
+- `fail_on_incomplete`: Exit with code `3` when any file was not fully scanned — either its validator coverage was cut short (timeout, cancellation, or a per-validator budget) or the file could not be opened at all (permissions, a dangling symlink, deletion mid-scan). Off by default; equivalent to the `--fail-on-incomplete` flag, which overrides this setting. See the README [Exit Codes](../README.md#exit-codes).
 
 ### CLI-Only Options (Not Configurable in YAML)
 
@@ -812,7 +812,7 @@ defaults:
   quiet: false
   show_suppressed: false
   generate_suppressions: false
-  fail_on_incomplete: false       # Exit code 3 if any file's coverage was cut short (timeout/budget)
+  fail_on_incomplete: false       # Exit code 3 if any file was cut short (timeout/budget) or could not be opened
   respect_gitignore: true         # Honor .gitignore, .git/info/exclude, global git excludes
 
   exclude_patterns:

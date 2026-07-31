@@ -130,7 +130,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --generate-suppressions\t\tGenerate suppression rules for all findings (disabled by default)")
 	fmt.Fprintln(w, "  --quiet\t\tSuppress progress output (useful for scripts and CI/CD)")
 	fmt.Fprintln(w, "  --pre-commit-mode\t\tEnable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
-	fmt.Fprintln(w, "  --fail-on-incomplete\t\tExit non-zero (3) if any file's validator coverage was cut short (timeout, cancellation, or budget). Default off: incomplete coverage only warns on stderr.")
+	fmt.Fprintln(w, "  --fail-on-incomplete\t\tExit non-zero (3) if any file was not fully scanned -- coverage cut short (timeout, cancellation, or budget) or the file could not be opened at all. Default off: both conditions only warn on stderr.")
 	fmt.Fprintln(w, "  --disable-ip-types\t<types>\tComma-separated list of IP sub-types to skip: copyright,patent,trademark,trade_secret,internal_url")
 	fmt.Fprintln(w, "  --validator-budget\t<spec>\tPer-validator time budget as NAME=DURATION pairs; DURATION accepts any Go unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator, specific names override. Over-budget validators are stopped and the scan is marked incomplete. Default: none.")
 	fmt.Fprintln(w, "  --max-live-bytes\t<size>\tCap total extracted content held in memory across concurrently scanned files, e.g. '256MB' or '1GB' (units: B, KB, MB, GB; bare number = bytes). Bounds peak memory on constrained hosts so many large files cannot multiply memory. Default: no cap.")

@@ -45,10 +45,11 @@ import (
 )
 
 // exitCodeIncompleteCoverage is returned when --fail-on-incomplete is set and at
-// least one file's validator coverage was cut short (timeout, cancellation, or a
-// per-validator budget). It is distinct from the other CLI exit codes — 0 (clean),
-// 1 (system/usage error), and 2 (no files to process) — so CI can tell degraded
-// coverage apart from a genuinely clean scan.
+// least one file was not fully scanned — either its validator coverage was cut short
+// (timeout, cancellation, or a per-validator budget) or the file could not be opened
+// at all (permissions, a dangling symlink, deletion mid-scan). It is distinct from
+// the other CLI exit codes — 0 (clean), 1 (system/usage error), and 2 (no files to
+// process) — so CI can tell degraded coverage apart from a genuinely clean scan.
 const exitCodeIncompleteCoverage = 3
 
 // resolveIncompleteExitCode applies the --fail-on-incomplete policy on top of a
@@ -716,6 +717,36 @@ func writeUnredactedFilesWarning(w io.Writer, unredactedFiles []parallel.FileDia
 	return true
 }
 
+// writeUnreadableFilesWarning emits a warning to w for every file that could not
+// be opened or stat'ed — a permission error, a dangling symlink, a file deleted
+// mid-scan. It returns true if a warning was written.
+//
+// This is the third member of the family alongside writeIncompleteCoverageWarning
+// and writeUnredactedFilesWarning, and it covers the earliest failure: the file was
+// never read at all. Before this existed, such a file was counted as an
+// "unsupported type", so scanning a directory of .txt files with one unreadable
+// member reported "1 files skipped (1 unsupported types)" — describing a supported
+// extension as an unrecognized format, and giving no hint that a file which may be
+// full of PII went unexamined. Scanning that file alone printed an empty result set
+// and exited 0: a clean bill of health for a file the tool never opened.
+//
+// Gated only on pre-commit mode, like its siblings — not on quiet or
+// non-interactive — because CI is exactly where an unnoticed unscanned file
+// matters. Goes to stderr (never stdout/JSON). It does not change the exit code by
+// itself, but these files are counted toward --fail-on-incomplete alongside
+// cut-short scans, so CI can opt into failing on them.
+func writeUnreadableFilesWarning(w io.Writer, unreadableFiles []string, totalFiles int) bool {
+	if len(unreadableFiles) == 0 {
+		return false
+	}
+	fmt.Fprintf(w, "WARNING: scan incomplete — %d of %d file(s) could not be opened, so they were not scanned at all; any sensitive data they contain was NOT detected:\n",
+		len(unreadableFiles), totalFiles)
+	for _, entry := range unreadableFiles {
+		fmt.Fprintf(w, "  %s\n", entry)
+	}
+	return true
+}
+
 // extractedFlags holds safely extracted flag values to avoid repeated nil checks
 type extractedFlags struct {
 	webMode              bool
@@ -871,7 +902,7 @@ func main() {
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
 	quiet := flag.Bool("quiet", false, "Suppress progress output (useful for scripts and CI/CD)")
 	precommitMode := flag.Bool("pre-commit-mode", false, "Enable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
-	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file's validator coverage was cut short (timeout, cancellation, or budget). Default off: incomplete coverage only warns on stderr.")
+	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file was not fully scanned — coverage cut short (timeout, cancellation, or budget) or the file could not be opened at all. Default off: both conditions only warn on stderr.")
 
 	// Redaction flags
 	enableRedaction := flag.Bool("enable-redaction", false, "Enable redaction of sensitive data found in documents")
@@ -1597,15 +1628,25 @@ func main() {
 	// Use parallel processing for all files (single or multiple)
 	parallelProcessor := parallel.NewParallelProcessor(observability.NewStandardObserver(observability.ObservabilityMetrics, os.Stderr))
 
-	// Filter supported files
+	// Filter supported files.
+	//
+	// Unreadable files are counted separately from unsupported ones. Collapsing the
+	// two made a permission-denied .txt report as "1 files skipped (1 unsupported
+	// types)" — a supported extension described as an unrecognized format — and gave
+	// the user no reason to look again at a file that was never scanned.
 	var supportedFiles []string
+	var unreadableFiles []string
 	for _, filePath := range filesToProcess {
-		canProcess, _ := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors)
+		canProcess, reason := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors)
 		if canProcess {
 			supportedFiles = append(supportedFiles, filePath)
-		} else {
-			skippedFiles++
+			continue
 		}
+		if strings.HasPrefix(reason, router.ReasonUnreadable) {
+			unreadableFiles = append(unreadableFiles, fmt.Sprintf("%s: %s", filePath, reason))
+			continue
+		}
+		skippedFiles++
 	}
 
 	// Handle preprocess-only mode - exit early after preprocessing
@@ -1722,6 +1763,7 @@ func main() {
 	// strict machine-readable output contract. Exit code is deliberately
 	// unchanged (default still 0) — this is an advisory warning.
 	if precommitConfig == nil {
+		writeUnreadableFilesWarning(os.Stderr, unreadableFiles, len(filesToProcess))
 		writeIncompleteCoverageWarning(os.Stderr, incompleteFiles, len(supportedFiles))
 		writeUnredactedFilesWarning(os.Stderr, unredactedFiles, len(supportedFiles))
 	}
@@ -1926,16 +1968,22 @@ func main() {
 	// Use pre-commit exit code logic if in pre-commit mode. --fail-on-incomplete
 	// (flag OR config/profile default) then escalates a clean result to the
 	// incomplete-coverage code without downgrading a findings/error verdict.
+	//
+	// A file that could not be OPENED counts as incomplete coverage too, and is the
+	// more severe case: a cut-short scan looked at part of the file, an unreadable
+	// one was never looked at. Both mean findings may be missing, so both feed the
+	// same opt-in escalation.
+	coverageGaps := len(incompleteFiles) + len(unreadableFiles)
 	if precommitConfig != nil {
 		exitCode := precommit.GetExitCode(hasFindings, hasErrors, highestConfidence, precommitConfig)
-		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, len(incompleteFiles)))
+		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps))
 	}
 
 	// Default behavior: exit 0 (findings are reported in output, not via exit code)
 	// unless --fail-on-incomplete escalates a cut-short scan to code 3. Distinct
 	// code lets CI tell "incomplete coverage" apart from clean (0), error (1), and
 	// no-files (2). Settable via --fail-on-incomplete or config fail_on_incomplete.
-	os.Exit(resolveIncompleteExitCode(0, finalConfig.failOnIncomplete, len(incompleteFiles)))
+	os.Exit(resolveIncompleteExitCode(0, finalConfig.failOnIncomplete, coverageGaps))
 }
 
 // parseConfidenceLevels delegates to core.ParseConfidenceLevels to avoid code duplication between CLI and web modes.
