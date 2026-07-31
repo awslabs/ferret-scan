@@ -524,6 +524,47 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 	return result, nil
 }
 
+// ConfidenceCeilingKey is the Match.Metadata key a validator sets to declare a hard
+// upper bound on a finding's confidence. It is read here, in the bridge, because this
+// is where confidence is RAISED after a validator has finished: a document-context
+// adjustment and a cross-path correlation boost are both added downstream, so a
+// validator that clamps its own return value has no way to make the bound stick.
+// Measured case: a value the secrets validator scored 55 was reported at 80 once +20
+// context and +5 correlation had been applied.
+//
+// The key is a plain string rather than an import from one validator package so any
+// validator can use the mechanism without the bridge depending on it. Value must be a
+// float64; anything else is ignored rather than treated as zero, since a
+// misinterpreted ceiling of 0 would silently erase a finding's confidence.
+const ConfidenceCeilingKey = "confidence_ceiling"
+
+// clampToCeiling applies a match's declared confidence ceiling, if it has one.
+//
+// Call this after every adjustment that can raise Confidence. A ceiling means "this
+// value is shaped like something benign and no amount of surrounding context should
+// promote it", which is exactly the claim that document-level boosts would otherwise
+// override — they know nothing about the individual value.
+//
+// Deliberately a clamp and not a drop: only reported findings reach the redactor, so
+// removing a finding would leave its value in the redacted output. A demoted finding
+// is still reported and still redacted.
+func clampToCeiling(match *detector.Match) {
+	if match.Metadata == nil {
+		return
+	}
+	raw, ok := match.Metadata[ConfidenceCeilingKey]
+	if !ok {
+		return
+	}
+	ceiling, ok := raw.(float64)
+	if !ok || ceiling <= 0 {
+		return
+	}
+	if match.Confidence > ceiling {
+		match.Confidence = ceiling
+	}
+}
+
 // applyCrossPathConfidenceAdjustments applies confidence adjustments based on cross-path analysis
 func (evb *EnhancedValidatorBridge) applyCrossPathConfidenceAdjustments(matches []detector.Match, contextInsights context.ContextInsights) []detector.Match {
 	if len(matches) == 0 {
@@ -554,6 +595,7 @@ func (evb *EnhancedValidatorBridge) applyCrossPathConfidenceAdjustments(matches 
 		for i := range matches {
 			originalConfidence := matches[i].Confidence
 			matches[i].Confidence += correlationBoost
+			clampToCeiling(&matches[i])
 
 			// Ensure confidence stays within bounds
 			if matches[i].Confidence > 100 {
@@ -911,6 +953,7 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 					adjustment := dvb.contextAnalyzer.GetConfidenceAdjustment(contextInsights, validatorName)
 					originalConfidence := matches[i].Confidence
 					matches[i].Confidence += adjustment
+					clampToCeiling(&matches[i])
 
 					// Ensure confidence stays within bounds
 					if matches[i].Confidence > 100 {
@@ -1179,6 +1222,7 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 
 				originalConfidence := matches[i].Confidence
 				matches[i].Confidence += totalAdjustment
+				clampToCeiling(&matches[i])
 
 				// Ensure confidence stays within bounds
 				if matches[i].Confidence > 100 {
