@@ -447,19 +447,42 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		return
 	}
 
-	// Extract parameters (same as CLI flags)
+	// Extract parameters (same as CLI flags), falling back to the CONFIG FILE
+	// before the built-in default — the same precedence the CLI uses.
+	//
+	// These used to fall straight through to the literal "all"/"all", so a config
+	// with `defaults: {checks: SSN}` was honored by `ferret-scan --file x` and
+	// silently ignored by the web UI scanning the same file: 1 finding on the CLI,
+	// 3 in the browser. For a tool whose job is deciding what counts as sensitive,
+	// two answers from one config is the bug — the operator believes they narrowed
+	// the scan and the UI quietly widened it again.
+	cfg := ws.loadConfiguration(ws.configPath)
+
 	confidence := request.FormValue("confidence")
 	if confidence == "" {
-		confidence = "all" // CLI default: show all levels
+		confidence = "all" // built-in default: show all levels
+		if cfg != nil && cfg.Defaults.ConfidenceLevels != "" {
+			confidence = cfg.Defaults.ConfidenceLevels
+		}
 	}
 
 	checks := request.FormValue("checks")
 	if checks == "" {
-		checks = "all" // CLI default
+		checks = "all" // built-in default
+		if cfg != nil && cfg.Defaults.Checks != "" {
+			checks = cfg.Defaults.Checks
+		}
 	}
 
+	// An explicit "false" from the form still wins; absent means "use the config".
 	verbose := request.FormValue("verbose") == "true"
+	if request.FormValue("verbose") == "" && cfg != nil {
+		verbose = cfg.Defaults.Verbose
+	}
 	recursive := request.FormValue("recursive") == "true"
+	if request.FormValue("recursive") == "" && cfg != nil {
+		recursive = cfg.Defaults.Recursive
+	}
 	// Optional relative path from a folder drop (e.g. "myrepo/src/foo.go") —
 	// Go strips path components from multipart filename headers, so the
 	// front-end sends it as a parallel field.
@@ -630,13 +653,21 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 	// random temp path, but suppression hashes were created against the
 	// original upload filename. We rename below and then apply suppressions
 	// ourselves so the hashes match.
+	// Preprocessors default ON (the web UI's whole point is dropping documents in),
+	// but an explicit `enable_preprocessors: false` in the config is now honored
+	// rather than silently overridden.
+	enablePreprocessors := true
+	if cfg != nil {
+		enablePreprocessors = cfg.Defaults.EnablePreprocessors
+	}
+
 	scanConfig := core.ScanConfig{
 		FilePath:            filePath,
 		Checks:              checksSlice,
 		Debug:               false,
 		Verbose:             verbose,
 		Recursive:           recursive,
-		EnablePreprocessors: true,
+		EnablePreprocessors: enablePreprocessors,
 		EnableRedaction:     false,
 		Config:              cfg,
 		Profile:             nil,
