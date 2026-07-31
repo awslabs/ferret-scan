@@ -6,6 +6,8 @@ package preprocessors
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
@@ -177,13 +179,29 @@ func (bmp *BaseMetadataPreprocessor) processWithRetryInternal(filePath string, p
 	return content, err
 }
 
-// ProcessEmbeddedMedia processes embedded media through the router if available
-func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath string, embeddedMedia []EmbeddedMedia) string {
+// ProcessEmbeddedMedia processes embedded media through the router if available.
+//
+// It returns the text to append to the container's own metadata text, AND one
+// ContentSection per embedded item describing that text out of band. The sections'
+// LineOffset values are relative to the START OF THE RETURNED TEXT; the caller
+// shifts them by the length of whatever it puts in front.
+//
+// The sections matter because an embedded item is a section INSIDE one
+// preprocessor's output, and it routes to a DIFFERENT metadata rule set than its
+// container: a .wav inside a .docx carries an "Artist:" field, which is on the
+// audio rule list but not the office one. Without a declared sub-section the whole
+// blob would be labelled office_metadata and that field would report nothing.
+// Measured: the AUTHOR_INFO finding for an embedded clip's artist address
+// disappeared until these sections were carried.
+func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath string, embeddedMedia []EmbeddedMedia) (string, []ContentSection) {
 	if bmp.router == nil || len(embeddedMedia) == 0 {
-		return ""
+		return "", nil
 	}
 
 	var result string
+	var sections []ContentSection
+	// Line cursor into `result`, maintained incrementally.
+	line := 0
 
 	for i, media := range embeddedMedia {
 		// Create context showing original file relationship
@@ -196,11 +214,49 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 			processed.Filename = embeddedPath
 
 			// Format and append embedded media section
-			result += bmp.utilities.RouterHelper.FormatEmbeddedMediaSection(i, media.OriginalName, processed.Text)
+			block := bmp.utilities.RouterHelper.FormatEmbeddedMediaSection(i, media.OriginalName, processed.Text)
+			result += block
+
+			// FormatEmbeddedMediaSection prefixes "\n--- ... ---\n", so the
+			// item's own text starts two lines further on.
+			contentLine := line + 2
+
+			// Attribute findings to "container.docx -> audio1.wav", i.e. the BARE
+			// media filename. CreateEmbeddedMediaPath keeps the full archive member
+			// name ("word/media/audio1.wav"); the label the deleted text-parsing
+			// path produced was the basename, and it is what appears in the FILE
+			// column of every report, so keep it identical.
+			sectionSource := bmp.utilities.RouterHelper.CreateEmbeddedMediaPath(
+				originalFilePath, filepath.Base(media.OriginalName))
+
+			// Prefer the sub-result's OWN declared sections — the router built
+			// them from that file's preprocessor names — and just re-anchor them
+			// onto this text and onto the "container -> item" source label. This
+			// composes: a section nested two levels deep still carries the rule
+			// set of the extractor that actually produced it.
+			if len(processed.Sections) > 0 {
+				for _, sub := range processed.Sections {
+					sub.SourceFile = sectionSource
+					sub.LineOffset += contentLine
+					sections = append(sections, sub)
+				}
+			} else {
+				kind, metaType := ClassifySection(processed.ProcessorType)
+				sections = append(sections, ContentSection{
+					Name:       processed.ProcessorType,
+					Kind:       kind,
+					Type:       metaType,
+					SourceFile: embeddedPath,
+					Text:       processed.Text,
+					LineOffset: contentLine,
+				})
+			}
+
+			line += strings.Count(block, "\n")
 		}
 	}
 
-	return result
+	return result, sections
 }
 
 // EmbeddedMedia represents embedded media extracted from documents

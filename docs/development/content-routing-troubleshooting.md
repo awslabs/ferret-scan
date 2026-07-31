@@ -141,35 +141,27 @@ ferret-scan --file document.pdf --debug-content-routing --dry-run
 
 **Solutions:**
 
-1. **Update Preprocessor Configuration:**
-```yaml
-# Ensure preprocessors include proper section markers
-preprocessors:
-  metadata_extractor:
-    include_section_markers: true
-    marker_format: "--- {type}_metadata ---"
-```
+> **Do not fix this by matching section markers in the extracted text.** Section
+> boundaries are *declared* by the producing preprocessor in
+> `ProcessedContent.Sections`, not recovered from the text. Matching
+> `--- image_metadata ---` in content lets a document author choose the routing,
+> because the author writes the text — and because the metadata path runs one
+> field-name scanner rather than the full validator set, a forged marker deletes
+> findings instead of relabelling them. A finding that is never reported is never
+> redacted.
 
-2. **Fix Section Pattern Matching:**
-```go
-// Update pattern matching logic if needed
-func (cr *ContentRouter) identifyPreprocessorType(section ContentSection) string {
-    patterns := map[string]string{
-        "image_metadata":    `(?i)---\s*image_metadata\s*---`,
-        "document_metadata": `(?i)---\s*document_metadata\s*---`,
-        "audio_metadata":    `(?i)---\s*audio_metadata\s*---`,
-        "video_metadata":    `(?i)---\s*video_metadata\s*---`,
-    }
+1. **Check that the preprocessor populates `Sections`:**
+   A preprocessor that returns text but no sections is treated as *all document
+   body* (fail-closed). Coverage is intact, but metadata labelling is lost, which
+   is what "missing preprocessor type information" looks like. The fix belongs in
+   the preprocessor: return one `ContentSection` per distinct run of its output,
+   as `office_metadata` does for its property block and each embedded media item.
 
-    for preprocessorType, pattern := range patterns {
-        if matched, _ := regexp.MatchString(pattern, section.Header); matched {
-            return preprocessorType
-        }
-    }
-
-    return "unknown"
-}
-```
+2. **Check that the section's `Name` is in the classifier:**
+   `preprocessors.ClassifySection` switches on the preprocessor's `GetName()`.
+   An unrecognized name classifies as body, so a newly added metadata
+   preprocessor needs a case there — and a corresponding rule set in the METADATA
+   validator's table, keyed by the type the classifier returns.
 
 ### Issue: Content Router Performance Degradation
 
@@ -408,42 +400,38 @@ ferret-scan --file document.pdf --debug-content-routing --preprocess-only
 
 **Solutions:**
 
-1. **Improve Type Detection Logic:**
+1. **Set the type at the producer, where it is known:**
+
+A `ContentSection` carries its own `Type`, and the producing preprocessor fills it
+in. There is no detection step to improve — and adding one that reads the section
+header or the content would reintroduce the in-band signalling this design exists
+to remove (see the boxed warning above).
+
 ```go
-func (cr *ContentRouter) identifyPreprocessorType(section ContentSection) string {
-    // Check explicit type markers first
-    if section.Metadata != nil {
-        if pType, exists := section.Metadata["preprocessor_type"]; exists {
-            return pType.(string)
-        }
-    }
-
-    // Check section headers
-    headerLower := strings.ToLower(section.Header)
-    switch {
-    case strings.Contains(headerLower, "image") && strings.Contains(headerLower, "metadata"):
-        return PreprocessorTypeImageMetadata
-    case strings.Contains(headerLower, "document") && strings.Contains(headerLower, "metadata"):
-        return PreprocessorTypeDocumentMetadata
-    case strings.Contains(headerLower, "audio") && strings.Contains(headerLower, "metadata"):
-        return PreprocessorTypeAudioMetadata
-    case strings.Contains(headerLower, "video") && strings.Contains(headerLower, "metadata"):
-        return PreprocessorTypeVideoMetadata
-    }
-
-    // Fallback to content analysis
-    return cr.analyzeContentForType(section.Content)
-}
+// internal/preprocessors/office_metadata_preprocessor.go
+sections := []ContentSection{{
+    Name:       omp.GetName(), // our own constant, not document bytes
+    Kind:       SectionKindMetadata,
+    Type:       ProcessorTypeOfficeMetadata,
+    SourceFile: filePath,
+    Text:       text,
+    LineOffset: 0,
+}}
 ```
 
-2. **Update Preprocessor Output Format:**
+2. **For nested content, carry the inner producer's type:**
+
+An embedded item routes to a *different* rule set than its container: a `.wav`
+inside a `.docx` has an `Artist:` field, which is on the audio sensitive-field list
+but not the office one. Label the sub-section with the extractor that actually read
+it, or that field reports nothing.
+
 ```go
-// Ensure preprocessors include type information
-type PreprocessorOutput struct {
-    Content          string
-    PreprocessorType string
-    SectionMarker    string
-    Metadata         map[string]interface{}
+// The sub-result's own sections are re-anchored, not overwritten.
+for _, sub := range processed.Sections {
+    sub.SourceFile = sectionSource // "container.docx -> audio1.wav"
+    sub.LineOffset += contentLine
+    sections = append(sections, sub)
 }
 ```
 

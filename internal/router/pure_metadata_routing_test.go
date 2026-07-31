@@ -71,10 +71,12 @@ func TestPureMetadataKeepsDocumentBody(t *testing.T) {
 
 // TestCombinedPreprocessorsUnaffected pins the boundary of the change.
 //
-// .pdf/.docx/.xlsx have TWO capable preprocessors, so ProcessorType contains "+",
-// identifyPreprocessorType returns "combined_preprocessors", and they route down a
-// different branch that always preserved a body. Those file types must be
-// byte-identical before and after.
+// .pdf/.docx/.xlsx have TWO capable preprocessors, so ProcessorType contains "+".
+// They used to be classified "combined_preprocessors" and routed down a separate
+// branch that always preserved a body; that branch, and the classifier that
+// selected it, are gone — structure now comes from the declared sections, and a
+// caller that declares none keeps the whole text as body. Either way these file
+// types must still have a document body.
 func TestCombinedPreprocessorsUnaffected(t *testing.T) {
 	cr := NewContentRouter()
 	routed, err := cr.RouteContent(&preprocessors.ProcessedContent{

@@ -238,26 +238,40 @@ func (cr *ContentRouter) RouteContent(content *ProcessedContent) (*RoutedContent
 ```
 
 #### 3.3 Preprocessor Type Identification
-```go
-func (cr *ContentRouter) identifyPreprocessorType(section ContentSection) string {
-    // Check section markers
-    if strings.Contains(section.Header, "image_metadata") {
-        return PreprocessorTypeImageMetadata
-    }
-    if strings.Contains(section.Header, "document_metadata") {
-        return PreprocessorTypeDocumentMetadata
-    }
-    if strings.Contains(section.Header, "audio_metadata") {
-        return PreprocessorTypeAudioMetadata
-    }
-    if strings.Contains(section.Header, "video_metadata") {
-        return PreprocessorTypeVideoMetadata
-    }
 
-    // Fallback to content analysis
-    return cr.analyzeContentType(section.Content)
+A section's type is **declared by the producer, not detected from the content**. The
+file router builds `ProcessedContent.Sections` in the same loop that concatenates
+the extractors' output, and classifies each one from the preprocessor's
+`GetName()` — a constant in our own code:
+
+```go
+// internal/preprocessors/preprocessor.go
+func ClassifySection(preprocessorName string) (SectionKind, string) {
+    switch preprocessorName {
+    case ProcessorTypeImageMetadata:
+        return SectionKindMetadata, ProcessorTypeImageMetadata
+    case ProcessorTypePDFMetadata:
+        return SectionKindMetadata, "document_metadata"
+    // ... one case per preprocessor ...
+    default:
+        // "Text Extractor", "Plain Text Preprocessor", anything unknown.
+        return SectionKindBody, ""
+    }
 }
 ```
+
+Two properties are deliberate and must not be "improved" away:
+
+- **Exact match on a closed set, never a substring or regex over section text.**
+  Deriving the type by matching markers such as `--- image_metadata ---` in the
+  extracted text means a document author decides the type, because the author
+  writes the text. A paragraph typed as `--- office_metadata ---` used to move the
+  rest of the document onto the metadata path, which runs a single field-name
+  scanner instead of the full validator set — so findings were deleted, not
+  relabelled, and an unreported finding is never redacted.
+- **Unknown names classify as body, not metadata.** That is the fail-closed
+  direction: the document path runs every validator, so a preprocessor added
+  without updating the switch loses a metadata *label*, never coverage.
 
 ### 4. Dual-Path Validation (NEW)
 

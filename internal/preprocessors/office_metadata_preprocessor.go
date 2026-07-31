@@ -52,15 +52,40 @@ func (omp *OfficeMetadataPreprocessor) processOfficeMetadata(filePath string) (*
 	text := omp.formatOfficeMetadata(meta)
 
 	// Process embedded media through router if available
-	embeddedText := omp.processEmbeddedMedia(filePath)
+	embeddedText, embeddedSections := omp.processEmbeddedMedia(filePath)
+
+	// Declare this extractor's own structure out of band. The container's own
+	// property block is one office_metadata section; each embedded item is its own
+	// section carrying the rule set of whichever extractor read it (a .wav's
+	// "Artist:" field is on the audio list, not the office one).
+	//
+	// Built here rather than in the router because only this function knows the
+	// split point: the router sees one opaque string from this preprocessor.
+	sections := []ContentSection{{
+		Name:       omp.GetName(),
+		Kind:       SectionKindMetadata,
+		Type:       ProcessorTypeOfficeMetadata,
+		SourceFile: filePath,
+		Text:       text,
+		LineOffset: 0,
+	}}
 	if embeddedText != "" {
+		// The embedded sections were anchored relative to embeddedText, which is
+		// appended after the property block.
+		shift := strings.Count(text, "\n")
+		for _, s := range embeddedSections {
+			s.LineOffset += shift
+			sections = append(sections, s)
+		}
 		text += embeddedText
 	}
 
 	// Log successful processing
 	omp.LogSuccessfulProcessing(meta.Filename, meta.FileSize, meta.MimeType)
 
-	return omp.BuildSuccessContent(filePath, text, "office_metadata", meta.PageCount), nil
+	content := omp.BuildSuccessContent(filePath, text, "office_metadata", meta.PageCount)
+	content.Sections = sections
+	return content, nil
 }
 
 // formatOfficeMetadata formats Office metadata into text format for validation
@@ -141,12 +166,13 @@ func (omp *OfficeMetadataPreprocessor) formatOfficeMetadata(meta *meta_extract_o
 	return result.String()
 }
 
-// processEmbeddedMedia processes embedded media through router integration
-func (omp *OfficeMetadataPreprocessor) processEmbeddedMedia(filePath string) string {
+// processEmbeddedMedia processes embedded media through router integration,
+// returning the text to append and the out-of-band sections describing it.
+func (omp *OfficeMetadataPreprocessor) processEmbeddedMedia(filePath string) (string, []ContentSection) {
 	// Extract embedded media for processing
 	embeddedMedia, err := meta_extract_officelib.ExtractEmbeddedMediaForProcessing(filePath)
 	if err != nil || len(embeddedMedia) == 0 {
-		return ""
+		return "", nil
 	}
 
 	// Ensure cleanup of temporary files

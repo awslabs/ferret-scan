@@ -50,6 +50,107 @@ type ProcessedContent struct {
 
 	// Additional metadata for embedded media and other extensions
 	Metadata map[string]interface{}
+
+	// Sections carries the structure of Text OUT OF BAND: one entry per
+	// preprocessor whose output was concatenated into Text, in the same order.
+	//
+	// It exists because the structure used to be carried IN BAND. The file router
+	// flattens every extractor's output into Text with literal "\n\n--- name ---\n"
+	// separators, and the content router then re-parsed that text to recover which
+	// bytes came from which extractor. Document authors control the text, so they
+	// controlled the recovered "structure": a paragraph typed as
+	// "--- office_metadata ---" became a section boundary. That is in-band
+	// signalling, the same class of defect as SQL injection, and it has the same
+	// answer — carry the structure alongside the data instead of re-deriving it
+	// from the data.
+	//
+	// Text stays the flat concatenation, byte for byte, so every existing consumer
+	// is unaffected; this field is purely additive. A nil/empty Sections means "no
+	// structure was declared", which consumers must treat as "all of Text is
+	// document body" — the safe direction, since the document path runs the full
+	// validator set and the metadata path runs one field-name scanner.
+	Sections []ContentSection
+}
+
+// ContentSection describes one contiguous run of ProcessedContent.Text and where
+// it came from. Every field is derived from OUR OWN code — the preprocessor's
+// GetName() and the router's classification of it — never from the scanned
+// document's bytes. That provenance is the entire point: it is what makes a
+// section boundary unforgeable by a document author.
+type ContentSection struct {
+	// Name is the producing preprocessor's GetName(), e.g. "Text Extractor" or
+	// "office_metadata". This is the string the flat separator used to spell out.
+	Name string
+
+	// Kind is the routing decision: SectionKindBody or SectionKindMetadata.
+	Kind SectionKind
+
+	// Type is the metadata preprocessor type ("office_metadata",
+	// "image_metadata", ...) for a metadata section, and empty for a body
+	// section. It is what the METADATA validator keys its per-preprocessor
+	// field rules off.
+	Type string
+
+	// SourceFile is the path to attribute findings in this section to. It is the
+	// scanned file for a normal section, and the "container.docx -> image1.jpg"
+	// form for a section extracted from embedded media.
+	SourceFile string
+
+	// Text is this section's bytes. It is a substring of ProcessedContent.Text
+	// (Go strings share backing storage, so this is a reference, not a copy).
+	Text string
+
+	// LineOffset is the 0-based line index at which Text begins within
+	// ProcessedContent.Text, so a finding's line number inside a section can be
+	// reported against the whole extracted document.
+	LineOffset int
+}
+
+// SectionKind is the routing classification of a ContentSection.
+type SectionKind int
+
+const (
+	// SectionKindBody is document body text: the full validator set applies.
+	SectionKindBody SectionKind = iota
+	// SectionKindMetadata is extracted metadata fields: the METADATA validator's
+	// per-preprocessor field rules apply. Note this is about LABELLING, not
+	// coverage — the document path scans the union of all sections regardless.
+	SectionKindMetadata
+)
+
+// ClassifySection maps a preprocessor's GetName() to a section Kind and metadata
+// Type. It lives next to the metadata_constants.go names it matches, and it is a
+// CLOSED switch on the seven names this repo's preprocessors actually return
+// (verified against every GetName() implementation) rather than a substring
+// search.
+//
+// A closed switch is the security-relevant part. The name it classifies is our
+// own code's constant, so an exact match is always possible; substring matching
+// was how the old text-parsing path turned a document paragraph named
+// "--- Employee Metadata ---" into a metadata section. Anything unrecognized
+// classifies as BODY, which is the fail-closed direction: the document path runs
+// the full validator set, so a preprocessor added later without updating this
+// switch loses a label, not coverage.
+func ClassifySection(preprocessorName string) (SectionKind, string) {
+	switch preprocessorName {
+	case ProcessorTypeImageMetadata:
+		return SectionKindMetadata, ProcessorTypeImageMetadata
+	case ProcessorTypePDFMetadata:
+		// The METADATA validator keys PDF metadata rules under
+		// "document_metadata", not "pdf_metadata" — see the content router's
+		// PreprocessorTypeDocumentMetadata. Preserving that remap here keeps the
+		// same rule set (and therefore the same findings) selected.
+		return SectionKindMetadata, "document_metadata"
+	case ProcessorTypeOfficeMetadata:
+		return SectionKindMetadata, ProcessorTypeOfficeMetadata
+	case ProcessorTypeAudioMetadata:
+		return SectionKindMetadata, ProcessorTypeAudioMetadata
+	case ProcessorTypeVideoMetadata:
+		return SectionKindMetadata, ProcessorTypeVideoMetadata
+	default:
+		// "Text Extractor", "Plain Text Preprocessor", and anything unknown.
+		return SectionKindBody, ""
+	}
 }
 
 // PositionMapping represents a mapping between extracted text positions and original document positions
