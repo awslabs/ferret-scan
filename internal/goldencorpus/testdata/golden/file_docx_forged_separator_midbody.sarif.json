@@ -40,8 +40,6 @@
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
               "context_impact": 45,
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "original_confidence": 100,
               "original_file": "<TMPDIR>/forged_mid.docx",
               "semantic_context": {
@@ -109,8 +107,6 @@
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
               "context_impact": 15,
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "original_confidence": 100,
               "original_file": "<TMPDIR>/forged_mid.docx",
               "semantic_context": {
@@ -158,10 +154,10 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in forged_mid.docx at line 1 (confidence: 65.0% - MEDIUM). Matched text: 'Jane Analyst'"
+            "text": "AUTHOR_INFO Detected in forged_mid.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
           "properties": {
-            "confidence": 65,
+            "confidence": 60,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -169,8 +165,6 @@
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
               "context_impact": 0,
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "full_field": "Author: Jane Analyst",
               "metadata_type": "AUTHOR_INFO",
               "original_confidence": 60,
@@ -196,7 +190,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 57.5,
+          "rank": 55,
           "ruleId": "AUTHOR_INFO"
         },
         {
@@ -219,10 +213,10 @@
             }
           ],
           "message": {
-            "text": "LAST_MODIFIED_BY Detected in forged_mid.docx at line 2 (confidence: 65.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+            "text": "LAST_MODIFIED_BY Detected in forged_mid.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
           },
           "properties": {
-            "confidence": 65,
+            "confidence": 60,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -230,8 +224,6 @@
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
               "context_impact": 0,
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "full_field": "LastModifiedBy: Ops Reviewer",
               "metadata_type": "LAST_MODIFIED_BY",
               "original_confidence": 60,
@@ -257,7 +249,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 57.5,
+          "rank": 55,
           "ruleId": "LAST_MODIFIED_BY"
         }
       ],
