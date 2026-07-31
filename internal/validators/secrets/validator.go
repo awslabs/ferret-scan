@@ -75,6 +75,78 @@ type spannedMatch struct {
 // what the secret actually is, which is strictly more useful to a reviewer.
 const genericSecretType = "API_KEY_OR_SECRET"
 
+// ConfidenceCeilingKey is the Match.Metadata key carrying a hard upper bound on a
+// finding's confidence. The dual-path bridge reads it and clamps AFTER its context and
+// cross-path adjustments — a ceiling applied only here would be undone by them, since a
+// value scored 55 by this validator was reported at 80 in a real document once +20
+// document context and +5 cross-path correlation had been added downstream.
+//
+// The literal is duplicated rather than imported to keep the dependency pointing one
+// way (the bridge must not depend on a validator package). It is covered by a test that
+// fails if the two drift apart.
+const ConfidenceCeilingKey = "confidence_ceiling"
+
+// unlabelledHexIdentifierCeiling keeps a bare hexadecimal value on a line that names
+// nothing secret below the MEDIUM band, so it is reported as LOW.
+//
+// A ceiling and not a veto, deliberately. A 32-hex string genuinely can be a secret,
+// and only reported findings reach the redactor — dropping one would leave the value
+// in the "redacted" output, which is the failure mode this area keeps producing.
+// Demoting keeps the row, keeps the redaction, and keeps it out of the band that
+// drives blocking decisions.
+const unlabelledHexIdentifierCeiling = 55.0
+
+// bareHexIdentifier matches a value that is nothing but hex digits, at the lengths
+// where identifiers live: 32 (GUID, MD5), 40 (SHA-1, git object), 64 (SHA-256).
+// Shorter runs are too common to reason about; longer ones are rarer than the noise
+// they would add.
+var bareHexIdentifier = regexp.MustCompile(`^(?:[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// secretLabelWords are the words whose presence on a line means the value is being
+// presented as a credential. Matched as substrings, and kept a superset of what
+// containsSecretIndicators looks for, so the ceiling can never fire on a line that
+// the indicator check would have called secret-labelled.
+var secretLabelWords = []string{
+	"key", "secret", "token", "password", "pass", "pwd", "auth",
+	"credential", "private", "bearer", "jwt", "api", "signature", "hmac",
+	"session", "cookie", "access", "refresh", "client_id", "clientid",
+}
+
+// unlabelledHexIdentifierCap returns the ceiling for a generic high-entropy finding
+// whose value is a bare hex identifier on a line carrying no secret-ish label, or 0
+// when no ceiling applies.
+//
+// The case that prompted it: an EXIF ImageUniqueID — `ImageUniqueID:
+// "14f6364997257b9170c016a13d1f1127"` — is an image GUID, and it was reported as
+// API_KEY_OR_SECRET at 80 in a real 10 MB .docx. It reaches the entropy path at all
+// only because containsSecretIndicators admits any quoted value of 20+ bytes; no
+// secret keyword is involved. Digests, ETags, commit ids and content hashes share the
+// shape.
+//
+// The discriminator is the LINE'S LABEL read as a positive signal — the ceiling
+// applies when nothing says "secret" — rather than a negative list of identifier
+// field names. That direction is the point. A negative list would let an author
+// suppress a REAL secret by writing `ImageUniqueID: "AKIA..."`, which is
+// attacker-controlled suppression: the exact class of defect the surrounding changes
+// have been removing. Here an author cannot trigger the ceiling by relabelling, since
+// adding any secret-ish word only removes it. Measured on one 32-hex value:
+// `api_key = "14f6..."` keeps 75, `ImageUniqueID: "14f6..."` becomes 55.
+func unlabelledHexIdentifierCap(secretType, match, line string) float64 {
+	if secretType != genericSecretType {
+		return 0
+	}
+	if !bareHexIdentifier.MatchString(strings.ToLower(strings.Trim(match, `"'`))) {
+		return 0
+	}
+	lower := strings.ToLower(line)
+	for _, keyword := range secretLabelWords {
+		if strings.Contains(lower, keyword) {
+			return 0
+		}
+	}
+	return unlabelledHexIdentifierCeiling
+}
+
 // mergeBySpanKeepStrongest folds src into dst, treating findings that cover the
 // identical byte span as one secret discovered twice: a quoted 40-char AWS
 // secret is matched both by the context-gated AWS path (AWS_SECRET_ACCESS_KEY)
@@ -1476,6 +1548,25 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 
 		if confidence > confidenceThreshold {
 			secretType := v.getSecretType(match)
+			meta := map[string]any{
+				"validation_checks": checks,
+				"detection_method":  detectionMethod,
+				"source":            "preprocessed_content",
+				"context_domain":    contextInsights.Domain,
+				"context_doc_type":  contextInsights.DocumentType,
+				"environment_type":  envType,
+				"secret_type":       secretType,
+			}
+			// A bare hex identifier on an unlabelled line gets a hard ceiling that the
+			// bridge's downstream context and cross-path adjustments must respect.
+			// Clamping here alone would not hold: those adjustments are applied after
+			// the validator returns and took one such value from 55 to 80.
+			if ceiling := unlabelledHexIdentifierCap(secretType, match, line); ceiling > 0 {
+				meta[ConfidenceCeilingKey] = ceiling
+				if confidence > ceiling {
+					confidence = ceiling
+				}
+			}
 			results = append(results, spannedMatch{
 				start: cand.start,
 				end:   cand.end,
@@ -1486,15 +1577,7 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 					Confidence: confidence,
 					Filename:   originalPath,
 					Validator:  "secrets",
-					Metadata: map[string]any{
-						"validation_checks": checks,
-						"detection_method":  detectionMethod,
-						"source":            "preprocessed_content",
-						"context_domain":    contextInsights.Domain,
-						"context_doc_type":  contextInsights.DocumentType,
-						"environment_type":  envType,
-						"secret_type":       secretType,
-					},
+					Metadata:   meta,
 				},
 			})
 		}
