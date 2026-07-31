@@ -609,6 +609,56 @@ func (evb *EnhancedValidatorBridge) routeContentWithRetry(content *preprocessors
 
 // processContentLegacy provides fallback to legacy aggregation behavior. ctx is
 // threaded to the document-path dispatch chokepoint.
+// legacyMetadataUnit is one chunk of text to validate together with the path a
+// finding in it should be attributed to, and where the chunk starts in the whole
+// extraction.
+type legacyMetadataUnit struct {
+	text       string
+	sourceFile string
+	// lineOffset is the 0-based line index at which text begins within the full
+	// concatenation. A validator handed only a section counts lines from 1 inside
+	// it, so the offset is added back to keep reported line numbers file-relative.
+	lineOffset int
+}
+
+// legacyMetadataUnits splits a ProcessedContent into the units the legacy fallback
+// should validate separately.
+//
+// The units come from the DECLARED sections, so provenance is whatever the
+// preprocessor recorded when it opened the archive member — not something parsed back
+// out of the extracted text, which a document author writes and can therefore choose.
+//
+// Fails closed in the shape this path needs: with no declared sections (an older
+// preprocessor, or a caller that built ProcessedContent by hand) it returns the whole
+// text attributed to the container, which is exactly the previous behavior. Losing a
+// precise label is acceptable; losing the scan is not.
+func legacyMetadataUnits(content *preprocessors.ProcessedContent) []legacyMetadataUnit {
+	if content == nil {
+		return nil
+	}
+
+	units := make([]legacyMetadataUnit, 0, len(content.Sections))
+	for _, section := range content.Sections {
+		if strings.TrimSpace(section.Text) == "" {
+			continue
+		}
+		source := section.SourceFile
+		if source == "" {
+			source = content.OriginalPath
+		}
+		units = append(units, legacyMetadataUnit{
+			text:       section.Text,
+			sourceFile: source,
+			lineOffset: section.LineOffset,
+		})
+	}
+
+	if len(units) == 0 {
+		return []legacyMetadataUnit{{text: content.Text, sourceFile: content.OriginalPath}}
+	}
+	return units
+}
+
 func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, content *preprocessors.ProcessedContent, contextInsights context.ContextInsights) ([]detector.Match, error) {
 	if evb.observer != nil && evb.observer.Debug() != nil {
 		evb.observer.Debug().LogDetail("fallback", "Using legacy content aggregation")
@@ -638,21 +688,52 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, con
 	// Process with metadata validator if available. Dispatch through execguard
 	// so a panic in the metadata validator is recovered rather than crashing
 	// the process (v2 gap 1.3), matching the document path.
+	//
+	// Validate each DECLARED SECTION separately rather than handing over the whole
+	// concatenation, so a finding inside an embedded archive member is attributed to
+	// that member instead of to the container.
+	//
+	// This path has no ContentRouter to consult, and it used to get embedded-media
+	// provenance from the "--- Embedded Media N (name) ---" line the extractor writes
+	// into the text — which is precisely the forgeable channel this change removes.
+	// Deleting the reader without giving this path the structural equivalent silently
+	// re-attributed real embedded findings to the container: on a .docx carrying an
+	// embedded .wav, AUDIO_ARTIST_IDENTITY, EMAIL and IMAGE_AUTHOR moved from
+	// "real_embed.docx -> audio1.wav" to the container path, and because
+	// generateFindingHash folds filepath.Base(Filename), three suppression rules
+	// written against the old attribution stopped matching.
+	//
+	// Sections are produced by the file router before any routing decision, so they
+	// are available here even though this arm is only reached when routing failed.
 	if evb.metadataBridge.metadataValidator != nil {
 		mv := evb.metadataBridge.metadataValidator
-		metadataMatches, err := execguard.ValidateContent(ctx, fmt.Sprintf("%T", mv), mv, content.Text, content.OriginalPath)
-		if err != nil {
-			processingErrors = append(processingErrors, fmt.Errorf("metadata validation failed: %w", err))
-			if evb.observer != nil {
-				evb.observer.LogOperation(observability.StandardObservabilityData{
-					Component: "enhanced_validator_bridge",
-					Operation: "legacy_metadata_error",
-					FilePath:  content.OriginalPath,
-					Success:   false,
-					Error:     err.Error(),
-				})
+		name := fmt.Sprintf("%T", mv)
+
+		for _, unit := range legacyMetadataUnits(content) {
+			metadataMatches, err := execguard.ValidateContent(ctx, name, mv, unit.text, unit.sourceFile)
+			if err != nil {
+				processingErrors = append(processingErrors, fmt.Errorf("metadata validation failed: %w", err))
+				if evb.observer != nil {
+					evb.observer.LogOperation(observability.StandardObservabilityData{
+						Component: "enhanced_validator_bridge",
+						Operation: "legacy_metadata_error",
+						FilePath:  unit.sourceFile,
+						Success:   false,
+						Error:     err.Error(),
+					})
+				}
+				continue
 			}
-		} else {
+
+			// Rebase to file-relative lines. The validator saw only this section, so
+			// it counted from the section's first line; the suppression hash embeds
+			// the line number, so leaving them section-relative would invalidate
+			// every saved rule for a container with more than one section.
+			if unit.lineOffset > 0 {
+				for i := range metadataMatches {
+					metadataMatches[i].LineNumber += unit.lineOffset
+				}
+			}
 			allMatches = append(allMatches, metadataMatches...)
 		}
 	}
