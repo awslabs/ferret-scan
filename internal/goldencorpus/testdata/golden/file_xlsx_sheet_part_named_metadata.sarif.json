@@ -11,6 +11,141 @@
                 "artifactLocation": {
                   "uri": "file://<TMPDIR>/books_named.xlsx"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Employee SSN \nEmployee SSN 449-87-4100\t\n\t"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "Employee SSN 449-87-4100\t"
+                  },
+                  "startColumn": 14,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in books_named.xlsx at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 50,
+              "correlation_boost": 5,
+              "cross_path_correlation": true,
+              "original_confidence": 100,
+              "original_file": "<TMPDIR>/books_named.xlsx",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/books_named.xlsx"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Card \nCard 4532-0151-1283-0366\t\n\t"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "Card 4532-0151-1283-0366\t"
+                  },
+                  "startColumn": 6,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "VISA Detected in books_named.xlsx at line 3 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 15,
+              "correlation_boost": 5,
+              "cross_path_correlation": true,
+              "original_confidence": 100,
+              "original_file": "<TMPDIR>/books_named.xlsx",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 75,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/books_named.xlsx"
+                },
                 "region": {
                   "endColumn": 21,
                   "snippet": {
@@ -23,10 +158,10 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in books_named.xlsx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+            "text": "AUTHOR_INFO Detected in books_named.xlsx at line 1 (confidence: 65.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
           "properties": {
-            "confidence": 60,
+            "confidence": 65,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -34,6 +169,8 @@
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
               "context_impact": 0,
+              "correlation_boost": 5,
+              "cross_path_correlation": true,
               "full_field": "Author: Jane Analyst",
               "metadata_type": "AUTHOR_INFO",
               "original_confidence": 60,
@@ -59,7 +196,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 55,
+          "rank": 57.5,
           "ruleId": "AUTHOR_INFO"
         }
       ],
@@ -79,6 +216,32 @@
               "id": "AUTHOR_INFO",
               "shortDescription": {
                 "text": "AUTHOR_INFO Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations."
+              },
+              "help": {
+                "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/SSN.md",
+              "id": "SSN",
+              "shortDescription": {
+                "text": "Social Security Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type VISA was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "id": "VISA",
+              "shortDescription": {
+                "text": "VISA Detected"
               }
             }
           ],

@@ -4,7 +4,7 @@
       "confidence": 100,
       "confidence_level": "HIGH",
       "filename": "<TMPDIR>/books.xlsx",
-      "line_number": 1,
+      "line_number": 2,
       "metadata": {
         "confidence_adjustment": 0,
         "context_confidence": 1,
@@ -42,7 +42,7 @@
       "confidence": 100,
       "confidence_level": "HIGH",
       "filename": "<TMPDIR>/books.xlsx",
-      "line_number": 2,
+      "line_number": 3,
       "metadata": {
         "card_type": "VISA",
         "confidence_adjustment": 0,
