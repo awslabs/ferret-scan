@@ -109,32 +109,67 @@ type Metadata struct {
 	SharedDocument    bool
 }
 
-// validateFilePath validates file path to prevent directory traversal attacks
+// validateFilePath rejects paths this extractor must not open.
+//
+// It used to refuse any path under a list of "system directories" that included
+// /home/, /var/ and /tmp/. That denylist protected nothing and broke the tool's
+// primary use case: on Linux EVERY file a user owns is under /home/, so
+// `ferret-scan --file ~/report.docx` silently lost Office metadata extraction — no
+// error surfaced, the file simply dropped to a single preprocessor and its author,
+// company and custom properties were never scanned. Measured on one .docx: an
+// allowed path yields {SSN, PERSON_NAME, AUTHOR_INFO}, a /tmp path yields {SSN}
+// alone. Since only reported findings are redacted, that was a cleartext leak of
+// every metadata field, on the default path, for a whole platform. It also made the
+// repository unusable as a fixture location on GitHub's Linux runners, which check
+// out under /home/runner/work.
+//
+// The denylist was never a control. This function is not a trust boundary: the path
+// arrives from the CLI, which has already resolved and stat'd it, and the tool's
+// entire purpose is to read files the invoking user named and can already read. A
+// prefix denylist over such a path stops nothing — a symlink, a relative path or a
+// bind mount reaches the same bytes — and per BSC1 input-validation guidance a
+// denylist is incomplete by construction.
+//
+// A first attempt at replacing it kept a smaller denylist for the kernel
+// pseudo-filesystems (/proc/, /sys/, /dev/). That reproduced the same class of bug
+// one directory down: /dev/shm is world-writable tmpfs that scripts and CI use for
+// ordinary temporary files, and those are ordinary regular files, so a .docx there
+// was refused for no reason. It was also Unix-only — the Windows device namespace
+// (\\.\PhysicalDrive0) and reserved DOS names (CON, NUL, COM1) all passed straight
+// through, so on one of three supported platforms it read as protection while
+// providing none.
+//
+// The real concern behind it — do not try to read something that has no size and
+// may never end — is a property of the file's MODE, not of its name, so it now
+// lives in the router's CanProcessFile as an os.FileMode().IsRegular() check. That
+// covers devices, FIFOs and sockets on every platform, with no list to maintain and
+// no false positive on /dev/shm, and it applies to all seven extractors rather than
+// only to this one, which was the sole extractor that ever carried a path denylist.
+//
+// What remains here is cheap defence in depth for a path that reaches this package
+// by some route other than the router:
+//   - a LEADING "..", which after filepath.Clean is the only form a real traversal
+//     can survive in. The previous strings.Contains check also rejected legitimate
+//     names like "my..report.docx" and any directory whose name contains two dots.
+//   - "://", so a URL mistaken for a path fails with a clear message instead of
+//     being read as a bizarre relative filename.
+//
+// The bounds that actually matter for hostile input are elsewhere and unchanged: the
+// 100MB size gate (validateFileSize), the per-entry decompression cap, and
+// XXE-disabled XML parsing.
 func validateFilePath(filePath string) error {
-	// Clean the path and check for traversal attempts
 	cleanPath := filepath.Clean(filePath)
 
-	// Check for path traversal patterns
-	if strings.Contains(cleanPath, "..") {
+	// Reject escaping the working directory. Post-Clean, an interior ".." has been
+	// resolved away, so only a leading one is a traversal.
+	if cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) ||
+		strings.HasPrefix(filepath.ToSlash(cleanPath), "../") {
 		return fmt.Errorf("path traversal attempt detected in: %s", filePath)
 	}
 
-	// Check for suspicious absolute paths (system directories)
-	suspiciousPaths := []string{
-		"/etc/", "/bin/", "/usr/bin/", "/sbin/", "/usr/sbin/",
-		"/root/", "/home/", "/var/", "/tmp/", "/sys/", "/proc/",
-		"C:\\Windows\\", "C:\\Program Files\\", "C:\\Users\\",
-		"\\Windows\\", "\\Program Files\\", "\\Users\\",
-	}
-
-	cleanPathLower := strings.ToLower(cleanPath)
-	for _, suspiciousPath := range suspiciousPaths {
-		if strings.HasPrefix(cleanPathLower, strings.ToLower(suspiciousPath)) {
-			return fmt.Errorf("access to system directory denied: %s", filePath)
-		}
-	}
-
-	// Check for URL schemes that might be used for attacks
+	// Checked on the RAW path, not the cleaned one: filepath.Clean collapses the
+	// double slash, so "https://host/x" becomes "https:/host/x" and the "://" marker
+	// is gone.
 	if strings.Contains(filePath, "://") {
 		return fmt.Errorf("URL schemes not allowed in file paths: %s", filePath)
 	}
@@ -414,19 +449,39 @@ type CustomProperties struct {
 	Properties []CustomProperty `xml:"property"`
 }
 
-// createFileIndex creates an index of files for efficient lookup
+// createFileIndex creates an index of files for efficient lookup, keyed by
+// LOWERCASED part name.
+//
+// A zip entry name is data the document producer chose, and nothing requires the
+// conventional casing. Keyed exactly, "docProps/Core.xml" was a different part
+// from "docProps/core.xml", so one capital letter made a document's author,
+// company and custom properties invisible to this extractor while the file still
+// scanned "successfully" — the same class of defect the text extractor had for
+// word/document.xml (see text-extract-officetextlib/ooxml_parts.go). Lookups
+// therefore go through lookupPart. First entry wins, so a package carrying two
+// spellings of the same part resolves deterministically to the earlier one.
 func createFileIndex(reader *zip.ReadCloser) map[string]*zip.File {
 	// Pre-allocate map with capacity to reduce rehashing
 	fileIndex := make(map[string]*zip.File, len(reader.File))
 	for _, file := range reader.File {
-		fileIndex[file.Name] = file
+		key := strings.ToLower(file.Name)
+		if _, seen := fileIndex[key]; !seen {
+			fileIndex[key] = file
+		}
 	}
 	return fileIndex
 }
 
+// lookupPart finds a part in an index built by createFileIndex, ignoring the case
+// the producer used.
+func lookupPart(fileIndex map[string]*zip.File, name string) (*zip.File, bool) {
+	f, ok := fileIndex[strings.ToLower(name)]
+	return f, ok
+}
+
 // extractCorePropertiesOptimized extracts core properties using file index
 func extractCorePropertiesOptimized(fileIndex map[string]*zip.File) (*CoreProperties, error) {
-	corePropsFile, exists := fileIndex["docProps/core.xml"]
+	corePropsFile, exists := lookupPart(fileIndex, "docProps/core.xml")
 	if !exists {
 		return nil, fmt.Errorf("core properties file not found")
 	}
@@ -462,7 +517,7 @@ func extractCorePropertiesFromFile(corePropsFile *zip.File) (*CoreProperties, er
 
 // extractAppPropertiesOptimized extracts app properties using file index
 func extractAppPropertiesOptimized(fileIndex map[string]*zip.File) (*AppProperties, error) {
-	appPropsFile, exists := fileIndex["docProps/app.xml"]
+	appPropsFile, exists := lookupPart(fileIndex, "docProps/app.xml")
 	if !exists {
 		return nil, fmt.Errorf("app properties file not found")
 	}
@@ -498,7 +553,7 @@ func extractAppPropertiesFromFile(appPropsFile *zip.File) (*AppProperties, error
 
 // extractCustomPropertiesOptimized extracts custom properties using file index
 func extractCustomPropertiesOptimized(fileIndex map[string]*zip.File) (map[string]string, error) {
-	customPropsFile, exists := fileIndex["docProps/custom.xml"]
+	customPropsFile, exists := lookupPart(fileIndex, "docProps/custom.xml")
 	if !exists {
 		return nil, fmt.Errorf("custom properties file not found")
 	}

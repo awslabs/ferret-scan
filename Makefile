@@ -1,4 +1,4 @@
-.PHONY: build clean vet fmt run install-config install check-go-version pr-checklist integration-branch
+.PHONY: build clean vet vet-host fmt run install-config install check-go-version pr-checklist integration-branch test-compile-all-platforms
 
 # Default target
 all: check-go-version fmt vet build
@@ -36,6 +36,7 @@ help:
 	@echo ""
 	@echo "🧪 Testing:"
 	@echo "  test               - Run all tests"
+	@echo "  test-compile-all-platforms - Cross-compile test binaries for every platform"
 	@echo "  test-ci            - Run CI-equivalent tests (race detector, no cache)"
 	@echo "  test-windows       - Run Windows-specific tests"
 	@echo "  test-cross-platform - Run cross-platform compatibility tests"
@@ -55,7 +56,8 @@ help:
 	@echo "  uninstall          - Remove system-wide installation"
 	@echo "  fmt                - Format code"
 
-	@echo "  vet                - Run go vet"
+	@echo "  vet                - Run go vet for darwin, linux and windows (compile-only)"
+	@echo "  vet-host           - Run go vet for this platform only (fast inner loop)"
 	@echo ""
 	@echo "🐳 Container:"
 	@echo "  container-run      - Run container"
@@ -215,9 +217,38 @@ clean-everything: clean-all clean-precommit uninstall
 
 
 
-# Run go vet
+# Run go vet for every supported platform, not just this one.
+#
+# `go vet` type-checks TEST files as well as production code, and it is the only cheap
+# local gate that does: `GOOS=windows go build ./...` skips _test.go entirely and passes
+# happily while the Windows CI job fails to compile. That is not hypothetical — a test
+# calling syscall.Mkfifo (absent on Windows) behind a `runtime.GOOS == "windows"` skip
+# broke windows-latest after `GOOS=windows go build` reported clean locally. A runtime
+# skip cannot save a symbol the compiler must still resolve; only a build tag can, and
+# only cross-platform vet catches the mistake.
+#
+# Compile-only, so it is seconds rather than a full test matrix. Failures print the
+# offending platform's output rather than being swallowed.
+GOOS_TARGETS ?= darwin linux windows
+
 vet:
-	@echo "Vetting..."
+	@echo "Vetting (GOOS: $(GOOS_TARGETS))..."
+	@rc=0; \
+	for goos in $(GOOS_TARGETS); do \
+		printf '  %-8s ' "$$goos"; \
+		if out=$$(GOOS=$$goos go vet ./... 2>&1); then \
+			echo "ok"; \
+		else \
+			echo "FAILED"; \
+			echo "$$out" | sed 's/^/    /'; \
+			rc=1; \
+		fi; \
+	done; \
+	exit $$rc
+
+# Host-only vet, for a fast inner loop. `make vet` is the gate.
+vet-host:
+	@echo "Vetting (host only)..."
 	@go vet ./...
 
 # Format code
@@ -479,6 +510,37 @@ setup-direct-precommit:
 # Testing targets
 test: test-unit test-integration
 	@echo "✓ All tests completed"
+
+# Cross-compile the TEST binaries for every supported platform without running them.
+#
+# A test can only be EXECUTED on its own platform, but it must COMPILE on all of them or
+# the CI job for that platform fails before a single assertion runs. `go vet` already
+# type-checks test files (see the vet target), and this goes one step further by building
+# the actual test binaries, which also catches link-level problems vet does not see —
+# a missing platform-specific symbol behind a build tag, for instance.
+#
+# `go test -c -o /dev/null` compiles and discards. Packages with no test files are
+# skipped by `go list` rather than reported as failures.
+test-compile-all-platforms:
+	@echo "Compiling test binaries (GOOS: $(GOOS_TARGETS))..."
+	@rc=0; \
+	for goos in $(GOOS_TARGETS); do \
+		printf '  %-8s ' "$$goos"; \
+		failed=""; \
+		for pkg in $$(GOOS=$$goos go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... 2>/dev/null); do \
+			if ! out=$$(GOOS=$$goos go test -c -o /dev/null "$$pkg" 2>&1); then \
+				failed="$$failed$$out\n"; \
+			fi; \
+		done; \
+		if [ -z "$$failed" ]; then \
+			echo "ok"; \
+		else \
+			echo "FAILED"; \
+			printf "$$failed" | sed 's/^/    /'; \
+			rc=1; \
+		fi; \
+	done; \
+	exit $$rc
 
 test-unit:
 	@echo "Running unit tests..."

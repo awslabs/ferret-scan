@@ -79,6 +79,32 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) 
 	if err != nil {
 		return false, fmt.Sprintf("%s: %v", ReasonUnreadable, err)
 	}
+
+	// Refuse anything that is not a regular file.
+	//
+	// This is an operational bound, not a security boundary: a character device, a
+	// FIFO, a socket or a kernel pseudo-file has no meaningful size, so the size
+	// gate below cannot bound it. Opening /dev/zero or a FIFO with no writer means
+	// reading forever, and the extractors downstream read the whole file into memory.
+	//
+	// It replaces a prefix denylist that used to live in the Office metadata
+	// extractor and refused /proc/, /sys/, /dev/ by name. A mode check is both wider
+	// and narrower in the right directions: it covers block and character devices,
+	// FIFOs and sockets on every platform, including the Windows device namespace
+	// (\\.\PhysicalDrive0) and reserved DOS names that a Unix-shaped path denylist
+	// never matched — while it does NOT reject the ordinary files that happen to sit
+	// under one of those prefixes. /dev/shm is the case that matters: it is
+	// world-writable tmpfs, routinely used for temporary files by scripts and CI, and
+	// the files in it are regular files. A path denylist rejected them; this does not.
+	//
+	// It lives here because the router is where "can this file be processed" is
+	// decided, and it already has the stat. The extractors get a path this function
+	// has already vetted, so each of the seven no longer needs its own copy of the
+	// rule — only one of them ever had one.
+	if !info.Mode().IsRegular() {
+		return false, fmt.Sprintf("%s: not a regular file (%s)", ReasonUnreadable, describeFileMode(info.Mode()))
+	}
+
 	if info.Size() > MaxFileSize {
 		return false, fmt.Sprintf("File too large (max: %dMB)", MaxFileSize/(1024*1024))
 	}
@@ -104,6 +130,31 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) 
 	}
 
 	return false, "Unsupported file type"
+}
+
+// describeFileMode names the non-regular kind a path turned out to be, so the skip
+// reason tells the user what they actually pointed at rather than only that it was
+// rejected. Directories are included because a caller can hand a directory path to a
+// single-file scan.
+func describeFileMode(m os.FileMode) string {
+	switch {
+	case m.IsDir():
+		return "directory"
+	case m&os.ModeSymlink != 0:
+		return "symlink"
+	case m&os.ModeNamedPipe != 0:
+		return "named pipe"
+	case m&os.ModeSocket != 0:
+		return "socket"
+	case m&os.ModeCharDevice != 0:
+		return "character device"
+	case m&os.ModeDevice != 0:
+		return "block device"
+	case m&os.ModeIrregular != 0:
+		return "irregular file"
+	default:
+		return m.String()
+	}
 }
 
 // ProcessFileWithContext processes a file through the routing system with full context
@@ -225,8 +276,25 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	var combinedMetadata = make(map[string]interface{})
 	var totalWordCount, totalCharCount, totalLineCount int
 	var successfulProcessors []string
+	// extractionWarnings collects each preprocessor's "read the file but got no
+	// document text" note, in launch order so the message is stable.
+	//
+	// Deliberately gathered regardless of pResult.err. The note is set by the
+	// extractor that produced no text, and for the most important case — the body
+	// part is absent from the archive entirely — that extractor ALSO returns an
+	// error ("document.xml not found in the archive"). Requiring err == nil dropped
+	// the warning exactly when it mattered: a .docx with no recognizable body part
+	// still had a successful office_metadata sibling, so the file reported Success
+	// with metadata-only findings, exit 0, and nothing said the document body had
+	// never been read. Measured before this: such a file produced
+	// {PERSON_NAME, AUTHOR_INFO} and no warning at all.
+	var extractionWarnings []string
 
 	for _, pResult := range ordered {
+		if pResult.result != nil && pResult.result.ExtractionWarning != "" {
+			extractionWarnings = append(extractionWarnings,
+				pResult.name+": "+pResult.result.ExtractionWarning)
+		}
 		if pResult.err == nil && pResult.result != nil && pResult.result.Success && pResult.result.Text != "" {
 			if len(successfulProcessors) == 0 {
 				// First success: reference its text directly (no copy).
@@ -276,6 +344,11 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 			ProcessorType: strings.Join(successfulProcessors, "+"),
 			Success:       true,
 			Metadata:      combinedMetadata,
+			// Carry the warnings up. Without this the combine step swallowed them:
+			// a .docx whose body part was never found still had a successful
+			// office_metadata result, so the file reported Success with only
+			// metadata findings and nothing said the document body was missing.
+			ExtractionWarning: strings.Join(extractionWarnings, "; "),
 		}
 
 		return result, nil

@@ -63,6 +63,20 @@ type TextContent struct {
 	CharCount  int
 	LineCount  int
 	Paragraphs int
+
+	// BodyParts counts the archive members this extractor identified as document
+	// body (the main document, the worksheets, the slides). Zero means the
+	// container held nothing recognizable as body content at all — as opposed to a
+	// body that was read and turned out to be empty.
+	BodyParts int
+
+	// ExtractionWarning is a short, payload-free note set when a container that
+	// CAN carry a document body yielded no body text. Nothing used to distinguish
+	// that from a genuinely empty document: extraction reported Success with
+	// textLen 0, the router stamped Success, and --fail-on-incomplete returned 0,
+	// so a file whose body was skipped was indistinguishable from an empty one and
+	// the run looked clean. Callers surface this and count it as a coverage gap.
+	ExtractionWarning string
 }
 
 // ExtractText extracts text from an Office document
@@ -83,25 +97,56 @@ func ExtractText(filePath string) (*TextContent, error) {
 	switch ext {
 	case ".docx":
 		content.Format = "Word Document"
-		return extractDocxText(filePath, content)
+		content, err = extractDocxText(filePath, content)
 	case ".xlsx":
 		content.Format = "Excel Spreadsheet"
-		return extractXlsxText(filePath, content)
+		content, err = extractXlsxText(filePath, content)
 	case ".pptx":
 		content.Format = "PowerPoint Presentation"
-		return extractPptxText(filePath, content)
+		content, err = extractPptxText(filePath, content)
 	case ".odt":
 		content.Format = "OpenDocument Text"
-		return extractOdtText(filePath, content)
+		content, err = extractOdtText(filePath, content)
 	case ".ods":
 		content.Format = "OpenDocument Spreadsheet"
-		return extractOdsText(filePath, content)
+		content, err = extractOdsText(filePath, content)
 	case ".odp":
 		content.Format = "OpenDocument Presentation"
-		return extractOdpText(filePath, content)
+		content, err = extractOdpText(filePath, content)
 	default:
 		return nil, fmt.Errorf("unsupported file format: %s", ext)
 	}
+
+	noteEmptyExtraction(content, ext)
+	return content, err
+}
+
+// noteEmptyExtraction records an ExtractionWarning when a container whose format
+// carries a document body produced no body text.
+//
+// This is the visibility half of the part-selection fix. Selecting the body by
+// name means a name we do not recognize yields zero text, and zero text used to be
+// reported exactly like an empty document — Success=true, textLen=0, exit 0. So
+// the failure mode the part-name fix addresses was, by construction, silent: the
+// operator had no signal that a 40-page document contributed nothing to the scan.
+// The warning fires on the OUTCOME (no body text) rather than on any specific
+// cause, so it also covers whatever part-naming trick we have not thought of.
+func noteEmptyExtraction(content *TextContent, ext string) {
+	if content == nil || content.ExtractionWarning != "" {
+		return
+	}
+	if strings.TrimSpace(content.Text) != "" {
+		return
+	}
+	if content.BodyParts > 0 {
+		content.ExtractionWarning = fmt.Sprintf(
+			"no text extracted from %s: %d body part(s) were read but held no text",
+			ext, content.BodyParts)
+		return
+	}
+	content.ExtractionWarning = fmt.Sprintf(
+		"no text extracted from %s: no document body part was found in the archive, "+
+			"so document content was NOT scanned", ext)
 }
 
 // extractDocxText extracts text from a Word document
@@ -113,40 +158,47 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 	}
 	defer reader.Close()
 
-	// Find document content files
-	var documentFile *zip.File
-	var headerFiles []*zip.File
-	var footerFiles []*zip.File
-	var corePropsFile *zip.File
-	for _, file := range reader.File {
-		if file.Name == "word/document.xml" {
-			documentFile = file
-		} else if strings.HasPrefix(file.Name, "word/header") && strings.HasSuffix(file.Name, ".xml") {
-			headerFiles = append(headerFiles, file)
-		} else if strings.HasPrefix(file.Name, "word/footer") && strings.HasSuffix(file.Name, ".xml") {
-			footerFiles = append(footerFiles, file)
-		} else if file.Name == "docProps/core.xml" {
-			corePropsFile = file
-		}
-	}
+	// Find document content files. Part names are producer-controlled, so the main
+	// document is located through the package relationships and by conventional
+	// name case-insensitively, then unioned — see ooxml_parts.go for why one
+	// capital letter used to drop the entire body.
+	pkg := newOOXMLPackage(reader.File)
+	documentFiles := unionParts(
+		pkg.relatedParts("", "officeDocument"),
+		[]*zip.File{pkg.lookup("word/document.xml"), pkg.lookup("word/main.xml")},
+	)
+	headerFiles := pkg.matching("word/header", ".xml")
+	footerFiles := pkg.matching("word/footer", ".xml")
+	corePropsFile := pkg.lookup("docProps/core.xml")
 
-	if documentFile == nil {
+	if len(documentFiles) == 0 {
 		return content, fmt.Errorf("document.xml not found in the archive")
 	}
+	content.BodyParts = len(documentFiles)
 
-	// Extract raw XML content
-	rc, err := documentFile.Open()
-	if err != nil {
-		return content, err
-	}
-	docContent, err := readZipEntryLimited(rc)
-	rc.Close()
-	if err != nil {
-		return content, err
+	// Extract raw XML content. Where a package names more than one main-document
+	// part (relationships pointing somewhere other than the conventional name, or
+	// two entries differing only in case) every one is extracted: dropping the
+	// ones we did not expect is exactly how content escaped scanning before.
+	var rawDoc strings.Builder
+	for _, documentFile := range documentFiles {
+		if rawDoc.Len() > MaxTotalTextBytes {
+			break
+		}
+		rc, err := documentFile.Open()
+		if err != nil {
+			continue
+		}
+		part, err := readZipEntryLimited(rc)
+		rc.Close()
+		if err != nil {
+			continue
+		}
+		rawDoc.Write(part)
 	}
 
 	// First, remove all XML tags that aren't text content
-	cleanedXML := string(docContent)
+	cleanedXML := rawDoc.String()
 
 	// Handle table cells and tabs - preserve tabular structure
 	// Convert table cell boundaries to tabs
@@ -263,20 +315,35 @@ func extractXlsxText(filePath string, content *TextContent) (*TextContent, error
 	}
 	defer reader.Close()
 
-	// Find shared strings and worksheets
-	var sharedStringsFile *zip.File
-	var worksheets []*zip.File
-	var corePropsFile *zip.File
+	// Find shared strings and worksheets. Resolved through the workbook's
+	// relationships and by conventional name case-insensitively, then unioned —
+	// see ooxml_parts.go. A capitalized "xl/Worksheets/" or "xl/SharedStrings.xml"
+	// used to make the whole sheet, or every shared string in it, invisible.
+	pkg := newOOXMLPackage(reader.File)
+	workbookParts := unionParts(
+		pkg.relatedParts("", "officeDocument"),
+		[]*zip.File{pkg.lookup("xl/workbook.xml")},
+	)
 
-	for _, file := range reader.File {
-		if file.Name == "xl/sharedStrings.xml" {
-			sharedStringsFile = file
-		} else if strings.HasPrefix(file.Name, "xl/worksheets/sheet") && strings.HasSuffix(file.Name, ".xml") {
-			worksheets = append(worksheets, file)
-		} else if file.Name == "docProps/core.xml" {
-			corePropsFile = file
-		}
+	var relSheets, relShared []*zip.File
+	for _, wb := range workbookParts {
+		relSheets = append(relSheets, pkg.relatedParts(wb.Name, "worksheet")...)
+		relShared = append(relShared, pkg.relatedParts(wb.Name, "sharedStrings")...)
 	}
+
+	worksheets := unionParts(relSheets, pkg.matching("xl/worksheets/", ".xml"))
+	sharedStringsFiles := unionParts(relShared, []*zip.File{pkg.lookup("xl/sharedStrings.xml")})
+	corePropsFile := pkg.lookup("docProps/core.xml")
+
+	// Shared strings are referenced by POSITION, so only one table can be
+	// authoritative; the relationship-resolved one leads and a conventional-name
+	// hit is the fallback. Concatenating two tables would shift every index.
+	var sharedStringsFile *zip.File
+	if len(sharedStringsFiles) > 0 {
+		sharedStringsFile = sharedStringsFiles[0]
+	}
+
+	content.BodyParts = len(worksheets)
 
 	// Extract shared strings
 	sharedStrings := extractSharedStringsSimple(sharedStringsFile)
@@ -293,9 +360,9 @@ func extractXlsxText(filePath string, content *TextContent) (*TextContent, error
 		if allText.Len() > MaxTotalTextBytes {
 			break
 		}
-		// Get sheet name
-		sheetName := strings.TrimPrefix(worksheet.Name, "xl/worksheets/")
-		sheetName = strings.TrimSuffix(sheetName, ".xml")
+		// Get sheet name (case-insensitive trim: a capitalized "xl/Worksheets/"
+		// otherwise left the directory in the emitted section label).
+		sheetName := trimPartLabel(worksheet.Name, "xl/worksheets/")
 
 		allText.WriteString("--- " + sheetName + " ---\n")
 
@@ -329,23 +396,27 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 	}
 	defer reader.Close()
 
-	// Find all presentation content files. byName lets us resolve a slide's notes
-	// through its relationships part, rather than guessing by position.
-	var slides []*zip.File
-	var masters []*zip.File
-	var corePropsFile *zip.File
-	byName := make(map[string]*zip.File, len(reader.File))
+	// Find all presentation content files. Slides come from the presentation's
+	// relationships unioned with the conventional name matched case-insensitively
+	// (see ooxml_parts.go); pkg also resolves each slide's notes through its own
+	// relationships part, rather than guessing by position.
+	pkg := newOOXMLPackage(reader.File)
+	presentationParts := unionParts(
+		pkg.relatedParts("", "officeDocument"),
+		[]*zip.File{pkg.lookup("ppt/presentation.xml")},
+	)
 
-	for _, file := range reader.File {
-		byName[file.Name] = file
-		if strings.HasPrefix(file.Name, "ppt/slides/slide") && strings.HasSuffix(file.Name, ".xml") {
-			slides = append(slides, file)
-		} else if strings.HasPrefix(file.Name, "ppt/slideMasters/") && strings.HasSuffix(file.Name, ".xml") {
-			masters = append(masters, file)
-		} else if file.Name == "docProps/core.xml" {
-			corePropsFile = file
-		}
+	var relSlides, relMasters []*zip.File
+	for _, pres := range presentationParts {
+		relSlides = append(relSlides, pkg.relatedParts(pres.Name, "slide")...)
+		relMasters = append(relMasters, pkg.relatedParts(pres.Name, "slideMaster")...)
 	}
+
+	slides := unionParts(relSlides, pkg.matching("ppt/slides/slide", ".xml"))
+	masters := unionParts(relMasters, pkg.matching("ppt/slideMasters/", ".xml"))
+	corePropsFile := pkg.lookup("docProps/core.xml")
+
+	content.BodyParts = len(slides) + len(masters)
 
 	// Order slides and masters by their numeric index. zip.OpenReader returns
 	// entries in the archive's central-directory order, which the producer
@@ -378,7 +449,7 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 		// have notes on only some slides and in a different order — so a slide
 		// got another slide's speaker notes (or none), mislabeling where that
 		// text, and any PII in it, came from.
-		if notesFile := pptxNotesForSlide(slide, byName); notesFile != nil {
+		if notesFile := pptxNotesForSlide(slide, pkg); notesFile != nil {
 			notesText, err := extractTextFromXML(notesFile, "//a:t")
 			if err == nil && notesText != "" {
 				allText.WriteString("\n[SPEAKER NOTES]\n")
@@ -427,23 +498,18 @@ func extractOdtText(filePath string, content *TextContent) (*TextContent, error)
 	}
 	defer reader.Close()
 
-	// Find content and style files
-	var contentFile *zip.File
-	var stylesFile *zip.File
-	var metaFile *zip.File
-	for _, file := range reader.File {
-		if file.Name == "content.xml" {
-			contentFile = file
-		} else if file.Name == "styles.xml" {
-			stylesFile = file
-		} else if file.Name == "meta.xml" {
-			metaFile = file
-		}
-	}
+	// Find content and style files. ODF has no relationship parts, but the entry
+	// names are still producer-controlled, so match them case-insensitively for the
+	// same reason the OOXML paths do (ooxml_parts.go).
+	pkg := newOOXMLPackage(reader.File)
+	contentFile := pkg.lookup("content.xml")
+	stylesFile := pkg.lookup("styles.xml")
+	metaFile := pkg.lookup("meta.xml")
 
 	if contentFile == nil {
 		return content, fmt.Errorf("content.xml not found in the archive")
 	}
+	content.BodyParts = 1
 
 	// Extract text from content.xml
 	docText, err := extractTextFromXML(contentFile, "//text:p")
@@ -489,20 +555,16 @@ func extractOdsText(filePath string, content *TextContent) (*TextContent, error)
 	}
 	defer reader.Close()
 
-	// Find the content.xml file which contains the spreadsheet data
-	var contentFile *zip.File
-	var metaFile *zip.File
-	for _, file := range reader.File {
-		if file.Name == "content.xml" {
-			contentFile = file
-		} else if file.Name == "meta.xml" {
-			metaFile = file
-		}
-	}
+	// Find the content.xml file which contains the spreadsheet data, matched
+	// case-insensitively like the other container paths (ooxml_parts.go).
+	pkg := newOOXMLPackage(reader.File)
+	contentFile := pkg.lookup("content.xml")
+	metaFile := pkg.lookup("meta.xml")
 
 	if contentFile == nil {
 		return content, fmt.Errorf("content.xml not found in the archive")
 	}
+	content.BodyParts = 1
 
 	// Extract text from content.xml
 	// For ODS, we need to extract cell values
@@ -534,23 +596,17 @@ func extractOdpText(filePath string, content *TextContent) (*TextContent, error)
 	}
 	defer reader.Close()
 
-	// Find content and style files
-	var contentFile *zip.File
-	var stylesFile *zip.File
-	var metaFile *zip.File
-	for _, file := range reader.File {
-		if file.Name == "content.xml" {
-			contentFile = file
-		} else if file.Name == "styles.xml" {
-			stylesFile = file
-		} else if file.Name == "meta.xml" {
-			metaFile = file
-		}
-	}
+	// Find content and style files, matched case-insensitively like the other
+	// container paths (ooxml_parts.go).
+	pkg := newOOXMLPackage(reader.File)
+	contentFile := pkg.lookup("content.xml")
+	stylesFile := pkg.lookup("styles.xml")
+	metaFile := pkg.lookup("meta.xml")
 
 	if contentFile == nil {
 		return content, fmt.Errorf("content.xml not found in the archive")
 	}
+	content.BodyParts = 1
 
 	// Extract text from content.xml
 	docText, err := extractTextFromXML(contentFile, "//text:p")
@@ -947,48 +1003,21 @@ func sortByNumericSuffix(files []*zip.File) {
 	})
 }
 
-// slideRelTargetRe matches a notesSlide relationship target inside a slide's
-// .rels part, e.g. Target="../notesSlides/notesSlide3.xml".
-var slideRelTargetRe = regexp.MustCompile(`Target="([^"]*notesSlides/notesSlide\d+\.xml)"`)
-
 // pptxNotesForSlide resolves the notesSlide part that belongs to the given slide
-// by reading the slide's relationships (ppt/slides/_rels/slideN.xml.rels), which
-// is the authoritative link. Returns nil if the slide has no notes or the rels
-// part is missing/unreadable. This replaces the previous positional pairing of
-// notes[i] with slides[i], which mis-attached notes because notesSlideN is not
-// aligned with slideN.
-func pptxNotesForSlide(slide *zip.File, byName map[string]*zip.File) *zip.File {
-	// ppt/slides/slideN.xml -> ppt/slides/_rels/slideN.xml.rels
-	base := slide.Name[strings.LastIndex(slide.Name, "/")+1:]
-	relsName := "ppt/slides/_rels/" + base + ".rels"
-	relsFile := byName[relsName]
-	if relsFile == nil {
+// through the slide's own relationships, which is the authoritative link. Returns
+// nil if the slide has no notes or its rels part is missing/unreadable. This
+// replaces the previous positional pairing of notes[i] with slides[i], which
+// mis-attached notes because notesSlideN is not aligned with slideN.
+//
+// Relationship lookup now goes through ooxmlPackage, so the slide's .rels part is
+// found regardless of the case the producer used and the target is resolved by the
+// shared relative-target rules rather than by trimming "../" by hand.
+func pptxNotesForSlide(slide *zip.File, pkg *ooxmlPackage) *zip.File {
+	notes := pkg.relatedParts(slide.Name, "notesSlide")
+	if len(notes) == 0 {
 		return nil
 	}
-
-	rc, err := relsFile.Open()
-	if err != nil {
-		return nil
-	}
-	defer rc.Close()
-
-	data, err := readZipEntryLimited(rc)
-	if err != nil {
-		return nil
-	}
-
-	m := slideRelTargetRe.FindSubmatch(data)
-	if len(m) != 2 {
-		return nil
-	}
-
-	// Resolve the (possibly relative) target against the ppt/ base and look it up.
-	target := string(m[1])
-	target = strings.TrimPrefix(target, "../")
-	if !strings.HasPrefix(target, "ppt/") {
-		target = "ppt/" + target
-	}
-	return byName[target]
+	return notes[0]
 }
 
 // sortWorksheets sorts worksheets by sheet number

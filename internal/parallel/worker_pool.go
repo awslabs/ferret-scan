@@ -118,6 +118,13 @@ type Result struct {
 	// Nil when redaction was disabled, skipped (no matches) or succeeded.
 	RedactionError error
 
+	// ExtractionWarning is a payload-free note that extraction succeeded but
+	// yielded suspiciously nothing — currently, a container whose format carries a
+	// document body from which no body text came out. Like the two errors above it
+	// is kept out of Error so the file's matches survive; unlike them it is not an
+	// error at all, only a coverage signal. Empty on a normal extraction.
+	ExtractionWarning string
+
 	// Redaction results
 	RedactionResult *redactors.RedactionResult
 	RedactedPath    string
@@ -362,16 +369,22 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		})
 	}
 
+	var extractionWarning string
+	if processedContent != nil {
+		extractionWarning = processedContent.ExtractionWarning
+	}
+
 	return &Result{
-		JobID:           job.JobID,
-		FilePath:        job.FilePath,
-		Matches:         allMatches,
-		Error:           lastError,
-		ValidationError: validationErr,
-		RedactionError:  redactionErr,
-		Duration:        duration,
-		RedactionResult: redactionResult,
-		RedactedPath:    redactedPath,
+		JobID:             job.JobID,
+		FilePath:          job.FilePath,
+		Matches:           allMatches,
+		Error:             lastError,
+		ValidationError:   validationErr,
+		RedactionError:    redactionErr,
+		ExtractionWarning: extractionWarning,
+		Duration:          duration,
+		RedactionResult:   redactionResult,
+		RedactedPath:      redactedPath,
 	}
 }
 
