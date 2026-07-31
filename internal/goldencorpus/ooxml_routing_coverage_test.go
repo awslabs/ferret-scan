@@ -5,6 +5,7 @@ package goldencorpus
 
 import (
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,10 +27,11 @@ import (
 // "--- name ---" separators and the ContentRouter re-splits it. A case that quietly
 // drops to one extractor would still produce a stable snapshot while testing nothing.
 //
-// The specific way that happens is a path guard: the Office metadata extractor
-// refuses paths under /var/, /tmp/, /home/ and C:\Users\, which is where t.TempDir()
-// lives on all three CI platforms. caseTempDir exists to avoid it, and this test
-// fails if that ever regresses.
+// The specific way that happened was a path guard: the Office metadata extractor
+// refused paths under /var/, /tmp/, /home/ and C:\Users\, which is where t.TempDir()
+// lives on all three CI platforms. That guard is gone, so this test now runs
+// everywhere instead of skipping — and it is what fails if the guard, or anything
+// else that costs a fixture its second extractor, comes back.
 func TestOOXMLCasesReachTheCombinedArm(t *testing.T) {
 	var seen int
 	for _, fc := range FileCases {
@@ -39,17 +41,6 @@ func TestOOXMLCasesReachTheCombinedArm(t *testing.T) {
 		seen++
 		fc := fc
 		t.Run(fc.Name, func(t *testing.T) {
-			// Where the checkout itself sits under a path the Office extractor refuses,
-			// no fixture location inside the repo can reach the second extractor. That
-			// is a property of the environment, not of the routing code, so report it as
-			// a skip. (The guard is itself a defect — an ordinary Linux user's
-			// ~/report.docx also loses Office metadata extraction — but that fix belongs
-			// to the extraction layer.)
-			if cwd, blocked := officePathGuardApplies(); blocked {
-				t.Skipf("checkout is under a path the Office metadata extractor rejects (%s); "+
-					"office_metadata cannot run for any fixture in this repo", cwd)
-			}
-
 			dir := caseTempDir(t, fc)
 			path := writeFixture(t, dir, fc)
 
@@ -97,33 +88,68 @@ func TestOOXMLCasesReachTheCombinedArm(t *testing.T) {
 	}
 }
 
-// TestCaseTempDirAvoidsTheOfficePathGuard pins the helper's contract directly, so the
-// reason for the repo-relative directory survives future refactoring. Without it, a
-// well-meaning simplification back to t.TempDir() would make six corpus cases vacuous
-// and nothing would fail.
-func TestCaseTempDirAvoidsTheOfficePathGuard(t *testing.T) {
-	ooxml := FileCase{Filename: "book.xlsx"}
-	dir := caseTempDir(t, ooxml)
-
-	// Only assert the property caseTempDir can actually deliver. When the checkout is
-	// already inside the denylist, no directory under the repo escapes it, and that is
-	// the extractor's defect rather than this helper's.
-	if cwd, blocked := officePathGuardApplies(); blocked {
-		t.Skipf("checkout is under a rejected path (%s); caseTempDir cannot escape it", cwd)
+// TestOfficeMetadataWorksUnderATempPath pins the fix that let the tests above stop
+// skipping: an Office fixture written to an ordinary temp directory must still get
+// Office metadata extraction.
+//
+// It asserts the user-facing property directly rather than the shape of a path
+// list. The old guard refused /var/, /tmp/, /home/ and C:\Users\, which is both
+// where t.TempDir() resolves on every platform and — more importantly — where all
+// of a Linux user's own files live: `ferret-scan --file ~/report.docx` lost
+// metadata extraction with no error shown. Measured on this fixture with the
+// pre-fix binary: 2 findings at a temp path versus 4 at an allowed one, the two
+// missing ones being the metadata fields.
+//
+// This is deliberately a separate assertion from the corpus snapshots. A future
+// change that re-introduced any location-dependent refusal would make six cases
+// quietly cover less; this fails outright and names the reason.
+func TestOfficeMetadataWorksUnderATempPath(t *testing.T) {
+	dir := t.TempDir()
+	lower := strings.ToLower(filepath.ToSlash(dir))
+	if !strings.HasPrefix(lower, "/var/") && !strings.HasPrefix(lower, "/tmp/") &&
+		!strings.HasPrefix(lower, "/home/") && !strings.Contains(lower, ":/users/") {
+		t.Skipf("t.TempDir() returned %q, which is not under any of the roots the old "+
+			"guard refused, so this platform cannot exercise the regression", dir)
 	}
 
-	lower := strings.ToLower(strings.ReplaceAll(dir, "\\", "/"))
-	for _, bad := range officePathGuardRejectedPrefixes {
-		if strings.HasPrefix(lower, bad) {
-			t.Errorf("caseTempDir returned %q for an OOXML case, which starts with the "+
-				"rejected prefix %q; the Office metadata extractor will refuse it and the "+
-				"case will silently lose a preprocessor", dir, bad)
+	fc := FileCase{
+		Filename: "guard_probe.docx",
+		Checks:   []string{"SSN", "METADATA"},
+		Content: BuildDOCX("Jane Analyst", "Ops Reviewer", []string{
+			"Employee SSN 449-87-4100 on file.",
+		}),
+		EnablePreprocessors: true,
+	}
+	path := writeFixture(t, dir, fc)
+
+	res, err := core.ScanFile(core.ScanConfig{
+		FilePath:            path,
+		Checks:              fc.Checks,
+		EnablePreprocessors: fc.EnablePreprocessors,
+		LogWriter:           io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("ScanFile: %v", err)
+	}
+
+	var sawMeta, sawBody bool
+	var got []string
+	for _, m := range res.Matches {
+		got = append(got, m.Type)
+		switch m.Type {
+		case "AUTHOR_INFO", "LAST_MODIFIED_BY":
+			sawMeta = true
+		case "SSN":
+			sawBody = true
 		}
 	}
-
-	// And the plain-text path must NOT pay the cost of a repo-relative dir.
-	plain := caseTempDir(t, FileCase{Filename: "notes.txt"})
-	if plain == dir {
-		t.Error("caseTempDir returned the same directory for a .txt and an .xlsx case")
+	if !sawBody {
+		t.Errorf("no SSN finding from a fixture at %s; the document body was not scanned. types=%v", dir, got)
+	}
+	if !sawMeta {
+		t.Errorf("no metadata finding from a fixture at %s, so the Office metadata extractor "+
+			"refused this path. That is the guard this PR removed: every file a Linux user owns "+
+			"is under /home/, so it silently dropped author/company/custom properties from every "+
+			"scan. types=%v", dir, got)
 	}
 }

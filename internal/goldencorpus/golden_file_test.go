@@ -24,18 +24,6 @@ func TestGoldenFileScanFormats(t *testing.T) {
 	for _, fc := range FileCases {
 		fc := fc
 		t.Run(fc.Name, func(t *testing.T) {
-			// An OOXML snapshot is only meaningful where both extractors can run. On a
-			// checkout under a path the Office extractor rejects, the metadata half is
-			// unreachable and the recorded output would differ from every other
-			// platform's — so skip instead of locking a machine-specific result.
-			if needsGuardFreePath(fc.Filename) {
-				if cwd, blocked := officePathGuardApplies(); blocked {
-					t.Skipf("checkout is under a path the Office metadata extractor rejects (%s), "+
-						"so office_metadata cannot run for any fixture in this repo and this "+
-						"snapshot would not match other platforms; see caseTempDir", cwd)
-				}
-			}
-
 			tmpDir := caseTempDir(t, fc)
 			path := writeFixture(t, tmpDir, fc) // forward-slash scan path
 
@@ -141,80 +129,36 @@ func writeFixture(t *testing.T, tmpDir string, fc FileCase) string {
 	return filepath.ToSlash(nativePath) // "/"-normalized path for the scan
 }
 
-// caseTempDir returns the directory a case's fixture is written to.
+// caseTempDir returns the directory a case's fixture is written to: t.TempDir()
+// for every case.
 //
-// It is NOT always t.TempDir(). The Office metadata extractor validates the path it is
-// handed and refuses anything whose absolute form starts with /var/, /tmp/, /home/,
-// C:\Users\ and similar (meta-extract-officelib/office-extractor.go validateFilePath).
-// t.TempDir() resolves under exactly those roots on every platform. An Office fixture
-// written there silently loses the office_metadata extractor: the file then has only
-// ONE capable preprocessor, takes the single-extractor fast path, and never reaches the
-// combined_preprocessors routing arm these cases exist to lock. Nothing fails — the
-// snapshot just records a scan that skipped the code under test.
+// It used to hand OOXML cases a repo-relative directory instead, and the OOXML
+// tests used to skip entirely on a checkout under /home/. Both existed to work
+// around the Office metadata extractor's system-directory denylist, which refused
+// /var/, /tmp/, /home/ and C:\Users\ — i.e. wherever t.TempDir() lives on every
+// platform, and on GitHub's Linux runners the checkout itself. An Office fixture
+// under a refused path silently lost the office_metadata extractor and the case
+// recorded a scan that skipped the code under test.
 //
-// OOXML cases therefore get a repo-relative directory, following
-// internal/router/determinism_test.go. Note this is NOT sufficient everywhere: on a
-// checkout under a rejected prefix (GitHub's Linux runners use
-// /home/runner/work/...) the repo itself is inside the denylist and no fixture location
-// can escape it. officePathGuardApplies reports that case so the affected tests skip
-// with an explanation rather than recording, or asserting, unreachable behavior.
-func caseTempDir(t *testing.T, fc FileCase) string {
+// That denylist is gone (meta-extract-officelib/office-extractor.go
+// validateFilePath), so a temp dir works everywhere and the six OOXML cases are
+// real assertions on all three platforms instead of platform-dependent skips.
+// TestOOXMLCasesReachTheCombinedArm still checks the precondition every run, so a
+// regression that re-broke extraction under temp paths would fail rather than skip.
+func caseTempDir(t *testing.T, _ FileCase) string {
 	t.Helper()
-	if !needsGuardFreePath(fc.Filename) {
-		return t.TempDir()
-	}
-	dir, err := os.MkdirTemp(".", "golden-ooxml-")
-	if err != nil {
-		t.Fatalf("creating repo-relative fixture dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		t.Fatalf("resolving fixture dir: %v", err)
-	}
-	return abs
+	return t.TempDir()
 }
 
-// needsGuardFreePath reports whether a fixture's extension routes through the
-// path-validating Office metadata extractor.
+// needsGuardFreePath reports whether a fixture is an OOXML container, and so
+// routes through BOTH the text and Office metadata extractors — the
+// dual-preprocessor arm the OOXML cases exist to lock.
 func needsGuardFreePath(filename string) bool {
 	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm":
 		return true
 	}
 	return false
-}
-
-// officePathGuardRejectedPrefixes mirrors the extractor's denylist for the roots a test
-// checkout can plausibly live under. It is intentionally a copy rather than an exported
-// hook: the extractor's list is a private implementation detail, and the copy exists
-// only so tests can DETECT the condition, never to depend on it.
-var officePathGuardRejectedPrefixes = []string{"/var/", "/tmp/", "/home/", "/root/", "c:/users/"}
-
-// officePathGuardApplies reports whether this checkout sits under a path the Office
-// metadata extractor refuses, which makes office_metadata extraction impossible for any
-// fixture written anywhere inside the repo.
-//
-// This is a property of where the repository happens to be checked out, not of the code
-// under test, so tests that need the extractor skip rather than fail. The underlying
-// guard is a real defect — it also means an ordinary Linux user's ~/report.docx gets no
-// Office metadata extraction — but fixing it belongs to the extraction layer, not to a
-// corpus change.
-func officePathGuardApplies() (string, bool) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", false
-	}
-	norm := strings.ToLower(filepath.ToSlash(cwd))
-	if !strings.HasSuffix(norm, "/") {
-		norm += "/"
-	}
-	for _, p := range officePathGuardRejectedPrefixes {
-		if strings.HasPrefix(norm, p) {
-			return cwd, true
-		}
-	}
-	return cwd, false
 }
 
 // matchKeys reduces a match slice to a sorted, path-independent identity list

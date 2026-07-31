@@ -393,26 +393,48 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 	return zipContents, extractedText.String(), textPositions, nil
 }
 
-// isTextContainingFile determines if a ZIP file contains text content based on document type
+// isTextContainingFile determines if a ZIP file contains text content based on document type.
+//
+// Matching is case-INSENSITIVE because a zip entry name is producer-controlled data and
+// nothing makes the conventional spelling normative. This mirrors the extractor's part
+// selection, and it has to: the extractor finds the text, the redactor rewrites it, and
+// if only one of them recognizes a part then the tool reports a finding it cannot
+// redact. Measured before this change, on a .docx whose body part was named
+// word/Document.xml: the SSN and card were detected (4 findings) yet both survived
+// --enable-redaction in cleartext inside the rewritten file, because this predicate's
+// strings.Contains(fileName, "document") is case-sensitive and never matched. A
+// reported-but-unredacted value is the same leak as an undetected one, dressed as a
+// success.
 func (or *OfficeRedactor) isTextContainingFile(fileName string, docType OfficeDocumentType) bool {
+	name := strings.ToLower(fileName)
+	if !strings.HasSuffix(name, ".xml") {
+		return false
+	}
+
 	switch docType {
 	case DocumentTypeDOCX:
-		// Word documents: main document, headers, footers, footnotes, etc.
-		return strings.HasPrefix(fileName, "word/") && strings.HasSuffix(fileName, ".xml") &&
-			(strings.Contains(fileName, "document") || strings.Contains(fileName, "header") ||
-				strings.Contains(fileName, "footer") || strings.Contains(fileName, "footnote") ||
-				strings.Contains(fileName, "endnote") || strings.Contains(fileName, "comment"))
+		// Word: the main document plus the parts that carry user-visible prose.
+		// "main" is included alongside "document" because a producer may name the
+		// body part word/main.xml; the extractor accepts it, so the redactor must.
+		if !strings.HasPrefix(name, "word/") {
+			return false
+		}
+		for _, part := range []string{"document", "main", "header", "footer", "footnote", "endnote", "comment"} {
+			if strings.Contains(name, part) {
+				return true
+			}
+		}
+		return false
 
 	case DocumentTypeXLSX:
-		// Excel documents: worksheets and shared strings
-		return (strings.HasPrefix(fileName, "xl/worksheets/") && strings.HasSuffix(fileName, ".xml")) ||
-			fileName == "xl/sharedStrings.xml"
+		// Excel: worksheets and the shared string table.
+		return strings.HasPrefix(name, "xl/worksheets/") || name == "xl/sharedstrings.xml"
 
 	case DocumentTypePPTX:
-		// PowerPoint documents: slides, slide layouts, slide masters
-		return (strings.HasPrefix(fileName, "ppt/slides/") && strings.HasSuffix(fileName, ".xml")) ||
-			(strings.HasPrefix(fileName, "ppt/slideLayouts/") && strings.HasSuffix(fileName, ".xml")) ||
-			(strings.HasPrefix(fileName, "ppt/slideMasters/") && strings.HasSuffix(fileName, ".xml"))
+		// PowerPoint: slides, layouts, masters.
+		return strings.HasPrefix(name, "ppt/slides/") ||
+			strings.HasPrefix(name, "ppt/slidelayouts/") ||
+			strings.HasPrefix(name, "ppt/slidemasters/")
 
 	default:
 		return false

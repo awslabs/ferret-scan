@@ -31,6 +31,15 @@ type ProcessedContent struct {
 	Success       bool
 	Error         error
 
+	// ExtractionWarning is a short, payload-free note that extraction SUCCEEDED
+	// but produced suspiciously nothing — e.g. a container whose format carries a
+	// document body yielded no body text. It is deliberately not an Error: the
+	// file was read and whatever was extracted is valid, so the scan continues and
+	// the findings stand. It exists because "extracted nothing" and "the document
+	// is empty" used to be indistinguishable — both were Success with textLen 0 —
+	// which made a skipped document body look like a clean scan.
+	ExtractionWarning string
+
 	// Position mapping information for redaction
 	PositionMappings []PositionMapping `json:"position_mappings,omitempty"`
 
