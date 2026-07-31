@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/forged_first.docx (line 1)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/forged_first.docx (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -107,7 +107,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (last modified by) in this file.\n\n**Location:** <TMPDIR>/forged_first.docx (line 2)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (last modified by) in this file.\n\n**Location:** <TMPDIR>/forged_first.docx (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

@@ -11,8 +11,6 @@
         "context_doctype": "Unknown",
         "context_domain": "HR_Payroll",
         "context_impact": 45,
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "original_confidence": 100,
         "original_file": "<TMPDIR>/alt_case.docx",
         "semantic_context": {
@@ -50,8 +48,6 @@
         "context_doctype": "Unknown",
         "context_domain": "HR_Payroll",
         "context_impact": 15,
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "original_confidence": 100,
         "original_file": "<TMPDIR>/alt_case.docx",
         "semantic_context": {
@@ -79,7 +75,7 @@
       "validator": "creditcard"
     },
     {
-      "confidence": 65,
+      "confidence": 60.00000000000001,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/alt_case.docx",
       "line_number": 1,
@@ -89,8 +85,6 @@
         "context_doctype": "Unknown",
         "context_domain": "HR_Payroll",
         "context_impact": 0,
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "full_field": "Author: Jane Analyst",
         "metadata_type": "AUTHOR_INFO",
         "original_confidence": 60.00000000000001,
@@ -119,7 +113,7 @@
       "validator": "metadata"
     },
     {
-      "confidence": 65,
+      "confidence": 60.00000000000001,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/alt_case.docx",
       "line_number": 2,
@@ -129,8 +123,6 @@
         "context_doctype": "Unknown",
         "context_domain": "HR_Payroll",
         "context_impact": 0,
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "full_field": "LastModifiedBy: Ops Reviewer",
         "metadata_type": "LAST_MODIFIED_BY",
         "original_confidence": 60.00000000000001,

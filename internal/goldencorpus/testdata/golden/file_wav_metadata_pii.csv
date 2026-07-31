@@ -1,6 +1,6 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
 <TMPDIR>/clip.wav,DOCUMENT_COMMENTS,HIGH,100.0,7,contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE
-<TMPDIR>/clip.wav,AWS_ACCESS_KEY,MEDIUM,89.0,7,AKIAIOSFODNN7EXAMPLE
-<TMPDIR>/clip.wav,PHONE,MEDIUM,87.0,7,212-555-0142
-<TMPDIR>/clip.wav,AUTHOR_INFO,MEDIUM,85.0,6,john.doe@example.com
-<TMPDIR>/clip.wav,BUSINESS,LOW,30.0,6,john.doe@example.com
+<TMPDIR>/clip.wav,AWS_ACCESS_KEY,MEDIUM,84.0,7,AKIAIOSFODNN7EXAMPLE
+<TMPDIR>/clip.wav,PHONE,MEDIUM,82.0,7,212-555-0142
+<TMPDIR>/clip.wav,AUTHOR_INFO,MEDIUM,80.0,6,john.doe@example.com
+<TMPDIR>/clip.wav,BUSINESS,LOW,25.0,6,john.doe@example.com
