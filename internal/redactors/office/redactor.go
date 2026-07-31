@@ -101,26 +101,6 @@ func NewOfficeRedactor(outputManager *redactors.OutputStructureManager, observer
 	}
 }
 
-// NewOfficeRedactorWithPositionCorrelation creates a new OfficeRedactor with custom position correlation settings
-func NewOfficeRedactorWithPositionCorrelation(outputManager *redactors.OutputStructureManager, observer observability.Observer, correlator position.PositionCorrelator, confidenceThreshold float64) *OfficeRedactor {
-	if observer == nil {
-		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
-	}
-
-	if correlator == nil {
-		correlator = position.NewDefaultPositionCorrelator()
-	}
-
-	return &OfficeRedactor{
-		observer:                  observer,
-		outputManager:             outputManager,
-		positionCorrelator:        correlator,
-		enablePositionCorrelation: true,
-		confidenceThreshold:       confidenceThreshold,
-		fallbackToSimple:          true,
-	}
-}
-
 // GetName returns the name of the redactor
 func (or *OfficeRedactor) GetName() string {
 	return "office_redactor"
@@ -699,26 +679,6 @@ func (or *OfficeRedactor) repackageOfficeDocument(contents *OfficeZipContents, o
 // generateReplacement delegates to the shared replacement package.
 func (or *OfficeRedactor) generateReplacement(originalText, dataType string, strategy redactors.RedactionStrategy) (string, error) {
 	return replacement.Generate(originalText, dataType, strategy), nil
-}
-
-// generateVerificationHash creates a hash of surrounding context for verification
-func (or *OfficeRedactor) generateVerificationHash(text string, startPos, endPos int) string {
-	if startPos < 0 || endPos > len(text) || startPos >= endPos {
-		return redactors.GenerateContextHash("invalid_position")
-	}
-	contextStart := startPos - 20
-	if contextStart < 0 {
-		contextStart = 0
-	}
-	contextEnd := endPos + 20
-	if contextEnd > len(text) {
-		contextEnd = len(text)
-	}
-	if contextStart >= contextEnd {
-		return redactors.GenerateContextHash("invalid_context")
-	}
-	context := text[contextStart:startPos] + "[HIDDEN]" + text[endPos:contextEnd]
-	return redactors.GenerateContextHash(context)
 }
 
 // calculateOverallConfidence calculates the overall confidence for the redaction

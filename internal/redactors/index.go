@@ -242,16 +242,6 @@ func (ri *RedactionAuditLog) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(ri, "", "  ")
 }
 
-// FromJSON creates a RedactionIndex from JSON data
-func FromJSON(data []byte) (*RedactionAuditLog, error) {
-	var index RedactionAuditLog
-	err := json.Unmarshal(data, &index)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal redaction index: %w", err)
-	}
-	return &index, nil
-}
-
 // GetContentRedactionsByDataType returns all content redactions for a specific data type
 func (ri *RedactionAuditLog) GetContentRedactionsByDataType(dataType string) []ContentRedaction {
 	var result []ContentRedaction
@@ -327,10 +317,4 @@ func (ri *RedactionAuditLog) Validate() error {
 func GenerateDocumentHash(content []byte) string {
 	hash := sha256.Sum256(content)
 	return hex.EncodeToString(hash[:])
-}
-
-// GenerateContextHash generates a hash for surrounding context
-func GenerateContextHash(context string) string {
-	hash := sha256.Sum256([]byte(context))
-	return hex.EncodeToString(hash[:8]) // Use first 8 bytes for shorter hash
 }

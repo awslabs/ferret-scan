@@ -55,26 +55,6 @@ func NewPlainTextRedactor(outputManager *redactors.OutputStructureManager, obser
 	}
 }
 
-// NewPlainTextRedactorWithPositionCorrelation creates a new PlainTextRedactor with custom position correlation settings
-func NewPlainTextRedactorWithPositionCorrelation(outputManager *redactors.OutputStructureManager, observer observability.Observer, correlator position.PositionCorrelator, confidenceThreshold float64) *PlainTextRedactor {
-	if observer == nil {
-		observer = observability.NewStandardObserver(observability.ObservabilityMetrics, nil)
-	}
-
-	if correlator == nil {
-		correlator = position.NewDefaultPositionCorrelator()
-	}
-
-	return &PlainTextRedactor{
-		observer:                  observer,
-		outputManager:             outputManager,
-		positionCorrelator:        correlator,
-		enablePositionCorrelation: true,
-		confidenceThreshold:       confidenceThreshold,
-		fallbackToSimple:          true,
-	}
-}
-
 // SetPositionCorrelationEnabled enables or disables position correlation
 func (ptr *PlainTextRedactor) SetPositionCorrelationEnabled(enabled bool) {
 	ptr.enablePositionCorrelation = enabled
@@ -432,33 +412,6 @@ func (ptr *PlainTextRedactor) findMatchPosition(text string, match detector.Matc
 	return startPos, endPos, nil
 }
 
-// generateVerificationHash creates a hash of surrounding context for verification
-func (ptr *PlainTextRedactor) generateVerificationHash(text string, startPos, endPos int) string {
-	// Validate input parameters
-	if startPos < 0 || endPos > len(text) || startPos >= endPos {
-		return redactors.GenerateContextHash("invalid_position")
-	}
-
-	// Extract context around the match
-	contextStart := startPos - 20
-	if contextStart < 0 {
-		contextStart = 0
-	}
-
-	contextEnd := endPos + 20
-	if contextEnd > len(text) {
-		contextEnd = len(text)
-	}
-
-	// Additional safety check
-	if contextStart > len(text) || contextEnd < 0 || contextStart >= contextEnd {
-		return redactors.GenerateContextHash("invalid_context")
-	}
-
-	context := text[contextStart:startPos] + "[HIDDEN]" + text[endPos:contextEnd]
-	return redactors.GenerateContextHash(context)
-}
-
 // calculateOverallConfidence calculates the overall confidence for the redaction
 func (ptr *PlainTextRedactor) calculateOverallConfidence(redactionMap []redactors.RedactionMapping) float64 {
 	if len(redactionMap) == 0 {
@@ -659,46 +612,14 @@ func (ptr *PlainTextRedactor) getPositionMethodString(correlationUsed bool) stri
 	return "simple_text_search"
 }
 
-// validatePositionCorrelationResult validates the result of position correlation
-func (ptr *PlainTextRedactor) validatePositionCorrelationResult(correlation *position.PositionCorrelation, match detector.Match, originalText string) error {
-	if correlation == nil {
-		return fmt.Errorf("correlation result is nil")
+// GetPositionCorrelationStats returns statistics about position correlation performance
+func (ptr *PlainTextRedactor) GetPositionCorrelationStats() map[string]interface{} {
+	return map[string]interface{}{
+		"correlation_enabled":  ptr.enablePositionCorrelation,
+		"confidence_threshold": ptr.confidenceThreshold,
+		"fallback_enabled":     ptr.fallbackToSimple,
+		"correlator_type":      fmt.Sprintf("%T", ptr.positionCorrelator),
 	}
-
-	if correlation.OriginalPosition == nil {
-		return fmt.Errorf("original position is nil")
-	}
-
-	// Check if the position is within bounds
-	if correlation.OriginalPosition.CharOffset < 0 || correlation.OriginalPosition.CharOffset >= len(originalText) {
-		return fmt.Errorf("character offset %d is out of bounds (0-%d)",
-			correlation.OriginalPosition.CharOffset, len(originalText)-1)
-	}
-
-	// Check if we can extract the expected text at the correlated position
-	startPos := correlation.OriginalPosition.CharOffset
-	endPos := startPos + len(match.Text)
-
-	if endPos > len(originalText) {
-		return fmt.Errorf("end position %d exceeds text length %d", endPos, len(originalText))
-	}
-
-	actualText := originalText[startPos:endPos]
-	if actualText != match.Text {
-		// Allow some flexibility for fuzzy matches
-		if correlation.Method == position.CorrelationFuzzy {
-			// Calculate similarity and allow if above threshold
-			similarity := ptr.calculateTextSimilarity(actualText, match.Text)
-			if similarity < 0.8 {
-				return fmt.Errorf("text mismatch: expected %q, got %q (similarity: %.2f)",
-					match.Text, actualText, similarity)
-			}
-		} else {
-			return fmt.Errorf("text mismatch: expected %q, got %q", match.Text, actualText)
-		}
-	}
-
-	return nil
 }
 
 // calculateTextSimilarity calculates a coarse character-by-character
@@ -735,50 +656,4 @@ func (ptr *PlainTextRedactor) calculateTextSimilarity(text1, text2 string) float
 	}
 
 	return float64(commonChars) / float64(len(longer))
-}
-
-// logPositionCorrelationMetrics logs detailed metrics about position correlation
-func (ptr *PlainTextRedactor) logPositionCorrelationMetrics(correlations []*position.PositionCorrelation) {
-	if len(correlations) == 0 {
-		return
-	}
-
-	// Calculate metrics
-	totalCorrelations := len(correlations)
-	successfulCorrelations := 0
-	averageConfidence := 0.0
-	methodCounts := make(map[string]int)
-
-	for _, correlation := range correlations {
-		if correlation.ConfidenceScore >= ptr.confidenceThreshold {
-			successfulCorrelations++
-		}
-		averageConfidence += correlation.ConfidenceScore
-		methodCounts[correlation.Method.String()]++
-	}
-
-	averageConfidence /= float64(totalCorrelations)
-	successRate := float64(successfulCorrelations) / float64(totalCorrelations)
-
-	// Log comprehensive metrics
-	ptr.logEvent("position_correlation_metrics", true, map[string]interface{}{
-		"total_correlations":      totalCorrelations,
-		"successful_correlations": successfulCorrelations,
-		"success_rate":            successRate,
-		"average_confidence":      averageConfidence,
-		"confidence_threshold":    ptr.confidenceThreshold,
-		"method_counts":           methodCounts,
-		"correlation_enabled":     ptr.enablePositionCorrelation,
-		"fallback_enabled":        ptr.fallbackToSimple,
-	})
-}
-
-// GetPositionCorrelationStats returns statistics about position correlation performance
-func (ptr *PlainTextRedactor) GetPositionCorrelationStats() map[string]interface{} {
-	return map[string]interface{}{
-		"correlation_enabled":  ptr.enablePositionCorrelation,
-		"confidence_threshold": ptr.confidenceThreshold,
-		"fallback_enabled":     ptr.fallbackToSimple,
-		"correlator_type":      fmt.Sprintf("%T", ptr.positionCorrelator),
-	}
 }
