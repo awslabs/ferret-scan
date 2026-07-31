@@ -49,3 +49,27 @@ func TestResolveConfiguration_FailOnIncomplete(t *testing.T) {
 		}
 	})
 }
+
+// TestResolveIncompleteExitCode_CountsUnreadableFiles pins that a file which could
+// not be OPENED escalates the exit code the same way a cut-short scan does.
+//
+// The two are the same class of problem from the caller's point of view — findings
+// may be missing — and the unreadable case is the more severe of the pair: a
+// cut-short scan examined part of the file, an unreadable one was never examined at
+// all. Before this, an unreadable file left the exit code at 0 and printed "No
+// matches found", so CI treated a file the scanner never opened as clean.
+func TestResolveIncompleteExitCode_CountsUnreadableFiles(t *testing.T) {
+	// The production call site passes len(incompleteFiles)+len(unreadableFiles);
+	// this asserts the policy those counts feed.
+	if got := resolveIncompleteExitCode(0, true, 1); got != exitCodeIncompleteCoverage {
+		t.Errorf("one coverage gap with --fail-on-incomplete = %d, want %d",
+			got, exitCodeIncompleteCoverage)
+	}
+	if got := resolveIncompleteExitCode(0, false, 1); got != 0 {
+		t.Errorf("without --fail-on-incomplete the warning must stay advisory, got %d", got)
+	}
+	// A findings/error verdict is never downgraded to the coverage code.
+	if got := resolveIncompleteExitCode(1, true, 1); got != 1 {
+		t.Errorf("a non-zero base must not be replaced, got %d", got)
+	}
+}
