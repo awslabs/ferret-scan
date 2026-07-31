@@ -1294,13 +1294,6 @@ func (v *Validator) looksLikeInvalidNumber(match string) bool {
 	return false
 }
 
-// isTabularData checks if the phone number appears to be in a tabular format.
-// The match argument is unused (the heuristic is purely line-level); it is kept
-// for API compatibility and delegates to isTabularDataLine.
-func (v *Validator) isTabularData(line, match string) bool {
-	return v.isTabularDataLine(line)
-}
-
 // isTabularDataLine is the line-level tabular check, computed once per line on
 // the hot path. It inspects only the line's delimiters / fixed-width spacing /
 // name-phone shape — identical logic to the original isTabularData, with the
@@ -1329,12 +1322,6 @@ func (v *Validator) isTabularDataLine(line string) bool {
 	}
 
 	return false
-}
-
-// isEmbeddedInIdentifier checks if a phone number match is embedded within an identifier or resource ID
-// This helps filter out false positives like "i-057034242931", "ami-050451375729", "vpc-1234567890"
-func (v *Validator) isEmbeddedInIdentifier(match, line string) bool {
-	return v.isEmbeddedInIdentifierAt(match, line, strings.Index(line, match))
 }
 
 // isEmbeddedInIdentifierAt is the offset-aware form of isEmbeddedInIdentifier.
@@ -1685,13 +1672,6 @@ func hasPhonePunctuation(match string) bool {
 		}
 	}
 	return false
-}
-
-// hasPhoneStructure checks if the match is actually a phone number, not something else
-// This uses structural analysis (what comes BEFORE/AFTER the match) rather than
-// keyword matching, making it future-proof and context-agnostic.
-func (v *Validator) hasPhoneStructure(match string, line string) bool {
-	return v.hasPhoneStructureAt(match, line, strings.Index(line, match))
 }
 
 // hasPhoneStructureAt is the offset-aware form of hasPhoneStructure. matchIndex

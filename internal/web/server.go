@@ -96,16 +96,6 @@ type ScanResponse struct {
 	IncompleteReason string `json:"incomplete_reason,omitempty"`
 }
 
-// NewWebServer creates a new web server instance bound to loopback. Used by
-// tests and any caller that doesn't need to override the bind address.
-func NewWebServer(port string) *WebServer {
-	return &WebServer{
-		port:     port,
-		bindAddr: "127.0.0.1",
-		mux:      http.NewServeMux(),
-	}
-}
-
 // NewWebServerWithOptions creates a new web server instance with config and
 // suppression file paths supplied by the caller. Empty strings preserve the
 // existing default behavior (search standard locations). excludePatterns from
@@ -235,14 +225,6 @@ func (ws *WebServer) printStartupBanner(currentPort string) {
 				"trusted network or container.\n\n",
 			ws.bindAddr, currentPort)
 	}
-}
-
-// Stop stops the web server
-func (ws *WebServer) Stop() error {
-	if ws.server != nil {
-		return ws.server.Close()
-	}
-	return nil
 }
 
 // setupRoutesWithValidation configures all HTTP route handlers with validation
@@ -920,61 +902,6 @@ func (ws *WebServer) loadConfiguration(_ string) *config.Config {
 	// handlers directly), do a one-shot best-effort load. Production code
 	// always goes through Start() and hits the cache.
 	return config.LoadConfigOrDefault(ws.configPath)
-}
-
-// webConfiguration holds resolved configuration values for web mode
-type webConfiguration struct {
-	confidenceLevels    string
-	checksToRun         string
-	verbose             bool
-	recursive           bool
-	enablePreprocessors bool
-}
-
-// resolveWebConfiguration resolves final configuration values for web mode (simplified version of CLI logic)
-func (ws *WebServer) resolveWebConfiguration(cfg *config.Config, confidence, checks string, verbose, recursive bool) *webConfiguration {
-	final := &webConfiguration{}
-
-	// Confidence levels
-	final.confidenceLevels = "all" // default fallback
-	if cfg != nil && cfg.Defaults.ConfidenceLevels != "" {
-		final.confidenceLevels = cfg.Defaults.ConfidenceLevels
-	}
-	if confidence != "" {
-		final.confidenceLevels = confidence
-	}
-
-	// Checks to run
-	final.checksToRun = "all" // default fallback
-	if cfg != nil && cfg.Defaults.Checks != "" {
-		final.checksToRun = cfg.Defaults.Checks
-	}
-	if checks != "" {
-		final.checksToRun = checks
-	}
-
-	// Verbose
-	final.verbose = false // default fallback
-	if cfg != nil {
-		final.verbose = cfg.Defaults.Verbose
-	}
-	final.verbose = verbose // Web parameter overrides config
-
-	// Recursive
-	final.recursive = false // default fallback
-	if cfg != nil {
-		final.recursive = cfg.Defaults.Recursive
-	}
-	final.recursive = recursive // Web parameter overrides config
-
-	// Enable preprocessors
-	final.enablePreprocessors = true // default fallback
-	if cfg != nil {
-		final.enablePreprocessors = cfg.Defaults.EnablePreprocessors
-	}
-	// Web always enables preprocessors
-
-	return final
 }
 
 // initializeSuppressionManager returns the cached suppression manager,

@@ -6,7 +6,6 @@ package gitlabsast
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 // GitLabSecurityReport represents the top-level GitLab Security Report structure
@@ -269,23 +268,6 @@ func (v *GitLabVendor) Validate() error {
 
 // Immutability helper methods
 
-// NewGitLabSecurityReport creates a new GitLabSecurityReport with immutable patterns
-func NewGitLabSecurityReport(version string, vulnerabilities []GitLabVulnerability, remediations []GitLabRemediation, scan GitLabScanInfo) *GitLabSecurityReport {
-	// Create defensive copies to ensure immutability
-	vulnCopy := make([]GitLabVulnerability, len(vulnerabilities))
-	copy(vulnCopy, vulnerabilities)
-
-	remediationCopy := make([]GitLabRemediation, len(remediations))
-	copy(remediationCopy, remediations)
-
-	return &GitLabSecurityReport{
-		Version:         version,
-		Vulnerabilities: vulnCopy,
-		Remediations:    remediationCopy,
-		Scan:            scan,
-	}
-}
-
 // NewGitLabVulnerability creates a new GitLabVulnerability with immutable patterns
 func NewGitLabVulnerability(id, category, name, message, description, severity, confidence string, location GitLabLocation, identifiers []GitLabIdentifier) *GitLabVulnerability {
 	// Create defensive copy of identifiers
@@ -302,42 +284,6 @@ func NewGitLabVulnerability(id, category, name, message, description, severity, 
 		Confidence:  confidence,
 		Location:    location,
 		Identifiers: identifiersCopy,
-	}
-}
-
-// NewGitLabScanInfo creates a new GitLabScanInfo with current timestamps
-func NewGitLabScanInfo(analyzer GitLabAnalyzer, scanner GitLabScanner, status string) *GitLabScanInfo {
-	now := time.Now().Format("2006-01-02T15:04:05") // GitLab schema format
-
-	return &GitLabScanInfo{
-		Analyzer:  analyzer,
-		Scanner:   scanner,
-		Type:      "sast",
-		StartTime: now,
-		EndTime:   now,
-		Status:    status,
-	}
-}
-
-// NewGitLabAnalyzer creates a new GitLabAnalyzer
-func NewGitLabAnalyzer(id, name, url, version string, vendor GitLabVendor) *GitLabAnalyzer {
-	return &GitLabAnalyzer{
-		ID:      id,
-		Name:    name,
-		URL:     url,
-		Vendor:  vendor,
-		Version: version,
-	}
-}
-
-// NewGitLabScanner creates a new GitLabScanner
-func NewGitLabScanner(id, name, url, version string, vendor GitLabVendor) *GitLabScanner {
-	return &GitLabScanner{
-		ID:      id,
-		Name:    name,
-		URL:     url,
-		Vendor:  vendor,
-		Version: version,
 	}
 }
 

@@ -710,17 +710,6 @@ func (v *Validator) analyzeContextLower(lowerLine string) float64 {
 	return 15 // Boost for positive context (single boost; avoid over-boosting)
 }
 
-// buildContextInfo efficiently builds context information by locating the match
-// in the line. Retained for callers that only know the match text; the hot path
-// uses buildContextInfoAt with the already-known offset instead.
-func (v *Validator) buildContextInfo(line, match string) detector.ContextInfo {
-	matchIndex := strings.Index(line, match)
-	if matchIndex < 0 {
-		return detector.ContextInfo{FullLine: line}
-	}
-	return v.buildContextInfoAt(line, matchIndex, matchIndex+len(match))
-}
-
 // buildContextInfoAt builds context information from the KNOWN byte offset of the
 // match within the line (matchStart:matchEnd), avoiding a per-match
 // strings.Index rescan of the whole line (the O(n^2) hot-path cost on a single
