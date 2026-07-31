@@ -1,3 +1,5 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
-<TMPDIR>/forged_first.docx,AUTHOR_INFO,MEDIUM,60.0,1,Jane Analyst
-<TMPDIR>/forged_first.docx,LAST_MODIFIED_BY,MEDIUM,60.0,2,Ops Reviewer
+<TMPDIR>/forged_first.docx,SSN,HIGH,100.0,3,449-87-4100
+<TMPDIR>/forged_first.docx,VISA,HIGH,100.0,5,4532-0151-1283-0366
+<TMPDIR>/forged_first.docx,AUTHOR_INFO,MEDIUM,65.0,1,Jane Analyst
+<TMPDIR>/forged_first.docx,LAST_MODIFIED_BY,MEDIUM,65.0,2,Ops Reviewer
