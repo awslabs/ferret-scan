@@ -270,7 +270,21 @@ func (rih *RouterIntegrationHelper) CreateEmbeddedMediaPath(originalFilePath, em
 	return fmt.Sprintf("%s -> %s", filepath.Base(originalFilePath), embeddedFileName)
 }
 
-// FormatEmbeddedMediaSection formats embedded media content for inclusion in metadata text
+// FormatEmbeddedMediaSection formats embedded media content for inclusion in
+// metadata text.
+//
+// The "--- Embedded Media N (name) ---" line is now DISPLAY ONLY: it tells a
+// human reading the extracted text where an embedded item begins, and nothing
+// parses it back. Two readers used to, and both let a document author choose the
+// reported source of a finding just by typing this line as body text — the
+// content router's extractEmbeddedMediaPath (deleted with the rest of the
+// text-sniffing read side) and the METADATA validator's line loop. The real
+// provenance travels out of band in ContentSection.SourceFile, set by the
+// preprocessor that actually opened the archive member.
+//
+// So do not reintroduce a parser for this text, and do not "fix" a wrong
+// attribution by escaping the parentheses or the name: an author still controls
+// whatever a parser would read, and the structure carries the answer already.
 func (rih *RouterIntegrationHelper) FormatEmbeddedMediaSection(index int, mediaName, content string) string {
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("\n--- Embedded Media %d (%s) ---\n", index+1, mediaName))
