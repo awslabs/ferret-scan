@@ -192,7 +192,51 @@ func (sm *SuppressionManager) rebuildHashIndexLocked() {
 // a suppression rule against) are truncated.
 const maxHashLineLen = 8192
 
+// generateFindingHash returns the current-version identity of a finding, used when
+// WRITING a new rule.
+//
+// Confidence is deliberately NOT an input. It used to be, and that made a saved rule
+// stop matching whenever a finding's score moved — including for reasons that have
+// nothing to do with the finding. Measured on two .docx files with identical content
+// and identical basenames, differing only by an unrelated author name in the metadata:
+// the same API_KEY_OR_SECRET scored 55 in one and 60 in the other (the bridge adds a
+// cross-path correlation boost when both validation paths report), so a rule written
+// against the first file left the finding unsuppressed in the second. The same
+// mechanism broke 1 of 78 rules when a single EXIF finding was demoted from 80 to 55.
+//
+// Confidence is a SCORE, not an identity: it is exactly the field the tool is expected
+// to keep tuning. Hashing it meant every scoring improvement silently invalidated
+// operators' suppression files, which is both surprising and unsafe — a rule that stops
+// matching turns a finding an operator had reviewed and accepted back into noise, and
+// in a pre-commit gate back into a block.
+//
+// What identifies a finding is what it is and where it is: type, the line it sits on,
+// the file's basename, the line number, its surrounding context and the matched value.
+// All of those still participate.
 func (sm *SuppressionManager) generateFindingHash(match detector.Match) string {
+	return sm.findingHashVersion(match, hashVersionCurrent)
+}
+
+// hashVersion identifies a finding-hash formula. Old rule files carry hashes computed
+// by an older formula, and they have to keep working: an operator's suppression file is
+// a record of decisions they already made, not a cache we may invalidate.
+type hashVersion int
+
+const (
+	// hashVersionLegacyConfidence is the original formula, which included
+	// fmt.Sprintf("%.2f", Confidence) as the second component. Still computed when
+	// MATCHING so pre-existing rule files keep suppressing, never when writing.
+	hashVersionLegacyConfidence hashVersion = 1
+
+	// hashVersionNoConfidence drops confidence from the identity.
+	hashVersionNoConfidence hashVersion = 2
+
+	// hashVersionCurrent is what new rules are written with.
+	hashVersionCurrent = hashVersionNoConfidence
+)
+
+// findingHashVersion computes a finding's hash under a specific formula version.
+func (sm *SuppressionManager) findingHashVersion(match detector.Match, version hashVersion) string {
 	// Bound the FullLine contribution (see maxHashLineLen). TrimSpace first so a
 	// short line padded with whitespace still hashes identically; the cap only
 	// engages for genuinely long lines.
@@ -201,14 +245,19 @@ func (sm *SuppressionManager) generateFindingHash(match detector.Match) string {
 		fullLine = fullLine[:maxHashLineLen]
 	}
 
-	// Create a composite string with all relevant identifying information
-	components := []string{
-		match.Type,
-		fmt.Sprintf("%.2f", match.Confidence),
+	// Create a composite string with all relevant identifying information. The v1
+	// ordering is preserved exactly — confidence second — because any change to the
+	// component order or separator would alter every v1 hash and defeat the
+	// compatibility this version switch exists to provide.
+	components := []string{match.Type}
+	if version == hashVersionLegacyConfidence {
+		components = append(components, fmt.Sprintf("%.2f", match.Confidence))
+	}
+	components = append(components,
 		fullLine,
 		filepath.Base(match.Filename), // Use basename to avoid path sensitivity
 		fmt.Sprintf("%d", match.LineNumber),
-	}
+	)
 
 	// Add context for uniqueness but hash it for privacy
 	contextHash := sm.hashSensitiveData(match.Context.BeforeText + match.Context.AfterText)
@@ -222,6 +271,34 @@ func (sm *SuppressionManager) generateFindingHash(match detector.Match) string {
 	composite := strings.Join(components, "|")
 	hash := sha256.Sum256([]byte(composite))
 	return fmt.Sprintf("%x", hash)
+}
+
+// findingHashCandidates returns every hash a finding could legitimately be recorded
+// under, current formula first.
+//
+// Matching accepts any of them so an existing rule file keeps working untouched, while
+// newly written rules use only the current formula and stop being confidence-sensitive.
+// A rule file therefore migrates as it is regenerated rather than needing a conversion
+// step, and an operator who never regenerates loses nothing.
+func (sm *SuppressionManager) findingHashCandidates(match detector.Match) []string {
+	return []string{
+		sm.findingHashVersion(match, hashVersionNoConfidence),
+		sm.findingHashVersion(match, hashVersionLegacyConfidence),
+	}
+}
+
+// hashMatchesFinding reports whether a stored rule hash identifies this finding under
+// any supported formula version.
+func (sm *SuppressionManager) hashMatchesFinding(ruleHash string, match detector.Match) bool {
+	if ruleHash == "" {
+		return false
+	}
+	for _, candidate := range sm.findingHashCandidates(match) {
+		if ruleHash == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 // hashSensitiveData creates a hash of sensitive data
@@ -240,21 +317,26 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 		return false, nil
 	}
 
-	findingHash := sm.generateFindingHash(match)
+	// Every hash this finding could be recorded under: the current formula, plus the
+	// legacy confidence-sensitive one so an existing rule file keeps suppressing
+	// without being regenerated.
+	candidates := sm.findingHashCandidates(match)
 
 	// Fast read-locked path: index is already built.
 	sm.indexMu.RLock()
 	if sm.rulesByHash != nil {
-		for _, ruleIdx := range sm.rulesByHash[findingHash] {
-			rule := &sm.config.Rules[ruleIdx]
-			if !rule.Enabled {
-				continue
+		for _, findingHash := range candidates {
+			for _, ruleIdx := range sm.rulesByHash[findingHash] {
+				rule := &sm.config.Rules[ruleIdx]
+				if !rule.Enabled {
+					continue
+				}
+				if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
+					continue
+				}
+				sm.indexMu.RUnlock()
+				return true, rule
 			}
-			if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
-				continue
-			}
-			sm.indexMu.RUnlock()
-			return true, rule
 		}
 		sm.indexMu.RUnlock()
 		return false, nil
@@ -268,16 +350,18 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 	if sm.rulesByHash == nil {
 		sm.rebuildHashIndexLocked()
 	}
-	for _, ruleIdx := range sm.rulesByHash[findingHash] {
-		rule := &sm.config.Rules[ruleIdx]
-		if !rule.Enabled {
-			continue
+	for _, findingHash := range candidates {
+		for _, ruleIdx := range sm.rulesByHash[findingHash] {
+			rule := &sm.config.Rules[ruleIdx]
+			if !rule.Enabled {
+				continue
+			}
+			if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
+				continue
+			}
+			sm.indexMu.Unlock()
+			return true, rule
 		}
-		if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
-			continue
-		}
-		sm.indexMu.Unlock()
-		return true, rule
 	}
 	sm.indexMu.Unlock()
 	return false, nil
@@ -294,9 +378,11 @@ func (sm *SuppressionManager) AddSuppression(match detector.Match, reason, creat
 
 	findingHash := sm.generateFindingHash(match)
 
-	// Check if already exists
+	// Check if already exists, under EITHER formula: a rule recorded with the legacy
+	// confidence-sensitive hash already covers this finding, so adding a second one
+	// would leave the operator with two rules for one decision.
 	for _, rule := range sm.config.Rules {
-		if rule.Hash == findingHash {
+		if sm.hashMatchesFinding(rule.Hash, match) {
 			return fmt.Errorf("suppression rule already exists for this finding")
 		}
 	}
@@ -453,10 +539,8 @@ func (sm *SuppressionManager) GetExpiredRule(match detector.Match) *SuppressionR
 		return nil
 	}
 
-	findingHash := sm.generateFindingHash(match)
-
 	for _, rule := range sm.config.Rules {
-		if rule.Hash == findingHash && rule.Enabled {
+		if sm.hashMatchesFinding(rule.Hash, match) && rule.Enabled {
 			// Check if rule has expired
 			if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
 				return &rule
@@ -520,8 +604,20 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 	for _, match := range matches {
 		findingHash := sm.generateFindingHash(match)
 
-		// Check if already exists
-		if idx, exists := existingHashes[findingHash]; exists {
+		// Check if already exists under EITHER formula. A rule file written before
+		// confidence left the hash records the legacy hash, and treating that as
+		// absent would append a duplicate rule for a finding the operator has already
+		// ruled on — the file would grow a second entry per finding on every
+		// regeneration. Refreshing last_seen_at on the legacy rule instead lets the
+		// file carry forward untouched; it migrates only when a rule is genuinely new.
+		matchedIdx := -1
+		for _, candidate := range sm.findingHashCandidates(match) {
+			if idx, exists := existingHashes[candidate]; exists {
+				matchedIdx = idx
+				break
+			}
+		}
+		if idx := matchedIdx; idx >= 0 {
 			// Update last_seen_at for existing rule. Written through the live
 			// slice so it survives any reallocation caused by the appends below.
 			sm.config.Rules[idx].LastSeenAt = &now
