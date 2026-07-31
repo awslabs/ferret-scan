@@ -1,0 +1,4 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<TMPDIR>/books.xlsx,SSN,HIGH,100.0,1,449-87-4100
+<TMPDIR>/books.xlsx,VISA,HIGH,100.0,2,4532-0151-1283-0366
+<TMPDIR>/books.xlsx,AUTHOR_INFO,MEDIUM,65.0,1,Jane Analyst

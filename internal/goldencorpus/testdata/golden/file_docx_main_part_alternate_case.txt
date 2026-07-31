@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH        FILE
+--------------------------------------------------------------------------------------
+[MEDIUM] metadata     AUTHOR_INFO            60.00% line     1 Jane Analyst alt_case.docx
+[MEDIUM] metadata     LAST_MODIFIED_BY       60.00% line     2 Ops Reviewer alt_case.docx

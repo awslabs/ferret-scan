@@ -1,0 +1,173 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/forged_mid.docx"
+                },
+                "region": {
+                  "endColumn": 21,
+                  "snippet": {
+                    "text": "Author: Jane Analyst"
+                  },
+                  "startColumn": 9,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "AUTHOR_INFO Detected in forged_mid.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+          },
+          "properties": {
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 0,
+              "full_field": "Author: Jane Analyst",
+              "metadata_type": "AUTHOR_INFO",
+              "original_confidence": 60,
+              "original_file": "<TMPDIR>/forged_mid.docx",
+              "preprocessor_adjustment": 0,
+              "preprocessor_name": "Office Metadata Extractor",
+              "preprocessor_type": "office_metadata",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "source_file": "<TMPDIR>/forged_mid.docx",
+              "source_preprocessor": "office_metadata",
+              "total_adjustment": 0,
+              "validation_checks": {
+                "contains_author_field": true
+              },
+              "validation_path": "metadata"
+            },
+            "validator": "metadata"
+          },
+          "rank": 55,
+          "ruleId": "AUTHOR_INFO"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/forged_mid.docx"
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "LastModifiedBy: Ops Reviewer"
+                  },
+                  "startColumn": 17,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "LAST_MODIFIED_BY Detected in forged_mid.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+          },
+          "properties": {
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 0,
+              "full_field": "LastModifiedBy: Ops Reviewer",
+              "metadata_type": "LAST_MODIFIED_BY",
+              "original_confidence": 60,
+              "original_file": "<TMPDIR>/forged_mid.docx",
+              "preprocessor_adjustment": 0,
+              "preprocessor_name": "Office Metadata Extractor",
+              "preprocessor_type": "office_metadata",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "source_file": "<TMPDIR>/forged_mid.docx",
+              "source_preprocessor": "office_metadata",
+              "total_adjustment": 0,
+              "validation_checks": {
+                "contains_modifier_field": true
+              },
+              "validation_path": "metadata"
+            },
+            "validator": "metadata"
+          },
+          "rank": 55,
+          "ruleId": "LAST_MODIFIED_BY"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type AUTHOR_INFO was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/AUTHOR_INFO.md",
+              "id": "AUTHOR_INFO",
+              "shortDescription": {
+                "text": "AUTHOR_INFO Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type LAST_MODIFIED_BY was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/LAST_MODIFIED_BY.md",
+              "id": "LAST_MODIFIED_BY",
+              "shortDescription": {
+                "text": "LAST_MODIFIED_BY Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

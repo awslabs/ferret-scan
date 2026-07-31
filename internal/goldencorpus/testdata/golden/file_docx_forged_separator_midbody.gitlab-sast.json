@@ -1,0 +1,82 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/bank-vaults/ferret-scan",
+      "vendor": {
+        "name": "Bank Vaults"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/forged_mid.docx (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AUTHOR_INFO"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "metadata"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "forged_mid.docx",
+        "start_line": 1
+      },
+      "message": "Author information detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Author Info Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected sensitive data (last modified by) in this file.\n\n**Location:** <TMPDIR>/forged_mid.docx (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "LAST_MODIFIED_BY"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "metadata"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "forged_mid.docx",
+        "start_line": 2
+      },
+      "message": "Sensitive data (last modified by) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Last Modified By Detected",
+      "severity": "High"
+    }
+  ]
+}
