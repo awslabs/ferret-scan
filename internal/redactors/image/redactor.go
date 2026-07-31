@@ -5,8 +5,6 @@ package image
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -121,13 +119,6 @@ func NewImageMetadataRedactor(outputManager *redactors.OutputStructureManager, o
 		preserveImageQuality:      true,
 		supportedFormats:          supportedFormats,
 	}
-}
-
-// NewImageMetadataRedactorWithOptions creates a new ImageMetadataRedactor with custom options
-func NewImageMetadataRedactorWithOptions(outputManager *redactors.OutputStructureManager, observer observability.Observer, preserveQuality bool) *ImageMetadataRedactor {
-	redactor := NewImageMetadataRedactor(outputManager, observer)
-	redactor.preserveImageQuality = preserveQuality
-	return redactor
 }
 
 // GetName returns the name of the redactor
@@ -649,10 +640,4 @@ func (imr *ImageMetadataRedactor) HasSensitiveMetadata(metadata *ImageMetadata) 
 	}
 
 	return false
-}
-
-// generateContextHash generates a hash for surrounding context
-func generateContextHash(context string) string {
-	hash := sha256.Sum256([]byte(context))
-	return hex.EncodeToString(hash[:8]) // Use first 8 bytes for shorter hash
 }

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -66,15 +65,6 @@ func (rim *RedactionAuditLogManager) CreateAuditLog(documentID, originalPath, re
 	return auditLog, nil
 }
 
-// GetAuditLog retrieves a redaction audit log by document ID
-func (rim *RedactionAuditLogManager) GetAuditLog(documentID string) (*RedactionAuditLog, bool) {
-	rim.mutex.RLock()
-	defer rim.mutex.RUnlock()
-
-	auditLog, exists := rim.auditLogs[documentID]
-	return auditLog, exists
-}
-
 // GetAuditLogByPath retrieves a redaction audit log by original file path
 func (rim *RedactionAuditLogManager) GetAuditLogByPath(originalPath string) (*RedactionAuditLog, bool) {
 	rim.mutex.RLock()
@@ -126,66 +116,6 @@ func (rim *RedactionAuditLogManager) AddContentRedaction(documentID string, reda
 	return nil
 }
 
-// AddMetadataRedaction adds a metadata redaction to the specified document's audit log
-func (rim *RedactionAuditLogManager) AddMetadataRedaction(documentID string, redaction MetadataRedaction) error {
-	rim.mutex.Lock()
-	defer rim.mutex.Unlock()
-
-	auditLog, exists := rim.auditLogs[documentID]
-	if !exists {
-		return fmt.Errorf("no audit log found for document ID %s", documentID)
-	}
-
-	auditLog.AddMetadataRedaction(redaction)
-	return nil
-}
-
-// SetRedactionSummary sets the redaction summary for the specified document's audit log
-func (rim *RedactionAuditLogManager) SetRedactionSummary(documentID string, summary RedactionSummary) error {
-	rim.mutex.Lock()
-	defer rim.mutex.Unlock()
-
-	auditLog, exists := rim.auditLogs[documentID]
-	if !exists {
-		return fmt.Errorf("no audit log found for document ID %s", documentID)
-	}
-
-	auditLog.SetRedactionSummary(summary)
-	return nil
-}
-
-// SetRedactionConfig sets the redaction configuration snapshot for the specified document's audit log
-func (rim *RedactionAuditLogManager) SetRedactionConfig(documentID string, config *RedactionConfigSnapshot) error {
-	rim.mutex.Lock()
-	defer rim.mutex.Unlock()
-
-	auditLog, exists := rim.auditLogs[documentID]
-	if !exists {
-		return fmt.Errorf("no audit log found for document ID %s", documentID)
-	}
-
-	auditLog.SetRedactionConfig(config)
-	return nil
-}
-
-// ExportAuditLog exports a single redaction audit log to JSON format
-func (rim *RedactionAuditLogManager) ExportAuditLog(documentID string) ([]byte, error) {
-	rim.mutex.RLock()
-	defer rim.mutex.RUnlock()
-
-	auditLog, exists := rim.auditLogs[documentID]
-	if !exists {
-		return nil, fmt.Errorf("no audit log found for document ID %s", documentID)
-	}
-
-	// Validate the audit log before export
-	if err := auditLog.Validate(); err != nil {
-		return nil, fmt.Errorf("audit log validation failed: %w", err)
-	}
-
-	return auditLog.ToJSON()
-}
-
 // ExportAllAuditLogs exports all redaction audit logs to a combined JSON format
 func (rim *RedactionAuditLogManager) ExportAllAuditLogs() ([]byte, error) {
 	rim.mutex.RLock()
@@ -217,113 +147,6 @@ func (rim *RedactionAuditLogManager) ExportAllAuditLogs() ([]byte, error) {
 	}
 
 	return jsonMarshalIndent(combined, "", "  ")
-}
-
-// SaveAuditLog saves a single redaction audit log to a file
-func (rim *RedactionAuditLogManager) SaveAuditLog(documentID, filePath string) error {
-	jsonData, err := rim.ExportAuditLog(documentID)
-	if err != nil {
-		return fmt.Errorf("failed to export index: %w", err)
-	}
-
-	// Ensure the directory exists with secure permissions (owner only)
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
-	}
-
-	// Write the file with secure permissions (owner read/write only)
-	if err := os.WriteFile(filePath, jsonData, 0600); err != nil {
-		return fmt.Errorf("failed to write index file %s: %w", filePath, err)
-	}
-
-	return nil
-}
-
-// LoadAuditLog loads a redaction audit log from a JSON file
-func (rim *RedactionAuditLogManager) LoadAuditLog(filePath string) (*RedactionAuditLog, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read index file %s: %w", filePath, err)
-	}
-
-	auditLog, err := FromJSON(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse audit log from %s: %w", filePath, err)
-	}
-
-	// Validate the loaded audit log
-	if err := auditLog.Validate(); err != nil {
-		return nil, fmt.Errorf("loaded audit log validation failed: %w", err)
-	}
-
-	// Add to manager
-	rim.mutex.Lock()
-	defer rim.mutex.Unlock()
-
-	rim.auditLogs[auditLog.DocumentID] = auditLog
-	rim.filePaths[auditLog.OriginalPath] = auditLog.DocumentID
-
-	return auditLog, nil
-}
-
-// GetRedactionStatistics returns statistics about all redactions
-func (rim *RedactionAuditLogManager) GetRedactionStatistics() RedactionStatistics {
-	rim.mutex.RLock()
-	defer rim.mutex.RUnlock()
-
-	stats := RedactionStatistics{
-		TotalDocuments:     len(rim.auditLogs),
-		DataTypeStats:      make(map[string]int),
-		MetadataFieldStats: make(map[string]int),
-		StrategyStats:      make(map[string]int),
-	}
-
-	for _, auditLog := range rim.auditLogs {
-		stats.TotalContentRedactions += len(auditLog.ContentRedactions)
-		stats.TotalMetadataRedactions += len(auditLog.MetadataRedactions)
-
-		// Count by data type
-		for _, redaction := range auditLog.ContentRedactions {
-			stats.DataTypeStats[redaction.DataType]++
-			stats.StrategyStats[redaction.Strategy.String()]++
-		}
-
-		// Count by metadata field
-		for _, redaction := range auditLog.MetadataRedactions {
-			stats.MetadataFieldStats[redaction.Field]++
-		}
-	}
-
-	stats.TotalRedactions = stats.TotalContentRedactions + stats.TotalMetadataRedactions
-
-	return stats
-}
-
-// Clear removes all audit logs from the manager
-func (rim *RedactionAuditLogManager) Clear() {
-	rim.mutex.Lock()
-	defer rim.mutex.Unlock()
-
-	rim.auditLogs = make(map[string]*RedactionAuditLog)
-	rim.filePaths = make(map[string]string)
-}
-
-// RemoveAuditLog removes a specific audit log from the manager
-func (rim *RedactionAuditLogManager) RemoveAuditLog(documentID string) error {
-	rim.mutex.Lock()
-	defer rim.mutex.Unlock()
-
-	auditLog, exists := rim.auditLogs[documentID]
-	if !exists {
-		return fmt.Errorf("no audit log found for document ID %s", documentID)
-	}
-
-	// Remove from both maps
-	delete(rim.auditLogs, documentID)
-	delete(rim.filePaths, auditLog.OriginalPath)
-
-	return nil
 }
 
 // RedactionStatistics contains statistics about redactions

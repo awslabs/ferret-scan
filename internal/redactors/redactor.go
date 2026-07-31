@@ -161,24 +161,3 @@ type BoundingBox struct {
 	// Height is the height of the box
 	Height float64
 }
-
-// PositionMapping maps extracted text positions to original document positions
-type PositionMapping struct {
-	// ExtractedPosition is the position in the extracted text
-	ExtractedPosition TextPosition
-
-	// OriginalPosition is the corresponding position in the original document
-	OriginalPosition DocumentPosition
-
-	// DocumentType is the type of document (PDF, DOCX, etc.)
-	DocumentType string
-
-	// PageNumber is the page number for multi-page documents
-	PageNumber int
-
-	// Region is the bounding box for the mapped region
-	Region BoundingBox
-
-	// ConfidenceScore is the confidence in this position mapping
-	ConfidenceScore float64
-}

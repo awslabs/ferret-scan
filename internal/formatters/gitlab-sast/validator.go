@@ -33,13 +33,6 @@ func NewSchemaValidator() *SchemaValidator {
 	}
 }
 
-// NewStrictSchemaValidator creates a new schema validator in strict mode
-func NewStrictSchemaValidator() *SchemaValidator {
-	validator := NewSchemaValidator()
-	validator.strictMode = true
-	return validator
-}
-
 // ValidateReport performs comprehensive validation of a GitLab security report
 func (v *SchemaValidator) ValidateReport(report *GitLabSecurityReport) error {
 	if report == nil {

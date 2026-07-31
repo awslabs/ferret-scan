@@ -14,18 +14,6 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
-// containsKeyword reports whether text contains keyword as a whole word/phrase,
-// case-insensitively. The previous code used strings.Contains, so short negative
-// keywords matched inside ordinary words — "bar" in "barack", "baz" in "bazaar",
-// "temp" in "temptation" — suppressing real emails (and short positives like
-// "to"/"info" spuriously boosting).
-//
-// ModeAlnum preserves this validator's historical boundary semantics: a word
-// byte is [a-z0-9], so '_' acts as a word boundary here.
-func containsKeyword(text, keyword string) bool {
-	return kwmatch.Contains(text, keyword)
-}
-
 // containsKeywordLower is containsKeyword for callers that have already
 // lowercased both arguments. The whole-word scan is identical; only the
 // redundant strings.ToLower allocations are skipped. Hoisting the lowercasing

@@ -391,19 +391,6 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	return impact
 }
 
-// findKeywords returns a list of keywords found in the context.
-func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string) []string {
-	fullContext := strings.ToLower(context.BeforeText + " " + context.FullLine + " " + context.AfterText)
-
-	var found []string
-	for _, keyword := range keywords {
-		if containsKeyword(fullContext, keyword) {
-			found = append(found, keyword)
-		}
-	}
-	return found
-}
-
 // keywordPresence returns, parallel to keywords, whether each keyword occurs as
 // a whole word in lineLower. lineLower MUST already be lowercased. This is the
 // per-LINE-global keyword scan, computed once per line and reused by every
@@ -674,22 +661,6 @@ func (v *Validator) isEncodedDataAt(line string, start, end int, lineIsHexDump b
 	return false
 }
 
-// isEncodedData detects if the match is likely part of encoded data (base64,
-// hex dumps, etc.). Retained for the detector.Validator interface and external
-// callers; the internal scan path uses isEncodedDataAt with precomputed offsets
-// and a hoisted per-line hex-dump verdict. Behavior is identical to the
-// historical implementation, including using the FIRST occurrence of match.
-func (v *Validator) isEncodedData(line, match string) bool {
-	idx := strings.Index(line, match)
-	start := idx
-	end := idx + len(match)
-	if idx < 0 {
-		// No occurrence: only the per-line hex-dump verdict can apply.
-		return v.lineLooksEncoded(line)
-	}
-	return v.isEncodedDataAt(line, start, end, v.lineLooksEncoded(line))
-}
-
 func isAlphanumeric(b byte) bool {
 	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
@@ -750,15 +721,4 @@ func (v *Validator) buildContextAt(line string, start, end int) detector.Context
 	ctx.AfterText = line[end:aEnd]
 
 	return ctx
-}
-
-// buildContext extracts context information around a match within the current
-// line. Retained for the detector.Validator interface and external callers; the
-// internal scan path uses buildContextAt with the match's known offsets.
-func (v *Validator) buildContext(line, match string) detector.ContextInfo {
-	idx := strings.Index(line, match)
-	if idx < 0 {
-		return detector.ContextInfo{FullLine: line}
-	}
-	return v.buildContextAt(line, idx, idx+len(match))
 }

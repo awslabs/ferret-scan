@@ -66,8 +66,3 @@ func GetConfig() *Config {
 func IsWindows() bool {
 	return runtime.GOOS == "windows"
 }
-
-// IsUnix returns true if running on Unix-like systems (Linux, macOS, etc.)
-func IsUnix() bool {
-	return !IsWindows()
-}

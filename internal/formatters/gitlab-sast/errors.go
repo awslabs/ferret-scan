@@ -37,18 +37,6 @@ type ValidationError struct {
 	Message string
 }
 
-// NewValidationError creates a new validation error
-func NewValidationError(format string, args ...interface{}) *ValidationError {
-	return &ValidationError{
-		Message: fmt.Sprintf(format, args...),
-	}
-}
-
-// Error implements the error interface
-func (e *ValidationError) Error() string {
-	return fmt.Sprintf("validation error: %s", e.Message)
-}
-
 // MappingError represents errors during vulnerability mapping
 type MappingError struct {
 	Message string
@@ -69,16 +57,4 @@ func (e *MappingError) Error() string {
 // SanitizationError represents errors during data sanitization
 type SanitizationError struct {
 	Message string
-}
-
-// NewSanitizationError creates a new sanitization error
-func NewSanitizationError(message string) *SanitizationError {
-	return &SanitizationError{
-		Message: message,
-	}
-}
-
-// Error implements the error interface
-func (e *SanitizationError) Error() string {
-	return fmt.Sprintf("sanitization error: %s", e.Message)
 }

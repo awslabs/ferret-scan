@@ -393,32 +393,6 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	return impact
 }
 
-// buildContextInfo constructs the ContextInfo for a match on a line.
-func (v *Validator) buildContextInfo(line, match string) detector.ContextInfo {
-	contextInfo := detector.ContextInfo{
-		FullLine: line,
-	}
-
-	matchIndex := strings.Index(line, match)
-	if matchIndex >= 0 {
-		start := matchIndex - 50
-		if start < 0 {
-			start = 0
-		}
-		end := matchIndex + len(match) + 50
-		if end > len(line) {
-			end = len(line)
-		}
-		contextInfo.BeforeText = line[start:matchIndex]
-		contextInfo.AfterText = line[matchIndex+len(match) : end]
-	}
-
-	contextInfo.PositiveKeywords = v.findKeywords(line, v.positiveKeywords)
-	contextInfo.NegativeKeywords = v.findKeywords(line, v.negativeKeywords)
-
-	return contextInfo
-}
-
 // findKeywords returns keywords found in the text.
 func (v *Validator) findKeywords(text string, keywords []string) []string {
 	var found []string

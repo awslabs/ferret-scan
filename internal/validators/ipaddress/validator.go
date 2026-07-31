@@ -850,26 +850,6 @@ func (v *Validator) isSensitiveIP(ip string) bool {
 	return true
 }
 
-// hasIPContextSignal reports whether the line carries a corroborating signal
-// that `match` is a network address rather than an incidental dotted-decimal
-// number (a version, build tag, or numeric tuple). A signal is either an IP
-// context keyword on the line (host/server/endpoint/...) or a structural suffix
-// immediately after the address — a port (":8080") or CIDR ("/24").
-func (v *Validator) hasIPContextSignal(match, line string) bool {
-	for _, kw := range v.positiveKeywords {
-		if ipContainsKeyword(line, kw) {
-			return true
-		}
-	}
-	if idx := strings.Index(line, match); idx >= 0 {
-		after := line[idx+len(match):]
-		if rePortSuffix.MatchString(after) || reCIDRSuffix.MatchString(after) {
-			return true
-		}
-	}
-	return false
-}
-
 // hasIPContextSignalAt is the hot-path equivalent of hasIPContextSignal.
 //
 // The keyword half of the signal (does the line contain ANY positive IP

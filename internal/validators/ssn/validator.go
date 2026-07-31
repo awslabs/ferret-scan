@@ -526,37 +526,6 @@ func (v *Validator) analyzeContextWithLine(match string, context detector.Contex
 	return confidenceImpact
 }
 
-// validateSSNByDomain provides domain-specific confidence boosts
-func (v *Validator) validateSSNByDomain(ssn, context string) float64 {
-	boost := 0.0
-
-	// HR/Payroll context
-	for _, keyword := range v.hrKeywords {
-		if containsKeyword(context, keyword) {
-			boost += 20
-			break // Only apply once per domain
-		}
-	}
-
-	// Tax document context
-	for _, keyword := range v.taxKeywords {
-		if containsKeyword(context, keyword) {
-			boost += 25
-			break // Only apply once per domain
-		}
-	}
-
-	// Healthcare context
-	for _, keyword := range v.healthcareKeywords {
-		if containsKeyword(context, keyword) {
-			boost += 18
-			break // Only apply once per domain
-		}
-	}
-
-	return boost
-}
-
 // validateSSNByDomainCached mirrors validateSSNByDomain but evaluates each domain
 // keyword against the full context via the cached per-line context instead of
 // rescanning the whole line for every match. Result is identical.
@@ -639,38 +608,6 @@ func (v *Validator) isEnhancedTabularData(line, value string) bool {
 
 	// Check for multiple consecutive spaces (fixed-width tables)
 	if len(reMultiSpace3.FindAllString(line, -1)) >= 2 {
-		return true
-	}
-
-	return false
-}
-
-// isEnhancedTestPattern checks for enhanced test patterns
-func (v *Validator) isEnhancedTestPattern(value, context string) bool {
-	lowerValue := strings.ToLower(value)
-	lowerContext := strings.ToLower(context)
-
-	// Check global test patterns. The list mixes numeric patterns (e.g.
-	// "111111111") with generic doc/config words ("demo", "default", "readme").
-	// Match numeric/value patterns against the value itself, but match WORD
-	// patterns against the context on whole-word boundaries only — the previous
-	// raw substring scan over the whole line meant an unrelated word like "demo"
-	// inside "demographic" (or simply present on a config line) applied the -40
-	// test penalty and pushed real SSNs under the surfacing threshold.
-	for _, pattern := range v.globalTestPatterns {
-		// Value match: an actual test value embedded in the candidate.
-		if strings.Contains(lowerValue, pattern) {
-			return true
-		}
-		// Context match: require the pattern to appear as a whole word.
-		if containsKeyword(lowerContext, pattern) {
-			return true
-		}
-	}
-
-	// Check for obvious test sequences
-	cleanValue := v.cleanSSN(value)
-	if v.isObviousTestSequence(cleanValue) {
 		return true
 	}
 
