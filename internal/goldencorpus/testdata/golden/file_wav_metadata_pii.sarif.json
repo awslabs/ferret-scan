@@ -18,10 +18,10 @@
             }
           ],
           "message": {
-            "text": "AWS_ACCESS_KEY Detected in clip.wav at line 7 (confidence: 89.0% - MEDIUM). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
+            "text": "AWS_ACCESS_KEY Detected in clip.wav at line 7 (confidence: 84.0% - MEDIUM). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
           },
           "properties": {
-            "confidence": 89,
+            "confidence": 84,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -29,8 +29,6 @@
               "context_doc_type": "Configuration",
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "detection_method": "keyword_pattern",
               "environment_type": "test",
               "original_confidence": 84,
@@ -57,7 +55,7 @@
             },
             "validator": "secrets"
           },
-          "rank": 69.5,
+          "rank": 67,
           "ruleId": "AWS_ACCESS_KEY"
         },
         {
@@ -86,10 +84,10 @@
             }
           ],
           "message": {
-            "text": "Phone Number Detected in clip.wav at line 7 (confidence: 87.0% - MEDIUM). Matched text: '212-555-0142'"
+            "text": "Phone Number Detected in clip.wav at line 7 (confidence: 82.0% - MEDIUM). Matched text: '212-555-0142'"
           },
           "properties": {
-            "confidence": 87,
+            "confidence": 82,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "clean_number": "2125550142",
@@ -98,9 +96,7 @@
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
               "context_impact": -3,
-              "correlation_boost": 5,
               "country": "US/CA",
-              "cross_path_correlation": true,
               "format": "XXX-XXX-XXXX",
               "original_confidence": 82,
               "original_file": "<TMPDIR>/clip.wav",
@@ -134,7 +130,7 @@
             ],
             "validator": "phone"
           },
-          "rank": 68.5,
+          "rank": 66,
           "ruleId": "PHONE"
         },
         {
@@ -157,10 +153,10 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in clip.wav at line 6 (confidence: 85.0% - MEDIUM). Matched text: 'john.doe@example.com'"
+            "text": "AUTHOR_INFO Detected in clip.wav at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'john.doe@example.com'"
           },
           "properties": {
-            "confidence": 85,
+            "confidence": 80,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -168,8 +164,6 @@
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
               "context_impact": 0,
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "full_field": "Artist: john.doe@example.com",
               "metadata_type": "AUTHOR_INFO",
               "original_confidence": 80,
@@ -198,7 +192,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 67.5,
+          "rank": 65,
           "ruleId": "AUTHOR_INFO"
         },
         {
@@ -221,10 +215,10 @@
             }
           ],
           "message": {
-            "text": "DOCUMENT_COMMENTS Detected in clip.wav at line 7 (confidence: 70.0% - MEDIUM). Matched text: 'contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE'"
+            "text": "DOCUMENT_COMMENTS Detected in clip.wav at line 7 (confidence: 65.0% - MEDIUM). Matched text: 'contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE'"
           },
           "properties": {
-            "confidence": 70,
+            "confidence": 65,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -232,8 +226,6 @@
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
               "context_impact": -0,
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "full_field": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
               "metadata_type": "DOCUMENT_COMMENTS",
               "original_confidence": 65,
@@ -260,7 +252,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 60,
+          "rank": 57.5,
           "ruleId": "DOCUMENT_COMMENTS"
         },
         {
@@ -289,10 +281,10 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in clip.wav at line 6 (confidence: 30.0% - LOW). Matched text: 'john.doe@example.com'"
+            "text": "BUSINESS Detected in clip.wav at line 6 (confidence: 25.0% - LOW). Matched text: 'john.doe@example.com'"
           },
           "properties": {
-            "confidence": 30,
+            "confidence": 25,
             "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
@@ -300,8 +292,6 @@
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
               "context_impact": -20,
-              "correlation_boost": 5,
-              "cross_path_correlation": true,
               "domain": "example.com",
               "email_provider": "BUSINESS",
               "original_confidence": 25,
@@ -333,7 +323,7 @@
             ],
             "validator": "email"
           },
-          "rank": 40,
+          "rank": 37.5,
           "ruleId": "BUSINESS"
         }
       ],

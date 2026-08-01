@@ -2,4 +2,4 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            
 ---------------------------------------------------------------------------------------------
 [HIGH  ] ssn          SSN                   100.00% line     2 449-87-4100         books_named.xlsx
 [HIGH  ] creditcard   VISA                  100.00% line     3 4532-0151-1283-0366 books_named.xlsx
-[MEDIUM] metadata     AUTHOR_INFO            65.00% line     1 Jane Analyst        books_named.xlsx
+[MEDIUM] metadata     AUTHOR_INFO            60.00% line     1 Jane Analyst        books_named.xlsx

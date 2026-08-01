@@ -2,7 +2,7 @@
 <testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
   <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
     <testcase name="forged_first.docx" classname="security-scan" time="0.001">
-      <failure message="4 security findings detected" type="SECURITY_FINDINGS">Line 3: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4100&#xA;Validator: ssn&#xA;Line 5: VISA detected with 100.0% confidence (HIGH)&#xA;Match: 4532-0151-1283-0366&#xA;Validator: creditcard&#xA;Line 1: AUTHOR_INFO detected with 65.0% confidence (MEDIUM)&#xA;Match: Jane Analyst&#xA;Validator: metadata&#xA;Line 2: LAST_MODIFIED_BY detected with 65.0% confidence (MEDIUM)&#xA;Match: Ops Reviewer&#xA;Validator: metadata</failure>
+      <failure message="4 security findings detected" type="SECURITY_FINDINGS">Line 3: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4100&#xA;Validator: ssn&#xA;Line 5: VISA detected with 100.0% confidence (HIGH)&#xA;Match: 4532-0151-1283-0366&#xA;Validator: creditcard&#xA;Line 1: AUTHOR_INFO detected with 60.0% confidence (MEDIUM)&#xA;Match: Jane Analyst&#xA;Validator: metadata&#xA;Line 2: LAST_MODIFIED_BY detected with 60.0% confidence (MEDIUM)&#xA;Match: Ops Reviewer&#xA;Validator: metadata</failure>
     </testcase>
   </testsuite>
 </testsuites>

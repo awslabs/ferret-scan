@@ -507,8 +507,13 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 		return result, cerr
 	}
 
-	// Apply cross-path confidence adjustments based on context
-	result.AllMatches = evb.applyCrossPathConfidenceAdjustments(result.AllMatches, contextInsights)
+	// No cross-path pass. applyCrossPathConfidenceAdjustments existed only to add a flat
+	// +5 to every finding when both validation paths reported, which made a finding's
+	// confidence depend on what else was in the file; with the boost gone the function
+	// grouped matches by path and then returned them unchanged, so it is deleted rather
+	// than left as an identity call a reader has to verify does nothing. Per-path context
+	// adjustments still happen inside each bridge, where the match's own validator is
+	// known.
 
 	result.ProcessingTime = time.Since(startTime)
 
@@ -563,61 +568,6 @@ func clampToCeiling(match *detector.Match) {
 	if match.Confidence > ceiling {
 		match.Confidence = ceiling
 	}
-}
-
-// applyCrossPathConfidenceAdjustments applies confidence adjustments based on cross-path analysis
-func (evb *EnhancedValidatorBridge) applyCrossPathConfidenceAdjustments(matches []detector.Match, contextInsights context.ContextInsights) []detector.Match {
-	if len(matches) == 0 {
-		return matches
-	}
-
-	// Group matches by validation path
-	documentMatches := make([]detector.Match, 0)
-	metadataMatches := make([]detector.Match, 0)
-
-	for _, match := range matches {
-		if match.Metadata != nil {
-			if preprocessorType, exists := match.Metadata["preprocessor_type"]; exists && preprocessorType != nil {
-				metadataMatches = append(metadataMatches, match)
-			} else {
-				documentMatches = append(documentMatches, match)
-			}
-		} else {
-			documentMatches = append(documentMatches, match)
-		}
-	}
-
-	// Apply cross-path correlation boosts
-	if len(documentMatches) > 0 && len(metadataMatches) > 0 {
-		// Both paths found matches - apply correlation boost
-		correlationBoost := 5.0
-
-		for i := range matches {
-			originalConfidence := matches[i].Confidence
-			matches[i].Confidence += correlationBoost
-			clampToCeiling(&matches[i])
-
-			// Ensure confidence stays within bounds
-			if matches[i].Confidence > 100 {
-				matches[i].Confidence = 100
-			}
-
-			// Add correlation information to metadata
-			if matches[i].Metadata == nil {
-				matches[i].Metadata = make(map[string]interface{})
-			}
-			matches[i].Metadata["cross_path_correlation"] = true
-			matches[i].Metadata["correlation_boost"] = correlationBoost
-			matches[i].Metadata["original_confidence"] = originalConfidence
-		}
-
-		if evb.observer != nil && evb.observer.Debug() != nil {
-			evb.observer.Debug().LogDetail("cross_path_correlation",
-				fmt.Sprintf("Applied %.1f correlation boost to %d matches", correlationBoost, len(matches)))
-		}
-	}
-
-	return matches
 }
 
 // routeContentWithRetry attempts content routing with retry logic
