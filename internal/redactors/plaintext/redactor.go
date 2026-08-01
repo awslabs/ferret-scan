@@ -201,11 +201,6 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	redactedText := originalText
 	var redactionMap []redactors.RedactionMapping
 
-	// Line start offsets, computed ONCE for the whole document and reused by
-	// every match. Locating a match used to rescan the entire document per
-	// match, which made redaction quadratic; see lineOffsets.
-	offsets := lineOffsets(originalText)
-
 	// Process matches in reverse order to maintain position accuracy
 	for _, match := range sortedMatches {
 		replacement, err := ptr.generateReplacement(match.Text, match.Type, strategy)
@@ -260,7 +255,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 
 				// Fall back to simple text search if enabled
 				if ptr.fallbackToSimple {
-					simpleStartPos, simpleEndPos, simpleErr := ptr.findMatchPosition(redactedText, match, offsets)
+					simpleStartPos, simpleEndPos, simpleErr := ptr.findMatchPosition(redactedText, match)
 					if simpleErr == nil {
 						startPos = simpleStartPos
 						endPos = simpleEndPos
@@ -283,7 +278,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			}
 		} else {
 			// Use simple text search when position correlation is disabled
-			simpleStartPos, simpleEndPos, err := ptr.findMatchPosition(redactedText, match, offsets)
+			simpleStartPos, simpleEndPos, err := ptr.findMatchPosition(redactedText, match)
 			if err != nil {
 				// Log warning but continue with other matches
 				ptr.logEvent("position_warning", false, map[string]interface{}{
@@ -324,7 +319,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			})
 
 			// Try to find the correct position if there's a mismatch
-			if correctedStart, correctedEnd, correctionErr := ptr.findMatchPosition(redactedText, match, offsets); correctionErr == nil {
+			if correctedStart, correctedEnd, correctionErr := ptr.findMatchPosition(redactedText, match); correctionErr == nil {
 				startPos = correctedStart
 				endPos = correctedEnd
 				confidence *= 0.7 // Reduce confidence for corrected positions
@@ -404,72 +399,10 @@ func (ptr *PlainTextRedactor) sortMatchesByPosition(matches []detector.Match) []
 	return sorted
 }
 
-// lineOffsets returns the byte offset at which each line of text begins.
-//
-// This is computed ONCE per document and shared by every match, replacing the
-// per-match whole-document rescans that made redaction quadratic in
-// (matches x content bytes). Measured on N distinct SSNs one per line:
-// redaction cost grew 4.2x/3.6x/3.5x per input doubling (4.0x = quadratic)
-// while scanning the same fixtures stayed linear, and a fixed-match/
-// growing-content family showed cost tracking CONTENT at a constant match
-// count — the signature of a per-match full-document scan. At ~1MB of dense
-// matches this reached 78s, against a 100MB MaxFileSize ceiling.
-//
-// The table is returned rather than cached on the receiver because a redactor
-// instance may be reused across documents and by concurrent callers; per-
-// document state on the receiver would be a data race.
-func lineOffsets(text string) []int {
-	// One entry per line: len(text)/40 is a rough average line length, and the
-	// slice grows from there rather than reallocating from zero.
-	offsets := make([]int, 1, len(text)/40+2)
-	for i := 0; i < len(text); i++ {
-		if text[i] == '\n' {
-			offsets = append(offsets, i+1)
-		}
-	}
-	return offsets
-}
-
-// lineBounds returns the byte range of the given 1-based line in text, using a
-// precomputed offset table. Only the line's own bytes are scanned, to find its
-// terminating newline in text as it stands now.
-//
-// The caller may pass text that has already been partially rewritten. That is
-// safe precisely because matches are applied in DESCENDING line order: every
-// replacement made so far sits at a strictly later offset than any line still
-// to be processed, so a line's start offset is still the one recorded in the
-// table built from the original text. ok=false when the line is out of range.
-func lineBounds(text string, offsets []int, lineNumber int) (start, end int, ok bool) {
-	if lineNumber < 1 || lineNumber > len(offsets) {
-		return 0, 0, false
-	}
-	start = offsets[lineNumber-1]
-	if start > len(text) {
-		return 0, 0, false
-	}
-	if idx := strings.IndexByte(text[start:], '\n'); idx >= 0 {
-		return start, start + idx, true
-	}
-	return start, len(text), true
-}
-
-// findMatchPosition finds the start and end position of a match in the text.
-//
-// The match's own line is searched first, which is what the line number is for
-// and is O(line) rather than O(document). A whole-document search remains as
-// the fallback so behaviour is unchanged for a match whose recorded line number
-// does not actually contain its text (a bounded/consolidated match, or a
-// line-number drift from an extractor) — such a match is still located and
-// still redacted, exactly as before.
-func (ptr *PlainTextRedactor) findMatchPosition(text string, match detector.Match, offsets []int) (int, int, error) {
-	if start, end, ok := lineBounds(text, offsets, match.LineNumber); ok {
-		if idx := strings.Index(text[start:end], match.Text); idx >= 0 {
-			pos := start + idx
-			return pos, pos + len(match.Text), nil
-		}
-	}
-
-	// Fall back to the first occurrence anywhere in the document.
+// findMatchPosition finds the start and end position of a match in the text
+func (ptr *PlainTextRedactor) findMatchPosition(text string, match detector.Match) (int, int, error) {
+	// Simple approach: find the first occurrence of the match text
+	// In a more sophisticated implementation, we would use the line number and character position
 	startPos := strings.Index(text, match.Text)
 	if startPos == -1 {
 		return 0, 0, fmt.Errorf("match text not found in document")

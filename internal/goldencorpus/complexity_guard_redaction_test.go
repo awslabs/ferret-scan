@@ -36,24 +36,37 @@ import (
 //     must stay proportional to content, not to content x matches. This is the
 //     family that isolates a per-match whole-document rescan.
 
+// Why this file asserts ABSOLUTE cost and not a growth RATIO.
+//
+// A 4x-input ratio is the right assertion for the validator guard, and it was the
+// first thing tried here. It does not work for redaction, and the measurements
+// say so plainly. For the fixture pair below, on one machine:
+//
+//	no -race   9.3, 12.6, 12.7, 12.5, 12.9
+//	-race      10.3, 9.5, 11.9, 12.2, 11.8
+//	CI runner  16.6
+//
+// and the KNOWN-QUADRATIC code before the per-match rescan was removed measured
+// 12.6-13.7. A threshold high enough not to flake on 16.6 sits above the very
+// behaviour it is supposed to catch, so it would have zero detection power while
+// still failing builds at random. The first version of this test was set at 16.0
+// and did exactly that: it passed on the quadratic code (vacuous) and then failed
+// CI at 16.6 (flaky) — the worst of both.
+//
+// So: the ratio is LOGGED for a human, and the assertion is an absolute ceiling,
+// which is immune to noise in the base measurement and still catches an
+// order-of-magnitude regression. Redaction remains superlinear; nothing here
+// should be read as proving otherwise.
 const (
-	// redactionRatioCeiling bounds the growth factor for a 4x input. Linear is
-	// ~4x; quadratic is ~16x.
-	//
-	// MEASURED HONESTLY: on the code this test was written against, the growing
-	// family ratio is 10.0-13.2 and the pre-fix ratio was 12.6-13.7. Those
-	// overlap, so a ratio ceiling CANNOT distinguish "quadratic" from "quadratic
-	// with a better constant" at these sizes — it can only catch a NEW
-	// order-of-magnitude regression. The ceiling is therefore set above the
-	// current behaviour deliberately: it is a regression backstop, not a proof
-	// of linearity, and redaction is still superlinear. Do not read a pass here
-	// as "redaction is linear".
-	redactionRatioCeiling = 16.0
+	// redactionAbsoluteCeiling bounds the wall time to redact the big fixture
+	// (2000 matches). Measured ~150-250ms locally and ~440ms on a slow shared
+	// runner, so this tolerates a heavily loaded machine while failing on a
+	// 20-30x blowup. Scaled by raceCeilingMultiplier under -race.
+	redactionAbsoluteCeiling = 8 * time.Second
 
-	// fixedMatchRatioCeiling applies with the match count PINNED, so cost should
-	// track content only. Measured 4.8-6.3x for an 8x content rise (pre-fix
-	// 5.4-6.9x), i.e. sublinear in content because per-match work dominates.
-	fixedMatchRatioCeiling = 10.0
+	// fixedMatchAbsoluteCeiling bounds the fixed-match family, whose big case is
+	// smaller (200 matches over 8x content, measured well under 100ms).
+	fixedMatchAbsoluteCeiling = 5 * time.Second
 )
 
 // buildRedactionFixture returns text with n distinct SSNs, one per line, plus
@@ -160,14 +173,34 @@ func TestRedactionComplexity_GrowingMatchesAndContent(t *testing.T) {
 			"O(n^2) path passes the ratio check below", nBig, nBase)
 	}
 
+	// The ratio is reported but NOT asserted, and that is deliberate — see
+	// redactionRatioCeiling. Measured spread on one machine for this exact
+	// fixture pair: 9.3-12.9 without -race, 9.5-12.2 with it, and 16.6 on a CI
+	// runner. A threshold that accommodates 16.6 cannot detect the ~13x that the
+	// known-quadratic code produced, so the assertion would be pure flake with no
+	// detection power. Logging keeps the number visible for a human comparing
+	// runs.
 	if tBase > 2*time.Millisecond {
-		ratio := float64(tBig) / float64(tBase)
-		if ratio > redactionRatioCeiling {
-			t.Errorf("4x input took %.1fx longer to redact (base=%v big=%v) — superlinear "+
-				"growth suggests redaction is O(matches x content). Scanning the same "+
-				"fixtures is linear, so this is a redaction-side regression",
-				ratio, tBase, tBig)
-		}
+		t.Logf("4x input redaction ratio: %.1fx (base=%v big=%v) — informational; "+
+			"redaction is still superlinear, see the absolute ceiling below",
+			float64(tBig)/float64(tBase), tBase, tBig)
+	}
+
+	// ABSOLUTE ceiling instead. This is what a ratio cannot give: it is immune to
+	// the noise in tBase, it fails on a genuine order-of-magnitude regression,
+	// and it is scaled for the race detector exactly as the validator guard does.
+	//
+	// Sized from measurement with real headroom: the fixture costs ~150-250ms
+	// here and ~440ms on a slow shared runner, so 8s catches a 20-30x blowup
+	// while tolerating a heavily loaded machine.
+	ceiling := redactionAbsoluteCeiling
+	if raceDetectorEnabled {
+		ceiling *= raceCeilingMultiplier
+	}
+	if tBig > ceiling {
+		t.Errorf("redacting %d matches took %v (> %v ceiling%s) — a regression of this "+
+			"size means redaction cost is scaling with (matches x content) again",
+			bigN, tBig, ceiling, raceNote())
 	}
 }
 
@@ -201,13 +234,20 @@ func TestRedactionComplexity_FixedMatchesGrowingContent(t *testing.T) {
 			"meaningful with the match count pinned", nBase, nBig)
 	}
 
+	// Ratio logged, not asserted — same reasoning as the growing family.
 	if tBase > 2*time.Millisecond {
-		ratio := float64(tBig) / float64(tBase)
-		if ratio > fixedMatchRatioCeiling {
-			t.Errorf("%.0fx more content at a FIXED %d matches took %.1fx longer "+
-				"(base=%v big=%v) — cost is scaling with content x matches, which means "+
-				"each match is being located by scanning the whole document",
-				contentRise, matchCount, ratio, tBase, tBig)
-		}
+		t.Logf("%.0fx more content at a FIXED %d matches: %.1fx longer (base=%v big=%v) "+
+			"— informational", contentRise, matchCount, float64(tBig)/float64(tBase), tBase, tBig)
+	}
+
+	ceiling := fixedMatchAbsoluteCeiling
+	if raceDetectorEnabled {
+		ceiling *= raceCeilingMultiplier
+	}
+	if tBig > ceiling {
+		t.Errorf("%.0fx more content at a FIXED %d matches took %v (> %v ceiling%s) — with "+
+			"the match count pinned, a blowup of this size means each match is being "+
+			"located by scanning the whole document again",
+			contentRise, matchCount, tBig, ceiling, raceNote())
 	}
 }
