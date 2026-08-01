@@ -75,6 +75,50 @@ func TestResolveOverlaps_DifferentLinesNeverSubsume(t *testing.T) {
 	}
 }
 
+func TestResolveOverlaps_SameLineNumberDifferentSourceNeverSubsume(t *testing.T) {
+	// Regression: an Office package numbers lines per part, so a metadata match
+	// in docProps/core.xml and a body match in word/document.xml both arrive as
+	// "line 1" with offsets measured against DIFFERENT strings. Comparing those
+	// offsets is meaningless. Here the body SSN's span [9,20) falls numerically
+	// inside the author's [8,20), and the SSN was dropped before redaction was
+	// ever attempted — leaving it in cleartext in the "redacted" output.
+	//
+	// The two matches are on different lines despite sharing a line NUMBER, so
+	// neither may subsume the other.
+	matches := []detector.Match{
+		mkMatch("SSN", "449-87-4100", "body ssn 449-87-4100", 1),
+		mkMatch("AUTHOR_INFO", "Jane Analyst", "Author: Jane Analyst", 1),
+	}
+	got := ResolveOverlaps(matches)
+	if len(got) != 2 {
+		t.Fatalf("matches from different source text must both survive; got %v (len %d) — a dropped match is never redacted, so this is a cleartext leak", types(got), len(got))
+	}
+	var sawSSN bool
+	for _, m := range got {
+		if m.Type == "SSN" {
+			sawSSN = true
+		}
+	}
+	if !sawSSN {
+		t.Fatalf("the body SSN must survive: it lives in a different part than the metadata match, got %v", types(got))
+	}
+}
+
+func TestResolveOverlaps_SameLineNumberSameTextStillSubsumes(t *testing.T) {
+	// The complement of the case above: when the FullLine really is the same
+	// line, containment must still collapse to the widest span. This is what
+	// keeps the original card/phone fix working.
+	line := "card 4532 0151 1283 0366"
+	matches := []detector.Match{
+		mkMatch("VISA", "4532 0151 1283 0366", line, 1),
+		mkMatch("PHONE", "0151 1283 0366", line, 1),
+	}
+	got := ResolveOverlaps(matches)
+	if len(got) != 1 || got[0].Type != "VISA" {
+		t.Fatalf("identical FullLine must still collapse to the widest span, got %v", types(got))
+	}
+}
+
 func TestResolveOverlaps_PartialOverlapKeepsBoth(t *testing.T) {
 	// Overlapping but neither fully contains the other: keep both (dropping
 	// either would leave part of it exposed).

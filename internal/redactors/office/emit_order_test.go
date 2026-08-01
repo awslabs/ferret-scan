@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -224,6 +225,86 @@ func TestRepackage_RedactsSensitiveValues(t *testing.T) {
 			if bytes.Contains(content, []byte(secret)) {
 				t.Errorf("entry %s still contains the raw value", f.Name)
 			}
+		}
+	}
+}
+
+// TestRepackage_MetadataMatchDoesNotSuppressBodyRedaction covers the gap that
+// let a real leak through: TestRepackage_RedactsSensitiveValues passes matches
+// with no Context.FullLine, so every match is position-unresolvable and the
+// overlap-containment path is never entered at all.
+//
+// Here the matches carry FullLine the way the scanner really populates it. The
+// metadata match comes from docProps/core.xml and the body match from
+// word/document.xml, and both are reported as line 1 because line numbers are
+// counted per part. Their offsets are measured against different strings, so
+// treating one as "contained" in the other is a coordinate-system error — and
+// it silently dropped the body SSN before redaction was attempted.
+func TestRepackage_MetadataMatchDoesNotSuppressBodyRedaction(t *testing.T) {
+	src := writeFixtureDocx(t)
+	out := filepath.Join("testdata", "tmp-emit-order", "out", "metaline.docx")
+
+	const (
+		ssn        = "449-87-4100"
+		bodyLine   = "Employee SSN: 449-87-4100"
+		author     = "Jane Quincy Analyst-Smith"
+		authorLine = "Creator: Jane Quincy Analyst-Smith"
+	)
+
+	// Guard against this test quietly becoming vacuous: it is only meaningful
+	// while the author's span numerically contains the SSN's span and is wider.
+	// If someone edits the strings so containment no longer holds, the test
+	// would pass without exercising anything.
+	ssnStart := strings.Index(bodyLine, ssn)
+	ssnEnd := ssnStart + len(ssn)
+	authorStart := strings.Index(authorLine, author)
+	authorEnd := authorStart + len(author)
+	if ssnStart < 0 || authorStart < 0 {
+		t.Fatalf("fixture strings are inconsistent: ssnStart=%d authorStart=%d", ssnStart, authorStart)
+	}
+	if !(authorStart <= ssnStart && ssnEnd <= authorEnd && (authorEnd-authorStart) > (ssnEnd-ssnStart)) {
+		t.Fatalf("precondition lost: author span [%d,%d) must strictly contain SSN span [%d,%d), else this test proves nothing",
+			authorStart, authorEnd, ssnStart, ssnEnd)
+	}
+
+	matches := []detector.Match{
+		{
+			Text: ssn, LineNumber: 1, Type: "SSN", Confidence: 100,
+			Filename: src, Validator: "ssn",
+			Context: detector.ContextInfo{FullLine: bodyLine},
+		},
+		{
+			Text: author, LineNumber: 1, Type: "AUTHOR_INFO", Confidence: 80,
+			Filename: src, Validator: "metadata",
+			Context: detector.ContextInfo{FullLine: authorLine},
+		},
+	}
+
+	r := NewOfficeRedactor(nil, nil)
+	if _, err := r.RedactDocument(src, out, matches, redactors.RedactionSimple); err != nil {
+		t.Fatalf("RedactDocument: %v", err)
+	}
+
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatalf("open output as zip: %v", err)
+	}
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open entry %s: %v", f.Name, err)
+		}
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read entry %s: %v", f.Name, err)
+		}
+		if bytes.Contains(content, []byte(ssn)) {
+			t.Errorf("entry %s still contains the raw SSN: a metadata match on the same line NUMBER must not suppress body redaction", f.Name)
 		}
 	}
 }
