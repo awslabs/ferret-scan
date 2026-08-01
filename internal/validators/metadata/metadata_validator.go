@@ -1293,6 +1293,30 @@ func (v *Validator) determineMatchType(line, preprocessorType string) string {
 	}
 	nameLower := strings.ToLower(name)
 
+	// lineLower is retained as an alias for nameLower so that a branch added to
+	// this function on another branch — which would have been written against
+	// the old whole-line variable — still compiles and still behaves correctly
+	// after a merge.
+	//
+	// This is not defensive padding. A field-name test written as
+	// strings.HasPrefix(lineLower, "custom_") and a field-name test written as
+	// strings.HasPrefix(nameLower, "custom_") are the same test, because the
+	// name is a prefix of the line. Git merges such a hunk with zero textual
+	// conflicts and the result then fails to COMPILE — measured on the union of
+	// this change with the custom-property work, which merged clean and died on
+	// "undefined: lineLower". Keeping the identifier bound makes the merge
+	// correct instead of merely quiet.
+	lineLower := nameLower
+
+	// Custom document properties, checked FIRST because the field name is
+	// author-chosen and can contain any of the substrings the checks below look
+	// for: "Custom_DeviceOwner" would otherwise be typed DEVICE_INFO and
+	// "Custom_ProjectManager" MANAGER_INFO, and neither would reach the
+	// custom-property risk analysis. The prefix is what the extractor emits.
+	if strings.HasPrefix(lineLower, "custom_") {
+		return "CUSTOM_PROPERTY"
+	}
+
 	// GPS-related patterns
 	if strings.Contains(nameLower, "gps") || strings.Contains(nameLower, "latitude") || strings.Contains(nameLower, "longitude") {
 		return "GPS"
