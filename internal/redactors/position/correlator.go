@@ -267,15 +267,66 @@ func (dpc *DefaultPositionCorrelator) ValidateCorrelation(correlation *PositionC
 	return nil
 }
 
-// extractTextAtPosition extracts text at the specified position
-func (dpc *DefaultPositionCorrelator) extractTextAtPosition(pos redactors.TextPosition, text string) (string, error) {
-	lines := strings.Split(text, "\n")
-
-	if pos.Line < 1 || pos.Line > len(lines) {
-		return "", fmt.Errorf("line %d is out of range (1-%d)", pos.Line, len(lines))
+// lineAt returns the 1-based line of text without allocating, and ok=false when
+// the line number is out of range. Splitting the whole document to reach one
+// line is what made the per-match correlation path quadratic.
+func lineAt(text string, lineNumber int) (string, bool) {
+	if lineNumber < 1 {
+		return "", false
 	}
+	start := 0
+	for n := 1; ; n++ {
+		idx := strings.IndexByte(text[start:], '\n')
+		if n == lineNumber {
+			if idx < 0 {
+				// Final line, no trailing newline. strings.Split yields a
+				// trailing empty element for text ending in "\n", so an empty
+				// final segment must remain addressable to preserve behaviour.
+				return text[start:], true
+			}
+			return text[start : start+idx], true
+		}
+		if idx < 0 {
+			return "", false
+		}
+		start += idx + 1
+	}
+}
 
-	line := lines[pos.Line-1] // Convert to 0-based indexing
+// countLines reports the number of lines strings.Split(text, "\n") would yield,
+// so range errors keep reporting the same bound as before.
+func countLines(text string) int {
+	return strings.Count(text, "\n") + 1
+}
+
+// lineAndColumnAt returns the 1-based line number containing byte offset index
+// and the number of bytes between the start of that line and index. It replaces
+// a strings.Split(text[:index], "\n") that allocated every preceding line on
+// every call.
+func lineAndColumnAt(text string, index int) (line, column int) {
+	if index > len(text) {
+		index = len(text)
+	}
+	line = strings.Count(text[:index], "\n") + 1
+	if nl := strings.LastIndexByte(text[:index], '\n'); nl >= 0 {
+		return line, index - nl - 1
+	}
+	return line, index
+}
+
+// extractTextAtPosition extracts text at the specified position.
+//
+// The requested line is located by walking newlines rather than by
+// strings.Split of the whole document. Callers correlate one match at a time, so
+// splitting here allocated a slice of every line in the document per match —
+// one of three sites that together made redaction quadratic in
+// (matches x content bytes). Walking is O(offset of the line) with no
+// allocation, and the out-of-range error keeps its original 1-based line count.
+func (dpc *DefaultPositionCorrelator) extractTextAtPosition(pos redactors.TextPosition, text string) (string, error) {
+	line, ok := lineAt(text, pos.Line)
+	if !ok {
+		return "", fmt.Errorf("line %d is out of range (1-%d)", pos.Line, countLines(text))
+	}
 
 	if pos.StartChar < 0 || pos.StartChar >= len(line) {
 		return "", fmt.Errorf("start char %d is out of range (0-%d)", pos.StartChar, len(line)-1)
@@ -295,11 +346,19 @@ func (dpc *DefaultPositionCorrelator) tryExactMatch(extractedPos redactors.TextP
 		return nil
 	}
 
+	// Occurrence count of this match's text in the document, computed ONCE.
+	// It was previously computed twice per correlated match — once here for
+	// metadata and once inside calculateExactMatchConfidence — and each
+	// strings.Count scans the whole document, so a document with m matches paid
+	// 2*m full scans. That was the dominant term in the quadratic redaction
+	// cost measured before this change.
+	matchCount := strings.Count(originalText, targetText)
+
 	// Calculate document position
 	docPos := dpc.calculateDocumentPosition(index, len(targetText), originalText, documentType)
 
 	// Calculate confidence based on text uniqueness
-	confidence := dpc.calculateExactMatchConfidence(targetText, originalText)
+	confidence := exactMatchConfidence(matchCount)
 
 	return &PositionCorrelation{
 		ExtractedPosition: extractedPos,
@@ -311,7 +370,7 @@ func (dpc *DefaultPositionCorrelator) tryExactMatch(extractedPos redactors.TextP
 		DocumentType:      documentType,
 		Metadata: map[string]interface{}{
 			"match_index": index,
-			"match_count": strings.Count(originalText, targetText),
+			"match_count": matchCount,
 		},
 	}
 }
@@ -435,10 +494,9 @@ func (dpc *DefaultPositionCorrelator) tryHeuristicMatch(extractedPos redactors.T
 
 // calculateDocumentPosition calculates the document position from text index
 func (dpc *DefaultPositionCorrelator) calculateDocumentPosition(index, length int, text, documentType string) *redactors.DocumentPosition {
-	// Count lines and calculate position
-	lines := strings.Split(text[:index], "\n")
-	line := len(lines)
-	charInLine := len(lines[len(lines)-1])
+	// Count lines and calculate position. See lineAndColumnAt: this used to
+	// strings.Split everything before index on every call, once per match.
+	line, charInLine := lineAndColumnAt(text, index)
 
 	// For simple text documents, we don't have page/bounding box info
 	return &redactors.DocumentPosition{
@@ -457,12 +515,20 @@ func (dpc *DefaultPositionCorrelator) calculateDocumentPosition(index, length in
 // Helper functions for confidence calculation and matching algorithms
 
 func (dpc *DefaultPositionCorrelator) calculateExactMatchConfidence(targetText, originalText string) float64 {
+	return exactMatchConfidence(strings.Count(originalText, targetText))
+}
+
+// exactMatchConfidence scores an exact match from how many times its text occurs
+// in the document: a unique occurrence is trusted, a repeated one is discounted.
+//
+// Split out from calculateExactMatchConfidence so a caller that already knows the
+// occurrence count does not have to rescan the document to recompute it. The
+// arithmetic is unchanged.
+func exactMatchConfidence(matchCount int) float64 {
 	// Base confidence for exact match
 	baseConfidence := 0.95
 
-	// Adjust based on text uniqueness
-	matchCount := strings.Count(originalText, targetText)
-	if matchCount == 1 {
+	if matchCount <= 1 {
 		return baseConfidence
 	}
 
