@@ -638,14 +638,49 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		}
 	}
 
-	// Check for keywords that might indicate non-PII or test data
+	// Check for keywords that might indicate non-PII or test data.
+	//
+	// This is scored against the field's VALUE, never against its NAME. The
+	// claim this rule makes is "the content here is fake", and only the content
+	// can be evidence of that. A field name is chosen by the file format, so it
+	// says what KIND of thing the field holds and nothing at all about whether
+	// the value is real.
+	//
+	// Scoring the whole line made several field names penalize their own
+	// values, because the names collide with this very list:
+	//
+	//	Template: \\corp-fs01\confidential\...   ctx -0.05, net 75
+	//	Tmpl:     \\corp-fs01\confidential\...   ctx +0.10, net 90
+	//
+	// Same value, and only the label differs — a UNC path disclosing an internal
+	// fileserver lost 15 points for being stored under a field called
+	// "Template". Measured over 120 real Office documents this fired on EVERY
+	// one of the 80 TEMPLATE_INFO findings, and also on image metadata's
+	// BitsPerSample ("sample") and on Custom_db_template_reference.
+	//
+	// The suppression itself is correct and is kept: a value that really is test
+	// data ("Author: test user") still loses 0.15, and so does a template whose
+	// VALUE names a stock template ("Template: Normal.dotm" — "normal" is not on
+	// the list, but "Template: sample.dotx" is).
+	// Split the ALREADY-lowercased line rather than lowercasing the value again:
+	// this runs per line on every metadata field, and a second whole-line
+	// strings.ToLower allocation measured 1.24-1.38x on this function.
+	// strings.ToLower cannot move the ASCII ":"/"=" separator that
+	// splitMetadataField looks for, so splitting either string finds the same
+	// boundary.
+	//
+	// When there is no separator, splitMetadataField returns the whole line as
+	// the value — which is exactly what a separator-less line's value is — so the
+	// previous behaviour is preserved with no extra branch.
+	_, valueLower, _ := splitMetadataField(contextLower)
+
 	nonPiiIndicators := []string{
 		"test", "example", "sample", "demo", "placeholder", "dummy",
 		"template", "default", "anonymous", "unknown",
 	}
 
 	for _, indicator := range nonPiiIndicators {
-		if strings.Contains(contextLower, indicator) {
+		if strings.Contains(valueLower, indicator) {
 			confidenceAdjustment -= 0.15
 			// Only subtract adjustment once to avoid excessive reduction
 			break
@@ -1286,8 +1321,51 @@ func (v *Validator) containsSensitiveFieldForPreprocessor(line string, sensitive
 }
 
 // determineMatchType determines the match type based on content and preprocessor type
+//
+// The type is decided by the field's NAME, not by its value. What KIND of thing a
+// metadata field holds is a property of the field, and the value is free text
+// that routinely contains other fields' names: a company genuinely called
+// "Manager Tools LLC" or "Author Solutions Inc" used to be reported as
+// MANAGER_INFO / AUTHOR_INFO because the type was picked by substring-matching
+// the whole line. That wrong type reaches the report, the redaction path, and the
+// suppression hash, and it also routed the finding to the wrong confidence boost.
+//
+// The one branch that deliberately reads the VALUE is the email check, because
+// "contains an @-address" is a genuine value-shape signal and no field is named
+// "@". It stays below the name branches so a recognized field keeps its own type,
+// which is why "Author: john.doe@example.com" is AUTHOR_INFO and not EMAIL.
 func (v *Validator) determineMatchType(line, preprocessorType string) string {
-	lineLower := strings.ToLower(line)
+	name, value, ok := splitMetadataField(line)
+	if !ok {
+		// No separator, so there is no name/value split to make and the line is
+		// all we have. Preserves the previous behaviour for such input.
+		name, value = line, line
+	}
+	nameLower := strings.ToLower(name)
+
+	// lineLower is retained as an alias for nameLower so that a branch added to
+	// this function on another branch — which would have been written against
+	// the old whole-line variable — still compiles and still behaves correctly
+	// after a merge.
+	//
+	// This is not defensive padding. A field-name test written as
+	// strings.HasPrefix(lineLower, "custom_") and a field-name test written as
+	// strings.HasPrefix(nameLower, "custom_") are the same test, because the
+	// name is a prefix of the line. Git merges such a hunk with zero textual
+	// conflicts and the result then fails to COMPILE — measured on the union of
+	// this change with the custom-property work, which merged clean and died on
+	// "undefined: lineLower". Keeping the identifier bound makes the merge
+	// correct instead of merely quiet.
+	lineLower := nameLower
+
+	// Custom document properties, checked FIRST because the field name is
+	// author-chosen and can contain any of the substrings the checks below look
+	// for: "Custom_DeviceOwner" would otherwise be typed DEVICE_INFO and
+	// "Custom_ProjectManager" MANAGER_INFO, and neither would reach the
+	// custom-property risk analysis. The prefix is what the extractor emits.
+	if strings.HasPrefix(lineLower, "custom_") {
+		return "CUSTOM_PROPERTY"
+	}
 
 	// Custom document properties, checked FIRST because the field name is
 	// author-chosen and can contain any of the substrings the checks below look
@@ -1299,55 +1377,62 @@ func (v *Validator) determineMatchType(line, preprocessorType string) string {
 	}
 
 	// GPS-related patterns
-	if strings.Contains(lineLower, "gps") || strings.Contains(lineLower, "latitude") || strings.Contains(lineLower, "longitude") {
+	if strings.Contains(nameLower, "gps") || strings.Contains(nameLower, "latitude") || strings.Contains(nameLower, "longitude") {
 		return "GPS"
 	}
 
 	// Device information patterns
-	if strings.Contains(lineLower, "camera") || strings.Contains(lineLower, "device") || strings.Contains(lineLower, "serial") {
+	if strings.Contains(nameLower, "camera") || strings.Contains(nameLower, "device") || strings.Contains(nameLower, "serial") {
 		return "DEVICE_INFO"
 	}
 
 	// Author/creator patterns
-	if strings.Contains(lineLower, "author") || strings.Contains(lineLower, "creator") || strings.Contains(lineLower, "artist") {
+	if strings.Contains(nameLower, "author") || strings.Contains(nameLower, "creator") || strings.Contains(nameLower, "artist") {
 		return "AUTHOR_INFO"
 	}
 
-	// Contact information patterns
-	if strings.Contains(line, "@") {
+	// Contact information patterns. Value-shaped by design — see the doc comment.
+	if strings.Contains(value, "@") {
 		return "EMAIL"
 	}
 
 	// Comments and descriptions
-	if strings.Contains(lineLower, "comment") {
+	if strings.Contains(nameLower, "comment") {
 		return "DOCUMENT_COMMENTS"
 	}
-	if strings.Contains(lineLower, "description") {
+	if strings.Contains(nameLower, "description") {
 		return "DOCUMENT_DESCRIPTION"
 	}
 
 	// Manager information
-	if strings.Contains(lineLower, "manager") {
+	if strings.Contains(nameLower, "manager") {
 		return "MANAGER_INFO"
 	}
 
 	// Last modified by
-	if strings.Contains(lineLower, "lastmodifiedby") {
+	if strings.Contains(nameLower, "lastmodifiedby") {
 		return "LAST_MODIFIED_BY"
 	}
 
-	// Office metadata specific fields
-	if strings.Contains(lineLower, "company:") {
+	// Office metadata specific fields. These used to carry a trailing ":" to
+	// approximate "the line STARTS with this field" while matching the whole
+	// line; matching the name makes that explicit and the colon is now gone.
+	if strings.Contains(nameLower, "company") {
 		return "COMPANY_INFO"
 	}
-	if strings.Contains(lineLower, "application:") {
+	if strings.Contains(nameLower, "application") {
 		return "APPLICATION_INFO"
 	}
-	if strings.Contains(lineLower, "template:") {
+	if strings.Contains(nameLower, "template") {
 		return "TEMPLATE_INFO"
 	}
 
-	// Preprocessor-specific types with enhanced detection
+	// Preprocessor-specific types with enhanced detection.
+	//
+	// determineImageMetadataType still receives the whole line: unlike the
+	// branches above it legitimately classifies by value as well as by name
+	// ("Software: Adobe Photoshop" is IMAGE_SOFTWARE because of its value), so
+	// narrowing it is a separate question from the name-versus-value bug.
 	switch preprocessorType {
 	case PreprocessorTypeImageMetadata:
 		return v.determineImageMetadataType(line)
@@ -1425,11 +1510,69 @@ func (v *Validator) determineImageMetadataType(line string) string {
 }
 
 // applyPreprocessorConfidenceBoosts applies confidence boosts based on preprocessor type
+//
+// The boost table is keyed by FIELD TYPE ("manager", "comments", "author",
+// "company", "gps", ...): it means "a value stored in this KIND of field is worth
+// more". The keys therefore describe the field's NAME, not its contents.
+//
+// It matched match.Text, the extracted VALUE. Every key is an ordinary English
+// word, so a value that merely contained one collected that field's boost, and —
+// via determineMatchType, which had the same bug — that field's TYPE as well:
+//
+//	Company: Manager Tools LLC     MANAGER_INFO       95   (manager_boost 40)
+//	Company: Author Solutions Inc  AUTHOR_INFO        85   (author_boost  30)
+//	Subject: comments on Q3        DOCUMENT_COMMENTS 100   (comments_boost 50)
+//	Company: Acme Corp             COMPANY_INFO       55   (control, no boost)
+//
+// Real organizations are named "Manager Tools LLC" and "Author Solutions", so
+// this is ordinary input, not anything crafted. Measured over 120 real Office
+// documents, it promoted a Nasdaq classification footer to AUTHOR_INFO at 100 on
+// the strength of the word "authorized" inside its value.
+//
+// The fix is to stop crediting a field name found in a value — NOT to re-point
+// the table at the field name. Those are different changes, and only the first is
+// a bug fix:
+//
+//   - Because a value almost never repeats its own field's name, this table has
+//     been dormant for its intended purpose since the initial commit. Pointing it
+//     at the name wakes ~+40 on every author/company/application field at once.
+//   - CalculateConfidence ALREADY scores these same field names, from the same
+//     line, a few calls earlier (author: +0.20, company: +0.15, manager: +0.25,
+//     comments: +0.30). Adding the table on top double-counts one signal —
+//     precisely the "field boosts double-count → most TPs HIGH" note in
+//     docs/proposals/CONFIDENCE_CONTRACT.md.
+//   - Measured: waking it moves the corpus from 8 HIGH to 143 HIGH, and what
+//     arrives in HIGH is boilerplate — "Microsoft Office User", "python-docx",
+//     "Microsoft Office Word". HIGH is the band that fails a commit by default
+//     (precommit.ExitOnFindings = "high"), so that is a rejected regression.
+//
+// Restricting the match to the value's own field name keeps the table exactly as
+// dormant as it has always been for mundane fields, while removing the
+// misattribution. A boost is still possible, but now only when the field name and
+// the boost key genuinely agree.
+//
+// full_field holds the original "Name: value" line. It is absent only for the
+// consolidated-GPS matches, which are assembled from parts rather than read from
+// one line and so have no field name; those keep their previous behaviour.
 func (v *Validator) applyPreprocessorConfidenceBoosts(match *detector.Match, preprocessorType string, boosts map[string]float64) {
 	lineLower := strings.ToLower(match.Text)
 
+	// The field this value actually came from. Empty when there is no field name
+	// to check against (consolidated GPS), which disables the guard below.
+	fieldNameLower := ""
+	if fullField, ok := match.Metadata["full_field"].(string); ok {
+		if name, _, split := splitMetadataField(fullField); split {
+			fieldNameLower = strings.ToLower(name)
+		}
+	}
+
 	// Apply confidence boosts based on field types
 	for fieldType, boost := range boosts {
+		// A field type found in the VALUE is not evidence about the value. Credit
+		// it only when the value's own field name carries it too.
+		if fieldNameLower != "" && !strings.Contains(fieldNameLower, fieldType) {
+			continue
+		}
 		if strings.Contains(lineLower, fieldType) {
 			match.Confidence += boost * 100 // Convert to percentage
 
@@ -2366,22 +2509,49 @@ func (v *Validator) checkLowPrioritySensitive(line string) *detector.Match {
 	return nil
 }
 
+// splitMetadataField splits a metadata line into its field NAME and its VALUE.
+//
+// Every extractor emits metadata as "Name: value" (see
+// preprocessors.MetadataFormatter.FormatMetadataField), with "Name = value" also
+// accepted here. The two halves are different kinds of text and must be scored
+// against different vocabularies:
+//
+//   - The NAME says what KIND of thing this is. It is chosen by the file format
+//     (or, for a custom document property, by the document's author) and is not
+//     prose. It is the right input for deciding a finding's TYPE.
+//   - The VALUE is the content that may or may not disclose something. It is the
+//     right input for judging CONFIDENCE.
+//
+// Scoring one as if it were the other is what this helper exists to prevent: a
+// line beginning "Template:" used to match the word "template" in the validator's
+// own test-data denylist and penalize itself, and a company genuinely named
+// "Manager Tools LLC" used to be typed MANAGER_INFO and collect the manager
+// field's boost.
+//
+// ok is false when the line carries no separator at all. There is then no field
+// name to speak of, and the whole line is returned as the value, so callers that
+// score prose keep their previous behaviour on separator-less input.
+//
+// ":" wins over "=" wherever both appear, and only the FIRST separator splits,
+// so a value that itself contains ":" ("Nasdaq - Internal Use: ...") stays whole.
+func splitMetadataField(line string) (name, value string, ok bool) {
+	sep := ":"
+	if !strings.Contains(line, sep) {
+		sep = "="
+		if !strings.Contains(line, sep) {
+			return "", strings.TrimSpace(line), false
+		}
+	}
+
+	parts := strings.SplitN(line, sep, 2)
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), true
+}
+
 // extractSensitiveValue extracts just the sensitive value from a metadata field
 func (v *Validator) extractSensitiveValue(line, matchType string) string {
 	// Handle different field formats: "Field: Value" or "Field = Value"
-	var value string
-
-	if strings.Contains(line, ":") {
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 {
-			value = strings.TrimSpace(parts[1])
-		}
-	} else if strings.Contains(line, "=") {
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			value = strings.TrimSpace(parts[1])
-		}
-	} else {
+	_, value, ok := splitMetadataField(line)
+	if !ok {
 		// If no separator found, return the original line
 		return strings.TrimSpace(line)
 	}

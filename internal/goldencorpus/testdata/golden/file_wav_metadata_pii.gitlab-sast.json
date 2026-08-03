@@ -29,32 +29,6 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected document comments in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** HIGH (100.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- context_impact: -0.04999999999999999\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "DOCUMENT_COMMENTS"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "metadata"
-        }
-      ],
-      "location": {
-        "end_line": 7,
-        "file": "clip.wav",
-        "start_line": 7
-      },
-      "message": "Document comments detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Document Comments Detected",
-      "severity": "Critical"
-    },
-    {
-      "category": "sast",
-      "confidence": "High",
       "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** MEDIUM (84.0%)\n**Detected by:** secrets validator\n\n**Matched value:**\n```\nAKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
@@ -128,6 +102,32 @@
       },
       "message": "Author information detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Author Info Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected document comments in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- context_impact: -0.04999999999999999\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DOCUMENT_COMMENTS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "metadata"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "clip.wav",
+        "start_line": 7
+      },
+      "message": "Document comments detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Document Comments Detected",
       "severity": "High"
     },
     {
