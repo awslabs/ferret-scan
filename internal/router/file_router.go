@@ -5,7 +5,9 @@ package router
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -543,6 +545,18 @@ func isTextFile(filePath string) (bool, error) {
 	buffer := make([]byte, 512)
 	n, err := file.Read(buffer)
 	if err != nil && n == 0 {
+		// An empty file is readable, not unreadable. Read returns io.EOF with
+		// n == 0 for a zero-byte file, and reporting that as an error made the
+		// caller classify it as ReasonUnreadable — which surfaces as the alarming
+		// "could not be opened ... any sensitive data they contain was NOT
+		// detected". A zero-byte file contains nothing, so there is nothing
+		// undetected and nothing for an operator to act on. Measured on a real
+		// tree: all 25 files in that warning were zero bytes (build artifacts,
+		// empty .err logs, a .venv lock file, empty golden fixtures), which
+		// buried the diagnostic's real purpose — genuinely unreadable files.
+		if errors.Is(err, io.EOF) {
+			return true, nil
+		}
 		return false, err
 	}
 
