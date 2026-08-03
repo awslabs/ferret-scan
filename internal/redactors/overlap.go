@@ -28,17 +28,50 @@ import (
 // A match whose position cannot be determined (empty FullLine, text not found)
 // is kept as-is and never subsumes another, so callers see no behavior change
 // for inputs that don't overlap. Input order is preserved for survivors.
+//
+// Containment is only ever tested between matches from the SAME line of the
+// SAME source text. LineNumber alone does not identify a line: an Office
+// package reports line numbers per part, so a metadata match in
+// docProps/core.xml and a body match in word/document.xml both arrive as
+// "line 1" with offsets measured against different strings. Comparing those
+// offsets is meaningless, and when the body span happened to fall numerically
+// inside the metadata span the body match was dropped — leaving real PII
+// (an SSN) in cleartext in the "redacted" output. The line's own text is
+// therefore part of its identity: two matches whose FullLine differs are on
+// different lines by definition and can never subsume one another.
 func ResolveOverlaps(matches []detector.Match) []detector.Match {
 	if len(matches) < 2 {
 		return matches
 	}
 
 	// span records where a match sits within its line, or ok=false when the
-	// position could not be resolved.
+	// position could not be resolved. line is an interned id identifying the
+	// containing line by both its reported number and its text, so offsets are
+	// only ever compared within one shared coordinate system.
+	//
+	// The id is interned rather than carrying the line text itself: the
+	// containment loop below is O(n²) in the number of matches, and comparing
+	// full line strings there made a dense single-line document 48x slower
+	// (1.1ms -> 55ms for 800 matches on one long line). Interning pays the
+	// string hash once per match and reduces the hot comparison to an int.
+	type lineKey struct {
+		number int
+		text   string
+	}
 	type span struct {
 		line       int
 		start, end int
 		ok         bool
+	}
+	lineIDs := make(map[lineKey]int, len(matches))
+	lineIDFor := func(number int, text string) int {
+		k := lineKey{number: number, text: text}
+		if id, ok := lineIDs[k]; ok {
+			return id
+		}
+		id := len(lineIDs) + 1 // 1-based; 0 is the zero value of span.line
+		lineIDs[k] = id
+		return id
 	}
 
 	// Assign each match to a concrete occurrence of its text within the line.
@@ -52,10 +85,11 @@ func ResolveOverlaps(matches []detector.Match) []detector.Match {
 		if line == "" || m.Text == "" {
 			continue
 		}
-		byText, ok := cursor[m.LineNumber]
+		lineID := lineIDFor(m.LineNumber, line)
+		byText, ok := cursor[lineID]
 		if !ok {
 			byText = make(map[string]int)
-			cursor[m.LineNumber] = byText
+			cursor[lineID] = byText
 		}
 		from := byText[m.Text]
 		idx := strings.Index(line[from:], m.Text)
@@ -65,11 +99,11 @@ func ResolveOverlaps(matches []detector.Match) []detector.Match {
 			if idx < 0 {
 				continue
 			}
-			spans[i] = span{line: m.LineNumber, start: idx, end: idx + len(m.Text), ok: true}
+			spans[i] = span{line: lineID, start: idx, end: idx + len(m.Text), ok: true}
 			continue
 		}
 		start := from + idx
-		spans[i] = span{line: m.LineNumber, start: start, end: start + len(m.Text), ok: true}
+		spans[i] = span{line: lineID, start: start, end: start + len(m.Text), ok: true}
 		byText[m.Text] = start + len(m.Text)
 	}
 
