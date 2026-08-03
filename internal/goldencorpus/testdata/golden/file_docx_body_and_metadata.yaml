@@ -12,8 +12,6 @@ results:
         context_doctype: Unknown
         context_domain: HR_Payroll
         context_impact: 45
-        correlation_boost: 5
-        cross_path_correlation: true
         original_confidence: 100
         original_file: <TMPDIR>/report.docx
         semantic_context:
@@ -46,8 +44,6 @@ results:
         context_doctype: Unknown
         context_domain: HR_Payroll
         context_impact: 15
-        correlation_boost: 5
-        cross_path_correlation: true
         original_confidence: 100
         original_file: <TMPDIR>/report.docx
         semantic_context:
@@ -70,7 +66,7 @@ results:
     - text: Jane Analyst
       line_number: 1
       type: AUTHOR_INFO
-      confidence: 65
+      confidence: 60.00000000000001
       confidence_level: MEDIUM
       filename: <TMPDIR>/report.docx
       validator: metadata
@@ -80,8 +76,6 @@ results:
         context_doctype: Unknown
         context_domain: HR_Payroll
         context_impact: 0
-        correlation_boost: 5
-        cross_path_correlation: true
         full_field: 'Author: Jane Analyst'
         metadata_type: AUTHOR_INFO
         original_confidence: 60.00000000000001
@@ -105,7 +99,7 @@ results:
     - text: Ops Reviewer
       line_number: 2
       type: LAST_MODIFIED_BY
-      confidence: 65
+      confidence: 60.00000000000001
       confidence_level: MEDIUM
       filename: <TMPDIR>/report.docx
       validator: metadata
@@ -115,8 +109,6 @@ results:
         context_doctype: Unknown
         context_domain: HR_Payroll
         context_impact: 0
-        correlation_boost: 5
-        cross_path_correlation: true
         full_field: 'LastModifiedBy: Ops Reviewer'
         metadata_type: LAST_MODIFIED_BY
         original_confidence: 60.00000000000001

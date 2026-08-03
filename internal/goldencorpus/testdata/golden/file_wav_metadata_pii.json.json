@@ -12,8 +12,6 @@
         "context_doctype": "Configuration",
         "context_domain": "Unknown",
         "context_impact": -0.04999999999999999,
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "full_field": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
         "metadata_type": "DOCUMENT_COMMENTS",
         "original_confidence": 100,
@@ -43,7 +41,7 @@
       "validator": "metadata"
     },
     {
-      "confidence": 89,
+      "confidence": 84,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/clip.wav",
       "line_number": 7,
@@ -53,8 +51,6 @@
         "context_doc_type": "Configuration",
         "context_doctype": "Configuration",
         "context_domain": "Unknown",
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "detection_method": "keyword_pattern",
         "environment_type": "test",
         "original_confidence": 84,
@@ -84,7 +80,7 @@
       "validator": "secrets"
     },
     {
-      "confidence": 87,
+      "confidence": 82,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/clip.wav",
       "line_number": 7,
@@ -95,9 +91,7 @@
         "context_doctype": "Configuration",
         "context_domain": "Unknown",
         "context_impact": -3,
-        "correlation_boost": 5,
         "country": "US/CA",
-        "cross_path_correlation": true,
         "format": "XXX-XXX-XXXX",
         "original_confidence": 82,
         "original_file": "<TMPDIR>/clip.wav",
@@ -128,7 +122,7 @@
       "validator": "phone"
     },
     {
-      "confidence": 85,
+      "confidence": 80,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/clip.wav",
       "line_number": 6,
@@ -138,8 +132,6 @@
         "context_doctype": "Configuration",
         "context_domain": "Unknown",
         "context_impact": 0,
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "full_field": "Artist: john.doe@example.com",
         "metadata_type": "AUTHOR_INFO",
         "original_confidence": 80,
@@ -171,7 +163,7 @@
       "validator": "metadata"
     },
     {
-      "confidence": 30,
+      "confidence": 25,
       "confidence_level": "LOW",
       "filename": "<TMPDIR>/clip.wav",
       "line_number": 6,
@@ -181,8 +173,6 @@
         "context_doctype": "Configuration",
         "context_domain": "Unknown",
         "context_impact": -20,
-        "correlation_boost": 5,
-        "cross_path_correlation": true,
         "domain": "example.com",
         "email_provider": "BUSINESS",
         "original_confidence": 25,
