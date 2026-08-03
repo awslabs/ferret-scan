@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 	"github.com/awslabs/ferret-scan/v2/internal/validators"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // Import MetadataContent from router package to avoid duplication
@@ -248,6 +249,14 @@ func (v *Validator) initializeDefaultValidationRules() {
 			"comments", "description", "keywords", "subject",
 			"copyright", "rights", "copyrightnotice", "application",
 			"template",
+			// custom_ covers docProps/custom.xml properties. The extractor
+			// already surfaces these (they appear in --preprocess-only output),
+			// but without this entry validateWithPreprocessorRules filtered them
+			// out and they produced ZERO findings — a Classification property
+			// reading "SECRET - <codename>" was extracted, printed, and never
+			// reported. analyzeCustomPropertyRisk existed for exactly this and
+			// was unreachable for real documents.
+			"custom_",
 		},
 		ConfidenceBoosts: map[string]float64{
 			"manager":     0.4, // High confidence for manager info
@@ -1166,6 +1175,26 @@ func (v *Validator) validateWithPreprocessorRules(content router.MetadataContent
 
 		// Check if this line contains any sensitive fields for this preprocessor type
 		if v.containsSensitiveFieldForPreprocessor(line, rules.SensitiveFields) {
+			// Determine match type based on content and preprocessor type
+			matchType := v.determineMatchType(line, content.PreprocessorType)
+
+			// Extract just the sensitive value from the metadata field
+			sensitiveValue := v.extractSensitiveValue(line, matchType)
+
+			// Custom properties are mostly machine bookkeeping. Skip the values
+			// that cannot disclose anything, so enabling this field does not
+			// bury the ones that can.
+			//
+			// This is deliberately BEFORE the scoring calls below: profiling
+			// showed CalculateConfidence dominates this loop (33% of samples on
+			// a metadata-dense package), and running it on a value that is about
+			// to be discarded is pure waste. Skipping first keeps the cost of
+			// enabling custom properties proportional to the findings actually
+			// reported.
+			if matchType == "CUSTOM_PROPERTY" && isValuelessProperty(sensitiveValue) {
+				continue
+			}
+
 			confidence, checks := v.CalculateConfidence(line)
 
 			// Create context info for the line
@@ -1186,11 +1215,41 @@ func (v *Validator) validateWithPreprocessorRules(content router.MetadataContent
 
 			contextInfo.ConfidenceImpact = contextImpact
 
-			// Determine match type based on content and preprocessor type
-			matchType := v.determineMatchType(line, content.PreprocessorType)
+			// Apply the value-shape risk analysis this path used to skip.
+			//
+			// This function is the LIVE path for every registered preprocessor
+			// type (office/image/audio/video/document _metadata), while the
+			// per-field blocks in checkOfficeMetadataFields are only reached as
+			// a fallback for UNREGISTERED types. The per-field blocks call
+			// analyzeTemplatePathRisk / analyzeCustomPropertyRisk to score the
+			// field's VALUE; this one did not, so the analyzers were effectively
+			// dead for real documents. Measured: a template pointing at
+			// \\host\confidential\... scored 25 here versus 100 there, ranking a
+			// disclosed internal fileserver path BELOW a mundane company name.
+			//
+			// Additive only, and never applied to a type the risk function does
+			// not understand — see applyValueShapeRisk.
+			riskBoost, riskMeta := v.applyValueShapeRisk(matchType, line, sensitiveValue)
+			confidence += riskBoost
+			if confidence > 1.0 {
+				confidence = 1.0
+			} else if confidence < 0.0 {
+				confidence = 0.0
+			}
 
-			// Extract just the sensitive value from the metadata field
-			sensitiveValue := v.extractSensitiveValue(line, matchType)
+			matchMetadata := map[string]interface{}{
+				"metadata_type":     matchType,
+				"validation_checks": checks,
+				"context_impact":    contextImpact,
+				"source":            "preprocessed_content",
+				"original_file":     content.SourceFile,
+				"preprocessor_type": content.PreprocessorType,
+				"preprocessor_name": content.PreprocessorName,
+				"full_field":        line, // Keep the original field for reference
+			}
+			for k, val := range riskMeta {
+				matchMetadata[k] = val
+			}
 
 			matches = append(matches, detector.Match{
 				Text:       sensitiveValue,
@@ -1200,16 +1259,7 @@ func (v *Validator) validateWithPreprocessorRules(content router.MetadataContent
 				Filename:   content.SourceFile,
 				Validator:  "metadata",
 				Context:    contextInfo,
-				Metadata: map[string]interface{}{
-					"metadata_type":     matchType,
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     content.SourceFile,
-					"preprocessor_type": content.PreprocessorType,
-					"preprocessor_name": content.PreprocessorName,
-					"full_field":        line, // Keep the original field for reference
-				},
+				Metadata:   matchMetadata,
 			})
 		}
 	}
@@ -1238,6 +1288,15 @@ func (v *Validator) containsSensitiveFieldForPreprocessor(line string, sensitive
 // determineMatchType determines the match type based on content and preprocessor type
 func (v *Validator) determineMatchType(line, preprocessorType string) string {
 	lineLower := strings.ToLower(line)
+
+	// Custom document properties, checked FIRST because the field name is
+	// author-chosen and can contain any of the substrings the checks below look
+	// for: "Custom_DeviceOwner" would otherwise be typed DEVICE_INFO and
+	// "Custom_ProjectManager" MANAGER_INFO, and neither would reach the
+	// custom-property risk analysis. The prefix is what the extractor emits.
+	if strings.HasPrefix(lineLower, "custom_") {
+		return "CUSTOM_PROPERTY"
+	}
 
 	// GPS-related patterns
 	if strings.Contains(lineLower, "gps") || strings.Contains(lineLower, "latitude") || strings.Contains(lineLower, "longitude") {
@@ -2648,6 +2707,123 @@ type CustomPropertyRisk struct {
 	PropertyName    string
 }
 
+// isValuelessProperty reports whether a custom-property VALUE cannot disclose
+// anything, no matter what the property is named.
+//
+// Custom document properties are dominated in practice by sensitivity-label and
+// content-management bookkeeping. Measured over 119 real documents, enabling the
+// field emitted 1,228 findings, of which 488 were Microsoft Purview
+// MSIP_Label_<guid>_* sub-properties: _Enabled "true", _ContentBits "0",
+// _Method "Standard", _SetDate, _SiteId, _ActionId. None of those reveal
+// anything about the document, and reporting them buries the sub-property that
+// does — _Name, which holds the human-readable classification (measured values
+// included "Amazon Confidential" and "Amazon Pending_Classification").
+//
+// The test is on the VALUE, not the property name, deliberately. A name-based
+// denylist would be a denylist of the exact form BSC1 warns about: incomplete
+// by construction, and it would drop a genuinely sensitive value that happened
+// to sit under a boilerplate-looking name. Judging the value keeps the rule
+// honest — a boolean, a bare integer, a GUID, a timestamp, or an empty string
+// carries no disclosure regardless of where it appears, while any human-readable
+// string is kept and scored normally.
+func isValuelessProperty(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return true
+	}
+
+	switch strings.ToLower(trimmed) {
+	case "true", "false", "standard", "none", "null", "n/a":
+		return true
+	}
+
+	// Bare integers ("0"), integer tuples ("50, 3, 0, 1"), GUIDs, and ISO
+	// timestamps are all machine identifiers or counters. A value made only of
+	// digits, hex, and structural punctuation has no prose in it to disclose.
+	hasLetter := false
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			hasLetter = true
+			break
+		}
+	}
+	if !hasLetter {
+		return true
+	}
+
+	// Everything below is a machine identifier of some shape, and all of those
+	// forms are single-token. Any whitespace means prose, so this one check
+	// short-circuits the regexes for every human-readable value — which is the
+	// case worth keeping fast, since those are the values that become findings.
+	// ("Amazon Confidential", "Nasdaq - Internal Use: ..." exit here.)
+	if strings.ContainsAny(trimmed, " \t") {
+		return false
+	}
+
+	// GUID: 8-4-4-4-12 hex. Purview writes several per label.
+	if guidPattern.MatchString(trimmed) {
+		return true
+	}
+
+	// Opaque machine identifiers: a long unbroken hex/base64 run is a digest or
+	// an internal id, not prose. SharePoint's ContentTypeId
+	// ("0x010100D3F06DC0...") and similar per-library ids are the common case;
+	// hex has letters, so the has-a-letter check above lets them through.
+	if opaqueIdentifierPattern.MatchString(trimmed) {
+		return true
+	}
+
+	// ISO-8601 timestamp, e.g. 2026-01-14T21:22:37Z. The only letters are the
+	// T/Z separators, so the hasLetter check above does not catch these.
+	return isoTimestampPattern.MatchString(trimmed)
+}
+
+var (
+	guidPattern         = regexp.MustCompile(`^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$`)
+	isoTimestampPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$`)
+	// 0x-prefixed or bare hex of 16+ digits, or a base64-ish run of 20+ chars.
+	// The length floors keep short human words (a "Privileged" label, a
+	// "Confidential" marker) out of this branch.
+	opaqueIdentifierPattern = regexp.MustCompile(`^(?:0[xX][0-9a-fA-F]{16,}|[0-9a-fA-F]{16,}|[A-Za-z0-9+/]{20,}={0,2})$`)
+)
+
+// applyValueShapeRisk returns the additive confidence boost and the metadata
+// keys for a finding whose VALUE carries an intrinsic risk signal — a UNC path
+// that discloses an internal server, a classification marker, a project
+// codename, a user directory that names an employee.
+//
+// It exists so the preprocessor-rule path and the per-field fallback path score
+// a value identically instead of drifting apart. Only types whose risk shape is
+// actually understood are handled; anything else returns a zero boost, so
+// adding a new metadata type can never silently pick up a wrong score.
+//
+// The boost is strictly ADDITIVE. It is deliberately incapable of lowering a
+// confidence, because metadata values are entirely attacker-controlled: a
+// subtractive rule here would hand an attacker a suppression oracle (they could
+// append a token to a field and demote a real finding below the reporting
+// threshold — the TM-11 shape). Raising a score cannot hide anything.
+func (v *Validator) applyValueShapeRisk(matchType, line, value string) (float64, map[string]interface{}) {
+	switch matchType {
+	case "TEMPLATE_INFO":
+		risk := v.analyzeTemplatePathRisk(value)
+		return risk.ConfidenceBoost, map[string]interface{}{
+			"template_risk_level":   risk.RiskLevel,
+			"template_risk_factors": risk.RiskFactors,
+		}
+
+	case "CUSTOM_PROPERTY":
+		risk := v.analyzeCustomPropertyRisk(line)
+		return risk.ConfidenceBoost, map[string]interface{}{
+			"custom_property_name":         risk.PropertyName,
+			"custom_property_risk_level":   risk.RiskLevel,
+			"custom_property_risk_factors": risk.RiskFactors,
+		}
+
+	default:
+		return 0, nil
+	}
+}
+
 // analyzeTemplatePathRisk analyzes template paths for security risks
 func (v *Validator) analyzeTemplatePathRisk(templatePath string) TemplatePathRisk {
 	risk := TemplatePathRisk{
@@ -2757,7 +2933,17 @@ func (v *Validator) analyzeCustomPropertyRisk(line string) CustomPropertyRisk {
 			}
 
 			// PII and employee information (HIGH)
-			piiFields := []string{"employee", "ssn", "social", "id", "badge", "clearance"}
+			//
+			// "id" is matched on a whole-word boundary, not as a substring.
+			// Measured over 119 real documents: a plain strings.Contains fired on
+			// the SharePoint/Purview plumbing that dominates real custom
+			// properties — ContentTypeId, ComplianceAssetId, _dlc_DocIdItemGuid —
+			// promoting 45 occurrences of pure boilerplate to HIGH. kwmatch
+			// treats '_' as a boundary, so "user_id" and "employee_id" still
+			// match while "contenttypeid" does not. Compound names with no
+			// separator ("employeeid", "badgeid") are still caught by their own
+			// keyword in this same list.
+			piiFields := []string{"employee", "ssn", "social", "badge", "clearance"}
 			for _, field := range piiFields {
 				if strings.Contains(propNameLower, field) {
 					risk.RiskFactors = append(risk.RiskFactors, "Contains PII: "+field)
@@ -2765,6 +2951,13 @@ func (v *Validator) analyzeCustomPropertyRisk(line string) CustomPropertyRisk {
 					if risk.RiskLevel != "CRITICAL" {
 						risk.RiskLevel = "HIGH"
 					}
+				}
+			}
+			if kwmatch.ContainsLower(propNameLower, "id") {
+				risk.RiskFactors = append(risk.RiskFactors, "Contains PII: id")
+				risk.ConfidenceBoost += 0.4
+				if risk.RiskLevel != "CRITICAL" {
+					risk.RiskLevel = "HIGH"
 				}
 			}
 
