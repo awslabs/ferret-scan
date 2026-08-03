@@ -747,6 +747,34 @@ func writeEmptyExtractionWarning(w io.Writer, emptyFiles []parallel.FileDiagnost
 	return true
 }
 
+// writeFailedFilesWarning emits a warning to w for every file whose processing
+// returned an error, so it was never scanned. It returns true if a warning was
+// written.
+//
+// The fifth member of the family, and it existed because of the worst gap of the
+// five: these files were counted as NEITHER processed nor skipped. The collector
+// logged the error and fell through without incrementing a counter or recording a
+// diagnostic, so the file left no trace at all. Measured on six files where five
+// were unparseable containers: "Files: 1 processed, 0 skipped", no warning, and
+// exit 0 even under --fail-on-incomplete. A corrupt or truncated document read
+// exactly like a directory that had been fully scanned and found clean.
+//
+// Same conventions as its siblings: gated only on pre-commit mode, stderr only
+// (never stdout/JSON), and it does not change the exit code by itself — these
+// files are counted toward --fail-on-incomplete alongside cut-short, unreadable
+// and empty-extraction ones.
+func writeFailedFilesWarning(w io.Writer, failedFiles []parallel.FileDiagnostic, totalFiles int) bool {
+	if len(failedFiles) == 0 {
+		return false
+	}
+	fmt.Fprintf(w, "WARNING: processing failed — %d of %d file(s) could not be processed, so they were NOT scanned; any sensitive data in them was NOT detected:\n",
+		len(failedFiles), totalFiles)
+	for _, fd := range failedFiles {
+		fmt.Fprintf(w, "  %s: %s\n", fd.FilePath, fd.Reason)
+	}
+	return true
+}
+
 // writeUnreadableFilesWarning emits a warning to w for every file that could not
 // be opened or stat'ed — a permission error, a dangling symlink, a file deleted
 // mid-scan. It returns true if a warning was written.
@@ -1598,6 +1626,12 @@ func main() {
 	// stderr warning and counted as a coverage gap: nothing was extracted, so no
 	// validator saw anything, so the file reported clean.
 	var emptyExtractionFiles []parallel.FileDiagnostic
+	// failedProcessingFiles captures files whose processing errored, so they were
+	// never scanned at all. Without this they were counted as neither processed
+	// nor skipped and vanished from the run entirely. Named distinctly from the
+	// local failedFiles int below, which means "processed but produced no
+	// findings" — a different and far less serious thing.
+	var failedProcessingFiles []parallel.FileDiagnostic
 
 	// Report config keys the schema does not recognize. Gated only on pre-commit
 	// mode, NOT on quiet/non-interactive — the same rule as the
@@ -1737,6 +1771,7 @@ func main() {
 			incompleteFiles = stats.IncompleteFiles
 			unredactedFiles = stats.UnredactedFiles
 			emptyExtractionFiles = stats.EmptyExtractionFiles
+			failedProcessingFiles = stats.FailedFiles
 
 			// Handle inline redaction results if redaction was enabled
 			if finalConfig.enableRedaction && redactionManager != nil {
@@ -1801,6 +1836,7 @@ func main() {
 	if precommitConfig == nil {
 		writeUnreadableFilesWarning(os.Stderr, unreadableFiles, len(filesToProcess))
 		writeEmptyExtractionWarning(os.Stderr, emptyExtractionFiles, len(supportedFiles))
+		writeFailedFilesWarning(os.Stderr, failedProcessingFiles, len(supportedFiles))
 		writeIncompleteCoverageWarning(os.Stderr, incompleteFiles, len(supportedFiles))
 		writeUnredactedFilesWarning(os.Stderr, unredactedFiles, len(supportedFiles))
 	}
@@ -2014,7 +2050,7 @@ func main() {
 	// A file that was opened and extracted to NOTHING is the third member of that
 	// set and the hardest to notice without help: unlike the other two it produces
 	// no error anywhere, just an empty document body and a clean report.
-	coverageGaps := len(incompleteFiles) + len(unreadableFiles) + len(emptyExtractionFiles)
+	coverageGaps := len(incompleteFiles) + len(unreadableFiles) + len(emptyExtractionFiles) + len(failedProcessingFiles)
 	if precommitConfig != nil {
 		exitCode := precommit.GetExitCode(hasFindings, hasErrors, highestConfidence, precommitConfig)
 		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps))
