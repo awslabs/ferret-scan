@@ -92,12 +92,23 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 | Word | `.docx` | XML element replacement inside ZIP |
 | Excel | `.xlsx` | Shared strings + cell values inside ZIP |
 | PowerPoint | `.pptx` | Text elements inside ZIP |
+| Legacy Office | `.doc` `.xls` `.ppt` | Same-length in-place overwrite of stream bytes |
 | Images | `.jpg` `.png` `.tiff` `.gif` `.bmp` `.webp` | EXIF metadata removal only |
 | PDF | `.pdf` | ⚠️ Not yet implemented — file is copied unchanged |
 
 > **Note on images**: Only EXIF metadata (GPS, camera info, timestamps) is removed. Text embedded in image pixels is not redacted.
 >
 > **Note on PDFs**: PDF redaction is on the roadmap. Currently the tool detects findings in PDFs but the output file is an unchanged copy.
+>
+> **Note on legacy Office (`.doc` `.xls` `.ppt`)**: these are OLE compound files, not
+> ZIPs. Redaction overwrites the matched bytes with a replacement of exactly the same
+> byte length, so no stream changes size and every sector offset, chain and length
+> prefix in the container stays valid — nothing has to be recomputed because nothing
+> moves. Two consequences follow. The `synthetic` strategy is **not** offered for
+> these formats, because a generated value's length is unrelated to the original;
+> `simple` and `format_preserving` are. And detection of body text is approximate
+> (see the Office metadata preprocessor README), so redaction of `.doc` body text is
+> only as complete as detection was — document **properties** are exact.
 
 ## Synthetic Strategy — Token Details
 

@@ -22,6 +22,31 @@ The OfficeMetadataPreprocessor supports the following document formats:
 - **Excel Spreadsheets** (`.xlsx`) - Workbook properties, author info, sheet metadata
 - **PowerPoint Presentations** (`.pptx`) - Presentation properties, author info, slide metadata
 
+### Legacy Microsoft Office Formats (OLE compound files)
+- **Word 97-2003** (`.doc`) - Document properties, author info, template path, custom properties
+- **Excel 97-2003** (`.xls`) - Workbook properties, author info, custom properties
+- **PowerPoint 97-2003** (`.ppt`) - Presentation properties, author info, custom properties
+
+These are OLE Compound File Binary containers rather than ZIPs, so they share no
+code with the formats above. Two things are recovered, and they are **not** equally
+exact:
+
+- **Metadata is exact.** The `SummaryInformation` and
+  `DocumentSummaryInformation` property streams are a documented key/value format.
+  This is the legacy counterpart of `docProps/*.xml`, and it is where an author
+  name, company, template path or custom property leaks from. User-defined (custom)
+  properties are included.
+- **Body text is approximate.** A conservative printable-run scan recovers the
+  character data validators need from the `WordDocument` / `Workbook` / `Book` /
+  `PowerPoint Document` stream. It does **not** reconstruct reading order, resolve
+  the piece table, or exclude deleted-but-retained text. For a scanner that is
+  acceptable — a value present anywhere in the stream is a value the document can
+  disclose — but recovered text is not a faithful rendering of the document.
+
+So legacy recall is good, not equal to OOXML. That is stated plainly because a
+scanner that quietly under-reads a format is worse than one that says what it can
+do.
+
 ### OpenDocument Formats
 - **Text Documents** (`.odt`) - Document properties and metadata
 - **Spreadsheets** (`.ods`) - Spreadsheet properties and metadata
@@ -279,7 +304,8 @@ This preprocessor replaces the Office document processing functionality from the
 
 - Cannot extract metadata from severely corrupted Office documents
 - Password-protected documents have limited metadata availability
-- Some legacy Office formats (DOC, XLS, PPT) are not supported
+- Legacy Office formats (DOC, XLS, PPT) are supported, but their BODY TEXT is
+  recovered approximately rather than exactly — see below
 - Processing time increases with document complexity and embedded media count
 - Very large documents with extensive embedded media may hit timeout limits
 - Some proprietary Office features may not be fully supported

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="from_template.doc" classname="security-scan" time="0.001">
+      <failure message="3 security findings detected" type="SECURITY_FINDINGS">Line 3: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4100&#xA;Validator: ssn&#xA;Line 2: TEMPLATE_INFO detected with 85.0% confidence (MEDIUM)&#xA;Match: \\corp-fs01\templates\quarterly.dot&#xA;Validator: metadata&#xA;Line 1: AUTHOR_INFO detected with 60.0% confidence (MEDIUM)&#xA;Match: Jane Analyst&#xA;Validator: metadata</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

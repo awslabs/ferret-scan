@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/olefixture"
 	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
@@ -673,6 +674,102 @@ var FileCases = []FileCase{
 			"Employee SSN 449-87-4100 on file.",
 			"Card 4532-0151-1283-0366 expires soon.",
 		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	// --- Tier 4: legacy Office (OLE compound files) ---------------------------
+	//
+	// A .doc/.xls/.ppt is an OLE Compound File Binary container, not a ZIP, so it
+	// shares no code with the OOXML cases above: a different preprocessor, a
+	// different property format, a different redactor. Before legacy support
+	// existed these files produced "legacy Office formats not supported" and
+	// NOTHING in them was scanned — so the corpus recorded no expectation at all
+	// for a format still common in email archives and shared drives.
+	//
+	// The container is synthesized in-test via internal/olefixture, matching the
+	// OOXML precedent. Body text and properties are recovered by different means
+	// (properties exactly, from a documented key/value format; body text
+	// approximately, by a printable-run scan), so both halves are present in each
+	// case and the snapshot records what each actually yields.
+	{
+		Name: "file_doc_legacy_body_and_properties",
+		Description: "Tier 4 control: a legacy .doc with PII in the WordDocument body stream AND an author in " +
+			"SummaryInformation. Locks the OLE path end to end — a format that was previously reported as an " +
+			"error with nothing scanned.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename: "quarterly.doc",
+		Content: olefixture.LegacyDoc(
+			"Quarterly summary follows.\r"+
+				"Employee SSN 449-87-4100 on file.\r"+
+				"Card 4532-0151-1283-0366 expires soon.\r",
+			map[uint32]string{
+				olefixture.PropAuthor:     "Jane Analyst",
+				olefixture.PropLastAuthor: "Ops Reviewer",
+				olefixture.PropAppName:    "Microsoft Word 97",
+			}),
+		Tier1Parity:         false, // OLE extraction has no content-mode equivalent
+		EnablePreprocessors: true,  // required: .doc is a binary document
+	},
+	{
+		Name: "file_doc_legacy_template_path",
+		Description: "Tier 4: a legacy .doc whose Template property holds an internal UNC share. Locks a field " +
+			"users do not know is in the file, and which only the metadata path can surface. Diff against " +
+			"file_doc_legacy_body_and_properties.",
+		Checks:   []string{"SSN", "METADATA"},
+		Filename: "from_template.doc",
+		Content: olefixture.LegacyDoc(
+			"Employee SSN 449-87-4100 recorded here.\r",
+			map[uint32]string{
+				olefixture.PropAuthor:   "Jane Analyst",
+				olefixture.PropTemplate: `\\corp-fs01\templates\quarterly.dot`,
+			}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_xls_legacy_workbook_stream",
+		Description: "Tier 4: a legacy .xls, whose body lives in a stream named \"Workbook\" rather than " +
+			"\"WordDocument\". The stream-name table is the entire selection mechanism, so this locks that a " +
+			"second legacy format is actually read and not silently skipped.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename: "budget.xls",
+		Content: olefixture.MustBuild([]olefixture.Stream{
+			{Name: olefixture.StreamWorkbook, Data: []byte(
+				"Employee SSN 449-87-4100 in the sheet.\r" +
+					"Card 4532-0151-1283-0366 on record.\r")},
+			{Name: olefixture.StreamSummaryInformation, Data: olefixture.SummaryInformation(
+				map[uint32]string{olefixture.PropAuthor: "Jane Analyst"})},
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_doc_legacy_wide_encoded_body",
+		Description: "Tier 4: a legacy .doc whose body text is UTF-16LE, as Word actually stores much of it. " +
+			"A single-byte-only recovery pass sees every OTHER character and can split a value down the middle, " +
+			"so this locks that wide text yields the same findings as narrow. Diff against " +
+			"file_doc_legacy_body_and_properties.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA"},
+		Filename: "wide.doc",
+		Content: olefixture.MustBuild([]olefixture.Stream{
+			{Name: olefixture.StreamWordDocument, Data: olefixture.UTF16LE(
+				"Employee SSN 449-87-4100 on file. " +
+					"Card 4532-0151-1283-0366 expires soon.")},
+			{Name: olefixture.StreamSummaryInformation, Data: olefixture.SummaryInformation(
+				map[uint32]string{olefixture.PropAuthor: "Jane Analyst"})},
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_doc_legacy_not_a_container",
+		Description: "Tier 4 negative: plain text named .doc. The extension now routes to the OLE path, so this " +
+			"records what happens when the bytes are not a compound file — the failure must be graceful and must " +
+			"not invent metadata. Without this the corpus would only cover the happy path of a format whose " +
+			"routing is decided by extension alone.",
+		Checks:              []string{"SSN", "METADATA"},
+		Filename:            "notreally.doc",
+		Content:             []byte("This is plain text that happens to be named .doc.\nEmployee SSN 449-87-4100 here.\n"),
 		Tier1Parity:         false,
 		EnablePreprocessors: true,
 	},
