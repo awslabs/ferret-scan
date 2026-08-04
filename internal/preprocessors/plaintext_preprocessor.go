@@ -91,7 +91,44 @@ func (ptp *PlainTextPreprocessor) CanProcess(filePath string) bool {
 		return ptp.isTextFile(filePath)
 	}
 
+	// A container extension whose BYTES are text: claim it as text.
+	//
+	// Routing picks preprocessors by extension, so a file named .docx went to the
+	// Office extractor alone. When the bytes are not a ZIP that extractor fails,
+	// no other preprocessor had claimed the file, and the scan reported zero
+	// findings. Since only reported findings are redacted, everything in such a
+	// file was left in cleartext. Measured on identical bytes holding an SSN:
+	// 1 finding as .txt, 0 as .doc / .docx / .xlsx.
+	//
+	// It needs no attacker. An export pipeline that writes CSV or HTML and labels
+	// it .doc, a hand-renamed file, or a truncated download all land here. As a
+	// pre-commit bypass it is cheaper still: rename the file.
+	//
+	// This is deliberately a CLAIM, not a fallback. The router already runs every
+	// preprocessor that claims a file and combines the successes, so on a real
+	// container the Office extractor still wins and this contributes nothing (a
+	// real .docx is a ZIP, so isTextFile rejects it on the binary sniff). Adding a
+	// claim therefore recovers the mislabelled case without a second code path,
+	// and without changing anything for well-formed documents.
+	if containerExtensions[ext] {
+		return ptp.isTextFile(filePath)
+	}
+
 	return false
+}
+
+// containerExtensions are the extensions whose files are normally binary
+// containers, and which therefore route away from this preprocessor on name alone.
+// Each is admitted only after isTextFile inspects the actual bytes.
+//
+// PDF is included for the same reason as the rest: a text file named .pdf is
+// exactly as unscannable as one named .docx, and the sniff is what decides.
+var containerExtensions = map[string]bool{
+	".docx": true, ".xlsx": true, ".pptx": true,
+	".docm": true, ".xlsm": true, ".pptm": true,
+	".doc": true, ".xls": true, ".ppt": true,
+	".odt": true, ".ods": true, ".odp": true,
+	".pdf": true,
 }
 
 // Process extracts text content from the file
