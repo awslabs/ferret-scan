@@ -47,8 +47,6 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/richardlehane/mscfb"
-
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
@@ -249,48 +247,6 @@ func sameLengthReplacement(original, dataType string, strategy redactors.Redacti
 	return strings.Repeat(string(maskByte), len(original))
 }
 
-// overwriteAll replaces every occurrence of value inside the content ranges,
-// in both the encodings legacy Office uses, and returns how many it replaced.
-//
-// Both encodings matter. Legacy Word stores much of its text as UTF-16LE, so a
-// value present in the document may appear only as interleaved zero bytes; an
-// ASCII-only pass would report success while leaving that copy in cleartext.
-//
-// Each pass needs a replacement of ITS OWN byte width, which is not the same width
-// for a non-ASCII value: "José" is 5 bytes as UTF-8 but 4 code units — 8 bytes — as
-// UTF-16. Encoding one caller-supplied replacement for both passes therefore
-// produced a length mismatch that overwriteEncoded correctly refused, so the wide
-// occurrence was skipped and the value survived while success was reported. The
-// replacement is re-derived per encoding instead, from the encoded pattern's length.
-func overwriteAll(buf []byte, ranges []byteRange, value, repl string) int {
-	count := 0
-
-	// Narrow pass: the replacement as given, whose length already matches the
-	// value's UTF-8 length by construction.
-	narrow := []byte(value)
-	narrowRepl := []byte(repl)
-	if len(narrow) == len(narrowRepl) {
-		count += overwriteEncoded(buf, ranges, narrow, narrowRepl)
-	}
-
-	// Wide pass: encode the value, then build a replacement of exactly that many
-	// bytes. When the supplied replacement encodes to the same width (the ASCII
-	// case) it is used, preserving format-preserving output like ***-**-4100.
-	// Otherwise a mask of the correct width is used, because a same-length
-	// overwrite is what keeps the container valid.
-	wide := toUTF16LE(value)
-	if len(wide) == 0 {
-		return count
-	}
-	wideRepl := toUTF16LE(repl)
-	if len(wideRepl) != len(wide) {
-		wideRepl = bytes.Repeat([]byte{maskByte, 0x00}, len(wide)/2)
-	}
-	count += overwriteEncoded(buf, ranges, wide, wideRepl)
-
-	return count
-}
-
 // overwriteInStream replaces every occurrence of value inside one stream's LOGICAL
 // bytes, writing each replacement back through the stream's sector chain, and
 // returns how many it replaced.
@@ -352,33 +308,6 @@ func replaceLogical(raw []byte, s streamExtent, logical, pat, rep []byte) int {
 	return count
 }
 
-// overwriteEncoded replaces every occurrence of pat with rep, restricted to the
-// given ranges. pat and rep must be the same length.
-func overwriteEncoded(buf []byte, ranges []byteRange, pat, rep []byte) int {
-	if len(pat) == 0 || len(pat) != len(rep) {
-		return 0
-	}
-	count := 0
-	for _, rg := range ranges {
-		if rg.start < 0 || rg.end > len(buf) || rg.start >= rg.end {
-			continue
-		}
-		window := buf[rg.start:rg.end]
-		off := 0
-		for {
-			i := bytes.Index(window[off:], pat)
-			if i < 0 {
-				break
-			}
-			at := off + i
-			copy(window[at:at+len(rep)], rep)
-			off = at + len(rep)
-			count++
-		}
-	}
-	return count
-}
-
 // toUTF16LE encodes a string the way legacy Office stores wide text: UTF-16
 // little-endian, with surrogate pairs for anything outside the BMP.
 //
@@ -406,52 +335,10 @@ func toUTF16LE(s string) []byte {
 	return out
 }
 
-// byteRange is a half-open span of the file that holds stream content.
-type byteRange struct{ start, end int }
-
 // isCompoundFile reports whether b starts with the CFB signature.
 func isCompoundFile(b []byte) bool {
 	sig := []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}
 	return len(b) >= len(sig) && bytes.Equal(b[:len(sig)], sig)
-}
-
-// contentRanges returns the byte spans of the file that hold stream data.
-//
-// Restricting overwrites to these spans is what keeps the container valid: the
-// header, FAT and directory sectors are excluded, so a pattern that coincides
-// with structural bytes cannot be modified. The spans are derived by walking the
-// streams with mscfb and recording where each one's sectors sit.
-//
-// mscfb does not expose sector offsets directly, so the conservative span is
-// everything after the header and the FAT/directory region. That is wider than
-// strictly necessary and still excludes the parts whose corruption would make the
-// file unreadable; the same-length invariant does the rest of the work.
-func contentRanges(raw []byte) ([]byteRange, error) {
-	doc, err := mscfb.New(bytes.NewReader(raw))
-	if err != nil {
-		return nil, err
-	}
-	// Walk the streams so a malformed container fails here rather than during
-	// overwriting, and so we know the file really has readable content.
-	var haveStream bool
-	for entry, e := doc.Next(); e == nil; entry, e = doc.Next() {
-		if entry.Size > 0 {
-			haveStream = true
-		}
-	}
-	if !haveStream {
-		return nil, fmt.Errorf("compound file has no non-empty streams")
-	}
-
-	// Skip the 512-byte header. Everything past it is sector data; the
-	// same-length invariant means FAT and directory sectors keep their values
-	// even if a pattern were to coincide with them, because only exact matches of
-	// a reported finding are replaced and those are document text.
-	const headerBytes = 512
-	if len(raw) <= headerBytes {
-		return nil, fmt.Errorf("compound file too small to contain streams")
-	}
-	return []byteRange{{start: headerBytes, end: len(raw)}}, nil
 }
 
 // overallConfidence averages the mapping confidences, matching what the other

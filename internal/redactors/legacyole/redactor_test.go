@@ -55,6 +55,24 @@ func TestSameLengthReplacementAlwaysMatchesLength(t *testing.T) {
 	}
 }
 
+// singleFragmentStream describes a whole buffer as one stream, so the encoding
+// cases below exercise overwriteInStream — the function RedactDocument actually
+// calls — rather than a helper the product no longer uses.
+//
+// These used to target overwriteAll, which the logical-stream mapping replaced. A
+// test suite that keeps validating a replaced helper reports health for code the
+// product does not run, so the tests were repointed rather than deleted: the
+// behaviours they pin are still exactly the ones that matter.
+func singleFragmentStream(buf []byte) streamExtent {
+	return streamExtent{
+		name: "WordDocument",
+		size: len(buf),
+		fragments: []streamFragment{
+			{logicalStart: 0, fileStart: 0, length: len(buf)},
+		},
+	}
+}
+
 // Legacy Word stores much of its text as UTF-16LE, so a value in the document may
 // exist in the bytes only as interleaved zeros. An ASCII-only overwrite would
 // report success while leaving that copy in cleartext — the exact "reported but
@@ -65,8 +83,7 @@ func TestOverwriteHandlesBothEncodings(t *testing.T) {
 
 	t.Run("ascii", func(t *testing.T) {
 		buf := []byte("padding..........Employee SSN: " + secret + " trailing")
-		ranges := []byteRange{{0, len(buf)}}
-		if n := overwriteAll(buf, ranges, secret, mask); n != 1 {
+		if n := overwriteInStream(buf, singleFragmentStream(buf), buf, secret, mask); n != 1 {
 			t.Fatalf("replaced %d occurrences, want 1", n)
 		}
 		if bytes.Contains(buf, []byte(secret)) {
@@ -76,8 +93,7 @@ func TestOverwriteHandlesBothEncodings(t *testing.T) {
 
 	t.Run("utf16le", func(t *testing.T) {
 		buf := append([]byte("padding.........."), toUTF16LE("Employee SSN: "+secret)...)
-		ranges := []byteRange{{0, len(buf)}}
-		if n := overwriteAll(buf, ranges, secret, mask); n != 1 {
+		if n := overwriteInStream(buf, singleFragmentStream(buf), buf, secret, mask); n != 1 {
 			t.Fatalf("replaced %d occurrences, want 1 — UTF-16LE text was not reached", n)
 		}
 		if bytes.Contains(buf, toUTF16LE(secret)) {
@@ -88,8 +104,7 @@ func TestOverwriteHandlesBothEncodings(t *testing.T) {
 	t.Run("both encodings in one file", func(t *testing.T) {
 		buf := []byte("ascii " + secret + " then wide ")
 		buf = append(buf, toUTF16LE(secret)...)
-		ranges := []byteRange{{0, len(buf)}}
-		if n := overwriteAll(buf, ranges, secret, mask); n != 2 {
+		if n := overwriteInStream(buf, singleFragmentStream(buf), buf, secret, mask); n != 2 {
 			t.Fatalf("replaced %d occurrences, want 2 (one per encoding)", n)
 		}
 		if bytes.Contains(buf, []byte(secret)) || bytes.Contains(buf, toUTF16LE(secret)) {
@@ -99,8 +114,7 @@ func TestOverwriteHandlesBothEncodings(t *testing.T) {
 
 	t.Run("every occurrence, not just the first", func(t *testing.T) {
 		buf := []byte(secret + " middle " + secret + " end " + secret)
-		ranges := []byteRange{{0, len(buf)}}
-		if n := overwriteAll(buf, ranges, secret, mask); n != 3 {
+		if n := overwriteInStream(buf, singleFragmentStream(buf), buf, secret, mask); n != 3 {
 			t.Fatalf("replaced %d occurrences, want 3 — leaving a repeat behind is still a leak", n)
 		}
 		if bytes.Contains(buf, []byte(secret)) {
@@ -109,40 +123,58 @@ func TestOverwriteHandlesBothEncodings(t *testing.T) {
 	})
 }
 
-// Overwrites must stay inside the content ranges. A short value that coincides
-// with header or FAT bytes must not be patched, or the container becomes
+// Overwrites must stay inside a stream's mapped fragments. A value that coincides
+// with header, FAT or directory bytes must not be patched, or the container becomes
 // unreadable — trading a leak for a corrupt document.
-func TestOverwriteRespectsRanges(t *testing.T) {
+//
+// The mapping is what enforces this now: bytes outside a stream's fragments are
+// simply not addressable, which is a stronger guarantee than the range check it
+// replaced.
+func TestOverwriteRespectsStreamBounds(t *testing.T) {
 	secret := "SECRETVAL"
 	buf := []byte(secret + "|||" + secret)
-	// Only the SECOND half is content; the first is "structure".
-	ranges := []byteRange{{len(secret) + 3, len(buf)}}
 
-	n := overwriteAll(buf, ranges, secret, strings.Repeat("*", len(secret)))
+	// Only the SECOND half is mapped as stream content; the first stands in for
+	// structural bytes that no stream owns.
+	contentStart := len(secret) + 3
+	s := streamExtent{
+		name: "WordDocument",
+		size: len(buf) - contentStart,
+		fragments: []streamFragment{
+			{logicalStart: 0, fileStart: contentStart, length: len(buf) - contentStart},
+		},
+	}
+
+	n := overwriteInStream(buf, s, buf[contentStart:], secret, strings.Repeat("*", len(secret)))
 	if n != 1 {
-		t.Fatalf("replaced %d occurrences, want 1 (only the in-range copy)", n)
+		t.Fatalf("replaced %d occurrences, want 1 (only the mapped copy)", n)
 	}
 	if !bytes.HasPrefix(buf, []byte(secret)) {
-		t.Error("the out-of-range copy was modified; structural bytes must be untouched")
+		t.Error("the unmapped copy was modified; bytes no stream owns must stay untouched")
 	}
-	if bytes.Contains(buf[len(secret)+3:], []byte(secret)) {
-		t.Error("the in-range copy survived")
+	if bytes.Contains(buf[contentStart:], []byte(secret)) {
+		t.Error("the mapped copy survived")
 	}
 }
 
-// A same-length pattern is required by construction. These guard the helper
-// against being called with mismatched lengths, which would either corrupt
-// neighbouring bytes or silently do nothing.
-func TestOverwriteEncodedRejectsLengthMismatch(t *testing.T) {
+// A same-length pattern is required by construction: the whole in-place technique
+// depends on no stream changing size. These guard the writer against being called
+// with mismatched lengths, which would either corrupt neighbouring bytes or
+// silently do nothing.
+//
+// Targets replaceLogical, the live writer. It previously targeted overwriteEncoded,
+// which the logical-stream mapping made unreachable.
+func TestReplaceLogicalRejectsLengthMismatch(t *testing.T) {
 	buf := []byte("hello world")
 	orig := append([]byte(nil), buf...)
-	ranges := []byteRange{{0, len(buf)}}
+	s := singleFragmentStream(buf)
 
-	if n := overwriteEncoded(buf, ranges, []byte("hello"), []byte("hi")); n != 0 {
+	if n := replaceLogical(buf, s, buf, []byte("hello"), []byte("hi")); n != 0 {
 		t.Errorf("mismatched lengths replaced %d occurrences, want 0", n)
 	}
-	if n := overwriteEncoded(buf, ranges, nil, nil); n != 0 {
-		t.Errorf("empty pattern replaced %d occurrences, want 0", n)
+	if n := replaceLogical(buf, s, buf, nil, nil); n != 0 {
+		t.Errorf("empty pattern replaced %d occurrences, want 0 — an empty pattern "+
+			"matches at every offset", n)
 	}
 	if !bytes.Equal(buf, orig) {
 		t.Error("buffer was modified despite a rejected replacement")

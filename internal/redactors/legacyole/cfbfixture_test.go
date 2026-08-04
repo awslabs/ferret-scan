@@ -414,9 +414,18 @@ func TestCFBFixtureIsReadableByProductionCode(t *testing.T) {
 	if !isCompoundFile(raw) {
 		t.Fatal("builder output does not carry the CFB signature")
 	}
-	if _, err := contentRanges(raw); err != nil {
+	// parseCFBLayout is what RedactDocument calls, so this asserts the fixture is
+	// mappable by the LIVE path. It previously called contentRanges, which the
+	// logical-stream mapping replaced — a fixture check against a replaced helper
+	// could pass while the real redactor could not map the file at all.
+	layout, err := parseCFBLayout(raw)
+	if err != nil {
 		t.Fatalf("production code cannot map the fixture's streams: %v — every test "+
 			"built on this fixture would otherwise pass without redacting anything", err)
+	}
+	if len(layout.streams) < 2 {
+		t.Errorf("only %d stream(s) mapped from a two-stream fixture; a stream the "+
+			"mapping cannot reach is a stream redaction silently skips", len(layout.streams))
 	}
 	if len(raw)%cfbSectorSize != 0 {
 		t.Errorf("fixture is %d bytes, not a whole number of %d-byte sectors", len(raw), cfbSectorSize)
