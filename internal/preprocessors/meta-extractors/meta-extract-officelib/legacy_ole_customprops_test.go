@@ -260,3 +260,41 @@ func TestLegacyExtraction_VersionIsNotADocumentRevision(t *testing.T) {
 			"collected as a custom property")
 	}
 }
+
+// The complement of the case above, and the reason it needs one: removing the wrong
+// "Version" → Revision mapping leaves Revision with no legacy source at all unless
+// "RevNumber" (SummaryInformation 0x09) is mapped, which is what the field actually
+// means. The OOXML path fills Revision from docProps/core.xml's <cp:revision>, and
+// the preprocessor renders Revision into the text validators see, so an unmapped
+// RevNumber means a legacy document silently reports less than an equivalent .docx.
+//
+// Asserting only the negative half would have passed a permanently-empty field.
+func TestLegacyExtraction_RevNumberFillsRevision(t *testing.T) {
+	path := writeLegacyFixture(t, "revnumber.doc", []legacyCFBStream{
+		{Name: "WordDocument", Data: []byte("Body text long enough to be recovered.\r")},
+		{Name: "\x05SummaryInformation", Data: BuildSummaryInformation(map[uint32]string{
+			SummaryPropAuthor:    "Jane Analyst",
+			summaryPropRevNumber: "47",
+		})},
+	})
+
+	md, err := ExtractMetadata(path)
+	if err != nil {
+		t.Fatalf("ExtractMetadata: %v", err)
+	}
+	if md.Revision != "47" {
+		t.Errorf("Revision = %q, want %q — RevNumber is the document's revision count "+
+			"and the field the report renders; leaving it unmapped makes a legacy "+
+			"document look emptier than the same content as .docx", md.Revision, "47")
+	}
+	// It must land in the named field, not as a custom property.
+	if v, present := md.CustomProps["RevNumber"]; present {
+		t.Errorf("CustomProps[\"RevNumber\"] = %q; a mapped property must not also "+
+			"appear as a custom one", v)
+	}
+	if legacyStructuralProperties["RevNumber"] {
+		t.Error("\"RevNumber\" is still in legacyStructuralProperties; the switch case " +
+			"fires first so the entry is dead, but leaving it there states the opposite " +
+			"of what the code does")
+	}
+}

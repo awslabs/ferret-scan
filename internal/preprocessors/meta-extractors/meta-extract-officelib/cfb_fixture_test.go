@@ -558,6 +558,12 @@ func TestLegacyCFBFixtureIsDeterministic(t *testing.T) {
 	}
 }
 
+// summaryPropRevNumber is the document's revision count -- what Metadata.Revision
+// means. Distinct from docSummaryPropVersion below, which is the writing
+// application's packed version; conflating the two is how Revision came to report a
+// meaningless integer.
+const summaryPropRevNumber = 0x00000009
+
 // docSummaryPropVersion is the packed version of the application that wrote the
 // file -- NOT a document revision number.
 const docSummaryPropVersion = 0x00000017

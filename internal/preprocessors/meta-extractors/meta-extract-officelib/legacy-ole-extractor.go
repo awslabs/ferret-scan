@@ -160,6 +160,14 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 			setIfEmpty(&metadata.ContentStatus, v)
 		case "Language":
 			setIfEmpty(&metadata.Language, v)
+		case "RevNumber":
+			// The document's revision count, SummaryInformation 0x09. This is what
+			// Metadata.Revision means, and the OOXML path fills it from
+			// docProps/core.xml's <cp:revision>. Removing the wrong "Version"
+			// mapping without adding this one would have left Revision permanently
+			// empty for legacy documents — a field the report renders, so a legacy
+			// document would silently show less than an equivalent .docx.
+			setIfEmpty(&metadata.Revision, v)
 		case "Link base":
 			// HyperlinkBase. The same UNC/URL disclosure class as Template: it
 			// routinely holds an internal share or intranet host.
@@ -200,7 +208,7 @@ var legacyStructuralProperties = map[string]bool{
 	"Character count": true, "PageCount": true, "WordCount": true, "CharCount": true,
 	"Scale": true, "Dirty links": true, "Shared document": true,
 	"Hyperlinks changed": true, "Digital Signature": true, "Thumbnail": true,
-	"DocSecurity": true, "RevNumber": true, "EditTime": true, "LastPrinted": true,
+	"DocSecurity": true, "EditTime": true, "LastPrinted": true,
 	"Version": true, "Document Version": true, "Presentation Format": true,
 	"Heading pair": true, "Document parts": true,
 }
