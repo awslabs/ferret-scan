@@ -50,6 +50,11 @@ preprocessors:
   #   Extracts EXIF data, camera information, GPS coordinates, timestamps, etc.
   # - Office Documents: DOCX, XLSX, PPTX, ODT, ODS, ODP
   #   Extracts author, creator, company, modification history, document properties, etc.
+  # - Legacy Office Documents: DOC, XLS, PPT (OLE compound files)
+  #   Extracts the same properties, plus template path and custom properties.
+  #   Note: body TEXT from these formats is recovered approximately (a printable-run
+  #   scan, not a full format parse), so recall is good but not equal to DOCX/XLSX/PPTX.
+  #   Document properties themselves are exact.
   # - PDF Documents: PDF
   #   Extracts author, creator, producer, creation dates, document properties, etc.
 

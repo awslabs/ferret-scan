@@ -1,0 +1,5 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH               FILE
+---------------------------------------------------------------------------------------------
+[HIGH  ] ssn          SSN                   100.00% line     2 449-87-4100         budget.xls
+[HIGH  ] creditcard   VISA                  100.00% line     3 4532-0151-1283-0366 budget.xls
+[MEDIUM] metadata     AUTHOR_INFO            60.00% line     1 Jane Analyst        budget.xls

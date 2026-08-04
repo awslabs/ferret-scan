@@ -1,0 +1,119 @@
+{
+  "results": [
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/from_template.doc",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Configuration",
+        "context_domain": "HR_Payroll",
+        "context_impact": 45,
+        "original_confidence": 100,
+        "original_file": "<TMPDIR>/from_template.doc",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "449-87-4100",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 85.00000000000001,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/from_template.doc",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Configuration",
+        "context_domain": "HR_Payroll",
+        "context_impact": -0.15,
+        "full_field": "Template: \\\\corp-fs01\\templates\\quarterly.dot",
+        "metadata_type": "TEMPLATE_INFO",
+        "original_confidence": 85.00000000000001,
+        "original_file": "<TMPDIR>/from_template.doc",
+        "preprocessor_adjustment": 0,
+        "preprocessor_name": "Office Metadata Extractor",
+        "preprocessor_type": "office_metadata",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "source_file": "<TMPDIR>/from_template.doc",
+        "source_preprocessor": "office_metadata",
+        "template_risk_factors": [
+          "Network path exposes infrastructure",
+          "Exposes server name: corp-fs01"
+        ],
+        "template_risk_level": "HIGH",
+        "total_adjustment": 0,
+        "validation_checks": {},
+        "validation_path": "metadata"
+      },
+      "text": "\\\\corp-fs01\\templates\\quarterly.dot",
+      "type": "TEMPLATE_INFO",
+      "validator": "metadata"
+    },
+    {
+      "confidence": 60.00000000000001,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/from_template.doc",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Configuration",
+        "context_domain": "HR_Payroll",
+        "context_impact": 0,
+        "full_field": "Author: Jane Analyst",
+        "metadata_type": "AUTHOR_INFO",
+        "original_confidence": 60.00000000000001,
+        "original_file": "<TMPDIR>/from_template.doc",
+        "preprocessor_adjustment": 0,
+        "preprocessor_name": "Office Metadata Extractor",
+        "preprocessor_type": "office_metadata",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "source_file": "<TMPDIR>/from_template.doc",
+        "source_preprocessor": "office_metadata",
+        "total_adjustment": 0,
+        "validation_checks": {
+          "contains_author_field": true
+        },
+        "validation_path": "metadata"
+      },
+      "text": "Jane Analyst",
+      "type": "AUTHOR_INFO",
+      "validator": "metadata"
+    }
+  ]
+}

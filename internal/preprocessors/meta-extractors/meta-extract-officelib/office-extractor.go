@@ -269,13 +269,13 @@ func ExtractMetadata(filePath string) (*Metadata, error) {
 		return extractOfficeOpenXMLMetadata(filePath, metadata)
 	case ".doc":
 		metadata.MimeType = "application/msword"
-		return metadata, fmt.Errorf("legacy Office formats (.doc, .xls, .ppt) not supported")
+		return extractLegacyOfficeMetadataOnly(filePath, metadata)
 	case ".xls":
 		metadata.MimeType = "application/vnd.ms-excel"
-		return metadata, fmt.Errorf("legacy Office formats (.doc, .xls, .ppt) not supported")
+		return extractLegacyOfficeMetadataOnly(filePath, metadata)
 	case ".ppt":
 		metadata.MimeType = "application/vnd.ms-powerpoint"
-		return metadata, fmt.Errorf("legacy Office formats (.doc, .xls, .ppt) not supported")
+		return extractLegacyOfficeMetadataOnly(filePath, metadata)
 	default:
 		return nil, fmt.Errorf("unsupported file format: %s", ext)
 	}
@@ -691,6 +691,64 @@ func parseOfficeDate(dateStr string) (time.Time, error) {
 }
 
 // EmbeddedMedia represents extracted media files that need further processing
+// isEmbeddedPartPath reports whether an OOXML part holds an embedded file that
+// should be scanned in its own right.
+//
+// "/media/" alone was not enough. Word stores an embedded DOCUMENT under
+// word/embeddings/ (an OLE object), and that path was never considered — so a
+// document attached to a document was invisible. Verified as a cleartext leak:
+// an SSN in the inner file survived into the redacted copy at
+// word/embeddings/Microsoft_Word_Document.docx -> word/document.xml, with
+// exit 0 and no warning. The same held for a container placed under
+// word/media/.
+func isEmbeddedPartPath(name string) bool {
+	n := strings.ToLower(name)
+	return strings.Contains(n, "/media/") || strings.Contains(n, "/embeddings/")
+}
+
+// embeddedMediaType classifies an embedded part by extension, returning "" for
+// anything no preprocessor can read.
+//
+// The previous switch had `default: continue`, which silently dropped every
+// embedded DOCUMENT: .docx/.xlsx/.pptx and the legacy .doc/.xls/.ppt were all
+// skipped, so their body text and metadata never reached a validator. A scanner
+// missing a document nested inside a document is a detection hole with no
+// attacker required.
+func embeddedMediaType(ext string) string {
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".gif", ".bmp", ".webp":
+		return "image"
+	case ".mp3", ".wav", ".m4a", ".flac":
+		return "audio"
+	case ".doc", ".xls", ".ppt":
+		// Legacy OLE compound files. These are a LEAF format here: the extractor
+		// reads their streams directly and does not itself follow embeddings, so
+		// admitting them adds no recursion and no new bomb surface.
+		return "legacy_document"
+	default:
+		// Embedded OOXML documents (.docx/.xlsx/.pptx) are deliberately NOT
+		// admitted yet, even though they are the other half of the nesting leak.
+		//
+		// An embedded .docx routes back through the Office preprocessor, which
+		// extracts ITS embeddings, which route back again — the recursion is
+		// unbounded. Measured with a 7KB .docx that embeds itself nine times: all
+		// nine levels were followed, with nothing to stop a file that declares
+		// more. Turning that on before a depth bound exists would trade a
+		// detection gap for a decompression-bomb amplifier, which is a worse
+		// trade for a tool that runs on untrusted input.
+		//
+		// The bound cannot be added here cheaply: depth cannot live on the
+		// preprocessor (one instance is shared across concurrent workers), cannot
+		// travel in a router ProcessingContext (router imports preprocessors, so
+		// the reverse is an import cycle), and cannot live on the router (one
+		// instance, shared). It needs a context parameter on the preprocessor
+		// Process interface, which is a change of its own size. Tracked
+		// separately; this comment is the reason the case is missing, so nobody
+		// "fixes" it by adding the extension.
+		return ""
+	}
+}
+
 type EmbeddedMedia struct {
 	TempFilePath string
 	OriginalName string
@@ -710,22 +768,14 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 	}()
 
 	for _, file := range reader.File {
-		// Check for media files in media folders
-		if !strings.Contains(file.Name, "/media/") {
+		if !isEmbeddedPartPath(file.Name) {
 			continue
 		}
 
 		ext := strings.ToLower(filepath.Ext(file.Name))
-		mediaType := ""
-
-		// Determine media type
-		switch ext {
-		case ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".gif", ".bmp", ".webp":
-			mediaType = "image"
-		case ".mp3", ".wav", ".m4a", ".flac":
-			mediaType = "audio"
-		default:
-			continue // Skip unsupported media types
+		mediaType := embeddedMediaType(ext)
+		if mediaType == "" {
+			continue // not a type any preprocessor can read
 		}
 
 		// Extract media to temp file
@@ -805,22 +855,14 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, error)
 	var embeddedMedia []EmbeddedMedia
 
 	for _, file := range reader.File {
-		// Check for media files in media folders
-		if !strings.Contains(file.Name, "/media/") {
+		if !isEmbeddedPartPath(file.Name) {
 			continue
 		}
 
 		ext := strings.ToLower(filepath.Ext(file.Name))
-		mediaType := ""
-
-		// Determine media type
-		switch ext {
-		case ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".gif", ".bmp", ".webp":
-			mediaType = "image"
-		case ".mp3", ".wav", ".m4a", ".flac":
-			mediaType = "audio"
-		default:
-			continue // Skip unsupported media types
+		mediaType := embeddedMediaType(ext)
+		if mediaType == "" {
+			continue // not a type any preprocessor can read
 		}
 
 		// Extract media to temp file

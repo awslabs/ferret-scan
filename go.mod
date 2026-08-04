@@ -6,6 +6,8 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/pdfcpu/pdfcpu v0.13.0
+	github.com/richardlehane/mscfb v1.0.7
+	github.com/richardlehane/msoleps v1.0.6
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	golang.org/x/term v0.45.0

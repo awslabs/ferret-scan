@@ -1,0 +1,4 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<TMPDIR>/from_template.doc,SSN,HIGH,100.0,3,449-87-4100
+<TMPDIR>/from_template.doc,TEMPLATE_INFO,MEDIUM,85.0,2,\\corp-fs01\templates\quarterly.dot
+<TMPDIR>/from_template.doc,AUTHOR_INFO,MEDIUM,60.0,1,Jane Analyst
