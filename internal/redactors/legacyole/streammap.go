@@ -56,6 +56,12 @@ const (
 	cfbHeaderSize   = 512
 	dirEntrySize    = 128
 	maxChainSectors = 1 << 22 // ~2GB at 512-byte sectors; a cycle guard, not a limit
+
+	// maxHeaderDIFATEntries is how many FAT sector locations the header holds: the
+	// bytes from offset 76 to the end of the 512-byte header, 109 of them. Sizing the
+	// header DIFAT slice from this rather than from the file's declared FAT count
+	// keeps an attacker-supplied number out of an allocation.
+	maxHeaderDIFATEntries = (cfbHeaderSize - 76) / 4
 )
 
 // parseCFBLayout walks a compound file's header, FAT, mini FAT and directory to
@@ -217,8 +223,18 @@ func readFAT(raw []byte, sectorSize int) ([]uint32, error) {
 		return nil, fmt.Errorf("compound file declares no FAT sectors")
 	}
 
+	// The declared FAT count is attacker-controlled and need not match the file. A
+	// file cannot hold more FAT sectors than it has sectors, so clamp to that: a
+	// header claiming 0xFFFFFFF0 FAT sectors otherwise reserved capacity for ~137
+	// billion entries (about 1TB) at the allocation below, which hung the process
+	// rather than erroring. Clamping keeps the honest case exact — a real file's
+	// count is always well under its sector count.
+	if maxPossible := len(raw)/sectorSize + 1; numFAT > maxPossible {
+		numFAT = maxPossible
+	}
+
 	// The first 109 FAT sector locations sit in the header.
-	difat := make([]uint32, 0, numFAT)
+	difat := make([]uint32, 0, maxHeaderDIFATEntries)
 	for i := 76; i+4 <= cfbHeaderSize; i += 4 {
 		difat = append(difat, binary.LittleEndian.Uint32(raw[i:i+4]))
 	}

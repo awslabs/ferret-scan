@@ -190,6 +190,11 @@ func TestHostile_MalformedStructures(t *testing.T) {
 			mutate: func(b []byte) {
 				binary.LittleEndian.PutUint32(b[44:], 0xFFFFFFF0)
 			},
+			// This one was not hypothetical. The declared count sized a slice
+			// capacity, so 0xFFFFFFF0 reserved room for ~137 billion entries -- about
+			// 1TB -- and the process did not error, it stalled: 56 seconds under
+			// -race before the harness killed it. The count is now clamped to the
+			// number of sectors the file could possibly hold.
 			why: "an absurd FAT count must not drive a huge allocation",
 		},
 		{
@@ -219,9 +224,20 @@ func TestHostile_MalformedStructures(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// The contract is "terminate without panicking". Either outcome — a
-			// refusal or a partial redaction — is acceptable; hanging is not, and a
-			// panic in a scanner handed a user's file is not.
+			// The contract is "terminate, without panicking, and without allocating
+			// out of proportion to the file". Either outcome — a refusal or a partial
+			// redaction — is acceptable.
+			//
+			// Both the timeout AND the allocation ceiling are needed. The absurd FAT
+			// count case reserved ~1TB of slice capacity, which took 56 SECONDS under
+			// -race but only 0.29s without it: a timeout alone passes in a normal run
+			// and fails only in the race job, which reads as a flake rather than the
+			// memory-amplification bug it is. The allocation assertion catches it in
+			// either mode.
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
@@ -240,6 +256,17 @@ func TestHostile_MalformedStructures(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatalf("%s did not terminate within 10s (%s) — a malformed chain is "+
 					"being followed without a cycle guard", tc.name, tc.why)
+			}
+
+			runtime.ReadMemStats(&after)
+			alloc := int64(after.TotalAlloc) - int64(before.TotalAlloc)
+			ceiling := 64*int64(len(lied)) + int64(8<<20)
+			if alloc > ceiling {
+				t.Errorf("%s allocated %.1f MB from a %d-byte file (ceiling %.1f MB): a "+
+					"structural field is sizing an allocation, which is a memory "+
+					"amplification a user-supplied file controls (%s)",
+					tc.name, float64(alloc)/(1<<20), len(lied),
+					float64(ceiling)/(1<<20), tc.why)
 			}
 		})
 	}
