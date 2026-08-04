@@ -8,7 +8,35 @@ GO DEPENDENCIES
 
 ---
 
-1. github.com/fatih/color v1.18.0
+1. github.com/clipperhouse/uax29/v2 v2.7.0
+
+---
+
+License: MIT License
+URL: https://github.com/clipperhouse/uax29
+Copyright (c) 2020 Matt Sherman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+2. github.com/fatih/color v1.18.0
 
 ---
 
@@ -36,7 +64,7 @@ SOFTWARE.
 
 ---
 
-2. github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
+3. github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 
 ---
 
@@ -64,7 +92,7 @@ SOFTWARE.
 
 ---
 
-3. github.com/pdfcpu/pdfcpu v0.11.0
+4. github.com/pdfcpu/pdfcpu v0.11.0
 
 ---
 
@@ -86,7 +114,51 @@ limitations under the License.
 
 ---
 
-4. github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
+5. github.com/richardlehane/mscfb v1.0.7
+
+---
+
+License: Apache License 2.0
+URL: https://github.com/richardlehane/mscfb
+Copyright 2013 Richard Lehane
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
+6. github.com/richardlehane/msoleps v1.0.6
+
+---
+
+License: Apache License 2.0
+URL: https://github.com/richardlehane/msoleps
+Copyright 2014 Richard Lehane
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
+7. github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 
 ---
 
@@ -117,7 +189,35 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-5. golang.org/x/term v0.34.0
+8. github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
+
+---
+
+License: MIT License
+URL: https://github.com/sabhiram/go-gitignore
+Copyright (c) 2015 Shaba Abhiram
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+9. golang.org/x/term v0.34.0
 
 ---
 
@@ -153,7 +253,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-6. github.com/stretchr/testify v1.11.1
+10. github.com/stretchr/testify v1.11.1
 
 ---
 
@@ -181,7 +281,7 @@ SOFTWARE.
 
 ---
 
-7. gopkg.in/yaml.v3 v3.0.1
+11. gopkg.in/yaml.v3 v3.0.1
 
 ---
 
@@ -210,7 +310,7 @@ SOFTWARE.
 
 ---
 
-8. github.com/davecgh/go-spew v1.1.1 (indirect)
+12. github.com/davecgh/go-spew v1.1.1 (indirect)
 
 ---
 
@@ -232,7 +332,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ---
 
-9. github.com/hhrutter/lzw v1.0.0 (indirect)
+13. github.com/hhrutter/lzw v1.0.0 (indirect)
 
 ---
 
@@ -266,7 +366,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-10. github.com/hhrutter/pkcs7 v0.2.0 (indirect)
+14. github.com/hhrutter/pkcs7 v0.2.0 (indirect)
 
 ---
 
@@ -300,7 +400,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-11. github.com/hhrutter/tiff v1.0.2 (indirect)
+15. github.com/hhrutter/tiff v1.0.2 (indirect)
 
 ---
 
@@ -334,7 +434,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-12. github.com/mattn/go-colorable v0.1.14 (indirect)
+16. github.com/mattn/go-colorable v0.1.14 (indirect)
 
 ---
 
@@ -362,7 +462,7 @@ SOFTWARE.
 
 ---
 
-13. github.com/mattn/go-isatty v0.0.20 (indirect)
+17. github.com/mattn/go-isatty v0.0.20 (indirect)
 
 ---
 
@@ -390,7 +490,7 @@ SOFTWARE.
 
 ---
 
-14. github.com/mattn/go-runewidth v0.0.16 (indirect)
+18. github.com/mattn/go-runewidth v0.0.16 (indirect)
 
 ---
 
@@ -418,7 +518,7 @@ SOFTWARE.
 
 ---
 
-15. github.com/pkg/errors v0.9.1 (indirect)
+19. github.com/pkg/errors v0.9.1 (indirect)
 
 ---
 
@@ -450,7 +550,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-16. github.com/pmezard/go-difflib v1.0.0 (indirect)
+20. github.com/pmezard/go-difflib v1.0.0 (indirect)
 
 ---
 
@@ -487,7 +587,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-17. github.com/rivo/uniseg v0.4.7 (indirect)
+21. github.com/rivo/uniseg v0.4.7 (indirect)
 
 ---
 
@@ -515,7 +615,7 @@ SOFTWARE.
 
 ---
 
-18. github.com/stretchr/objx v0.5.2 (indirect)
+22. github.com/stretchr/objx v0.5.2 (indirect)
 
 ---
 
@@ -544,7 +644,7 @@ SOFTWARE.
 
 ---
 
-19. golang.org/x/crypto v0.41.0 (indirect)
+23. golang.org/x/crypto v0.41.0 (indirect)
 
 ---
 
@@ -580,7 +680,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-20. golang.org/x/image v0.30.0 (indirect)
+24. golang.org/x/image v0.30.0 (indirect)
 
 ---
 
@@ -616,7 +716,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-21. golang.org/x/sys v0.35.0 (indirect)
+25. golang.org/x/sys v0.35.0 (indirect)
 
 ---
 
@@ -652,7 +752,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-22. golang.org/x/text v0.28.0 (indirect)
+26. golang.org/x/text v0.28.0 (indirect)
 
 ---
 
@@ -688,7 +788,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-23. gopkg.in/yaml.v2 v2.4.0 (indirect)
+27. gopkg.in/yaml.v2 v2.4.0 (indirect)
 
 ---
 
@@ -715,7 +815,7 @@ PYTHON DEPENDENCIES
 
 ---
 
-24. requests >= 2.25.0
+28. requests >= 2.25.0
 
 ---
 
@@ -739,18 +839,19 @@ limitations under the License.
 SUMMARY
 ================================================================================
 
-Total Dependencies: 24 (23 Go + 1 Python)
+Total Dependencies: 28 (27 Go + 1 Python)
 
 License Distribution:
 
-- MIT License: 13 packages
-- BSD 3-Clause License: 8 packages
+- MIT License: 10 packages
+- BSD 3-Clause License: 9 packages
+- Apache License 2.0: 4 packages
 - BSD 2-Clause License: 2 packages
-- Apache License 2.0: 3 packages
+- Dual-licensed (MIT and Apache 2.0): 2 packages
 - ISC License: 1 package
 
 Note: This file was generated based on go.mod and python-package/requirements.txt.
 For the most up-to-date license information, please refer to the respective
 package repositories.
 
-Last Updated: 2025-10-16
+Last Updated: 2026-08-04
