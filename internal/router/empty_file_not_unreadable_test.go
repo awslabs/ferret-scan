@@ -62,10 +62,6 @@ func TestEmptyFileIsNotReportedUnreadable(t *testing.T) {
 // genuinely cannot be read must still be reported. Without this, "silence the
 // empty-file warning" could be implemented by silencing the whole diagnostic.
 func TestUnreadableFileIsStillReported(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("running as root: a 0o000 file is still readable, so this cannot be exercised")
-	}
-
 	dir := t.TempDir()
 	locked := filepath.Join(dir, "locked.txt")
 	if err := os.WriteFile(locked, []byte("ssn 449-87-4100\n"), 0o600); err != nil {
@@ -75,6 +71,23 @@ func TestUnreadableFileIsStillReported(t *testing.T) {
 		t.Fatalf("chmod fixture: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o600) })
+
+	// Verify the PRECONDITION instead of guessing which platforms and users can
+	// express it. Chmod does not deny read access everywhere: on Windows it only
+	// clears the read-only bit, so a 0o000 file opens normally, and root ignores
+	// the mode on Unix. In both cases the file is readable, the router correctly
+	// answers "Text file", and asserting otherwise fails the test for a reason
+	// that has nothing to do with the code under test.
+	//
+	// An earlier version guarded this with os.Geteuid() == 0, which is wrong twice
+	// over: it does not cover Windows at all (Geteuid returns -1 there, so the
+	// guard never fires), and it encodes an assumption about WHO is running rather
+	// than checking WHAT happened. This broke the Windows CI job on main. Opening
+	// the file is the direct question, so ask that.
+	if f, err := os.Open(locked); err == nil {
+		f.Close()
+		t.Skip("this platform/user can still read a 0o000 file, so an unreadable file cannot be simulated with Chmod")
+	}
 
 	fr := &FileRouter{}
 	ok, reason := fr.CanProcessFile(locked, true)
