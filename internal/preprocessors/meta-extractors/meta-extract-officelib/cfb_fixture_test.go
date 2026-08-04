@@ -558,6 +558,10 @@ func TestLegacyCFBFixtureIsDeterministic(t *testing.T) {
 	}
 }
 
+// docSummaryPropVersion is the packed version of the application that wrote the
+// file -- NOT a document revision number.
+const docSummaryPropVersion = 0x00000017
+
 // docSummaryPropLinkBase is the HyperlinkBase property ID.
 const docSummaryPropLinkBase = 0x00000014
 

@@ -160,8 +160,6 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 			setIfEmpty(&metadata.ContentStatus, v)
 		case "Language":
 			setIfEmpty(&metadata.Language, v)
-		case "Version":
-			setIfEmpty(&metadata.Revision, v)
 		case "Link base":
 			// HyperlinkBase. The same UNC/URL disclosure class as Template: it
 			// routinely holds an internal share or intranet host.

@@ -223,3 +223,40 @@ func TestLegacyExtraction_CustomPropertyValuesReachTheScannedText(t *testing.T) 
 			"never reaches any validator", got)
 	}
 }
+
+// "Version" (property 0x17) is the packed version of the APPLICATION that wrote the
+// file, not a document revision number. Mapping it to Metadata.Revision put a wrong
+// value in a named field, and it also made the entry for it in
+// legacyStructuralProperties dead code: the switch case fired first, so the
+// exclusion never ran.
+//
+// Both halves are asserted because they can drift apart again independently — the
+// contradiction between the code and its own comment is what hid this.
+func TestLegacyExtraction_VersionIsNotADocumentRevision(t *testing.T) {
+	path := writeLegacyFixture(t, "version.doc", []legacyCFBStream{
+		{Name: "WordDocument", Data: []byte("Body text long enough to be recovered.\r")},
+		{Name: "\x05DocumentSummaryInformation", Data: BuildDocSummaryInformation(map[uint32]string{
+			docSummaryPropVersion: "1048576", // what a packed app version looks like
+		})},
+	})
+
+	md, err := ExtractMetadata(path)
+	if err != nil {
+		t.Fatalf("ExtractMetadata: %v", err)
+	}
+	if md.Revision != "" {
+		t.Errorf("Revision = %q; the OLE \"Version\" property is the writing "+
+			"APPLICATION's packed version, not a document revision, so reporting it in a "+
+			"field named Revision states something untrue about the document", md.Revision)
+	}
+	// It must also not resurface as a custom property: a packed integer is report
+	// noise, which is exactly why it is in the structural exclusion list.
+	if v, present := md.CustomProps["Version"]; present {
+		t.Errorf("CustomProps[\"Version\"] = %q; a packed application version carries no "+
+			"scannable text and the structural exclusion should have dropped it", v)
+	}
+	if !legacyStructuralProperties["Version"] {
+		t.Error("\"Version\" is missing from legacyStructuralProperties, so it would be " +
+			"collected as a custom property")
+	}
+}
