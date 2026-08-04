@@ -385,10 +385,40 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 // strings.Contains(fileName, "document") is case-sensitive and never matched. A
 // reported-but-unredacted value is the same leak as an undetected one, dressed as a
 // success.
+// isDocPropsPart reports whether name is an OOXML document-properties part.
+// name must already be lower-cased.
+//
+// docProps/core.xml holds the Dublin Core properties (creator, title, subject,
+// keywords, lastModifiedBy); docProps/app.xml holds the extended ones (Company,
+// Manager, Application, Template); docProps/custom.xml holds author-defined
+// properties. All three are author-controlled free text and all three are
+// scanned, so all three must be redactable.
+func isDocPropsPart(name string) bool {
+	return strings.HasPrefix(name, "docprops/") && strings.HasSuffix(name, ".xml")
+}
+
 func (or *OfficeRedactor) isTextContainingFile(fileName string, docType OfficeDocumentType) bool {
 	name := strings.ToLower(fileName)
 	if !strings.HasSuffix(name, ".xml") {
 		return false
+	}
+
+	// Document properties, for every Office format. These carry author names,
+	// titles, keywords, company, manager and the template path — values the
+	// scanner reports as AUTHOR_INFO, COMPANY_INFO, TEMPLATE_INFO and friends.
+	//
+	// They were unreachable before: each case below requires a body-part prefix
+	// ("word/", "xl/worksheets/", "ppt/slides/"), so docProps/* returned false and
+	// the redactor never rewrote it. The effect was that metadata findings were
+	// REPORTED and never REMOVED — the tool named a value, wrote a "redacted"
+	// copy, and left that value in cleartext inside docProps/core.xml. Measured
+	// across the golden container corpus: 10 reported findings survived, every one
+	// of them in docProps/core.xml, while every body part redacted correctly.
+	//
+	// This is checked before the per-format switch because the part name is
+	// identical in DOCX, XLSX and PPTX.
+	if isDocPropsPart(name) {
+		return true
 	}
 
 	switch docType {
@@ -419,6 +449,49 @@ func (or *OfficeRedactor) isTextContainingFile(fileName string, docType OfficeDo
 	default:
 		return false
 	}
+}
+
+// docPropsValueElements are the OOXML document-property elements whose character
+// data is a value rather than structure.
+//
+// The XML decoder reports local names, so namespace prefixes (dc:, cp:, dcterms:)
+// are already stripped — "creator", not "dc:creator". Deliberately excluded are
+// the numeric/structural properties that carry no free text and no PII:
+// Pages, Words, Characters, Lines, Paragraphs, revision, version, TotalTime,
+// AppVersion, DocSecurity, ScaleCrop, LinksUpToDate, SharedDoc, HyperlinksChanged,
+// and the dcterms date fields.
+var docPropsValueElements = map[string]bool{
+	// docProps/core.xml — Dublin Core + cp:
+	"title":          true,
+	"subject":        true,
+	"creator":        true,
+	"keywords":       true,
+	"description":    true,
+	"lastModifiedBy": true,
+	"category":       true,
+	"contentStatus":  true,
+	"identifier":     true,
+
+	// docProps/app.xml — extended properties
+	"Company":            true,
+	"Manager":            true,
+	"Application":        true,
+	"Template":           true,
+	"HyperlinkBase":      true,
+	"PresentationFormat": true,
+	"TitlesOfParts":      true,
+	"HeadingPairs":       true,
+
+	// docProps/custom.xml — author-defined property values
+	"lpwstr": true,
+	"lpstr":  true,
+	"bstr":   true,
+}
+
+// isDocPropsValueElement reports whether an element's character data is a
+// document-property VALUE that may carry sensitive text.
+func isDocPropsValueElement(local string) bool {
+	return docPropsValueElements[local]
 }
 
 // extractTextFromXML extracts text content from an XML file
@@ -487,6 +560,17 @@ func (or *OfficeRedactor) isTextElement(path []string, docType OfficeDocumentTyp
 	}
 
 	lastElement := path[len(path)-1]
+
+	// Document-properties elements, checked before the per-format switch.
+	//
+	// Selecting docProps/* is only half the fix: its values do not live in w:t or
+	// in a cell, they live in dc:creator, dc:title, cp:keywords, Company,
+	// Manager, Template and so on. Without this the part would be selected,
+	// extracted to an empty string, and nothing would be rewritten — the same
+	// silent no-op as before, just reached differently.
+	if isDocPropsValueElement(lastElement) {
+		return true
+	}
 
 	switch docType {
 	case DocumentTypeDOCX:
