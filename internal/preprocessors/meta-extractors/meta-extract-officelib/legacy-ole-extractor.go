@@ -145,10 +145,17 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 			setIfEmpty(&metadata.Manager, v)
 		case "Category":
 			setIfEmpty(&metadata.Category, v)
-		case "ContentStatus":
+		// "Content status", with the space, is the name msoleps produces for
+		// property 0x1B. A "ContentStatus" case matches nothing: property names
+		// come from msoleps's own tables, not from the OOXML vocabulary, and the
+		// two spellings differ. There is no "Identifier" name in those tables at
+		// all, so Metadata.Identifier has no legacy source and is not mapped.
+		case "Content status":
 			setIfEmpty(&metadata.ContentStatus, v)
-		case "Identifier":
-			setIfEmpty(&metadata.Identifier, v)
+		case "Language":
+			setIfEmpty(&metadata.Language, v)
+		case "Version":
+			setIfEmpty(&metadata.Revision, v)
 		case "CreateTime":
 			setTimeIfZero(&metadata.Created, p)
 		case "LastSaveTime":
@@ -171,11 +178,21 @@ func setIfEmpty(dst *string, v string) {
 // Property.T carries the typed value; a FileTime is the OLE representation of a
 // timestamp. Anything else with the same property name is ignored rather than
 // coerced, so a malformed stream cannot put a nonsense date in a report.
+//
+// The assertion is on the VALUE type, not a pointer. msoleps builds FileTime
+// properties with MakeFileTime, which returns types.FileTime by value, so a
+// *types.FileTime assertion never succeeds and every legacy document would report
+// a zero Created/Modified — a silent whole-field loss with no error anywhere. The
+// pointer form is accepted as well so a future msoleps change cannot quietly
+// reintroduce that.
 func setTimeIfZero(dst *time.Time, p *msoleps.Property) {
 	if !dst.IsZero() {
 		return
 	}
-	if ft, ok := p.T.(*types.FileTime); ok {
+	switch ft := p.T.(type) {
+	case types.FileTime:
+		*dst = ft.Time()
+	case *types.FileTime:
 		*dst = ft.Time()
 	}
 }
