@@ -242,3 +242,10 @@ ferret-scan-results.sarif
 .claude/
 .security-scan/
 uv.lock
+
+# Local performance-baseline scratch: holds checked-out worktrees of older commits
+# for before/after timing comparisons. Several hundred MB of duplicated source, and
+# entirely reproducible from git, so it must never be committed. Ignoring it also
+# keeps `git status` readable — an 11MB untracked directory at the top of every
+# status listing is how a real stray file gets overlooked.
+.perfbase/
