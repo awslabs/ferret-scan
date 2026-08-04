@@ -6,6 +6,7 @@ package parallel
 import (
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -54,6 +55,30 @@ type ProcessingStats struct {
 	// redaction run whose whole purpose is to produce shareable copies has
 	// silently not done so for these files.
 	UnredactedFiles []FileDiagnostic `json:"unredacted_files,omitempty"`
+
+	// FailedFiles lists files whose processing returned an error, so they were
+	// never scanned at all. Populated from Result.Error.
+	//
+	// Before this existed, such a file was counted as NEITHER processed nor
+	// skipped: the collector logged Result.Error and fell through without
+	// incrementing anything and without recording a diagnostic, so the file
+	// simply disappeared. Measured on a directory of six files where five were
+	// unparseable containers: "Files: 1 processed, 0 skipped", no warning, and
+	// exit 0 even under --fail-on-incomplete. A corrupt or truncated document —
+	// exactly the kind that might be hiding something — was indistinguishable
+	// from a directory that had been fully scanned and found clean.
+	//
+	// This is the same silent-and-lossy class as EmptyExtractionFiles, so it is
+	// reported the same way and counted as a coverage gap for
+	// --fail-on-incomplete.
+	FailedFiles []FileDiagnostic `json:"failed_files,omitempty"`
+}
+
+// sortDiagnostics orders a diagnostic list by file path so operator-visible
+// output is stable across runs. Ties on path keep their relative order, which
+// only matters if one path appears twice.
+func sortDiagnostics(d []FileDiagnostic) {
+	sort.SliceStable(d, func(i, j int) bool { return d[i].FilePath < d[j].FilePath })
 }
 
 // FileDiagnostic records that a single file's validation did not complete
@@ -122,6 +147,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 	var incompleteFiles []FileDiagnostic
 	var unredactedFiles []FileDiagnostic
 	var emptyExtractionFiles []FileDiagnostic
+	var failedFiles []FileDiagnostic
 
 	for i := 0; i < jobCount; i++ {
 		result := <-pp.workerPool.Results()
@@ -168,6 +194,14 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 			}
 		}
 		if result.Error != nil {
+			// Record it, do not just log it. A file that errored was never
+			// scanned, and without this entry it is counted as neither processed
+			// nor skipped — it vanishes from the run with no warning and no
+			// effect on the exit code. See ProcessingStats.FailedFiles.
+			failedFiles = append(failedFiles, FileDiagnostic{
+				FilePath: result.FilePath,
+				Reason:   result.Error.Error(),
+			})
 			if pp.observer != nil {
 				pp.observer.LogOperation(observability.StandardObservabilityData{
 					Component: "parallel_processor",
@@ -192,6 +226,23 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 
 	overallDuration := time.Since(start)
 
+	// Sort every diagnostic list by path before returning.
+	//
+	// These lists are appended in worker-COMPLETION order, which is scheduling
+	// order, so the same scan printed the same files in a different sequence on
+	// every run. Measured before this sort: 8 empty-extraction files produced 5
+	// distinct orderings in 5 runs, and 5 failed files produced 6 distinct
+	// orderings in 6 runs. That reaches operator-visible stderr output, so
+	// diffing two scans of the same tree showed spurious changes.
+	//
+	// The lists are per-run and small (empty on a clean scan), so sorting costs
+	// nothing measurable, and unlike the hot match path there is no natural order
+	// worth preserving here — completion order carries no meaning to a reader.
+	sortDiagnostics(incompleteFiles)
+	sortDiagnostics(emptyExtractionFiles)
+	sortDiagnostics(unredactedFiles)
+	sortDiagnostics(failedFiles)
+
 	stats := &ProcessingStats{
 		TotalFiles:      jobCount,
 		ProcessedFiles:  processedCount,
@@ -203,6 +254,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 		UnredactedFiles: unredactedFiles,
 
 		EmptyExtractionFiles: emptyExtractionFiles,
+		FailedFiles:          failedFiles,
 	}
 
 	if finishTiming != nil {

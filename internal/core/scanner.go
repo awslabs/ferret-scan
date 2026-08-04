@@ -226,6 +226,20 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 			incompleteReason = fmt.Sprintf("no document text extracted from %d of %d files",
 				len(stats.EmptyExtractionFiles), stats.TotalFiles)
 		}
+	} else if stats != nil && len(stats.FailedFiles) > 0 {
+		// A file that could not be processed at all was never scanned, so the run
+		// is incomplete for the same reason an empty extraction is: the report says
+		// nothing about that file's contents. Previously these files were counted
+		// as neither processed nor skipped and left the exit code at 0, so a
+		// directory of unparseable documents was indistinguishable from a clean one.
+		incomplete = true
+		if len(stats.FailedFiles) == 1 {
+			incompleteReason = fmt.Sprintf("could not process %s: %s",
+				stats.FailedFiles[0].FilePath, stats.FailedFiles[0].Reason)
+		} else {
+			incompleteReason = fmt.Sprintf("could not process %d of %d files",
+				len(stats.FailedFiles), stats.TotalFiles)
+		}
 	}
 
 	return &ScanResult{
