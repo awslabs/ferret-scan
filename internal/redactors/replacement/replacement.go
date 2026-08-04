@@ -198,8 +198,21 @@ func preserveEmail(original string) string {
 	if len(user) == 0 {
 		return "*@" + parts[1]
 	}
+	// Mask the WHOLE local part when it is a single character.
+	//
+	// The previous branch returned `user + "@" + domain` unchanged, so
+	// "a@b.co" redacted to "a@b.co" -- a redaction that redacts nothing, and a
+	// cleartext leak in the shipped binary: scanning a .txt containing
+	// "contact a@b.co for details" with --redaction-strategy format_preserving
+	// wrote the address back out verbatim.
+	//
+	// Keeping the first character is a readability affordance for a long local
+	// part ("j***@example.com"), not a rule to apply when the first character IS
+	// the entire local part. This is the same defect class the phone helper below
+	// already documents: a masking scheme whose "middle" is empty at the smallest
+	// input size, so the value survives.
 	if len(user) == 1 {
-		return user + "@" + parts[1]
+		return "*@" + parts[1]
 	}
 	return string(user[0]) + strings.Repeat("*", len(user)-1) + "@" + parts[1]
 }
