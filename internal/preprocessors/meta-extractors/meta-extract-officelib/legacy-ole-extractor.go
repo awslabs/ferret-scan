@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -122,29 +123,34 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 			continue
 		}
 		switch p.Name {
+		// The mapped fields below are the KNOWN properties. Anything else with a
+		// name is a user-defined (custom) property and is collected verbatim by the
+		// default arm, because a custom property is free-form text a document
+		// author chose — historically one of the likeliest metadata leak channels,
+		// and the same reason the OOXML path reads docProps/custom.xml.
 		case "Title":
-			setIfEmpty(&metadata.Title, v)
+			keepValue(metadata, &metadata.Title, p.Name, v)
 		case "Subject":
-			setIfEmpty(&metadata.Subject, v)
+			keepValue(metadata, &metadata.Subject, p.Name, v)
 		case "Author":
-			setIfEmpty(&metadata.Author, v)
+			keepValue(metadata, &metadata.Author, p.Name, v)
 			setIfEmpty(&metadata.Creator, v)
 		case "Keywords":
-			setIfEmpty(&metadata.Keywords, v)
+			keepValue(metadata, &metadata.Keywords, p.Name, v)
 		case "Comments":
-			setIfEmpty(&metadata.Comments, v)
+			keepValue(metadata, &metadata.Comments, p.Name, v)
 		case "LastAuthor":
-			setIfEmpty(&metadata.LastModifiedBy, v)
+			keepValue(metadata, &metadata.LastModifiedBy, p.Name, v)
 		case "AppName":
-			setIfEmpty(&metadata.Application, v)
+			keepValue(metadata, &metadata.Application, p.Name, v)
 		case "Template":
-			setIfEmpty(&metadata.Template, v)
+			keepValue(metadata, &metadata.Template, p.Name, v)
 		case "Company":
-			setIfEmpty(&metadata.Company, v)
+			keepValue(metadata, &metadata.Company, p.Name, v)
 		case "Manager":
-			setIfEmpty(&metadata.Manager, v)
+			keepValue(metadata, &metadata.Manager, p.Name, v)
 		case "Category":
-			setIfEmpty(&metadata.Category, v)
+			keepValue(metadata, &metadata.Category, p.Name, v)
 		// "Content status", with the space, is the name msoleps produces for
 		// property 0x1B. A "ContentStatus" case matches nothing: property names
 		// come from msoleps's own tables, not from the OOXML vocabulary, and the
@@ -156,10 +162,89 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 			setIfEmpty(&metadata.Language, v)
 		case "Version":
 			setIfEmpty(&metadata.Revision, v)
+		case "Link base":
+			// HyperlinkBase. The same UNC/URL disclosure class as Template: it
+			// routinely holds an internal share or intranet host.
+			setCustomProp(metadata, "HyperlinkBase", v)
 		case "CreateTime":
 			setTimeIfZero(&metadata.Created, p)
 		case "LastSaveTime":
 			setTimeIfZero(&metadata.Modified, p)
+		default:
+			// A user-defined property. Its NAME comes from the property set's own
+			// dictionary, so it is document-author-controlled and must not be
+			// allowed to collide with a mapped field — see setCustomProp.
+			//
+			// Skipping these was a cleartext leak: a custom property named
+			// "ClientSSN" holding a real SSN was reported by NOTHING, and only
+			// reported findings are redacted. Measured on a .doc carrying an SSN and
+			// an AWS key in custom properties: 0 findings for either before this.
+			if isCollectableCustomProperty(p.Name) {
+				setCustomProp(metadata, p.Name, v)
+			}
+		}
+	}
+}
+
+// legacyStructuralProperties are the property names that carry no free text worth
+// scanning: counts, flags, packed version numbers and the property set's own
+// bookkeeping. They are excluded from custom-property collection because surfacing
+// "Byte count: 4096" on every legacy document is pure report noise, and noise
+// trains users to skim past real findings.
+//
+// Note "Version" is here rather than mapped to Metadata.Revision: it is the packed
+// application version that WROTE the file, not a document revision number, so
+// putting it in Revision would report a wrong value in a named field.
+var legacyStructuralProperties = map[string]bool{
+	"Dictionary": true, "CodePage": true, "Locale": true, "Behaviour": true,
+	"Byte count": true, "Line count": true, "Paragraph count": true,
+	"Slide count": true, "Note count": true, "Multimedia clips count": true,
+	"Character count": true, "PageCount": true, "WordCount": true, "CharCount": true,
+	"Scale": true, "Dirty links": true, "Shared document": true,
+	"Hyperlinks changed": true, "Digital Signature": true, "Thumbnail": true,
+	"DocSecurity": true, "RevNumber": true, "EditTime": true, "LastPrinted": true,
+	"Version": true, "Document Version": true, "Presentation Format": true,
+	"Heading pair": true, "Document parts": true,
+}
+
+// isCollectableCustomProperty reports whether an unmapped property name should be
+// collected as a custom property.
+func isCollectableCustomProperty(name string) bool {
+	if strings.TrimSpace(name) == "" {
+		// msoleps leaves the name empty when a property ID is absent from both its
+		// tables and the stream's dictionary. There is nothing to label such a value
+		// with, and an unlabelled entry cannot be acted on.
+		return false
+	}
+	return !legacyStructuralProperties[name]
+}
+
+// setCustomProp records a custom property, keeping document-author-controlled
+// names from colliding with each other.
+//
+// The name comes from the property set's dictionary, which the document author
+// writes, so two custom properties can legitimately share a name and a hostile
+// document can pick any name it likes. First writer wins and later collisions are
+// suffixed rather than dropped: silently discarding the second value would be the
+// same leak this function exists to close.
+func setCustomProp(metadata *Metadata, name, value string) {
+	if metadata.CustomProps == nil {
+		metadata.CustomProps = make(map[string]string)
+	}
+	if _, exists := metadata.CustomProps[name]; !exists {
+		metadata.CustomProps[name] = value
+		return
+	}
+	if metadata.CustomProps[name] == value {
+		return // an exact duplicate carries no additional information
+	}
+	for i := 2; i < 1000; i++ {
+		key := name + " (" + strconv.Itoa(i) + ")"
+		if existing, exists := metadata.CustomProps[key]; !exists {
+			metadata.CustomProps[key] = value
+			return
+		} else if existing == value {
+			return
 		}
 	}
 }
@@ -171,6 +256,30 @@ func setIfEmpty(dst *string, v string) {
 	if *dst == "" {
 		*dst = v
 	}
+}
+
+// keepValue fills a mapped field, and keeps the value as a custom property when
+// the field is already taken.
+//
+// Both halves matter and they pull in opposite directions. A property NAME comes
+// from the property set's own dictionary, which the document author writes, so a
+// document can define a custom property called "Author" and a plain first-writer-
+// wins rule would let it decide what the report calls the author. Hence the mapped
+// field is never overwritten.
+//
+// But simply discarding the loser is the leak this function was added to close: the
+// displaced value is still document content, and a value that reaches no field
+// reaches no validator and is never redacted. So it is preserved under its name in
+// CustomProps instead of being dropped.
+func keepValue(metadata *Metadata, dst *string, name, v string) {
+	if *dst == "" {
+		*dst = v
+		return
+	}
+	if *dst == v {
+		return // the same value from both property sets carries nothing new
+	}
+	setCustomProp(metadata, name, v)
 }
 
 // setTimeIfZero fills a timestamp field from a property whose value is a time.

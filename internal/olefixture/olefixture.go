@@ -54,6 +54,7 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	"unicode/utf16"
 )
 
 // Container structure constants, per MS-CFB.
@@ -78,6 +79,14 @@ const (
 	dirLoc     = 1
 	miniFATLoc = 2
 	firstData  = 3
+
+	// entriesPerSector is how many 4-byte FAT entries one sector holds: 128 at a
+	// 512-byte sector size.
+	entriesPerSector = SectorSize / 4
+	// maxHeaderDIFAT is how many FAT sector locations fit in the header. Beyond this
+	// a file needs DIFAT sectors, which no fixture is large enough to require:
+	// 109 FAT sectors address 109*128 sectors, about 7MB.
+	maxHeaderDIFAT = (SectorSize - 76) / 4
 )
 
 // Signature is the 8-byte magic every compound file starts with.
@@ -154,20 +163,45 @@ func Build(streams []Stream) ([]byte, error) {
 		next += uint32(n)
 	}
 
-	if int(next) > SectorSize/4 {
-		return nil, fmt.Errorf("olefixture: fixture needs %d sectors but one FAT sector "+
-			"addresses only %d (keep fixtures under %dKB)",
-			next, SectorSize/4, (SectorSize/4)*SectorSize/1024)
+	// The FAT must describe every sector INCLUDING its own, so growing it can push
+	// the total past the next multiple and require another FAT sector. Solve for the
+	// smallest count that covers itself, rather than assuming one.
+	//
+	// FAT sectors are appended after the data, so they do not shift any sector number
+	// computed above.
+	dataSectors := int(next)
+	numFAT := 1
+	for {
+		if dataSectors+numFAT <= numFAT*entriesPerSector {
+			break
+		}
+		numFAT++
+		if numFAT > maxHeaderDIFAT {
+			return nil, fmt.Errorf("olefixture: fixture needs %d sectors, which would "+
+				"require DIFAT sectors (over ~%dMB); keep fixtures smaller",
+				dataSectors, maxHeaderDIFAT*entriesPerSector*SectorSize/(1024*1024))
+		}
 	}
+	totalSectors := dataSectors + numFAT
 
-	fat := freeTable(SectorSize / 4)
-	fat[fatLoc] = fatSector
+	fat := freeTable(numFAT * entriesPerSector)
 	fat[dirLoc] = endOfChain
 	fat[miniFATLoc] = endOfChain
 	chainRun(fat, miniStreamStart, miniStreamSectorCount)
 	for i := range streams {
 		if !places[i].mini && regular[i] > 0 {
 			chainRun(fat, places[i].startEntry, regular[i])
+		}
+	}
+	// Mark the FAT's own sectors. Sector 0 is the first of them, and the rest sit at
+	// the end of the file.
+	fatSectorNums := []uint32{fatLoc}
+	for i := 1; i < numFAT; i++ {
+		fatSectorNums = append(fatSectorNums, uint32(dataSectors+i-1))
+	}
+	for _, sec := range fatSectorNums {
+		if int(sec) < len(fat) {
+			fat[sec] = fatSector
 		}
 	}
 
@@ -188,7 +222,7 @@ func Build(streams []Stream) ([]byte, error) {
 	binary.LittleEndian.PutUint16(hdr[30:], 9)      // sector shift: 1<<9 = 512
 	binary.LittleEndian.PutUint16(hdr[32:], 6)      // mini sector shift: 1<<6 = 64
 	binary.LittleEndian.PutUint32(hdr[40:], 1)      // directory sector count
-	binary.LittleEndian.PutUint32(hdr[44:], 1)      // FAT sector count
+	binary.LittleEndian.PutUint32(hdr[44:], uint32(numFAT))
 	binary.LittleEndian.PutUint32(hdr[48:], dirLoc)
 	binary.LittleEndian.PutUint32(hdr[56:], MiniCutoff)
 	if miniData.Len() > 0 {
@@ -203,7 +237,13 @@ func Build(streams []Stream) ([]byte, error) {
 	for i := 76; i < SectorSize; i += 4 {
 		binary.LittleEndian.PutUint32(hdr[i:], freeSector)
 	}
-	binary.LittleEndian.PutUint32(hdr[76:], fatLoc) // DIFAT[0] -> the FAT sector
+	// The header's DIFAT lists where the FAT sectors live, in order.
+	for i, sec := range fatSectorNums {
+		if 76+i*4+4 > SectorSize {
+			break
+		}
+		binary.LittleEndian.PutUint32(hdr[76+i*4:], sec)
+	}
 
 	// The root entry's chain IS the mini stream and its size is the mini stream's
 	// length; a reader walks that chain to resolve every mini sector.
@@ -224,9 +264,16 @@ func Build(streams []Stream) ([]byte, error) {
 			places[i].startEntry, places[i].size, freeSector, right)
 	}
 
-	out := make([]byte, 0, SectorSize*(1+int(next)))
+	// The FAT is one flat table split across numFAT sectors, in DIFAT order.
+	fatBytes := make([]byte, numFAT*SectorSize)
+	for i, v := range fat {
+		binary.LittleEndian.PutUint32(fatBytes[i*4:], v)
+	}
+	fatSlice := func(i int) []byte { return fatBytes[i*SectorSize : (i+1)*SectorSize] }
+
+	out := make([]byte, 0, SectorSize*(1+totalSectors))
 	out = append(out, hdr...)
-	out = append(out, tableSector(fat)...)
+	out = append(out, fatSlice(0)...) // sector 0: the first FAT sector
 	out = append(out, dir...)
 	out = append(out, tableSector(miniFAT)...)
 	if miniStreamSectorCount > 0 {
@@ -242,6 +289,11 @@ func Build(streams []Stream) ([]byte, error) {
 		copy(padded, s.Data)
 		out = append(out, padded...)
 	}
+	// Remaining FAT sectors go after the data, which is why appending them cannot
+	// shift any sector number assigned above.
+	for i := 1; i < numFAT; i++ {
+		out = append(out, fatSlice(i)...)
+	}
 	return out, nil
 }
 
@@ -250,6 +302,130 @@ func Build(streams []Stream) ([]byte, error) {
 // at test setup rather than as a mysterious empty scan result.
 func MustBuild(streams []Stream) []byte {
 	b, err := Build(streams)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// FragmentedStream is a stream whose sectors are placed at caller-chosen disk
+// locations, in logical order.
+type FragmentedStream struct {
+	Name string
+	Data []byte
+	// Sectors are disk sector numbers in LOGICAL order, one per sector of Data.
+	// Listing them out of ascending order is the point: it reproduces what a real
+	// allocator leaves behind after a document has been edited.
+	Sectors []uint32
+}
+
+// BuildFragmented writes a valid compound file whose stream sectors sit where the
+// caller says, so a value can be contiguous in a stream's logical bytes while its
+// halves live far apart on disk.
+//
+// That layout is what separates a correct redactor from one that merely looks
+// correct: searching the raw file cannot find such a value, so it is reported by the
+// extractor (which reads reassembled logical bytes) and silently left in cleartext
+// by the writer. Only regular sectors are used — the mini stream has its own
+// indirection and is covered by Build.
+func BuildFragmented(streams []FragmentedStream) ([]byte, error) {
+	maxSector := uint32(miniFATLoc)
+	for _, s := range streams {
+		need := (len(s.Data) + SectorSize - 1) / SectorSize
+		if need != len(s.Sectors) {
+			return nil, fmt.Errorf("olefixture: stream %q is %d bytes = %d sectors but %d "+
+				"sectors were given", s.Name, len(s.Data), need, len(s.Sectors))
+		}
+		if len(s.Data) < MiniCutoff {
+			return nil, fmt.Errorf("olefixture: stream %q is %d bytes, under the %d-byte "+
+				"cutoff, so a reader routes it through the mini FAT and the requested "+
+				"sector placement would be ignored", s.Name, len(s.Data), MiniCutoff)
+		}
+		for _, sec := range s.Sectors {
+			if sec > maxSector {
+				maxSector = sec
+			}
+		}
+	}
+	if int(maxSector) >= SectorSize/4 {
+		return nil, fmt.Errorf("olefixture: sector %d exceeds what one FAT sector addresses (%d)",
+			maxSector, SectorSize/4)
+	}
+
+	fat := freeTable(SectorSize / 4)
+	fat[fatLoc] = fatSector
+	fat[dirLoc] = endOfChain
+	fat[miniFATLoc] = endOfChain
+	for _, s := range streams {
+		for i, sec := range s.Sectors {
+			if i == len(s.Sectors)-1 {
+				fat[sec] = endOfChain
+			} else {
+				fat[sec] = s.Sectors[i+1]
+			}
+		}
+	}
+
+	hdr := make([]byte, SectorSize)
+	copy(hdr[0:8], Signature)
+	binary.LittleEndian.PutUint16(hdr[24:], 0x003E)
+	binary.LittleEndian.PutUint16(hdr[26:], 0x0003)
+	binary.LittleEndian.PutUint16(hdr[28:], 0xFFFE)
+	binary.LittleEndian.PutUint16(hdr[30:], 9)
+	binary.LittleEndian.PutUint16(hdr[32:], 6)
+	binary.LittleEndian.PutUint32(hdr[40:], 1)
+	binary.LittleEndian.PutUint32(hdr[44:], 1)
+	binary.LittleEndian.PutUint32(hdr[48:], dirLoc)
+	binary.LittleEndian.PutUint32(hdr[56:], MiniCutoff)
+	binary.LittleEndian.PutUint32(hdr[60:], endOfChain)
+	binary.LittleEndian.PutUint32(hdr[64:], 0)
+	binary.LittleEndian.PutUint32(hdr[68:], endOfChain)
+	binary.LittleEndian.PutUint32(hdr[72:], 0)
+	for i := 76; i < SectorSize; i += 4 {
+		binary.LittleEndian.PutUint32(hdr[i:], freeSector)
+	}
+	binary.LittleEndian.PutUint32(hdr[76:], fatLoc)
+
+	dir := make([]byte, SectorSize)
+	child := uint32(freeSector)
+	if len(streams) > 0 {
+		child = 1
+	}
+	writeDirEntry(dir[0:dirEntrySize], "Root Entry", typeRoot, endOfChain, 0, child, freeSector)
+	for i, s := range streams {
+		off := (i + 1) * dirEntrySize
+		if off+dirEntrySize > len(dir) {
+			return nil, fmt.Errorf("olefixture: %d streams exceed one directory sector", len(streams))
+		}
+		right := uint32(freeSector)
+		if i+1 < len(streams) {
+			right = uint32(i + 2)
+		}
+		writeDirEntry(dir[off:off+dirEntrySize], s.Name, typeStream,
+			s.Sectors[0], uint32(len(s.Data)), freeSector, right)
+	}
+
+	out := make([]byte, SectorSize*(1+int(maxSector)+1))
+	copy(out[0:], hdr)
+	copy(out[SectorSize*(1+fatLoc):], tableSector(fat))
+	copy(out[SectorSize*(1+dirLoc):], dir)
+	copy(out[SectorSize*(1+miniFATLoc):], tableSector(freeTable(SectorSize/4)))
+	for _, s := range streams {
+		for i, sec := range s.Sectors {
+			lo := i * SectorSize
+			hi := lo + SectorSize
+			if hi > len(s.Data) {
+				hi = len(s.Data)
+			}
+			copy(out[SectorSize*(1+int(sec)):], s.Data[lo:hi])
+		}
+	}
+	return out, nil
+}
+
+// MustBuildFragmented is BuildFragmented for callers that cannot handle an error.
+func MustBuildFragmented(streams []FragmentedStream) []byte {
+	b, err := BuildFragmented(streams)
 	if err != nil {
 		panic(err)
 	}
@@ -386,10 +562,174 @@ func SummaryInformationWithTimes(props map[uint32]string, times map[uint32]uint6
 	return propertySet(fmtidSummaryInformation, props, times)
 }
 
+// SummaryInformationWide encodes the properties as VT_LPWSTR (UTF-16LE) rather than
+// VT_LPSTR, which is what Office writes for any value that is not representable in
+// the document's code page — in practice, most non-English names.
+//
+// The distinction is load-bearing for a redactor: a UTF-16LE value shares no bytes
+// with its UTF-8 form, so a redactor that searches only the narrow encoding finds
+// nothing and reports success while the value stays in the file.
+func SummaryInformationWide(props map[uint32]string) []byte {
+	return propertySetWide(fmtidSummaryInformation, props)
+}
+
+// propertySetWide encodes one property set with UTF-16LE string values.
+func propertySetWide(fmtid []byte, strs map[uint32]string) []byte {
+	ids := make([]uint32, 0, len(strs))
+	for id := range strs {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	type encoded struct {
+		id  uint32
+		val []byte
+	}
+	vals := make([]encoded, 0, len(ids))
+	for _, id := range ids {
+		// VT_LPWSTR (0x001F): 2-byte type, 2 bytes padding, 4-byte length in CODE
+		// UNITS including the null terminator, then the UTF-16LE bytes padded to 4.
+		units := utf16.Encode([]rune(strs[id]))
+		body := make([]byte, 0, (len(units)+1)*2)
+		for _, u := range units {
+			body = append(body, byte(u), byte(u>>8))
+		}
+		body = append(body, 0x00, 0x00) // terminator
+		for len(body)%4 != 0 {
+			body = append(body, 0)
+		}
+		v := make([]byte, 8+len(body))
+		binary.LittleEndian.PutUint16(v[0:], 0x001F)
+		binary.LittleEndian.PutUint32(v[4:], uint32(len(units)+1))
+		copy(v[8:], body)
+		vals = append(vals, encoded{id: id, val: v})
+	}
+
+	offsets := make([]uint32, len(vals))
+	cursor := uint32(8 + len(vals)*8)
+	for i, v := range vals {
+		offsets[i] = cursor
+		cursor += uint32(len(v.val))
+	}
+
+	set := new(bytes.Buffer)
+	_ = binary.Write(set, binary.LittleEndian, cursor)
+	_ = binary.Write(set, binary.LittleEndian, uint32(len(vals)))
+	for i, v := range vals {
+		_ = binary.Write(set, binary.LittleEndian, v.id)
+		_ = binary.Write(set, binary.LittleEndian, offsets[i])
+	}
+	for _, v := range vals {
+		set.Write(v.val)
+	}
+
+	hdr := make([]byte, 48)
+	binary.LittleEndian.PutUint16(hdr[0:], 0xFFFE)
+	binary.LittleEndian.PutUint32(hdr[4:], 0x00020006)
+	binary.LittleEndian.PutUint32(hdr[24:], 1)
+	copy(hdr[28:44], fmtid)
+	binary.LittleEndian.PutUint32(hdr[44:], 48)
+	return append(hdr, set.Bytes()...)
+}
+
 // DocSummaryInformation encodes a DocumentSummaryInformation property stream.
 func DocSummaryInformation(props map[uint32]string) []byte {
 	return propertySet(fmtidDocSummaryInformation, props, nil)
 }
+
+// fmtidUserDefined is {D5CDD502-2E9C-101C-9397-08002B2CF9AE}, the user-defined
+// property set. Note it differs from DocumentSummaryInformation's FMTID in ONE
+// nibble (101C vs 101B), which is easy to mistype into a set no reader recognises.
+var fmtidUserDefined = []byte{
+	0x02, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1C, 0x10,
+	0x93, 0x97, 0x08, 0x00, 0x2B, 0x2C, 0xF9, 0xAE,
+}
+
+// UserDefinedProperties encodes a user-defined (custom) property stream: the
+// legacy counterpart of docProps/custom.xml.
+//
+// Unlike the two well-known sets, custom property NAMES are not in any reader's
+// built-in table — they live in the set's own dictionary at property ID 0, which a
+// reader consults to label IDs 2 and up. A stream without that dictionary yields
+// unnamed properties, so the dictionary is what makes these visible at all.
+//
+// This matters because custom properties are a documented leak channel: a property
+// named "ClientSSN" holding a real SSN is exactly the shape that reaches a scanner
+// only if the dictionary is parsed.
+func UserDefinedProperties(props map[string]string) []byte {
+	names := make([]string, 0, len(props))
+	for n := range props {
+		names = append(names, n)
+	}
+	sort.Strings(names) // fixed order so the bytes are stable across calls
+
+	// Dictionary blob: entry count, then (property id, name byte length, name).
+	dict := new(bytes.Buffer)
+	_ = binary.Write(dict, binary.LittleEndian, uint32(len(names)))
+	for i, n := range names {
+		_ = binary.Write(dict, binary.LittleEndian, uint32(firstCustomPropID+i))
+		nb := append([]byte(n), 0)
+		_ = binary.Write(dict, binary.LittleEndian, uint32(len(nb)))
+		dict.Write(nb)
+	}
+	for dict.Len()%4 != 0 {
+		dict.WriteByte(0)
+	}
+
+	// A code page (property ID 1) is required for the reader to decode the
+	// dictionary's single-byte names.
+	codePage := make([]byte, 8)
+	binary.LittleEndian.PutUint16(codePage[0:], 0x0002) // VT_I2
+	binary.LittleEndian.PutUint16(codePage[4:], 1252)   // Windows-1252
+
+	type entry struct {
+		id  uint32
+		val []byte
+	}
+	entries := []entry{{id: 0, val: dict.Bytes()}, {id: 1, val: codePage}}
+	for i, n := range names {
+		s := props[n]
+		body := append([]byte(s), 0)
+		for len(body)%4 != 0 {
+			body = append(body, 0)
+		}
+		v := make([]byte, 8+len(body))
+		binary.LittleEndian.PutUint16(v[0:], 0x001E) // VT_LPSTR
+		binary.LittleEndian.PutUint32(v[4:], uint32(len(s)+1))
+		copy(v[8:], body)
+		entries = append(entries, entry{id: uint32(firstCustomPropID + i), val: v})
+	}
+
+	offsets := make([]uint32, len(entries))
+	cursor := uint32(8 + len(entries)*8)
+	for i, e := range entries {
+		offsets[i] = cursor
+		cursor += uint32(len(e.val))
+	}
+
+	set := new(bytes.Buffer)
+	_ = binary.Write(set, binary.LittleEndian, cursor)
+	_ = binary.Write(set, binary.LittleEndian, uint32(len(entries)))
+	for i, e := range entries {
+		_ = binary.Write(set, binary.LittleEndian, e.id)
+		_ = binary.Write(set, binary.LittleEndian, offsets[i])
+	}
+	for _, e := range entries {
+		set.Write(e.val)
+	}
+
+	hdr := make([]byte, 48)
+	binary.LittleEndian.PutUint16(hdr[0:], 0xFFFE)
+	binary.LittleEndian.PutUint32(hdr[4:], 0x00020006)
+	binary.LittleEndian.PutUint32(hdr[24:], 1)
+	copy(hdr[28:44], fmtidUserDefined)
+	binary.LittleEndian.PutUint32(hdr[44:], 48)
+	return append(hdr, set.Bytes()...)
+}
+
+// firstCustomPropID is where user-defined property IDs start: 0 is the dictionary
+// and 1 is the code page.
+const firstCustomPropID = 2
 
 // propertySet encodes one property set. Property IDs are emitted in ascending
 // order so the bytes are stable across calls: ranging a map directly would vary the
@@ -469,16 +809,21 @@ func FileTime(year int, month time.Month, day int) uint64 {
 	return uint64(unix+secondsGregorianToUnix) * ticksPerSecond
 }
 
-// UTF16LE encodes an ASCII string the way legacy Office stores wide text, so a
-// fixture can place body text in the encoding real documents use. It returns nil
-// for non-ASCII input rather than emitting a wrong encoding.
+// UTF16LE encodes a string the way legacy Office stores wide text: UTF-16
+// little-endian, with surrogate pairs for anything outside the BMP.
+//
+// Non-ASCII must be encoded, not refused. A test that needs the on-disk form of
+// "José Ramírez" in order to assert it was redacted cannot get it from a function
+// that gives up on the first accented character — the assertion would silently
+// become vacuous, which is how a real leak in exactly this area went unnoticed.
 func UTF16LE(s string) []byte {
-	out := make([]byte, 0, len(s)*2)
-	for _, c := range s {
-		if c > 0x7f {
-			return nil
-		}
-		out = append(out, byte(c), 0x00)
+	if s == "" {
+		return nil
+	}
+	units := utf16.Encode([]rune(s))
+	out := make([]byte, 0, len(units)*2)
+	for _, u := range units {
+		out = append(out, byte(u), byte(u>>8))
 	}
 	return out
 }

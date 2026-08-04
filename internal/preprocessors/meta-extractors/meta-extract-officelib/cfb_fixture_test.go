@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/richardlehane/mscfb"
+
+	"github.com/awslabs/ferret-scan/v2/internal/olefixture"
 )
 
 // A minimal but REAL OLE Compound File Binary writer, plus an OLE property-set
@@ -554,4 +556,18 @@ func TestLegacyCFBFixtureIsDeterministic(t *testing.T) {
 				"emitted in a fixed order, not map order", i, len(first), len(got))
 		}
 	}
+}
+
+// docSummaryPropLinkBase is the HyperlinkBase property ID.
+const docSummaryPropLinkBase = 0x00000014
+
+// BuildUserDefinedProperties encodes a user-defined (custom) property stream --
+// the legacy counterpart of docProps/custom.xml.
+//
+// Custom property NAMES are in no reader's built-in table: they live in the set's
+// own dictionary at property ID 0, which a reader consults to label IDs 2 and up.
+// A stream without that dictionary yields unnamed properties, so writing the
+// dictionary is what makes these visible at all.
+func BuildUserDefinedProperties(props map[string]string) []byte {
+	return olefixture.UserDefinedProperties(props)
 }

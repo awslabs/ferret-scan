@@ -45,6 +45,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/richardlehane/mscfb"
 
@@ -126,11 +127,11 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 		return nil, fmt.Errorf("not an OLE compound file: %s", filepath.Base(originalPath))
 	}
 
-	// The stream ranges tell us which byte spans belong to document content, so a
-	// pattern match in FAT or directory bytes can never be overwritten. Without
-	// this, a short value that happens to appear in structural bytes would corrupt
-	// the container.
-	ranges, err := contentRanges(raw)
+	// Map every stream's LOGICAL bytes onto the file, so redaction searches the same
+	// reassembled bytes the extractor read. A stream is a chain of sectors that need
+	// not be adjacent, so a value can be contiguous in the stream and split across
+	// distant sectors on disk — see streammap.go.
+	layout, err := parseCFBLayout(raw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to map OLE streams: %w", err)
 	}
@@ -138,16 +139,27 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 	modified := append([]byte(nil), raw...)
 	var mappings []redactors.RedactionMapping
 
+	// The logical bytes of each stream, read once. Values are searched here and
+	// written back through the chain, and the cache is updated after each write so a
+	// later match cannot be found in bytes an earlier one already masked.
+	logical := make([][]byte, len(layout.streams))
+	for i, s := range layout.streams {
+		logical[i] = s.readLogical(modified)
+	}
+
 	for _, m := range matches {
 		if m.Text == "" {
 			continue
 		}
 		repl := sameLengthReplacement(m.Text, m.Type, strategy)
-		n := overwriteAll(modified, ranges, m.Text, repl)
+		n := 0
+		for i, s := range layout.streams {
+			n += overwriteInStream(modified, s, logical[i], m.Text, repl)
+		}
 		if n == 0 {
-			// The value was recovered from the stream by a text pass that
-			// normalises runs, so a match may not appear verbatim in the bytes.
-			// Report it rather than claim a redaction that did not happen.
+			// The extractor recovers body text through a pass that normalises runs,
+			// so a reported match need not appear verbatim in any stream. Say so
+			// rather than claim a redaction that did not happen.
 			r.logEvent("legacy_match_not_located", false, map[string]interface{}{
 				"match_type":   m.Type,
 				"match_length": len(m.Text),
@@ -161,7 +173,7 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			Confidence:   m.Confidence,
 			Metadata: map[string]interface{}{
 				"occurrences":     n,
-				"position_method": "ole_same_length_overwrite",
+				"position_method": "ole_logical_stream_overwrite",
 			},
 		})
 	}
@@ -243,10 +255,100 @@ func sameLengthReplacement(original, dataType string, strategy redactors.Redacti
 // Both encodings matter. Legacy Word stores much of its text as UTF-16LE, so a
 // value present in the document may appear only as interleaved zero bytes; an
 // ASCII-only pass would report success while leaving that copy in cleartext.
+//
+// Each pass needs a replacement of ITS OWN byte width, which is not the same width
+// for a non-ASCII value: "José" is 5 bytes as UTF-8 but 4 code units — 8 bytes — as
+// UTF-16. Encoding one caller-supplied replacement for both passes therefore
+// produced a length mismatch that overwriteEncoded correctly refused, so the wide
+// occurrence was skipped and the value survived while success was reported. The
+// replacement is re-derived per encoding instead, from the encoded pattern's length.
 func overwriteAll(buf []byte, ranges []byteRange, value, repl string) int {
 	count := 0
-	count += overwriteEncoded(buf, ranges, []byte(value), []byte(repl))
-	count += overwriteEncoded(buf, ranges, toUTF16LE(value), toUTF16LE(repl))
+
+	// Narrow pass: the replacement as given, whose length already matches the
+	// value's UTF-8 length by construction.
+	narrow := []byte(value)
+	narrowRepl := []byte(repl)
+	if len(narrow) == len(narrowRepl) {
+		count += overwriteEncoded(buf, ranges, narrow, narrowRepl)
+	}
+
+	// Wide pass: encode the value, then build a replacement of exactly that many
+	// bytes. When the supplied replacement encodes to the same width (the ASCII
+	// case) it is used, preserving format-preserving output like ***-**-4100.
+	// Otherwise a mask of the correct width is used, because a same-length
+	// overwrite is what keeps the container valid.
+	wide := toUTF16LE(value)
+	if len(wide) == 0 {
+		return count
+	}
+	wideRepl := toUTF16LE(repl)
+	if len(wideRepl) != len(wide) {
+		wideRepl = bytes.Repeat([]byte{maskByte, 0x00}, len(wide)/2)
+	}
+	count += overwriteEncoded(buf, ranges, wide, wideRepl)
+
+	return count
+}
+
+// overwriteInStream replaces every occurrence of value inside one stream's LOGICAL
+// bytes, writing each replacement back through the stream's sector chain, and
+// returns how many it replaced.
+//
+// Both encodings are searched, and each needs a replacement of its own byte width:
+// "José" is 5 bytes as UTF-8 but 8 as UTF-16LE. The logical slice is updated in
+// step with the file so a later match cannot be found in bytes already masked.
+func overwriteInStream(raw []byte, s streamExtent, logical []byte, value, repl string) int {
+	count := 0
+
+	narrow := []byte(value)
+	narrowRepl := []byte(repl)
+	if len(narrow) > 0 && len(narrow) == len(narrowRepl) {
+		count += replaceLogical(raw, s, logical, narrow, narrowRepl)
+	}
+
+	wide := toUTF16LE(value)
+	if len(wide) == 0 {
+		return count
+	}
+	wideRepl := toUTF16LE(repl)
+	if len(wideRepl) != len(wide) {
+		// A same-length overwrite is what keeps every sector offset valid, so when
+		// the format-preserving replacement does not encode to the same width a mask
+		// of the correct width is used instead.
+		wideRepl = bytes.Repeat([]byte{maskByte, 0x00}, len(wide)/2)
+	}
+	count += replaceLogical(raw, s, logical, wide, wideRepl)
+
+	return count
+}
+
+// replaceLogical finds every occurrence of pat in a stream's logical bytes and
+// writes rep back through the sector chain.
+func replaceLogical(raw []byte, s streamExtent, logical, pat, rep []byte) int {
+	if len(pat) == 0 || len(pat) != len(rep) {
+		return 0
+	}
+	count := 0
+	off := 0
+	for off <= len(logical)-len(pat) {
+		i := bytes.Index(logical[off:], pat)
+		if i < 0 {
+			break
+		}
+		at := off + i
+		if !s.writeLogical(raw, at, rep) {
+			// Unwritable (a truncated or inconsistent chain). Skip past it rather
+			// than spin, and leave the count alone so the caller does not report a
+			// redaction that did not happen.
+			off = at + 1
+			continue
+		}
+		// Keep the logical view in step with the file.
+		copy(logical[at:at+len(rep)], rep)
+		off = at + len(rep)
+		count++
+	}
 	return count
 }
 
@@ -277,17 +379,29 @@ func overwriteEncoded(buf []byte, ranges []byteRange, pat, rep []byte) int {
 	return count
 }
 
-// toUTF16LE encodes an ASCII string the way legacy Office stores wide text. Only
-// ASCII is handled: a non-ASCII rune cannot be represented as one low byte plus a
-// zero, and returning nil means that encoding is skipped rather than producing a
-// pattern that would match the wrong bytes.
+// toUTF16LE encodes a string the way legacy Office stores wide text: UTF-16
+// little-endian, with surrogate pairs for anything outside the BMP.
+//
+// This used to bail out and return nil for any non-ASCII rune, which was a
+// cleartext leak rather than a limitation. Legacy Word stores property values and
+// much of its body text as UTF-16LE, so for a name like "José Ramírez" the
+// redactor's ASCII pass searched the UTF-8 bytes (absent from the file) and the
+// wide pass was skipped entirely — overwriteAll found nothing, and RedactDocument
+// reported Success with zero mappings while the name stayed in the output. Any
+// non-ASCII author, company or body value was affected, which is most of the world's
+// names.
+//
+// The encoding must be exact rather than approximate: a wrong pattern would either
+// miss the value (a leak) or match unrelated bytes (corruption). utf16.Encode
+// handles the surrogate cases that hand-rolling gets wrong.
 func toUTF16LE(s string) []byte {
-	out := make([]byte, 0, len(s)*2)
-	for _, c := range s {
-		if c > 0x7f {
-			return nil
-		}
-		out = append(out, byte(c), 0x00)
+	if s == "" {
+		return nil
+	}
+	units := utf16.Encode([]rune(s))
+	out := make([]byte, 0, len(units)*2)
+	for _, u := range units {
+		out = append(out, byte(u), byte(u>>8))
 	}
 	return out
 }

@@ -149,17 +149,53 @@ func TestOverwriteEncodedRejectsLengthMismatch(t *testing.T) {
 	}
 }
 
-// toUTF16LE must refuse non-ASCII rather than emit a pattern that would match
-// the wrong bytes. Encoding 'é' as one low byte plus a zero is simply wrong, and
-// searching for it could overwrite unrelated content.
-func TestToUTF16LERejectsNonASCII(t *testing.T) {
-	if got := toUTF16LE("plain"); len(got) != 10 {
-		t.Errorf("toUTF16LE(%q) = %d bytes, want 10", "plain", len(got))
+// toUTF16LE must encode non-ASCII CORRECTLY, not refuse it.
+//
+// It used to return nil for any non-ASCII rune. That looked conservative and was a
+// cleartext leak: legacy Word stores property values and much of its body text as
+// UTF-16LE, so for "José Ramírez" the narrow pass searched UTF-8 bytes that are not
+// in the file, and the wide pass was skipped entirely. The redactor found nothing,
+// reported Success with zero mappings, and wrote the name into the "redacted"
+// output. Most of the world's names are affected.
+//
+// The encoding has to be exact: a wrong pattern either misses the value (a leak) or
+// matches unrelated bytes (corruption). These cases pin the byte-level result rather
+// than only the length, including a non-BMP rune needing a surrogate pair — the case
+// a hand-rolled encoder gets wrong.
+func TestToUTF16LEEncodesNonASCII(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []byte
+	}{
+		{"AB", []byte{'A', 0x00, 'B', 0x00}},
+		// U+00E9: one code unit, low byte 0xE9.
+		{"é", []byte{0xE9, 0x00}},
+		// U+65E5: one code unit, little-endian E5 65.
+		{"日", []byte{0xE5, 0x65}},
+		// U+1F600 is outside the BMP: surrogate pair D83D DE00, little-endian.
+		{"\U0001F600", []byte{0x3D, 0xD8, 0x00, 0xDE}},
 	}
-	for _, s := range []string{"café", "naïve", "日本語", "emoji😀"} {
-		if got := toUTF16LE(s); got != nil {
-			t.Errorf("toUTF16LE(%q) = %v, want nil — a wrong encoding could match unrelated bytes", s, got)
+	for _, tc := range cases {
+		got := toUTF16LE(tc.in)
+		if !bytes.Equal(got, tc.want) {
+			t.Errorf("toUTF16LE(%q) = % x, want % x", tc.in, got, tc.want)
 		}
+	}
+
+	// Every non-ASCII string must yield a usable pattern; nothing means the wide
+	// pass is skipped and the value survives redaction.
+	for _, s := range []string{"café", "naïve", "日本語",
+		"José Ramírez", "Björn Öhlund"} {
+		if got := toUTF16LE(s); len(got) == 0 {
+			t.Errorf("toUTF16LE(%q) returned nothing — the UTF-16LE pass would be skipped "+
+				"and the value would stay in the redacted output", s)
+		}
+	}
+
+	// An empty value has nothing to search for, and an empty pattern would match at
+	// every offset.
+	if got := toUTF16LE(""); got != nil {
+		t.Errorf("toUTF16LE(\"\") = %v, want nil", got)
 	}
 }
 
