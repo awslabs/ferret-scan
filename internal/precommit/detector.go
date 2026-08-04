@@ -261,50 +261,67 @@ func (pd *PrecommitDetector) hasPrecommitHooks() bool {
 	return false
 }
 
-// GetWindowsExitCode returns Windows-appropriate exit codes for batch script compatibility
-func GetWindowsExitCode(hasFindings bool, hasErrors bool, confidenceLevel string, config *PrecommitConfig) int {
-	if runtime.GOOS != "windows" {
-		return GetExitCode(hasFindings, hasErrors, confidenceLevel, config)
-	}
-
-	// Windows batch scripts expect specific exit codes
-	// Use standard Windows conventions:
-	// 0 = Success
-	// 1 = General error or findings that should block
-	// 2 = System/critical error
-	// 3 = Invalid usage/configuration
-
-	// Exit code 2 for system errors (highest priority)
-	if hasErrors {
-		return 2
-	}
-
-	// Exit code 1 for findings that should block commit
+// A BLOCKING FINDING OUTRANKS A PROCESSING ERROR.
+//
+// Both exit-code functions used to test hasErrors first, so a scan that found a
+// real secret AND failed to read some unrelated file exited 2 instead of 1. That
+// is not a cosmetic difference: a pre-commit hook reads 2 as "the tool broke" and
+// 1 as "your commit contains a secret". Downgrading the second to the first turns
+// a security stop into an infrastructure blip, and the commit proceeds.
+//
+// Reproduced before the change, same secret in every run:
+//
+//	leak alone                      rc=1  (blocked)
+//	leak + a clean file             rc=1  (blocked)
+//	leak + one unextractable file   rc=2  (read as a tool failure)
+//
+// One `.docx` that is really plain text is enough, and needs no attacker: an
+// export pipeline that mislabels a file silently unblocks every secret in the
+// commit. As an attack it is cheaper still — rename a file, and the hook stops
+// enforcing.
+//
+// So findings are now checked FIRST. Errors still produce 2, but only when there
+// is nothing worse to report. Nothing is hidden either way: the failed-file
+// warning is written by the caller regardless of which code is returned, so a run
+// that exits 1 with unreadable files still says so on stderr.
+//
+// exitCodeFor holds the single copy of that precedence. It used to be duplicated,
+// which is how both copies came to carry the identical inversion.
+func exitCodeFor(hasFindings bool, hasErrors bool, confidenceLevel string, config *PrecommitConfig) int {
+	// A finding the config says should block outranks everything: this is the
+	// answer that stops a commit.
 	if hasFindings && config != nil && config.ShouldExitOnFindings(confidenceLevel) {
 		return 1
 	}
 
-	// Exit code 0 for success or non-blocking findings
+	// No blocking finding, but the scan could not read everything it was given.
+	// The result is incomplete, so it must not read as a clean pass.
+	if hasErrors {
+		return 2
+	}
+
+	// Clean, or findings below the configured blocking threshold.
 	return 0
 }
 
-// GetExitCode returns appropriate exit code based on findings and errors
+// GetWindowsExitCode returns Windows-appropriate exit codes for batch script
+// compatibility.
+//
+// The values match the Unix path deliberately, and always did:
+//
+//	0 = success
+//	1 = findings that should block the commit
+//	2 = system/critical error
+//	3 = invalid usage/configuration (returned elsewhere)
+//
+// Windows batch scripts read the same numbers, so the two functions exist for
+// documentation rather than for divergent behaviour. Both now delegate to
+// exitCodeFor so they cannot drift again.
+func GetWindowsExitCode(hasFindings bool, hasErrors bool, confidenceLevel string, config *PrecommitConfig) int {
+	return exitCodeFor(hasFindings, hasErrors, confidenceLevel, config)
+}
+
+// GetExitCode returns the appropriate exit code based on findings and errors.
 func GetExitCode(hasFindings bool, hasErrors bool, confidenceLevel string, config *PrecommitConfig) int {
-	// Use Windows-specific exit codes on Windows
-	if runtime.GOOS == "windows" {
-		return GetWindowsExitCode(hasFindings, hasErrors, confidenceLevel, config)
-	}
-
-	// Exit code 2 for system errors (highest priority)
-	if hasErrors {
-		return 2
-	}
-
-	// Exit code 1 for findings that should block commit
-	if hasFindings && config != nil && config.ShouldExitOnFindings(confidenceLevel) {
-		return 1
-	}
-
-	// Exit code 0 for success or non-blocking findings
-	return 0
+	return exitCodeFor(hasFindings, hasErrors, confidenceLevel, config)
 }
