@@ -68,6 +68,9 @@ func TestExtensionRouting_SupportedTypesUnchanged(t *testing.T) {
 	want := map[string]string{
 		".docx": "office_metadata", ".xlsx": "office_metadata", ".pptx": "office_metadata",
 		".odt": "office_metadata", ".ods": "office_metadata", ".odp": "office_metadata",
+		// Legacy OLE compound files, now handled by the legacy extractor
+		// (mscfb/msoleps) rather than routed to a skip.
+		".doc": "office_metadata", ".xls": "office_metadata", ".ppt": "office_metadata",
 		".pdf": "document_metadata",
 		".jpg": "image_metadata", ".jpeg": "image_metadata", ".png": "image_metadata",
 		".gif": "image_metadata", ".tiff": "image_metadata", ".tif": "image_metadata",
@@ -90,7 +93,10 @@ func TestExtensionRouting_SupportedTypesUnchanged(t *testing.T) {
 // to a clean "unsupported" skip instead of a mid-pipeline error.
 func TestExtensionRouting_UnsupportedTypesSkipped(t *testing.T) {
 	skipped := []string{
-		".doc", ".xls", ".ppt", // legacy binary Office (only OOXML/ODF are handled)
+		// NOTE: .doc/.xls/.ppt were listed here while no preprocessor handled
+		// them. They are now read by the legacy OLE extractor, so they belong in
+		// the supported set above — this test's contract is "handled by no
+		// preprocessor", not "legacy".
 		".heic", ".heif", ".raw", ".cr2", ".nef", ".arw",
 		".avi", ".mkv", ".wmv", ".flv", ".webm", ".3gp", ".ogv",
 		".ogg", ".aac", ".wma", ".opus",

@@ -120,6 +120,13 @@ func NewFileExtensionValidator() *FileExtensionValidator {
 			".odt":  true,
 			".ods":  true,
 			".odp":  true,
+			// Legacy OLE compound-file formats. Absent from this map, the router
+			// rejected them at CanProcessFile ("no files to preprocess") before any
+			// preprocessor was consulted, so nothing in a .doc was ever scanned --
+			// not its body text and not its author, company or template path.
+			".doc": true,
+			".xls": true,
+			".ppt": true,
 		},
 		audioExtensions: map[string]bool{
 			".mp3":  true,

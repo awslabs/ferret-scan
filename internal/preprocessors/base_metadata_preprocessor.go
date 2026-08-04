@@ -208,6 +208,12 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		embeddedPath := bmp.utilities.RouterHelper.CreateEmbeddedMediaPath(originalFilePath, media.OriginalName)
 
 		// Reprocess embedded media through router
+		// The router tracks nesting depth itself, keyed on the temp path it handed
+		// out for this embedded item -- see FileRouter.noteEmbeddedChild. The
+		// preprocessor cannot construct a router ProcessingContext (router imports
+		// preprocessors, so the reverse would be an import cycle) and its Process
+		// method takes no context to thread one through, so depth is owned on the
+		// router side rather than plumbed through every preprocessor signature.
 		if processed, err := bmp.router.ProcessFile(media.TempFilePath, nil); err == nil && processed != nil && processed.Success {
 			// Update processed content to show original file relationship
 			processed.OriginalPath = embeddedPath

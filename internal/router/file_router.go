@@ -176,7 +176,6 @@ func (fr *FileRouter) ProcessFile(filePath string, config interface{}) (*preproc
 
 // processFileInternal is the actual implementation
 func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingContext) (*preprocessors.ProcessedContent, error) {
-
 	// Use standardized observability
 	finishTiming := fr.observer.StartTiming("router", "file_evaluation", config.FilePath)
 	defer finishTiming(true, map[string]interface{}{
