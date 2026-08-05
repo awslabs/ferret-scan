@@ -2012,6 +2012,10 @@ func main() {
 		fmt.Println(result)
 	}
 
+	if note := truncationNote(unsuppressedMatches, formatterOptions, *limitFlag); note != "" {
+		fmt.Fprint(os.Stderr, note)
+	}
+
 	// Determine appropriate exit code based on findings and pre-commit configuration
 	hasFindings := len(unsuppressedMatches) > 0
 	hasErrors := failedFiles > 0 // Track if there were any system errors during processing

@@ -149,7 +149,19 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 
 	// Honor --limit, after the sort so the vulnerabilities kept are the
 	// highest-confidence ones rather than an arbitrary prefix.
-	sortedMatches, _, _ = shared.ApplyLimit(sortedMatches, options)
+	sortedMatches, totalVulns, truncated := shared.ApplyLimit(sortedMatches, options)
+
+	// Say so when --limit dropped vulnerabilities.
+	//
+	// Without this the report is indistinguishable from a complete one: a GitLab
+	// security dashboard counting `vulnerabilities` sees the capped number and
+	// nothing anywhere says more existed. Silently under-reporting is worse than
+	// reporting nothing, because the count looks authoritative. text/json/yaml
+	// already disclose this; the four machine-readable formats did not.
+	if truncated {
+		report.Scan.Truncated = true
+		report.Scan.TotalVulnerabilities = totalVulns
+	}
 
 	// Process each match with proper error handling
 	processedCount := 0

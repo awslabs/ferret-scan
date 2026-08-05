@@ -16,6 +16,16 @@ type SARIFRun struct {
 	Tool                     SARIFTool             `json:"tool"`
 	Results                  []SARIFResult         `json:"results"`
 	VersionControlProvenance []SARIFVersionControl `json:"versionControlProvenance,omitempty"`
+
+	// Properties carries run-level metadata. It is currently used for one thing:
+	// declaring that --limit truncated the results, and what the true total was.
+	//
+	// A consumer reading `results` has no way to tell a complete report from a
+	// truncated one, and SARIF has no standard field for "this is a partial
+	// result set". The properties bag is the spec's designated place for
+	// tool-specific metadata, so it is where the disclosure goes rather than
+	// inventing a non-standard top-level key that would fail schema validation.
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 // SARIFVersionControl represents version control information
