@@ -34,6 +34,15 @@ type TestSuite struct {
 	Errors    int        `xml:"errors,attr"`
 	Time      string     `xml:"time,attr"`
 	TestCases []TestCase `xml:"testcase"`
+
+	// SystemOut carries suite-level informational detail, the same standard
+	// <system-out> element TestCase already uses for suppressed findings. It is
+	// used here to declare that --limit dropped findings and what the real total
+	// was, because JUnit has no field for "this report is partial" and the
+	// tests/failures attributes describe the report rather than the scan.
+	//
+	// omitempty keeps a complete report byte-for-byte unchanged.
+	SystemOut string `xml:"system-out,omitempty"`
 }
 
 type TestCase struct {
@@ -91,7 +100,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Honor --limit before grouping, so the per-file <testcase> split and the
 	// suite's Tests/Failures counters describe the findings the report actually
 	// carries.
-	filteredMatches, _, _ = shared.ApplyLimit(filteredMatches, options)
+	filteredMatches, totalFindings, truncated := shared.ApplyLimit(filteredMatches, options)
 
 	// Group matches by file for better organization
 	fileGroups := f.groupMatchesByFile(filteredMatches)
@@ -155,6 +164,24 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	}
 
 	// Add the main security suite
+	// Say so when --limit dropped findings.
+	//
+	// Without this the report is indistinguishable from a complete one: the
+	// tests/failures attributes count what the report CARRIES, so a CI job reading
+	// them sees the capped number and nothing anywhere says more findings existed.
+	// Silently under-reporting is worse than reporting nothing, because the count
+	// looks authoritative. text/json/yaml already disclose this.
+	if truncated {
+		// Count FINDINGS, not testcases. JUnit groups findings by file, so a
+		// 3-finding cap inside one file produces a single <testcase> — reporting
+		// len(TestCases) said "showing 1 of 36" for a --limit 3 run, which is a
+		// different and wronger claim than the one being fixed.
+		securitySuite.SystemOut = fmt.Sprintf(
+			"ferret-scan: output truncated by --limit. Showing %d of %d findings. "+
+				"Re-run with --limit 0 for the complete set.",
+			len(filteredMatches), totalFindings)
+	}
+
 	testSuites.TestSuites = append(testSuites.TestSuites, securitySuite)
 	testSuites.Tests += securitySuite.Tests
 	testSuites.Failures += securitySuite.Failures

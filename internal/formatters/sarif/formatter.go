@@ -70,7 +70,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Honor --limit before the report is built, so tool.driver.rules is derived
 	// from the results actually emitted rather than from findings the report
 	// never mentions.
-	filteredMatches, _, _ = shared.ApplyLimit(filteredMatches, options)
+	filteredMatches, totalFindings, truncated := shared.ApplyLimit(filteredMatches, options)
 
 	// Fresh per-call rule manager + mapper so the rules array derives only from
 	// THIS call's matches (no cross-call accumulation).
@@ -78,7 +78,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	mapper := NewVulnerabilityMapper(ruleManager)
 
 	// Build the SARIF report
-	report := f.buildReport(mapper, ruleManager, filteredMatches, suppressedMatches, options)
+	report := f.buildReport(mapper, ruleManager, filteredMatches, suppressedMatches, options, totalFindings, truncated)
 
 	// Marshal to JSON with indentation for readability
 	jsonBytes, err := json.MarshalIndent(report, "", "  ")
@@ -92,7 +92,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 // buildReport constructs the complete SARIF report structure. The mapper and
 // ruleManager are per-call (constructed in Format) so the rules array reflects
 // only this report's matches.
-func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleManager, matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) *SARIFReport {
+func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleManager, matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions, totalFindings int, truncated bool) *SARIFReport {
 	// Convert matches to SARIF results
 	var results []SARIFResult
 
@@ -127,6 +127,21 @@ func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleMa
 		},
 		Results:                  results,
 		VersionControlProvenance: f.buildVersionControlProvenance(),
+	}
+
+	// Say so when --limit dropped results.
+	//
+	// Without this the report is indistinguishable from a complete one: a consumer
+	// counting `results` gets the capped number and nothing anywhere says more
+	// findings existed. For a security tool feeding a dashboard or a gate, silently
+	// under-reporting is worse than reporting nothing, because the number looks
+	// authoritative. text/json/yaml already disclose it; these four formats did not.
+	if truncated {
+		run.Properties = map[string]interface{}{
+			"ferretScanTruncated":     true,
+			"ferretScanTotalFindings": totalFindings,
+			"ferretScanResultsShown":  len(results),
+		}
 	}
 
 	// Create the top-level SARIF report

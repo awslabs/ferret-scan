@@ -66,6 +66,17 @@ type GitLabScanInfo struct {
 	StartTime string         `json:"start_time"`
 	EndTime   string         `json:"end_time"`
 	Status    string         `json:"status"`
+
+	// Truncated and TotalVulnerabilities declare that --limit dropped findings,
+	// and how many the scan actually produced.
+	//
+	// Both are omitempty and additive, so a complete report is byte-for-byte
+	// unchanged. They are separate fields rather than a reuse of Status because the
+	// GitLab schema constrains Status to "success" or "failure" (see
+	// validator.go's allowed set) — a truncated scan DID succeed, so overloading
+	// that field would make a correct report look like a failed one.
+	Truncated            bool `json:"truncated,omitempty"`
+	TotalVulnerabilities int  `json:"total_vulnerabilities,omitempty"`
 }
 
 // GitLabAnalyzer represents the analyzer information
