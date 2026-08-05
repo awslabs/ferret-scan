@@ -57,6 +57,19 @@ type FileOptions struct {
 
 	// LogWriter receives payload-free progress output. Defaults to io.Discard.
 	LogWriter io.Writer
+
+	// MaxLiveBytes caps the total bytes of extracted content held in memory at
+	// once. Zero or negative means unlimited, which is the default and matches the
+	// CLI without --max-live-bytes.
+	//
+	// This exists for the caller the engine cannot see: a memory-constrained host
+	// such as a Lambda handler, where a single large container can extract to many
+	// times its own size and there is a hard ceiling on the process. The CLI has
+	// exposed --max-live-bytes since the limiter was added, and core.ScanConfig has
+	// carried the field all along — this package simply never forwarded it, so the
+	// one consumer that most needs a memory envelope was the only one that could
+	// not set it.
+	MaxLiveBytes int64
 }
 
 // Finding is one piece of sensitive data detected.
@@ -135,6 +148,7 @@ func ScanFile(_ context.Context, path string, opts FileOptions) (*Result, error)
 		Explain:             opts.Explain,
 		Config:              config.LoadConfigOrDefault(""),
 		LogWriter:           logWriter,
+		MaxLiveBytes:        opts.MaxLiveBytes,
 	})
 	if err != nil {
 		return nil, err
