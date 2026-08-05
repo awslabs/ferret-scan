@@ -763,10 +763,13 @@ var FileCases = []FileCase{
 	},
 	{
 		Name: "file_doc_legacy_not_a_container",
-		Description: "Tier 4 negative: plain text named .doc. The extension now routes to the OLE path, so this " +
-			"records what happens when the bytes are not a compound file — the failure must be graceful and must " +
-			"not invent metadata. Without this the corpus would only cover the happy path of a format whose " +
-			"routing is decided by extension alone.",
+		Description: "Tier 4: plain text named .doc — the extension routes to the OLE path, but the bytes are not a " +
+			"compound file. This used to record \"No matches found.\": routing is decided by extension, the Office " +
+			"extractor failed, no other preprocessor had claimed the file, and the SSN in it was never reported and " +
+			"therefore never redacted. It now records the SSN as FOUND, which is the point of the case — a " +
+			"mislabelled file is exactly as sensitive as a correctly named one, and needs no attacker (an export " +
+			"pipeline, a hand-rename, or a truncated download all land here). The failure must still be graceful and " +
+			"must not invent metadata, which the METADATA check keeps covered.",
 		Checks:              []string{"SSN", "METADATA"},
 		Filename:            "notreally.doc",
 		Content:             []byte("This is plain text that happens to be named .doc.\nEmployee SSN 449-87-4100 here.\n"),

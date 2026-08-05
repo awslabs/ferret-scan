@@ -5,6 +5,7 @@ package redactors
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -303,7 +304,67 @@ func (rm *RedactionManager) GetRedactorForFile(filePath string) (Redactor, error
 		return nil, fmt.Errorf("no redactor registered for file type: %s", ext)
 	}
 
+	// A container extension whose BYTES are plain text must be redacted as text.
+	//
+	// Selection here is by extension, exactly as routing was, and the two have to
+	// agree: once the scanner detects a value in a text file named .docx, refusing
+	// to redact it produces the worst outcome available — the finding is REPORTED,
+	// so the report says it was handled, and no output file is written at all.
+	// Measured before this: 1 finding, zero bytes redacted, exit 0.
+	//
+	// The check is deliberately narrow. It runs only for extensions a
+	// container-format redactor claims, and only when the file does not carry that
+	// format's signature, so a well-formed document is never diverted. Reading a
+	// few hundred bytes is also cheap next to the redaction that follows.
+	if plain, ok := rm.redactors[".txt"]; ok && !hasContainerSignature(filePath) {
+		if _, isContainer := containerRedactorExtensions[ext]; isContainer {
+			return plain, nil
+		}
+	}
+
 	return redactor, nil
+}
+
+// containerRedactorExtensions are the extensions handled by a redactor that
+// requires a specific binary container format. A file with one of these names but
+// without the matching signature cannot be redacted by that redactor, so it falls
+// back to text.
+//
+// .pdf is absent on purpose: PDF redaction is unimplemented and refuses to write
+// output rather than falsely report success, and diverting a text file named .pdf
+// to the text redactor would be correct but is a behaviour change beyond this fix.
+var containerRedactorExtensions = map[string]struct{}{
+	".docx": {}, ".xlsx": {}, ".pptx": {},
+	".docm": {}, ".xlsm": {}, ".pptm": {},
+	".doc": {}, ".xls": {}, ".ppt": {},
+}
+
+// hasContainerSignature reports whether a file begins with the ZIP (OOXML) or OLE
+// compound-file magic. A read failure returns true so an unreadable file keeps its
+// extension-selected redactor and fails through the existing path, rather than
+// being silently rewritten as text.
+func hasContainerSignature(filePath string) bool {
+	f, err := os.Open(filepath.Clean(filePath)) // #nosec G304 -- path already vetted by the caller
+	if err != nil {
+		return true
+	}
+	defer f.Close()
+
+	var head [8]byte
+	n, err := io.ReadFull(f, head[:])
+	if err != nil && n < 4 {
+		return true
+	}
+
+	// ZIP local file header: OOXML and OpenDocument.
+	if n >= 4 && head[0] == 0x50 && head[1] == 0x4B {
+		return true
+	}
+	// OLE compound file: legacy .doc/.xls/.ppt.
+	if n >= 8 && head[0] == 0xD0 && head[1] == 0xCF && head[2] == 0x11 && head[3] == 0xE0 {
+		return true
+	}
+	return false
 }
 
 // updateStats safely updates statistics using a callback function
