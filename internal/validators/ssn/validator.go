@@ -48,6 +48,33 @@ func containsKeyword(text, keyword string) bool {
 	return kwmatch.Contains(text, keyword)
 }
 
+// Penalty and floor for a line that isEncodedData judges to be a dense numeric
+// blob rather than prose or a table.
+//
+// The pair replaces a hard `continue`. Choosing them is a choice about which
+// mistake to make, so both directions are stated:
+//
+//   - too small a penalty and dense machine output regains the confidence the
+//     heuristic exists to remove;
+//   - too large a penalty, or no floor, and the change is the old veto wearing a
+//     number — a value that has already passed structural validation disappears
+//     from the report and therefore from the redacted output.
+//
+// 40 is the size of the existing globalTestPatterns penalty, so a line that looks
+// like encoded data costs about what a line that looks like test data costs. A
+// bare 9-digit candidate on such a line lands in LOW and is filtered out of the
+// default review surface without being erased.
+//
+// The floor is 60, the MEDIUM boundary, and it applies only to the canonical
+// hyphenated form with a valid area number — the one shape the validator already
+// treats as strong enough to stand without a keyword (see isStrongHyphenatedSSN).
+// That value is what an SSN looks like, so no quantity of surrounding digits
+// should push it out of the default view. Anything weaker keeps the full penalty.
+const (
+	encodedDataPenalty     = 40.0
+	encodedDataStrongFloor = 60.0
+)
+
 // Validator implements the detector.Validator interface for detecting
 // Social Security Numbers using regex patterns and contextual analysis.
 type Validator struct {
@@ -288,9 +315,43 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// Calculate confidence
 			confidence, checks := v.CalculateConfidence(match)
 
-			// Skip if this looks like encoded data or numeric sequences
+			// "This line looks like encoded data" DEMOTES; it no longer deletes.
+			//
+			// It used to `continue`, and because both of isEncodedData's tests are
+			// LINE-GLOBAL and count things anywhere on the line, that made the veto
+			// reachable by anything appended near a real SSN. Two measured examples on
+			// the version before this change, each a valid SSN behind an explicit
+			// label:
+			//
+			//	"Employee SSN: 130-07-5728 1 2 ... 12"   -> HIGH 100
+			//	"Employee SSN: 130-07-5728 1 2 ... 13"   -> NO FINDINGS   (>15 groups)
+			//	"Employee SSN: 130-07-5728"              -> HIGH 100
+			//	"130-07-5728 1 2 3 4"                    -> NO FINDINGS   (>85% numeric)
+			//
+			// One extra number is the entire difference. A finding that is never
+			// reported is never handed to the redactor, so the value stayed in
+			// cleartext in the "redacted" output — the most serious failure this tool
+			// has, and it needed no attacker: a log line, a CSV row of counters, or an
+			// ID printed beside a few figures all reach it.
+			//
+			// Demoting keeps the value reported, visible and redacted while still
+			// expressing low confidence, which is what the heuristic was for. This is
+			// the same veto-to-demote rule the repository has already applied to
+			// adjacency vetoes and reserved example values: a line-global,
+			// author-controlled signal must never be able to erase a value that has
+			// already passed structural validation.
+			//
+			// The floor matters as much as the penalty. A structurally strong value —
+			// the canonical hyphenated form with a valid area number — keeps enough
+			// confidence to stay in MEDIUM and therefore stays visible under the
+			// default confidence filter, because no amount of surrounding text should
+			// be able to hide a value that looks exactly like an SSN.
 			if lc.isEncoded {
-				continue
+				confidence -= encodedDataPenalty
+				if v.isStrongHyphenatedSSN(match) && confidence < encodedDataStrongFloor {
+					confidence = encodedDataStrongFloor
+				}
+				checks["encoded_data_line"] = true
 			}
 
 			// For preprocessed content, create a simpler context info
