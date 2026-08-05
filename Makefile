@@ -1,4 +1,4 @@
-.PHONY: build clean vet vet-host fmt run install-config install check-go-version pr-checklist integration-branch test-compile-all-platforms
+.PHONY: score score-update score-mutation-check build clean vet vet-host fmt run install-config install check-go-version pr-checklist integration-branch test-compile-all-platforms
 
 # Default target
 all: check-go-version fmt vet build
@@ -541,6 +541,34 @@ test-compile-all-platforms:
 		fi; \
 	done; \
 	exit $$rc
+
+# Score detection QUALITY across all four layers, then ratchet against
+# internal/scorecorpus/testdata/baseline.json.
+#
+# This is NOT `make test`. The golden corpus asserts output BYTES did not change and
+# explicitly does not claim any detection is correct (goldencorpus/corpus.go:10).
+# `make score` asserts detections are RIGHT, and splits the answer per layer because
+# the product has four independent failure surfaces: the validator, redaction,
+# suppression, and the executable itself. A regression in any one of them can leave
+# the other three looking perfect.
+score:
+	@SCORE_REPORT=1 GOFLAGS=-mod=mod go test -count=1 -v \
+		-run 'TestScoreCorpus|TestContainerResidue|TestExecutable|TestCorpusRunsInReasonableTime' \
+		./internal/scorecorpus/ 2>&1 | grep -vE '^(=== RUN|=== PAUSE|=== CONT)'
+
+# Re-lock the baseline after an INTENTIONAL, explained change. An improvement does
+# not fail the build, so this is a deliberate step: run it to bank a win, and say
+# what moved and why in the PR body.
+score-update:
+	@UPDATE_SCORE_BASELINE=1 GOFLAGS=-mod=mod go test -count=1 \
+		-run TestScoreCorpus ./internal/scorecorpus/
+	@git --no-pager diff --stat internal/scorecorpus/testdata/baseline.json
+	@echo "baseline rewritten -- state the delta and its cause in the PR body"
+
+# Prove the gate is not vacuous: apply a real regression to the product and confirm
+# `make score` goes red. A gate nobody has seen fail is a gate nobody should trust.
+score-mutation-check:
+	@bash scripts/score-mutation-check.sh
 
 test-unit:
 	@echo "Running unit tests..."

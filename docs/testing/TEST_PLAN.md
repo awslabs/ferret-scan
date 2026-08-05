@@ -58,6 +58,33 @@ Each dimension names what it protects, the minimum bar, and how to run it.
 - Run it **uncached** (`-count=1`) once before commit; the corpus test caches
   aggressively.
 
+> **Golden answers "did it change?", not "is it right?"** For the second question
+> use the score corpus below. A change that trades a real detection for a quieter
+> report passes the golden net — regenerate the snapshot and move on — so golden
+> alone cannot tell an improvement from a regression.
+
+### 3b. Score corpus — detection QUALITY (`make score`)
+
+Full documentation: **[SCORE_CORPUS.md](SCORE_CORPUS.md)**.
+
+- `make score` — precision, recall and redaction-sink residue against a
+  hand-labelled corpus, ratcheted against a committed baseline. Scores four
+  independent layers: **validator, redaction, suppression, executable**.
+- Quote the scorecard in the PR body, including when nothing moved.
+- Regenerate deliberately with `make score-update` and **explain the delta**. An
+  improvement is reported and does not fail the build, so banking a win is a
+  conscious step.
+- Recall is reported twice on purpose: `recall_all` (all bands) is the **redaction**
+  surface, because redaction is confidence-blind; `recall_hm` (≥ MEDIUM) is the
+  **pre-commit exit-code** surface. A band demotion moves only the second.
+- Why the redaction layer is separate from detection: measured, reverting the
+  Office-redactor fix leaves the detection score **bit-for-bit identical** while a
+  labelled SSN survives inside `word/document.xml`. Detection-only scoring reports
+  PASS on a cleartext leak.
+- Changing the gate itself? Run `make score-mutation-check` — it injects real
+  regressions and confirms the gate goes red. It is not in CI because it edits
+  tracked files.
+
 ### 4. Timing / complexity (O(n²) and unacceptable slowdowns)
 
 The scanner routinely runs over adversarial and machine-generated input where a line

@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "_comment": "Committed floor for `make score`. Counts, not percentages. Regenerate with `make score-update` and explain the delta in the PR body. Some numbers record BUGS (the 45 fp_high_medium are real false positives from non-SSN column headers), so a baseline is a floor to ratchet, never a goal.",
+  "checks": {
+    "BANK_ACCOUNT": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "CLOUD_RESOURCES": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "CREDIT_CARD": {
+      "tp": 3,
+      "tp_high_medium": 3,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "DATE_OF_BIRTH": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "DRIVERS_LICENSE": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "EMAIL": {
+      "tp": 3,
+      "tp_high_medium": 3,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 2,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "INTELLECTUAL_PROPERTY": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "IP_ADDRESS": {
+      "tp": 2,
+      "tp_high_medium": 2,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "MEDICAL_ID": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "PASSPORT": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "PERSON_NAME": {
+      "tp": 4,
+      "tp_high_medium": 4,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "PHONE": {
+      "tp": 2,
+      "tp_high_medium": 2,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "PHYSICAL_ADDRESS": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "SECRETS": {
+      "tp": 2,
+      "tp_high_medium": 2,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "SSN": {
+      "tp": 155,
+      "tp_high_medium": 154,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 45,
+      "fp_low": 0,
+      "extra_same_span": 0
+    },
+    "VIN": {
+      "tp": 1,
+      "tp_high_medium": 1,
+      "fn_missed": 0,
+      "fn_band": 0,
+      "fp_high_medium": 0,
+      "fp_low": 0,
+      "extra_same_span": 0
+    }
+  },
+  "sink": {
+    "format_preserving": {
+      "whole_leak": 0,
+      "residue4": 829
+    },
+    "simple": {
+      "whole_leak": 0,
+      "residue4": 0
+    }
+  },
+  "sink_labels": 174,
+  "suppression": {
+    "cases": 57,
+    "targeted": 57,
+    "silenced": 57,
+    "collateral": 0,
+    "ineffective": 0
+  },
+  "undecided": {
+    "cases": 0,
+    "findings": 0
+  },
+  "global": {
+    "cases": 143,
+    "labels": 180,
+    "negatives": 22
+  }
+}
