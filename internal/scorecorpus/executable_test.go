@@ -57,11 +57,42 @@ type cliResult struct {
 	code           int
 }
 
+// precommitOffEnv neutralises pre-commit auto-detection.
+//
+// The CLI detects a pre-commit environment and then OVERRIDES the output format to
+// "text" (precommit/detector.go: Format: "text"), silently discarding an explicit
+// --format json. On Windows the detection is far broader than the PRE_COMMIT
+// variable: detectWindowsGitEnvironment() returns true if MSYSTEM, MINGW_PREFIX or
+// GIT_EXEC_PATH is set — i.e. for anything running under Git Bash, which is exactly
+// how GitHub Actions runs the Windows job.
+//
+// So this test asked for JSON, received pre-commit text, and failed on Windows only
+// while passing on ubuntu and macos. Blanking the triggers keeps the scored
+// behaviour identical on all three platforms.
+//
+// This is a test-harness fix, not a product change: a real user in Git Bash who
+// passes --format json arguably has the same complaint, but that is a separate
+// question about precedence between an explicit flag and an inferred environment.
+var precommitOffEnv = []string{
+	"PRE_COMMIT=",
+	"_PRE_COMMIT_RUNNING=",
+	"PRE_COMMIT_HOME=",
+	"PRE_COMMIT_HOOK=",
+	"GIT_HOOK_TYPE=",
+	"MSYSTEM=",
+	"MINGW_PREFIX=",
+	"GIT_EXEC_PATH=",
+	"GITHUB_DESKTOP=",
+}
+
 func runCLI(t *testing.T, bin string, env []string, args ...string) cliResult {
 	t.Helper()
 
 	cmd := exec.Command(bin, args...)
-	cmd.Env = append(os.Environ(), env...)
+	// precommitOffEnv first, so a caller that deliberately sets PRE_COMMIT (the
+	// exit-code test) still wins by appending after it.
+	cmd.Env = append(os.Environ(), precommitOffEnv...)
+	cmd.Env = append(cmd.Env, env...)
 
 	var so, se strings.Builder
 	cmd.Stdout = &so
