@@ -1962,10 +1962,30 @@ func main() {
 	// and pre-commit owns a strict output contract. Building it here means the whole
 	// footer lands on ONE stream, so a piped stdout is not left with a frame whose
 	// closing rule went to the terminal.
-	if precommitConfig == nil && finalConfig.format == "text" {
-		var footer strings.Builder
-		if writeUnscannedReport(&footer, unscannedEntries, len(filesToProcess), *failOnIncomplete, finalConfig.debug) {
-			formatterOptions.NotExaminedFooter = footer.String()
+	if precommitConfig == nil && len(unscannedEntries) > 0 {
+		var report strings.Builder
+		if writeUnscannedReport(&report, unscannedEntries, len(filesToProcess), *failOnIncomplete, finalConfig.debug) {
+			if finalConfig.format == "text" {
+				// Text renders it INSIDE the summary block, so the whole footer lands on
+				// one stream and a piped report is not left with an unclosed frame.
+				formatterOptions.NotExaminedFooter = report.String()
+			} else {
+				// Every other format gets it on stderr.
+				//
+				// Without this branch the report was text-only, and `--format json` on an
+				// unreadable file emitted `[]` with ZERO bytes of stderr — a REGRESSION
+				// against main, which warns (220 bytes). A JSON consumer could not tell
+				// "nothing found" from "never looked", which is the exact failure this
+				// change exists to fix, reintroduced for six of seven formats.
+				//
+				// Caught by TestUnscannedFilesAreNotReportedCleanByTheCLI when the two
+				// branches were merged together: each was green alone.
+				//
+				// stderr, not stdout, so a redirected report stays a clean parseable
+				// artifact. Machine formats will carry this as DATA in a follow-up; until
+				// then stderr is the honest channel rather than silence.
+				fmt.Fprint(os.Stderr, report.String())
+			}
 		}
 	}
 
