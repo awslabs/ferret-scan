@@ -13,6 +13,11 @@ on:
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/go-test.yml'
+      # The score baseline is data, not code, so it does not match '**.go' — and a
+      # baseline-only commit is exactly the commit that most needs checking, because
+      # it is how a quality regression gets blessed. Without this line, editing
+      # baseline.json to make `make score` pass would receive zero checks.
+      - 'internal/scorecorpus/testdata/**'
   push:
     branches: [main, master]
     paths:
@@ -20,6 +25,11 @@ on:
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/go-test.yml'
+      # The score baseline is data, not code, so it does not match '**.go' — and a
+      # baseline-only commit is exactly the commit that most needs checking, because
+      # it is how a quality regression gets blessed. Without this line, editing
+      # baseline.json to make `make score` pass would receive zero checks.
+      - 'internal/scorecorpus/testdata/**'
   workflow_dispatch:
 
 permissions:

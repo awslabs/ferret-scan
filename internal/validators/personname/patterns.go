@@ -151,6 +151,48 @@ func (pm *PatternManager) compileAllPatterns() {
 			cultural:    []string{"western", "compound", "modern"},
 		},
 		{
+			// A hyphen in BOTH parts. Without this pattern the name is never matched
+			// in full: compound_first_name claims "Anne-Marie Delacroix" and
+			// hyphenated_last_name claims "Marie Delacroix-Webb", two overlapping
+			// partials that each stop short, and no rule spans the whole thing.
+			//
+			// That shortfall reached the redacted file, so it was a cleartext leak of
+			// real name fragments, not a cosmetic scoring issue. Measured before this
+			// pattern existed:
+			//
+			//	Anne-Marie Delacroix-Webb -> "Reviewed by Anne-********************"
+			//	Mary-Jane Watson-Parker   -> "Contact ****************-Parker today"
+			//	Jean-Claude Van Damme     -> "Signed: Jean-****************"
+			//
+			// Priority 8 puts it above both partial patterns (6 and 7) so the full
+			// span wins the overlap rather than tying with a fragment of itself.
+			name:        "compound_first_and_hyphenated_last",
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			description: "Hyphen in both parts: Anne-Marie Delacroix-Webb",
+			priority:    8,
+			cultural:    []string{"western", "french", "compound", "modern"},
+		},
+		{
+			// A hyphenated first name followed by a MULTI-TOKEN surname, e.g. a
+			// nobiliary particle: "Jean-Claude Van Damme", "Marie-Claire de la Cruz".
+			//
+			// Same root cause as the pattern above — a missing combination rather than
+			// a broken rule. four_part_name already covers the unhyphenated
+			// "Jean Claude Van Damme" (measured: matched in full at 69), and
+			// compound_first_name covers "Mary-Jane Smith", but nothing covered the
+			// two together, so the hyphenated form was split into "Jean-Claude Van"
+			// plus "Claude Van Damme" and redaction left "Jean-" in cleartext.
+			//
+			// The trailing token count is bounded at two extra words so this cannot
+			// run away across a sentence; priority 8 matches the sibling above so the
+			// widest span wins over the partials it contains.
+			name:        "compound_first_and_multiword_last",
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			description: "Compound first name with two-part surname: Jean-Claude Van Damme",
+			priority:    8,
+			cultural:    []string{"western", "french", "dutch", "compound"},
+		},
+		{
 			name:        "name_with_multiple_titles",
 			pattern:     `(?:Dr|Prof)\.\s+(?:Mr|Ms|Mrs)\.\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Multiple titles: Dr. Ms. First Last",

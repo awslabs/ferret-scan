@@ -87,7 +87,14 @@ test*.log
 test*.config
 .test*
 # Test temp files (NOT *_test.go — those are real Go tests we ship)
-testing/
+#
+# Anchored to the repo root on purpose. Unanchored, "testing/" matched ANY directory
+# of that name at any depth, and the only one in the tree is docs/testing/ — so the
+# pattern protected nothing and silently ignored committed documentation. TEST_PLAN.md
+# and GITLAB_CI_TESTING_TRACKER.md are tracked only because they predate it; a NEW
+# file added there was invisible to `git add` and would have been dropped from its PR
+# without a word (caught while adding docs/testing/SCORE_CORPUS.md).
+/testing/
 tmp/
 temp/
 *_mock.go
