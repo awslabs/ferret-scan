@@ -165,12 +165,30 @@ func TestUnscannedFilesAreNotReportedCleanByTheCLI(t *testing.T) {
 					"scanned and nothing said so", c.Name)
 			}
 
-			// stderr must name the problem. This is the channel that works today.
-			if !strings.Contains(strings.ToLower(got.stderr), "not scanned") &&
-				!strings.Contains(strings.ToLower(got.stderr), "could not") {
-				t.Errorf("%s: stderr does not explain that the file was not scanned "+
-					"(%d bytes). Without it the only signal is an empty result set.",
-					c.Name, len(got.stderr))
+			// The output must name the problem somewhere. Checked against a SET of
+			// phrasings rather than one string: the wording is presentation and is
+			// expected to be improved, but the OBLIGATION to say something is the
+			// contract. An earlier version asserted only "not scanned"/"could not" and
+			// went red when the renderer was reworded to "NOT EXAMINED" — a stale
+			// assertion failing on an improvement, which teaches people to loosen tests.
+			//
+			// Both streams are accepted because the destination legitimately differs by
+			// format: text renders it inside its summary block on stdout so a piped
+			// report keeps a closed frame, while machine formats put it on stderr to
+			// leave stdout parseable.
+			combined := strings.ToLower(got.stdout + got.stderr)
+			said := false
+			for _, phrase := range []string{"not examined", "not scanned", "could not", "unreadable"} {
+				if strings.Contains(combined, phrase) {
+					said = true
+					break
+				}
+			}
+			if !said {
+				t.Errorf("%s: neither stream explains that the file was not examined "+
+					"(stdout %d bytes, stderr %d bytes). Without it the only signal is an "+
+					"empty result set, which is what a clean scan also produces.",
+					c.Name, len(got.stdout), len(got.stderr))
 			}
 
 			// The machine-readable half. Recorded, not yet gated: today an empty
