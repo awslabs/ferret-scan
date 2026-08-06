@@ -133,8 +133,8 @@
       "tp_high_medium": 154,
       "fn_missed": 0,
       "fn_band": 0,
-      "fp_high_medium": 45,
-      "fp_low": 0,
+      "fp_high_medium": 12,
+      "fp_low": 33,
       "extra_same_span": 0
     },
     "VIN": {

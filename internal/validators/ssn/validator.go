@@ -12,6 +12,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
@@ -74,6 +75,76 @@ const (
 	encodedDataPenalty     = 40.0
 	encodedDataStrongFloor = 60.0
 )
+
+// confidenceCeilingKey is the Match.Metadata key a validator sets to declare a hard
+// upper bound that downstream adjustment stages must respect.
+//
+// Clamping inside the validator is NOT sufficient on its own. The dual-path bridge
+// applies a document-level context adjustment AFTER the validator returns —
+// tabular_boost is +20 for a CSV — which took a value capped at 55 back to 75, above
+// the MEDIUM bar the cap exists to put it below. Measured end to end before this:
+// validator 55, CLI 75.
+//
+// The bridge calls clampToCeiling immediately after that adjustment, so publishing
+// the bound here is what makes it hold. The secrets validator already does exactly
+// this for unlabelled hex identifiers, and its comment records the same 55 -> 80
+// surprise.
+//
+// The string must match validators.ConfidenceCeilingKey. It is duplicated rather
+// than imported because internal/validators imports this package, so depending on it
+// here would be a cycle — the same reason the secrets validator duplicates it.
+const confidenceCeilingKey = "confidence_ceiling"
+
+// buildSSNMetadata assembles a match's metadata, publishing a confidence ceiling
+// when the column header contradicted the finding.
+func buildSSNMetadata(checks map[string]bool, contextImpact float64, originalPath string, capByHeader bool) map[string]any {
+	meta := map[string]any{
+		"validation_checks": checks,
+		"context_impact":    contextImpact,
+		"source":            "preprocessed_content",
+		"original_file":     originalPath,
+	}
+	if capByHeader {
+		meta[confidenceCeilingKey] = contradictingHeaderCap
+	}
+	return meta
+}
+
+// contradictingHeaderCap bounds a tabular match whose own column header names the
+// column as something other than an identifier.
+//
+// 55 sits below the MEDIUM boundary of 60, so the value leaves the default review
+// surface and stops blocking a pre-commit hook, while remaining REPORTED and
+// therefore redacted. It matches what the same keywords already produce inline
+// ("tracking_number 130-07-5728" scores 55), so a value is not judged differently
+// according to whether its label sits beside it or above it — which was the entire
+// defect this addresses.
+const contradictingHeaderCap = 55.0
+
+// headerContradicts reports whether a column header names the column as something
+// that is not an identifier.
+func (v *Validator) headerContradicts(header string) bool {
+	for _, kw := range v.negativeKeywords {
+		if containsKeyword(header, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// headerSupports reports whether a column header names the column as an identifier.
+//
+// Checked so a header carrying BOTH signals is not capped: "employee_ssn" contains
+// "employee id"-adjacent vocabulary in some exports, and a column that says "ssn"
+// must never be demoted for also matching a negative token.
+func (v *Validator) headerSupports(header string) bool {
+	for _, kw := range v.positiveKeywords {
+		if containsKeyword(header, kw) {
+			return true
+		}
+	}
+	return false
+}
 
 // Validator implements the detector.Validator interface for detecting
 // Social Security Numbers using regex patterns and contextual analysis.
@@ -198,6 +269,22 @@ type lineContext struct {
 	isEnhancedTab bool            // v.isEnhancedTabularData(line, ...) — value arg is unused
 	isEncoded     bool            // v.isEncodedData(line, ...) — match arg is unused
 	keywordOnLine map[string]bool // containsKeyword(line, kw) for every keyword we test
+
+	// columnHeader is the header cell naming THIS match's column, lowercased, or
+	// "" when the document is not a delimited table.
+	//
+	// Unlike every field above it varies per MATCH rather than per line, because
+	// the column changes along a row. It exists because keyword scanning is
+	// per-LINE, so a CSV header row is invisible to it — and that single fact was
+	// the whole bug. Measured on identical text:
+	//
+	//	"Phone: 130-07-5728"          -> 55  (negative keyword seen)
+	//	"a,phone,c" / "x,130-07-5728" -> 100 (header on another line, unseen)
+	//
+	// Same word, same validator, 45 points apart. The keyword list already covers
+	// tracking/invoice/sku/serial/account/phone/zip; it simply never got to read
+	// the header. Nothing here adds a new suppression mechanism.
+	columnHeader string
 }
 
 // newLineContext precomputes the per-line-global analysis values once. Every map
@@ -251,6 +338,16 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 	isDocx := strings.Contains(originalPath, ".docx")
 
+	// Recognise a delimited table ONCE per document, so each match can be resolved
+	// to the header cell naming its column.
+	//
+	// tabular.Analyze is conservative by construction — it requires >=3 fields, a
+	// header whose cells look like column names, and >=80% of sampled rows agreeing
+	// on the field count. Ragged rows, unbalanced quotes, or a comma-rich sentence
+	// all yield a non-table, which leaves every score exactly as it was. That is
+	// why this can be wired into the keyword path without a new suppression rule.
+	table := tabular.Analyze(content)
+
 	for lineNum, line := range lines {
 		// Cooperative cancellation: stop promptly if the scan's deadline fired
 		// or it was cancelled, returning what we have plus the reason.
@@ -302,8 +399,31 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			lc = v.newLineContext(line)
 		}
 
+		// Field offsets for THIS line, computed once and reused for every match on
+		// it, so resolving a match to its column stays a binary search rather than a
+		// per-match rescan — this validator has been audited for exactly that
+		// O(matches x lineLength) shape. Nil when the document is not tabular, and
+		// on the header row itself, where a cell is a label rather than a value.
+		var lineBounds *tabular.LineBounds
+		if len(foundMatches) > 0 && table.IsTable() && lineNum != table.HeaderLine() {
+			lineBounds = table.Bounds(line)
+		}
+
 		for _, ms := range foundMatches {
 			match := ms.text
+
+			// Resolve THIS match's column header. Set per match because the column
+			// changes along a row.
+			//
+			// ms.start is -1 for the synthesized concatenated-number candidates, which
+			// have no real offset on the line; those stay headerless rather than being
+			// attributed to whatever column offset 0 happens to be.
+			if lc != nil {
+				lc.columnHeader = ""
+				if lineBounds != nil && ms.start >= 0 {
+					lc.columnHeader = table.HeaderAt(lineBounds, ms.start)
+				}
+			}
 			// Clean the SSN for validation
 			cleanMatch := v.cleanSSN(match)
 
@@ -392,6 +512,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// Check if this is tabular data first - this is more reliable than keyword detection
 			isTabular := lc.isTabular
 
+			// capByHeader records that this match's own column header contradicted it,
+			// so the ceiling can be published in Metadata below and survive the
+			// document-level adjustment applied after this validator returns.
+			capByHeader := false
+
 			// Adjust confidence based on context, prioritizing tabular data detection
 			if isTabular {
 				// For tabular data, don't cap confidence regardless of keywords
@@ -400,6 +525,31 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					confidence -= 10 // Very mild penalty for negative context in tabular data
 				}
 				// Don't cap confidence for tabular data - let the base confidence stand
+
+				// A COLUMN HEADER naming the column as something other than an
+				// identifier is a stronger signal than an incidental word elsewhere on
+				// the row, so it gets a ceiling rather than only the -10 above.
+				//
+				// This is an ACCURACY judgement, not a safety one: a value under
+				// "tracking_number" genuinely is weaker evidence for "this is an SSN"
+				// than the same value under "ssn". The inline path already scores it that
+				// way — "tracking_number 130-07-5728" is 55 — so a value should not be
+				// judged differently according to whether its label sits beside it or
+				// above it. That inconsistency was the entire defect.
+				//
+				// The -10 alone is not enough. It is deliberately gentle ("don't cap
+				// confidence for tabular data"), which is right for a word that merely
+				// shares a row; measured, it leaves a contradicted column at 92, still
+				// HIGH and still blocking a pre-commit hook.
+				//
+				// headerSupports is checked too, so a header carrying BOTH signals is
+				// never demoted: a column that says "ssn" must win over a coincidental
+				// negative token.
+				capByHeader = lc.columnHeader != "" &&
+					v.headerContradicts(lc.columnHeader) && !v.headerSupports(lc.columnHeader)
+				if capByHeader && confidence > contradictingHeaderCap {
+					confidence = contradictingHeaderCap
+				}
 			} else if len(contextInfo.PositiveKeywords) == 0 {
 				// For non-tabular data without positive keywords, be more restrictive.
 				if len(contextInfo.NegativeKeywords) > 0 {
@@ -452,12 +602,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Filename:   originalPath,
 				Validator:  "ssn",
 				Context:    contextInfo,
-				Metadata: map[string]any{
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
+				Metadata:   buildSSNMetadata(checks, contextImpact, originalPath, capByHeader),
 			})
 		}
 	}
@@ -489,6 +634,13 @@ const junctionWindowLen = 64
 // regions need scanning here.
 func (v *Validator) keywordInFullContext(keyword, before, after string, lc *lineContext) bool {
 	if lc.keywordOnLine[keyword] {
+		return true
+	}
+	// The header cell naming this match's column is context for the value even
+	// though it sits on a different line. Scoped to THIS column's header, never
+	// the whole header row, so a "zip_code" column cannot suppress the
+	// "employee_ssn" column beside it.
+	if lc.columnHeader != "" && containsKeyword(lc.columnHeader, keyword) {
 		return true
 	}
 	// A SINGLE-WORD keyword absent from the line cannot appear in
@@ -748,6 +900,12 @@ func (v *Validator) findKeywordsCached(lc *lineContext, keywords []string) []str
 	var found []string
 	for _, keyword := range keywords {
 		if lc.keywordOnLine[keyword] {
+			found = append(found, keyword)
+			continue
+		}
+		// See lineContext.columnHeader: a CSV header row is on a different line
+		// than the value it labels, so per-line scanning alone never sees it.
+		if lc.columnHeader != "" && containsKeyword(lc.columnHeader, keyword) {
 			found = append(found, keyword)
 		}
 	}
