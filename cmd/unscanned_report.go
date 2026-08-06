@@ -267,8 +267,11 @@ func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int,
 
 	// "1 file" / "N files" — the plural was wrong on single-file runs, which is the
 	// most common way this report is seen.
+	// The noun agrees with totalFiles, which is the number it FOLLOWS. Choosing it
+	// from len(entries) produced "1 of 2 file" whenever one of two files was
+	// unexamined.
 	noun := "files"
-	if len(entries) == 1 {
+	if totalFiles == 1 {
 		noun = "file"
 	}
 

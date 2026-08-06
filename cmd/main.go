@@ -1944,9 +1944,33 @@ func main() {
 			lowCount++
 		}
 	}
+	// scanned and NOT-examined must not overlap, or the two numbers do not add up to
+	// the file count and a reader has to reconcile them.
+	//
+	// An empty-extraction file (opened fine, no readable text) is counted by the
+	// worker pool as PROCESSED and also appears in unscannedEntries, because both
+	// statements are true from their own vantage point. Printed side by side they
+	// double-count it: measured on 2 files where one was a valid but empty .docx,
+	// the summary read "2 scanned, 1 NOT examined" — 3 of 2. On a 301-file run that
+	// surfaced as 278 + 24 = 302.
+	//
+	// The summary resolves it in favour of NOT-examined, because that is the number
+	// an operator must act on: a file whose contents were never read is not covered,
+	// whatever the worker pool managed to do with it.
+	//
+	// Only the EMPTY-EXTRACTION count is subtracted. processedFiles already excludes
+	// unreadable and unparseable files — they never reach the worker pool's success
+	// path — so subtracting the whole unscanned set double-corrects and reported
+	// "0 scanned" on a directory whose two good CSVs both produced findings.
+	// Clamped at zero so a future counter change cannot render a negative.
+	scannedFiles := processedFiles - len(emptyExtractionFiles)
+	if scannedFiles < 0 {
+		scannedFiles = 0
+	}
+
 	formatterOptions.Stats = &formatters.ScanStats{
 		TotalFiles:       len(filesToProcess),
-		FilesProcessed:   processedFiles,
+		FilesProcessed:   scannedFiles,
 		FilesSkipped:     finalSkippedCount,
 		FilesNotExamined: len(unscannedEntries),
 		TotalFindings:    len(unsuppressedMatches),

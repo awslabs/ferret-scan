@@ -5,6 +5,7 @@ package text
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -468,5 +469,55 @@ func TestSummaryRulesReachTheirContent(t *testing.T) {
 	if ruleWidth > 120 {
 		t.Errorf("rule is %d wide; over 120 it wraps in a normal terminal, which looks "+
 			"worse than a slight overhang", ruleWidth)
+	}
+}
+
+// TestSummaryCountsReconcile — scanned + NOT examined + skipped must not exceed the
+// file count.
+//
+// An empty-extraction file (opened fine, no readable text) is counted PROCESSED by
+// the worker pool and ALSO appears in the not-examined set, because both statements
+// are true from their own vantage point. Printed side by side they double-count it:
+// measured on 2 files where one was a valid but empty .docx, the summary read
+// "2 scanned, 1 NOT examined" — 3 of 2. On a 301-file run it surfaced as 278 + 24 =
+// 302, which a reader has to reconcile and cannot.
+func TestSummaryCountsReconcile(t *testing.T) {
+	cases := []struct {
+		name                                   string
+		total, processed, notExamined, skipped int
+	}{
+		{"all clean", 10, 10, 0, 0},
+		{"some unexamined", 7, 2, 5, 0},
+		{"unexamined and skipped", 10, 4, 3, 3},
+		{"single file unexamined", 1, 0, 1, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := defaultOpts()
+			opts.Stats = &formatters.ScanStats{
+				TotalFiles: tc.total, FilesProcessed: tc.processed,
+				FilesNotExamined: tc.notExamined, FilesSkipped: tc.skipped,
+				TotalFindings: 1, Medium: 1,
+			}
+
+			out, err := NewFormatter().Format([]detector.Match{makeMatch("SSN", 80, 1)}, nil, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if sum := tc.processed + tc.notExamined + tc.skipped; sum > tc.total {
+				t.Fatalf("the fixture itself over-counts (%d > %d total); the caller must "+
+					"not hand the formatter overlapping categories", sum, tc.total)
+			}
+
+			// The rendered line must carry each non-zero category exactly once.
+			if !strings.Contains(out, fmt.Sprintf("%d scanned", tc.processed)) {
+				t.Errorf("summary does not report %d scanned:\n%s", tc.processed, out)
+			}
+			if tc.notExamined > 0 && !strings.Contains(out, fmt.Sprintf("%d NOT examined", tc.notExamined)) {
+				t.Errorf("summary does not report %d NOT examined:\n%s", tc.notExamined, out)
+			}
+		})
 	}
 }
