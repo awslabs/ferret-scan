@@ -1705,6 +1705,13 @@ func main() {
 	// the user no reason to look again at a file that was never scanned.
 	var supportedFiles []string
 	var unreadableFiles []string
+	unreadableCount := 0
+
+	// scanMalfunction records that the SCANNER failed, not that an input was bad.
+	// Exit code 2 means "the tool did not work"; a file it could not read is a
+	// coverage gap (code 3), which is the distinction the old failedFiles counter
+	// blurred.
+	scanMalfunction := false
 	for _, filePath := range filesToProcess {
 		canProcess, reason := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors)
 		if canProcess {
@@ -1713,6 +1720,12 @@ func main() {
 		}
 		if strings.HasPrefix(reason, router.ReasonUnreadable) {
 			unreadableFiles = append(unreadableFiles, fmt.Sprintf("%s: %s", filePath, reason))
+			// Counted as unreadable AND as not-processed. The `continue` here used to
+			// skip the increment below, so an unreadable file landed in NO counter at
+			// all: two permission-denied files produced "0 skipped" in the summary
+			// while the warning above said two files were never opened. Separating the
+			// two categories was right; dropping the count was not.
+			unreadableCount++
 			continue
 		}
 		skippedFiles++
@@ -1800,31 +1813,34 @@ func main() {
 					stats.ProcessedFiles, stats.TotalMatches, stats.WorkerCount, stats.TotalDuration.Milliseconds())
 			}
 		} else {
+			// A genuine tool malfunction, as opposed to an input the tool could not
+			// read. This is what exit code 2 is for, so record it rather than only
+			// printing it.
 			fmt.Fprintf(os.Stderr, "Parallel processing failed: %v\n", err)
+			scanMalfunction = true
 		}
 	}
 
 	elapsed := time.Since(progressStart)
 	finalSkippedCount := totalSkipped + skippedFiles
 
-	// Provide clearer reporting (suppress in pre-commit mode)
-	totalAttempted := len(supportedFiles)
-	failedFiles := totalAttempted - processedFiles
-
 	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
-		if finalSkippedCount > 0 || failedFiles > 0 {
-			fmt.Fprintf(os.Stderr, "Scan complete: %d files processed successfully", processedFiles)
-			if failedFiles > 0 {
-				fmt.Fprintf(os.Stderr, ", %d files had no results", failedFiles)
-			}
-			if finalSkippedCount > 0 {
-				fmt.Fprintf(os.Stderr, ", %d files skipped (%d unsupported types)", finalSkippedCount, skippedFiles)
-			}
-			fmt.Fprintf(os.Stderr, " in %s\n", elapsed.Round(time.Millisecond))
-		} else {
-			fmt.Fprintf(os.Stderr, "Scan complete: %d files processed in %s\n",
-				processedFiles, elapsed.Round(time.Millisecond))
+		// Report only what this line uniquely owns: how many files were scanned, how
+		// many were an unsupported type the user did not expect a result for, and how
+		// long it took. Files that FAILED to parse are deliberately NOT mentioned here
+		// as "had no results" — that phrasing conflated a clean scan (findings=0) with
+		// a file that was never read, and the not-examined report below now owns that
+		// category in full. Reporting it in both places produced two different numbers
+		// for the same files (a 23-vs-24 split a reader had to reconcile).
+		fmt.Fprintf(os.Stderr, "Scan complete: %d files scanned", processedFiles)
+		if finalSkippedCount > 0 {
+			fmt.Fprintf(os.Stderr, ", %d skipped (unsupported type)", finalSkippedCount)
 		}
+		// Trailing blank line so the progress block (spinner, bar, this line) is
+		// visually separated from the findings table that follows it. Without it the
+		// table header butts directly against the progress output and the two read as
+		// one wall of text.
+		fmt.Fprintf(os.Stderr, " in %s\n\n", elapsed.Round(time.Millisecond))
 	}
 
 	// Incomplete-coverage warning (v2 Phase 4): a file whose validator coverage
@@ -1833,11 +1849,14 @@ func main() {
 	// clean, complete scan. Suppressed only in pre-commit mode, which owns a
 	// strict machine-readable output contract. Exit code is deliberately
 	// unchanged (default still 0) — this is an advisory warning.
+	// Collected once, so the summary count and the detail report can never disagree:
+	// they are derived from the same slice rather than counted twice.
+	unscannedEntries := collectUnscanned(unreadableFiles, emptyExtractionFiles, failedProcessingFiles, incompleteFiles)
+
 	if precommitConfig == nil {
-		writeUnreadableFilesWarning(os.Stderr, unreadableFiles, len(filesToProcess))
-		writeEmptyExtractionWarning(os.Stderr, emptyExtractionFiles, len(supportedFiles))
-		writeFailedFilesWarning(os.Stderr, failedProcessingFiles, len(supportedFiles))
-		writeIncompleteCoverageWarning(os.Stderr, incompleteFiles, len(supportedFiles))
+		// The unredacted warning stays here; the not-examined report is emitted AFTER
+		// the findings table (search writeUnscannedReport below), so it reads as a
+		// caveat about the result rather than a banner before it.
 		writeUnredactedFilesWarning(os.Stderr, unredactedFiles, len(supportedFiles))
 	}
 
@@ -1926,15 +1945,50 @@ func main() {
 		}
 	}
 	formatterOptions.Stats = &formatters.ScanStats{
-		TotalFiles:     len(filesToProcess),
-		FilesProcessed: processedFiles,
-		FilesSkipped:   finalSkippedCount,
-		TotalFindings:  len(unsuppressedMatches),
-		High:           highCount,
-		Medium:         mediumCount,
-		Low:            lowCount,
-		Suppressed:     suppressedCount,
-		Duration:       elapsed.Seconds(),
+		TotalFiles:       len(filesToProcess),
+		FilesProcessed:   processedFiles,
+		FilesSkipped:     finalSkippedCount,
+		FilesNotExamined: len(unscannedEntries),
+		TotalFindings:    len(unsuppressedMatches),
+		High:             highCount,
+		Medium:           mediumCount,
+		Low:              lowCount,
+		Suppressed:       suppressedCount,
+		Duration:         elapsed.Seconds(),
+	}
+
+	// Render the not-examined detail into the summary block rather than printing it
+	// separately. Text format only: structured formats carry the same facts as data,
+	// and pre-commit owns a strict output contract. Building it here means the whole
+	// footer lands on ONE stream, so a piped stdout is not left with a frame whose
+	// closing rule went to the terminal.
+	if precommitConfig == nil && finalConfig.format == "text" {
+		var footer strings.Builder
+		if writeUnscannedReport(&footer, unscannedEntries, len(filesToProcess), *failOnIncomplete, finalConfig.debug) {
+			formatterOptions.NotExaminedFooter = footer.String()
+		}
+	}
+
+	// Pre-commit mode owns a deliberately terse output contract, but "terse" must not
+	// mean silent about files that were never read.
+	//
+	// Measured before this: `PRE_COMMIT=1` on a directory whose only file was
+	// chmod-000 produced ZERO bytes on stdout AND stderr with rc=0 — byte-identical
+	// to a clean pass, on a file that may be full of PII. A developer's commit is let
+	// through and nothing anywhere says why. That is the #193 shape: a hook decision
+	// with no stated reason.
+	//
+	// One line, no frame, no per-file list: pre-commit output is read in a terminal
+	// mid-commit, so it states the count and how to see the rest.
+	if precommitConfig != nil && len(unscannedEntries) > 0 {
+		noun := "files"
+		if len(unscannedEntries) == 1 {
+			noun = "file"
+		}
+		fmt.Fprintf(os.Stderr,
+			"ferret-scan: %d %s NOT examined (contents unreadable) — findings may be missing. "+
+				"Re-run without --pre-commit for detail.\n",
+			len(unscannedEntries), noun)
 	}
 
 	// Enable streaming for text format writing to stdout (no output file).
@@ -2012,13 +2066,26 @@ func main() {
 		fmt.Println(result)
 	}
 
-	if note := truncationNote(unsuppressedMatches, formatterOptions, *limitFlag); note != "" {
+	if note := truncationNote(unsuppressedMatches, formatterOptions, *limitFlag, finalConfig.format); note != "" {
 		fmt.Fprint(os.Stderr, note)
 	}
 
 	// Determine appropriate exit code based on findings and pre-commit configuration
 	hasFindings := len(unsuppressedMatches) > 0
-	hasErrors := failedFiles > 0 // Track if there were any system errors during processing
+
+	// hasErrors is deliberately NOT the old `failedFiles > 0`.
+	//
+	// failedFiles was len(supportedFiles) - processedFiles, and an UNREADABLE file
+	// never enters supportedFiles at all — so it was invisible here. Measured in
+	// pre-commit mode: a corrupt .docx exited 2 while a chmod-000 .txt exited 0,
+	// even though both mean exactly the same thing (the contents were never seen).
+	// Nobody chose that split; it fell out of the counter, the same way the summary's
+	// "0 skipped" did.
+	//
+	// hasErrors now means what exit code 2 is documented to mean — the tool itself
+	// failed. An input it could not read is a coverage gap, handled by coverageGaps
+	// and exit code 3 below, so the two categories no longer contend for one code.
+	hasErrors := scanMalfunction
 
 	// Determine the highest confidence level of findings
 	highestConfidence := ""
@@ -2054,7 +2121,7 @@ func main() {
 	// A file that was opened and extracted to NOTHING is the third member of that
 	// set and the hardest to notice without help: unlike the other two it produces
 	// no error anywhere, just an empty document body and a clean report.
-	coverageGaps := len(incompleteFiles) + len(unreadableFiles) + len(emptyExtractionFiles) + len(failedProcessingFiles)
+	coverageGaps := len(unscannedEntries)
 	if precommitConfig != nil {
 		exitCode := precommit.GetExitCode(hasFindings, hasErrors, highestConfidence, precommitConfig)
 		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps))

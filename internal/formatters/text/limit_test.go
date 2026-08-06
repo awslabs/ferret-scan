@@ -181,14 +181,73 @@ func TestSummaryStats_Rendered(t *testing.T) {
 	if !strings.Contains(result, "Scan Summary") {
 		t.Error("should contain 'Scan Summary' header")
 	}
-	if !strings.Contains(result, "8 processed") {
-		t.Error("should show files processed")
+	// "scanned", not "processed": a file that FAILED was previously counted as
+	// processed, so the old wording described a failure as a completed scan.
+	if !strings.Contains(result, "8 scanned") {
+		t.Error("should show files scanned")
 	}
 	if !strings.Contains(result, "2 skipped") {
 		t.Error("should show files skipped")
 	}
 	if !strings.Contains(result, "1 high") {
 		t.Error("should show HIGH count")
+	}
+}
+
+// TestSummaryStats_NotExaminedIsReported — a file whose contents were never seen
+// must appear in the summary.
+//
+// Before FilesNotExamined existed, a directory of 7 files where 2 were unreadable
+// and 4 unparseable rendered as "Files: 2 processed, 0 skipped": five files vanished
+// from the accounting and one FAILURE was reported as processed. A summary that reads
+// clean over unexamined files is the same class of harm as a missed detection, so the
+// count is asserted here rather than left to the stderr warning.
+func TestSummaryStats_NotExaminedIsReported(t *testing.T) {
+	matches := []detector.Match{makeMatch("SSN", 100, 1)}
+	opts := defaultOpts()
+	opts.Stats = &formatters.ScanStats{
+		TotalFiles:       7,
+		FilesProcessed:   2,
+		FilesNotExamined: 5,
+		TotalFindings:    1,
+		High:             1,
+	}
+
+	f := NewFormatter()
+	result, err := f.Format(matches, nil, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "5 NOT examined") {
+		t.Errorf("summary must report the 5 unexamined files; got:\n%s", result)
+	}
+	if strings.Contains(result, "0 skipped") {
+		t.Error("a zero skipped-count must not be printed: it is noise on every clean " +
+			"run, and it was what made the old summary read as complete")
+	}
+}
+
+// TestSummaryStats_CleanRunIsQuiet — no zero-valued categories.
+//
+// The counters only appear when they are non-zero, so an ordinary clean scan reads
+// "Files: 12 scanned | Findings: 0" instead of carrying two zeroes the reader has to
+// check every time to confirm they are zero.
+func TestSummaryStats_CleanRunIsQuiet(t *testing.T) {
+	opts := defaultOpts()
+	opts.Stats = &formatters.ScanStats{TotalFiles: 12, FilesProcessed: 12}
+
+	f := NewFormatter()
+	result, err := f.Format([]detector.Match{makeMatch("SSN", 100, 1)}, nil, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "12 scanned") {
+		t.Errorf("want '12 scanned'; got:\n%s", result)
+	}
+	for _, unwanted := range []string{"NOT examined", "skipped"} {
+		if strings.Contains(result, unwanted) {
+			t.Errorf("a clean run must not mention %q; got:\n%s", unwanted, result)
+		}
 	}
 }
 
@@ -319,5 +378,95 @@ func TestPrecommitMode_NoSummaryOrLimit(t *testing.T) {
 	// summary headers or be affected by --limit (it has its own contract).
 	if strings.Contains(result, "Scan Summary") {
 		t.Error("pre-commit mode should NOT show summary header")
+	}
+}
+
+// TestSummaryFrameShape — double rule top and bottom, single rule dividing the
+// summary counts from the not-examined detail.
+//
+// The frame is load-bearing: the two sections are one block with a divider, not two
+// stacked boxes on (previously) two different streams. An earlier version emitted a
+// double rule in the middle and a single at the bottom, which read as the summary
+// ending and an unrelated box beginning.
+func TestSummaryFrameShape(t *testing.T) {
+	opts := defaultOpts()
+	opts.Stats = &formatters.ScanStats{
+		TotalFiles: 7, FilesProcessed: 2, FilesNotExamined: 5,
+		TotalFindings: 1, Medium: 1,
+	}
+	opts.NotExaminedFooter = "NOT EXAMINED: 5 of 7 files\n  cannot read (5)\n"
+
+	out, err := NewFormatter().Format([]detector.Match{makeMatch("SSN", 80, 1)}, nil, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var rules []rune
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		r := []rune(trimmed)[0]
+		if (r == '═' || r == '─') && !strings.Contains(line, "Scan Summary") {
+			rules = append(rules, r)
+		} else if strings.Contains(line, "Scan Summary") {
+			rules = append(rules, '═')
+		}
+	}
+
+	// top ═, divider ─, bottom ═
+	want := []rune{'═', '─', '═'}
+	if len(rules) != len(want) {
+		t.Fatalf("frame has %d rules, want %d (top/divider/bottom):\n%s", len(rules), len(want), out)
+	}
+	for i := range want {
+		if rules[i] != want[i] {
+			t.Errorf("rule %d is %q, want %q — the divider must be single and the outer "+
+				"rules double, or the block reads as two separate boxes:\n%s",
+				i, string(rules[i]), string(want[i]), out)
+		}
+	}
+}
+
+// TestSummaryRulesReachTheirContent — a rule must not be shorter than the text it
+// frames, and must not run away on a long path.
+//
+// Measured before the fix: "Files: 276 scanned, 24 NOT examined | Findings: 4631
+// (1131 high, 2535 medium, 965 low)" is 86 characters inside an 80-character frame,
+// so the summary line visibly overhung its own box.
+func TestSummaryRulesReachTheirContent(t *testing.T) {
+	opts := defaultOpts()
+	opts.Stats = &formatters.ScanStats{
+		TotalFiles: 299, FilesProcessed: 276, FilesNotExamined: 24,
+		TotalFindings: 4631, High: 1131, Medium: 2535, Low: 965,
+	}
+
+	out, err := NewFormatter().Format([]detector.Match{makeMatch("SSN", 80, 1)}, nil, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	widest, ruleWidth := 0, 0
+	for _, line := range strings.Split(out, "\n") {
+		n := len([]rune(line))
+		if strings.HasPrefix(line, "Files:") && n > widest {
+			widest = n
+		}
+		if strings.HasPrefix(line, "════") {
+			ruleWidth = n
+		}
+	}
+
+	if widest == 0 || ruleWidth == 0 {
+		t.Fatalf("could not find the summary line and its rule:\n%s", out)
+	}
+	if ruleWidth < widest {
+		t.Errorf("rule is %d wide but the summary line is %d: the text overhangs its own "+
+			"frame", ruleWidth, widest)
+	}
+	if ruleWidth > 120 {
+		t.Errorf("rule is %d wide; over 120 it wraps in a normal terminal, which looks "+
+			"worse than a slight overhang", ruleWidth)
 	}
 }
