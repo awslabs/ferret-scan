@@ -1,6 +1,78 @@
 {
   "results": [
     {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/people.csv",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 20,
+        "context_confidence": 1,
+        "context_doctype": "CSV",
+        "context_domain": "HR_Payroll",
+        "context_impact": -20,
+        "original_confidence": 65,
+        "original_file": "<TMPDIR>/people.csv",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "449-87-4100",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/people.csv",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 20,
+        "context_confidence": 1,
+        "context_doctype": "CSV",
+        "context_domain": "HR_Payroll",
+        "context_impact": -20,
+        "original_confidence": 65,
+        "original_file": "<TMPDIR>/people.csv",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "529-11-2233",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
       "confidence": 75,
       "confidence_level": "MEDIUM",
       "filename": "<TMPDIR>/people.csv",
@@ -81,78 +153,6 @@
       "text": "bob@example.org",
       "type": "BUSINESS",
       "validator": "email"
-    },
-    {
-      "confidence": 75,
-      "confidence_level": "MEDIUM",
-      "filename": "<TMPDIR>/people.csv",
-      "line_number": 2,
-      "metadata": {
-        "confidence_adjustment": 20,
-        "context_confidence": 1,
-        "context_doctype": "CSV",
-        "context_domain": "HR_Payroll",
-        "context_impact": -30,
-        "original_confidence": 55,
-        "original_file": "<TMPDIR>/people.csv",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "digits": true,
-          "format": true,
-          "not_common_pattern": true,
-          "not_repeating": true,
-          "not_sequential": true,
-          "not_test_number": true,
-          "valid_area": true
-        },
-        "validation_path": "document"
-      },
-      "text": "449-87-4100",
-      "type": "SSN",
-      "validator": "ssn"
-    },
-    {
-      "confidence": 75,
-      "confidence_level": "MEDIUM",
-      "filename": "<TMPDIR>/people.csv",
-      "line_number": 3,
-      "metadata": {
-        "confidence_adjustment": 20,
-        "context_confidence": 1,
-        "context_doctype": "CSV",
-        "context_domain": "HR_Payroll",
-        "context_impact": -30,
-        "original_confidence": 55,
-        "original_file": "<TMPDIR>/people.csv",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "digits": true,
-          "format": true,
-          "not_common_pattern": true,
-          "not_repeating": true,
-          "not_sequential": true,
-          "not_test_number": true,
-          "valid_area": true
-        },
-        "validation_path": "document"
-      },
-      "text": "529-11-2233",
-      "type": "SSN",
-      "validator": "ssn"
     },
     {
       "confidence": 25,

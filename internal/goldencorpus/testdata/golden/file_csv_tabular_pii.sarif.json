@@ -13,6 +13,144 @@
                 },
                 "contextRegion": {
                   "snippet": {
+                    "text": "Alice,alice@example.com,\nAlice,alice@example.com,449-87-4100,4532015112830366\n,4532015112830366"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 36,
+                  "snippet": {
+                    "text": "Alice,alice@example.com,449-87-4100,4532015112830366"
+                  },
+                  "startColumn": 25,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in people.csv at line 2 (confidence: 85.0% - MEDIUM). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 85,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -20,
+              "original_confidence": 65,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 92.5,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Bob,bob@example.org,\nBob,bob@example.org,529-11-2233,5425233430109903\n,5425233430109903"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 32,
+                  "snippet": {
+                    "text": "Bob,bob@example.org,529-11-2233,5425233430109903"
+                  },
+                  "startColumn": 21,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in people.csv at line 3 (confidence: 85.0% - MEDIUM). Matched text: '529-11-2233'"
+          },
+          "properties": {
+            "confidence": 85,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 20,
+              "context_confidence": 1,
+              "context_doctype": "CSV",
+              "context_domain": "HR_Payroll",
+              "context_impact": -20,
+              "original_confidence": 65,
+              "original_file": "<TMPDIR>/people.csv",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 92.5,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/people.csv"
+                },
+                "contextRegion": {
+                  "snippet": {
                     "text": "Alice,\nAlice,alice@example.com,449-87-4100,4532015112830366\n,449-87-4100,4532015112830366"
                   },
                   "startLine": 2
@@ -144,138 +282,6 @@
           },
           "rank": 62.5,
           "ruleId": "BUSINESS"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "file://<TMPDIR>/people.csv"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Alice,alice@example.com,\nAlice,alice@example.com,449-87-4100,4532015112830366\n,4532015112830366"
-                  },
-                  "startLine": 2
-                },
-                "region": {
-                  "endColumn": 36,
-                  "snippet": {
-                    "text": "Alice,alice@example.com,449-87-4100,4532015112830366"
-                  },
-                  "startColumn": 25,
-                  "startLine": 2
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Social Security Number Detected in people.csv at line 2 (confidence: 75.0% - MEDIUM). Matched text: '449-87-4100'"
-          },
-          "properties": {
-            "confidence": 75,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
-              "context_impact": -30,
-              "original_confidence": 55,
-              "original_file": "<TMPDIR>/people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "digits": true,
-                "format": true,
-                "not_common_pattern": true,
-                "not_repeating": true,
-                "not_sequential": true,
-                "not_test_number": true,
-                "valid_area": true
-              },
-              "validation_path": "document"
-            },
-            "negativeKeywords": [
-              "example"
-            ],
-            "validator": "ssn"
-          },
-          "rank": 87.5,
-          "ruleId": "SSN"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "file://<TMPDIR>/people.csv"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Bob,bob@example.org,\nBob,bob@example.org,529-11-2233,5425233430109903\n,5425233430109903"
-                  },
-                  "startLine": 3
-                },
-                "region": {
-                  "endColumn": 32,
-                  "snippet": {
-                    "text": "Bob,bob@example.org,529-11-2233,5425233430109903"
-                  },
-                  "startColumn": 21,
-                  "startLine": 3
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Social Security Number Detected in people.csv at line 3 (confidence: 75.0% - MEDIUM). Matched text: '529-11-2233'"
-          },
-          "properties": {
-            "confidence": 75,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
-              "context_impact": -30,
-              "original_confidence": 55,
-              "original_file": "<TMPDIR>/people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "digits": true,
-                "format": true,
-                "not_common_pattern": true,
-                "not_repeating": true,
-                "not_sequential": true,
-                "not_test_number": true,
-                "valid_area": true
-              },
-              "validation_path": "document"
-            },
-            "negativeKeywords": [
-              "example"
-            ],
-            "validator": "ssn"
-          },
-          "rank": 87.5,
-          "ruleId": "SSN"
         },
         {
           "level": "error",
