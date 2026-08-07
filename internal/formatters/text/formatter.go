@@ -88,7 +88,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		if isPrecommitMode {
 			return "", nil // Silent success in pre-commit mode when no matches
 		}
-		return "No matches found.", nil
+		return f.noMatchesText("No matches found.", options), nil
 	}
 
 	// Filter matches by confidence level
@@ -103,7 +103,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		if isPrecommitMode {
 			return "", nil // Silent success in pre-commit mode when no matches at specified levels
 		}
-		return "No matches found at the specified confidence levels.", nil
+		return f.noMatchesText("No matches found at the specified confidence levels.", options), nil
 	}
 
 	// Sort by confidence descending, then type ascending for priority ordering
@@ -195,22 +195,117 @@ func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, 
 	}
 }
 
+// noMatchesText renders the empty-result message, plus the not-examined footer when
+// there is one.
+//
+// The four "no matches" early returns bypass writeSummaryHeader entirely, so before
+// this a scan of two unreadable files printed exactly "No matches found." — the most
+// dangerous output the tool can produce, because it is the same text a genuinely
+// clean scan produces. The footer is the only thing distinguishing "I looked and
+// found nothing" from "I could not look".
+func (f *Formatter) noMatchesText(msg string, options formatters.FormatterOptions) string {
+	if options.NotExaminedFooter == "" {
+		return msg
+	}
+
+	width := summaryRuleFloor
+	for _, line := range strings.Split(options.NotExaminedFooter, "\n") {
+		if n := displayWidth(line); n > width {
+			width = n
+		}
+	}
+	if width > summaryRuleCeiling {
+		width = summaryRuleCeiling
+	}
+
+	return msg + "\n\n" +
+		rule("─", width) + "\n" +
+		options.NotExaminedFooter +
+		rule("═", width)
+}
+
+// Rule width bounds.
+//
+// The frame grows to fit its content but stops at summaryRuleCeiling: a single deep
+// file path can be 200+ characters, and a rule that long wraps in any normal
+// terminal, which looks far worse than a path overhanging its frame by a few
+// characters. 120 is the widest common terminal default.
+const (
+	summaryRuleFloor   = 80
+	summaryRuleCeiling = 120
+)
+
+// rule repeats r to the given width.
+func rule(r string, width int) string {
+	return strings.Repeat(r, width)
+}
+
+// displayWidth counts RUNES, not bytes.
+//
+// The summary and footer contain an em-dash and a middle dot, which are 3 and 2
+// bytes in UTF-8. Sizing a rule with len() therefore over-ran the text by several
+// characters for every non-ASCII glyph on the line.
+func displayWidth(s string) int {
+	return len([]rune(s))
+}
+
 // writeSummaryHeader writes the scan summary block to the writer.
+//
+// Frame: DOUBLE rule at the top and bottom of the whole block, SINGLE rule between
+// the summary counts and the not-examined detail. The two sections are one block
+// with a divider, not two stacked boxes.
+//
+// Rules are sized to the widest line they enclose. At a fixed 80 characters the
+// summary line ("Files: 276 scanned, 24 NOT examined | Findings: 4631 (1131 high,
+// 2535 medium, 965 low)" is 86) ran past its own frame.
 func (f *Formatter) writeSummaryHeader(w io.Writer, options formatters.FormatterOptions) {
 	stats := options.Stats
-	topLine := "\n═══ Scan Summary ═══════════════════════════════════════════════════════════════\n"
-	bottomLine := "════════════════════════════════════════════════════════════════════════════════\n"
 
-	summaryLine := fmt.Sprintf("Files: %d processed, %d skipped | Findings: %d (%d high, %d medium, %d low)",
-		stats.FilesProcessed, stats.FilesSkipped,
+	summaryLine := fmt.Sprintf("Files: %d scanned", stats.FilesProcessed)
+	// Only mention the categories that actually occurred. A clean run reads
+	// "Files: 12 scanned | Findings: 0" rather than carrying two zeroes the reader
+	// has to check every time.
+	if stats.FilesNotExamined > 0 {
+		summaryLine += fmt.Sprintf(", %d NOT examined", stats.FilesNotExamined)
+	}
+	if stats.FilesSkipped > 0 {
+		summaryLine += fmt.Sprintf(", %d skipped", stats.FilesSkipped)
+	}
+	summaryLine += fmt.Sprintf(" | Findings: %d (%d high, %d medium, %d low)",
 		stats.TotalFindings, stats.High, stats.Medium, stats.Low)
 	if stats.Suppressed > 0 {
 		summaryLine += fmt.Sprintf(" | %d suppressed", stats.Suppressed)
 	}
 
-	fmt.Fprint(w, topLine)
+	// Width covers every line the frame encloses, including the footer's.
+	width := summaryRuleFloor
+	if n := displayWidth(summaryLine); n > width {
+		width = n
+	}
+	for _, line := range strings.Split(options.NotExaminedFooter, "\n") {
+		if n := displayWidth(line); n > width {
+			width = n
+		}
+	}
+	if width > summaryRuleCeiling {
+		width = summaryRuleCeiling
+	}
+
+	const heading = "═══ Scan Summary "
+	top := heading + rule("═", width-displayWidth(heading))
+
+	fmt.Fprintf(w, "\n%s\n", top)
 	fmt.Fprintln(w, summaryLine)
-	fmt.Fprintln(w, bottomLine)
+
+	if options.NotExaminedFooter == "" {
+		fmt.Fprintf(w, "%s\n", rule("═", width))
+		return
+	}
+
+	// Single rule divides the two sections; double rule closes the block.
+	fmt.Fprintf(w, "%s\n", rule("─", width))
+	fmt.Fprint(w, options.NotExaminedFooter)
+	fmt.Fprintf(w, "%s\n", rule("═", width))
 }
 
 // filterMatchesByConfidence filters matches based on confidence level settings

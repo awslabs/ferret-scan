@@ -28,6 +28,18 @@ type FormatterOptions struct {
 	// (position depends on format: header for text, top-level field for JSON).
 	Stats *ScanStats
 
+	// NotExaminedFooter, when non-empty, is appended INSIDE the text formatter's
+	// summary block, between the summary's closing rule and a final single rule.
+	//
+	// It lives here rather than being printed by the caller so the whole footer is
+	// one contiguous block on ONE stream. Printed separately to stderr it rendered
+	// as a detached box after a blank line, and a piped stdout ended with a summary
+	// whose frame was closed by content the pipe never received.
+	//
+	// Text format only: structured formats carry the same information as data (see
+	// the unscanned key), not as decorated prose.
+	NotExaminedFooter string
+
 	// StreamWriter, when non-nil, causes the text formatter to write output
 	// directly to this writer instead of buffering into a returned string.
 	// The Format call returns "" when streaming is active — the caller must
@@ -39,15 +51,28 @@ type FormatterOptions struct {
 
 // ScanStats holds aggregate scan statistics rendered in the output summary.
 type ScanStats struct {
-	TotalFiles     int     `json:"total_files"`
-	FilesProcessed int     `json:"files_processed"`
-	FilesSkipped   int     `json:"files_skipped"`
-	TotalFindings  int     `json:"total_findings"`
-	High           int     `json:"high"`
-	Medium         int     `json:"medium"`
-	Low            int     `json:"low"`
-	Suppressed     int     `json:"suppressed"`
-	Duration       float64 `json:"duration_seconds"`
+	TotalFiles     int `json:"total_files"`
+	FilesProcessed int `json:"files_processed"`
+	FilesSkipped   int `json:"files_skipped"`
+
+	// FilesNotExamined counts files the tool could not read, parse or extract text
+	// from. They are NOT "skipped" (an unsupported type the user does not expect a
+	// result for) and NOT "processed" (a scan that ran to completion) — they are
+	// files whose contents were never seen, so nothing can be concluded about them.
+	//
+	// Before this existed the summary said "2 processed, 0 skipped" for a directory
+	// of 7 files where 2 were unreadable and 4 failed to parse: five files vanished
+	// from the accounting and one FAILURE was counted as "processed". A clean-looking
+	// summary over unexamined files is the same class of harm as a missed detection.
+	//
+	// omitempty so a scan with nothing to report stays byte-identical in JSON/YAML.
+	FilesNotExamined int     `json:"files_not_examined,omitempty"`
+	TotalFindings    int     `json:"total_findings"`
+	High             int     `json:"high"`
+	Medium           int     `json:"medium"`
+	Low              int     `json:"low"`
+	Suppressed       int     `json:"suppressed"`
+	Duration         float64 `json:"duration_seconds"`
 }
 
 // Formatter interface defines methods that all output formatters must implement

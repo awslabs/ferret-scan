@@ -1,0 +1,345 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/parallel"
+)
+
+// One report for every file the tool could not examine, grouped by cause.
+//
+// Before this, the four failure modes each printed their own WARNING block in
+// whatever order they were emitted, and each line repeated the path and then
+// appended a raw Go error:
+//
+//	WARNING: scan incomplete — 1 of 1 file(s) could not be opened, so they were
+//	not scanned at all; any sensitive data they contain was NOT detected:
+//	  /tmp/x/noperm.txt: Unreadable: open /tmp/x/noperm.txt: permission denied
+//
+// The path appears three times (prefix, wrapper, *PathError), "Unreadable:" is
+// internal vocabulary, and a directory with several kinds of failure produced
+// several unrelated banners. The consequence — these files are NOT clean — is
+// buried in a subordinate clause of a sentence the reader has already skipped.
+//
+// The replacement states the consequence first, groups by cause, prints each path
+// once, and translates the error into something a person can act on.
+
+// unscannedCause is a coarse, user-facing reason a file was not examined.
+//
+// Deliberately coarse: the point is what the operator must DO about it, not which
+// internal component reported it. "cannot read" means fix permissions or the path;
+// "cannot parse" means the bytes do not match the extension; "no text extracted"
+// means the file is a container or image the tool opened but found nothing readable
+// in; "coverage cut short" means a budget or timeout fired and the file is only
+// partly scanned.
+type unscannedCause int
+
+const (
+	causeUnreadable unscannedCause = iota
+	causeUnparseable
+	causeNoText
+	causeCutShort
+)
+
+func (c unscannedCause) String() string {
+	switch c {
+	case causeUnreadable:
+		return "cannot read"
+	case causeUnparseable:
+		return "cannot parse"
+	case causeNoText:
+		return "no text extracted"
+	case causeCutShort:
+		return "coverage cut short"
+	default:
+		return "unknown"
+	}
+}
+
+// unscannedEntry is one file and why it was not examined.
+type unscannedEntry struct {
+	Path   string
+	Cause  unscannedCause
+	Detail string
+}
+
+// humanizeReason turns an internal reason string into something actionable.
+//
+// The transformations are all subtractive — remove the path, remove the internal
+// prefix, unwrap Go's error decoration — because inventing new prose risks
+// describing a failure mode that did not happen. What is left is the part the
+// operator can act on.
+func humanizeReason(path, reason string) string {
+	r := reason
+
+	// The reason frequently embeds the path once or twice; the caller already
+	// prints it, so strip every occurrence.
+	if path != "" {
+		r = strings.ReplaceAll(r, path, "")
+	}
+
+	// Drop internal prefixes that name a component rather than a problem.
+	for _, prefix := range []string{
+		"Unreadable:",
+		"could not process :",
+		"could not process:",
+		"all preprocessors failed for file:",
+		"all preprocessors failed for file",
+	} {
+		r = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r), prefix))
+	}
+
+	// Unwrap Go's "open <path>: " decoration left behind by *PathError.
+	r = strings.TrimSpace(r)
+	r = strings.TrimPrefix(r, "open :")
+	r = strings.TrimPrefix(r, "open ")
+	r = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r), ":"))
+
+	// Collapse the whitespace the removals left behind.
+	r = strings.Join(strings.Fields(r), " ")
+
+	if r == "" {
+		return ""
+	}
+	return r
+}
+
+// describeUnparseable explains WHY a file could not be parsed, by checking the bytes
+// rather than trusting the extension.
+//
+// The distinction matters: reading the first four bytes tells us whether a .docx
+// really begins with a zip signature. "starts with a zip header but could not be
+// opened" is an observation; "corrupt Office document" inferred from the extension
+// alone would be a guess, and a wrong guess sends the operator looking in the wrong
+// place. Where nothing can be verified it says so plainly instead of inventing a
+// cause.
+func describeUnparseable(path string) string {
+	f, err := os.Open(path) //nolint:gosec // path came from the scan target list
+	if err != nil {
+		return "could not be re-opened to diagnose"
+	}
+	defer func() { _ = f.Close() }()
+
+	fi, err := f.Stat()
+	if err == nil && fi.Size() == 0 {
+		return "file is empty (0 bytes)"
+	}
+
+	var head [8]byte
+	n, _ := io.ReadFull(f, head[:])
+	sig := head[:n]
+
+	ext := strings.ToLower(filepath.Ext(path))
+	switch {
+	case bytes.HasPrefix(sig, []byte("PK\x03\x04")):
+		return "zip signature present but the archive could not be opened (truncated or corrupt)"
+	case bytes.HasPrefix(sig, []byte("%PDF")):
+		return "PDF header present but no readable pages"
+	case bytes.HasPrefix(sig, []byte{0xd0, 0xcf, 0x11, 0xe0}):
+		return "legacy Office signature present but the streams could not be read"
+	case ext != "":
+		return fmt.Sprintf("contents do not match the %s format", ext)
+	default:
+		return "format not recognised"
+	}
+}
+
+// classifyReason maps a diagnostic to a user-facing cause.
+func classifyReason(reason string) unscannedCause {
+	l := strings.ToLower(reason)
+	switch {
+	case strings.Contains(l, "permission denied"),
+		strings.Contains(l, "unreadable"),
+		strings.Contains(l, "no such file"):
+		return causeUnreadable
+	case strings.Contains(l, "preprocessors failed"),
+		strings.Contains(l, "not a valid"),
+		strings.Contains(l, "corrupt"):
+		return causeUnparseable
+	case strings.Contains(l, "no extractable text"),
+		strings.Contains(l, "empty extraction"),
+		strings.Contains(l, "no text"):
+		return causeNoText
+	default:
+		return causeCutShort
+	}
+}
+
+// collectUnscanned merges the four diagnostic channels into one ordered list.
+//
+// Order is by cause then path so the output is deterministic: this is stderr a
+// human reads and a script may diff, and a set iterated in map order would shuffle
+// between runs for no reason.
+func collectUnscanned(
+	unreadable []string,
+	emptyExtraction []parallel.FileDiagnostic,
+	failed []parallel.FileDiagnostic,
+	incomplete []parallel.FileDiagnostic,
+) []unscannedEntry {
+	var out []unscannedEntry
+
+	// The unreadable channel is a pre-formatted "path: reason" string rather than
+	// a struct, so it needs splitting on the first colon that follows the path.
+	for _, s := range unreadable {
+		path, reason := s, ""
+		if i := strings.Index(s, ": "); i > 0 {
+			path, reason = s[:i], s[i+2:]
+		}
+		out = append(out, unscannedEntry{
+			Path:   path,
+			Cause:  causeUnreadable,
+			Detail: firstNonEmpty(humanizeReason(path, reason), "could not be opened"),
+		})
+	}
+
+	for _, fd := range emptyExtraction {
+		d := humanizeReason(fd.FilePath, fd.Reason)
+		if d == "" {
+			d = "no readable text found"
+		}
+		out = append(out, unscannedEntry{fd.FilePath, causeNoText, d})
+	}
+	for _, fd := range failed {
+		cause := classifyReason(fd.Reason)
+		detail := humanizeReason(fd.FilePath, fd.Reason)
+		if cause == causeUnparseable && detail == "" {
+			// The internal reason ("all preprocessors failed for file: <path>") carries
+			// no information once the path is stripped, so look at the bytes.
+			detail = describeUnparseable(fd.FilePath)
+		}
+		if detail == "" {
+			detail = "no further detail"
+		}
+		out = append(out, unscannedEntry{fd.FilePath, cause, detail})
+	}
+	for _, fd := range incomplete {
+		d := humanizeReason(fd.FilePath, fd.Reason)
+		if d == "" {
+			d = "scan stopped before the file was finished"
+		}
+		out = append(out, unscannedEntry{fd.FilePath, causeCutShort, d})
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Cause != out[j].Cause {
+			return out[i].Cause < out[j].Cause
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out
+}
+
+// inlineDetailLimit is how many individual paths the report prints before it
+// collapses to per-cause counts.
+//
+// Chosen from what the output actually looks like: a directory of 40 broken .docx
+// files produced 54 lines of stderr, 40 of them identical apart from the filename,
+// which buries both the findings table and the one line that matters. Below the
+// limit the full list is more useful than a count; above it, the count is more
+// useful than a wall of text, and the paths belong in a file.
+const inlineDetailLimit = 8
+
+// writeUnscannedReport renders the grouped report. It returns true if anything was
+// written.
+//
+// Wording note: the block does NOT say "NOT clean". A reviewer read that as a
+// verdict on the file's contents, when the actual meaning is the opposite — we
+// never saw the contents, so we cannot vouch either way. It now states that
+// plainly: the files were not read, so findings may be missing.
+//
+// Framing note: this writes NO rules of its own. The text formatter renders it
+// inside the summary block (FormatterOptions.NotExaminedFooter), so the summary's
+// closing double rule sits above it and a single rule closes it below — one footer
+// instead of two floating boxes on two different streams.
+func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int, failOnIncomplete, debug bool) bool {
+	if len(entries) == 0 {
+		return false
+	}
+
+	// "1 file" / "N files" — the plural was wrong on single-file runs, which is the
+	// most common way this report is seen.
+	// The noun agrees with totalFiles, which is the number it FOLLOWS. Choosing it
+	// from len(entries) produced "1 of 2 file" whenever one of two files was
+	// unexamined.
+	noun := "files"
+	if totalFiles == 1 {
+		noun = "file"
+	}
+
+	fmt.Fprintf(w, "NOT EXAMINED: %d of %d %s — contents were never read, so findings may be missing\n",
+		len(entries), totalFiles, noun)
+
+	count := map[unscannedCause]int{}
+	for _, e := range entries {
+		count[e.Cause]++
+	}
+
+	hint := func() {
+		if !failOnIncomplete {
+			fmt.Fprintf(w, "  Add --fail-on-incomplete to make this a non-zero exit (3).\n")
+		}
+	}
+
+	if len(entries) > inlineDetailLimit {
+		// Too many to list. Give the per-cause tally and stop; the paths go to a
+		// file in a follow-up change, and until then --debug still lists them.
+		var parts []string
+		for _, c := range []unscannedCause{causeUnreadable, causeUnparseable, causeNoText, causeCutShort} {
+			if count[c] > 0 {
+				parts = append(parts, fmt.Sprintf("%s: %d", c, count[c]))
+			}
+		}
+		fmt.Fprintf(w, "  %s\n", strings.Join(parts, "  ·  "))
+		// Do not advise a flag that is already set: under --debug the per-file
+		// diagnostics are on stderr already, so telling the operator to re-run reads
+		// as though the tool did not notice what it was asked to do.
+		if !debug {
+			fmt.Fprintf(w, "  Re-run with --debug to list the files.\n")
+		}
+		hint()
+		return true
+	}
+
+	// Longest path in this run, so the detail column lines up without a fixed
+	// width that truncates or over-pads.
+	width := 0
+	for _, e := range entries {
+		if len(e.Path) > width {
+			width = len(e.Path)
+		}
+	}
+	if width > 60 {
+		width = 60
+	}
+
+	var lastCause unscannedCause = -1
+	for _, e := range entries {
+		if e.Cause != lastCause {
+			fmt.Fprintf(w, "  %s (%d)\n", e.Cause, count[e.Cause])
+			lastCause = e.Cause
+		}
+		fmt.Fprintf(w, "    %-*s  %s\n", width, e.Path, e.Detail)
+	}
+
+	hint()
+	return true
+}
+
+// firstNonEmpty returns the first non-empty string.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
