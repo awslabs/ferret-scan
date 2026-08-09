@@ -183,6 +183,34 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 		"file_ext":  config.FileExt,
 	})
 
+	// A 0-byte file is not a FAILURE, it is a file with nothing in it.
+	//
+	// Checked FIRST, before preprocessor selection, because size 0 is decidable
+	// without consulting any preprocessor — and because both later exits reject it
+	// otherwise: "no preprocessor can handle file" when the extension is unregistered,
+	// and "all preprocessors failed" when every capable one declines the empty input.
+	// An earlier version of this fix only covered the second, so it worked through the
+	// CLI (where .csv has a preprocessor) and still failed for an empty file of an
+	// unregistered type. A unit test with a bare router caught that.
+	//
+	// The CLI surfaced either error as:
+	//
+	//	NOT EXAMINED: 1 of 1 file — contents were never read, so findings may be missing
+	//
+	// and made --fail-on-incomplete exit 3. All of that is false: the contents WERE
+	// read, there are none, and an empty file cannot hold sensitive data. False alarms
+	// are how the warning that matters becomes noise an operator filters out — and it
+	// shares a channel with the warning that says a file full of PII went unexamined.
+	if fi, statErr := os.Stat(filePath); statErr == nil && fi.Size() == 0 {
+		return &preprocessors.ProcessedContent{
+			OriginalPath:  filePath,
+			Filename:      filepath.Base(filePath),
+			Text:          "",
+			ProcessorType: "empty_file",
+			Success:       true,
+		}, nil
+	}
+
 	// Find capable preprocessors
 	var capable []preprocessors.Preprocessor
 	for _, p := range fr.preprocessors {
