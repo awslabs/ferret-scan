@@ -77,6 +77,36 @@ type GitLabScanInfo struct {
 	// that field would make a correct report look like a failed one.
 	Truncated            bool `json:"truncated,omitempty"`
 	TotalVulnerabilities int  `json:"total_vulnerabilities,omitempty"`
+
+	// Messages carries the not-examined disclosure: files the tool could not read,
+	// parse or extract text from, and which therefore cannot be called clean.
+	//
+	// This is a FIRST-CLASS schema field, not an extension. Verified by fetching the
+	// v15.0.4 schema this formatter declares (GitLabSASTSchemaVersion) from
+	// gitlab-org/security-products/security-report-schemas: scan.messages is present
+	// under properties.scan.properties, its items require {level, value}, level is
+	// the enum [info, warn, fatal], and value has minLength 1.
+	//
+	// The schema's own description of "warn" is this case exactly: "a potentially
+	// recoverable problem, or a partial error".
+	//
+	// omitempty, so a scan that examined everything is byte-for-byte unchanged.
+	Messages []GitLabScanMessage `json:"messages,omitempty"`
+}
+
+// GitLabScanMessage is one scan.messages[] entry.
+//
+// Exactly {level, value} and nothing more. The schema does not close
+// additionalProperties on these items, so an extra key would validate — but GitLab
+// would ignore it, so it would be output nobody reads, and the two fields already
+// carry everything the consumer can act on.
+//
+// Level must be one of info/warn/fatal. NOTE the difference from SARIF, whose
+// notification level enum is none/note/warning/error: "warn" here, "warning" there.
+// The two are not interchangeable and each is invalid in the other's schema.
+type GitLabScanMessage struct {
+	Level string `json:"level"`
+	Value string `json:"value"`
 }
 
 // GitLabAnalyzer represents the analyzer information

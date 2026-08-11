@@ -51,6 +51,19 @@ type TestCase struct {
 	ClassName string   `xml:"classname,attr"`
 	Time      string   `xml:"time,attr"`
 	Failure   *Failure `xml:"failure,omitempty"`
+
+	// Skipped marks a file that was NOT examined: the standard, non-failing JUnit
+	// element. Used by default for unexamined files so a disclosure cannot turn a
+	// green pipeline red on its own.
+	Skipped *Skipped `xml:"skipped,omitempty"`
+
+	// Error marks an unexamined file when --fail-on-incomplete is set, so the XML
+	// verdict agrees with the process exit code (3) instead of contradicting it.
+	//
+	// Distinct from Failure: a failure means the tool found something wrong IN the
+	// file; an error means the tool could not evaluate the file at all. Reporting
+	// "cannot read" as a PII finding would be a fabricated finding.
+	Error *Failure `xml:"error,omitempty"`
 	// SystemOut carries informational, non-failing detail (the standard JUnit
 	// <system-out> element). Suppressed findings use it so they convey their
 	// detail without being reported as failures.
@@ -60,6 +73,18 @@ type TestCase struct {
 type Failure struct {
 	Message string `xml:"message,attr"`
 	Type    string `xml:"type,attr"`
+	Content string `xml:",chardata"`
+}
+
+// Skipped is the standard non-failing JUnit element, used for files that were not
+// examined.
+//
+// No `type` attribute: the JUnit 10 XSD declares only `message` on <skipped>, unlike
+// <failure> and <error> which also carry `type`. Adding one would make the document
+// fail schema validation, and Jenkins' xunit-plugin validates against that XSD and
+// rejects the WHOLE file rather than the offending element.
+type Skipped struct {
+	Message string `xml:"message,attr"`
 	Content string `xml:",chardata"`
 }
 
@@ -185,6 +210,24 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	testSuites.TestSuites = append(testSuites.TestSuites, securitySuite)
 	testSuites.Tests += securitySuite.Tests
 	testSuites.Failures += securitySuite.Failures
+
+	// Declare the files that were NOT examined, as their own suite.
+	//
+	// Appended AFTER the security suite so the findings stay first in the report,
+	// and unconditionally — a scan with zero findings and unreadable files is
+	// exactly the case where this must appear.
+	//
+	// Rolls up Tests and Errors ONLY. There is deliberately no `skipped` attribute
+	// on <testsuites>: the JUnit 10 XSD does not declare one there (it exists on
+	// <testsuite>), so adding it makes the document fail validation — measured, and
+	// Jenkins' xunit-plugin rejects the whole file rather than the bad attribute.
+	// The skipped count therefore lives on the suite alone, which is both valid and
+	// where consumers look for it.
+	if notExaminedSuite, ok := buildNotExaminedSuite(options); ok {
+		testSuites.TestSuites = append(testSuites.TestSuites, notExaminedSuite)
+		testSuites.Tests += notExaminedSuite.Tests
+		testSuites.Errors += notExaminedSuite.Errors
+	}
 
 	// Generate XML
 	xmlData, err := xml.MarshalIndent(testSuites, "", "  ")

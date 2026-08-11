@@ -2003,6 +2003,23 @@ func main() {
 		Duration:         elapsed.Seconds(),
 	}
 
+	// The same disclosure, in structured form, for formats that cannot carry prose.
+	//
+	// Set unconditionally beside Stats and from the SAME slice, so the count in
+	// stats.files_not_examined and the per-file entries can never disagree. Deriving
+	// them independently is how a report comes to say "2 not examined" and then list
+	// three files.
+	//
+	// Note this is set BEFORE the text footer is built below: the machine formats
+	// must disclose even when the text renderer declines to (it is skipped entirely
+	// in pre-commit mode).
+	formatterOptions.NotExamined = toFormatterNotExamined(unscannedEntries)
+
+	// The JUnit formatter reads this to decide the VALENCE of the not-examined
+	// entries (<skipped> vs <error>), so one flag governs both the XML verdict and
+	// the exit code instead of the two disagreeing.
+	formatterOptions.FailOnIncomplete = *failOnIncomplete
+
 	// Render the not-examined detail into the summary block rather than printing it
 	// separately. Text format only: structured formats carry the same facts as data,
 	// and pre-commit owns a strict output contract. Building it here means the whole

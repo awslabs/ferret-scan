@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 )
 
@@ -73,6 +74,50 @@ type unscannedEntry struct {
 	Path   string
 	Cause  unscannedCause
 	Detail string
+}
+
+// toFormatterNotExamined converts the cmd-side entries into the formatter-facing
+// type, so machine formats can carry the disclosure as DATA.
+//
+// The classification stays HERE rather than moving into internal/formatters. The
+// reason is not tidiness: classifyReason and describeUnparseable perform filesystem
+// I/O (describeUnparseable calls os.Open to sniff a file's real magic bytes), and
+// the formatters package is reachable from the web server's /export handler with
+// user-supplied filenames. Moving path-touching code into it would put file reads
+// behind an HTTP surface. Only this small pure mapping crosses the boundary.
+//
+// The two cause enums are mapped explicitly rather than by numeric conversion.
+// unscannedCause and formatters.NotExaminedCause happen to share an order today, so
+// int(c) would compile and pass — and would silently mis-label every file the day
+// either list grows a member. The switch fails to compile on a new cmd-side cause
+// only if the default is removed, so the default deliberately maps to the most
+// conservative option: "cannot read" claims the least about what was scanned.
+func toFormatterNotExamined(entries []unscannedEntry) []formatters.NotExaminedFile {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]formatters.NotExaminedFile, 0, len(entries))
+	for _, e := range entries {
+		var cause formatters.NotExaminedCause
+		switch e.Cause {
+		case causeUnreadable:
+			cause = formatters.NotExaminedUnreadable
+		case causeUnparseable:
+			cause = formatters.NotExaminedUnparseable
+		case causeNoText:
+			cause = formatters.NotExaminedNoText
+		case causeCutShort:
+			cause = formatters.NotExaminedCutShort
+		default:
+			cause = formatters.NotExaminedUnreadable
+		}
+		out = append(out, formatters.NotExaminedFile{
+			Path:   e.Path,
+			Cause:  cause,
+			Detail: e.Detail,
+		})
+	}
+	return out
 }
 
 // humanizeReason turns an internal reason string into something actionable.

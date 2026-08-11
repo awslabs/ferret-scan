@@ -36,9 +36,38 @@ type FormatterOptions struct {
 	// as a detached box after a blank line, and a piped stdout ended with a summary
 	// whose frame was closed by content the pipe never received.
 	//
-	// Text format only: structured formats carry the same information as data (see
-	// the unscanned key), not as decorated prose.
+	// Text format only: structured formats carry the same information as data via
+	// NotExamined below, not as decorated prose.
 	NotExaminedFooter string
+
+	// NotExamined is the STRUCTURED form of the same disclosure, for machine
+	// formats. Empty means every file was fully examined.
+	//
+	// Separate from NotExaminedFooter because that field is rendered prose — box
+	// rules, column padding, a flag hint — which a JUnit or SARIF consumer cannot
+	// use. A machine format needs the path and the cause as distinct fields.
+	//
+	// Deliberately NOT part of ScanStats: stats is marshalled directly into the
+	// json/yaml output, and putting an int-backed enum there would put an ordinal on
+	// the wire as a number, which would then be an output contract. The count that
+	// belongs in stats is already there (ScanStats.FilesNotExamined).
+	//
+	// Formatters must guard on len(NotExamined) > 0 AND treat a nil Stats as
+	// legitimate: the golden harness constructs FormatterOptions without either.
+	NotExamined []NotExaminedFile
+
+	// FailOnIncomplete mirrors --fail-on-incomplete, which makes incomplete coverage
+	// a non-zero exit.
+	//
+	// Only the JUnit formatter reads it, and only to decide the VALENCE of the
+	// not-examined entries: <skipped> by default, <error> when the flag is set. That
+	// keeps one decision in one place — a JUnit widget's verdict then agrees with the
+	// process exit code instead of contradicting it.
+	//
+	// Default-false matters: emitting <error> unconditionally would turn currently
+	// green pipelines red on the first unreadable file, which is a behaviour change
+	// nobody asked for, dressed up as a disclosure.
+	FailOnIncomplete bool
 
 	// StreamWriter, when non-nil, causes the text formatter to write output
 	// directly to this writer instead of buffering into a returned string.
