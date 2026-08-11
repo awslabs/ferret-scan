@@ -1963,7 +1963,29 @@ func main() {
 	// path — so subtracting the whole unscanned set double-corrects and reported
 	// "0 scanned" on a directory whose two good CSVs both produced findings.
 	// Clamped at zero so a future counter change cannot render a negative.
-	scannedFiles := processedFiles - len(emptyExtractionFiles)
+	// Subtract only the empty-extraction files that produced NOTHING at all.
+	//
+	// The plain subtraction was still wrong for one case: a body-empty .docx whose
+	// METADATA carries PII is an empty-extraction file, but it was scanned and it
+	// produced findings — measured, 4 of them. Subtracting it reported "0 scanned"
+	// on a run that reported 4 findings from that very file, which is a contradiction
+	// the reader cannot resolve.
+	//
+	// A file that yielded any finding was, by construction, examined through some
+	// channel. Those stay counted as scanned; only the genuinely silent ones are
+	// removed, which is what keeps scanned + not-examined from double-counting.
+	filesWithFindings := make(map[string]bool, len(unsuppressedMatches))
+	for _, m := range unsuppressedMatches {
+		filesWithFindings[m.Filename] = true
+	}
+	silentEmpty := 0
+	for _, fd := range emptyExtractionFiles {
+		if !filesWithFindings[fd.FilePath] {
+			silentEmpty++
+		}
+	}
+
+	scannedFiles := processedFiles - silentEmpty
 	if scannedFiles < 0 {
 		scannedFiles = 0
 	}

@@ -57,7 +57,10 @@ func (c unscannedCause) String() string {
 	case causeUnparseable:
 		return "cannot parse"
 	case causeNoText:
-		return "no text extracted"
+		// Names the BODY specifically: metadata on the same file is extracted and
+		// scanned through a separate channel, so "no text" without that qualifier
+		// reads as "nothing was scanned" on a file that may have produced findings.
+		return "no body text (metadata still scanned)"
 	case causeCutShort:
 		return "coverage cut short"
 	default:
@@ -275,7 +278,18 @@ func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int,
 		noun = "file"
 	}
 
-	fmt.Fprintf(w, "NOT EXAMINED: %d of %d %s — contents were never read, so findings may be missing\n",
+	// "not fully examined", not "contents were never read".
+	//
+	// The stronger claim was false for one of the four causes. A body-empty .docx
+	// whose metadata DOES carry PII is reported here under "no text extracted" — but
+	// its metadata was read and scanned, and measured, it produced 4 findings
+	// (AUTHOR_INFO, LAST_MODIFIED_BY, plus the SSN and PERSON_NAME inside them).
+	// Telling the operator its contents were never read, on the same run that
+	// reported findings from it, is a contradiction they cannot resolve.
+	//
+	// The per-cause lines below carry the precise claim; this header only promises
+	// what is true of all four: something was not covered, so findings may be missing.
+	fmt.Fprintf(w, "NOT FULLY EXAMINED: %d of %d %s — findings may be missing\n",
 		len(entries), totalFiles, noun)
 
 	count := map[unscannedCause]int{}
