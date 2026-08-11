@@ -17,6 +17,10 @@ type SARIFRun struct {
 	Results                  []SARIFResult         `json:"results"`
 	VersionControlProvenance []SARIFVersionControl `json:"versionControlProvenance,omitempty"`
 
+	// Invocations carries the not-examined disclosure. omitempty, so a scan that
+	// examined every file emits nothing new and existing consumers see no change.
+	Invocations []SARIFInvocation `json:"invocations,omitempty"`
+
 	// Properties carries run-level metadata. It is currently used for one thing:
 	// declaring that --limit truncated the results, and what the true total was.
 	//
@@ -53,6 +57,56 @@ type SARIFDriver struct {
 	SemanticVersion string      `json:"semanticVersion,omitempty"`
 	InformationURI  string      `json:"informationUri,omitempty"`
 	Rules           []SARIFRule `json:"rules,omitempty"`
+
+	// Notifications declares the descriptors that toolExecutionNotifications refer
+	// to. A notification's descriptor is a reference, so without the descriptor
+	// declared here the reference dangles.
+	//
+	// uniqueItems is true on this array in the schema, so a descriptor must be
+	// emitted at most once no matter how many notifications cite it.
+	Notifications []SARIFRule `json:"notifications,omitempty"`
+}
+
+// SARIFInvocation describes the tool run itself.
+//
+// Added to carry the not-examined disclosure through toolExecutionNotifications,
+// whose spec description IS this semantics: "runtime conditions detected by the tool
+// during the analysis". No other slot fits — run.additionalProperties is false in
+// SARIF 2.1.0, so a bespoke run-level key is not merely non-standard but INVALID,
+// and expressing it as a result would manufacture dismissable "PII alerts" in
+// GitHub's UI for files that were never read.
+//
+// ExecutionSuccessful has no omitempty and is deliberately always true: it is the
+// object's only REQUIRED member per the schema, and false tells consumers the
+// analysis failed, which may cause them to discard the results. The scan succeeded;
+// its COVERAGE was incomplete. Those are different claims.
+type SARIFInvocation struct {
+	ExecutionSuccessful        bool                `json:"executionSuccessful"`
+	ToolExecutionNotifications []SARIFNotification `json:"toolExecutionNotifications,omitempty"`
+}
+
+// SARIFNotification is one runtime condition detected during the run.
+//
+// Exactly {descriptor, level, message} — notification.additionalProperties IS false
+// in the 2.1.0 schema (verified against the OASIS schema), so any extra key makes
+// the whole document invalid. That is the opposite of GitLab's scan.messages, which
+// leaves additionalProperties open; the two must not share a struct.
+//
+// Per-file paths ride in the message text rather than in locations[], because
+// SARIFLocation embeds a non-pointer Region whose StartLine lacks omitempty and
+// would therefore serialise startLine:0 against the schema's minimum of 1.
+type SARIFNotification struct {
+	Descriptor *SARIFReportingDescriptorRef `json:"descriptor,omitempty"`
+	// Level must be one of none/note/warning/error. NOTE: "warning", not "warn" —
+	// GitLab's enum uses "warn" and the two are not interchangeable.
+	Level   string       `json:"level,omitempty"`
+	Message SARIFMessage `json:"message"`
+}
+
+// SARIFReportingDescriptorRef points a notification at its descriptor in
+// tool.driver.notifications.
+type SARIFReportingDescriptorRef struct {
+	ID string `json:"id"`
 }
 
 // SARIFRule represents a reporting descriptor for a rule

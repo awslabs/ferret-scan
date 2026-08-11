@@ -110,6 +110,21 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		},
 	}
 
+	// The not-examined disclosure, BEFORE the zero-matches early return below.
+	//
+	// Placement is the whole correctness argument here. A scan that found nothing
+	// AND could not read some of its files is the single most dangerous report this
+	// tool can produce — an empty vulnerabilities array that looks like a clean bill
+	// of health — and it is exactly the path that returns early. Attaching this
+	// alongside the `truncated` block further down (which runs only when there are
+	// matches) would make the signal vanish in the one case it exists for.
+	//
+	// Status deliberately stays "success": the scan DID succeed. The enum is only
+	// success|failure, so reporting "failure" would claim the analyzer broke, which
+	// is a different and false statement. Coverage is reported through messages, and
+	// the exit code (with --fail-on-incomplete) carries the verdict.
+	addNotExaminedMessages(report, options)
+
 	// Handle empty results - return valid empty GitLab report structure
 	if len(matches) == 0 {
 		if options.Verbose {

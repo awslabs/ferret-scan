@@ -144,6 +144,14 @@ func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleMa
 		}
 	}
 
+	// Declare the files that were NOT examined.
+	//
+	// Unconditional — outside the `truncated` branch above and reached on every
+	// path, including a scan that produced zero results. A clean-looking report over
+	// unreadable files is the most dangerous document this tool can emit, so the
+	// disclosure must not sit behind a has-findings condition.
+	attachNotExamined(&run, options)
+
 	// Create the top-level SARIF report
 	report := &SARIFReport{
 		Schema:  SARIFSchemaURL,
