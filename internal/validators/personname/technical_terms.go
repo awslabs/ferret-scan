@@ -313,6 +313,83 @@ var commonWordNamesMap = map[string]bool{
 	"flowers": true, "winter": true, "summers": true, "rain": true,
 }
 
+// functionWordsMap holds English function words — determiners, pronouns,
+// prepositions, conjunctions and a few correspondence formalities — that can never
+// be the GIVEN NAME half of a person name.
+//
+// The patterns match Title-Case shape, not vocabulary, so "The Grace" satisfies
+// basic_western_name exactly as "Anne Grace" does: two capitalised tokens of 2+
+// letters. The surname gate then finds a real surname ("grace" IS a name) and the
+// finding is reported. The article was never examined, because nothing examined it.
+//
+// The class is wide, not a handful of words. Measured against a single known
+// surname, 49 of 49 leading function words produced a PERSON_NAME finding:
+//
+//	"The Morgan signed it."   -> The Morgan (67)
+//	"Their Morgan signed it." -> Their Morgan (67)
+//	"Via Morgan signed it."   -> Via Morgan (67)
+//
+// On a 1,388-file real-world corpus this class is 156 of 5,888 PERSON_NAME
+// findings (2.6%), spanning 43 distinct leading words, overwhelmingly MEDIUM — so
+// on the default review surface, and blocking a pre-commit hook.
+//
+// Only the GIVEN half is filtered, and only when the word is NOT itself a known
+// name. The list is deliberately COMPLETE — it includes the modal "will"/"may",
+// the article "an", the pronoun "he" and the quantifier "many" — and the name
+// databases arbitrate the collisions, because every one of those is also a real
+// person's name: Will Smith, May Chen, An Nguyen, He Zhang, Many (a surname).
+// isFunctionWordGiven consults the databases FIRST and defers to them, so the word
+// list only rejects what the data has no opinion about.
+//
+// Curating the collisions out of this list instead would be the wrong shape: it
+// makes the list's membership depend on the name data, so every future name added
+// to the databases would silently need a matching deletion here. Deferring at
+// lookup time keeps the two sources independent.
+//
+// A single-token surname is untouched — "Morgan" alone was never a finding under
+// these patterns, which require two tokens.
+var functionWordsMap = map[string]bool{
+	// determiners and quantifiers
+	"a": true, "an": true, "the": true,
+	"this": true, "that": true, "these": true, "those": true,
+	"some": true, "any": true, "each": true, "every": true, "all": true,
+	"both": true, "most": true, "such": true, "much": true, "many": true,
+	"few": true, "several": true, "other": true, "another": true, "same": true,
+	// pronouns and possessives
+	"our": true, "your": true, "their": true, "his": true, "her": true,
+	"its": true, "my": true, "we": true, "you": true, "they": true,
+	"he": true, "she": true, "it": true, "me": true, "us": true,
+	"them": true, "him": true, "who": true, "whom": true, "whose": true,
+	// interrogatives and relatives
+	"what": true, "which": true, "when": true, "where": true, "while": true,
+	"why": true, "how": true,
+	// prepositions and conjunctions
+	"after": true, "before": true, "with": true, "without": true, "from": true,
+	"into": true, "onto": true, "upon": true, "about": true, "above": true,
+	"below": true, "under": true, "over": true, "between": true, "among": true,
+	"through": true, "during": true, "against": true, "toward": true,
+	"within": true, "across": true, "behind": true, "beyond": true,
+	"and": true, "but": true, "or": true, "nor": true, "for": true,
+	"yet": true, "so": true, "because": true, "although": true, "though": true,
+	"unless": true, "until": true, "since": true, "than": true, "then": true,
+	"per": true, "via": true, "of": true, "to": true, "in": true, "on": true,
+	"at": true, "by": true, "as": true, "if": true, "up": true, "out": true,
+	"off": true, "no": true, "not": true, "now": true, "here": true,
+	"there": true, "also": true, "only": true, "just": true, "very": true,
+	"more": true, "less": true, "next": true, "last": true, "too": true,
+	"once": true, "ever": true, "never": true, "always": true, "often": true,
+	// copulas, auxiliaries and common verbs (never a given name)
+	"is": true, "are": true, "was": true, "were": true, "be": true,
+	"been": true, "being": true, "have": true, "has": true, "had": true,
+	"do": true, "does": true, "did": true, "would": true, "could": true,
+	"should": true, "might": true, "must": true, "shall": true, "can": true,
+	"will": true, "may": true, "cannot": true,
+	"said": true, "says": true, "see": true, "note": true, "please": true,
+	// correspondence formalities that precede a name and are not part of it
+	"dear": true, "sincerely": true, "regards": true, "thanks": true,
+	"thank": true, "yes": true, "attn": true, "cc": true, "re": true,
+}
+
 // emailPatternsMap for efficient email context analysis
 var emailPatternsMap = map[string]bool{
 	"from:":        true,

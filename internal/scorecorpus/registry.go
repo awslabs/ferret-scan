@@ -53,6 +53,16 @@ func init() {
 		Gated:       MultiCheckCases,
 		Quarantined: MultiCheckQuarantine,
 	})
+
+	// PERSON_NAME has its own file because it carries the most NEGATIVES of any
+	// check: the validator's database gate is simultaneously its false-positive
+	// defence and its recall ceiling, so both directions need pinning before either
+	// is changed. See cases_personname.go.
+	Register(checkCorpus{
+		Check:       "PERSON_NAME",
+		Gated:       PersonNameCases,
+		Quarantined: PersonNameQuarantine,
+	})
 }
 
 // UnscoredChecks are checks with no case in this corpus yet, each with the reason.
