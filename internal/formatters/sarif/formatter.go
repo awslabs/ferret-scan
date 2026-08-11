@@ -93,8 +93,25 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 // ruleManager are per-call (constructed in Format) so the rules array reflects
 // only this report's matches.
 func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleManager, matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions, totalFindings int, truncated bool) *SARIFReport {
-	// Convert matches to SARIF results
-	var results []SARIFResult
+	// Convert matches to SARIF results.
+	//
+	// Non-nil, not `var results []SARIFResult`. A nil slice marshals to JSON null,
+	// and SARIF 2.1.0 types run.results as the single string "array" — not
+	// ["array","null"] — so a scan that finds nothing emitted:
+	//
+	//	"results": null
+	//
+	// which is schema-INVALID. That matters far more than it looks: GitLab ingests
+	// SARIF via artifacts:reports:sarif and rejects the WHOLE report on a schema
+	// error, and github/codeql-action validates before upload. So the one case where
+	// the tool has nothing to report — a clean scan — was the case where the report
+	// could be thrown away in its entirety.
+	//
+	// The empty array says "scanned, found nothing", which is a true and useful
+	// statement. Null says nothing at all, and invalidly.
+	//
+	// 5 of the 44 committed SARIF goldens carried the null before this change.
+	results := []SARIFResult{}
 
 	// Process active matches
 	for _, match := range matches {
