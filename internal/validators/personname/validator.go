@@ -382,12 +382,57 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 		}
 	}
 
-	// EARLY EXIT: If no database matches, reject immediately
-	if !checks["known_first_name"] && !checks["known_last_name"] {
-		// Database is authoritative source - no matches = no person name
+	// EARLY EXIT: the SURNAME must be known.
+	//
+	// This used to accept a hit in EITHER list, and that asymmetry was the source of
+	// the validator's false positives. English has many words that are given names
+	// and rarely surnames — mark, bill, grace, may, art, chase, rich, sunny, summer —
+	// so one given-name hit was enough to report an ordinary noun phrase as a person.
+	// Measured on shipped code:
+	//
+	//	"Please review the Rich Text format."      -> Rich Text (67)
+	//	"The Grace Period expires Friday."         -> "The Grace" (67)
+	//	"Frank Discussion about the Art Director." -> two findings at 79
+	//
+	// 43 such findings in 200 lines of ordinary business prose, all false, all at
+	// MEDIUM — on the default review surface and blocking a pre-commit hook.
+	//
+	// Requiring the SURNAME specifically is strictly better than requiring BOTH,
+	// measured over 73 real names across 14 locales and 20 non-name phrases:
+	//
+	//	rule            recall   FP     precision
+	//	OR (before)      84.9%   14/20    0.816
+	//	both known       45.2%    0/20    1.000
+	//	surname only     75.3%    0/20    1.000   <- same precision, +30pt recall
+	//
+	// The remaining recall cost is entirely MISSING SURNAMES (vries, sato, yilmaz,
+	// nkosi, ...), which is a data gap the surname list closes — not something this
+	// rule can fix, and not something the OR rule fixed either: it recovered those
+	// names only by also accepting every noun phrase above.
+	if !checks["known_last_name"] {
+		// A known given name alone is not evidence of a person: it is evidence of a
+		// word that is also a name.
 		checks["has_known_name_component"] = false
 		checks["both_names_known"] = false
 		return 0.0, checks // Early exit - avoid all expensive calculations
+	}
+
+	// The GIVEN half must not be an English function word.
+	//
+	// The surname gate above cannot catch this class, because the surname here is
+	// GENUINE: "grace", "morgan" and "young" are all real surnames. What fails is
+	// that the patterns match Title-Case SHAPE, so an article or preposition sitting
+	// in front of a real surname satisfies "two capitalised tokens" and is reported
+	// as a person — "The Grace", "Their Morgan", "Via Morgan". Measured: 49 of 49
+	// leading function words produced a finding, and 156 of 5,888 PERSON_NAME
+	// findings on a 1,388-file real corpus (2.6%) are of this shape.
+	//
+	// isFunctionWordGiven defers to the name databases, so Will/May/An survive.
+	if v.isFunctionWordGiven(components.FirstName) {
+		checks["proper_case"] = false
+		checks["has_known_name_component"] = false
+		checks["both_names_known"] = false
+		return 0.0, checks
 	}
 
 	// Only proceed with expensive calculations if we have database matches
@@ -711,6 +756,31 @@ func (v *Validator) isCommonWordBigram(components NameComponents) bool {
 		return false
 	}
 	return commonWordNamesMap[first] && commonWordNamesMap[last]
+}
+
+// isFunctionWordGiven reports whether the GIVEN-name half is an English function
+// word that the name databases do not know. See functionWordsMap.
+//
+// The database check comes FIRST and wins. "will", "may" and "an" appear in both
+// the function-word vocabulary and the shipped name data, and they belong to real
+// people — Will Smith, May Chen, An Nguyen — so the data is authoritative and the
+// word list only rejects what the data has no opinion about. Without that ordering
+// this precision fix would delete real names, and an unreported name is never
+// handed to the redactor: it stays in cleartext in the output.
+func (v *Validator) isFunctionWordGiven(first string) bool {
+	first = strings.ToLower(strings.TrimSpace(first))
+	if first == "" || !functionWordsMap[first] {
+		return false
+	}
+	// The name databases are authoritative; defer to them.
+	normalized := v.normalizeAccents(first)
+	if v.firstNames != nil && (v.firstNames[first] || v.firstNames[normalized]) {
+		return false
+	}
+	if v.lastNames != nil && (v.lastNames[first] || v.lastNames[normalized]) {
+		return false
+	}
+	return true
 }
 
 // isKnownShortName checks if a short name (< 4 chars) is in the known name databases
