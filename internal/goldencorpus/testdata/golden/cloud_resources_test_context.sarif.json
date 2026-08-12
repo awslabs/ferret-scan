@@ -11,7 +11,18 @@
                 "artifactLocation": {
                   "uri": "<golden:cloud_resources_test_context>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "prod \nprod arn:aws:iam::123456789012:role/PaymentsAdmin"
+                  },
+                  "startLine": 1
+                },
                 "region": {
+                  "endColumn": 50,
+                  "snippet": {
+                    "text": "prod arn:aws:iam::123456789012:role/PaymentsAdmin"
+                  },
+                  "startColumn": 6,
                   "startLine": 1
                 }
               }
@@ -59,7 +70,18 @@
                 "artifactLocation": {
                   "uri": "<golden:cloud_resources_test_context>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "example \nexample arn:aws:iam::123456789012:role/PaymentsAdmin"
+                  },
+                  "startLine": 2
+                },
                 "region": {
+                  "endColumn": 53,
+                  "snippet": {
+                    "text": "example arn:aws:iam::123456789012:role/PaymentsAdmin"
+                  },
+                  "startColumn": 9,
                   "startLine": 2
                 }
               }

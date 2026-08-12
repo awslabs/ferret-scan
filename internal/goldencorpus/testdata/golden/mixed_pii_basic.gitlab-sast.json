@@ -107,7 +107,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <golden:mixed_pii_basic> (line 2)\n**Confidence:** MEDIUM (69.0%)\n**Detected by:** secrets validator\n\n**Matched value:**\n```\nAKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
+      "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <golden:mixed_pii_basic> (line 2)\n**Confidence:** MEDIUM (69.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

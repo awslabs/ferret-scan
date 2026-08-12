@@ -1332,6 +1332,10 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 					"secret_type":      "AWS_SECRET_ACCESS_KEY",
 					"example_embedded": exampleEmbedded,
 				},
+				// The line is already an input to the confidence above (the
+				// reAWSSecretKeyName gate), so recording it is inert for scoring
+				// and only preserves what a reviewer needs to judge the finding.
+				Context: detector.LineContext(line, start, end),
 			},
 		})
 	}
@@ -1578,6 +1582,10 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 					Filename:   originalPath,
 					Validator:  "secrets",
 					Metadata:   meta,
+					// calculateEnhancedConfidenceWithCacheAndEnvAndLine and
+					// unlabelledHexIdentifierCap both already read this line, so
+					// this records the context they judged against.
+					Context: detector.LineContext(line, cand.start, cand.end),
 				},
 			})
 		}
@@ -1666,6 +1674,15 @@ func (v *Validator) looksLikeVariableName(match string) bool {
 }
 
 // findMultiLineSecretsWithContext finds multi-line secrets with enhanced context analysis
+//
+// The matches emitted here deliberately carry no Context. ContextInfo describes a
+// match's position within one line -- FullLine plus the text either side of it --
+// and a PEM block spans dozens, so there is no line for the value to sit in and no
+// honest way to fill the fields. A caller reading empty context on an
+// SSH_PRIVATE_KEY / CERTIFICATE / PGP_PRIVATE_KEY finding is seeing "not
+// applicable", which is the same thing the field's doc comment already tells them
+// empty means. Single-line secrets, which are the overwhelming majority, do record
+// it -- see findAWSSecretKeys and processScopedCandidates.
 func (v *Validator) findMultiLineSecretsWithContext(content, filePath string, contextInsights context.ContextInsights, isShellScript bool, envType string) []detector.Match {
 	var matches []detector.Match
 

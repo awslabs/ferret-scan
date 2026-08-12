@@ -218,7 +218,18 @@
                 "artifactLocation": {
                   "uri": "<golden:mixed_pii_basic>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "AWS key \nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n in the config."
+                  },
+                  "startLine": 2
+                },
                 "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "AWS key AKIAIOSFODNN7EXAMPLE in the config."
+                  },
+                  "startColumn": 9,
                   "startLine": 2
                 }
               }

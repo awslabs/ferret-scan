@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** cloud_resources validator\n\n**Matched value:**\n```\narn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nprod arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** cloud_resources validator\n\n**Matched value:**\n```\narn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nexample arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 3)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Matched value:**\n```\nJames Whitfield\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 3)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nPlease forward the report to James Whitfield by Friday\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 5)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Matched value:**\n```\nSarah Okonkwo\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 5)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nSarah Okonkwo will present the quarterly results\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 7)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Matched value:**\n```\nDaniel Moreau\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 7)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nSchedule a review with Daniel Moreau next week\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -107,7 +107,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 9)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Matched value:**\n```\nPriya Raghavan\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 9)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nPriya Raghavan approved the budget request\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -133,7 +133,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 1)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** PERSON_NAME validator\n\n**Matched value:**\n```\nContact Maria Delgado\n```\n\n**Additional Information:**\n- context_impact: 12\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <golden:context_decoys_personname> (line 1)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nContact Maria Delgado for approval\n```\n\n**Additional Information:**\n- context_impact: 12\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

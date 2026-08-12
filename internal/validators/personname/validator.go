@@ -216,6 +216,10 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 					"context_impact":    contextImpact,
 					"name_components":   nameComponents,
 				},
+				// analyzeContextCached already scored against this line; recording
+				// it changes no confidence, it just stops the finding reaching a
+				// caller without the context used to judge it.
+				Context: detector.LineContext(line, patternMatch.StartIndex, patternMatch.StartIndex+len(nameText)),
 			}
 			matches = append(matches, detectorMatch)
 		}
@@ -292,6 +296,9 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 					"domain":                  contextInsights.Domain,
 					"name_components":         nameComponents,
 				},
+				// See the sibling emitter in findNamesInLine: the line has already
+				// been scored against, so this is a record of it, not an input.
+				Context: detector.LineContext(line, patternMatch.StartIndex, patternMatch.StartIndex+len(nameText)),
 			}
 			matches = append(matches, detectorMatch)
 		}
