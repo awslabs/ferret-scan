@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"unicode/utf8"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
@@ -83,6 +84,45 @@ type Finding struct {
 	Rationale    string  // plain-language "why flagged" (empty unless Explain=true)
 	Verdict      string  // "likely_real" | "likely_test" | "uncertain" (empty unless Explain)
 	SuppressedBy string  // non-empty if this finding was suppressed
+
+	// ContextBefore and ContextAfter are the text on either side of the match,
+	// excluding the match itself; FullLine is the whole line the match sits on.
+	// They answer "how was this value used?", which is the signal that separates
+	// a live value from a documentation example — the same signal the validators
+	// already score against internally.
+	//
+	// What is and is not promised:
+	//
+	//   - Single line. These never span lines, even in multi-line documents:
+	//     ContextBefore stops at the start of the match's own line.
+	//   - The window width is the validator's own, chosen for its confidence
+	//     scoring (currently 30–50 bytes per side depending on the validator).
+	//     It is not part of this package's compatibility surface and will move
+	//     as validators are tuned. Do not parse against a fixed width.
+	//   - MAY BE EMPTY, and empty means "this validator does not record
+	//     context", NOT "the match had no surrounding text". As of this
+	//     release SECRETS, PERSON_NAME and CLOUD_RESOURCES never populate
+	//     them, so a SECRETS finding always reports blank context even when
+	//     the line around it is full of text. Callers that reason over context
+	//     must branch on the empty case instead of concluding the match stood
+	//     alone. (Populating those three is deliberately deferred: their
+	//     context participates in the suppression finding-hash, so attaching
+	//     it would silently invalidate operators' existing rules for those
+	//     types. See the package's upstream notes.)
+	//   - Rune-aligned. The validators cut their windows at byte offsets, which
+	//     can slice a multi-byte rune in half; the fragment is trimmed here, so
+	//     these fields can differ from the internal value by up to three bytes
+	//     and are always valid UTF-8 when the underlying line is.
+	//
+	// Sensitivity: raw content copied out of the scanned input, exactly as
+	// sensitive as Text and frequently more revealing, since a line of prose
+	// around a value can identify the person the value belongs to. They carry
+	// `json:"-"` so that adding them cannot silently widen an existing
+	// serialization sink — a caller already marshaling Finding keeps its old
+	// output and has to opt in explicitly to emit context.
+	ContextBefore string `json:"-"`
+	ContextAfter  string `json:"-"`
+	FullLine      string `json:"-"`
 }
 
 // Result holds the output of a scan.
@@ -176,6 +216,13 @@ func mapResult(r *core.ScanResult) *Result {
 			LineNumber: m.LineNumber,
 			Text:       m.Text,
 			Filename:   m.Filename,
+
+			// Trim on the cut edge only: the window's outer boundary is the one
+			// the validator sliced at a byte offset, while the inner boundary is
+			// the match itself and is already rune-aligned.
+			ContextBefore: trimLeadingRuneFragment(m.Context.BeforeText),
+			ContextAfter:  trimTrailingRuneFragment(m.Context.AfterText),
+			FullLine:      m.Context.FullLine,
 		}
 		if ex, ok := explain.FromMatch(m); ok {
 			f.Rationale = ex.Rationale
@@ -195,4 +242,34 @@ func normalizeChecks(checks []string) []string {
 		return []string{"all"}
 	}
 	return checks
+}
+
+// trimLeadingRuneFragment drops the tail of a multi-byte rune that a validator's
+// fixed-width context window cut through at the start of BeforeText.
+//
+// Only a leading run of continuation bytes (0b10xxxxxx) can be such a tail, and a
+// cut can leave at most utf8.UTFMax-1 of them, so the bound keeps this a
+// boundary repair rather than a general sanitizer: genuinely malformed bytes
+// further into the line are left alone for the caller to see.
+func trimLeadingRuneFragment(s string) string {
+	i := 0
+	for i < len(s) && i < utf8.UTFMax-1 && s[i]&0xC0 == 0x80 {
+		i++
+	}
+	return s[i:]
+}
+
+// trimTrailingRuneFragment is trimLeadingRuneFragment for the far edge of
+// AfterText, where a cut leaves a rune's leading byte without its continuation
+// bytes. A validly encoded U+FFFD decodes with a size greater than one and is
+// kept; only an incomplete encoding is removed.
+func trimTrailingRuneFragment(s string) string {
+	for i := 0; i < utf8.UTFMax-1 && s != ""; i++ {
+		r, size := utf8.DecodeLastRuneInString(s)
+		if r != utf8.RuneError || size > 1 {
+			break
+		}
+		s = s[:len(s)-size]
+	}
+	return s
 }
