@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/awslabs/ferret-scan/v2/internal/goldencorpus"
 )
 
 // findByValidator returns the first finding produced by the named validator.
@@ -190,16 +192,18 @@ func TestContextExcludedFromJSON(t *testing.T) {
 	}
 }
 
-// TestEverySingleLineValidatorRecordsContext is the coverage floor: a validator
-// that finds a value on one line must report the text around it.
+// TestBackfilledValidatorsRecordContext covers the three validators that used to
+// record no context at all.
 //
-// These three were the exceptions, and SECRETS was the costly one — "real key or
-// documentation example" is the question context exists to answer, and the
-// fixture below is `AKIAIOSFODNN7EXAMPLE`, the key from AWS's own docs. A caller
-// reading blank context on a finding cannot tell "not recorded" from "the value
-// stood alone", so a silent regression here would quietly degrade every
-// context-dependent decision a consumer makes.
-func TestEverySingleLineValidatorRecordsContext(t *testing.T) {
+// SECRETS was the costly one — "real key or documentation example" is the question
+// context exists to answer, and the fixture below is `AKIAIOSFODNN7EXAMPLE`, the
+// key from AWS's own docs. A caller reading blank context cannot tell "not
+// recorded" from "the value stood alone", so a silent regression here would
+// quietly degrade every context-dependent decision a consumer makes.
+//
+// This is deliberately not named for a universal claim: METADATA records FullLine
+// and never before/after, which TestMetadataRecordsFullLineOnly pins.
+func TestBackfilledValidatorsRecordContext(t *testing.T) {
 	cases := []struct {
 		validator     string
 		input         string
@@ -269,5 +273,54 @@ func TestMultiLineSecretReportsNoContext(t *testing.T) {
 	}
 	if !found {
 		t.Skip("fixture produced no multi-line finding; nothing to assert")
+	}
+}
+
+// TestMetadataRecordsFullLineOnly pins the third shape the Finding doc comment
+// describes: METADATA reports the document property it read, not an offset inside
+// a line, so it fills FullLine and leaves before/after permanently empty.
+//
+// Without this, a caller reading the doc comment's list of exceptions would
+// reasonably conclude METADATA carries before/after. It never has. Backfilling it
+// is tracked separately, and needs its own suppression-hash compatibility variant:
+// METADATA's existing identities already fold a POPULATED FullLine together with
+// an empty before/after pair, so it is a different migration from the one the
+// contextless validators needed.
+func TestMetadataRecordsFullLineOnly(t *testing.T) {
+	// A real .docx carrying document properties, built with the corpus helper so
+	// the metadata path runs exactly as it does in production.
+	docx := goldencorpus.BuildDOCX("Michael Thompson", "Michael Thompson",
+		[]string{"Quarterly summary. Nothing sensitive in the body."})
+
+	path := filepath.Join(t.TempDir(), "props.docx")
+	if err := os.WriteFile(path, docx, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := ScanFile(context.Background(), path, FileOptions{Checks: []string{"METADATA"}})
+	if err != nil {
+		t.Fatalf("ScanFile: %v", err)
+	}
+
+	var seen int
+	for _, f := range r.Findings {
+		if f.Validator != "metadata" {
+			continue
+		}
+		seen++
+		if f.FullLine == "" {
+			t.Errorf("%s finding has no FullLine; METADATA is documented as recording it", f.Type)
+		}
+		if f.ContextBefore != "" || f.ContextAfter != "" {
+			t.Errorf("%s finding now records before/after (before=%q after=%q). That is an "+
+				"improvement, but it changes the documented contract: update the Finding doc "+
+				"comment, and check the suppression finding-hash first — Context.BeforeText and "+
+				"AfterText are folded into a finding's identity, so populating them rewrites the "+
+				"hash of every METADATA finding and existing operator rules stop matching.",
+				f.Type, f.ContextBefore, f.ContextAfter)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("fixture produced no METADATA findings, so the assertion is vacuous")
 	}
 }
