@@ -207,13 +207,29 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		// Create context showing original file relationship
 		embeddedPath := bmp.utilities.RouterHelper.CreateEmbeddedMediaPath(originalFilePath, media.OriginalName)
 
-		// Reprocess embedded media through router
-		// The router tracks nesting depth itself, keyed on the temp path it handed
-		// out for this embedded item -- see FileRouter.noteEmbeddedChild. The
-		// preprocessor cannot construct a router ProcessingContext (router imports
-		// preprocessors, so the reverse would be an import cycle) and its Process
-		// method takes no context to thread one through, so depth is owned on the
-		// router side rather than plumbed through every preprocessor signature.
+		// Reprocess embedded media through the router.
+		//
+		// NOTHING BOUNDS THE NESTING DEPTH HERE. This comment used to claim the
+		// router tracked depth "keyed on the temp path it handed out, see
+		// FileRouter.noteEmbeddedChild". No such method exists, and no
+		// nesting-depth tracking exists anywhere in internal/router or
+		// internal/preprocessors — the only guards are the size caps
+		// MaxFileSize (100MB) and MaxEmbeddedMediaSize (50MB), and a
+		// deep-nesting bomb is small on disk.
+		//
+		// That mattered because this call site is exactly where someone would look
+		// before admitting embedded OOXML documents in
+		// meta-extract-officelib.embeddedMediaType, which is currently the other
+		// half of the nesting leak (an embedded .docx is never scanned; see #297).
+		// A reader who trusted the old comment would have concluded a bound was
+		// already in place and shipped unbounded recursion.
+		//
+		// Recursion is bounded TODAY only because the admitted types are leaves:
+		// images and audio route to extractors that follow nothing, and the legacy
+		// .doc/.xls/.ppt extractor reads OLE streams directly without following
+		// embeddings. Admitting .docx/.xlsx/.pptx routes back into this same
+		// function, so it requires a real depth cap first — and a cap must DISCLOSE
+		// when it truncates, or it replaces a silent miss with a different one.
 		if processed, err := bmp.router.ProcessFile(media.TempFilePath, nil); err == nil && processed != nil && processed.Success {
 			// Update processed content to show original file relationship
 			processed.OriginalPath = embeddedPath
