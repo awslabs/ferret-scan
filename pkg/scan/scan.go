@@ -76,15 +76,25 @@ type FileOptions struct {
 
 // Finding is one piece of sensitive data detected.
 type Finding struct {
-	Type         string  // validator-assigned classification (e.g. "SSN", "VISA", "EMAIL")
-	Validator    string  // which validator produced it
-	Confidence   float64 // 0–100
-	LineNumber   int     // 1-based
-	Text         string  // the matched substring (handle with care)
-	Filename     string  // source file or label
-	Rationale    string  // plain-language "why flagged" (empty unless Explain=true)
-	Verdict      string  // "likely_real" | "likely_test" | "uncertain" (empty unless Explain)
-	SuppressedBy string  // non-empty if this finding was suppressed
+	Type       string  // validator-assigned classification (e.g. "SSN", "VISA", "EMAIL")
+	Validator  string  // which validator produced it
+	Confidence float64 // 0–100
+	LineNumber int     // 1-based
+	Text       string  // the matched substring (handle with care)
+	Filename   string  // source file or label
+	Rationale  string  // plain-language "why flagged" (empty unless Explain=true)
+	Verdict    string  // "likely_real" | "likely_test" | "uncertain" (empty unless Explain)
+
+	// SuppressedBy is always the empty string.
+	//
+	// Deprecated: this package applies no suppression, so nothing can ever set
+	// this field — see the note on Result about suppression. It has read as ""
+	// for every finding since the package was introduced, and the check it
+	// invites, `if f.SuppressedBy != ""`, therefore answers "nothing was
+	// suppressed" for a package that never asked the question. Do not branch on
+	// it. It is kept only so existing callers keep compiling and will be removed
+	// in the next major version.
+	SuppressedBy string
 
 	// ContextBefore and ContextAfter are the text on either side of the match,
 	// excluding the match itself; FullLine is the whole line the match sits on.
@@ -133,6 +143,23 @@ type Finding struct {
 }
 
 // Result holds the output of a scan.
+//
+// Suppression is NOT applied. Findings is every match the selected validators
+// produced; no suppression rule is consulted, and no finding is filtered or
+// annotated as suppressed. This differs from the CLI, which does apply a
+// suppressions file, so a caller that assumes this package honors the project's
+// `.ferret-scan-suppressions.yaml` will see findings an operator has already
+// reviewed and accepted. That is the safe direction for a detection API — it
+// reports everything and lets the caller decide — but it is worth knowing before
+// wiring this into a gate.
+//
+// Suppression in the engine is opt-in at the internal layer
+// (core.ScanConfig.SuppressionManager), which this package deliberately does not
+// set: filtering findings by default would let a stale rule silently hide a real
+// value from a caller who never asked for it. Callers wanting rule-based
+// suppression today can express it over the returned Findings, or use
+// pkg/redact, whose Engine matches caller-supplied rules and reports what they
+// suppressed.
 type Result struct {
 	Findings         []Finding
 	Incomplete       bool // true if coverage was cut short (timeout, cancellation)
