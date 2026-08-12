@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/awslabs/ferret-scan/v2/internal/goldencorpus"
 )
 
 // findByValidator returns the first finding produced by the named validator.
@@ -158,55 +160,6 @@ func TestContextIsValidUTF8(t *testing.T) {
 	}
 }
 
-func TestTrimRuneFragments(t *testing.T) {
-	const cjk = "資料" // 3 bytes per rune
-
-	cases := []struct {
-		name         string
-		in, wantHead string
-		wantTail     string
-	}{
-		{"empty", "", "", ""},
-		{"ascii untouched", "abc", "abc", "abc"},
-		{"clean multibyte untouched", cjk, cjk, cjk},
-		{"encoded replacement char kept", "�", "�", "�"},
-		// A window cut one byte into a 3-byte rune leaves two continuation
-		// bytes at the head; cut two bytes in, one leading byte at the tail.
-		{"head fragment trimmed", cjk[1:], cjk[3:], cjk[1:]},
-		{"tail fragment trimmed", cjk[:4], cjk[:4], cjk[:3]},
-		{"tail lead byte trimmed", cjk[:5], cjk[:5], cjk[:3]},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := trimLeadingRuneFragment(tc.in); got != tc.wantHead {
-				t.Errorf("trimLeadingRuneFragment(%q) = %q, want %q", tc.in, got, tc.wantHead)
-			}
-			if got := trimTrailingRuneFragment(tc.in); got != tc.wantTail {
-				t.Errorf("trimTrailingRuneFragment(%q) = %q, want %q", tc.in, got, tc.wantTail)
-			}
-		})
-	}
-}
-
-// TestTrimIsBoundedNotSanitizing pins the deliberate limit on the repair: it
-// fixes a cut edge, it does not scrub malformed input. A caller scanning
-// genuinely mis-encoded content still sees that content.
-func TestTrimIsBoundedNotSanitizing(t *testing.T) {
-	// Invalid bytes sitting past the boundary region survive.
-	const inner = "ok\xff\xfe more text"
-	if got := trimLeadingRuneFragment(inner); got != inner {
-		t.Errorf("trimLeadingRuneFragment(%q) = %q, want it unchanged", inner, got)
-	}
-	// At most utf8.UTFMax-1 bytes come off either edge.
-	longRun := strings.Repeat("\x80", 16)
-	if got := trimLeadingRuneFragment(longRun); len(longRun)-len(got) > utf8.UTFMax-1 {
-		t.Errorf("trimmed %d bytes from the head, want at most %d", len(longRun)-len(got), utf8.UTFMax-1)
-	}
-	if got := trimTrailingRuneFragment(longRun); len(longRun)-len(got) > utf8.UTFMax-1 {
-		t.Errorf("trimmed %d bytes from the tail, want at most %d", len(longRun)-len(got), utf8.UTFMax-1)
-	}
-}
-
 // TestContextExcludedFromJSON locks the `json:"-"` decision. Finding carries no
 // tags on its other fields, so an existing caller's marshaled output is a
 // stable shape it may already be persisting or shipping; three new raw-content
@@ -239,28 +192,26 @@ func TestContextExcludedFromJSON(t *testing.T) {
 	}
 }
 
-// TestValidatorsWithoutContextAreDocumented locks the gap the doc comment
-// promises, in both directions.
+// TestBackfilledValidatorsRecordContext covers the three validators that used to
+// record no context at all.
 //
-// SECRETS, PERSON_NAME and CLOUD_RESOURCES never populate Match.Context, so
-// their findings report blank context however much text surrounds them. That is
-// worth a test rather than a footnote: it is the case where a caller is most
-// likely to mistake "not recorded" for "the value stood alone", and SECRETS is
-// where the real-vs-example question is hardest.
+// SECRETS was the costly one — "real key or documentation example" is the question
+// context exists to answer, and the fixture below is `AKIAIOSFODNN7EXAMPLE`, the
+// key from AWS's own docs. A caller reading blank context cannot tell "not
+// recorded" from "the value stood alone", so a silent regression here would
+// quietly degrade every context-dependent decision a consumer makes.
 //
-// If a change starts populating context for one of these, this test fails on
-// purpose. The fix is to update the Finding doc comment and drop the validator
-// from this list — and to check the suppression finding-hash first, since
-// Context participates in it and attaching context silently rewrites the
-// identity of every finding of that type.
-func TestValidatorsWithoutContextAreDocumented(t *testing.T) {
+// This is deliberately not named for a universal claim: METADATA records FullLine
+// and never before/after, which TestMetadataRecordsFullLineOnly pins.
+func TestBackfilledValidatorsRecordContext(t *testing.T) {
 	cases := []struct {
-		validator string
-		input     string
+		validator     string
+		input         string
+		before, after string
 	}{
-		{"secrets", "AWS key AKIAIOSFODNN7EXAMPLE rotate quarterly\n"},
-		{"PERSON_NAME", "Owner is Michael Thompson per HR record\n"},
-		{"cloud_resources", "Bucket arn:aws:s3:::prod-customer-exports listed here\n"},
+		{"secrets", "AWS key AKIAIOSFODNN7EXAMPLE rotate quarterly\n", "AWS key ", " rotate quarterly"},
+		{"PERSON_NAME", "Owner is Michael Thompson per HR record\n", "Owner is ", " per HR record"},
+		{"cloud_resources", "Bucket arn:aws:s3:::prod-customer-exports listed here\n", "Bucket ", " listed here"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.validator, func(t *testing.T) {
@@ -270,14 +221,106 @@ func TestValidatorsWithoutContextAreDocumented(t *testing.T) {
 			}
 			f := findByValidator(t, r.Findings, tc.validator)
 
-			if f.ContextBefore != "" || f.ContextAfter != "" || f.FullLine != "" {
-				t.Errorf("validator %q now populates context (before=%q after=%q fullline=%q).\n"+
-					"This is an improvement, but it changes the documented contract: update the "+
-					"Finding doc comment and confirm the suppression finding-hash impact "+
-					"(internal/suppressions.findingHashVersion reads all three fields, so existing "+
-					"rules for %s findings stop matching once they are populated).",
-					tc.validator, f.ContextBefore, f.ContextAfter, f.FullLine, f.Type)
+			if !strings.Contains(f.ContextBefore, strings.TrimSpace(tc.before)) {
+				t.Errorf("ContextBefore = %q, want it to contain %q", f.ContextBefore, tc.before)
+			}
+			if !strings.Contains(f.ContextAfter, strings.TrimSpace(tc.after)) {
+				t.Errorf("ContextAfter = %q, want it to contain %q", f.ContextAfter, tc.after)
+			}
+			if got, want := f.FullLine, strings.TrimSuffix(tc.input, "\n"); got != want {
+				t.Errorf("FullLine = %q, want %q", got, want)
+			}
+			if strings.Contains(f.ContextBefore, f.Text) || strings.Contains(f.ContextAfter, f.Text) {
+				t.Errorf("context must exclude the matched value %q (before=%q after=%q)",
+					f.Text, f.ContextBefore, f.ContextAfter)
 			}
 		})
+	}
+}
+
+// TestMultiLineSecretReportsNoContext pins the one documented empty case, so
+// "empty" keeps meaning "not applicable to a match spanning lines" rather than
+// drifting back into "some validators just don't bother".
+func TestMultiLineSecretReportsNoContext(t *testing.T) {
+	// Synthetic, structurally-shaped PEM block: the detector keys on the armour,
+	// and no real key material is needed to exercise the path. Assembled from
+	// split literals at runtime, following the convention in
+	// internal/validators/secrets/validator_test.go (buildTestToken), so the
+	// armour never appears contiguously in source and static secret scanners in
+	// the pre-commit path do not flag this file.
+	armour := func(edge string) string {
+		return "-----" + edge + " OPENSSH " + "PRIVATE KEY" + "-----\n"
+	}
+	input := armour("BEGIN") +
+		strings.Repeat("b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2\n", 3) +
+		armour("END")
+
+	r, err := ScanText(context.Background(), input, TextOptions{Checks: []string{"SECRETS"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, f := range r.Findings {
+		if !strings.Contains(f.Text, "\n") {
+			continue // single-line finding; covered by the test above
+		}
+		found = true
+		if f.ContextBefore != "" || f.ContextAfter != "" || f.FullLine != "" {
+			t.Errorf("multi-line %s finding reports context (before=%q after=%q fullline=%q); "+
+				"a match spanning lines has no single line to describe",
+				f.Type, f.ContextBefore, f.ContextAfter, f.FullLine)
+		}
+	}
+	if !found {
+		t.Skip("fixture produced no multi-line finding; nothing to assert")
+	}
+}
+
+// TestMetadataRecordsFullLineOnly pins the third shape the Finding doc comment
+// describes: METADATA reports the document property it read, not an offset inside
+// a line, so it fills FullLine and leaves before/after permanently empty.
+//
+// Without this, a caller reading the doc comment's list of exceptions would
+// reasonably conclude METADATA carries before/after. It never has. Backfilling it
+// is tracked separately, and needs its own suppression-hash compatibility variant:
+// METADATA's existing identities already fold a POPULATED FullLine together with
+// an empty before/after pair, so it is a different migration from the one the
+// contextless validators needed.
+func TestMetadataRecordsFullLineOnly(t *testing.T) {
+	// A real .docx carrying document properties, built with the corpus helper so
+	// the metadata path runs exactly as it does in production.
+	docx := goldencorpus.BuildDOCX("Michael Thompson", "Michael Thompson",
+		[]string{"Quarterly summary. Nothing sensitive in the body."})
+
+	path := filepath.Join(t.TempDir(), "props.docx")
+	if err := os.WriteFile(path, docx, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := ScanFile(context.Background(), path, FileOptions{Checks: []string{"METADATA"}})
+	if err != nil {
+		t.Fatalf("ScanFile: %v", err)
+	}
+
+	var seen int
+	for _, f := range r.Findings {
+		if f.Validator != "metadata" {
+			continue
+		}
+		seen++
+		if f.FullLine == "" {
+			t.Errorf("%s finding has no FullLine; METADATA is documented as recording it", f.Type)
+		}
+		if f.ContextBefore != "" || f.ContextAfter != "" {
+			t.Errorf("%s finding now records before/after (before=%q after=%q). That is an "+
+				"improvement, but it changes the documented contract: update the Finding doc "+
+				"comment, and check the suppression finding-hash first — Context.BeforeText and "+
+				"AfterText are folded into a finding's identity, so populating them rewrites the "+
+				"hash of every METADATA finding and existing operator rules stop matching.",
+				f.Type, f.ContextBefore, f.ContextAfter)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("fixture produced no METADATA findings, so the assertion is vacuous")
 	}
 }

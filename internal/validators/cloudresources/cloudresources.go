@@ -290,6 +290,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			Filename:   originalPath,
 			Validator:  "cloud_resources",
 			Metadata:   v.buildMetadata(text, resourceType, factors),
+			// Record the surrounding text. scoreMatch already consulted this
+			// line (via cachedLineHasNegKw), so attaching it changes no score —
+			// it only stops the finding from reaching a caller stripped of the
+			// context this validator itself used to judge it.
+			Context: detector.LineContext(cachedLine, start-lineStart, start-lineStart+len(text)),
 		})
 		if provider != "" {
 			providerCounts[provider]++

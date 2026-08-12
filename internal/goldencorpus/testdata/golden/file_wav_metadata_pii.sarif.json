@@ -11,7 +11,18 @@
                 "artifactLocation": {
                   "uri": "file://<TMPDIR>/clip.wav"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Comment: contact 212-555-0142 or \nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startLine": 7
+                },
                 "region": {
+                  "endColumn": 54,
+                  "snippet": {
+                    "text": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startColumn": 34,
                   "startLine": 7
                 }
               }

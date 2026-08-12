@@ -231,16 +231,72 @@ const (
 	// hashVersionNoConfidence drops confidence from the identity.
 	hashVersionNoConfidence hashVersion = 2
 
+	// hashVersionNoConfidenceContextless and hashVersionLegacyConfidenceContextless
+	// reproduce the two formulas above as they were computed for a finding whose
+	// Context was empty.
+	//
+	// They exist for the validators that used to emit no context at all (see
+	// contextlessHashValidators). A rule an operator wrote against one of those
+	// findings recorded a hash over an empty FullLine and an empty before/after
+	// pair; once the validator starts attaching context, the current formula
+	// produces a different hash and that rule would stop matching. Computing the
+	// empty-context variant as an additional MATCHING candidate keeps the rule
+	// working. Never written.
+	hashVersionNoConfidenceContextless     hashVersion = 3
+	hashVersionLegacyConfidenceContextless hashVersion = 4
+
 	// hashVersionCurrent is what new rules are written with.
 	hashVersionCurrent = hashVersionNoConfidence
 )
 
+// includesConfidence reports whether this formula folds Confidence into the
+// identity. Only the two legacy formulas do.
+func (v hashVersion) includesConfidence() bool {
+	return v == hashVersionLegacyConfidence || v == hashVersionLegacyConfidenceContextless
+}
+
+// contextless reports whether this formula computes the identity as though the
+// finding carried no Context.
+func (v hashVersion) contextless() bool {
+	return v == hashVersionNoConfidenceContextless || v == hashVersionLegacyConfidenceContextless
+}
+
+// contextlessHashValidators names the validators that emitted findings with an
+// empty ContextInfo before context recording was added to them, keyed by
+// Match.Validator.
+//
+// The empty-context hash variants are offered as matching candidates for these
+// validators ONLY. Offering them for every validator would weaken suppression
+// identity across the board: with context excluded, two findings that agree on
+// type, basename, line number and value but sit on different line content become
+// indistinguishable, so a rule could keep suppressing after the line around the
+// value changed -- which is how a stale suppression hides a newly introduced
+// secret. Scoping the compatibility to the validators that actually need it keeps
+// the identity of the other sixteen exactly as it was.
+//
+// This list is closed. A validator added later starts out recording context, so it
+// has no pre-existing contextless rules to be compatible with, and adding it here
+// would weaken its identity for nothing.
+var contextlessHashValidators = map[string]bool{
+	"secrets":         true,
+	"PERSON_NAME":     true,
+	"cloud_resources": true,
+}
+
 // findingHashVersion computes a finding's hash under a specific formula version.
 func (sm *SuppressionManager) findingHashVersion(match detector.Match, version hashVersion) string {
+	// A contextless formula reads the context components as though the finding
+	// carried none, reproducing the hash this finding had before its validator
+	// began recording context.
+	ctx := match.Context
+	if version.contextless() {
+		ctx = detector.ContextInfo{}
+	}
+
 	// Bound the FullLine contribution (see maxHashLineLen). TrimSpace first so a
 	// short line padded with whitespace still hashes identically; the cap only
 	// engages for genuinely long lines.
-	fullLine := strings.TrimSpace(match.Context.FullLine)
+	fullLine := strings.TrimSpace(ctx.FullLine)
 	if len(fullLine) > maxHashLineLen {
 		fullLine = fullLine[:maxHashLineLen]
 	}
@@ -250,7 +306,7 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 	// component order or separator would alter every v1 hash and defeat the
 	// compatibility this version switch exists to provide.
 	components := []string{match.Type}
-	if version == hashVersionLegacyConfidence {
+	if version.includesConfidence() {
 		components = append(components, fmt.Sprintf("%.2f", match.Confidence))
 	}
 	components = append(components,
@@ -260,7 +316,7 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 	)
 
 	// Add context for uniqueness but hash it for privacy
-	contextHash := sm.hashSensitiveData(match.Context.BeforeText + match.Context.AfterText)
+	contextHash := sm.hashSensitiveData(ctx.BeforeText + ctx.AfterText)
 	components = append(components, contextHash)
 
 	// Hash the match text separately for privacy
@@ -280,11 +336,22 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 // newly written rules use only the current formula and stop being confidence-sensitive.
 // A rule file therefore migrates as it is regenerated rather than needing a conversion
 // step, and an operator who never regenerates loses nothing.
+//
+// For the validators in contextlessHashValidators the empty-context variants of both
+// formulas are candidates too, because those validators used to emit findings with no
+// context and rules were written against those hashes.
 func (sm *SuppressionManager) findingHashCandidates(match detector.Match) []string {
-	return []string{
+	candidates := []string{
 		sm.findingHashVersion(match, hashVersionNoConfidence),
 		sm.findingHashVersion(match, hashVersionLegacyConfidence),
 	}
+	if contextlessHashValidators[match.Validator] {
+		candidates = append(candidates,
+			sm.findingHashVersion(match, hashVersionNoConfidenceContextless),
+			sm.findingHashVersion(match, hashVersionLegacyConfidenceContextless),
+		)
+	}
+	return candidates
 }
 
 // hashMatchesFinding reports whether a stored rule hash identifies this finding under

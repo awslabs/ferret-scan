@@ -11,7 +11,18 @@
                 "artifactLocation": {
                   "uri": "<golden:context_decoys_personname>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Please forward the report to \nPlease forward the report to James Whitfield by Friday\n by Friday"
+                  },
+                  "startLine": 3
+                },
                 "region": {
+                  "endColumn": 45,
+                  "snippet": {
+                    "text": "Please forward the report to James Whitfield by Friday"
+                  },
+                  "startColumn": 30,
                   "startLine": 3
                 }
               }
@@ -89,7 +100,18 @@
                 "artifactLocation": {
                   "uri": "<golden:context_decoys_personname>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Sarah Okonkwo will present the quarterly results\n will present the quarterly results"
+                  },
+                  "startLine": 5
+                },
                 "region": {
+                  "endColumn": 14,
+                  "snippet": {
+                    "text": "Sarah Okonkwo will present the quarterly results"
+                  },
+                  "startColumn": 1,
                   "startLine": 5
                 }
               }
@@ -167,7 +189,18 @@
                 "artifactLocation": {
                   "uri": "<golden:context_decoys_personname>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Schedule a review with \nSchedule a review with Daniel Moreau next week\n next week"
+                  },
+                  "startLine": 7
+                },
                 "region": {
+                  "endColumn": 37,
+                  "snippet": {
+                    "text": "Schedule a review with Daniel Moreau next week"
+                  },
+                  "startColumn": 24,
                   "startLine": 7
                 }
               }
@@ -245,7 +278,18 @@
                 "artifactLocation": {
                   "uri": "<golden:context_decoys_personname>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Priya Raghavan approved the budget request\n approved the budget request"
+                  },
+                  "startLine": 9
+                },
                 "region": {
+                  "endColumn": 15,
+                  "snippet": {
+                    "text": "Priya Raghavan approved the budget request"
+                  },
+                  "startColumn": 1,
                   "startLine": 9
                 }
               }
@@ -323,7 +367,18 @@
                 "artifactLocation": {
                   "uri": "<golden:context_decoys_personname>"
                 },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Contact Maria Delgado for approval\n for approval"
+                  },
+                  "startLine": 1
+                },
                 "region": {
+                  "endColumn": 22,
+                  "snippet": {
+                    "text": "Contact Maria Delgado for approval"
+                  },
+                  "startColumn": 1,
                   "startLine": 1
                 }
               }

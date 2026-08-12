@@ -22,10 +22,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"unicode/utf8"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 )
 
@@ -99,17 +99,23 @@ type Finding struct {
 	//     scoring (currently 30–50 bytes per side depending on the validator).
 	//     It is not part of this package's compatibility surface and will move
 	//     as validators are tuned. Do not parse against a fixed width.
-	//   - MAY BE EMPTY, and empty means "this validator does not record
-	//     context", NOT "the match had no surrounding text". As of this
-	//     release SECRETS, PERSON_NAME and CLOUD_RESOURCES never populate
-	//     them, so a SECRETS finding always reports blank context even when
-	//     the line around it is full of text. Callers that reason over context
-	//     must branch on the empty case instead of concluding the match stood
-	//     alone. (Populating those three is deliberately deferred: their
-	//     context participates in the suppression finding-hash, so attaching
-	//     it would silently invalidate operators' existing rules for those
-	//     types. See the package's upstream notes.)
-	//   - Rune-aligned. The validators cut their windows at byte offsets, which
+	//   - MAY BE EMPTY, field by field, and empty always means "not recorded" —
+	//     never "the match had no surrounding text". Three shapes exist:
+	//
+	//       * all three populated, for a validator that found the value at a
+	//         position inside a line it can point into. Most findings.
+	//       * FullLine only, with ContextBefore and ContextAfter always empty:
+	//         METADATA, which reports the document property it read
+	//         ("Author: Some Name") rather than an offset within a line, so
+	//         there is no before or after to give.
+	//       * all three empty, for a match that spans lines and therefore has
+	//         no single line to describe: the multi-line SECRETS types
+	//         (SSH_PRIVATE_KEY, CERTIFICATE, PGP_PRIVATE_KEY).
+	//
+	//     So branch on the specific field you read, not on "does this finding
+	//     have context", and do not read an empty ContextBefore as evidence
+	//     that the value stood alone on its line.
+	//   - Rune-aligned. Some validators cut their windows at byte offsets, which
 	//     can slice a multi-byte rune in half; the fragment is trimmed here, so
 	//     these fields can differ from the internal value by up to three bytes
 	//     and are always valid UTF-8 when the underlying line is.
@@ -220,8 +226,8 @@ func mapResult(r *core.ScanResult) *Result {
 			// Trim on the cut edge only: the window's outer boundary is the one
 			// the validator sliced at a byte offset, while the inner boundary is
 			// the match itself and is already rune-aligned.
-			ContextBefore: trimLeadingRuneFragment(m.Context.BeforeText),
-			ContextAfter:  trimTrailingRuneFragment(m.Context.AfterText),
+			ContextBefore: detector.TrimLeadingRuneFragment(m.Context.BeforeText),
+			ContextAfter:  detector.TrimTrailingRuneFragment(m.Context.AfterText),
 			FullLine:      m.Context.FullLine,
 		}
 		if ex, ok := explain.FromMatch(m); ok {
@@ -242,34 +248,4 @@ func normalizeChecks(checks []string) []string {
 		return []string{"all"}
 	}
 	return checks
-}
-
-// trimLeadingRuneFragment drops the tail of a multi-byte rune that a validator's
-// fixed-width context window cut through at the start of BeforeText.
-//
-// Only a leading run of continuation bytes (0b10xxxxxx) can be such a tail, and a
-// cut can leave at most utf8.UTFMax-1 of them, so the bound keeps this a
-// boundary repair rather than a general sanitizer: genuinely malformed bytes
-// further into the line are left alone for the caller to see.
-func trimLeadingRuneFragment(s string) string {
-	i := 0
-	for i < len(s) && i < utf8.UTFMax-1 && s[i]&0xC0 == 0x80 {
-		i++
-	}
-	return s[i:]
-}
-
-// trimTrailingRuneFragment is trimLeadingRuneFragment for the far edge of
-// AfterText, where a cut leaves a rune's leading byte without its continuation
-// bytes. A validly encoded U+FFFD decodes with a size greater than one and is
-// kept; only an incomplete encoding is removed.
-func trimTrailingRuneFragment(s string) string {
-	for i := 0; i < utf8.UTFMax-1 && s != ""; i++ {
-		r, size := utf8.DecodeLastRuneInString(s)
-		if r != utf8.RuneError || size > 1 {
-			break
-		}
-		s = s[:len(s)-size]
-	}
-	return s
 }
