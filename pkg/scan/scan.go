@@ -99,14 +99,22 @@ type Finding struct {
 	//     scoring (currently 30–50 bytes per side depending on the validator).
 	//     It is not part of this package's compatibility surface and will move
 	//     as validators are tuned. Do not parse against a fixed width.
-	//   - MAY BE EMPTY, and empty means "no context was recorded for this
-	//     match", NOT "the match had no surrounding text". Every validator
-	//     records context for a match that sits on one line, but a match that
-	//     spans lines has no single line to describe and reports all three
-	//     blank — today that is the multi-line SECRETS types
-	//     (SSH_PRIVATE_KEY, CERTIFICATE, PGP_PRIVATE_KEY). Callers that reason
-	//     over context must branch on the empty case instead of concluding the
-	//     match stood alone.
+	//   - MAY BE EMPTY, field by field, and empty always means "not recorded" —
+	//     never "the match had no surrounding text". Three shapes exist:
+	//
+	//       * all three populated, for a validator that found the value at a
+	//         position inside a line it can point into. Most findings.
+	//       * FullLine only, with ContextBefore and ContextAfter always empty:
+	//         METADATA, which reports the document property it read
+	//         ("Author: Some Name") rather than an offset within a line, so
+	//         there is no before or after to give.
+	//       * all three empty, for a match that spans lines and therefore has
+	//         no single line to describe: the multi-line SECRETS types
+	//         (SSH_PRIVATE_KEY, CERTIFICATE, PGP_PRIVATE_KEY).
+	//
+	//     So branch on the specific field you read, not on "does this finding
+	//     have context", and do not read an empty ContextBefore as evidence
+	//     that the value stood alone on its line.
 	//   - Rune-aligned. Some validators cut their windows at byte offsets, which
 	//     can slice a multi-byte rune in half; the fragment is trimmed here, so
 	//     these fields can differ from the internal value by up to three bytes
