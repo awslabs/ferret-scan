@@ -725,37 +725,28 @@ func embeddedMediaType(ext string) string {
 		// reads their streams directly and does not itself follow embeddings, so
 		// admitting them adds no recursion and no new bomb surface.
 		return "legacy_document"
+	case ".docx", ".xlsx", ".pptx":
+		// Embedded OOXML documents. Admitted now that the router bounds nesting depth.
+		//
+		// These were excluded because an embedded .docx routes back through the Office
+		// preprocessor, which extracts ITS embeddings, which route back again --
+		// unbounded recursion, and a decompression-bomb amplifier for a tool that runs
+		// on untrusted input. Measured previously with a 7KB .docx embedding itself nine
+		// times: all nine levels were followed.
+		//
+		// The bound now exists: FileRouter.ProcessEmbedded tracks depth keyed on the
+		// path it is handed and refuses past MaxEmbeddedDepth, returning
+		// ErrEmbeddedTooDeep -- which the caller DISCLOSES rather than skipping, so a
+		// truncated traversal is visible instead of silently reading as clean.
+		//
+		// Excluding them was a detection hole with no attacker required: a document
+		// attached to a document is ordinary (an email attachment saved into a report, a
+		// workbook embedded in a deck). Measured before this change, an SSN in
+		// word/embeddings/oleObject1.docx produced 0 findings, exit 0, zero stderr, no
+		// redacted file, and exit 0 even under --fail-on-incomplete. See #297.
+		return "document"
+
 	default:
-		// Embedded OOXML documents (.docx/.xlsx/.pptx) are deliberately NOT
-		// admitted yet, even though they are the other half of the nesting leak.
-		//
-		// An embedded .docx routes back through the Office preprocessor, which
-		// extracts ITS embeddings, which route back again — the recursion is
-		// unbounded. Measured with a 7KB .docx that embeds itself nine times: all
-		// nine levels were followed, with nothing to stop a file that declares
-		// more. Turning that on before a depth bound exists would trade a
-		// detection gap for a decompression-bomb amplifier, which is a worse
-		// trade for a tool that runs on untrusted input.
-		//
-		// A bound is needed FIRST, and note that none exists today: the claim
-		// that the router already tracks depth (formerly in
-		// BaseMetadataPreprocessor.processEmbeddedMedia, citing a
-		// FileRouter.noteEmbeddedChild that was never written) was false. The only
-		// guards are the size caps above, and a deep-nesting bomb is small on disk.
-		//
-		// Depth cannot live on the preprocessor (one instance is shared across
-		// concurrent workers) nor on the router (also one instance), and the
-		// concrete router ProcessingContext type is unreachable from here (router
-		// imports preprocessors, so the reverse is an import cycle). What IS
-		// reachable: RouterInterface has exactly one real implementor, so a
-		// depth-carrying entry point beside ProcessFile is additive rather than a
-		// signature change across every preprocessor.
-		//
-		// Tracked in #297, which carries the measured repro and that design. This
-		// comment is the reason the case is missing, so nobody "fixes" it by adding
-		// the extension: doing that without the cap trades a detection gap for a
-		// decompression-bomb amplifier, which is the worse trade for a tool that
-		// runs on untrusted input.
 		return ""
 	}
 }

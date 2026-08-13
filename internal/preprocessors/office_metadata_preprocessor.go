@@ -52,7 +52,7 @@ func (omp *OfficeMetadataPreprocessor) processOfficeMetadata(filePath string) (*
 	text := omp.formatOfficeMetadata(meta)
 
 	// Process embedded media through router if available
-	embeddedText, embeddedSections := omp.processEmbeddedMedia(filePath)
+	embeddedText, embeddedSections, embeddedWarnings := omp.processEmbeddedMedia(filePath)
 
 	// Declare this extractor's own structure out of band. The container's own
 	// property block is one office_metadata section; each embedded item is its own
@@ -84,6 +84,20 @@ func (omp *OfficeMetadataPreprocessor) processOfficeMetadata(filePath string) (*
 	omp.LogSuccessfulProcessing(meta.Filename, meta.FileSize, meta.MimeType)
 
 	content := omp.BuildSuccessContent(filePath, text, "office_metadata", meta.PageCount)
+
+	// Surface embedded items we declined to descend into.
+	//
+	// ExtractionWarning is the channel that survives FileRouter's combine step -- it is
+	// gathered regardless of a preprocessor's error, unlike Error itself. Hitting the
+	// nesting bound means that item's content was never examined, so it has to reach
+	// the operator; a bound that truncates silently just relocates the gap it was added
+	// to close (#297).
+	if len(embeddedWarnings) > 0 {
+		if content.ExtractionWarning != "" {
+			content.ExtractionWarning += "; "
+		}
+		content.ExtractionWarning += strings.Join(embeddedWarnings, "; ")
+	}
 	content.Sections = sections
 	return content, nil
 }
@@ -168,11 +182,11 @@ func (omp *OfficeMetadataPreprocessor) formatOfficeMetadata(meta *meta_extract_o
 
 // processEmbeddedMedia processes embedded media through router integration,
 // returning the text to append and the out-of-band sections describing it.
-func (omp *OfficeMetadataPreprocessor) processEmbeddedMedia(filePath string) (string, []ContentSection) {
+func (omp *OfficeMetadataPreprocessor) processEmbeddedMedia(filePath string) (string, []ContentSection, []string) {
 	// Extract embedded media for processing
 	embeddedMedia, err := meta_extract_officelib.ExtractEmbeddedMediaForProcessing(filePath)
 	if err != nil || len(embeddedMedia) == 0 {
-		return "", nil
+		return "", nil, nil
 	}
 
 	// Ensure cleanup of temporary files
