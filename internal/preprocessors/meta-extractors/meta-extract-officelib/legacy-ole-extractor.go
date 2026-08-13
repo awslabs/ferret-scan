@@ -45,10 +45,33 @@ import (
 // 50MB per-entry cap the OOXML paths already use. An OLE container declares its
 // own stream sizes, so an unbounded io.ReadAll here would be the same
 // decompression-bomb hole that cap exists to close.
-const maxLegacyStreamBytes = 50 * 1024 * 1024
+// A var, not a const, so a test can lower it and assert the truncation actually
+// happens. It was a const and nothing asserted it — a mutation raising it to 1<<62
+// compiled and every test still passed. That is precisely the guard that must not be
+// silently removable, because scanning every stream (see below) applies it to far more
+// bytes than the previous four-name allowlist did.
+var maxLegacyStreamBytes int64 = 50 * 1024 * 1024
 
-// legacyBodyStreams are the streams that hold document character data, by
-// format. Names are exact and case-sensitive, as written by Office.
+// legacyBodyStreams names the streams KNOWN to hold document character data.
+//
+// Retained for documentation and for the ordering guarantee below, NOT as a gate:
+// body text is now recovered from every stream that is not a property stream. The
+// allowlist was a detection hole, because a .doc keeps a large fraction of its text
+// outside WordDocument:
+//
+//	1Table / 0Table   revision marks, comments, fast-save text
+//	Data              embedded content
+//	ObjectPool/*      embedded objects
+//
+// Measured on a real 690KB .doc: 1Table held 14 recoverable printable runs that no
+// validator ever saw, and a fixture with an SSN placed only in 1Table produced zero
+// findings — so the value survived into the "redacted" copy in cleartext, since only
+// reported findings are redacted. That is the normal on-disk layout of an edited Word
+// document; it needs no attacker.
+//
+// recoverPrintableRuns was already name-agnostic and conservative (a minimum run
+// length, single-byte and UTF-16 passes), so the allowlist bought nothing on the body
+// side while excluding most of the document. See #266.
 var legacyBodyStreams = map[string]bool{
 	"WordDocument":        true, // .doc
 	"Workbook":            true, // .xls (Excel 97+)
@@ -83,20 +106,37 @@ func extractLegacyOfficeMetadata(filePath string, metadata *Metadata) (*Metadata
 
 	var body strings.Builder
 	for entry, err := doc.Next(); err == nil; entry, err = doc.Next() {
+		// Property streams are PARSED as properties; everything else is scavenged for
+		// printable runs.
+		//
+		// Inverted from an allowlist of four body-stream names, which silently
+		// excluded 1Table/0Table/Data/ObjectPool — where an edited .doc keeps its
+		// revision marks, comments and fast-save text. A value living only there was
+		// never reported and therefore never redacted (#266).
+		//
+		// Deliberately a default-scan rather than a longer allowlist: the failure mode
+		// being fixed is "a stream nobody thought of", so a list of names we thought of
+		// cannot close it. recoverPrintableRuns is conservative enough to run on
+		// arbitrary bytes — it emits only runs of printable characters at or above a
+		// minimum length, so structural bookkeeping yields nothing.
+		//
+		// The per-stream io.LimitReader cap is unchanged and now matters more, since it
+		// applies to more streams: an OLE container declares its own stream sizes, so
+		// this stays bounded per stream rather than becoming a bomb amplifier.
 		switch {
-		case legacyBodyStreams[entry.Name]:
-			buf, rerr := io.ReadAll(io.LimitReader(entry, maxLegacyStreamBytes))
-			if rerr != nil {
-				continue
-			}
-			body.WriteString(recoverPrintableRuns(buf))
-
 		case legacyPropertyStreams[entry.Name]:
 			buf, rerr := io.ReadAll(io.LimitReader(entry, maxLegacyStreamBytes))
 			if rerr != nil {
 				continue
 			}
 			applyLegacyProperties(buf, metadata)
+
+		default:
+			buf, rerr := io.ReadAll(io.LimitReader(entry, maxLegacyStreamBytes))
+			if rerr != nil {
+				continue
+			}
+			body.WriteString(recoverPrintableRuns(buf))
 		}
 	}
 
