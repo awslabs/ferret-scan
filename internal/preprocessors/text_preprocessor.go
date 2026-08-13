@@ -122,10 +122,54 @@ func (tp *TextPreprocessor) Process(filePath string) (*ProcessedContent, error) 
 	return result, err
 }
 
+// pdfExtractionWarning turns a PDF text-extraction failure into a short,
+// payload-free note for the operator.
+//
+// Payload-free is a requirement, not a nicety: this string reaches stderr, the
+// text summary and the machine formats, so it must never carry a byte of document
+// content. The extractor's own error text is header/structure diagnostics
+// ("not a PDF file: invalid header", "malformed xref"), which is safe and is the
+// most actionable part, so it is passed through unmodified rather than replaced
+// with prose that might describe a failure that did not happen.
+//
+// The wording leads with the consequence, matching the Office extractor's
+// noteEmptyExtraction, so an operator comparing a PDF and a DOCX failure from the
+// same run reads the same sentence shape.
+func pdfExtractionWarning(filePath string, err error) string {
+	detail := "unknown error"
+	if err != nil {
+		detail = err.Error()
+	}
+	return fmt.Sprintf(
+		"no text extracted from %s: %s, so document content was NOT scanned",
+		filepath.Ext(filePath), detail)
+}
+
 // processPDF extracts text from PDF documents
 func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedContent) (*ProcessedContent, error) {
 	pdfContent, err := textextractpdftextlib.ExtractText(filePath)
 	if err != nil {
+		// Record the failure as an ExtractionWarning, not only as an Error.
+		//
+		// The Error alone does not reach the operator. pdf_metadata runs on the same
+		// file and SUCCEEDS even when the bytes are not a PDF at all, so
+		// FileRouter's combine step sees one successful preprocessor, stamps
+		// Success: true, and discards this error. Only ExtractionWarning survives
+		// that step (it is gathered regardless of pResult.err, precisely for this
+		// shape).
+		//
+		// Measured before this change, on a valid PDF truncated at its xref while
+		// still holding a recoverable SSN in a FlateDecode stream:
+		//
+		//	valid.pdf     -> 1 finding
+		//	truncated.pdf -> 0 findings, exit 0, 0 bytes of stderr,
+		//	                 still exit 0 under --fail-on-incomplete
+		//
+		// The same corruption in a .docx correctly printed "NOT FULLY EXAMINED ...
+		// cannot parse" and exited 3, because the Office branch below already
+		// carries its extractor's note across the error return. This is that same
+		// fix for the PDF branch. See #294.
+		content.ExtractionWarning = pdfExtractionWarning(filePath, err)
 		content.Error = fmt.Errorf("failed to extract text from PDF: %w", err)
 		return content, content.Error
 	}
@@ -137,6 +181,17 @@ func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedConten
 	content.WordCount = pdfContent.WordCount
 	content.CharCount = pdfContent.CharCount
 	content.LineCount = pdfContent.LineCount
+
+	// A PDF that parsed but yielded no text is the other half of the same silence.
+	// It is indistinguishable from a genuinely empty document unless we say so, and
+	// a scanned-image PDF (no text layer) lands here too — the operator needs to
+	// know the pages were not read rather than assume they were clean.
+	if strings.TrimSpace(content.Text) == "" {
+		content.ExtractionWarning = fmt.Sprintf(
+			"no text extracted from %s: the file parsed but held no document text, "+
+				"so page content was NOT scanned", filepath.Ext(filePath))
+	}
+
 	content.Success = true
 
 	// Enable position tracking for PDF documents
