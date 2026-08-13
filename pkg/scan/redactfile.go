@@ -57,11 +57,18 @@ func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) 
 		strategy = "synthetic"
 	}
 
+	// Reject an unknown check BEFORE any output file is created. Failing after the
+	// write would leave a file the API calls a redacted copy holding cleartext.
+	checks, err := normalizeChecks(opts.Checks)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := core.RedactFile(core.RedactConfig{
 		FilePath:  path,
 		OutputDir: opts.OutputDir,
 		Strategy:  strategy,
-		Checks:    normalizeChecks(opts.Checks),
+		Checks:    checks,
 		Config:    config.LoadConfigOrDefault(""),
 		LogWriter: logWriter,
 	})
