@@ -171,7 +171,15 @@ func runStdinScan(in stdinScanInputs) int {
 	suppressionManager := suppressions.NewSuppressionManager(finalCfg.suppressionFile)
 
 	// Parse checks list into a []string for ScanContent.
-	checks := parseChecksList(finalCfg.checksToRun)
+	//
+	// An unrecognized name is a hard error, matching file mode. Failing open here
+	// meant running ZERO validators and reporting clean — and under
+	// --enable-redaction, streaming the input back byte-identical at rc 0.
+	checks, err := parseChecksList(finalCfg.checksToRun)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
 
 	scanCfg := core.ContentScanConfig{
 		VirtualPath:        in.stdinName,
@@ -577,18 +585,15 @@ func writeStdinOutput(outputFile, formatted string, precommitConfig *precommit.P
 }
 
 // parseChecksList turns "all" or "CHECK1,CHECK2" into a slice for ScanContent.
-func parseChecksList(checks string) []string {
-	if checks == "" || checks == "all" {
-		return nil // empty means "all" in core.ParseChecksToRun
-	}
-	parts := strings.Split(checks, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
+//
+// Delegates to normalizeChecksArg so stdin mode and file mode share one vocabulary.
+// This function used to do its own thing: no upper-casing and no validation, handing
+// the raw strings to core.ParseChecksToRun, whose loop silently discards any name it
+// does not recognise. The result was that "--checks ssn" found an SSN via --file and
+// nothing via --stdin, and "--checks BOGUS" reported clean at rc 0 instead of the
+// rc 1 file mode gives. See normalizeChecksArg for the measurements.
+func parseChecksList(checks string) ([]string, error) {
+	return normalizeChecksArg(checks)
 }
 
 // highestConfidenceLevel returns "high"/"medium"/"low"/"" for use with
