@@ -2564,40 +2564,97 @@ func isFlagSet(name string) bool {
 	return found
 }
 
+// normalizeChecksArg turns the raw --checks value into the canonical check names,
+// or returns an error naming the first unrecognized one.
+//
+// This is the ONE place the flag's vocabulary is decided, because it previously had
+// two and they disagreed. File mode validated and upper-cased here; stdin mode used
+// cmd/stdin.go's parseChecksList, which did neither and handed the raw strings to
+// core.ParseChecksToRun — whose loop silently drops any name it does not recognise.
+// So the same flag, in the same binary, behaved differently by input source:
+//
+//	--checks ssn --file fx.txt   -> 1 finding   (upper-cased here)
+//	--checks ssn --stdin         -> 0 findings, rc 0, nothing on stderr
+//	--checks BOGUS --file fx.txt -> rc 1, "Unknown check type"
+//	--checks BOGUS --stdin       -> 0 findings, rc 0, silent
+//
+// Silently running zero validators is the worst available outcome for a scanner: it
+// reports clean. With --stdin --enable-redaction it also emitted the input back
+// BYTE-IDENTICAL at rc 0, so the documented streaming-gateway pattern passed
+// cleartext through while looking like it had redacted.
+//
+// Returning ([]string, error) rather than exiting keeps this usable from both call
+// sites — the CLI boundary decides how to report, and neither path can quietly skip
+// the check.
+//
+// A nil slice means "every check", which is what core.ParseChecksToRun treats an
+// empty list as.
+func normalizeChecksArg(checks string) ([]string, error) {
+	// Available checks come from the single source of truth (core.CheckNames,
+	// derived from validatorConstructors) so this list cannot drift from the
+	// validators that actually exist.
+	valid := make(map[string]bool, len(core.CheckNames()))
+	for _, c := range core.CheckNames() {
+		valid[c] = true
+	}
+
+	trimmed := strings.TrimSpace(checks)
+	if trimmed == "" {
+		return nil, nil
+	}
+	// The "all" sentinel, case-insensitively. core.ParseChecksToRun only honours a
+	// lowercase, single-element "all", so "ALL" reached it as an unknown name and
+	// selected NOTHING. Normalising here means the sentinel behaves the way every
+	// other check name does.
+	if strings.EqualFold(trimmed, "all") {
+		return nil, nil
+	}
+
+	var out []string
+	for _, check := range strings.Split(trimmed, ",") {
+		checkStr := strings.ToUpper(strings.TrimSpace(check))
+		if checkStr == "" {
+			continue
+		}
+		// "all" mixed with other names is rejected rather than silently winning or
+		// silently losing. core.ParseChecksToRun's sentinel requires a single-element
+		// list, so "all,SSN" previously selected only SSN — a reasonable reader
+		// expects the opposite, and guessing either way is worse than saying so.
+		if checkStr == "ALL" {
+			return nil, fmt.Errorf("'all' cannot be combined with other check names (got %q)", checks)
+		}
+		if !valid[checkStr] {
+			return nil, fmt.Errorf("unknown check type '%s'\nAvailable checks: %s",
+				checkStr, strings.Join(core.CheckNames(), ", "))
+		}
+		out = append(out, checkStr)
+	}
+	return out, nil
+}
+
 // parseChecksToRun converts a comma-separated string of check names
 // into a map of enabled checks
 func parseChecksToRun(checks string) map[string]bool {
-	// Available checks come from the single source of truth (core.CheckNames,
-	// derived from validatorConstructors) so this list cannot drift from the
-	// validators that actually exist. Order is irrelevant here — it only seeds
-	// a presence map. The validate-and-exit-on-unknown semantics below are
-	// intentionally kept (distinct from core.ParseChecksToRun's fail-open).
-	availableChecks := core.CheckNames()
-
 	result := make(map[string]bool)
-	for _, check := range availableChecks {
+	for _, check := range core.CheckNames() {
 		result[check] = false
 	}
 
-	if checks == "all" {
+	selected, err := normalizeChecksArg(checks)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	// nil means "every check".
+	if selected == nil {
 		for key := range result {
 			result[key] = true
 		}
 		return result
 	}
-
-	// Parse comma-separated list of checks
-	for _, check := range strings.Split(checks, ",") {
-		checkStr := strings.ToUpper(strings.TrimSpace(check))
-		if _, exists := result[checkStr]; exists {
-			result[checkStr] = true
-		} else if checkStr != "" {
-			fmt.Fprintf(os.Stderr, "Error: Unknown check type '%s'\n", checkStr)
-			fmt.Fprintf(os.Stderr, "Available checks: %s\n", strings.Join(core.CheckNames(), ", "))
-			os.Exit(1)
-		}
+	for _, c := range selected {
+		result[c] = true
 	}
-
 	return result
 }
 
