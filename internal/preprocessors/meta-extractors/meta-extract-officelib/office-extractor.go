@@ -737,14 +737,25 @@ func embeddedMediaType(ext string) string {
 		// detection gap for a decompression-bomb amplifier, which is a worse
 		// trade for a tool that runs on untrusted input.
 		//
-		// The bound cannot be added here cheaply: depth cannot live on the
-		// preprocessor (one instance is shared across concurrent workers), cannot
-		// travel in a router ProcessingContext (router imports preprocessors, so
-		// the reverse is an import cycle), and cannot live on the router (one
-		// instance, shared). It needs a context parameter on the preprocessor
-		// Process interface, which is a change of its own size. Tracked
-		// separately; this comment is the reason the case is missing, so nobody
-		// "fixes" it by adding the extension.
+		// A bound is needed FIRST, and note that none exists today: the claim
+		// that the router already tracks depth (formerly in
+		// BaseMetadataPreprocessor.processEmbeddedMedia, citing a
+		// FileRouter.noteEmbeddedChild that was never written) was false. The only
+		// guards are the size caps above, and a deep-nesting bomb is small on disk.
+		//
+		// Depth cannot live on the preprocessor (one instance is shared across
+		// concurrent workers) nor on the router (also one instance), and the
+		// concrete router ProcessingContext type is unreachable from here (router
+		// imports preprocessors, so the reverse is an import cycle). What IS
+		// reachable: RouterInterface has exactly one real implementor, so a
+		// depth-carrying entry point beside ProcessFile is additive rather than a
+		// signature change across every preprocessor.
+		//
+		// Tracked in #297, which carries the measured repro and that design. This
+		// comment is the reason the case is missing, so nobody "fixes" it by adding
+		// the extension: doing that without the cap trades a detection gap for a
+		// decompression-bomb amplifier, which is the worse trade for a tool that
+		// runs on untrusted input.
 		return ""
 	}
 }
