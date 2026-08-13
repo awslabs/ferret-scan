@@ -153,13 +153,22 @@ type Finding struct {
 // reports everything and lets the caller decide — but it is worth knowing before
 // wiring this into a gate.
 //
-// Suppression in the engine is opt-in at the internal layer
-// (core.ScanConfig.SuppressionManager), which this package deliberately does not
-// set: filtering findings by default would let a stale rule silently hide a real
-// value from a caller who never asked for it. Callers wanting rule-based
-// suppression today can express it over the returned Findings, or use
-// pkg/redact, whose Engine matches caller-supplied rules and reports what they
-// suppressed.
+// This follows the engine's shape rather than departing from it. Detection itself
+// never suppresses: core is called with SuppressionManager nil by every consumer
+// — the CLI, the web server, the score corpus — and each applies suppression
+// itself once the scan returns, if it wants it. cmd/stdin.go states the reason at
+// the call site, "applied below so we can run --generate-suppressions on raw
+// matches": suppressing inside the scan would hide from rule generation the very
+// findings it exists to write rules for.
+//
+// So the difference between this package and the CLI is not that one opts in and
+// the other does not. It is that the CLI runs that post-pass and this package
+// leaves it to the caller, because filtering by default would let a stale rule
+// silently hide a real value from a caller who never asked for it.
+//
+// Callers wanting rule-based suppression can apply it over the returned Findings,
+// or use pkg/redact, whose Engine matches caller-supplied rules and reports what
+// they suppressed.
 type Result struct {
 	Findings         []Finding
 	Incomplete       bool // true if coverage was cut short (timeout, cancellation)
