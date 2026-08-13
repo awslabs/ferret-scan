@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
@@ -154,9 +155,14 @@ func ScanText(_ context.Context, text string, opts TextOptions) (*Result, error)
 		logWriter = io.Discard
 	}
 
+	checks, err := normalizeChecks(opts.Checks)
+	if err != nil {
+		return nil, err
+	}
+
 	coreResult, err := core.ScanContent(text, core.ContentScanConfig{
 		VirtualPath: label,
-		Checks:      normalizeChecks(opts.Checks),
+		Checks:      checks,
 		Explain:     opts.Explain,
 		Config:      config.LoadConfigOrDefault(""),
 		LogWriter:   logWriter,
@@ -187,9 +193,14 @@ func ScanFile(_ context.Context, path string, opts FileOptions) (*Result, error)
 		logWriter = io.Discard
 	}
 
+	checks, err := normalizeChecks(opts.Checks)
+	if err != nil {
+		return nil, err
+	}
+
 	coreResult, err := core.ScanFile(core.ScanConfig{
 		FilePath:            path,
-		Checks:              normalizeChecks(opts.Checks),
+		Checks:              checks,
 		EnablePreprocessors: true,
 		Explain:             opts.Explain,
 		Config:              config.LoadConfigOrDefault(""),
@@ -243,9 +254,73 @@ func mapResult(r *core.ScanResult) *Result {
 	}
 }
 
-func normalizeChecks(checks []string) []string {
-	if len(checks) == 0 {
-		return []string{"all"}
+// normalizeChecks canonicalizes the caller's Checks and rejects a name no
+// validator answers to.
+//
+// It used to pass the slice through untouched, and core.ParseChecksToRun's loop has
+// no else branch — an unrecognized name is discarded silently. So a caller who
+// misspelled one got ZERO validators, a nil error, and an empty finding list
+// indistinguishable from a clean input. Measured before this change:
+//
+//	Checks=[]              -> 2 findings   (correct)
+//	Checks=["SSN"]         -> 1 finding    (correct)
+//	Checks=["BOGUS_CHECK"] -> 0 findings, err=nil
+//	Checks=["ADDRESS"]     -> 0 findings, err=nil   (the real id is PHYSICAL_ADDRESS)
+//	Checks=["ssn"]         -> 0 findings, err=nil   (case-sensitive)
+//	Checks=["ALL"]         -> 0 findings, err=nil   (only lowercase "all" was the sentinel)
+//	Checks=[" all"]        -> 0 findings, err=nil   (what strings.Split leaves behind)
+//	Checks=["all","SSN"]   -> 1 finding             (the sentinel needs a 1-element list)
+//
+// RedactFile is where that became a leak rather than a nuisance. With
+// Checks=["BOGUS_CHECK"] it returned err=nil and RedactionCount=0, and wrote an
+// output file BYTE-IDENTICAL to the input — the SSN sitting in it in cleartext, in a
+// file the API's own doc comment describes as the redacted copy. A caller has nothing
+// to branch on: RedactionCount 0 is also what a genuinely clean input produces.
+//
+// pkg/redact already fails closed on the same mistake, returning
+// "redact: no validators enabled (Checks=%v)" (engine.go). This brings pkg/scan into
+// line with its sibling rather than inventing a policy.
+//
+// A nil/empty slice still means "every validator", which is the documented contract.
+func normalizeChecks(checks []string) ([]string, error) {
+	// Trim and drop empties first, so [" "] and [""] behave like [].
+	cleaned := make([]string, 0, len(checks))
+	for _, c := range checks {
+		if t := strings.TrimSpace(c); t != "" {
+			cleaned = append(cleaned, t)
+		}
 	}
-	return checks
+	if len(cleaned) == 0 {
+		return []string{"all"}, nil
+	}
+
+	// The "all" sentinel, case-insensitively and whitespace-tolerantly. core's
+	// sentinel requires a lowercase single-element list, so "ALL" and " all"
+	// previously selected nothing at all.
+	if len(cleaned) == 1 && strings.EqualFold(cleaned[0], "all") {
+		return []string{"all"}, nil
+	}
+
+	valid := make(map[string]bool, len(core.CheckNames()))
+	for _, n := range core.CheckNames() {
+		valid[n] = true
+	}
+
+	out := make([]string, 0, len(cleaned))
+	for _, c := range cleaned {
+		name := strings.ToUpper(c)
+		// "all" mixed with other names is rejected rather than silently resolving
+		// to one of the two readings. core's sentinel would have selected only the
+		// OTHER names, which is the opposite of what the word means.
+		if name == "ALL" {
+			return nil, fmt.Errorf("scan: %q cannot be combined with other check names; "+
+				"pass nil or []string{\"all\"} alone for every validator", c)
+		}
+		if !valid[name] {
+			return nil, fmt.Errorf("scan: unknown check %q; valid checks are %s",
+				c, strings.Join(core.CheckNames(), ", "))
+		}
+		out = append(out, name)
+	}
+	return out, nil
 }
