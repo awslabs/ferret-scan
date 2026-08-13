@@ -115,14 +115,23 @@ func TestEmbeddedMediaTypeScoping(t *testing.T) {
 		}
 	}
 
-	// The load-bearing negative. If this starts returning non-empty, unbounded
-	// recursion is live again and a self-nesting document becomes a
-	// decompression-bomb amplifier.
+	// Embedded OOXML documents are now ADMITTED, because the depth bound this test
+	// used to wait for has landed: FileRouter.ProcessEmbedded tracks nesting keyed on
+	// the path it is handed and refuses past MaxEmbeddedDepth, returning
+	// ErrEmbeddedTooDeep, which the caller discloses rather than skipping.
+	//
+	// Bomb-tested: a 9-level self-nesting .docx now terminates in 0.06s with 0 findings
+	// AND a "nesting limit reached" line at the top level, instead of following all
+	// nine levels. See #297.
+	//
+	// The safety property this negative used to protect is not abandoned, it moved:
+	// TestRouterBoundsEmbeddedDepth in internal/router asserts the refusal, so removing
+	// the bound fails there rather than here.
 	for _, ext := range []string{".docx", ".xlsx", ".pptx"} {
-		if got := embeddedMediaType(ext); got != "" {
-			t.Errorf("embeddedMediaType(%q) = %q, want \"\" — admitting embedded OOXML "+
-				"documents re-enables UNBOUNDED recursion; a depth bound must land first",
-				ext, got)
+		if got := embeddedMediaType(ext); got != "document" {
+			t.Errorf("embeddedMediaType(%q) = %q, want \"document\" — an Office document "+
+				"embedded in an Office document was a cleartext leak (#297): reported clean, "+
+				"exit 0, no redacted file", ext, got)
 		}
 	}
 

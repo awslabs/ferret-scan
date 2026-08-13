@@ -5,6 +5,7 @@ package preprocessors
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -18,7 +19,30 @@ import (
 // BaseMetadataPreprocessor and the specialized preprocessors that embed it.
 type RouterInterface interface {
 	ProcessFile(filePath string, context interface{}) (*ProcessedContent, error)
+
+	// ProcessEmbedded processes a child file that was extracted OUT OF parentPath,
+	// enforcing a nesting-depth bound.
+	//
+	// Separate from ProcessFile because the router is the only component that can own
+	// the depth: the preprocessor instance is shared across concurrent workers (so it
+	// cannot hold per-call state) and Process takes no context to thread one through.
+	// The preprocessor knows its own path — that is the argument to Process — so
+	// passing it as parentPath is enough for the router to compute depth without any
+	// change to the Preprocessor interface.
+	//
+	// Returns ErrEmbeddedTooDeep when the bound is reached. Callers must DISCLOSE
+	// that rather than skipping quietly: refusing to descend is incomplete coverage,
+	// and an undisclosed gap reads as a clean result.
+	ProcessEmbedded(childPath, parentPath string) (*ProcessedContent, error)
 }
+
+// ErrEmbeddedTooDeep is returned by RouterInterface.ProcessEmbedded when a container
+// nests deeper than the router's bound.
+//
+// A sentinel rather than a formatted string so the caller can branch on it with
+// errors.Is and tell "too deep" (coverage was cut short — say so) apart from "this
+// child failed to parse" (already handled by the ordinary error path).
+var ErrEmbeddedTooDeep = errors.New("embedded container nesting limit reached")
 
 // BaseMetadataPreprocessor provides common functionality for all specialized metadata preprocessors
 type BaseMetadataPreprocessor struct {
@@ -193,13 +217,19 @@ func (bmp *BaseMetadataPreprocessor) processWithRetryInternal(filePath string, p
 // blob would be labelled office_metadata and that field would report nothing.
 // Measured: the AUTHOR_INFO finding for an embedded clip's artist address
 // disappeared until these sections were carried.
-func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath string, embeddedMedia []EmbeddedMedia) (string, []ContentSection) {
+// ProcessEmbeddedMedia now also returns WARNINGS: notes about embedded items it could
+// not descend into. An item skipped silently is undisclosed missing coverage, which is
+// the failure mode this whole area keeps producing.
+func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath string, embeddedMedia []EmbeddedMedia) (string, []ContentSection, []string) {
 	if bmp.router == nil || len(embeddedMedia) == 0 {
-		return "", nil
+		return "", nil, nil
 	}
 
 	var result string
 	var sections []ContentSection
+	// warnings records embedded items we declined to descend into, so the caller can
+	// surface them through ExtractionWarning.
+	var warnings []string
 	// Line cursor into `result`, maintained incrementally.
 	line := 0
 
@@ -230,7 +260,28 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		// embeddings. Admitting .docx/.xlsx/.pptx routes back into this same
 		// function, so it requires a real depth cap first — and a cap must DISCLOSE
 		// when it truncates, or it replaces a silent miss with a different one.
-		if processed, err := bmp.router.ProcessFile(media.TempFilePath, nil); err == nil && processed != nil && processed.Success {
+		processed, perr := bmp.router.ProcessEmbedded(media.TempFilePath, originalFilePath)
+		if errors.Is(perr, ErrEmbeddedTooDeep) {
+			// DISCLOSE rather than skip. Hitting the bound means this item's content
+			// was never examined; saying nothing would reproduce the exact bug the
+			// bound was added alongside.
+			warnings = append(warnings, fmt.Sprintf(
+				"embedded item %q was not examined: %v", filepath.Base(media.OriginalName), perr))
+			continue
+		}
+		if perr == nil && processed != nil && processed.Success {
+			// Carry the CHILD's own warning up.
+			//
+			// Without this the disclosure dies one level below where it is needed. The
+			// nesting bound fires deep in the chain and sets ExtractionWarning on THAT
+			// level's content; every level above then reads only processed.Text, so a
+			// 9-level bomb terminated correctly at the bound and reported nothing at all
+			// -- measured: 0 findings, 0 disclosure lines. Propagating it means the top
+			// level, which is the one the operator sees, says coverage was cut short.
+			if processed.ExtractionWarning != "" {
+				warnings = append(warnings, processed.ExtractionWarning)
+			}
+
 			// Update processed content to show original file relationship
 			processed.OriginalPath = embeddedPath
 			processed.Filename = embeddedPath
@@ -278,7 +329,7 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		}
 	}
 
-	return result, sections
+	return result, sections, warnings
 }
 
 // EmbeddedMedia represents embedded media extracted from documents

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
@@ -25,7 +26,35 @@ type FileRouter struct {
 	metrics       *RouterMetrics
 	logger        *DebugLogger
 	observer      observability.Observer
+
+	// embeddedDepth records how deep each in-flight file sits inside a container,
+	// keyed by the path handed to ProcessEmbedded. Absent means top level (0).
+	//
+	// This lives on the ROUTER because nothing else can hold it: one preprocessor
+	// instance is shared across concurrent workers, and Preprocessor.Process takes no
+	// context to thread a depth through. A mutex-protected map keyed on path is the
+	// mechanism a stale comment in base_metadata_preprocessor.go used to CLAIM
+	// existed (citing a FileRouter.noteEmbeddedChild that was never written); this is
+	// that mechanism, actually written. See #297.
+	//
+	// Entries are removed when the child finishes, so the map holds only the files
+	// currently being processed rather than growing across a directory scan.
+	embeddedDepthMu sync.Mutex
+	embeddedDepth   map[string]int
 }
+
+// MaxEmbeddedDepth bounds how deep the router follows containers inside containers.
+//
+// Without a bound, admitting embedded OOXML documents is a decompression-bomb
+// amplifier: an embedded .docx routes back through the Office preprocessor, which
+// extracts ITS embeddings, which route back again. Measured previously with a 7KB
+// .docx that embeds itself nine times: all nine levels were followed, with nothing to
+// stop a file declaring more.
+//
+// Three levels covers every legitimate shape observed (a report with an attached
+// workbook that itself has an embedded image) with margin. Reaching the bound is
+// DISCLOSED, not silently skipped -- see ErrEmbeddedTooDeep.
+const MaxEmbeddedDepth = 3
 
 // MaxFileSize is the default maximum file size the router will process (100 MB).
 const MaxFileSize = int64(100 * 1024 * 1024)
@@ -165,6 +194,54 @@ func (fr *FileRouter) ProcessFileWithContext(filePath string, config *Processing
 }
 
 // ProcessFile processes a file through the routing system (interface method)
+// ProcessEmbedded processes a child file extracted OUT OF parentPath, enforcing
+// MaxEmbeddedDepth.
+//
+// The caller (a metadata preprocessor, via RouterInterface) knows its own path -- that
+// is the argument its Process received -- so passing it as parentPath is all the router
+// needs to compute the child's depth. That avoids threading a depth through
+// Preprocessor.Process, which would touch every preprocessor for the benefit of the two
+// that recurse.
+//
+// Returns ErrEmbeddedTooDeep at the bound. The caller must DISCLOSE that: refusing to
+// descend is incomplete coverage, and this whole change exists because undisclosed
+// missing coverage reads as a clean result.
+func (fr *FileRouter) ProcessEmbedded(childPath, parentPath string) (*preprocessors.ProcessedContent, error) {
+	depth := fr.depthOf(parentPath) + 1
+	if depth > MaxEmbeddedDepth {
+		return nil, fmt.Errorf("%w: %s is nested %d levels deep (limit %d)",
+			preprocessors.ErrEmbeddedTooDeep, filepath.Base(childPath), depth, MaxEmbeddedDepth)
+	}
+
+	fr.setDepth(childPath, depth)
+	// Removed when this child finishes, so the map tracks only in-flight files.
+	defer fr.clearDepth(childPath)
+
+	return fr.ProcessFile(childPath, nil)
+}
+
+// depthOf reports how deep a path sits inside containers. Absent = top level.
+func (fr *FileRouter) depthOf(path string) int {
+	fr.embeddedDepthMu.Lock()
+	defer fr.embeddedDepthMu.Unlock()
+	return fr.embeddedDepth[path]
+}
+
+func (fr *FileRouter) setDepth(path string, depth int) {
+	fr.embeddedDepthMu.Lock()
+	defer fr.embeddedDepthMu.Unlock()
+	if fr.embeddedDepth == nil {
+		fr.embeddedDepth = make(map[string]int)
+	}
+	fr.embeddedDepth[path] = depth
+}
+
+func (fr *FileRouter) clearDepth(path string) {
+	fr.embeddedDepthMu.Lock()
+	defer fr.embeddedDepthMu.Unlock()
+	delete(fr.embeddedDepth, path)
+}
+
 func (fr *FileRouter) ProcessFile(filePath string, config interface{}) (*preprocessors.ProcessedContent, error) {
 	if ctx, ok := config.(*ProcessingContext); ok {
 		return fr.processFileInternal(filePath, ctx)
