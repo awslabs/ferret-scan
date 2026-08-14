@@ -33,31 +33,37 @@ func (f *Formatter) FileExtension() string {
 }
 
 func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) (string, error) {
-	if len(matches) == 0 {
-		if len(suppressedMatches) > 0 {
-			return f.formatJSONWithSuppressed([]detector.Match{}, suppressedMatches, options), nil
-		}
-		// In pre-commit mode, return empty string for no matches to reduce noise
-		if options.PrecommitMode {
-			return "", nil
-		}
-		return "[]", nil
-	}
-
-	// Filter matches by confidence level using shared logic
+	// Filter first, then take ONE path regardless of how many findings survive.
+	//
+	// There used to be two early returns emitting a bare `[]`: one for "no matches at
+	// all" and one for "none at the requested confidence". Both bypassed
+	// shared.ConvertMatchesToJSONFormat, which is the only place `stats` — and with it
+	// files_not_examined — is attached. So the coverage disclosure was present exactly
+	// when there were findings and absent exactly when the report read as a clean bill
+	// of health. Measured on a directory of three unreadable files: text printed
+	// "NOT FULLY EXAMINED: 3 of 3 files", json printed `[]` (2 bytes) at exit 0.
+	//
+	// That is the case the field exists for. stats.files_not_examined was added (#277)
+	// so a machine consumer could tell an unexamined file from a clean one, and #284
+	// extended it to sarif/gitlab-sast/junit on the stated premise that json and yaml
+	// already disclosed — they disclosed only on the path where findings existed. See
+	// #296, and #257 whose json half was left unfixed.
+	//
+	// Dropping the early returns also stabilizes the top-level TYPE. It used to flip
+	// between a list (`[]`, zero findings) and an object (`{"stats":…,"results":[…]}`,
+	// with findings), so a typed consumer that worked on a dirty scan failed on a clean
+	// one with "cannot unmarshal array into Go value of type struct". It is now always
+	// an object.
 	filteredMatches := shared.FilterMatchesByConfidence(matches, options)
-	if len(filteredMatches) == 0 {
-		if len(suppressedMatches) > 0 {
-			return f.formatJSONWithSuppressed([]detector.Match{}, suppressedMatches, options), nil
-		}
-		// In pre-commit mode, return empty string for no matches at specified levels
-		if options.PrecommitMode {
-			return "", nil
-		}
-		return "[]", nil
+
+	// Pre-commit mode stays silent when there is genuinely nothing to say, which is
+	// deliberate noise reduction on a developer's every commit. It has its own
+	// out-of-band signalling (exit code + stderr), so it is not relying on this
+	// artifact for the disclosure.
+	if len(filteredMatches) == 0 && len(suppressedMatches) == 0 && options.PrecommitMode {
+		return "", nil
 	}
 
-	// Always use the new format when suppressedMatches are provided
 	return f.formatJSONWithSuppressed(filteredMatches, suppressedMatches, options), nil
 }
 
