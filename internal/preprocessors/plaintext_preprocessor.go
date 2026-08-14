@@ -114,7 +114,53 @@ func (ptp *PlainTextPreprocessor) CanProcess(filePath string) bool {
 		return ptp.isTextFile(filePath)
 	}
 
+	// An extension no preprocessor claims by name: decide on the BYTES.
+	//
+	// This is the same argument as the container case above, in its weakest form.
+	// A .swift or .kt file is not mislabelled and needs no attacker — it is simply
+	// a text format nobody enumerated. The allowlist above holds ~45 extensions and
+	// will always lag the set of text formats that exist: .swift, .kt, .kts, .tf,
+	// .tfvars, .properties, .jsx, .tsx, .dart, .m, .mm, .proto, .vue and .gradle
+	// were all absent, so a Terraform variables file or a Java .properties — two of
+	// the likeliest places on disk to find a credential — scanned as zero findings.
+	//
+	// Worse, the router's own gate already decides this by sniffing:
+	// CanProcessFile answers `true, "Text file"` for a .swift file, and then
+	// processFileInternal finds no capable preprocessor and fails the file. The
+	// scan reports "No matches found" and exit 0 over a file it never read. That
+	// gate-versus-preprocessor drift is the bug this closes; deciding here on the
+	// same signal the gate uses is what keeps the two in agreement.
+	//
+	// Deliberately NOT claimed: extensions belonging to the image, video and audio
+	// metadata extractors. Those route to a preprocessor that handles them, so they
+	// are not the failing case, and claiming them would change behavior for every
+	// media file rather than recovering an unscanned one.
+	if !claimedByAnotherPreprocessor(ext) {
+		return ptp.isTextFile(filePath)
+	}
+
 	return false
+}
+
+// mediaExtValidator answers which extensions the media metadata extractors handle.
+// It is the same validator the router's routing gate delegates to, so this
+// preprocessor and the gate cannot drift about who owns an extension.
+var mediaExtValidator = NewFileExtensionValidator()
+
+// claimedByAnotherPreprocessor reports whether ext routes to a preprocessor other
+// than this one on name alone.
+//
+// Office and PDF are excluded from the check because containerExtensions has
+// already handled them above with a sniff: they are claimed by another
+// preprocessor AND claimable here when the bytes turn out to be text. What
+// remains are the media types, which this preprocessor should not claim.
+func claimedByAnotherPreprocessor(ext string) bool {
+	// The Is*File predicates run filepath.Ext internally, which returns "" for a
+	// bare ".heic", so give them a filename to inspect.
+	probe := "f" + ext
+	return mediaExtValidator.IsImageFile(probe) ||
+		mediaExtValidator.IsVideoFile(probe) ||
+		mediaExtValidator.IsAudioFile(probe)
 }
 
 // containerExtensions are the extensions whose files are normally binary
