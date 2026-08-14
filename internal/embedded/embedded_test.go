@@ -13,10 +13,11 @@ import (
 //
 // The value SafeExt returns is concatenated into a filesystem path when an embedded
 // part is materialized as a temp file, and the input is a zip entry name, which is
-// entirely producer-controlled. So the output must be one of a fixed set of ".xyz"
-// literals no matter what the entry is called — not "sanitized", but incapable of
-// carrying a separator, a parent reference, a NUL or an absolute path in the first
-// place (BSC1: validate untrusted input against an allowlist at the sink).
+// entirely producer-controlled. So whatever the entry is called, the output must be
+// a dot followed by 1-10 characters drawn from [a-z0-9], or the ".bin" fallback, and
+// nothing else — not "sanitized", but incapable of carrying a separator, a parent
+// reference, a NUL or an absolute path in the first place (BSC1: validate untrusted
+// input against an allowlist at the sink).
 func TestSafeExtNeverYieldsAPathComponent(t *testing.T) {
 	hostile := []string{
 		"../../../../etc/passwd",
