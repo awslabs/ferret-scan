@@ -276,7 +276,7 @@ Usage: $0 {check|all|docker-tag|ci-vars}
   ci-vars     Print GO_VERSION / GO_DOCKER_IMAGE for CI.
 
 .go-version is the single source of truth. To bump Go:
-  echo "1.26.5" > .go-version && make sync-go-version && git diff
+  echo "1.26.6" > .go-version && make sync-go-version && git diff
 USAGE
         exit 1
         ;;
