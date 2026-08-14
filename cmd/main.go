@@ -94,6 +94,58 @@ func loadConfiguration(configFile string) *config.Config {
 	return cfg
 }
 
+// reportConfigProvenance names a config file that was DISCOVERED next to the working
+// directory, so the user learns which file is governing the scan.
+//
+// It reports only the auto-discovered, working-directory case, and deliberately stays
+// quiet for the other two:
+//
+//   - an explicit --config <path> is the user's own choice, so naming it back is noise;
+//   - the user config dir is a standing personal preference, equally unsurprising.
+//
+// The working-directory case is the one nobody chose per-run. FindConfigFile searches
+// the CWD before anything else, so a config.yaml or .ferret-scan.yaml sitting beside the
+// scanned content wins, and such a config can switch off whole detection categories via
+// validators.<name>.disabled_types. Measured: identical binary, flags and input went
+// from 1 finding to 0 because of a file dropped next to the content, with nothing in the
+// output naming it.
+//
+// That is a trust boundary the threat model does not evaluate. TB-7 already covers "an
+// outside contributor's PR run through a maintainer's pre-commit/CI" and TM-11 covers
+// that attacker driving confidence to zero through attacker-authored CONTENT; adding a
+// config file to the same PR reaches the same outcome more directly, and for a hook or
+// CI job running from the repository root it is the shorter path. This line does not
+// close that hole — see #293 for the opt-in gating decision, which is a policy call —
+// but it turns an invisible substitution into a reviewable one.
+//
+// NOT gated on --quiet. That flag suppresses progress output; which config governed the
+// run is a disclosure, and in CI (where --quiet is most used) it matters more, not less.
+func reportConfigProvenance(w io.Writer, cfg *config.Config, explicitConfigFlag string) {
+	if w == nil || cfg == nil || cfg.SourcePath == "" {
+		return
+	}
+	// The user asked for this file by name; do not read it back to them.
+	if explicitConfigFlag != "" {
+		return
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	abs, err := filepath.Abs(cfg.SourcePath)
+	if err != nil {
+		return
+	}
+	rel, err := filepath.Rel(cwd, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		// Outside the working directory: the user config dir or similar. Expected.
+		return
+	}
+	fmt.Fprintf(w,
+		"Note: using project config %s found in the working directory; "+
+			"it can disable detection types.\n", rel)
+}
+
 // warnUnknownConfigKeys reports config keys the schema does not recognize.
 //
 // Unknown keys are not an error — rejecting them would break any config written
@@ -1642,6 +1694,7 @@ func main() {
 	// unaffected, and it never changes the exit code.
 	if precommitConfig == nil {
 		warnUnknownConfigKeys(os.Stderr, cfg)
+		reportConfigProvenance(os.Stderr, cfg, flags.configFile)
 	}
 
 	// Suppress progress messages in pre-commit mode or quiet mode

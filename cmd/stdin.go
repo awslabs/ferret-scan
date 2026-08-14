@@ -257,6 +257,7 @@ func runStdinScan(in stdinScanInputs) int {
 		// --enable-redaction and no --output, stderr carries the findings
 		// document and anything else on it breaks `2> findings.json`.
 		warnUnknownConfigKeys(os.Stderr, cfg)
+		reportConfigProvenance(os.Stderr, cfg, in.flags.configFile)
 
 		fmt.Fprintf(os.Stderr, "Scan complete: stdin scanned in %s\n", elapsed.Round(time.Millisecond))
 		// Mirror file-mode's suppression notice so users see the same
