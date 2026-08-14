@@ -45,6 +45,14 @@ type RedactionManager struct {
 
 	// stats tracks redaction statistics
 	stats *RedactionStats
+
+	// embeddedDepth bounds container-inside-container redaction.
+	//
+	// Held here rather than on a redactor because a redactor instance is shared
+	// across concurrent files and RedactDocument has no context parameter to thread
+	// a counter through — the same reason FileRouter owns the read side's copy. See
+	// RedactEmbedded in embedded.go.
+	embeddedDepth embeddedDepthState
 }
 
 // RedactionManagerConfig contains configuration for the redaction manager
