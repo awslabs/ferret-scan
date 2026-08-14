@@ -6,7 +6,6 @@ package scan
 import (
 	"io"
 
-	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
@@ -25,6 +24,17 @@ type RedactFileOptions struct {
 
 	// LogWriter receives payload-free progress output. Defaults to io.Discard.
 	LogWriter io.Writer
+	// ConfigPath pins the config file this redaction uses; empty keeps the historical
+	// discovery behaviour. DisableConfigDiscovery ignores ambient config entirely and
+	// uses built-in defaults. See TextOptions.ConfigPath — without one of the two, which
+	// validators run depends on the calling process's working directory, and a config
+	// beside the content can disable detection types. That matters more here than on the
+	// scan path: only reported findings are redacted. #293.
+	ConfigPath string
+
+	// DisableConfigDiscovery uses built-in defaults only. Takes precedence over
+	// ConfigPath.
+	DisableConfigDiscovery bool
 }
 
 // RedactFileResult reports the outcome of a file-level redaction.
@@ -69,7 +79,7 @@ func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) 
 		OutputDir: opts.OutputDir,
 		Strategy:  strategy,
 		Checks:    checks,
-		Config:    config.LoadConfigOrDefault(""),
+		Config:    resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery),
 		LogWriter: logWriter,
 	})
 	if err != nil {

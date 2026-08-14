@@ -47,6 +47,37 @@ type TextOptions struct {
 	// LogWriter receives payload-free progress output. Defaults to io.Discard
 	// (silent). Never receives matched values or input bytes.
 	LogWriter io.Writer
+
+	// ConfigPath pins the config file this scan uses. Empty keeps the historical
+	// behaviour: discovery via the process working directory, then the user config dir.
+	//
+	// Set it, or set DisableConfigDiscovery, to make a scan reproducible. Without one of
+	// the two, detection depends on where the calling process happens to be running.
+	// Verified with an identical ScanText call differing only in CWD:
+	//
+	//	cwd=/tmp/empty  findings=1
+	//	cwd=/tmp/work   findings=0
+	//
+	// The second directory held a .ferret-scan.yaml with
+	// validators.intellectual_property.disabled_types. An embedded consumer had no way
+	// to pin, opt out, or even detect that — and no way to write a hermetic test, since
+	// every test inherited whatever config the developer's machine or CWD supplied.
+	//
+	// This is the same shape as the redact.ValidCheckNames()/SOCIAL_MEDIA case — a
+	// successful call, an empty finding list, input treated as clean — except the cause
+	// is ambient rather than in the caller's arguments, so the caller could neither
+	// detect nor prevent it. See #293.
+	ConfigPath string
+
+	// DisableConfigDiscovery ignores all ambient config and uses built-in defaults only.
+	//
+	// A separate bool rather than a magic ConfigPath value, so "use defaults" is stated
+	// rather than encoded in a sentinel string a caller has to look up. Takes precedence
+	// over ConfigPath when both are set, because it is the stricter request.
+	//
+	// This is what a hermetic test or a CI-shaped caller wants: identical behaviour
+	// regardless of the working directory or the machine.
+	DisableConfigDiscovery bool
 }
 
 // FileOptions configures a file-path scan.
@@ -72,6 +103,15 @@ type FileOptions struct {
 	// one consumer that most needs a memory envelope was the only one that could
 	// not set it.
 	MaxLiveBytes int64
+	// ConfigPath pins the config file this scan uses; empty keeps the historical
+	// discovery behaviour (working directory, then user config dir). See
+	// TextOptions.ConfigPath for why pinning matters — without it, detection depends on
+	// the calling process's working directory. #293.
+	ConfigPath string
+
+	// DisableConfigDiscovery ignores all ambient config and uses built-in defaults only.
+	// Takes precedence over ConfigPath.
+	DisableConfigDiscovery bool
 }
 
 // Finding is one piece of sensitive data detected.
@@ -200,7 +240,7 @@ func ScanText(_ context.Context, text string, opts TextOptions) (*Result, error)
 		VirtualPath: label,
 		Checks:      checks,
 		Explain:     opts.Explain,
-		Config:      config.LoadConfigOrDefault(""),
+		Config:      resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery),
 		LogWriter:   logWriter,
 	})
 	if err != nil {
@@ -239,7 +279,7 @@ func ScanFile(_ context.Context, path string, opts FileOptions) (*Result, error)
 		Checks:              checks,
 		EnablePreprocessors: true,
 		Explain:             opts.Explain,
-		Config:              config.LoadConfigOrDefault(""),
+		Config:              resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery),
 		LogWriter:           logWriter,
 		MaxLiveBytes:        opts.MaxLiveBytes,
 	})
@@ -359,4 +399,34 @@ func normalizeChecks(checks []string) ([]string, error) {
 		out = append(out, name)
 	}
 	return out, nil
+}
+
+// resolveConfig turns the two config knobs into a *config.Config.
+//
+// One place, so ScanText, ScanFile and RedactFile cannot drift about what
+// DisableConfigDiscovery means. The precedence is: defaults-only beats an explicit path,
+// an explicit path beats discovery, and discovery is the historical default so existing
+// callers are unaffected.
+//
+// Discovery searches the process WORKING DIRECTORY first, so a config beside the scanned
+// content wins and can switch off whole detection categories. That is fine for a CLI the
+// user is driving and wrong for an embedded consumer that never chose it. See #293.
+func resolveConfig(configPath string, disableDiscovery bool) *config.Config {
+	if disableDiscovery {
+		// LoadConfig("") is the built-in-defaults constructor and cannot fail.
+		cfg, _ := config.LoadConfig("")
+		return cfg
+	}
+	if configPath != "" {
+		// Strict: a caller that named a file wants to hear about it being unreadable
+		// rather than silently getting defaults, which is the failure mode this whole
+		// issue is about. Fall back to defaults so the scan still runs, but the caller
+		// can tell by inspecting cfg.SourcePath.
+		if cfg, err := config.LoadConfigStrict(configPath); err == nil {
+			return cfg
+		}
+		cfg, _ := config.LoadConfig("")
+		return cfg
+	}
+	return config.LoadConfigOrDefault("")
 }

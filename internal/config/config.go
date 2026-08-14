@@ -20,6 +20,27 @@ import (
 
 // Config represents the application configuration
 type Config struct {
+	// SourcePath records WHICH file this config was loaded from, or "" for built-in
+	// defaults.
+	//
+	// It exists so a run can say what governed it. FindConfigFile searches the CURRENT
+	// WORKING DIRECTORY before the user config dir, so a config.yaml or
+	// .ferret-scan.yaml sitting next to the scanned content wins — and can switch off
+	// whole detection categories via validators.<name>.disabled_types. Measured: the
+	// same binary, flags and input went from 1 finding to 0 because of a file dropped
+	// beside the content, with nothing in the output naming it.
+	//
+	// That is a real trust boundary. THREAT_MODEL TB-7 already covers "an outside
+	// contributor's PR run through a maintainer's pre-commit/CI", and TM-11 covers that
+	// attacker driving confidence to zero through attacker-authored CONTENT; a config
+	// file in the same PR reaches the same outcome more directly. Naming the config in
+	// effect does not close that hole, but it makes the substitution visible instead of
+	// silent, which is the difference between a reviewable event and an invisible one.
+	//
+	// yaml:"-" so a config file cannot set it and claim a different provenance than the
+	// one it actually has. See #293.
+	SourcePath string `yaml:"-" json:"-"`
+
 	// Default settings
 	Defaults struct {
 		Format               string   `yaml:"format"`
@@ -201,7 +222,8 @@ func LoadConfig(configPath string) (*Config, error) {
 		},
 	}
 
-	// If no config file specified, return default config
+	// If no config file specified, return default config. SourcePath stays empty,
+	// which is what "built-in defaults" means to a caller inspecting it.
 	if configPath == "" {
 		return config, nil
 	}
@@ -268,6 +290,10 @@ func LoadConfig(configPath string) (*Config, error) {
 	// be rejected — for a bad path, possibly that very temp_dir — leave the
 	// process pointing at a directory no accepted config ever named.
 	paths.SetTempDirOverride(platformTempDirOverride(config))
+
+	// Record the provenance only on the SUCCESS path, so SourcePath never names a file
+	// whose contents were rejected. A caller reads this to report what governed the run.
+	config.SourcePath = cleanPath
 
 	return config, nil
 }
@@ -934,6 +960,9 @@ func LoadConfigOrDefault(configFile string) *Config {
 				"Warning: failed to load config %q: %v — using built-in defaults.\n",
 				configPath, err)
 		}
+		// Built-in defaults, and SourcePath is empty on this path, so a caller
+		// reporting provenance says "built-in defaults" rather than naming a file
+		// whose contents were never applied.
 		cfg, _ = LoadConfig("")
 	}
 	return cfg
