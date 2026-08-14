@@ -350,7 +350,17 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 	// Apply limit
 	matches, totalFindings, truncated := ApplyLimit(matches, options)
 
-	var jsonMatches []JSONMatch
+	// Non-nil, so an empty result set serializes as `"results": []` and not
+	// `"results": null`.
+	//
+	// Results carries no omitempty, so a nil slice reaches the encoder and becomes
+	// null. That is not hypothetical: the SARIF formatter had exactly this shape and
+	// emitted `"results": null` on every clean scan, which is schema-INVALID and made
+	// GitHub reject the whole report (#283). json/yaml never showed it only because an
+	// empty result list used to short-circuit before reaching here; now that the
+	// zero-finding case routes through this function so it can carry `stats`, the nil
+	// would become visible.
+	jsonMatches := make([]JSONMatch, 0, len(matches))
 	for _, match := range matches {
 		// Sanitize metadata through the single shared path so a value duplicated
 		// inside metadata (e.g. name_components, full_field) cannot defeat the

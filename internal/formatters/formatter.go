@@ -79,10 +79,21 @@ type FormatterOptions struct {
 }
 
 // ScanStats holds aggregate scan statistics rendered in the output summary.
+// Every field carries a yaml tag as well as a json one, and they MUST agree.
+//
+// Without them gopkg.in/yaml.v3 falls back to the lower-cased Go field name, so the
+// YAML artifact spelled these `totalfiles`, `filesprocessed` and — the costly one —
+// `filesnotexamined`. A consumer written against the documented JSON schema therefore
+// could not read the coverage disclosure out of the YAML report at all: it was looking
+// for `files_not_examined`, which never appeared under that name. The missing tag also
+// dropped `omitempty`, so YAML emitted `filesnotexamined: 0` where JSON omitted it.
+//
+// Two serializations of one struct that disagree about key names are worse than one
+// format being absent, because the field LOOKS present and reads as zero.
 type ScanStats struct {
-	TotalFiles     int `json:"total_files"`
-	FilesProcessed int `json:"files_processed"`
-	FilesSkipped   int `json:"files_skipped"`
+	TotalFiles     int `json:"total_files" yaml:"total_files"`
+	FilesProcessed int `json:"files_processed" yaml:"files_processed"`
+	FilesSkipped   int `json:"files_skipped" yaml:"files_skipped"`
 
 	// FilesNotExamined counts files the tool could not read, parse or extract text
 	// from. They are NOT "skipped" (an unsupported type the user does not expect a
@@ -95,13 +106,13 @@ type ScanStats struct {
 	// summary over unexamined files is the same class of harm as a missed detection.
 	//
 	// omitempty so a scan with nothing to report stays byte-identical in JSON/YAML.
-	FilesNotExamined int     `json:"files_not_examined,omitempty"`
-	TotalFindings    int     `json:"total_findings"`
-	High             int     `json:"high"`
-	Medium           int     `json:"medium"`
-	Low              int     `json:"low"`
-	Suppressed       int     `json:"suppressed"`
-	Duration         float64 `json:"duration_seconds"`
+	FilesNotExamined int     `json:"files_not_examined,omitempty" yaml:"files_not_examined,omitempty"`
+	TotalFindings    int     `json:"total_findings" yaml:"total_findings"`
+	High             int     `json:"high" yaml:"high"`
+	Medium           int     `json:"medium" yaml:"medium"`
+	Low              int     `json:"low" yaml:"low"`
+	Suppressed       int     `json:"suppressed" yaml:"suppressed"`
+	Duration         float64 `json:"duration_seconds" yaml:"duration_seconds"`
 }
 
 // Formatter interface defines methods that all output formatters must implement
