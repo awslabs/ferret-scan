@@ -413,7 +413,7 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 		// in a zip member -- measured, the .docx case was fixed and the image case
 		// still shipped the SSN in cleartext. Handing the whole part to the redactor
 		// that owns its format covers both, plus legacy OLE and PDF, with one loop.
-		if embedded.IsPartPath(file.Name) {
+		if embedded.IsPartPath(file.Name) && !embedded.SkipTextPipeline(file.Name) {
 			children = append(children, embeddedChild{name: file.Name, content: content})
 			continue
 		}

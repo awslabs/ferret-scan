@@ -289,6 +289,13 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 			continue
 		}
 
+		// Drawing geometry is not prose. See embedded.SkipTextPipeline: routing the
+		// .svg parts of one real deck through the validators produced 1,095 PHONE
+		// findings, 826 of them HIGH, all matching path coordinates.
+		if embedded.SkipTextPipeline(media.OriginalName) {
+			continue
+		}
+
 		processed, perr := bmp.router.ProcessEmbedded(media.TempFilePath, originalFilePath)
 		if errors.Is(perr, ErrEmbeddedTooDeep) {
 			// DISCLOSE rather than skip. Hitting the bound means this item's content

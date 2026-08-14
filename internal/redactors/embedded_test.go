@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -228,6 +229,15 @@ func TestRedactEmbeddedTempFileIsNotWorldReadable(t *testing.T) {
 	}
 	if !spy.observed {
 		t.Fatal("the stub redactor was never called, so nothing was checked")
+	}
+
+	// Windows does not carry Unix permission bits in os.FileMode: it reports
+	// -rw-rw-rw- for a file created with 0600 and -rwxrwxrwx for a 0700 directory, so
+	// the assertion below cannot hold there and says nothing about the product. The
+	// mode arguments are still passed unconditionally; this only skips CHECKING them
+	// on the platform that cannot report them.
+	if runtime.GOOS == "windows" {
+		t.Skip("os.FileMode does not carry Unix permission bits on Windows")
 	}
 	if spy.fileMode.Perm()&0o077 != 0 {
 		t.Errorf("the temp file holding unredacted bytes has mode %v; it must not be "+

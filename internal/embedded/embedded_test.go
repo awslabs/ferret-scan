@@ -81,9 +81,16 @@ func TestSafeExtNeverYieldsAPathComponent(t *testing.T) {
 		}
 		// The decisive property: joining it into a directory cannot escape that
 		// directory.
-		joined := filepath.Join("/tmp/sandbox", "embedded"+ext)
-		if !strings.HasPrefix(joined, "/tmp/sandbox/") {
-			t.Errorf("SafeExt(%q) = %q escapes the sandbox when joined: %s", name, ext, joined)
+		//
+		// Compared with filepath.Dir rather than a hardcoded "/tmp/sandbox/" prefix.
+		// The literal form passed on Unix and failed every case on Windows, where
+		// filepath.Join yields \tmp\sandbox\embedded.bin -- a test bug, not a product
+		// one, and the kind that makes a green local run hide a red CI.
+		sandbox := filepath.Join(string(filepath.Separator)+"tmp", "sandbox")
+		joined := filepath.Join(sandbox, "embedded"+ext)
+		if filepath.Dir(joined) != sandbox {
+			t.Errorf("SafeExt(%q) = %q escapes the sandbox when joined: %s (want parent %s)",
+				name, ext, joined, sandbox)
 		}
 	}
 }

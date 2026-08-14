@@ -159,6 +159,41 @@ func Recurses(name string) bool {
 	return KindOfPath(name) == KindDocument
 }
 
+// vectorGraphicsExts hold DRAWING GEOMETRY, not prose, and must not be fed to the
+// text validators.
+//
+// Admitting them looked like a pure coverage win and is not. An .svg is XML text, so
+// the byte-sniffing text path claims it happily -- and its content is coordinate soup.
+// Measured on one real deck carrying 171 embedded .svg parts, routing them through the
+// pipeline took PHONE findings from 0 to 1,095, of which 826 were HIGH. The matches are
+// path data:
+//
+//	43.5968 15.4721 43.4928 15.7281 43.3048 15.9
+//	38.9358 20.3361 37.5138 18.9301 40.1318 16.2
+//
+// 826 HIGH false positives in a single file is not coverage. HIGH is the band operators
+// triage first, so this would bury the findings that matter -- the precise failure mode
+// the confidence contract exists to prevent.
+//
+// This is a DEFERRAL, not a judgement that these parts are uninteresting. An .svg's
+// <text>, <title> and <desc> nodes are real prose and can carry real PII: a fixture
+// with <text>Employee SSN: ...</text> is detected at confidence 90 when scanned as a
+// standalone file. Recovering that needs an SVG-aware extractor that reads text nodes
+// and ignores geometry, which is its own change with its own precision evidence. Until
+// then these parts are excluded rather than shipped as noise.
+var vectorGraphicsExts = map[string]bool{
+	".svg": true, // XML text, but the text is path geometry
+	".emf": true, // Enhanced Metafile: drawing records
+	".wmf": true, // Windows Metafile: same
+	".wdp": true, // JPEG XR / HD Photo
+}
+
+// SkipTextPipeline reports whether a part holds drawing geometry rather than prose, and
+// so must not be routed to the text validators.
+func SkipTextPipeline(name string) bool {
+	return vectorGraphicsExts[strings.ToLower(filepath.Ext(name))]
+}
+
 // opaqueExts are admitted formats whose payload can be COMPRESSED internally, so
 // scanning their raw bytes proves nothing about what they contain.
 //
