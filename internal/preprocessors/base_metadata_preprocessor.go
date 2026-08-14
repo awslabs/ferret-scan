@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/ferret-scan/v2/internal/embedded"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
@@ -34,6 +35,17 @@ type RouterInterface interface {
 	// that rather than skipping quietly: refusing to descend is incomplete coverage,
 	// and an undisclosed gap reads as a clean result.
 	ProcessEmbedded(childPath, parentPath string) (*ProcessedContent, error)
+
+	// CanProcessFile reports whether the router can process a file at all, and why
+	// not when it cannot.
+	//
+	// Needed so embedded parts are admitted by CAPABILITY rather than by a private
+	// extension list. The list version excluded 19% of the embedded parts in a real
+	// corpus, including .svg, which scans perfectly well as a standalone file. Asking
+	// the router means a preprocessor added anywhere -- including the byte-sniffing
+	// text fallback -- extends embedded coverage for free instead of leaving a
+	// second list to maintain.
+	CanProcessFile(filePath string, enablePreprocessors bool) (bool, string)
 }
 
 // ErrEmbeddedTooDeep is returned by RouterInterface.ProcessEmbedded when a container
@@ -42,7 +54,14 @@ type RouterInterface interface {
 // A sentinel rather than a formatted string so the caller can branch on it with
 // errors.Is and tell "too deep" (coverage was cut short — say so) apart from "this
 // child failed to parse" (already handled by the ordinary error path).
-var ErrEmbeddedTooDeep = errors.New("embedded container nesting limit reached")
+//
+// Aliased to embedded.ErrTooDeep rather than declared independently: the redaction
+// side raises the same condition, and two distinct sentinels would make errors.Is
+// fail across the halves — a caller branching on the read side's value would not
+// recognise the write side's, and the "coverage was cut short" disclosure would be
+// silently downgraded to a generic failure. Existing references to this name keep
+// working.
+var ErrEmbeddedTooDeep = embedded.ErrTooDeep
 
 // BaseMetadataPreprocessor provides common functionality for all specialized metadata preprocessors
 type BaseMetadataPreprocessor struct {
@@ -260,6 +279,16 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		// embeddings. Admitting .docx/.xlsx/.pptx routes back into this same
 		// function, so it requires a real depth cap first — and a cap must DISCLOSE
 		// when it truncates, or it replaces a silent miss with a different one.
+		// Skip a part the pipeline cannot read at all.
+		//
+		// Not a warning: an unprocessable embedded part is the same situation as an
+		// unsupported top-level file, which the scan already reports through its own
+		// channel. Warning here would put a line on stderr for every decorative .emf
+		// in every deck, which trains operators to ignore the warnings that matter.
+		if ok, _ := bmp.router.CanProcessFile(media.TempFilePath, true); !ok {
+			continue
+		}
+
 		processed, perr := bmp.router.ProcessEmbedded(media.TempFilePath, originalFilePath)
 		if errors.Is(perr, ErrEmbeddedTooDeep) {
 			// DISCLOSE rather than skip. Hitting the bound means this item's content

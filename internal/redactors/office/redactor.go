@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/embedded"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/position"
@@ -41,6 +42,17 @@ type OfficeRedactor struct {
 
 	// fallbackToSimple controls whether to fall back to simple text replacement on correlation failure
 	fallbackToSimple bool
+
+	// embeddedRedactor redacts files found INSIDE this document — an embedded
+	// .docx, a legacy .doc, an image whose EXIF holds a finding.
+	//
+	// An interface, injected, rather than the concrete RedactionManager: the
+	// manager knows every redactor and a single format redactor must not. nil is a
+	// supported state and means "do not descend", which keeps this type usable
+	// standalone in tests and from callers that never registered a manager. When it
+	// is nil and an embedded part holds a reported value, that is DISCLOSED rather
+	// than passed over — see redactEmbeddedParts.
+	embeddedRedactor redactors.EmbeddedRedactor
 }
 
 // OfficeDocumentType represents the type of Office document
@@ -101,6 +113,13 @@ func NewOfficeRedactor(outputManager *redactors.OutputStructureManager, observer
 	}
 }
 
+// SetEmbeddedRedactor injects the component used to redact files embedded inside
+// this document. Called once at construction by internal/core, after every redactor
+// is registered, because the value is the manager that owns them all.
+func (or *OfficeRedactor) SetEmbeddedRedactor(er redactors.EmbeddedRedactor) {
+	or.embeddedRedactor = er
+}
+
 // GetName returns the name of the redactor
 func (or *OfficeRedactor) GetName() string {
 	return "office_redactor"
@@ -143,7 +162,7 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 	}
 
 	// Extract ZIP contents and text
-	zipContents, extractedText, textPositions, err := or.extractOfficeContent(originalPath, docType)
+	zipContents, extractedText, textPositions, children, err := or.extractOfficeContent(originalPath, docType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract office content: %w", err)
 	}
@@ -152,6 +171,33 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 	redactionMap, modifiedContents, err := or.redactOfficeContent(zipContents, extractedText, textPositions, matches, strategy, docType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to redact office content: %w", err)
+	}
+
+	// Redact files embedded INSIDE this document, each by the redactor that owns
+	// its format, and store the results back at their own entry names.
+	embeddedMap, unredacted := or.redactEmbeddedParts(originalPath, modifiedContents, children, matches, strategy)
+	redactionMap = append(redactionMap, embeddedMap...)
+
+	// Refuse to write a document that still holds a reported value.
+	//
+	// FAIL CLOSED, deliberately, and this is the crux of the fix. The alternative --
+	// write the file and warn -- puts a document containing an SSN into a directory
+	// named "redacted", which is the artefact a user forwards. The same policy
+	// already applies one level up: when the image or PDF redactor cannot handle a
+	// standalone file, no output is written and the run reports
+	// "redaction incomplete ... the original values remain in cleartext". Writing
+	// here while refusing there would make the tool's guarantee depend on whether
+	// the value happened to be nested.
+	//
+	// The blast radius is bounded by design: redactEmbeddedParts only reports a part
+	// when a reported value is actually still present in it (or when the format is
+	// one whose bytes cannot be inspected, where absence cannot be established). An
+	// embedded image that merely fails to decode, holding nothing, does not stop the
+	// container from being written.
+	if len(unredacted) > 0 {
+		return nil, fmt.Errorf(
+			"refusing to write %s: %d embedded part(s) still contain reported values: %s",
+			filepath.Base(outputPath), len(unredacted), embeddedFailureSummary(unredacted))
 	}
 
 	// Repackage ZIP with modified contents
@@ -292,10 +338,10 @@ type OfficeElementInfo struct {
 }
 
 // extractOfficeContent extracts ZIP contents and text from an Office document
-func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDocumentType) (*OfficeZipContents, string, []OfficeTextPosition, error) {
+func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDocumentType) (*OfficeZipContents, string, []OfficeTextPosition, []embeddedChild, error) {
 	reader, err := zip.OpenReader(filePath)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to open ZIP file: %w", err)
+		return nil, "", nil, nil, fmt.Errorf("failed to open ZIP file: %w", err)
 	}
 	defer reader.Close()
 
@@ -307,6 +353,9 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 	var extractedText strings.Builder
 	var textPositions []OfficeTextPosition
 	var totalDecompressed int64
+	// children are embedded files to be redacted in their own right, in source
+	// order so the redacted output is reproducible.
+	var children []embeddedChild
 
 	// Extract all files from ZIP
 	for _, file := range reader.File {
@@ -314,7 +363,7 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 		// per-entry cap. This is the cheap first line of defense against a
 		// decompression bomb (a tiny compressed entry claiming multi-GB output).
 		if file.UncompressedSize64 > maxOfficeEntryBytes {
-			return nil, "", nil, fmt.Errorf("office entry %q declares %d bytes, exceeding the %d cap (possible decompression bomb)",
+			return nil, "", nil, nil, fmt.Errorf("office entry %q declares %d bytes, exceeding the %d cap (possible decompression bomb)",
 				file.Name, file.UncompressedSize64, maxOfficeEntryBytes)
 		}
 
@@ -341,18 +390,33 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 		// The redactor repackages exactly what it reads, so a truncated entry
 		// would silently corrupt the redacted output — fail closed instead.
 		if int64(len(content)) > maxOfficeEntryBytes {
-			return nil, "", nil, fmt.Errorf("office entry %q exceeds the %d per-entry decompression cap (possible bomb)",
+			return nil, "", nil, nil, fmt.Errorf("office entry %q exceeds the %d per-entry decompression cap (possible bomb)",
 				file.Name, maxOfficeEntryBytes)
 		}
 		totalDecompressed += int64(len(content))
 		if totalDecompressed > maxOfficeTotalBytes {
-			return nil, "", nil, fmt.Errorf("office document exceeds the %d cumulative decompression cap (possible bomb)",
+			return nil, "", nil, nil, fmt.Errorf("office document exceeds the %d cumulative decompression cap (possible bomb)",
 				maxOfficeTotalBytes)
 		}
 
 		// Record the entry with its position in the source package, so the
 		// repackaged document is written in the same order.
 		zipContents.addFile(file.Name, content)
+
+		// Record an embedded file for separate redaction, rather than trying to
+		// treat it as text of this document.
+		//
+		// Its text is deliberately NOT folded into extractedText. An earlier attempt
+		// did exactly that and then rewrote the value inside the nested package with
+		// a byte substitution. That works for an embedded .docx and cannot work for
+		// an embedded JPEG, because removing an SSN from EXIF is not a string replace
+		// in a zip member -- measured, the .docx case was fixed and the image case
+		// still shipped the SSN in cleartext. Handing the whole part to the redactor
+		// that owns its format covers both, plus legacy OLE and PDF, with one loop.
+		if embedded.IsPartPath(file.Name) {
+			children = append(children, embeddedChild{name: file.Name, content: content})
+			continue
+		}
 
 		// Extract text from relevant XML files
 		if or.isTextContainingFile(file.Name, docType) {
@@ -370,7 +434,7 @@ func (or *OfficeRedactor) extractOfficeContent(filePath string, docType OfficeDo
 		}
 	}
 
-	return zipContents, extractedText.String(), textPositions, nil
+	return zipContents, extractedText.String(), textPositions, children, nil
 }
 
 // isTextContainingFile determines if a ZIP file contains text content based on document type.

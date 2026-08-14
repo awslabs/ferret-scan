@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/awslabs/ferret-scan/v2/internal/embedded"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 )
@@ -54,7 +55,15 @@ type FileRouter struct {
 // Three levels covers every legitimate shape observed (a report with an attached
 // workbook that itself has an embedded image) with margin. Reaching the bound is
 // DISCLOSED, not silently skipped -- see ErrEmbeddedTooDeep.
-const MaxEmbeddedDepth = 3
+//
+// Defined in package embedded rather than here, because the REDACTION side needs the
+// same bound and must not carry its own copy. A write side shallower than the read
+// side reports findings from a level it will not rewrite -- a cleartext leak that
+// reads as success -- and a write side deeper than the read side redacts in a place
+// nothing scanned. The earlier attempt at this mirrored the literal 3 in
+// internal/redactors/office and added a test asserting the two stayed equal; sharing
+// one constant makes the drift impossible instead of merely detected.
+const MaxEmbeddedDepth = embedded.MaxDepth
 
 // MaxFileSize is the default maximum file size the router will process (100 MB).
 const MaxFileSize = int64(100 * 1024 * 1024)

@@ -204,10 +204,12 @@ func NewDefaultRedactionManager(outputDir string, strategy redactors.RedactionSt
 			FailureHandling:         redactors.FailureHandlingGraceful,
 		})
 
+	officeRedactor := office.NewOfficeRedactor(outputManager, observer)
+
 	for _, r := range []redactors.Redactor{
 		plaintext.NewPlainTextRedactor(outputManager, observer),
 		pdf.NewPDFRedactor(outputManager, observer),
-		office.NewOfficeRedactor(outputManager, observer),
+		officeRedactor,
 		legacyole.NewLegacyOLERedactor(outputManager, observer),
 		image.NewImageMetadataRedactor(outputManager, observer),
 	} {
@@ -215,5 +217,19 @@ func NewDefaultRedactionManager(outputDir string, strategy redactors.RedactionSt
 			return nil, nil, fmt.Errorf("failed to register redactor %s: %w", r.GetName(), err)
 		}
 	}
+
+	// Let the Office redactor descend into files embedded inside a document.
+	//
+	// Injected AFTER registration because the dispatcher is the manager that owns
+	// every redactor, and an embedded part is routed by type exactly as a top-level
+	// file is: an embedded .docx to this same redactor, a .jpg to the image
+	// redactor, a .doc to the legacy OLE one. Without this call the Office redactor
+	// still runs, but reports any embedded part holding a reported value as
+	// unredacted rather than silently shipping it.
+	//
+	// The manager bounds the recursion (embedded.MaxDepth), so registering the
+	// Office redactor with a dispatcher that can route back to it is not unbounded.
+	officeRedactor.SetEmbeddedRedactor(manager)
+
 	return manager, outputManager, nil
 }

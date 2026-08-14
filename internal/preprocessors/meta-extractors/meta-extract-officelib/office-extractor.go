@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/embedded"
 )
 
 // Security constants
@@ -702,8 +704,11 @@ func parseOfficeDate(dateStr string) (time.Time, error) {
 // exit 0 and no warning. The same held for a container placed under
 // word/media/.
 func isEmbeddedPartPath(name string) bool {
-	n := strings.ToLower(name)
-	return strings.Contains(n, "/media/") || strings.Contains(n, "/embeddings/")
+	// Delegated so the read and write sides cannot disagree about which parts are
+	// embedded files. See package embedded: a part one side descends into and the
+	// other does not is a reported-but-unredactable finding, i.e. a cleartext leak
+	// dressed as success.
+	return embedded.IsPartPath(name)
 }
 
 // embeddedMediaType classifies an embedded part by extension, returning "" for
@@ -715,40 +720,15 @@ func isEmbeddedPartPath(name string) bool {
 // missing a document nested inside a document is a detection hole with no
 // attacker required.
 func embeddedMediaType(ext string) string {
-	switch ext {
-	case ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".gif", ".bmp", ".webp":
-		return "image"
-	case ".mp3", ".wav", ".m4a", ".flac":
-		return "audio"
-	case ".doc", ".xls", ".ppt":
-		// Legacy OLE compound files. These are a LEAF format here: the extractor
-		// reads their streams directly and does not itself follow embeddings, so
-		// admitting them adds no recursion and no new bomb surface.
-		return "legacy_document"
-	case ".docx", ".xlsx", ".pptx":
-		// Embedded OOXML documents. Admitted now that the router bounds nesting depth.
-		//
-		// These were excluded because an embedded .docx routes back through the Office
-		// preprocessor, which extracts ITS embeddings, which route back again --
-		// unbounded recursion, and a decompression-bomb amplifier for a tool that runs
-		// on untrusted input. Measured previously with a 7KB .docx embedding itself nine
-		// times: all nine levels were followed.
-		//
-		// The bound now exists: FileRouter.ProcessEmbedded tracks depth keyed on the
-		// path it is handed and refuses past MaxEmbeddedDepth, returning
-		// ErrEmbeddedTooDeep -- which the caller DISCLOSES rather than skipping, so a
-		// truncated traversal is visible instead of silently reading as clean.
-		//
-		// Excluding them was a detection hole with no attacker required: a document
-		// attached to a document is ordinary (an email attachment saved into a report, a
-		// workbook embedded in a deck). Measured before this change, an SSN in
-		// word/embeddings/oleObject1.docx produced 0 findings, exit 0, zero stderr, no
-		// redacted file, and exit 0 even under --fail-on-incomplete. See #297.
-		return "document"
-
-	default:
-		return ""
-	}
+	// Delegated to the single admission table shared with the redactor. The switch
+	// that used to live here had its own copy of the extension list, and the write
+	// side had another; the classes of file the two admitted diverged, which is
+	// exactly how an embedded image's EXIF and an embedded .docx's body both came
+	// to be reported and then left in cleartext by --enable-redaction.
+	//
+	// The table also admits .pdf, which this switch never did, so an embedded PDF
+	// is scanned for the first time.
+	return embedded.Kind(ext)
 }
 
 type EmbeddedMedia struct {
@@ -774,10 +754,24 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 			continue
 		}
 
+		// Extract EVERY part under media/ or embeddings/, and let the ROUTER decide
+		// whether it can process it.
+		//
+		// This used to filter on a hand-maintained extension table, which meant the set
+		// of embedded types examined was whatever someone had enumerated rather than
+		// whatever the pipeline can actually read. Measured across 334 real Office
+		// files: 488 of 2,520 embedded parts (19%) were excluded by that table,
+		// including 411 .svg parts -- plain XML text that yields findings when scanned
+		// on its own -- plus .emf, .wdp and the .bin form Word uses for embedded OLE
+		// objects.
+		//
+		// The caller (OfficeMetadataPreprocessor.processEmbeddedMedia) now asks
+		// RouterInterface.CanProcessFile per part, so embedded coverage tracks
+		// top-level coverage automatically and cannot drift behind it again.
 		ext := strings.ToLower(filepath.Ext(file.Name))
 		mediaType := embeddedMediaType(ext)
 		if mediaType == "" {
-			continue // not a type any preprocessor can read
+			mediaType = "unclassified"
 		}
 
 		// Extract media to temp file
@@ -821,8 +815,24 @@ func extractImageToTemp(file *zip.File) (string, error) {
 			file.Name, file.UncompressedSize64, MaxEmbeddedMediaSize)
 	}
 
-	// Create temp file
-	tempFile, err := os.CreateTemp("", "office_image_*"+filepath.Ext(file.Name))
+	// Create temp file.
+	//
+	// The extension comes from the ADMISSION TABLE, not from the entry name. A zip
+	// entry name is producer-controlled and this is a filesystem path, so the raw
+	// name must not reach it (BSC1: validate untrusted input against an allowlist
+	// at the sink). filepath.Ext happens to stop at a path separator, so the
+	// previous form was not exploitable for traversal, but it did pass arbitrary
+	// attacker bytes into a filename and relied on that incidental property; the
+	// table returns one of a fixed set of ".xyz" literals instead.
+	//
+	// An unadmitted extension cannot occur here — the caller already checked
+	// embeddedMediaType — so the fallback is unreachable in practice and exists
+	// only so this function has no path that concatenates an unvalidated string.
+	safeExt, ok := embedded.SafeExt(file.Name)
+	if !ok {
+		return "", fmt.Errorf("embedded part %q has no admitted file type", filepath.Base(file.Name))
+	}
+	tempFile, err := os.CreateTemp("", "office_embedded_*"+safeExt)
 	if err != nil {
 		return "", err
 	}
@@ -861,10 +871,25 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, error)
 			continue
 		}
 
+		// Extract EVERY part under media/ or embeddings/ and let the ROUTER decide
+		// whether it can process it.
+		//
+		// This is the function that feeds the routing path, and it used to drop any part
+		// whose extension was absent from a hand-maintained table. The set of embedded
+		// types examined was therefore whatever someone had enumerated rather than
+		// whatever the pipeline can read. Measured across 334 real Office files, 488 of
+		// 2,520 embedded parts (19%) were excluded, including 411 .svg parts -- plain
+		// XML text that yields an SSN finding when scanned as a standalone file -- plus
+		// .emf, .wdp, and the .bin form Word uses for embedded OLE objects.
+		//
+		// The classification is kept only as a HINT for the report. The admission
+		// decision now belongs to OfficeMetadataPreprocessor.processEmbeddedMedia, which
+		// asks RouterInterface.CanProcessFile per part, so embedded coverage tracks
+		// top-level coverage automatically and cannot silently fall behind it again.
 		ext := strings.ToLower(filepath.Ext(file.Name))
 		mediaType := embeddedMediaType(ext)
 		if mediaType == "" {
-			continue // not a type any preprocessor can read
+			mediaType = "unclassified"
 		}
 
 		// Extract media to temp file
