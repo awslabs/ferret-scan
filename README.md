@@ -64,7 +64,7 @@ Pick whichever fits your workflow — all are first-class.
 | **Homebrew** (macOS/Linux) | `brew tap awslabs/ferret-scan https://github.com/awslabs/ferret-scan && brew install awslabs/ferret-scan/ferret-scan` |
 | **pip** (CLI + pre-commit) | `pip install ferret-scan` |
 | **Docker** | `docker pull public.ecr.aws/awslabs/ferret-scan:latest` |
-| **From source** (Go 1.26.5) | `git clone https://github.com/awslabs/ferret-scan.git && cd ferret-scan && go build ./cmd` |
+| **From source** (Go 1.26.6) | `git clone https://github.com/awslabs/ferret-scan.git && cd ferret-scan && go build ./cmd` |
 
 Docker one-liner (mount the current directory and scan it):
 
