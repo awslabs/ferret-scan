@@ -394,7 +394,7 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 
 	// Enhanced copyright detection - apply intellectual property validator patterns to media
 	if v.containsEnhancedCopyright(match) {
-		confidence += 0.4 // Increased confidence for enhanced copyright detection
+		confidence += enhancedCopyrightBoost
 		flags["contains_enhanced_copyright"] = true
 	} else if strings.Contains(matchLower, "copyright:") ||
 		strings.Contains(matchLower, "rights:") ||
@@ -1232,6 +1232,40 @@ func (v *Validator) validateWithPreprocessorRules(content router.MetadataContent
 
 			confidence, checks := v.CalculateConfidence(line)
 
+			// A custom property must not be charged for its classification word TWICE.
+			//
+			// CalculateConfidence is the generic metadata scorer, and its
+			// containsEnhancedCopyright check matches a bare substring — "confidential",
+			// "proprietary", "trade secret", "(c)" — anywhere in the line, worth
+			// +enhancedCopyrightBoost. analyzeCustomPropertyRisk, reached through
+			// applyValueShapeRisk below, then scores the SAME word again in its own
+			// classification branch. One occurrence, two scorers.
+			//
+			// Measured holding the property NAME constant and varying only the value:
+			//
+			//	Notice: Quarterly summary                           ->  60
+			//	Notice: Confidential                                -> 100
+			//	Notice: Confidential - Project Nightjar acquisition -> 100
+			//
+			// The bare marking saturates the score, so a document that merely CARRIES a
+			// sensitivity label ranks identically to one carrying the label AND naming a
+			// live acquisition project. That ranking failure is the defect, not the number:
+			// a Purview label is standard enterprise plumbing on a large fraction of real
+			// documents, so it crowds the HIGH band operators triage first. Measured on a
+			// 304-file corpus, CUSTOM_PROPERTY was the largest HIGH population of any
+			// metadata type.
+			//
+			// The classification signal belongs to analyzeCustomPropertyRisk, which tiers
+			// it deliberately (CRITICAL/HIGH/MEDIUM by name and value). Withdrawing the
+			// generic copyright contribution for this ONE type leaves exactly one scorer
+			// responsible for it. Other metadata types are untouched: for an image's
+			// Copyright field the IP heuristic is the right signal and no second scorer
+			// doubles it. See #307.
+			if matchType == "CUSTOM_PROPERTY" && checks["contains_enhanced_copyright"] {
+				confidence -= enhancedCopyrightBoost
+				delete(checks, "contains_enhanced_copyright")
+			}
+
 			// Create context info for the line
 			contextInfo := detector.ContextInfo{
 				FullLine: line,
@@ -1593,6 +1627,13 @@ func (v *Validator) applyPreprocessorConfidenceBoosts(match *detector.Match, pre
 }
 
 // containsEnhancedCopyright checks for enhanced copyright patterns
+// enhancedCopyrightBoost is the weight containsEnhancedCopyright contributes.
+//
+// Named so the CUSTOM_PROPERTY discount below subtracts exactly what was added. Two
+// copies of 0.4 would drift, and a discount that no longer matches the boost is worse
+// than no discount: it would silently re-inflate or over-penalise.
+const enhancedCopyrightBoost = 0.4
+
 func (v *Validator) containsEnhancedCopyright(match string) bool {
 	matchLower := strings.ToLower(match)
 
@@ -3080,15 +3121,36 @@ func (v *Validator) analyzeCustomPropertyRisk(line string) CustomPropertyRisk {
 			propNameLower := strings.ToLower(propName)
 			propValueLower := strings.ToLower(propValue)
 
-			// Classification properties (CRITICAL)
-			if strings.Contains(propNameLower, "classification") ||
-				strings.Contains(propNameLower, "clearance") ||
-				strings.Contains(propValueLower, "secret") ||
-				strings.Contains(propValueLower, "confidential") ||
-				strings.Contains(propValueLower, "restricted") {
-				risk.RiskFactors = append(risk.RiskFactors, "Contains security classification")
-				risk.ConfidenceBoost += 0.5
-				risk.RiskLevel = "CRITICAL"
+			// Classification properties.
+			//
+			// Split by whether the VALUE carries anything beyond the marking itself. A
+			// document that merely records "this is Confidential" is stating its own
+			// handling class; a document whose classification property also names a
+			// project, a person or a system is disclosing something. Both used to score
+			// +0.5 CRITICAL, which meant the two were indistinguishable:
+			//
+			//	Notice: Confidential                                -> 100
+			//	Notice: Confidential - Project Nightjar acquisition -> 100
+			//
+			// Purview/MSIP writes a bare label into custom properties on a large fraction
+			// of real enterprise documents, so treating the marking as CRITICAL floods the
+			// HIGH band that operators triage first — and the finding that actually
+			// matters sits in the same bucket as thousands of labels. Demoting the marking
+			// rather than vetoing it keeps it reportable (it IS worth knowing a document is
+			// marked) while restoring the ordering.
+			if isClassified(propNameLower, propValueLower) {
+				if classificationIsBareMarking(propValueLower) {
+					risk.RiskFactors = append(risk.RiskFactors,
+						"Carries a sensitivity marking (no additional content)")
+					risk.ConfidenceBoost += 0.1
+					if risk.RiskLevel == "LOW" {
+						risk.RiskLevel = "MEDIUM"
+					}
+				} else {
+					risk.RiskFactors = append(risk.RiskFactors, "Contains security classification")
+					risk.ConfidenceBoost += 0.5
+					risk.RiskLevel = "CRITICAL"
+				}
 			}
 
 			// Project information (HIGH)
@@ -3169,4 +3231,64 @@ func (v *Validator) analyzeCustomPropertyRisk(line string) CustomPropertyRisk {
 	}
 
 	return risk
+}
+
+// isClassified reports whether a custom property looks like a security classification,
+// by name or by value. Unchanged in substance from the inline condition it replaces;
+// extracted so the bare-marking test below reads against the same predicate.
+func isClassified(propNameLower, propValueLower string) bool {
+	return strings.Contains(propNameLower, "classification") ||
+		strings.Contains(propNameLower, "clearance") ||
+		strings.Contains(propValueLower, "secret") ||
+		strings.Contains(propValueLower, "confidential") ||
+		strings.Contains(propValueLower, "restricted")
+}
+
+// classificationMarkings are the values a sensitivity label takes on its own.
+//
+// Deliberately the full label vocabulary rather than a couple of examples: the point is
+// to recognise a value that is ONLY a marking, and a list that misses "highly
+// confidential" would treat that one as a disclosure while treating "confidential" as a
+// marking — an inconsistency worse than either rule alone.
+var classificationMarkings = map[string]bool{
+	"confidential": true, "highly confidential": true, "strictly confidential": true,
+	"secret": true, "top secret": true, "restricted": true, "internal": true,
+	"internal only": true, "internal use only": true, "public": true,
+	"general": true, "private": true, "sensitive": true, "unclassified": true,
+	"non-business": true, "personal": true, "protected": true,
+}
+
+// classificationIsBareMarking reports whether a value is nothing but a sensitivity
+// marking, so it states the document's handling class without disclosing content.
+//
+// Punctuation and label-plumbing decoration are stripped before the comparison because
+// real labels arrive dressed: "Confidential", "[Confidential]", "Confidential."  and
+// "Confidential / Internal" are all the same statement. What must NOT be stripped is a
+// project name, a person or a system — those are the content that makes a classification
+// property a disclosure, and anything left over after decoration is treated as exactly
+// that.
+func classificationIsBareMarking(propValueLower string) bool {
+	v := strings.TrimSpace(propValueLower)
+	if v == "" {
+		return true
+	}
+	// Split on the separators labels use, then require EVERY part to be a known marking.
+	// Requiring all parts (rather than any) is what keeps
+	// "confidential - project nightjar" out: one part is a marking, the other is not.
+	parts := strings.FieldsFunc(v, func(r rune) bool {
+		switch r {
+		case '/', '\\', '|', ',', ';', '-', '\u2013', '\u2014', ':', '(', ')', '[', ']', '.', '_':
+			return true
+		}
+		return false
+	})
+	if len(parts) == 0 {
+		return true
+	}
+	for _, p := range parts {
+		if !classificationMarkings[strings.TrimSpace(p)] {
+			return false
+		}
+	}
+	return true
 }

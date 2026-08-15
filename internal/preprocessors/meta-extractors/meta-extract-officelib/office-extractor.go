@@ -367,13 +367,31 @@ func extractOfficeOpenXMLMetadata(filePath string, metadata *Metadata) (*Metadat
 		}
 	}
 
-	// Extract custom properties (HIGH RISK)
+	// Extract custom properties (HIGH RISK).
+	//
+	// CustomProps is the ONLY home. A mirror of every entry used to be written into
+	// Properties under a "Custom_" prefix as well, described as "for easy scanning",
+	// and the office preprocessor renders BOTH maps — the dedicated
+	// "--- Custom Properties ---" block from CustomProps, then FormatPropertiesMap over
+	// Properties. Both lines carry the custom_ prefix the validator types on, so every
+	// custom property was reported TWICE.
+	//
+	// Measured on a real corpus of 304 .docx files: 506 CUSTOM_PROPERTY findings across
+	// 202 files, with ZERO files holding an odd count and every (file, confidence)
+	// bucket even — i.e. ~253 real properties each counted twice. A synthetic
+	// one-property fixture produced 2 findings.
+	//
+	// The existing dedup could not catch it: per #202 the key is the BYTE SPAN, and the
+	// two lines occupy genuinely different spans in the preprocessed text, so they are
+	// correctly treated as two occurrences of duplicated input. The fix belongs here, at
+	// the point the same value was written into two maps.
+	//
+	// Nothing read the mirror by key — verified, the write below was its only reference
+	// anywhere in the tree — so dropping it removes the duplicate rendering without
+	// costing any consumer. The legacy OLE extractor already populates CustomProps
+	// alone, so this also brings the two extractors into line. See #308.
 	if customProps, err := extractCustomPropertiesOptimized(fileIndex); err == nil && len(customProps) > 0 {
 		metadata.CustomProps = customProps
-		// Also store in Properties map with "Custom_" prefix for easy scanning
-		for key, value := range customProps {
-			metadata.Properties["Custom_"+key] = value
-		}
 	}
 
 	// Extract document-specific metadata
