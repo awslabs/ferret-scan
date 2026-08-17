@@ -1464,6 +1464,12 @@ func main() {
 	var allFilesToProcess []string
 	var totalSkipped int
 
+	// discoveryUnexamined holds coverage losses found while DISCOVERING files, as
+	// distinct from the ones found while scanning them. Both must reach the same report:
+	// a file the walk refused is exactly as unscanned as one the parser choked on, and
+	// before #326 the discovery-time ones reached no counter at all.
+	var discoveryUnexamined []SkippedFile
+
 	for i, inputPath := range inputPaths {
 		if mainDebugObs != nil {
 			mainDebugObs.LogDetail("main", fmt.Sprintf("Processing input path %d: %s", i+1, inputPath))
@@ -1515,6 +1521,12 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Warning: Skipping %s: %s\n", skipped.Path, skipped.Reason)
 			}
 		}
+
+		// Entries the scanner could not examine. Carried to the not-examined report
+		// rather than printed here: a per-file stderr line at discovery time is the
+		// pattern that produced unreadable console output, and the report already
+		// groups by cause, caps its output, and feeds --fail-on-incomplete.
+		discoveryUnexamined = append(discoveryUnexamined, result.UnexaminedFiles...)
 	}
 
 	filesToProcess := allFilesToProcess
@@ -1904,7 +1916,20 @@ func main() {
 	// unchanged (default still 0) — this is an advisory warning.
 	// Collected once, so the summary count and the detail report can never disagree:
 	// they are derived from the same slice rather than counted twice.
-	unscannedEntries := collectUnscanned(unreadableFiles, emptyExtractionFiles, failedProcessingFiles, incompleteFiles)
+	// Discovery-time refusals get their OWN cause rather than being folded into the
+	// unreadable channel. Filing "resolves outside the scanned directory" under "cannot
+	// read" would assert a failure that never happened — the file is readable, the tool
+	// declined — and the operator's remedy differs.
+	notFollowed := make([]parallel.FileDiagnostic, 0, len(discoveryUnexamined))
+	for _, u := range discoveryUnexamined {
+		notFollowed = append(notFollowed, parallel.FileDiagnostic{FilePath: u.Path, Reason: u.Reason})
+		// Counted as not-processed for the same reason an unreadable file is: it was
+		// considered and produced nothing, so leaving it out of every counter is what
+		// made the loss invisible.
+		unreadableCount++
+	}
+
+	unscannedEntries := collectUnscanned(unreadableFiles, emptyExtractionFiles, failedProcessingFiles, incompleteFiles, notFollowed)
 
 	if precommitConfig == nil {
 		// The unredacted warning stays here; the not-examined report is emitted AFTER
@@ -2043,8 +2068,18 @@ func main() {
 		scannedFiles = 0
 	}
 
+	// consideredFiles is every entry this run took responsibility for: the files it
+	// queued to scan PLUS the ones discovery refused. The denominator has to include
+	// both, or the report reads "2 of 1 file" — the refused entries appear in the
+	// numerator while being absent from the total they are counted against.
+	//
+	// Derived once and used by the stats block AND the not-examined report below, for
+	// the same reason the entries themselves are collected once: two independent counts
+	// of the same thing eventually disagree.
+	consideredFiles := len(filesToProcess) + len(discoveryUnexamined)
+
 	formatterOptions.Stats = &formatters.ScanStats{
-		TotalFiles:       len(filesToProcess),
+		TotalFiles:       consideredFiles,
 		FilesProcessed:   scannedFiles,
 		FilesSkipped:     finalSkippedCount,
 		FilesNotExamined: len(unscannedEntries),
@@ -2080,7 +2115,7 @@ func main() {
 	// closing rule went to the terminal.
 	if precommitConfig == nil && len(unscannedEntries) > 0 {
 		var report strings.Builder
-		if writeUnscannedReport(&report, unscannedEntries, len(filesToProcess), *failOnIncomplete, finalConfig.debug) {
+		if writeUnscannedReport(&report, unscannedEntries, consideredFiles, *failOnIncomplete, finalConfig.debug) {
 			if finalConfig.format == "text" {
 				// Text renders it INSIDE the summary block, so the whole footer lands on
 				// one stream and a piped report is not left with an unclosed frame.
@@ -2281,6 +2316,18 @@ func parseConfidenceLevels(levels string) map[string]bool {
 type ProcessingResult struct {
 	FilesToProcess []string
 	SkippedFiles   []SkippedFile
+
+	// UnexaminedFiles are entries the scanner encountered and could NOT examine, as
+	// opposed to SkippedFiles which the user asked to leave out (--exclude, .gitignore)
+	// or which are an unsupported type nobody expected a result for.
+	//
+	// The distinction is the one ScanStats already draws: a skipped file is expected to
+	// produce nothing, an unexamined one was expected to produce something and did not.
+	// These flow into files_not_examined, the NOT FULLY EXAMINED block, and
+	// --fail-on-incomplete, so a coverage loss found at DISCOVERY time is disclosed the
+	// same way one found during scanning is. Before this, discovery-time losses reached
+	// no counter at all. See #326.
+	UnexaminedFiles []SkippedFile
 }
 
 // SkippedFile represents a file that was skipped during processing
@@ -2345,8 +2392,9 @@ func isExcluded(filePath string, excludePatterns []string) bool {
 // Supports glob patterns like *.pdf, files, and directories
 func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string, ignoreMatcher *gitignore.Matcher) (*ProcessingResult, error) {
 	result := &ProcessingResult{
-		FilesToProcess: []string{},
-		SkippedFiles:   []SkippedFile{},
+		FilesToProcess:  []string{},
+		SkippedFiles:    []SkippedFile{},
+		UnexaminedFiles: []SkippedFile{},
 	}
 	// Validate input path before any file operations
 	if strings.Contains(inputPath, "..") {
@@ -2533,6 +2581,10 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 
 	// If it's a directory, get all files
 	if fileInfo.IsDir() {
+		// symlinkCands holds links seen during the walk; they are resolved after it
+		// finishes so the outcome cannot depend on directory iteration order.
+		var symlinkCands []symlinkCandidate
+
 		err := filepath.Walk(cleanPath, func(path string, info os.FileInfo, err error) error {
 			// Validate path for traversal attempts
 			cleanWalkPath := filepath.Clean(path)
@@ -2584,6 +2636,25 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					}
 					skippedFiles = append(skippedFiles, cleanWalkPath)
 				}
+			} else if info.Mode()&os.ModeSymlink != 0 {
+				// A symlink. filepath.Walk hands us Lstat info, so a link is never
+				// ModeRegular and used to fall past the branch above with NO else —
+				// dropped from filesToProcess, from SkippedFiles, and from every
+				// counter, with nothing printed. Measured: a symlink to a file holding
+				// a card number was neither scanned nor disclosed, while the SAME link
+				// named directly on the command line was scanned and the card found.
+				// See #326 and cmd/symlink_walk.go for the policy.
+				//
+				// Collected rather than decided here: whether to follow depends on
+				// whether the target is also reachable as a real file in this same
+				// walk, which is not known until the walk ends.
+				d, resolved, reason := classifySymlink(cleanWalkPath, cleanPath, 100*1024*1024)
+				symlinkCands = append(symlinkCands, symlinkCandidate{
+					linkPath: cleanWalkPath,
+					resolved: resolved,
+					reason:   reason,
+					disp:     d,
+				})
 			}
 
 			return nil
@@ -2593,6 +2664,14 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 		if err != nil {
 			return nil, fmt.Errorf("error accessing directory: %w", err)
 		}
+
+		// Resolve the symlinks now that every regular file is known, so a link whose
+		// target is already queued under its real name is recognised as duplicate
+		// content rather than scanned twice (which would manufacture the
+		// identical-looking findings of #321).
+		follow, disclose := resolveSymlinkCandidates(symlinkCands, filesToProcess)
+		filesToProcess = append(filesToProcess, follow...)
+		result.UnexaminedFiles = append(result.UnexaminedFiles, disclose...)
 
 		// Print summary of skipped files
 		if len(skippedFiles) > 0 {

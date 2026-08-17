@@ -49,6 +49,15 @@ const (
 	causeUnparseable
 	causeNoText
 	causeCutShort
+	// causeNotFollowed is a link the walk deliberately did not follow: it dangles or
+	// loops, names a directory, names a device, or resolves outside the scanned tree.
+	//
+	// Distinct from causeUnreadable because for most of these the file COULD be read —
+	// the tool chose not to. Filing them under "cannot read" would assert a failure
+	// that did not happen, and the operator's action differs: a permission problem is
+	// fixed with chmod, a link out of the tree is fixed by scanning the target directly
+	// or passing it explicitly. See #326.
+	causeNotFollowed
 )
 
 func (c unscannedCause) String() string {
@@ -64,6 +73,8 @@ func (c unscannedCause) String() string {
 		return "no body text (metadata still scanned)"
 	case causeCutShort:
 		return "coverage cut short"
+	case causeNotFollowed:
+		return "symlink not followed"
 	default:
 		return "unknown"
 	}
@@ -232,8 +243,16 @@ func collectUnscanned(
 	emptyExtraction []parallel.FileDiagnostic,
 	failed []parallel.FileDiagnostic,
 	incomplete []parallel.FileDiagnostic,
+	notFollowed []parallel.FileDiagnostic,
 ) []unscannedEntry {
 	var out []unscannedEntry
+
+	// Links the walk refused. These come from DISCOVERY rather than from scanning, and
+	// before #326 they reached no channel at all: a symlink was dropped with no record
+	// anywhere, so its content was neither scanned nor disclosed.
+	for _, d := range notFollowed {
+		out = append(out, unscannedEntry{Path: d.FilePath, Cause: causeNotFollowed, Detail: d.Reason})
+	}
 
 	// The unreadable channel is a pre-formatted "path: reason" string rather than
 	// a struct, so it needs splitting on the first colon that follows the path.
