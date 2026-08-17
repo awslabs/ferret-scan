@@ -89,6 +89,19 @@ func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match) (*G
 func (m *VulnerabilityMapper) GenerateVulnerabilityID(match detector.Match) string {
 	// Create deterministic ID based on file, line, and check type
 	// This ensures the same vulnerability gets the same ID across scans
+	//
+	// Two findings of the same type on one line therefore hash alike. That WAS the
+	// #328 collapse — GitLab deduplicates by id, so it kept one and silently dropped
+	// the other (measured: 4 vulnerabilities emitted, 2 distinct ids, exit 0) — and
+	// it is resolved by the emit-time collision guard in formatter.go, not here.
+	//
+	// The match's column is deliberately NOT mixed in. It would also separate the
+	// two, but only for findings that HAVE a column, so the guard is needed anyway
+	// for synthesised match texts that have none; and mixing it in changes the id of
+	// every finding that already had one, which silently detaches an operator's
+	// existing GitLab triage state (dismissals, issue links) from the findings it
+	// belongs to. Verified by mutation: dropping the column here breaks nothing,
+	// dropping the guard reintroduces the collision.
 	data := fmt.Sprintf("%s:%d:%s", match.Filename, match.LineNumber, match.Type)
 	hash := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("ferret-%x", hash[:8])

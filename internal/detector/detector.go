@@ -75,6 +75,31 @@ type Match struct {
 	// (SourceKindFile) keeps existing behavior unchanged.
 	SourceKind SourceKind `json:"source_kind,omitempty"`
 
+	// StartColumn and EndColumn locate the match WITHIN ITS LINE, as 1-based byte
+	// columns, with EndColumn exclusive (the column after the last byte). They are
+	// the SARIF region model, which is the only consumer that needs a coordinate.
+	//
+	// Zero means "no position", which is why these are 1-based: the zero value has
+	// to mean absent, and column 0 would otherwise be a legitimate offset. A
+	// consumer must therefore test StartColumn > 0 before using it. Findings whose
+	// Text is synthesised rather than lifted from the line — SOCIAL_MEDIA_CLUSTER,
+	// the consolidated intellectual-property text — have no literal span and
+	// correctly keep the zero value.
+	//
+	// Deliberately a within-line column and not a file-absolute offset. Six
+	// coordinate systems are live at once (plaintext document-absolute, the office
+	// scan's extraction, the office redactor's private concatenation, legacy-OLE
+	// per-stream, the preprocessors' per-extract text, and metadata's synthetic
+	// "Field: value" strings). A bare absolute offset invites comparing two of them,
+	// which is exactly the defect that once dropped a body match and left an SSN in
+	// cleartext. A column is meaningful in the line that is already reported
+	// alongside it.
+	//
+	// Populated at the scan convergence by AssignLineColumns; a producer that knows
+	// its own offset may set it first and will not be overwritten.
+	StartColumn int `json:"start_column,omitempty"`
+	EndColumn   int `json:"end_column,omitempty"`
+
 	// New field for context information
 	Context ContextInfo
 }

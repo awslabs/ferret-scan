@@ -273,6 +273,22 @@ func RunValidators(
 			out = append(out, m...)
 		}
 		allMatches = append(out, allMatches...)
+
+		// Record where each match sits on its line, now that the union is
+		// assembled in a deterministic order.
+		//
+		// This is the one point every match in the system passes through: the
+		// worker pool calls RunValidators per file (so the CLI, core.ScanFile and
+		// the redaction path all arrive here) and core.ScanContent calls it
+		// directly. Doing it here rather than at each of those four producers is
+		// what keeps a single definition of "where is this match".
+		//
+		// It must run AFTER flatten, not per slot: two validators can report the
+		// same value on the same line, and the occurrence cursor has to see them
+		// in one pass to give them different columns. It also depends on the launch
+		// order restored above — assigning occurrences in goroutine-completion
+		// order would hand the same finding a different column run to run.
+		detector.AssignLineColumns(allMatches)
 	}
 
 	select {
