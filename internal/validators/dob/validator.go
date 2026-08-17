@@ -268,18 +268,33 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	return matches, nil
 }
 
+// dateSpan is the byte range a pattern matched, used to deduplicate candidates.
+//
+// The key must be the SPAN, not the matched text. Several patterns can match the
+// same bytes -- that is the duplicate worth collapsing -- but a text key also
+// collapses the same date appearing TWICE on one line at different offsets, which
+// are separate findings. Only one was emitted, so redaction rewrote only one:
+// "Date of Birth: 1985-03-14 (DOB 1985-03-14)" produced one finding and the
+// redacted line read "Date of Birth: ********** (DOB 1985-03-14)", leaving the
+// second date in cleartext at rc=0. Same lesson as the duplicate-span dedup fix:
+// key on bytes, not on rendered text.
+type dateSpan struct {
+	start int
+	end   int
+}
+
 // extractDates finds all date candidates in a line using the pre-compiled patterns.
 func (v *Validator) extractDates(line string) []dateCandidate {
 	var candidates []dateCandidate
-	seen := make(map[string]bool)
+	seen := make(map[dateSpan]bool)
 
 	// ISO dates: YYYY-MM-DD
 	for _, loc := range reISODate.FindAllStringSubmatchIndex(line, -1) {
 		text := line[loc[0]:loc[1]]
-		if seen[text] {
+		if seen[dateSpan{loc[0], loc[1]}] {
 			continue
 		}
-		seen[text] = true
+		seen[dateSpan{loc[0], loc[1]}] = true
 		year, _ := strconv.Atoi(line[loc[2]:loc[3]])
 		month, _ := strconv.Atoi(line[loc[4]:loc[5]])
 		day, _ := strconv.Atoi(line[loc[6]:loc[7]])
@@ -292,10 +307,10 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 	// Numeric dates: MM/DD/YYYY or DD/MM/YYYY
 	for _, loc := range reNumericDate.FindAllStringSubmatchIndex(line, -1) {
 		text := line[loc[0]:loc[1]]
-		if seen[text] {
+		if seen[dateSpan{loc[0], loc[1]}] {
 			continue
 		}
-		seen[text] = true
+		seen[dateSpan{loc[0], loc[1]}] = true
 		part1, _ := strconv.Atoi(line[loc[2]:loc[3]])
 		part2, _ := strconv.Atoi(line[loc[4]:loc[5]])
 		year, _ := strconv.Atoi(line[loc[6]:loc[7]])
@@ -314,7 +329,7 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 	// Numeric dates with two-digit years: MM/DD/YY or DD/MM/YY
 	for _, loc := range reNumericDate2Y.FindAllStringSubmatchIndex(line, -1) {
 		text := line[loc[0]:loc[1]]
-		if seen[text] {
+		if seen[dateSpan{loc[0], loc[1]}] {
 			continue
 		}
 		// Mixed separators ("3/14-87") are not a date; require both to match.
@@ -327,7 +342,7 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 		if sep == "." && reVersionContext.MatchString(line) {
 			continue
 		}
-		seen[text] = true
+		seen[dateSpan{loc[0], loc[1]}] = true
 		part1, _ := strconv.Atoi(line[loc[2]:loc[3]])
 		part2, _ := strconv.Atoi(line[loc[6]:loc[7]])
 		yy, _ := strconv.Atoi(line[loc[10]:loc[11]])
@@ -345,10 +360,10 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 	// Month DD, YYYY
 	for _, loc := range reMonthDDYYYY.FindAllStringSubmatchIndex(line, -1) {
 		text := line[loc[0]:loc[1]]
-		if seen[text] {
+		if seen[dateSpan{loc[0], loc[1]}] {
 			continue
 		}
-		seen[text] = true
+		seen[dateSpan{loc[0], loc[1]}] = true
 		monthStr := strings.ToLower(line[loc[2]:loc[3]])
 		day, _ := strconv.Atoi(line[loc[4]:loc[5]])
 		year, _ := strconv.Atoi(line[loc[6]:loc[7]])
@@ -362,10 +377,10 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 	// DD Month YYYY
 	for _, loc := range reDDMonthYYYY.FindAllStringSubmatchIndex(line, -1) {
 		text := line[loc[0]:loc[1]]
-		if seen[text] {
+		if seen[dateSpan{loc[0], loc[1]}] {
 			continue
 		}
-		seen[text] = true
+		seen[dateSpan{loc[0], loc[1]}] = true
 		day, _ := strconv.Atoi(line[loc[2]:loc[3]])
 		monthStr := strings.ToLower(line[loc[4]:loc[5]])
 		year, _ := strconv.Atoi(line[loc[6]:loc[7]])
