@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -169,9 +170,9 @@ func (rm *RedactionManager) RedactEmbedded(req EmbeddedRedactionRequest) (*Embed
 	// The extension comes from the admission allowlist, never from the entry name.
 	// req.PartName is producer-controlled and the value below is concatenated into
 	// a filesystem path, so per BSC1 it is validated against an allowlist at the
-	// sink. embedded.SafeExt returns one of a fixed set of ".xyz" literals, which
-	// makes "..", separators and NUL unrepresentable in the result rather than
-	// something to strip.
+	// sink. embedded.SafeExt returns either ".bin" or a dot followed by 1-10
+	// characters drawn from [a-z0-9] and nothing else, which makes "..", separators
+	// and NUL unrepresentable in the result rather than something to strip.
 	safeExt, ok := embedded.SafeExt(req.PartName)
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrNoEmbeddedRedactor, filepath.Ext(req.PartName))
@@ -195,6 +196,24 @@ func (rm *RedactionManager) RedactEmbedded(req EmbeddedRedactionRequest) (*Embed
 
 	inPath := filepath.Join(dir, "embedded"+safeExt)
 	outPath := filepath.Join(dir, "redacted"+safeExt)
+
+	// Containment assertion at the sink. SafeExt already makes an escaping path
+	// unrepresentable, so on today's code this cannot fire — it is defence in depth,
+	// for the refactor that starts deriving the basename from the entry name and
+	// only notices later. A traversal here would write a document's UNREDACTED bytes
+	// to an attacker-chosen location, so the cost of the check is not worth saving.
+	//
+	// It is also what a scanner can see: CodeQL's go/zipslip models a cleaned-prefix
+	// containment test as a barrier but not a per-character allowlist, so without
+	// this the flow from the zip entry to these writes reads as unsanitized (alert
+	// 3820, 19 sinks, all of them downstream of this one construction).
+	for _, p := range []string{inPath, outPath} {
+		if !withinDir(dir, p) {
+			return nil, fmt.Errorf("%w: embedded part %s resolved outside its temp directory",
+				ErrNoEmbeddedRedactor, filepath.Base(req.PartName))
+		}
+	}
+
 	if err := os.WriteFile(inPath, req.Content, 0o600); err != nil {
 		return nil, fmt.Errorf("writing embedded part to temp file: %w", err)
 	}
@@ -240,4 +259,19 @@ func (rm *RedactionManager) RedactEmbedded(req EmbeddedRedactionRequest) (*Embed
 		RedactionMap: result.RedactionMap,
 		PartName:     req.PartName,
 	}, nil
+}
+
+// withinDir reports whether path is dir itself or a descendant of it.
+//
+// Both sides are cleaned before comparison, so a "." or ".." element is resolved
+// rather than compared literally, and the separator is appended to dir so a
+// sibling with dir as a name prefix ("/tmp/ferret-embedded-1-evil" against
+// "/tmp/ferret-embedded-1") is not mistaken for a child.
+func withinDir(dir, path string) bool {
+	cleanDir := filepath.Clean(dir)
+	cleanPath := filepath.Clean(path)
+	if cleanPath == cleanDir {
+		return true
+	}
+	return strings.HasPrefix(cleanPath, cleanDir+string(os.PathSeparator))
 }
