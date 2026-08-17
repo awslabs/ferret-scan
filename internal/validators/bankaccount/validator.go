@@ -222,12 +222,85 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	return matches
 }
 
+// upperWithOffsets uppercases line and, when that is not a byte-for-byte mapping,
+// returns a table translating each byte offset in the result back to an offset in
+// line.
+//
+// Uppercasing is per-rune and can change a rune's byte length: U+017F LATIN SMALL
+// LETTER LONG S occupies 2 bytes and uppercases to "S", which occupies 1. Every
+// offset after such a rune is therefore shifted, and slicing line with an offset
+// found in the uppercased copy addresses the wrong bytes. Measured, before this
+// existed:
+//
+//	input:    Payment ref ſ IBAN GB82WEST12345698765432 end
+//	reported: " GB82WEST1234569876543"  (leading space, final digit missing)
+//	redacted: Payment ref ſ IBAN**********************2 end
+//
+// The last digit of the IBAN stayed in cleartext and the mask covered the preceding
+// space instead, at rc=0. The same shift makes scanSWIFT's "original must already
+// be uppercase" comparison fail against a mis-sliced string, dropping a real SWIFT
+// code entirely.
+//
+// The uppercased string is built here rather than by strings.ToUpper so the text and
+// its offset table cannot disagree. A nil table means the identity mapping, which
+// holds for any all-ASCII line — the overwhelming majority — so the common path
+// allocates no table.
+func upperWithOffsets(line string) (string, []int) {
+	ascii := true
+	for i := 0; i < len(line); i++ {
+		if line[i] >= 0x80 {
+			ascii = false
+			break
+		}
+	}
+	if ascii {
+		return strings.ToUpper(line), nil
+	}
+
+	var b strings.Builder
+	b.Grow(len(line) + 8)
+	offsets := make([]int, 0, len(line)+8)
+	for i, r := range line {
+		before := b.Len()
+		b.WriteRune(unicode.ToUpper(r))
+		for j := before; j < b.Len(); j++ {
+			offsets = append(offsets, i)
+		}
+	}
+	// One past the end, so a match's exclusive end offset maps too.
+	offsets = append(offsets, len(line))
+	return b.String(), offsets
+}
+
+// origSpan translates a [start,end) span in the uppercased line back to line.
+// A nil table is the identity mapping.
+func origSpan(offsets []int, start, end int) (int, int) {
+	if offsets == nil {
+		return start, end
+	}
+	last := len(offsets) - 1
+	if start < 0 {
+		start = 0
+	}
+	if start > last {
+		start = last
+	}
+	if end < start {
+		end = start
+	}
+	if end > last {
+		end = last
+	}
+	return offsets[start], offsets[end]
+}
+
 // scanIBAN detects and validates IBAN numbers.
 func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
 	var matches []detector.Match
 
-	// Try case-insensitive match by checking uppercase version
-	upperLine := strings.ToUpper(line)
+	// Try case-insensitive match by checking uppercase version. upperMap translates
+	// offsets in upperLine back to line — uppercasing is not length-preserving.
+	upperLine, upperMap := upperWithOffsets(line)
 	idxMatches := reIBAN.FindAllStringIndex(upperLine, -1)
 
 	for i, loc := range idxMatches {
@@ -241,8 +314,12 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 			continue
 		}
 
+		// Back to offsets in the ORIGINAL line before slicing it — see
+		// upperWithOffsets.
+		oStart, oEnd := origSpan(upperMap, loc[0], loc[1])
+
 		// Context adjustment (per-line invariant)
-		contextInfo := v.buildContextInfo(line, loc[0], loc[1]-loc[0])
+		contextInfo := v.buildContextInfo(line, oStart, oEnd-oStart)
 
 		confidence := 85.0 // IBAN with valid checksum is high confidence
 
@@ -268,7 +345,7 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 		}
 
 		matches = append(matches, detector.Match{
-			Text:       line[loc[0]:loc[1]], // preserve original case
+			Text:       line[oStart:oEnd], // preserve original case
 			LineNumber: lineNum + 1,
 			Type:       "IBAN",
 			Confidence: confidence,
@@ -294,6 +371,9 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 			continue
 		}
 
+		// Back to offsets in the ORIGINAL line — see upperWithOffsets.
+		oStart, oEnd := origSpan(upperMap, loc[0], loc[1])
+
 		// Value-intrinsic floor (TM-11) — same reasoning as the compact-form pass
 		// above; mod-97 is verified, so context may demote but not erase.
 		confidence := clampConfidence(85.0 + lc.keywordImpact)
@@ -302,13 +382,13 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 		}
 
 		matches = append(matches, detector.Match{
-			Text:       line[loc[0]:loc[1]], // original case and spacing
+			Text:       line[oStart:oEnd], // original case and spacing
 			LineNumber: lineNum + 1,
 			Type:       "IBAN",
 			Confidence: confidence,
 			Filename:   originalPath,
 			Validator:  "bank_account",
-			Context:    v.buildContextInfo(line, loc[0], loc[1]-loc[0]),
+			Context:    v.buildContextInfo(line, oStart, oEnd-oStart),
 			Metadata: map[string]any{
 				"country":        normalized[:2],
 				"context_impact": lc.keywordImpact,
@@ -324,7 +404,10 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
 	var matches []detector.Match
 
-	upperLine := strings.ToUpper(line)
+	// upperMap translates offsets in upperLine back to line — see upperWithOffsets.
+	// Without it the originalText comparison below runs against a mis-sliced string
+	// and silently drops a real SWIFT code.
+	upperLine, upperMap := upperWithOffsets(line)
 	idxMatches := reSWIFT.FindAllStringIndex(upperLine, -1)
 
 	for i, loc := range idxMatches {
@@ -332,9 +415,10 @@ func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, orig
 			return matches
 		}
 		candidate := upperLine[loc[0]:loc[1]]
+		oStart, oEnd := origSpan(upperMap, loc[0], loc[1])
 
 		// The original text must be uppercase -- real SWIFT codes are always uppercase.
-		originalText := line[loc[0]:loc[1]]
+		originalText := line[oStart:oEnd]
 		if originalText != candidate {
 			continue
 		}
@@ -345,7 +429,7 @@ func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, orig
 		}
 
 		// SWIFT codes without banking context are often false positives (random 8-char strings)
-		contextInfo := v.buildContextInfo(line, loc[0], loc[1]-loc[0])
+		contextInfo := v.buildContextInfo(line, oStart, oEnd-oStart)
 		hasBankingContext := lc.bankingKeyword
 
 		// All-letter candidates (no digits) are very likely English words unless
