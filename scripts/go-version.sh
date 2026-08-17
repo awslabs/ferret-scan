@@ -47,6 +47,10 @@ GOLANG_TAG="${GO_VERSION}-alpine"
 # Track failures across all checks so `check` reports everything at once
 # rather than exiting on the first mismatch.
 CHECK_FAILED=0
+
+# DIGEST_DRIFTED is set when the ONLY problem is that the upstream tag moved. It gets a
+# different remedy than a stale pin, because the two need different human judgement.
+DIGEST_DRIFTED=0
 fail()  { echo "❌ $1" >&2; CHECK_FAILED=1; }
 ok()    { echo "✅ $1"; }
 warn()  { echo "⚠️  $1" >&2; }
@@ -174,7 +178,21 @@ check_dockerfile() {
         if [[ "$pinned" == "$actual" ]]; then
             ok "Dockerfile digest: $pinned (matches registry)"
         else
-            fail "Dockerfile digest: $pinned (registry has $actual for ${GOLANG_TAG})"
+            # A digest-only mismatch is NOT a version problem, and telling the user to
+            # "sync" it is actively wrong as a default.
+            #
+            # golang:<version>-alpine is a MUTABLE tag: upstream republishes it when the
+            # base image is patched or the manifest list gains a platform, and the index
+            # digest changes while the Go version does not. Observed here: the pin and the
+            # tag both carried GOLANG_VERSION=1.26.6 with the identical build timestamp,
+            # and the only difference was riscv64 being added to the list.
+            #
+            # Adopting whatever the registry now serves is a SUPPLY-CHAIN DECISION, which
+            # is the entire reason the digest is pinned (TM-10). Blindly running the sync
+            # accepts a new upstream image unreviewed and defeats the pin. So this is
+            # reported as its own condition with its own instruction.
+            DIGEST_DRIFTED=1
+            fail "Dockerfile digest: $pinned (registry now serves $actual for ${GOLANG_TAG})"
         fi
     else
         warn "Dockerfile digest: $pinned (could not verify against registry — offline)"
@@ -238,7 +256,24 @@ case "${1:-check}" in
         check_github_workflows
         if [[ "$CHECK_FAILED" -ne 0 ]]; then
             echo "" >&2
-            echo "❌ Go version is out of sync. Run: make sync-go-version" >&2
+            if [[ "$DIGEST_DRIFTED" -eq 1 ]]; then
+                echo "❌ The upstream builder image moved: golang:${GOLANG_TAG} now resolves to a" >&2
+                echo "   different digest than the one pinned in the Dockerfile." >&2
+                echo "" >&2
+                echo "   The Go version itself is fine. This is a mutable tag being republished," >&2
+                echo "   which is exactly what the digest pin exists to make visible (TM-10)." >&2
+                echo "" >&2
+                echo "   Adopting the new image is a decision, not a formality. Before syncing," >&2
+                echo "   confirm the new digest still carries the expected Go version and still" >&2
+                echo "   covers linux/amd64 and linux/arm64 (docker-multiarch.yml builds both):" >&2
+                echo "" >&2
+                echo "     crane config ${GOLANG_REGISTRY}:${GOLANG_TAG} | grep GOLANG_VERSION" >&2
+                echo "     crane manifest ${GOLANG_REGISTRY}:${GOLANG_TAG} | jq -r '.manifests[].platform'" >&2
+                echo "" >&2
+                echo "   Then adopt it deliberately:  make sync-go-version" >&2
+            else
+                echo "❌ Go version is out of sync. Run: make sync-go-version" >&2
+            fi
             exit 1
         fi
         echo ""
