@@ -108,7 +108,7 @@
       "category": "sast",
       "confidence": "High",
       "description": "Ferret Scan detected sensitive data (date of birth) in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 4)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\npatient dob 3/14/87 and sibling born March 14th, 1987\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
-      "id": "ferret-<HASH>",
+      "id": "ferret-<HASH>-1",
       "identifiers": [
         {
           "name": "Ferret Scan Check Type",

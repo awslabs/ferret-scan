@@ -5,7 +5,6 @@ package redactors
 
 import (
 	"sort"
-	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
@@ -44,68 +43,19 @@ func ResolveOverlaps(matches []detector.Match) []detector.Match {
 		return matches
 	}
 
-	// span records where a match sits within its line, or ok=false when the
-	// position could not be resolved. line is an interned id identifying the
-	// containing line by both its reported number and its text, so offsets are
-	// only ever compared within one shared coordinate system.
-	//
-	// The id is interned rather than carrying the line text itself: the
-	// containment loop below is O(n²) in the number of matches, and comparing
-	// full line strings there made a dense single-line document 48x slower
-	// (1.1ms -> 55ms for 800 matches on one long line). Interning pays the
-	// string hash once per match and reduces the hot comparison to an int.
-	type lineKey struct {
-		number int
-		text   string
-	}
-	type span struct {
-		line       int
-		start, end int
-		ok         bool
-	}
-	lineIDs := make(map[lineKey]int, len(matches))
-	lineIDFor := func(number int, text string) int {
-		k := lineKey{number: number, text: text}
-		if id, ok := lineIDs[k]; ok {
-			return id
-		}
-		id := len(lineIDs) + 1 // 1-based; 0 is the zero value of span.line
-		lineIDs[k] = id
-		return id
-	}
-
 	// Assign each match to a concrete occurrence of its text within the line.
-	// Repeated (line, text) pairs consume successive occurrences left-to-right
-	// so two identical matches don't both claim the first occurrence.
-	cursor := make(map[int]map[string]int, len(matches))
-	spans := make([]span, len(matches))
-	for i := range matches {
-		m := &matches[i]
-		line := m.Context.FullLine
-		if line == "" || m.Text == "" {
-			continue
-		}
-		lineID := lineIDFor(m.LineNumber, line)
-		byText, ok := cursor[lineID]
-		if !ok {
-			byText = make(map[string]int)
-			cursor[lineID] = byText
-		}
-		from := byText[m.Text]
-		idx := strings.Index(line[from:], m.Text)
-		if idx < 0 {
-			// Fall back to the first occurrence rather than losing the match.
-			idx = strings.Index(line, m.Text)
-			if idx < 0 {
-				continue
-			}
-			spans[i] = span{line: lineID, start: idx, end: idx + len(m.Text), ok: true}
-			continue
-		}
-		start := from + idx
-		spans[i] = span{line: lineID, start: start, end: start + len(m.Text), ok: true}
-		byText[m.Text] = start + len(m.Text)
-	}
+	// Repeated (line, text) pairs consume successive occurrences left-to-right so
+	// two identical matches don't both claim the first occurrence, and each span
+	// carries an interned line id so offsets are only ever compared within one
+	// coordinate system.
+	//
+	// Shared with the reporting path, which needs exactly the same resolution to
+	// give two findings on one line distinguishable columns. The id is interned
+	// rather than carrying the line text because the containment loop below is
+	// O(n²) in the number of matches, and comparing full line strings there made a
+	// dense single-line document 48x slower (1.1ms -> 55ms for 800 matches on one
+	// long line).
+	spans := detector.ResolveLineSpans(matches)
 
 	// Consider wider spans first so a contained match is always tested against
 	// the largest span that could subsume it.
@@ -115,22 +65,22 @@ func ResolveOverlaps(matches []detector.Match) []detector.Match {
 	}
 	sort.SliceStable(order, func(a, b int) bool {
 		sa, sb := spans[order[a]], spans[order[b]]
-		return (sa.end - sa.start) > (sb.end - sb.start)
+		return (sa.End - sa.Start) > (sb.End - sb.Start)
 	})
 
 	keep := make([]bool, len(matches))
-	var accepted []span
+	var accepted []detector.LineSpan
 	for _, i := range order {
 		s := spans[i]
-		if !s.ok {
+		if !s.OK {
 			// Unresolvable position: keep it, and don't let it subsume others.
 			keep[i] = true
 			continue
 		}
 		contained := false
 		for _, a := range accepted {
-			if a.line == s.line && a.start <= s.start && s.end <= a.end &&
-				(a.end-a.start) > (s.end-s.start) {
+			if a.LineID == s.LineID && a.Start <= s.Start && s.End <= a.End &&
+				(a.End-a.Start) > (s.End-s.Start) {
 				contained = true
 				break
 			}

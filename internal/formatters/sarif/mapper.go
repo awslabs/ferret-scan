@@ -183,9 +183,25 @@ func (m *VulnerabilityMapper) buildRegion(match detector.Match, options formatte
 		}
 	}
 
-	// Try to calculate column information if we have the full line and matched text
-	if match.Context.FullLine != "" && match.Text != "" {
-		// Find the position of the matched text in the line
+	// Prefer the column recorded on the match. It resolves each finding to its OWN
+	// occurrence, whereas the strings.Index fallback below always returns the FIRST:
+	// two findings for the same value on one line were both given the first
+	// occurrence's region, so those characters were annotated twice and the second
+	// occurrence's characters never at all.
+	switch {
+	case match.StartColumn > 0:
+		region.StartColumn = match.StartColumn
+		if match.EndColumn > match.StartColumn {
+			region.EndColumn = match.EndColumn
+		} else {
+			region.EndColumn = match.StartColumn + len(match.Text)
+		}
+
+	case match.Context.FullLine != "" && match.Text != "":
+		// No recorded column: a synthesised match text (a social-media cluster, a
+		// consolidated intellectual-property span) has no literal position, and a
+		// caller constructing a Match by hand may not have set one. Fall back to the
+		// first occurrence, which is what this did unconditionally before.
 		index := strings.Index(match.Context.FullLine, match.Text)
 		if index >= 0 {
 			// SARIF columns are 1-based

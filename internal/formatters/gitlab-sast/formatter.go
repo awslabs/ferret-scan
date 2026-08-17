@@ -5,6 +5,7 @@ package gitlabsast
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"sort"
 	"time"
@@ -182,6 +183,16 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	processedCount := 0
 	errorCount := 0
 
+	// Last-resort guard against two findings sharing an id.
+	//
+	// The column now in the id distinguishes findings whose text was lifted from the
+	// line, but a SYNTHESISED match text — a social-media cluster, a consolidated
+	// intellectual-property span — has no literal position and so carries no column.
+	// Two of those on one line still hash alike, and GitLab deduplicates by id, so a
+	// collision silently drops a reported finding. Disambiguate instead, walking
+	// sortedMatches so the suffix is stable run to run.
+	idSeen := make(map[string]int, len(sortedMatches))
+
 	for i, match := range sortedMatches {
 		// Validate the match before processing
 		if err := f.mapper.ValidateMapping(match); err != nil {
@@ -205,6 +216,13 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		// Sanitize the vulnerability data to ensure no sensitive information is exposed
 		vuln.Message = f.sanitizer.SanitizeMessage(match)
 		vuln.Description = f.sanitizer.SanitizeDescription(match, options.ShowMatch)
+
+		// See idSeen: a repeat id would be dropped by the consumer, so suffix it.
+		baseID := vuln.ID
+		if n := idSeen[baseID]; n > 0 {
+			vuln.ID = fmt.Sprintf("%s-%d", baseID, n)
+		}
+		idSeen[baseID]++
 
 		// Validate the vulnerability before adding
 		if err := f.validator.ValidateVulnerability(vuln); err != nil {
