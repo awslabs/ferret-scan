@@ -6,6 +6,7 @@ package preprocessors
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 )
@@ -305,8 +306,19 @@ func (el *ErrorLogger) LogError(err *MediaProcessingError) {
 		message += fmt.Sprintf(" context=[%s]", strings.Join(contextParts, " "))
 	}
 
-	// In a real implementation, this would use a proper logging framework
-	fmt.Printf("%s\n", message)
+	// STDERR, not stdout.
+	//
+	// This was fmt.Printf — the only stdout write on the scan path — and it corrupted
+	// every machine artifact. `--format json > report.json` produced a file beginning
+	// "[ERROR] media processing failed for ..." which is not valid JSON, so a consumer
+	// got a parse error instead of a report whenever any media file failed to parse.
+	// Verified: the same run with --output wrote valid JSON, because that path writes
+	// the document to a file and leaves stdout alone.
+	//
+	// Every other [ERROR] line in the tree already uses os.Stderr; this one was
+	// placeholder code (the comment said "in a real implementation, this would use a
+	// proper logging framework") that shipped.
+	fmt.Fprintf(os.Stderr, "%s\n", message)
 }
 
 // getLogLevelForError determines appropriate log level for error type
