@@ -99,15 +99,23 @@ func captureLogOutput(t *testing.T, fn func()) string {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	orig := os.Stdout
-	os.Stdout = w
+	// STDERR, not stdout. LogError used to write to stdout, which corrupted every
+	// machine artifact: `--format json > report.json` produced a file starting
+	// "[ERROR] media processing failed for ..." and a consumer got a parse error
+	// instead of a report. These tests captured stdout, so they were the thing
+	// pinning the wrong stream in place.
+	//
+	// What they ASSERT is unchanged — the context= fields are sorted and complete.
+	// Only the stream they listen on moved.
+	orig := os.Stderr
+	os.Stderr = w
 	done := make(chan string, 1)
 	go func() {
 		b, _ := io.ReadAll(r)
 		done <- string(b)
 	}()
 	fn()
-	os.Stdout = orig
+	os.Stderr = orig
 	if err := w.Close(); err != nil {
 		t.Fatalf("close write end: %v", err)
 	}
