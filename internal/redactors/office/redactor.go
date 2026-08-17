@@ -688,9 +688,24 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// match's un-redacted head. See redactors.ResolveOverlaps.
 	matches = redactors.ResolveOverlaps(matches)
 
+	// Where a value lives depends only on the value, so resolve each distinct text
+	// once. Without this, a document dense in one repeated value walks the whole
+	// extracted text per match: measured on a 243KB body holding one SSN 4000 times
+	// plus the same SSN in docProps/core.xml, redaction went 0.73s -> 1.60s, because
+	// core.xml is concatenated after the body so every match scanned the entire body
+	// before finding it. That is quadratic in document size, the shape already
+	// tracked for the redaction path.
+	partCache := make(map[string]matchLocation)
+
+	// applyXMLRedaction uses bytes.ReplaceAll, so the FIRST rewrite of a value in a
+	// part removes every occurrence of it there and any repeat is a full-part scan
+	// that changes nothing. Redacting one value reported 4000 times across 2 parts
+	// meant 8000 scans of a 243KB part instead of 2.
+	rewritten := make(map[string]struct{})
+
 	// Process each match
 	for _, match := range matches {
-		mapping, err := or.redactMatch(modifiedContents, extractedText, textPositions, match, strategy, docType)
+		mapping, err := or.redactMatch(modifiedContents, extractedText, textPositions, match, strategy, docType, partCache, rewritten)
 		if err != nil {
 			or.logEvent("match_redaction_failed", false, map[string]interface{}{
 				"match_type": match.Type,
@@ -708,26 +723,113 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	return redactionMap, modifiedContents, nil
 }
 
-// redactMatch redacts a single match in the Office document
-func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, match detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType) (*redactors.RedactionMapping, error) {
-	// Find the position of the match in the extracted text
-	matchPos := strings.Index(extractedText, match.Text)
-	if matchPos == -1 {
-		return nil, fmt.Errorf("match text not found in extracted content")
+// positionForOffset returns the extracted-text position covering off.
+//
+// textPositions is built in extraction order with strictly ascending
+// DocumentOffset, so this binary searches rather than scanning. A linear scan here
+// is what makes the caller quadratic on a document with many occurrences.
+func positionForOffset(textPositions []OfficeTextPosition, off int) *OfficeTextPosition {
+	i := sort.Search(len(textPositions), func(i int) bool {
+		return textPositions[i].DocumentOffset > off
+	}) - 1
+	if i < 0 {
+		return nil
+	}
+	if off < textPositions[i].DocumentOffset+len(textPositions[i].Text) {
+		return &textPositions[i]
+	}
+	return nil
+}
+
+// matchLocation is where a value lives in the extracted text: the offset of its
+// first occurrence and the distinct parts holding it.
+//
+// It depends only on the VALUE, not on which match reported it, so it is cached per
+// distinct text for the life of one document — see partCache in
+// redactOfficeContent.
+type matchLocation struct {
+	firstOffset int // -1 when the value is not in the extracted text
+	parts       []OfficeTextPosition
+}
+
+// partsHoldingMatch returns the distinct Office parts holding text, in
+// first-occurrence order.
+//
+// Resolving only the FIRST occurrence is what leaked. A value present in two parts
+// -- say an SSN in both word/document.xml and docProps/core.xml -- produces two
+// matches, and strings.Index gave both the same offset, so both selected the same
+// part. applyXMLRedaction's bytes.ReplaceAll is scoped to the part it is given, so
+// the other part kept the value in CLEARTEXT while the scan reported success and
+// exited 0. Which part leaked was decided by zip entry order, because extractedText
+// is concatenated in that order: reversing the two entries moved the residue from
+// docProps/core.xml to word/document.xml.
+//
+// The walk stops as soon as every part is accounted for. Without that bound this is
+// called once per match and scans the whole extracted text each time, so a document
+// dense in one repeated value would be quadratic in the number of matches -- the
+// shape already tracked for the redaction path, not one to add to.
+func partsHoldingMatch(extractedText string, textPositions []OfficeTextPosition, text string) []OfficeTextPosition {
+	return locateMatch(extractedText, textPositions, text).parts
+}
+
+// locateMatch performs the single walk behind partsHoldingMatch, also reporting the
+// first occurrence's offset so the caller does not need a second strings.Index pass.
+func locateMatch(extractedText string, textPositions []OfficeTextPosition, text string) matchLocation {
+	loc := matchLocation{firstOffset: -1}
+	if text == "" || len(textPositions) == 0 {
+		return loc
 	}
 
-	// Find corresponding Office position
-	var officePosition *OfficeTextPosition
-	for _, pos := range textPositions {
-		if pos.DocumentOffset <= matchPos && matchPos < pos.DocumentOffset+len(pos.Text) {
-			officePosition = &pos
+	distinct := make(map[string]struct{}, len(textPositions))
+	for _, p := range textPositions {
+		distinct[p.FileName] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(distinct))
+	for base := 0; base+len(text) <= len(extractedText); {
+		i := strings.Index(extractedText[base:], text)
+		if i < 0 {
 			break
+		}
+		off := base + i
+		if loc.firstOffset < 0 {
+			loc.firstOffset = off
+		}
+		if pos := positionForOffset(textPositions, off); pos != nil {
+			if _, dup := seen[pos.FileName]; !dup {
+				seen[pos.FileName] = struct{}{}
+				loc.parts = append(loc.parts, *pos)
+				if len(seen) == len(distinct) {
+					break // every part holds it; nothing further to find
+				}
+			}
+		}
+		base = off + len(text) // non-overlapping: the same bytes are redacted once
+	}
+	return loc
+}
+
+// redactMatch redacts a single match in the Office document
+func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, match detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType, partCache map[string]matchLocation, rewritten map[string]struct{}) (*redactors.RedactionMapping, error) {
+	// Every part that holds the value, not just the one holding its first
+	// occurrence -- see partsHoldingMatch. Cached per distinct value.
+	loc, cached := partCache[match.Text]
+	if !cached {
+		loc = locateMatch(extractedText, textPositions, match.Text)
+		if partCache != nil {
+			partCache[match.Text] = loc
 		}
 	}
 
-	if officePosition == nil {
+	matchPos := loc.firstOffset
+	if matchPos < 0 {
+		return nil, fmt.Errorf("match text not found in extracted content")
+	}
+	parts := loc.parts
+	if len(parts) == 0 {
 		return nil, fmt.Errorf("could not find Office position for match")
 	}
+	officePosition := &parts[0]
 
 	// Generate replacement text
 	replacement, err := or.generateReplacement(match.Text, match.Type, strategy)
@@ -735,10 +837,27 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 		return nil, fmt.Errorf("failed to generate replacement: %w", err)
 	}
 
-	// Apply redaction to XML content
-	err = or.applyXMLRedaction(zipContents, officePosition, match.Text, replacement, docType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply XML redaction: %w", err)
+	// Apply redaction to XML content in every part that holds the value. A part
+	// whose content no longer contains the text (an earlier match with the same
+	// value already rewrote it) is a no-op, so this stays idempotent.
+	redactedParts := make([]string, 0, len(parts))
+	for i := range parts {
+		redactedParts = append(redactedParts, parts[i].FileName)
+
+		// Skip a part whose content no longer holds this value because an earlier
+		// match already rewrote it — bytes.ReplaceAll removed every occurrence.
+		key := parts[i].FileName + "\x00" + match.Text
+		if rewritten != nil {
+			if _, done := rewritten[key]; done {
+				continue
+			}
+		}
+		if err := or.applyXMLRedaction(zipContents, &parts[i], match.Text, replacement, docType); err != nil {
+			return nil, fmt.Errorf("failed to apply XML redaction in %s: %w", parts[i].FileName, err)
+		}
+		if rewritten != nil {
+			rewritten[key] = struct{}{}
+		}
 	}
 
 	// Create redaction mapping
@@ -754,7 +873,11 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 		Confidence: match.Confidence,
 
 		Metadata: map[string]interface{}{
-			"office_file":     officePosition.FileName,
+			"office_file": officePosition.FileName,
+			// Every part the value was rewritten in. office_file names only the
+			// first and stays for compatibility; a cross-part value is visible
+			// only here.
+			"office_files":    redactedParts,
 			"xml_path":        officePosition.XMLPath,
 			"element_info":    officePosition.ElementInfo,
 			"document_type":   docType.String(),
@@ -765,6 +888,8 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 	or.logEvent("office_redaction_applied", true, map[string]interface{}{
 		"match_type":         match.Type,
 		"file_name":          officePosition.FileName,
+		"file_names":         redactedParts,
+		"part_count":         len(redactedParts),
 		"replacement_length": len(replacement),
 		"confidence":         match.Confidence,
 		"document_type":      docType.String(),
