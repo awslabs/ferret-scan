@@ -141,8 +141,42 @@ func (m *Match) Clear() {
 	// it must stay in sync with explain.MetadataKey.
 	if m.Metadata != nil {
 		delete(m.Metadata, "explanation")
+
+		// Scrub the NESTED matches a consolidated finding carries.
+		//
+		// Clearing the fields above scrubs one match's payload. A
+		// SOCIAL_MEDIA_CLUSTER finding stores the matches it replaced under this
+		// key, and each of those carries its own Text AND its own
+		// Context.FullLine — so the match type that holds the MOST cleartext,
+		// N values plus N whole source lines, was the one Clear() left
+		// untouched. It reported success having scrubbed the summary string
+		// while every value it summarised stayed in the map.
+		//
+		// This matters most through pkg/redact, where Clear() is the documented
+		// scrubbing contract an embedding caller relies on: the caller cleared
+		// its matches and still held the input's cleartext.
+		//
+		// The key is a literal for the same reason as "explanation" — importing
+		// internal/redactors here would be a cycle. It must stay in sync with
+		// redactors.ClusterMembersKey.
+		//
+		// Deleted BEFORE the members are cleared, so a structure that somehow
+		// referenced itself terminates instead of recursing forever. In practice
+		// depth is one: the validator builds these with a copy that omits
+		// Metadata.
+		if members, ok := m.Metadata[clusterMembersMetadataKey].([]Match); ok {
+			delete(m.Metadata, clusterMembersMetadataKey)
+			for i := range members {
+				members[i].Clear()
+			}
+		}
 	}
 }
+
+// clusterMembersMetadataKey is where a consolidated finding stores the matches it
+// replaced. Kept next to Clear because scrubbing is the only reason detector needs
+// to know the key; see redactors.ClusterMembersKey for the canonical definition.
+const clusterMembersMetadataKey = "cluster_members"
 
 // ContextExtractor extracts context from a file around a specific match
 type ContextExtractor struct {
