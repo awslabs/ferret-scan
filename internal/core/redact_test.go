@@ -4,6 +4,7 @@
 package core
 
 import (
+	"encoding/binary"
 	"io"
 	"os"
 	"path/filepath"
@@ -92,8 +93,19 @@ func TestRedactFile_UnredactableFileTypeIsAnError(t *testing.T) {
 	in := t.TempDir()
 	out := t.TempDir()
 	// Reserved documentation values, in a file type with no redactor.
-	src := writeTemp(t, in, "creds.go",
-		"package main\n\nconst key = \"AKIAIOSFODNN7EXAMPLE\" // jordan@example.com\n")
+	//
+	// A VIDEO file, not a .go source file. Source files used to have no redactor, which made
+	// them a convenient stand-in here — but a .go file holding a hardcoded key is exactly a
+	// file that should be redacted, and text files of any extension now are (#315). Video is
+	// scanned (there is a video metadata preprocessor) and has no redactor, so it keeps
+	// exercising the guard this test exists for rather than becoming redactable under it.
+	//
+	// A video redactor IS now planned (#358). When it lands this fixture stops being
+	// unredactable and this test fails — loudly, which is the intended behaviour. The
+	// invariant is what matters, not the format: keep the assertion and re-fixture. If
+	// nothing scanned is left unredactable by then, a manager with a deliberately limited
+	// redactor set is the honest replacement.
+	src := writeUnredactableVideo(t, in, "creds.mp4")
 
 	res, err := RedactFile(RedactConfig{
 		FilePath:  src,
@@ -149,4 +161,32 @@ func TestRedactFile_DefaultsToFormatPreserving(t *testing.T) {
 	if res.Strategy != "format_preserving" {
 		t.Errorf("expected default strategy format_preserving, got %q", res.Strategy)
 	}
+}
+
+// writeUnredactableVideo writes a minimal MP4 whose udta/ilst metadata carries reserved
+// documentation values, for tests that need a file which IS scanned but has no redactor.
+//
+// Hand-built rather than produced by ffmpeg, which is not on every CI runner. 95 bytes is
+// enough: ftyp plus moov>udta>meta>ilst>©cmt is what the metadata extractor walks.
+func writeUnredactableVideo(t *testing.T, dir, name string) string {
+	t.Helper()
+
+	atom := func(kind string, payload []byte) []byte {
+		out := make([]byte, 4)
+		binary.BigEndian.PutUint32(out, uint32(8+len(payload)))
+		out = append(out, []byte(kind)...)
+		return append(out, payload...)
+	}
+
+	data := append([]byte{0, 0, 0, 1, 0, 0, 0, 0},
+		[]byte("key AKIAIOSFODNN7EXAMPLE contact jordan@example.com")...)
+	body := atom("moov", atom("udta", atom("meta",
+		append([]byte{0, 0, 0, 0}, atom("ilst", atom("\xa9cmt", atom("data", data)))...))))
+	out := append(atom("ftyp", []byte("isomiso2mp41")), body...)
+
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, out, 0o600); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	return p
 }

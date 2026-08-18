@@ -4,7 +4,9 @@
 package parallel
 
 import (
+	"encoding/binary"
 	"io"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -22,13 +24,25 @@ import (
 // The regression they guard is a silent one. Redaction failure used to be folded
 // into Result.Error, whose branch in the result collector neither appends
 // matches nor increments processedCount — so scanning a directory with
-// --enable-redaction dropped every finding in every file whose extension has no
-// registered redactor (.go, .py, ...) while still reporting "0 skipped" and
-// exiting 0. A CI gate saw a clean pass over unredacted cleartext.
+// --enable-redaction dropped every finding in every file with no registered
+// redactor, while still reporting "0 skipped" and exiting 0. A CI gate saw a
+// clean pass over unredacted cleartext.
+//
+// The unredactable fixture is a VIDEO file. It used to be a .go source file,
+// which worked only because source files had no redactor — and a .go file
+// holding a hardcoded key is exactly a file that should be redacted, so text
+// files of any extension now are (#315). Video is scanned and has no redactor,
+// so it keeps these tests measuring the dispatch boundary rather than a coverage
+// gap that has since closed.
+//
+// A video redactor IS now planned (#358). When it lands these fixtures stop being
+// unredactable and these tests fail — loudly, which is intended. Keep the
+// assertions and re-fixture; if nothing scanned is left unredactable, register a
+// deliberately limited redactor set instead of hunting for another format.
 
-// newRedactionManagerWithPlaintextOnly builds a manager that can redact .txt but
-// NOT .go — the real-world shape of the bug, since the default redactor set
-// covers text/PDF/Office/image extensions and nothing else.
+// newRedactionManagerWithPlaintextOnly builds a manager that can redact text but
+// NOT video — the real-world shape of the bug, since the default redactor set
+// covers text, PDF, Office, image and audio and nothing else.
 func newRedactionManagerWithPlaintextOnly(t *testing.T, outDir string) *redactors.RedactionManager {
 	t.Helper()
 	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, io.Discard)
@@ -53,8 +67,8 @@ func newRedactionManagerWithPlaintextOnly(t *testing.T, outDir string) *redactor
 func TestRedaction_UnredactableFileKeepsItsMatches(t *testing.T) {
 	dir := t.TempDir()
 	txt := writeTxt(t, dir, "notes.txt", "alpha content")
-	// .go has no registered redactor in the manager built above.
-	gofile := writeTxt(t, dir, "creds.go", "package main // beta content")
+	// video has no registered redactor in the manager built above.
+	gofile := writeUnredactableVideo(t, dir, "clip.mp4")
 
 	v := &batchStubValidator{}
 	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, io.Discard)
@@ -74,7 +88,7 @@ func TestRedaction_UnredactableFileKeepsItsMatches(t *testing.T) {
 	for _, m := range matches {
 		byFile[filepath.Base(m.Filename)]++
 	}
-	if byFile["creds.go"] == 0 {
+	if byFile["clip.mp4"] == 0 {
 		t.Errorf("unredactable file's matches were DROPPED (the leak): got %v", byFile)
 	}
 	if byFile["notes.txt"] == 0 {
@@ -91,7 +105,7 @@ func TestRedaction_UnredactableFileKeepsItsMatches(t *testing.T) {
 	if len(stats.UnredactedFiles) != 1 {
 		t.Fatalf("UnredactedFiles = %d, want 1: %+v", len(stats.UnredactedFiles), stats.UnredactedFiles)
 	}
-	if filepath.Base(stats.UnredactedFiles[0].FilePath) != "creds.go" {
+	if filepath.Base(stats.UnredactedFiles[0].FilePath) != "clip.mp4" {
 		t.Errorf("wrong unredacted file: %q", stats.UnredactedFiles[0].FilePath)
 	}
 	if stats.UnredactedFiles[0].Reason == "" {
@@ -106,7 +120,7 @@ func TestRedaction_UnredactableFileKeepsItsMatches(t *testing.T) {
 // operator to re-scan when the scan was in fact complete.
 func TestRedaction_FailureIsNotACoverageFailure(t *testing.T) {
 	dir := t.TempDir()
-	gofile := writeTxt(t, dir, "creds.go", "package main // beta content")
+	gofile := writeUnredactableVideo(t, dir, "clip.mp4")
 
 	v := &batchStubValidator{}
 	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, io.Discard)
@@ -143,8 +157,8 @@ func TestRedaction_UnredactableFileIsNotAFailedFile(t *testing.T) {
 	dir := t.TempDir()
 	files := []string{
 		writeTxt(t, dir, "notes.txt", "alpha content"),
-		writeTxt(t, dir, "creds.go", "package main // beta content"),
-		writeTxt(t, dir, "app.py", "# gamma content"),
+		writeUnredactableVideo(t, dir, "clip.mp4"),
+		writeUnredactableVideo(t, dir, "clip2.mp4"),
 	}
 
 	v := &batchStubValidator{}
@@ -206,7 +220,7 @@ func TestRedaction_SuccessReportsNoUnredactedFiles(t *testing.T) {
 // byte-identical for every consumer of ProcessingStats.
 func TestRedaction_DisabledLeavesDiagnosticEmpty(t *testing.T) {
 	dir := t.TempDir()
-	gofile := writeTxt(t, dir, "creds.go", "package main // beta content")
+	gofile := writeUnredactableVideo(t, dir, "clip.mp4")
 
 	v := &batchStubValidator{}
 	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, io.Discard)
@@ -224,4 +238,28 @@ func TestRedaction_DisabledLeavesDiagnosticEmpty(t *testing.T) {
 	if stats.ProcessedFiles != 1 {
 		t.Errorf("ProcessedFiles = %d, want 1", stats.ProcessedFiles)
 	}
+}
+
+// writeUnredactableVideo writes a minimal MP4 for tests that need a file which IS routed and
+// scanned but has no registered redactor. Hand-built rather than produced by ffmpeg, which is
+// not on every CI runner.
+func writeUnredactableVideo(t *testing.T, dir, name string) string {
+	t.Helper()
+
+	atom := func(kind string, payload []byte) []byte {
+		out := make([]byte, 4)
+		binary.BigEndian.PutUint32(out, uint32(8+len(payload)))
+		out = append(out, []byte(kind)...)
+		return append(out, payload...)
+	}
+	data := append([]byte{0, 0, 0, 1, 0, 0, 0, 0}, []byte("beta content")...)
+	body := atom("moov", atom("udta", atom("meta",
+		append([]byte{0, 0, 0, 0}, atom("ilst", atom("\xa9cmt", atom("data", data)))...))))
+	out := append(atom("ftyp", []byte("isomiso2mp41")), body...)
+
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, out, 0o600); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	return p
 }
