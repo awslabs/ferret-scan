@@ -54,6 +54,26 @@ func ResolveLineSpans(matches []Match) []LineSpan {
 	lineIDs := make(map[lineKey]int, len(matches))
 	cursor := make(map[int]map[string]int, len(matches))
 
+	// Memo for the immediately preceding line.
+	//
+	// The map key contains the whole line TEXT, so every lookup hashes the line: that
+	// is O(line length) per match, and therefore O(matches x line length) for a dense
+	// single line — quadratic. Measured in isolation on one line, 4x input cost 18.5x,
+	// where linear is 4x. The interning below removes quadratic string COMPARISON from
+	// the containment loop, but it cannot remove the hashing, because the hash is what
+	// builds the id.
+	//
+	// Matches from one line arrive together, so remembering just the last line collapses
+	// the common case to a length check plus a pointer compare: every match on a line
+	// shares the identical FullLine string, and Go's string equality short-circuits on
+	// equal length and equal data pointer without reading the bytes. A line change still
+	// pays one hash, which is O(total content) overall — linear.
+	var (
+		lastLine   string
+		lastNumber int
+		lastID     int
+	)
+
 	for i := range matches {
 		m := &matches[i]
 		line := m.Context.FullLine
@@ -61,11 +81,18 @@ func ResolveLineSpans(matches []Match) []LineSpan {
 			continue
 		}
 
-		k := lineKey{number: m.LineNumber, text: line}
-		lineID, ok := lineIDs[k]
-		if !ok {
-			lineID = len(lineIDs) + 1 // 1-based; 0 is the zero value of LineSpan.LineID
-			lineIDs[k] = lineID
+		var lineID int
+		if lastID != 0 && m.LineNumber == lastNumber && line == lastLine {
+			lineID = lastID
+		} else {
+			k := lineKey{number: m.LineNumber, text: line}
+			var ok bool
+			lineID, ok = lineIDs[k]
+			if !ok {
+				lineID = len(lineIDs) + 1 // 1-based; 0 is the zero value of LineSpan.LineID
+				lineIDs[k] = lineID
+			}
+			lastLine, lastNumber, lastID = line, m.LineNumber, lineID
 		}
 
 		byText, ok := cursor[lineID]
