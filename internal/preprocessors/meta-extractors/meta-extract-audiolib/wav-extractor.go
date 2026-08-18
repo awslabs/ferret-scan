@@ -72,6 +72,11 @@ func (e *WAVExtractor) ExtractMetadata(filePath string) (*AudioMetadata, error) 
 
 // parseChunks parses WAV chunks
 func (e *WAVExtractor) parseChunks(file *os.File, metadata *AudioMetadata) error {
+	// sawMissingPad records that an odd-length chunk was not followed by the pad byte RIFF
+	// requires, so the walk had to realign. Reported after the loop rather than on the spot
+	// because recovery succeeds and the note belongs to the file, not to one chunk.
+	sawMissingPad := false
+
 	for {
 		var header WAVChunkHeader
 		if err := binary.Read(file, binary.LittleEndian, &header); err != nil {
@@ -82,6 +87,18 @@ func (e *WAVExtractor) parseChunks(file *os.File, metadata *AudioMetadata) error
 		}
 
 		chunkID := string(header.ID[:])
+
+		// A RIFF chunk ID is four printable ASCII characters. Anything else means the
+		// reader is no longer on a chunk boundary, and continuing would walk garbage: the
+		// default branch below would "skip" by a nonsense size, land somewhere arbitrary,
+		// and eventually hit EOF — at which point the loop breaks and reports success on a
+		// file it never read. Stop and say so instead.
+		if !isPrintableChunkID(header.ID) {
+			metadata.ExtractionWarning = "audio metadata may be incomplete: the WAV chunk " +
+				"layout could not be followed past an unrecognized chunk header, so any " +
+				"metadata after that point was not read"
+			return nil
+		}
 
 		switch chunkID {
 		case "fmt ":
@@ -102,13 +119,58 @@ func (e *WAVExtractor) parseChunks(file *os.File, metadata *AudioMetadata) error
 			}
 		}
 
-		// Align to even byte boundary
+		// Align to even byte boundary.
+		//
+		// RIFF requires an odd-length chunk to be followed by a pad byte, but a truncated
+		// download or a non-compliant writer can omit it. Seeking past it unconditionally
+		// then lands the reader ONE BYTE PAST the next chunk header, so every subsequent
+		// chunk ID is garbage — which used to be skipped silently, ending the walk at EOF
+		// with a nil error and an empty result. Measured on two fixtures identical but for
+		// this single byte: 1 finding versus 0, the second with no disclosure at all.
+		//
+		// The two cases are unambiguous, so the pad byte is detected rather than assumed:
+		// a pad is always 0x00, and a chunk ID's first byte is printable ASCII.
 		if header.Size%2 == 1 {
-			file.Seek(1, io.SeekCurrent)
+			var pad [1]byte
+			n, err := file.Read(pad[:])
+			switch {
+			case err != nil || n == 0:
+				// EOF right after an odd chunk: nothing follows, so nothing is missed.
+			case pad[0] == 0x00:
+				// A real pad byte, already consumed by the read above.
+			default:
+				// Not a pad byte — it is the first byte of the next chunk ID. Put it back
+				// so the walk stays aligned, and note the file is non-compliant.
+				if _, err := file.Seek(-1, io.SeekCurrent); err != nil {
+					return err
+				}
+				sawMissingPad = true
+			}
 		}
 	}
 
+	// Recovered, but say so: the file is not RIFF-compliant, and an operator who cares
+	// whether their corpus is intact should know the tool had to compensate. Never
+	// overwrite a more specific warning already set above.
+	if sawMissingPad && metadata.ExtractionWarning == "" {
+		metadata.ExtractionWarning = "the WAV chunk layout omits a required pad byte after " +
+			"an odd-length chunk; metadata was recovered by realigning, but the file is " +
+			"malformed and may be truncated"
+	}
+
 	return nil
+}
+
+// isPrintableChunkID reports whether id is four printable ASCII characters, which every
+// RIFF chunk ID is. It is the cheapest available test for "the reader is still on a chunk
+// boundary".
+func isPrintableChunkID(id [4]byte) bool {
+	for _, b := range id {
+		if b < 0x20 || b > 0x7E {
+			return false
+		}
+	}
+	return true
 }
 
 // parseFormatChunk parses the WAV format chunk
