@@ -367,9 +367,9 @@ validators:
 
       # Instagram - Photo/video sharing platform
       instagram:
-        - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+/" # Profile URLs
-        - "(?i)https?://(?:www\\.)?instagr\\.am/[a-zA-Z0-9_.]+/" # Short domain
-        - "(?i)instagram\\.com/[a-zA-Z0-9_.]+/" # Without protocol
+        - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+" # Profile URLs
+        - "(?i)https?://(?:www\\.)?instagr\\.am/[a-zA-Z0-9_.]+" # Short domain
+        - "(?i)instagram\\.com/[a-zA-Z0-9_.]+" # Without protocol
 
       # YouTube - Video sharing platform
       youtube:
@@ -380,9 +380,9 @@ validators:
 
       # TikTok - Short video platform
       tiktok:
-        - "(?i)https?://(?:www\\.)?tiktok\\.com/@[a-zA-Z0-9_.]+/" # Profile URLs
+        - "(?i)https?://(?:www\\.)?tiktok\\.com/@[a-zA-Z0-9_.]+" # Profile URLs
         - "(?i)https?://(?:www\\.)?tiktok\\.com/t/[a-zA-Z0-9]+" # Short URLs
-        - "(?i)tiktok\\.com/@[a-zA-Z0-9_.]+/" # Without protocol
+        - "(?i)tiktok\\.com/@[a-zA-Z0-9_.]+" # Without protocol
 
       # Discord - Gaming/community chat platform
       discord:
@@ -398,13 +398,13 @@ validators:
 
       # Snapchat - Multimedia messaging platform
       snapchat:
-        - "(?i)https?://(?:www\\.)?snapchat\\.com/add/[a-zA-Z0-9_.]+/" # Add friend URLs
-        - "(?i)snapchat\\.com/add/[a-zA-Z0-9_.]+/" # Without protocol
+        - "(?i)https?://(?:www\\.)?snapchat\\.com/add/[a-zA-Z0-9_.]+" # Add friend URLs
+        - "(?i)snapchat\\.com/add/[a-zA-Z0-9_.]+" # Without protocol
 
       # Pinterest - Visual discovery platform
       pinterest:
-        - "(?i)https?://(?:www\\.)?pinterest\\.com/[a-zA-Z0-9_]+/" # Profile URLs
-        - "(?i)pinterest\\.com/[a-zA-Z0-9_]+/" # Without protocol
+        - "(?i)https?://(?:www\\.)?pinterest\\.com/[a-zA-Z0-9_]+" # Profile URLs
+        - "(?i)pinterest\\.com/[a-zA-Z0-9_]+" # Without protocol
 
       # Twitch - Live streaming platform
       twitch:

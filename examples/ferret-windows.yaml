@@ -171,7 +171,7 @@ validators:
       facebook:
         - "(?i)https?://(?:www\\.)?(facebook|fb)\\.com/[a-zA-Z0-9._-]+"
       instagram:
-        - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+/"
+        - "(?i)https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+"
       youtube:
         - "(?i)https?://(?:www\\.)?youtube\\.com/(?:user|c|channel)/[a-zA-Z0-9_-]+"
         - "(?i)https?://(?:www\\.)?youtube\\.com/@[a-zA-Z0-9_-]+"
