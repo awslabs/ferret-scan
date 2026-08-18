@@ -87,9 +87,19 @@ func runStats(t *testing.T, bin, dir string, extra ...string) (scanStats, string
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = t.TempDir()
+	// MSYSTEM and MINGW_PREFIX are the ones that matter in CI and the ones this list first
+	// missed: Git Bash sets all three of MSYSTEM, MINGW_PREFIX and GIT_EXEC_PATH, and the
+	// windows test step runs under it. With detection live, the json formatter returns an EMPTY
+	// document when there are no findings, so --output received zero bytes and this test failed
+	// on "unexpected end of JSON input" — nothing to do with counting.
+	//
+	// This inline list is deliberately NOT a copy of the shared helper added in #356; defining
+	// precommitFreeEnv in two files in one package would not merge. Once #356 is in, this
+	// becomes cmd.Env = precommitFreeEnv() and the list is covered by that PR's drift guard.
 	cmd.Env = append(os.Environ(),
 		"PRE_COMMIT=", "_PRE_COMMIT_RUNNING=", "PRE_COMMIT_HOME=",
 		"PRE_COMMIT_HOOK=", "GIT_HOOK_TYPE=", "GIT_EXEC_PATH=", "GITHUB_DESKTOP=",
+		"MSYSTEM=", "MINGW_PREFIX=",
 	)
 	var so, se strings.Builder
 	cmd.Stdout, cmd.Stderr = &so, &se
