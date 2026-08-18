@@ -2593,7 +2593,6 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 	}
 
 	var filesToProcess []string
-	var skippedFiles []string
 
 	// If it's a regular file, just process it
 	if fileInfo.Mode().IsRegular() {
@@ -2650,10 +2649,45 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				return nil // Skip paths with traversal attempts
 			}
 
-			// Handle errors accessing a path
+			// A path the walk could not access is a COVERAGE LOSS, and must be
+			// disclosed like every other one.
+			//
+			// This used to print one stderr warning and append to a local slice that fed
+			// nothing but a "Skipped N files or directories due to errors" count. The
+			// path reached no counter at all: absent from total_files, files_skipped,
+			// files_not_examined, the NOT FULLY EXAMINED block, and --fail-on-incomplete.
+			//
+			// Measured on a permission-denied directory holding an SSN:
+			//
+			//	Skipped 1 files or directories due to errors     (stderr only)
+			//	No matches found.
+			//	--fail-on-incomplete -> exit 0
+			//	json stats carried no files_not_examined key at all
+			//
+			// So a directory of unread PII produced a clean bill of health. Same defect
+			// class as the oversize refusal fixed for #324, and worse: a refused
+			// DIRECTORY hides every descendant, and how many is unknowable. See #336
+			// defect 3.
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Skipping %s: %v\n", path, err)
-				skippedFiles = append(skippedFiles, path)
+
+				// causeUnreadable is the right cause: unlike a size refusal or a
+				// declined symlink, this path genuinely could not be read.
+				detail := humanizeReason(path, err.Error())
+				if detail == "" {
+					detail = "could not be accessed"
+				}
+				// info is nil on an access error, so ask the filesystem directly. If
+				// even Lstat fails the kind is unknowable and the plain wording stands.
+				if di, statErr := os.Lstat(path); statErr == nil && di.IsDir() {
+					detail = "directory could not be read, so an unknown number of files " +
+						"inside it were not scanned: " + detail
+				}
+				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+					Path:   cleanWalkPath,
+					Reason: detail,
+					Cause:  causeUnreadable,
+				})
 				return nil // Continue walking despite the error
 			}
 
@@ -2741,10 +2775,16 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 		filesToProcess = append(filesToProcess, follow...)
 		result.UnexaminedFiles = append(result.UnexaminedFiles, disclose...)
 
-		// Print summary of skipped files
-		if len(skippedFiles) > 0 {
-			fmt.Fprintf(os.Stderr, "Skipped %d files or directories due to errors\n", len(skippedFiles))
-		}
+		// The "Skipped N files or directories due to errors" line is gone with the
+		// local slice that fed it. Its only source was the walk-error branch above,
+		// which now records each path in UnexaminedFiles — so the count is stated in
+		// the NOT FULLY EXAMINED block, with the path and the reason, in every output
+		// format, instead of as a bare number on stderr that named nothing and reached
+		// no counter.
+		//
+		// The label was also wrong: size refusals were appended to the same slice, so a
+		// run whose only "errors" were two oversize files reported "Skipped 2 ... due to
+		// errors". See #336 defect 4.
 
 		result.FilesToProcess = filesToProcess
 		return result, nil
