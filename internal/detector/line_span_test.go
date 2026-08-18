@@ -187,6 +187,51 @@ func TestResolveLineSpansContract(t *testing.T) {
 	}
 }
 
+// Two lines that share a NUMBER but not their text must get different LineIDs.
+//
+// This asserts the identity directly rather than through a resulting column, because a
+// column assertion passes by coincidence: with a wrongly shared cursor, strings.Index
+// on the second line usually still lands on the right occurrence, and when it does not
+// the first-occurrence fallback rescues it. A mutation dropping the line-TEXT check
+// from the memo therefore survived every column-level test in this package.
+//
+// The identity is what actually matters. Offsets carrying the same LineID are treated
+// as one coordinate system by the redaction overlap pass, and comparing offsets across
+// two different Office parts that both report "line 1" is what once dropped a body
+// match and left an SSN in cleartext.
+func TestResolveLineSpansSeparatesSameNumberedLines(t *testing.T) {
+	// Same reported line number, different text — an Office package numbers lines per
+	// part, so this is the ordinary case, not a contrived one.
+	matches := []Match{
+		{Text: "449-87-4100", LineNumber: 1,
+			Context: ContextInfo{FullLine: "SSN 449-87-4100 in the body"}},
+		{Text: "449-87-4100", LineNumber: 1,
+			Context: ContextInfo{FullLine: "Title: record for 449-87-4100"}},
+	}
+	spans := ResolveLineSpans(matches)
+
+	if !spans[0].OK || !spans[1].OK {
+		t.Fatal("both matches should resolve")
+	}
+	if spans[0].LineID == spans[1].LineID {
+		t.Errorf("two lines sharing number 1 but differing in text both got LineID %d — "+
+			"their offsets are in different coordinate systems and must never be compared",
+			spans[0].LineID)
+	}
+
+	// And the cursor must not be shared either: a shared cursor on a line holding the
+	// value TWICE resolves the first match to the SECOND occurrence.
+	twice := []Match{
+		{Text: "AA", LineNumber: 7, Context: ContextInfo{FullLine: "xxxxxxxxxx AA yyy"}},
+		{Text: "AA", LineNumber: 7, Context: ContextInfo{FullLine: "AA zzzzzzzzzzzz AA"}},
+	}
+	ts := ResolveLineSpans(twice)
+	if ts[1].Start != 0 {
+		t.Errorf("second line's first match resolved to offset %d, want 0 — a cursor carried "+
+			"over from the previous line skipped past the real first occurrence", ts[1].Start)
+	}
+}
+
 // Empty input must not panic and must return an empty parallel slice.
 func TestResolveLineSpansEmpty(t *testing.T) {
 	if got := ResolveLineSpans(nil); len(got) != 0 {
