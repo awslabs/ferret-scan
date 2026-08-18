@@ -103,9 +103,44 @@ func timeAssemble(t *testing.T, n, blockSize int) (time.Duration, int, int) {
 
 // TestProcessEmbeddedMediaAssemblyIsNotQuadratic is the guard.
 //
-// The ratio is LOGGED rather than asserted and an absolute ceiling is asserted instead —
-// the same idiom the redaction guard in internal/goldencorpus settled on, because the base
-// sample is small enough that scheduler noise dominates a ratio.
+// It asserts the GROWTH RATIO (see maxGrowth below), with an absolute ceiling kept only as a
+// backstop. An earlier revision of this comment claimed the opposite — that the ratio was
+// merely logged, in the idiom the redaction guard in internal/goldencorpus uses — which was
+// a leftover from a first attempt that was itself vacuous.
+//
+// # Why this drives ProcessEmbeddedMedia directly instead of scanning a real document
+//
+// #338 asks for the growth curve to be pinned "the same way the detector/redaction hot paths
+// are", i.e. over a real fixture. That target was built and measured, twice, and neither
+// version can gate on the defect.
+//
+// A real .docx carrying n embedded JPEGs (each with 4KB of EXIF ImageDescription), scanned
+// end-to-end through core.ScanFile, times IDENTICALLY with and without the fix:
+//
+//	parts    string +=    strings.Builder
+//	   40      0.26s          0.25s
+//	  160      0.72s          0.71s
+//	  320      1.38s          1.31s
+//	  640      2.56s          2.49s
+//
+// The copying is swamped by the linear costs around it — zip inflate, per-part extraction,
+// and validating the combined text. Since #338 describes the defect as "O(n^2) BYTES
+// COPIED", allocation was tried next, measuring runtime.MemStats.TotalAlloc across the same
+// real scan. The quadratic is visible there, but only barely:
+//
+//	per-part text    with fix    reverted
+//	      4KB        3.9x        4.4x   (299MB -> 347MB at 160 parts)
+//	     32KB        4.0x        5.0x   (1081MB -> 1450MB at 160 parts)
+//
+// Separating 4.0x from 5.0x needs a threshold with roughly 12% headroom, on a figure that
+// moves with GOMAXPROCS and GC timing across the three CI runners, at a cost of ~1.4GB of
+// churn per run. A gate that flaky is worse than no gate.
+//
+// Driving the assembly loop in isolation gives a 3.6x margin instead — the accumulator
+// measures ~9.5-11.5x against the Builder's ~2.9-3.2x — which is what makes an assertion
+// possible at all. The cost is honest and worth stating: a stub router means only the append
+// loop is pinned here, so a quadratic introduced in part enumeration, in ProcessEmbedded, or
+// in container-side stitching would need its own target.
 func TestProcessEmbeddedMediaAssemblyIsNotQuadratic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("embedded-media assembly complexity guard skipped in -short mode")
