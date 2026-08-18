@@ -681,6 +681,12 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// full-line spans first — redaction locates matches by searching for
 	// Match.Text in the extracted content, and a bounded display text does not
 	// occur there. See redactors.RestoreBoundedMatchText.
+	// Expand a consolidated cluster back into the real spans it replaced FIRST: its
+	// Text is a rendered summary that occurs nowhere in the document, so without this
+	// the cluster masks nothing and every handle it grouped survives in cleartext.
+	// See redactors.ExpandClusterMatches and #289.
+	matches = redactors.ExpandClusterMatches(matches)
+
 	matches = redactors.RestoreBoundedMatchText(matches)
 
 	// Collapse overlapping matches to their widest span so a smaller match

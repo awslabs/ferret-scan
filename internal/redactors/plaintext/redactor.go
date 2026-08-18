@@ -186,6 +186,12 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	// Match.Text, and a bounded display text does not occur in the document —
 	// without this the whole consolidated line would silently survive
 	// redaction. See redactors.RestoreBoundedMatchText.
+	// Expand a consolidated cluster back into the real spans it replaced FIRST: its
+	// Text is a rendered summary that occurs nowhere in the document, so without this
+	// the cluster masks nothing and every handle it grouped survives in cleartext.
+	// See redactors.ExpandClusterMatches and #289.
+	matches = redactors.ExpandClusterMatches(matches)
+
 	matches = redactors.RestoreBoundedMatchText(matches)
 
 	// Collapse overlapping matches to their widest span first. Otherwise a

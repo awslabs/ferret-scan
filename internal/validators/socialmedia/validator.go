@@ -4462,6 +4462,28 @@ func (v *Validator) reconstructSocialMediaCluster(matches []detector.Match) (det
 		"original_platforms":   originalPlatforms,
 		"primary_match_index":  v.findPrimaryClusterMatchIndex(matches, primaryMatch),
 
+		// The constituent matches this cluster replaced, kept so REDACTION can still
+		// reach the real spans.
+		//
+		// Text below is consolidatedText — a rendered summary like
+		// "twitter: janedoe | linkedin: janedoe" — which does not occur anywhere in the
+		// document. Every redactor locates a match by searching for its Text, so the
+		// cluster masks nothing, and the real spans that were correctly detected have
+		// already been dropped from the returned slice. Measured: a 3-line fixture with
+		// two clustered handles produced one HIGH finding at 95% and a "redacted" file
+		// BYTE-IDENTICAL to the input, for all three strategies. See #289.
+		//
+		// The key is a literal rather than redactors.ClusterMembersKey because
+		// validators must not import internal/redactors — the same reason the
+		// intellectualproperty validator writes "match_text_truncated" as a literal. It
+		// must stay in sync with that constant.
+		//
+		// Held as lean copies with SecureText dropped: these carry the matched value, so
+		// they are withheld from output by the formatters' deny-by-default metadata
+		// allowlist unless --show-match is set, and a SecureString has no business being
+		// serialized.
+		"cluster_members": leanClusterMembers(matches),
+
 		// Reconstruction metadata
 		"source":                   "social_media_clustering",
 		"reconstruction_algorithm": "profile_clustering_analysis",
@@ -4483,6 +4505,37 @@ func (v *Validator) reconstructSocialMediaCluster(matches []detector.Match) (det
 	}
 
 	return reconstructedMatch, nil
+}
+
+// leanClusterMembers copies the constituent matches, keeping only what redaction needs
+// to locate and mask each real span.
+//
+// SecureText is dropped: it is a pointer to a SecureString whose whole purpose is to
+// keep the value out of ordinary memory, and carrying it into a metadata map that may be
+// serialized would defeat that. Metadata is also dropped — a member's own metadata is
+// not needed to redact it, and nesting it would balloon the cluster's map.
+//
+// What is kept is exactly the redaction contract: Text to locate the span, LineNumber
+// plus Context to position it (redactors.ResolveOverlaps needs FullLine to tell two
+// same-numbered lines apart), and Type/Confidence/Filename/Validator so the replacement
+// is generated and attributed as it would have been without clustering.
+func leanClusterMembers(matches []detector.Match) []detector.Match {
+	out := make([]detector.Match, 0, len(matches))
+	for _, m := range matches {
+		out = append(out, detector.Match{
+			Text:        m.Text,
+			LineNumber:  m.LineNumber,
+			Type:        m.Type,
+			Confidence:  m.Confidence,
+			Filename:    m.Filename,
+			Validator:   m.Validator,
+			SourceKind:  m.SourceKind,
+			StartColumn: m.StartColumn,
+			EndColumn:   m.EndColumn,
+			Context:     m.Context,
+		})
+	}
+	return out
 }
 
 // findPrimaryClusterMatch finds the match with the highest confidence to use as primary
