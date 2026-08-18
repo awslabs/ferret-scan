@@ -280,10 +280,7 @@ func runIsolated(t *testing.T, bin, dir string, extra ...string) exitRun {
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = t.TempDir()
-	cmd.Env = append(os.Environ(),
-		"PRE_COMMIT=", "_PRE_COMMIT_RUNNING=", "PRE_COMMIT_HOME=",
-		"PRE_COMMIT_HOOK=", "GIT_HOOK_TYPE=", "GIT_EXEC_PATH=", "GITHUB_DESKTOP=",
-	)
+	cmd.Env = precommitFreeEnv()
 	var so, se strings.Builder
 	cmd.Stdout, cmd.Stderr = &so, &se
 	err := cmd.Run()
@@ -345,11 +342,18 @@ func TestExplicitFormatOutranksPrecommitDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The control run has to start from a pre-commit-FREE environment, and the working
+	// directory has to sit outside any repository. Otherwise the control is not a control: on
+	// Windows, Git Bash sets MSYSTEM and GIT_EXEC_PATH, detection fires, and the config's json
+	// format is overridden by pre-commit's own default — so the fixture check below failed
+	// there with "config defaults.format=json did not produce JSON" while the real subject of
+	// the test was fine. See precommitFreeEnv.
 	runCfg := func(env []string, extra ...string) string {
 		t.Helper()
 		args := append([]string{"--file", dir, "--recursive", "--config", cfg, "--checks", "SSN"}, extra...)
 		c := exec.Command(bin, args...)
-		c.Env = append(os.Environ(), env...)
+		c.Dir = t.TempDir()
+		c.Env = append(precommitFreeEnv(), env...)
 		var so strings.Builder
 		c.Stdout = &so
 		_ = c.Run() // a findings exit code is expected; only stdout matters here
