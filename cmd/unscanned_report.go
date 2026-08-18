@@ -394,7 +394,24 @@ func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int,
 		// Too many to list. Give the per-cause tally and stop; the paths go to a
 		// file in a follow-up change, and until then --debug still lists them.
 		var parts []string
-		for _, c := range []unscannedCause{causeUnreadable, causeUnparseable, causeNoText, causeCutShort} {
+		// Derived from the causes actually PRESENT, never from a hardcoded list.
+		//
+		// This loop used to name the four original causes explicitly while the header
+		// two lines above printed len(entries), which counts them all. Every cause added
+		// since was therefore counted in the header and given no bucket line:
+		// causeNotFollowed (refused symlinks) and causeTooLarge (oversize files) both
+		// vanished from the breakdown. Measured on a ~1,870-file scan, the header read 65
+		// while the buckets summed to 64 — and the file missing from the breakdown was
+		// exactly the oversize file this report exists to disclose.
+		//
+		// Sorting by the cause's numeric value preserves the deliberate presentation
+		// order, because the enum is declared least-to-most partial coverage.
+		present := make([]unscannedCause, 0, len(count))
+		for c := range count {
+			present = append(present, c)
+		}
+		sort.Slice(present, func(i, j int) bool { return present[i] < present[j] })
+		for _, c := range present {
 			if count[c] > 0 {
 				parts = append(parts, fmt.Sprintf("%s: %d", c, count[c]))
 			}

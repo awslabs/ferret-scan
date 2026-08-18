@@ -4,6 +4,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -268,5 +269,123 @@ func TestSymlinkDisclosureCarriesItsCause(t *testing.T) {
 		t.Errorf("cause = %v (%q), want causeNotFollowed. The zero value claims the link "+
 			"could not be read, which is not what happened — the tool declined to follow it",
 			disclose[0].Cause, disclose[0].Cause.String())
+	}
+}
+
+// The collapsed per-cause breakdown must account for EVERY entry the header counts.
+//
+// Above inlineDetailLimit entries the report prints a per-cause tally instead of paths,
+// and that tally iterated a hardcoded list of the four ORIGINAL causes while the header
+// printed len(entries). Every cause added since was counted in the header and given no
+// bucket line: causeNotFollowed (#326) and causeTooLarge (#324) both vanished.
+//
+// Measured on a ~1,870-file scan, the header read 65 while the buckets summed to 64 —
+// and the entry missing from the breakdown was exactly the oversize file this report
+// exists to disclose. See #336.
+//
+// The assertion is the INVARIANT rather than a list of expected labels: buckets must sum
+// to the header, whatever the cause set becomes. A future cause therefore cannot regress
+// this the way the last two did.
+func TestBreakdownAccountsForEveryCause(t *testing.T) {
+	allCauses := []unscannedCause{
+		causeUnreadable, causeUnparseable, causeNoText, causeCutShort,
+		causeNotFollowed, causeTooLarge,
+	}
+
+	// More than inlineDetailLimit entries, so the collapsed tally path is taken.
+	var entries []unscannedEntry
+	want := map[unscannedCause]int{}
+	for i, c := range allCauses {
+		n := i + 2 // distinct per-cause counts, so a mis-attributed bucket shows up
+		for j := 0; j < n; j++ {
+			entries = append(entries, unscannedEntry{
+				Path:   fmt.Sprintf("/f/%d-%d.txt", i, j),
+				Cause:  c,
+				Detail: "detail",
+			})
+		}
+		want[c] = n
+	}
+	if len(entries) <= inlineDetailLimit {
+		t.Fatalf("fixture has %d entries, need more than %d to exercise the collapsed tally",
+			len(entries), inlineDetailLimit)
+	}
+
+	var buf strings.Builder
+	if !writeUnscannedReport(&buf, entries, len(entries), false, false) {
+		t.Fatal("writeUnscannedReport reported nothing to write")
+	}
+	out := buf.String()
+
+	// Every cause must have a bucket, with the right count.
+	sum := 0
+	for c, n := range want {
+		label := fmt.Sprintf("%s: %d", c, n)
+		if !strings.Contains(out, label) {
+			t.Errorf("breakdown is missing %q.\nA cause counted in the header with no bucket "+
+				"line is invisible to the operator — and the last two causes added were the "+
+				"symlink and oversize disclosures.\n--- report ---\n%s", label, out)
+		}
+		sum += n
+	}
+
+	// The invariant: buckets sum to the header count.
+	if !strings.Contains(out, fmt.Sprintf("NOT FULLY EXAMINED: %d of %d", len(entries), len(entries))) {
+		t.Errorf("header does not report %d entries.\n--- report ---\n%s", len(entries), out)
+	}
+	if sum != len(entries) {
+		t.Fatalf("fixture inconsistent: buckets sum to %d, header counts %d", sum, len(entries))
+	}
+}
+
+// A SOLO oversize processable file is the third discovery route, and the one that was
+// missing from the route table above.
+//
+// Its FilesToProcess is empty, which sent main() down the "No files to process" early
+// exit: it printed one stdout line and exited 0, BEFORE the unscanned report and the
+// --fail-on-incomplete gate. So the one invocation this feature exists for produced a
+// silent, complete-looking, zero-exit result. Both existing route fixtures create a
+// small companion file, so FilesToProcess was never empty in any test. See #339.
+func TestSoloOversizeFileIsUnexaminedWithEmptyQueue(t *testing.T) {
+	dir := t.TempDir()
+	solo := bigTextFile(t, filepath.Join(dir, "big_report.txt"))
+
+	res, err := getFilesToProcess(solo, false, nil, nil, true)
+	if err != nil {
+		t.Fatalf("getFilesToProcess: %v", err)
+	}
+
+	if len(res.FilesToProcess) != 0 {
+		t.Errorf("FilesToProcess = %v, want empty — the file is over the limit", res.FilesToProcess)
+	}
+	if len(res.UnexaminedFiles) != 1 {
+		t.Fatalf("UnexaminedFiles = %v, want exactly the oversize file", pathsOf(res.UnexaminedFiles))
+	}
+	if res.UnexaminedFiles[0].Cause != causeTooLarge {
+		t.Errorf("cause = %q, want causeTooLarge", res.UnexaminedFiles[0].Cause.String())
+	}
+
+	// The report must be produced for this entry: an empty scan queue must not mean an
+	// empty disclosure.
+	entries := []unscannedEntry{{
+		Path:   res.UnexaminedFiles[0].Path,
+		Cause:  res.UnexaminedFiles[0].Cause,
+		Detail: res.UnexaminedFiles[0].Reason,
+	}}
+	var buf strings.Builder
+	if !writeUnscannedReport(&buf, entries, len(entries), true, false) {
+		t.Fatal("no report written for a run whose only input was refused")
+	}
+	if !strings.Contains(buf.String(), "file too large to scan") {
+		t.Errorf("report does not name the cause:\n%s", buf.String())
+	}
+
+	// And it must escalate under --fail-on-incomplete.
+	if got := resolveIncompleteExitCode(0, true, len(entries)); got != 3 {
+		t.Errorf("resolveIncompleteExitCode = %d, want 3 — a refused input is exactly the "+
+			"coverage loss this flag exists to surface", got)
+	}
+	if got := resolveIncompleteExitCode(0, false, len(entries)); got != 0 {
+		t.Errorf("resolveIncompleteExitCode without the flag = %d, want 0", got)
 	}
 }

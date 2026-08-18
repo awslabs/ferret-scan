@@ -1549,6 +1549,33 @@ func main() {
 			}
 			os.Exit(2) // Use exit code 2 for no files to process as per design
 		} else {
+			// Disclose discovery-time coverage losses BEFORE exiting.
+			//
+			// This path used to print "No files to process" and exit 0 unconditionally,
+			// which is the exact artifact this report exists to prevent. A single
+			// oversize processable file is refused at discovery, so filesToProcess is
+			// empty and every disclosure downstream — collectUnscanned, the stats
+			// denominator, the NOT FULLY EXAMINED block, and both
+			// resolveIncompleteExitCode calls — was skipped. The run reported a clean,
+			// complete result for a file it never opened, and --fail-on-incomplete
+			// returned 0. It also printed strictly LESS than before this branch, because
+			// discovery warnings were deferred to a report that never ran.
+			//
+			// Same shape for a directory or glob whose inputs are ALL refused.
+			if len(discoveryUnexamined) > 0 {
+				entries := make([]unscannedEntry, 0, len(discoveryUnexamined))
+				for _, u := range discoveryUnexamined {
+					entries = append(entries, unscannedEntry{Path: u.Path, Cause: u.Cause, Detail: u.Reason})
+				}
+				var report strings.Builder
+				if writeUnscannedReport(&report, entries, len(entries), *failOnIncomplete, finalConfig.debug) {
+					fmt.Fprint(os.Stderr, report.String())
+				}
+				fmt.Println("No files to process")
+				// Honour the flag: these files were expected to produce results and did
+				// not, which is precisely what code 3 means.
+				os.Exit(resolveIncompleteExitCode(0, finalConfig.failOnIncomplete, len(entries)))
+			}
 			fmt.Println("No files to process")
 			os.Exit(0)
 		}
@@ -2663,7 +2690,6 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 						Reason: "file too large (max size: 100MB)",
 						Cause:  causeTooLarge,
 					})
-					skippedFiles = append(skippedFiles, cleanWalkPath)
 				} else {
 					// Unprocessable at any size: a genuine skip.
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
@@ -2671,8 +2697,13 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 						Reason: "file too large (max size: 100MB)",
 						Silent: true,
 					})
-					skippedFiles = append(skippedFiles, cleanWalkPath)
 				}
+				// Deliberately NOT added to the walk's local skippedFiles slice, which
+				// feeds only "Skipped N files or directories due to errors". A size
+				// refusal is not a walk error, and both branches above now record the
+				// file in a real counter — so appending there both mislabelled it and
+				// reported the same file twice, once as an error and once in the
+				// NOT FULLY EXAMINED block.
 			} else if info.Mode()&os.ModeSymlink != 0 {
 				// A symlink. filepath.Walk hands us Lstat info, so a link is never
 				// ModeRegular and used to fall past the branch above with NO else —
