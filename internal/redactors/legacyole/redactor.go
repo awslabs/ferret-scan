@@ -145,6 +145,12 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 		logical[i] = s.readLogical(modified)
 	}
 
+	// A consolidated cluster's Text is a rendered summary that occurs in no stream, so
+	// searching for it masks nothing while the real spans it replaced were already
+	// dropped. Expand it first, exactly as the plaintext and office paths do. See
+	// redactors.ExpandClusterMatches and #289.
+	matches = redactors.ExpandClusterMatches(matches)
+
 	for _, m := range matches {
 		if m.Text == "" {
 			continue
