@@ -110,28 +110,17 @@ consume it too.
 
 ## Status
 
-| # | Ask | Status | Notes |
-|---|---|---|---|
-| 1 | BANK_ACCOUNT / IBAN | Not started | |
-| 2 | TWO_FACTOR_CODES | Not started | |
-| 3 | DATE_OF_BIRTH | Not started | |
-| 4 | PHYSICAL_ADDRESS | Not started | |
-| 5 | DRIVERS_LICENSE | Not started | |
-| 6 | MEDICAL_ID / PHI | Not started | |
-| 7 | .pkpass / .vcf / .ics | Not started | |
-| 8 | `pkg/scan` public API | **Done** | Implemented: ScanText, ScanFile, RedactText, RedactFile, CanProcessFile, CheckNames, ConfidenceOf, ParseStrategy. 27 tests. |
-
----
-
-## Status
+Verify against `ferret-scan --checks` rather than trusting this table: the check names
+the CLI accepts are the authoritative list, and this table has already drifted behind
+them once.
 
 | # | Ask | Status | Notes |
 |---|---|---|---|
-| 1 | BANK_ACCOUNT / IBAN | Not started | |
-| 2 | TWO_FACTOR_CODES | Not started | |
-| 3 | DATE_OF_BIRTH | Not started | |
-| 4 | PHYSICAL_ADDRESS | Not started | |
-| 5 | DRIVERS_LICENSE | Not started | |
-| 6 | MEDICAL_ID / PHI | Not started | |
-| 7 | .pkpass / .vcf / .ics | Not started | |
-| 8 | ScanText public API | Not started | Highest architectural impact |
+| 1 | BANK_ACCOUNT / IBAN | **Done** | `--checks BANK_ACCOUNT` |
+| 2 | TWO_FACTOR_CODES | **Done** | `--checks OTP` |
+| 3 | DATE_OF_BIRTH | **Done** | `--checks DATE_OF_BIRTH` |
+| 4 | PHYSICAL_ADDRESS | **Done** | `--checks PHYSICAL_ADDRESS` |
+| 5 | DRIVERS_LICENSE | **Done** | `--checks DRIVERS_LICENSE` |
+| 6 | MEDICAL_ID / PHI | **Done** | `--checks MEDICAL_ID` |
+| 7 | .pkpass / .vcf / .ics | Not started | No non-test reference to any of the three extensions |
+| 8 | `pkg/scan` public API | **Done** | ScanText, ScanFile, RedactText, RedactFile, CanProcessFile, CheckNames, ConfidenceOf, ParseStrategy |
