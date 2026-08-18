@@ -50,6 +50,19 @@ type AudioMetadata struct {
 
 	// Additional properties
 	Properties map[string]string
+
+	// ExtractionWarning is a short, payload-free note that extraction completed but
+	// may be INCOMPLETE — for example a RIFF chunk layout that could not be walked to
+	// the end, so metadata beyond that point was never read.
+	//
+	// It exists because the failure is otherwise invisible. A WAV whose chunk walk goes
+	// wrong yields an empty result and no error, so the run prints "No matches found."
+	// and exits 0 — byte-identical output to a genuinely clean file, with nothing for an
+	// operator to distinguish "no metadata" from "could not be read". Same shape as the
+	// corrupt-PDF disclosure. See #312.
+	//
+	// Payload-free by contract: it names the condition and the chunk kind, never a value.
+	ExtractionWarning string
 }
 
 // AudioMetadataExtractor interface for audio metadata extraction

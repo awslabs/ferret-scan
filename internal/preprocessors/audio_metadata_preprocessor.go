@@ -119,13 +119,26 @@ func (amp *AudioMetadataPreprocessor) processAudioMetadataWithRetry(filePath str
 	text := audioMeta.ToProcessedContent()
 
 	// Build successful content using shared utilities
-	return amp.sharedUtils.ContentBuilder.BuildSuccessContent(
+	content := amp.sharedUtils.ContentBuilder.BuildSuccessContent(
 		filePath,
 		text,
 		"audio_metadata",
 		"audio_metadata",
 		0, // Audio files don't have page count
-	), nil
+	)
+
+	// Carry an extraction caveat forward, so a file whose chunk layout could not be
+	// followed is not reported as clean.
+	//
+	// Deliberately NOT an Error: extraction SUCCEEDED and produced findings, so failing
+	// the file would discard real results. Only ExtractionWarning survives the router's
+	// combine step, which is the same route the corrupt-PDF disclosure uses. Without this
+	// a malformed WAV printed "No matches found." and exited 0 — output identical to a
+	// genuinely clean file. See #312.
+	if content != nil && audioMeta.ExtractionWarning != "" {
+		content.ExtractionWarning = audioMeta.ExtractionWarning
+	}
+	return content, nil
 }
 
 // GetName returns the name of this preprocessor
