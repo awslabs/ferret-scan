@@ -172,6 +172,49 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) 
 	return false, "Unsupported file type"
 }
 
+// CanProcessType reports whether this path's TYPE is one the router would process,
+// ignoring the file's size.
+//
+// CanProcessFile cannot answer this question. Its own size gate returns
+// "File too large" before the type is ever considered, so asking it about an
+// oversize file is circular.
+//
+// The caller that needs it is the discovery-time decision of whether a file refused
+// for size is worth telling the user about. That decision used to be a hardcoded
+// 11-extension list duplicated at two call sites, which made the tool quiet about a
+// few known-big binary types and noisy about everything else — including files it
+// could never have scanned at any size, and including browser partial downloads
+// whose random suffixes no extension list can ever cover. The right question is not
+// "is this one of eleven names" but "would we have processed it at all", which is
+// this. Same correction as deriving embedded-part handling from capability rather
+// than from a hand-maintained list.
+//
+// Note this returns true for video and audio, when preprocessors are enabled: the
+// tool extracts and scans their METADATA, so an oversize video that went unscanned
+// is a genuine coverage loss, not a non-event.
+//
+// Cost is bounded regardless of file size: the text branch sniffs at most the first
+// 512 bytes.
+func CanProcessType(filePath string, enablePreprocessors bool) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	// Binary documents (office, pdf, image, video, audio) are processable exactly
+	// when preprocessors are available to handle them.
+	if isBinaryDocument(ext) {
+		return enablePreprocessors
+	}
+
+	// Anything else is processable only if it sniffs as text. An unreadable file is
+	// reported as not-processable here: the caller is deciding whether to mention a
+	// SIZE refusal, and a file that also cannot be opened is a separate diagnostic
+	// raised through the unreadable channel.
+	isText, err := isTextFile(filePath)
+	if err != nil {
+		return false
+	}
+	return isText
+}
+
 // describeFileMode names the non-regular kind a path turned out to be, so the skip
 // reason tells the user what they actually pointed at rather than only that it was
 // rejected. Directories are included because a caller can hand a directory path to a

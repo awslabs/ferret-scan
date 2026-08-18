@@ -172,7 +172,14 @@ func resolveSymlinkCandidates(cands []symlinkCandidate, queued []string) (follow
 	for _, c := range cands {
 		switch c.disp {
 		case symlinkDisclose:
-			disclose = append(disclose, SkippedFile{Path: c.linkPath, Reason: c.reason})
+			// Cause must be set explicitly. It reaches the not-examined report, and the
+			// zero value is causeUnreadable — which would claim the link could not be
+			// opened, a failure that did not happen for anything refused on purpose.
+			disclose = append(disclose, SkippedFile{
+				Path:   c.linkPath,
+				Reason: c.reason,
+				Cause:  causeNotFollowed,
+			})
 		case symlinkFollow:
 			if _, dup := covered[c.resolved]; dup {
 				// Content already scanned through its real path. Silent on purpose:

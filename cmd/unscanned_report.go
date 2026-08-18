@@ -58,6 +58,20 @@ const (
 	// fixed with chmod, a link out of the tree is fixed by scanning the target directly
 	// or passing it explicitly. See #326.
 	causeNotFollowed
+	// causeTooLarge is a file that exceeds the size limit and was therefore never
+	// opened, whose TYPE the tool would otherwise have processed.
+	//
+	// A size-refused file was previously recorded as "skipped", which is the wrong
+	// half of a distinction ScanStats itself draws: a skipped file is an unsupported
+	// type nobody expected a result for, an unexamined one was expected to produce
+	// something and did not. Worse, a size refusal reached no counter at all — not
+	// total_files, not files_skipped, not files_not_examined — so a directory holding
+	// a 105MB document reported a complete, clean scan and --fail-on-incomplete
+	// exited 0. See #324.
+	//
+	// An UNPROCESSABLE type refused for size gets no entry here at all; it is a
+	// genuine skip, because no finding was ever possible from it.
+	causeTooLarge
 )
 
 func (c unscannedCause) String() string {
@@ -75,6 +89,8 @@ func (c unscannedCause) String() string {
 		return "coverage cut short"
 	case causeNotFollowed:
 		return "symlink not followed"
+	case causeTooLarge:
+		return "file too large to scan"
 	default:
 		return "unknown"
 	}
@@ -119,6 +135,10 @@ func toFormatterNotExamined(entries []unscannedEntry) []formatters.NotExaminedFi
 			cause = formatters.NotExaminedNoText
 		case causeCutShort:
 			cause = formatters.NotExaminedCutShort
+		case causeNotFollowed:
+			cause = formatters.NotExaminedNotFollowed
+		case causeTooLarge:
+			cause = formatters.NotExaminedTooLarge
 		default:
 			cause = formatters.NotExaminedUnreadable
 		}
@@ -243,16 +263,19 @@ func collectUnscanned(
 	emptyExtraction []parallel.FileDiagnostic,
 	failed []parallel.FileDiagnostic,
 	incomplete []parallel.FileDiagnostic,
-	notFollowed []parallel.FileDiagnostic,
+	discovery []unscannedEntry,
 ) []unscannedEntry {
 	var out []unscannedEntry
 
-	// Links the walk refused. These come from DISCOVERY rather than from scanning, and
-	// before #326 they reached no channel at all: a symlink was dropped with no record
-	// anywhere, so its content was neither scanned nor disclosed.
-	for _, d := range notFollowed {
-		out = append(out, unscannedEntry{Path: d.FilePath, Cause: causeNotFollowed, Detail: d.Reason})
-	}
+	// Coverage losses found while DISCOVERING files rather than while scanning them:
+	// a symlink the walk refused (#326), a file refused for size (#324). Before those
+	// they reached no channel at all — dropped with no record anywhere, so the content
+	// was neither scanned nor disclosed.
+	//
+	// These arrive already classified, because discovery is the only place that knows
+	// WHY it declined. Forcing them all to one cause is what made every refused
+	// symlink and every oversize file share a label.
+	out = append(out, discovery...)
 
 	// The unreadable channel is a pre-formatted "path: reason" string rather than
 	// a struct, so it needs splitting on the first colon that follows the path.
@@ -371,7 +394,24 @@ func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int,
 		// Too many to list. Give the per-cause tally and stop; the paths go to a
 		// file in a follow-up change, and until then --debug still lists them.
 		var parts []string
-		for _, c := range []unscannedCause{causeUnreadable, causeUnparseable, causeNoText, causeCutShort} {
+		// Derived from the causes actually PRESENT, never from a hardcoded list.
+		//
+		// This loop used to name the four original causes explicitly while the header
+		// two lines above printed len(entries), which counts them all. Every cause added
+		// since was therefore counted in the header and given no bucket line:
+		// causeNotFollowed (refused symlinks) and causeTooLarge (oversize files) both
+		// vanished from the breakdown. Measured on a ~1,870-file scan, the header read 65
+		// while the buckets summed to 64 — and the file missing from the breakdown was
+		// exactly the oversize file this report exists to disclose.
+		//
+		// Sorting by the cause's numeric value preserves the deliberate presentation
+		// order, because the enum is declared least-to-most partial coverage.
+		present := make([]unscannedCause, 0, len(count))
+		for c := range count {
+			present = append(present, c)
+		}
+		sort.Slice(present, func(i, j int) bool { return present[i] < present[j] })
+		for _, c := range present {
 			if count[c] > 0 {
 				parts = append(parts, fmt.Sprintf("%s: %d", c, count[c]))
 			}
