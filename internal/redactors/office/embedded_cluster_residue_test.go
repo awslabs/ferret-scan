@@ -284,7 +284,7 @@ func TestBoundedConsolidatedValueInEmbeddedPartIsRedacted(t *testing.T) {
 		return
 	}
 	if got := residueInEmbedded(t, out, secret); got[secret] {
-		t.Errorf("the embedded part still contains the consolidated line — a bounded display "+
+		t.Errorf("the embedded part still contains the consolidated line — a bounded display " +
 			"text reaches the embedded gate un-restored, same defect as the cluster case")
 	}
 }
