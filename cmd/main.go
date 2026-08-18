@@ -1216,7 +1216,28 @@ func main() {
 		if precommitConfig.NoColor {
 			finalConfig.noColor = true
 		}
-		if precommitConfig.Format != "" {
+		// An explicitly requested format outranks an auto-detected default.
+		//
+		// precommitConfig.Format is a DEFAULT for pre-commit runs ("text"), and it was
+		// applied unconditionally — so detection silently discarded `--format json` and
+		// printed prose. Measured with PRE_COMMIT=1 on a directory holding one SSN:
+		//
+		//	--format json                1258 bytes of valid JSON
+		//	--format json, mode detected "pii.txt: 1 high confidence issues found"
+		//
+		// That is worse than an unhonoured flag: the caller asked for a machine artifact
+		// and got prose at exit 0, so whatever consumes it either fails to parse or
+		// silently reads no findings.
+		//
+		// And it is reached without anyone opting in. Detection has a Windows-only branch
+		// that treats GIT_EXEC_PATH as a pre-commit signal, and Git Bash always sets it, so
+		// every Windows user running from Git Bash — the usual way to use this tool there —
+		// got prose for `--format json`. It surfaced as a windows-only CI failure of a test
+		// asserting that `--format json` is parseable.
+		//
+		// Only the explicitly-set case is guarded: with no --format flag the pre-commit
+		// default still applies, which is the behaviour it exists to provide.
+		if precommitConfig.Format != "" && !isFlagSet("format") {
 			finalConfig.format = precommitConfig.Format
 		}
 

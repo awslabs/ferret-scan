@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -257,11 +258,123 @@ func TestNamedPathAccessFailureIsClassified(t *testing.T) {
 	}
 }
 
+// runIsolated runs the binary with pre-commit auto-detection defeated, so a test of ordinary
+// CLI behaviour does not silently measure pre-commit behaviour instead.
+//
+// This is necessary because detection is implicit and platform-dependent. On Windows it
+// treats GIT_EXEC_PATH as a pre-commit signal and Git Bash always sets it; it also fires
+// whenever the working directory is a git repository carrying a pre-commit hook, which the
+// test's own package directory is. Pre-commit mode changes the output shape — quiet, and
+// text unless a format is explicitly requested — so a test asserting on stdout measures a
+// different thing per platform. That is exactly how this test first failed: windows-only,
+// for a reason unrelated to what it asserts.
+//
+// The working directory is a temp dir outside any repository, so `git rev-parse --git-dir`
+// fails, and every environment trigger is set to empty.
+func runIsolated(t *testing.T, bin, dir string, extra ...string) exitRun {
+	t.Helper()
+	args := append([]string{
+		"--file", dir, "--recursive", "--config", os.DevNull,
+		"--checks", "SSN", "--limit", "0", "--enable-preprocessors",
+	}, extra...)
+
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(),
+		"PRE_COMMIT=", "_PRE_COMMIT_RUNNING=", "PRE_COMMIT_HOME=",
+		"PRE_COMMIT_HOOK=", "GIT_HOOK_TYPE=", "GIT_EXEC_PATH=", "GITHUB_DESKTOP=",
+	)
+	var so, se strings.Builder
+	cmd.Stdout, cmd.Stderr = &so, &se
+	err := cmd.Run()
+
+	rc := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		rc = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	return exitRun{rc, so.String(), se.String()}
+}
+
+// An explicitly requested --format must outrank an auto-detected pre-commit default.
+//
+// precommitConfig.Format is a default ("text") and was applied unconditionally, so detection
+// silently discarded --format json. Measured with PRE_COMMIT=1 on a directory holding one SSN:
+//
+//	--format json                  1258 bytes of valid JSON
+//	--format json, mode detected   "pii.txt: 1 high confidence issues found"
+//
+// Worse than an unhonoured flag: the caller asked for a machine artifact and got prose at a
+// success-shaped exit, so the consumer either fails to parse or reads no findings at all. On
+// Windows this needed no opt-in — running from Git Bash was enough.
+func TestExplicitFormatOutranksPrecommitDetection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a binary")
+	}
+	bin := buildForExitTest(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pii.txt"), []byte(pii+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := runForExit(t, bin, dir, []string{"PRE_COMMIT=1"}, "--format", "json")
+	var doc map[string]interface{}
+	if err := json.Unmarshal([]byte(got.stdout), &doc); err != nil {
+		t.Fatalf("PRE_COMMIT=1 with --format json produced a non-JSON document: %v\nstdout: %q\n"+
+			"An auto-detected default overrode an explicit flag.", err, truncateForMsg(got.stdout))
+	}
+	if _, ok := doc["results"]; !ok {
+		t.Errorf("the JSON document has no results key: %q", truncateForMsg(got.stdout))
+	}
+
+	// The other half of the contract: with NO --format flag, pre-commit must still override a
+	// format coming from CONFIG.
+	//
+	// This guards the BEHAVIOUR, not the line above it. Pre-commit's text default is supplied
+	// by the "precommit" profile in resolveConfiguration, so disabling the override entirely
+	// leaves this passing — verified by mutation. The assertion is kept because the behaviour
+	// is worth pinning wherever it comes from: a pre-commit hook that started emitting a
+	// config's json would flood a commit message with a machine document.
+	//
+	// A config file is needed to observe it at all. A bare PRE_COMMIT=1 run proves nothing,
+	// because the ordinary default is "text" too. Measured: config `defaults.format: json`
+	// yields JSON alone and text under PRE_COMMIT=1.
+	cfg := filepath.Join(t.TempDir(), "cfg.yaml")
+	if err := os.WriteFile(cfg, []byte("defaults:\n  format: json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runCfg := func(env []string, extra ...string) string {
+		t.Helper()
+		args := append([]string{"--file", dir, "--recursive", "--config", cfg, "--checks", "SSN"}, extra...)
+		c := exec.Command(bin, args...)
+		c.Env = append(os.Environ(), env...)
+		var so strings.Builder
+		c.Stdout = &so
+		_ = c.Run() // a findings exit code is expected; only stdout matters here
+		return so.String()
+	}
+
+	if out := runCfg(nil); !strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Fatalf("fixture is wrong: config defaults.format=json did not produce JSON (%q), so the "+
+			"assertion below cannot distinguish anything", truncateForMsg(out))
+	}
+	if out := runCfg([]string{"PRE_COMMIT=1"}); strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Errorf("under PRE_COMMIT=1 with no --format flag, the config's json format won: %q. "+
+			"Pre-commit's own default must still override CONFIG; only an explicit flag outranks "+
+			"it.", truncateForMsg(out))
+	}
+}
+
 // #9: a structured format must produce a parseable document even when every input was
 // refused, which is precisely when it has something to disclose.
 //
 // Driven through the real binary because the defect is in an os.Exit path.
 func TestMachineFormatEmitsValidJSONWhenEveryInputIsRefused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a binary")
+	}
 	bin := buildForExitTest(t)
 	dir := t.TempDir()
 
@@ -284,7 +397,9 @@ func TestMachineFormatEmitsValidJSONWhenEveryInputIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	run := runForExit(t, bin, dir, nil, "--format", "json", "--fail-on-incomplete")
+	// runIsolated, not runForExit: this asserts ordinary output, and pre-commit detection
+	// would change the shape on Windows only.
+	run := runIsolated(t, bin, dir, "--format", "json", "--fail-on-incomplete")
 
 	if run.rc != 3 {
 		t.Errorf("rc = %d, want 3: a refused processable file is lost coverage", run.rc)
