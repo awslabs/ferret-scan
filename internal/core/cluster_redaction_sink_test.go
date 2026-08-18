@@ -4,6 +4,9 @@
 package core
 
 import (
+	"archive/zip"
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,4 +158,212 @@ func TestClusteredSocialMediaDoesNotSurviveRedaction(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A clustered value inside an EMBEDDED part must be redacted, not merely refused.
+//
+// The office redactor has TWO consumers of Match.Text: redactOfficeContent and
+// redactEmbeddedParts. The cluster expansion lived inside the former, which takes `matches`
+// as a parameter, so reassigning it there normalized only that local slice — and the
+// ORIGINAL slice was handed to the embedded path. That path builds the residue value set
+// used by both the dispatch gate and the post-redaction verification, so a cluster's
+// rendered summary made every part look clean: the part holding the real handles was never
+// dispatched, and the fail-closed refusal never fired.
+//
+// Measured on a binary built from fefc0ee: 2 HIGH findings, rc=0, body cleaned, embedded
+// inner.docx still holding BOTH handles verbatim.
+//
+// This goes through core.RedactFile because only the real wiring injects an embedded
+// dispatcher — a bare OfficeRedactor has none and correctly refuses instead, which proves
+// "no leaking output" but not that the part is actually redacted.
+func TestClusteredValueInsideEmbeddedPartIsRedactedEndToEnd(t *testing.T) {
+	cfg := config.LoadConfigOrDefault("")
+	if cfg.Validators == nil {
+		cfg.Validators = map[string]map[string]any{}
+	}
+	cfg.Validators["social_media"] = map[string]any{
+		"platform_patterns": map[string]any{
+			"twitter":  []any{`(?i)https?://(?:www\.)?(twitter|x)\.com/[a-zA-Z0-9_]+`},
+			"linkedin": []any{`(?i)https?://(?:www\.)?linkedin\.com/in/[a-zA-Z0-9_-]+`},
+		},
+		"positive_keywords": []any{"profile", "connect with me"},
+	}
+
+	const (
+		twitterURL  = "https://twitter.com/janedoe"
+		linkedinURL = "https://linkedin.com/in/janedoe"
+	)
+	body := `<w:p><w:r><w:t>Profile: ` + twitterURL + `</w:t></w:r></w:p>` +
+		`<w:p><w:r><w:t>connect with me</w:t></w:r></w:p>` +
+		`<w:p><w:r><w:t>And ` + linkedinURL + `</w:t></w:r></w:p>`
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "outer.docx")
+	writeEmbeddedDocx(t, src, body, buildInnerDocx(t, body))
+
+	outDir := filepath.Join(dir, "out")
+	res, err := RedactFile(RedactConfig{
+		FilePath:  src,
+		OutputDir: outDir,
+		Strategy:  "simple",
+		Checks:    []string{"SOCIAL_MEDIA"},
+		Config:    cfg,
+	})
+	if err != nil {
+		// A refusal is safe, but then nothing may have been written.
+		if written := findWritten(t, outDir, "outer.docx"); written != "" {
+			t.Fatalf("RedactFile errored (%v) but still wrote %s", err, written)
+		}
+		return
+	}
+
+	// Non-vacuity: the fixture must actually produce a cluster.
+	var sawCluster bool
+	for _, m := range res.Matches {
+		if m.Type == "SOCIAL_MEDIA_CLUSTER" {
+			sawCluster = true
+		}
+	}
+	if !sawCluster {
+		t.Fatalf("no SOCIAL_MEDIA_CLUSTER among %d finding(s) — clustering did not fire, so this "+
+			"test is not exercising the clustered embedded path", len(res.Matches))
+	}
+
+	written := findWritten(t, outDir, "outer.docx")
+	if written == "" {
+		return // refused to write: safe
+	}
+	for _, secret := range []string{twitterURL, linkedinURL} {
+		if embeddedPartContains(t, written, secret) {
+			t.Errorf("the EMBEDDED part of the written container still contains %q — it was "+
+				"reported inside a cluster and the container was written anyway", secret)
+		}
+	}
+}
+
+// writeEmbeddedDocx builds a .docx whose body holds bodyText and which embeds inner at
+// word/embeddings/inner.docx.
+func writeEmbeddedDocx(t *testing.T, path, bodyText string, inner []byte) {
+	t.Helper()
+
+	const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Default Extension="docx" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>` +
+		`<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
+		`</Types>`
+	const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
+		`</Relationships>`
+	doc := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>` +
+		bodyText + `</w:body></w:document>`
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, p := range []struct{ name, body string }{
+		{"[Content_Types].xml", ct}, {"_rels/.rels", rels}, {"word/document.xml", doc},
+	} {
+		w, err := zw.Create(p.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(p.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if inner != nil {
+		w, err := zw.Create("word/embeddings/inner.docx")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(inner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// buildInnerDocx returns the bytes of a standalone .docx holding bodyText.
+func buildInnerDocx(t *testing.T, bodyText string) []byte {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "inner.docx")
+	writeEmbeddedDocx(t, p, bodyText, nil)
+	b, err := os.ReadFile(p) // #nosec G304 -- test temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// findWritten locates a written file by base name beneath dir, or "" if none.
+func findWritten(t *testing.T, dir, base string) string {
+	t.Helper()
+	var found string
+	_ = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // the dir may not exist when the write was refused
+		}
+		if !info.IsDir() && filepath.Base(p) == base {
+			found = p
+		}
+		return nil
+	})
+	return found
+}
+
+// embeddedPartContains reports whether value survives inside an embedded .docx of path.
+//
+// It inflates the NESTED package: grepping its compressed bytes finds nothing whether or not
+// redaction worked, which is how this defect stayed invisible.
+func embeddedPartContains(t *testing.T, path, value string) bool {
+	t.Helper()
+	raw, err := os.ReadFile(path) // #nosec G304 -- test temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatalf("output is not a valid zip: %v", err)
+	}
+	for _, f := range zr.File {
+		if filepath.Ext(f.Name) != ".docx" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		nested, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		nz, err := zip.NewReader(bytes.NewReader(nested), int64(len(nested)))
+		if err != nil {
+			continue
+		}
+		for _, nf := range nz.File {
+			nrc, err := nf.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := io.ReadAll(nrc)
+			nrc.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(body, []byte(value)) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -167,6 +167,38 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 		return nil, fmt.Errorf("failed to extract office content: %w", err)
 	}
 
+	// Normalize the match set ONCE, here, before every consumer of Match.Text.
+	//
+	// Both of these rewrite matches whose Text does not occur in the document:
+	// ExpandClusterMatches replaces a SOCIAL_MEDIA_CLUSTER with the real spans it
+	// collapsed, and RestoreBoundedMatchText restores a display-truncated consolidated
+	// text to its full line.
+	//
+	// They used to live inside redactOfficeContent, which took `matches` as a PARAMETER —
+	// so reassigning it there normalized only that function's local slice. This function
+	// then handed the ORIGINAL, un-normalized slice to redactEmbeddedParts below, and that
+	// is a second consumer of Match.Text: it builds the residue value set the embedded
+	// dispatch gate and the post-redaction verification both use.
+	//
+	// The consequence was a leak, measured on a .docx holding two clustered handles in its
+	// body AND in an embedded inner.docx:
+	//
+	//	2 HIGH findings reported, rc=0, one file written
+	//	body:  handles removed
+	//	inner: BOTH handles still present verbatim
+	//
+	// embeddedValueSet was built from the cluster's rendered summary — a string in no
+	// part's bytes — so partHoldsValue proved "absence" for every part, the part holding
+	// the real handles was never dispatched, and the fail-closed unredacted-part refusal
+	// that exists to prevent exactly this never fired because its residue check was
+	// looking for the same absent string. A non-clustered SSN in the same fixture is
+	// correctly removed from the embedded copy, which is what isolates the cause.
+	//
+	// Normalizing before both consumers is the fix. redactOfficeContent has exactly one
+	// caller (immediately below), so nothing else depended on it doing this itself.
+	matches = redactors.ExpandClusterMatches(matches)
+	matches = redactors.RestoreBoundedMatchText(matches)
+
 	// Perform redaction
 	redactionMap, modifiedContents, err := or.redactOfficeContent(zipContents, extractedText, textPositions, matches, strategy, docType)
 	if err != nil {
@@ -678,16 +710,9 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	}
 
 	// Restore bounded (display-truncated) consolidated match texts to their
-	// full-line spans first — redaction locates matches by searching for
-	// Match.Text in the extracted content, and a bounded display text does not
-	// occur there. See redactors.RestoreBoundedMatchText.
-	// Expand a consolidated cluster back into the real spans it replaced FIRST: its
-	// Text is a rendered summary that occurs nowhere in the document, so without this
-	// the cluster masks nothing and every handle it grouped survives in cleartext.
-	// See redactors.ExpandClusterMatches and #289.
-	matches = redactors.ExpandClusterMatches(matches)
-
-	matches = redactors.RestoreBoundedMatchText(matches)
+	// Match texts are already normalized by RedactDocument, before BOTH consumers —
+	// see the comment there. Doing it here reached only this function's local slice,
+	// which is what let a cluster through to the embedded-part gate.
 
 	// Collapse overlapping matches to their widest span so a smaller match
 	// contained in a larger one doesn't get redacted first and hide the larger

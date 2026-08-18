@@ -145,11 +145,22 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 		logical[i] = s.readLogical(modified)
 	}
 
-	// A consolidated cluster's Text is a rendered summary that occurs in no stream, so
-	// searching for it masks nothing while the real spans it replaced were already
-	// dropped. Expand it first, exactly as the plaintext and office paths do. See
-	// redactors.ExpandClusterMatches and #289.
+	// Normalize the match set before searching the streams for it. BOTH of these rewrite
+	// matches whose Text does not occur in the document, and this redactor locates a value
+	// by searching for m.Text in each CFB stream's logical bytes — so an un-normalized
+	// match silently masks nothing.
+	//
+	// A consolidated cluster's Text is a rendered summary present in no stream
+	// (ExpandClusterMatches, #289). A bounded consolidated text — the
+	// INTELLECTUAL_PROPERTY "... [+N more matches on line]" display form — is likewise
+	// absent, and RestoreBoundedMatchText was NEVER called here at all: this redactor got
+	// the cluster expansion without its sibling, so a bounded legal-notice consolidation in
+	// a legacy .doc was located by nothing and the whole line survived.
+	//
+	// Order matters and matches the other paths: expand first, then restore, then let the
+	// caller's overlap resolution run over the result.
 	matches = redactors.ExpandClusterMatches(matches)
+	matches = redactors.RestoreBoundedMatchText(matches)
 
 	for _, m := range matches {
 		if m.Text == "" {
