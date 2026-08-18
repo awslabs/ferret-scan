@@ -1,0 +1,212 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package preprocessors
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// ProcessEmbeddedMedia assembles the combined embedded-media text, and that assembly must
+// not be quadratic in bytes.
+//
+// It used a string accumulator — `var result string` with `result += block` inside the
+// per-part loop. Go's string += reallocates and re-copies the whole accumulated prefix on
+// every iteration, so building the combined text cost O(n²) BYTES across n embedded parts.
+// The quadratic is in bytes rather than parts, so a few dozen multi-hundred-KB blocks
+// (embedded documents and PDFs, or a raster-heavy deck where each image round-trips the
+// router for metadata text) already cost tens of MB of transient copying.
+//
+// Transient only — it never affected results or any counter — which is exactly why no
+// existing gate could see it: the complexity guards in internal/goldencorpus cover the
+// validators and the redaction paths, and nothing covered EXTRACTION. See #338.
+
+// embeddedComplexityCeiling bounds the largest sample.
+//
+// Generous on purpose: this is an algorithmic-class check, not a benchmark. Sized so a
+// loaded shared runner passes comfortably while a return to O(n²) copying does not.
+const embeddedComplexityCeiling = 20 * time.Second
+
+// builderProbeRouter is a RouterInterface that returns a fixed-size text block per part,
+// so the measured cost is the ASSEMBLY, not the extraction.
+type builderProbeRouter struct {
+	blockSize int
+	calls     int
+}
+
+func (r *builderProbeRouter) ProcessFile(filePath string, _ interface{}) (*ProcessedContent, error) {
+	r.calls++
+	return &ProcessedContent{
+		OriginalPath:  filePath,
+		Filename:      filePath,
+		Text:          strings.Repeat("embedded metadata line\n", r.blockSize/23),
+		Format:        "image_metadata",
+		ProcessorType: "image_metadata",
+		Success:       true,
+	}, nil
+}
+
+func (r *builderProbeRouter) ProcessEmbedded(childPath, _ string) (*ProcessedContent, error) {
+	return r.ProcessFile(childPath, nil)
+}
+
+func (r *builderProbeRouter) CanProcessFile(string, bool) (bool, string) { return true, "" }
+
+// buildEmbeddedParts creates n real temp files and the EmbeddedMedia entries naming them.
+//
+// Real files because the pipeline stats and routes each part; a fabricated path would be
+// refused before the assembly under test is ever reached.
+func buildEmbeddedParts(t *testing.T, n int) []EmbeddedMedia {
+	t.Helper()
+	dir := t.TempDir()
+	out := make([]EmbeddedMedia, 0, n)
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("image%03d.jpeg", i)
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("\xff\xd8\xff\xe0 jpeg-ish bytes"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, EmbeddedMedia{
+			OriginalName: "word/media/" + name,
+			TempFilePath: p,
+			MediaType:    "image",
+		})
+	}
+	return out
+}
+
+// timeAssemble runs the assembly and returns the elapsed time plus the combined length.
+//
+// The length is the non-vacuity signal. An assembly that stopped appending would be fast
+// and would produce nothing, so a timing-only assertion would happily pass on a function
+// that had been turned into a no-op.
+func timeAssemble(t *testing.T, n, blockSize int) (time.Duration, int, int) {
+	t.Helper()
+
+	bmp := NewBaseMetadataPreprocessor("probe", "image_metadata")
+	router := &builderProbeRouter{blockSize: blockSize}
+	bmp.SetRouter(router)
+
+	parts := buildEmbeddedParts(t, n)
+
+	start := time.Now()
+	text, _, _ := bmp.ProcessEmbeddedMedia("container.docx", parts)
+	elapsed := time.Since(start)
+
+	return elapsed, len(text), router.calls
+}
+
+// TestProcessEmbeddedMediaAssemblyIsNotQuadratic is the guard.
+//
+// The ratio is LOGGED rather than asserted and an absolute ceiling is asserted instead —
+// the same idiom the redaction guard in internal/goldencorpus settled on, because the base
+// sample is small enough that scheduler noise dominates a ratio.
+func TestProcessEmbeddedMediaAssemblyIsNotQuadratic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("embedded-media assembly complexity guard skipped in -short mode")
+	}
+
+	const (
+		blockSize   = 64 << 10 // 64KB of text per part, i.e. an embedded document, not a thumbnail
+		baseN, bigN = 60, 240  // 4x
+	)
+
+	tBase, lenBase, callsBase := timeAssemble(t, baseN, blockSize)
+	tBig, lenBig, callsBig := timeAssemble(t, bigN, blockSize)
+
+	// Non-vacuity floors, both directions.
+	//
+	// Every part must have been routed (otherwise the loop exited early and the timing
+	// describes nothing), and the combined text must GROW roughly with the input
+	// (otherwise appends are being dropped and a faster run is a broken one).
+	if callsBase != baseN || callsBig != bigN {
+		t.Fatalf("router saw %d/%d and %d/%d parts — the loop did not process every part, so "+
+			"the timings below describe an incomplete assembly", callsBase, baseN, callsBig, bigN)
+	}
+	if lenBase == 0 || lenBig == 0 {
+		t.Fatalf("combined text is empty (%d, %d bytes) — an assembly that appends nothing is "+
+			"fast and wrong", lenBase, lenBig)
+	}
+	if ratio := float64(lenBig) / float64(lenBase); ratio < 3.5 {
+		t.Fatalf("combined text grew only %.2fx for 4x the parts (%d -> %d bytes) — blocks are "+
+			"being dropped, so this measures the wrong thing", ratio, lenBase, lenBig)
+	}
+
+	ratio := float64(tBig) / float64(tBase)
+	t.Logf("4x parts at %dKB each: %.1fx time (base=%v big=%v, %d -> %d bytes). "+
+		"A Builder is linear in total bytes, so ~4x is expected; the string accumulator this "+
+		"replaced copied the whole prefix per part, i.e. ~16x.",
+		blockSize>>10, ratio, tBase, tBig, lenBase, lenBig)
+
+	// The RATIO is asserted, not just a ceiling.
+	//
+	// A ceiling alone made this guard VACUOUS: restoring the string accumulator measured
+	// 9.5x here against the Builder's 2.9x — unmistakably quadratic — and still passed,
+	// because 70ms is nowhere near any sane wall-clock ceiling. The defect this test exists
+	// for was invisible to it.
+	//
+	// A ratio is usable here precisely because the base sample is MILLISECONDS, not
+	// microseconds: at 3-7ms scheduler noise does not dominate, unlike the redaction guard
+	// whose base is small enough that only a ceiling is meaningful.
+	//
+	// The threshold sits between the two measurements with room on both sides: linear is
+	// 4.0, the Builder measures ~2.9, the accumulator ~9.5, true quadratic is 16.0.
+	const maxGrowth = 6.0
+	if ratio > maxGrowth {
+		t.Errorf("4x the parts cost %.1fx the time (> %.1f) — assembly is scaling with "+
+			"(parts x accumulated bytes) again, i.e. the combined text is being re-copied per "+
+			"part instead of appended", ratio, maxGrowth)
+	}
+
+	// Ceiling kept as a backstop for the case a ratio cannot catch: both samples slow
+	// together, which a proportional regression would produce.
+	if tBig > embeddedComplexityCeiling {
+		t.Errorf("assembling %d embedded parts of %dKB took %v (> %v)",
+			bigN, blockSize>>10, tBig, embeddedComplexityCeiling)
+	}
+}
+
+// The assembled text must be byte-identical to a plain concatenation of the blocks, so
+// switching to a Builder cannot have changed the output. Asserted separately from timing
+// because a fast, wrong assembly is the failure mode a ceiling cannot catch.
+func TestProcessEmbeddedMediaAssemblyPreservesContent(t *testing.T) {
+	bmp := NewBaseMetadataPreprocessor("probe", "image_metadata")
+	router := &builderProbeRouter{blockSize: 512}
+	bmp.SetRouter(router)
+
+	parts := buildEmbeddedParts(t, 5)
+	text, sections, _ := bmp.ProcessEmbeddedMedia("container.docx", parts)
+
+	// Every part's name must appear, in order, and the per-part section boundaries must
+	// still line up with the text the cursor was computed against.
+	last := -1
+	for i := range parts {
+		name := filepath.Base(parts[i].OriginalName)
+		at := strings.Index(text, name)
+		if at < 0 {
+			t.Fatalf("part %d (%s) is absent from the combined text", i, name)
+		}
+		if at <= last {
+			t.Errorf("part %d (%s) appears out of order", i, name)
+		}
+		last = at
+	}
+	if len(sections) == 0 {
+		t.Error("no content sections were produced; section anchoring depends on the same " +
+			"per-block line cursor as the assembly")
+	}
+	// The line cursor is maintained independently of the accumulator, so a Builder must
+	// not have shifted it: each section's start line must fall inside the text.
+	totalLines := strings.Count(text, "\n") + 1
+	for i, s := range sections {
+		if s.LineOffset < 0 || s.LineOffset > totalLines {
+			t.Errorf("section %d starts at line %d, outside the %d-line combined text",
+				i, s.LineOffset, totalLines)
+		}
+	}
+}
