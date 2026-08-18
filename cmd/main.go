@@ -4,9 +4,11 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -1214,7 +1216,28 @@ func main() {
 		if precommitConfig.NoColor {
 			finalConfig.noColor = true
 		}
-		if precommitConfig.Format != "" {
+		// An explicitly requested format outranks an auto-detected default.
+		//
+		// precommitConfig.Format is a DEFAULT for pre-commit runs ("text"), and it was
+		// applied unconditionally — so detection silently discarded `--format json` and
+		// printed prose. Measured with PRE_COMMIT=1 on a directory holding one SSN:
+		//
+		//	--format json                1258 bytes of valid JSON
+		//	--format json, mode detected "pii.txt: 1 high confidence issues found"
+		//
+		// That is worse than an unhonoured flag: the caller asked for a machine artifact
+		// and got prose at exit 0, so whatever consumes it either fails to parse or
+		// silently reads no findings.
+		//
+		// And it is reached without anyone opting in. Detection has a Windows-only branch
+		// that treats GIT_EXEC_PATH as a pre-commit signal, and Git Bash always sets it, so
+		// every Windows user running from Git Bash — the usual way to use this tool there —
+		// got prose for `--format json`. It surfaced as a windows-only CI failure of a test
+		// asserting that `--format json` is parseable.
+		//
+		// Only the explicitly-set case is guarded: with no --format flag the pre-commit
+		// default still applies, which is the behaviour it exists to provide.
+		if precommitConfig.Format != "" && !isFlagSet("format") {
 			finalConfig.format = precommitConfig.Format
 		}
 
@@ -1510,6 +1533,34 @@ func main() {
 			// leaving an unparseable file at exit 0. Same defect class as the
 			// media-error write already moved off stdout.
 			fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", inputPath, err)
+
+			// An input that EXISTS but could not be read is missing coverage, and has to
+			// reach a counter like every other refusal.
+			//
+			// Measured on a file named directly on the command line inside a
+			// permission-denied directory: one stderr line, "No files to process",
+			// total_files 0, no files_not_examined key, and --fail-on-incomplete exited 0.
+			// The file was counted nowhere, so the run described a complete scan of nothing
+			// while an unread SSN sat in the named path.
+			//
+			// A path that does NOT exist is excluded on purpose. A typo is a usage error,
+			// not incomplete coverage, and treating it as a coverage loss would make
+			// --fail-on-incomplete fire on misspelled arguments — which trains people to
+			// stop passing the flag. Permission is the discriminator, not the presence of
+			// an error: os.Lstat reports ErrNotExist for the typo and ErrPermission for the
+			// unreadable path, including when it is the PARENT directory that is
+			// unreadable, which is the case that matters here.
+			if isAccessDenied(cleanPath) {
+				detail := humanizeReason(inputPath, err.Error())
+				if detail == "" {
+					detail = "could not be accessed"
+				}
+				discoveryUnexamined = append(discoveryUnexamined, SkippedFile{
+					Path:   inputPath,
+					Reason: detail,
+					Cause:  causeUnreadable,
+				})
+			}
 			continue
 		}
 
@@ -1548,7 +1599,7 @@ func main() {
 					"Verify path exists and contains supported file types")
 			}
 			os.Exit(2) // Use exit code 2 for no files to process as per design
-		} else {
+		} else if finalConfig.format == "text" {
 			// Disclose discovery-time coverage losses BEFORE exiting.
 			//
 			// This path used to print "No files to process" and exit 0 unconditionally,
@@ -1579,6 +1630,23 @@ func main() {
 			fmt.Println("No files to process")
 			os.Exit(0)
 		}
+		// Every other format falls through to the ordinary output path, deliberately.
+		//
+		// "No files to process" on stdout is not JSON, YAML, SARIF, CSV or JUnit. A caller
+		// running `--format json > report.json` got a document whose first byte is 'N', so
+		// the artifact does not parse — and it fails at exactly the moment the scan has
+		// something to say, because this branch is reached when every input was REFUSED.
+		// Measured: a directory holding one oversize file exited 3 with the literal text
+		// "No files to process" where the JSON was expected, so the disclosure that the
+		// exit code was signalling could not be read by the thing reading the code.
+		//
+		// The pipeline handles zero files already: it emits an empty report whose stats
+		// carry total_files, files_not_examined and the unscanned entries, which is a
+		// strictly better artifact than a plain-text line. Verified against a normal scan,
+		// an empty directory and an all-refused directory.
+		//
+		// The test is "not text" rather than a list of structured formats so that a format
+		// added later is parseable by default rather than by remembering to add it here.
 	}
 
 	// Initialize suppression manager. The path comes from resolveConfiguration so
@@ -2432,6 +2500,24 @@ func isExcluded(filePath string, excludePatterns []string) bool {
 // enablePreprocessors is needed to answer whether a size-refused file's TYPE was one
 // the tool could have processed: without preprocessors a .docx is not processable, so
 // refusing it for size loses nothing the run was going to find anyway.
+// isAccessDenied reports whether a path exists but cannot be examined because of
+// permissions, as opposed to not being there at all.
+//
+// This is the discriminator between two inputs that fail identically at the call site and
+// mean opposite things. A path that cannot be READ is missing coverage: something is there,
+// the scan was asked about it, and it went unexamined. A path that does not EXIST is a usage
+// error — a typo — and reporting it as lost coverage would make --fail-on-incomplete fail
+// builds over misspelled arguments, which is how a flag earns a permanent place in a
+// denylist.
+//
+// Lstat rather than Stat, and on the path itself rather than the error text: the case that
+// matters most is a readable filename inside an UNREADABLE PARENT, where the failure belongs
+// to the directory and Lstat still reports it as a permission error.
+func isAccessDenied(path string) bool {
+	_, err := os.Lstat(path)
+	return err != nil && errors.Is(err, fs.ErrPermission)
+}
+
 func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string, ignoreMatcher *gitignore.Matcher, enablePreprocessors bool) (*ProcessingResult, error) {
 	result := &ProcessingResult{
 		FilesToProcess:  []string{},
@@ -2536,8 +2622,64 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			}
 			info, err := os.Stat(cleanMatch)
 			if err != nil {
+				// A match the filesystem will not describe cannot be scanned. Only a
+				// permission failure is a coverage loss; see the identical reasoning at the
+				// named-input call site in main.
+				if errors.Is(err, fs.ErrPermission) {
+					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+						Path:   cleanMatch,
+						Reason: "could not be accessed",
+						Cause:  causeUnreadable,
+					})
+				}
 				continue
 			}
+
+			// A DIRECTORY matched by the pattern used to fall past the IsRegular test with
+			// no else branch: dropped from filesToProcess, from SkippedFiles, from
+			// UnexaminedFiles, and from every counter, with nothing printed.
+			//
+			// Measured on `--file '<dir>/*' --recursive` where one match was a directory
+			// holding an SSN: exit 0, total_files 1, no files_not_examined key, "No matches
+			// found." The --recursive flag was set and silently did nothing, because
+			// recursion is implemented in the directory branch below and a glob never
+			// reaches it. A shell that expands the glob itself hides this — each match
+			// arrives as its own argument — so it only bites when the pattern is quoted,
+			// which is exactly what the documentation asks for.
+			if info.IsDir() {
+				if isExcluded(cleanMatch, excludePatterns) || ignoreMatcher.Match(cleanMatch) {
+					continue
+				}
+				if !recursive {
+					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+						Path:   cleanMatch,
+						Reason: "directory matched by pattern; pass --recursive to scan its contents",
+						Silent: false,
+					})
+					continue
+				}
+				// Recurse through this same function rather than reimplementing the walk.
+				// It carries the symlink policy, the exclude and .gitignore checks, the size
+				// refusals and their disclosure — all of which a second implementation would
+				// have to keep in step. cleanMatch is a concrete path from Glob and exists,
+				// so the call takes the literal-path branch and cannot re-enter this one.
+				sub, subErr := getFilesToProcess(cleanMatch, recursive, excludePatterns,
+					ignoreMatcher, enablePreprocessors)
+				if subErr != nil {
+					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+						Path: cleanMatch,
+						Reason: "directory could not be read, so an unknown number of files " +
+							"inside it were not scanned",
+						Cause: causeUnreadable,
+					})
+					continue
+				}
+				filesToProcess = append(filesToProcess, sub.FilesToProcess...)
+				result.SkippedFiles = append(result.SkippedFiles, sub.SkippedFiles...)
+				result.UnexaminedFiles = append(result.UnexaminedFiles, sub.UnexaminedFiles...)
+				continue
+			}
+
 			if info.Mode().IsRegular() {
 				// Check if file is excluded
 				if isExcluded(cleanMatch, excludePatterns) {
@@ -2669,6 +2811,41 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// DIRECTORY hides every descendant, and how many is unknowable. See #336
 			// defect 3.
 			if err != nil {
+				// info is nil when Lstat itself failed, so ask the filesystem directly. If
+				// even Lstat fails the kind is unknowable and it is treated as a file.
+				isDir := info != nil && info.IsDir()
+				if info == nil {
+					if di, statErr := os.Lstat(path); statErr == nil && di.IsDir() {
+						isDir = true
+					}
+				}
+
+				// Decide SCOPE before calling this a coverage loss.
+				//
+				// This branch runs before the !recursive and exclude checks below, and for a
+				// directory it has to: Go's filepath.Walk calls readDirNames FIRST and hands
+				// the callback that error in the same invocation, so a directory it cannot
+				// open arrives here with err set and never reaches those checks at all.
+				//
+				// The consequence was over-disclosure, which is its own failure. A
+				// permission-denied subdirectory made a NON-recursive scan exit 3, and made
+				// `--exclude` on that very directory exit 3, both reporting lost coverage
+				// for something the user never asked to be scanned. A flag that fires on
+				// paths outside the requested scope is one people learn to ignore, which
+				// costs exactly the disclosures it exists to deliver.
+				//
+				// Path-based, so it works with a nil info: both predicates take strings.
+				outOfScope := isDir && !recursive && cleanWalkPath != cleanPath
+				if isExcluded(cleanWalkPath, excludePatterns) || ignoreMatcher.Match(cleanWalkPath) {
+					outOfScope = true
+				}
+				if outOfScope {
+					// Silent on purpose: nothing was lost, so there is nothing to report.
+					// Nothing to descend into either — the read that would have listed this
+					// directory is the read that just failed.
+					return nil
+				}
+
 				fmt.Fprintf(os.Stderr, "Warning: Skipping %s: %v\n", path, err)
 
 				// causeUnreadable is the right cause: unlike a size refusal or a
@@ -2677,9 +2854,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				if detail == "" {
 					detail = "could not be accessed"
 				}
-				// info is nil on an access error, so ask the filesystem directly. If
-				// even Lstat fails the kind is unknowable and the plain wording stands.
-				if di, statErr := os.Lstat(path); statErr == nil && di.IsDir() {
+				if isDir {
 					detail = "directory could not be read, so an unknown number of files " +
 						"inside it were not scanned: " + detail
 				}
