@@ -67,6 +67,28 @@ const (
 	// NotExaminedCutShort — a budget, size cap or timeout fired, so the file is
 	// PARTLY scanned. Findings from it may be present and incomplete.
 	NotExaminedCutShort
+
+	// NotExaminedNotFollowed — a symlink the walk deliberately did not follow: it
+	// dangles or loops, names a directory or a device, or resolves outside the
+	// scanned tree.
+	//
+	// Distinct from NotExaminedUnreadable because for most of these the file COULD
+	// have been read — the tool declined. Reporting them as "cannot read" asserts a
+	// failure that did not happen, and the operator's remedy differs: a permission
+	// problem is fixed with chmod, a link out of the tree by scanning the target
+	// directly.
+	//
+	// The cmd side has had this cause since #326, but it was never mapped here and
+	// fell through to NotExaminedUnreadable, so machine formats said "cannot read"
+	// for every refused symlink while the text report said "symlink not followed" —
+	// the exact mislabelling the cmd-side comment warns a new cause would cause.
+	NotExaminedNotFollowed
+
+	// NotExaminedTooLarge — the file exceeds the size limit, so it was never opened.
+	//
+	// Its type WAS one the tool would have processed; an unprocessable type refused
+	// for size is not reported at all, because nobody expected a finding from it.
+	NotExaminedTooLarge
 )
 
 // String returns the operator-facing cause label.
@@ -88,6 +110,10 @@ func (c NotExaminedCause) String() string {
 		return "no body text (metadata still scanned)"
 	case NotExaminedCutShort:
 		return "coverage cut short"
+	case NotExaminedNotFollowed:
+		return "symlink not followed"
+	case NotExaminedTooLarge:
+		return "file too large to scan"
 	default:
 		return "unknown"
 	}

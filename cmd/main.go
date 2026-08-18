@@ -1502,9 +1502,14 @@ func main() {
 			}
 		}
 
-		result, err := getFilesToProcess(cleanPath, finalConfig.recursive, finalConfig.excludePatterns, ignoreMatcher)
+		result, err := getFilesToProcess(cleanPath, finalConfig.recursive, finalConfig.excludePatterns, ignoreMatcher, finalConfig.enablePreprocessors)
 		if err != nil {
-			fmt.Printf("Error processing %s: %v\n", inputPath, err)
+			// stderr, not stdout: this is on the scan path, and a caller redirecting
+			// stdout to a machine artifact (--format json > report.json) would
+			// otherwise get a diagnostic spliced into the middle of the document,
+			// leaving an unparseable file at exit 0. Same defect class as the
+			// media-error write already moved off stdout.
+			fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", inputPath, err)
 			continue
 		}
 
@@ -1920,16 +1925,24 @@ func main() {
 	// unreadable channel. Filing "resolves outside the scanned directory" under "cannot
 	// read" would assert a failure that never happened — the file is readable, the tool
 	// declined — and the operator's remedy differs.
-	notFollowed := make([]parallel.FileDiagnostic, 0, len(discoveryUnexamined))
+	// Each discovery refusal carries the cause its producer assigned, rather than all
+	// of them being labelled the same. Discovery is the only place that knows why it
+	// declined: a symlink out of the tree and a 105MB document are both unexamined,
+	// but the operator's remedy differs and so does the wording.
+	discoveryEntries := make([]unscannedEntry, 0, len(discoveryUnexamined))
 	for _, u := range discoveryUnexamined {
-		notFollowed = append(notFollowed, parallel.FileDiagnostic{FilePath: u.Path, Reason: u.Reason})
+		discoveryEntries = append(discoveryEntries, unscannedEntry{
+			Path:   u.Path,
+			Cause:  u.Cause,
+			Detail: u.Reason,
+		})
 		// Counted as not-processed for the same reason an unreadable file is: it was
 		// considered and produced nothing, so leaving it out of every counter is what
 		// made the loss invisible.
 		unreadableCount++
 	}
 
-	unscannedEntries := collectUnscanned(unreadableFiles, emptyExtractionFiles, failedProcessingFiles, incompleteFiles, notFollowed)
+	unscannedEntries := collectUnscanned(unreadableFiles, emptyExtractionFiles, failedProcessingFiles, incompleteFiles, discoveryEntries)
 
 	if precommitConfig == nil {
 		// The unredacted warning stays here; the not-examined report is emitted AFTER
@@ -2335,16 +2348,15 @@ type SkippedFile struct {
 	Path   string
 	Reason string
 	Silent bool // true = don't show to user, false = show as warning
-}
 
-// isUnsupportedType checks if a file extension is an unsupported type that should be silently skipped
-func isUnsupportedType(ext string) bool {
-	unsupportedTypes := map[string]bool{
-		".mp4": true, ".mov": true, ".avi": true, ".mkv": true,
-		".dmg": true, ".iso": true, ".img": true,
-		".zip": true, ".tar": true, ".gz": true, ".7z": true,
-	}
-	return unsupportedTypes[ext]
+	// Cause classifies an entry carried in ProcessingResult.UnexaminedFiles, so the
+	// report can say WHY discovery declined. It is unused for SkippedFiles, which are
+	// by definition entries nobody expected a result from.
+	//
+	// Every UnexaminedFiles producer must set it. The zero value is causeUnreadable,
+	// which would claim the file could not be opened — a failure that did not happen
+	// for anything discovery declines on purpose.
+	Cause unscannedCause
 }
 
 // isExcluded checks if a file path matches any of the exclusion patterns
@@ -2390,7 +2402,10 @@ func isExcluded(filePath string, excludePatterns []string) bool {
 
 // getFilesToProcess returns a list of files to process based on the input path
 // Supports glob patterns like *.pdf, files, and directories
-func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string, ignoreMatcher *gitignore.Matcher) (*ProcessingResult, error) {
+// enablePreprocessors is needed to answer whether a size-refused file's TYPE was one
+// the tool could have processed: without preprocessors a .docx is not processable, so
+// refusing it for size loses nothing the run was going to find anyway.
+func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string, ignoreMatcher *gitignore.Matcher, enablePreprocessors bool) (*ProcessingResult, error) {
 	result := &ProcessingResult{
 		FilesToProcess:  []string{},
 		SkippedFiles:    []SkippedFile{},
@@ -2440,20 +2455,24 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				result.FilesToProcess = append(result.FilesToProcess, inputPath)
 				return result, nil
 			}
-			// Skip large unsupported files silently
+			// A file refused for size. Whether that is a coverage LOSS depends on
+			// whether the tool could have processed its type at all — see
+			// router.CanProcessType. An unprocessable type is a genuine skip; a
+			// processable one was expected to produce a result and did not.
 			limitMB := sizeLimit / (1024 * 1024)
-			if isUnsupportedType(ext) {
-				result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+			reason := fmt.Sprintf("file too large (max size: %dMB)", limitMB)
+			if router.CanProcessType(inputPath, enablePreprocessors) {
+				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 					Path:   inputPath,
-					Reason: fmt.Sprintf("file too large (max size: %dMB)", limitMB),
-					Silent: true,
+					Reason: reason,
+					Cause:  causeTooLarge,
 				})
 				return result, nil
 			}
 			result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
 				Path:   inputPath,
-				Reason: fmt.Sprintf("file too large (max size: %dMB)", limitMB),
-				Silent: false,
+				Reason: reason,
+				Silent: true,
 			})
 			return result, nil
 		}
@@ -2503,17 +2522,28 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 
 				if info.Size() <= 100*1024*1024 {
 					filesToProcess = append(filesToProcess, cleanMatch)
+				} else if router.CanProcessType(cleanMatch, enablePreprocessors) {
+					// A processable type refused for size is a coverage LOSS, so it has
+					// to reach a counter. Previously this branch wrote a bare stderr
+					// warning and recorded the file nowhere: absent from total_files,
+					// from files_skipped and from files_not_examined, so the machine
+					// artifact described a complete clean scan and --fail-on-incomplete
+					// exited 0. The warning was the only trace, and it is exactly what
+					// CI discards.
+					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+						Path:   cleanMatch,
+						Reason: "file too large (max size: 100MB)",
+						Cause:  causeTooLarge,
+					})
 				} else {
-					// Skip large unsupported files silently
-					ext := strings.ToLower(filepath.Ext(cleanMatch))
-					unsupportedTypes := map[string]bool{
-						".mp4": true, ".mov": true, ".avi": true, ".mkv": true,
-						".dmg": true, ".iso": true, ".img": true,
-						".zip": true, ".tar": true, ".gz": true, ".7z": true,
-					}
-					if !unsupportedTypes[ext] {
-						fmt.Fprintf(os.Stderr, "Warning: Skipping %s: file too large (> 100MB)\n", cleanMatch)
-					}
+					// Unprocessable at any size: a genuine skip, nobody expected a
+					// finding. Recorded rather than dropped so it stays in the
+					// denominator.
+					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+						Path:   cleanMatch,
+						Reason: "file too large (max size: 100MB)",
+						Silent: true,
+					})
 				}
 			}
 		}
@@ -2540,21 +2570,22 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 
 	// If it's a regular file, just process it
 	if fileInfo.Mode().IsRegular() {
-		// Skip large files silently for unsupported types
+		// A file refused for size — see the identical decision on the glob path above
+		// and router.CanProcessType.
 		if fileInfo.Size() > 100*1024*1024 { // 100MB limit
-			ext := strings.ToLower(filepath.Ext(inputPath))
-			if isUnsupportedType(ext) {
-				result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+			const reason = "file too large (max size: 100MB)"
+			if router.CanProcessType(inputPath, enablePreprocessors) {
+				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 					Path:   inputPath,
-					Reason: "file too large (max size: 100MB)",
-					Silent: true,
+					Reason: reason,
+					Cause:  causeTooLarge,
 				})
-				return result, nil // Skip silently
+				return result, nil
 			}
 			result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
 				Path:   inputPath,
-				Reason: "file too large (max size: 100MB)",
-				Silent: false,
+				Reason: reason,
+				Silent: true,
 			})
 			return result, nil
 		}
@@ -2623,17 +2654,23 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				// Check file size
 				if info.Size() <= 100*1024*1024 { // 100MB limit
 					filesToProcess = append(filesToProcess, cleanWalkPath)
+				} else if router.CanProcessType(cleanWalkPath, enablePreprocessors) {
+					// Processable type refused for size: a coverage loss, so it must reach
+					// files_not_examined and --fail-on-incomplete rather than only a
+					// stderr line that CI discards. See the glob path above.
+					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+						Path:   cleanWalkPath,
+						Reason: "file too large (max size: 100MB)",
+						Cause:  causeTooLarge,
+					})
+					skippedFiles = append(skippedFiles, cleanWalkPath)
 				} else {
-					// Skip large unsupported files silently
-					ext := strings.ToLower(filepath.Ext(cleanWalkPath))
-					unsupportedTypes := map[string]bool{
-						".mp4": true, ".mov": true, ".avi": true, ".mkv": true,
-						".dmg": true, ".iso": true, ".img": true,
-						".zip": true, ".tar": true, ".gz": true, ".7z": true,
-					}
-					if !unsupportedTypes[ext] {
-						fmt.Fprintf(os.Stderr, "Warning: Skipping %s: file too large (> 100MB)\n", cleanWalkPath)
-					}
+					// Unprocessable at any size: a genuine skip.
+					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
+						Path:   cleanWalkPath,
+						Reason: "file too large (max size: 100MB)",
+						Silent: true,
+					})
 					skippedFiles = append(skippedFiles, cleanWalkPath)
 				}
 			} else if info.Mode()&os.ModeSymlink != 0 {
