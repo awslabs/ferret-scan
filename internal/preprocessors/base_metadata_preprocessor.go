@@ -244,7 +244,24 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		return "", nil, nil
 	}
 
-	var result string
+	// A Builder, not a string accumulator.
+	//
+	// This was `var result string` with `result += block` inside the per-part loop below.
+	// Go's string += reallocates and re-copies the whole accumulated prefix on every
+	// iteration, so assembling the combined text cost O(n²) BYTES copied across n embedded
+	// parts. The quadratic is in bytes, not parts, so a few dozen multi-hundred-KB blocks
+	// (embedded documents and PDFs, or a raster-image-heavy deck where each image
+	// round-trips the router for metadata text) already costs tens of MB of pure transient
+	// copying and GC churn.
+	//
+	// Transient only — it never affected results or any counter — but it is the same shape
+	// internal/router/file_router.go already fixed with a Builder when it assembles
+	// multi-part text. See #338.
+	//
+	// Not pre-sized: the blocks are produced inside the loop, so summing their lengths up
+	// front would mean generating each one twice. Builder's amortized growth is what
+	// removes the quadratic; a Grow hint would only shave a constant.
+	var result strings.Builder
 	var sections []ContentSection
 	// warnings records embedded items we declined to descend into, so the caller can
 	// surface them through ExtractionWarning.
@@ -324,7 +341,7 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 
 			// Format and append embedded media section
 			block := bmp.utilities.RouterHelper.FormatEmbeddedMediaSection(i, media.OriginalName, processed.Text)
-			result += block
+			result.WriteString(block)
 
 			// FormatEmbeddedMediaSection prefixes "\n--- ... ---\n", so the
 			// item's own text starts two lines further on.
@@ -365,7 +382,7 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		}
 	}
 
-	return result, sections, warnings
+	return result.String(), sections, warnings
 }
 
 // EmbeddedMedia represents embedded media extracted from documents
