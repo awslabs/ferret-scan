@@ -159,7 +159,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (otp secret) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 7)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** otp validator\n\n**Context:**\n```\n2fa secret: jbswy3dpehpk3pxp lowercase\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected sensitive data (otp secret) in this file.\n\n**Location:** <golden:validator_coverage_expansion> (line 7)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** otp validator\n\n**Context:**\n```\n2fa secret: k5cuwy3znrxw4z3t lowercase\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

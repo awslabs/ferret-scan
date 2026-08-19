@@ -144,82 +144,6 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "Contact john.doe@example.com or call \nContact john.doe@example.com or call 212-555-0142.\n."
-                  },
-                  "startLine": 1
-                },
-                "region": {
-                  "endColumn": 50,
-                  "snippet": {
-                    "text": "Contact john.doe@example.com or call 212-555-0142."
-                  },
-                  "startColumn": 38,
-                  "startLine": 1
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Phone Number Detected in notes.txt at line 1 (confidence: 73.0% - MEDIUM). Matched text: '212-555-0142'"
-          },
-          "properties": {
-            "confidence": 73,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "clean_number": "2125550142",
-              "confidence_adjustment": 0,
-              "context_confidence": 0,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
-              "context_impact": -12,
-              "country": "US/CA",
-              "format": "XXX-XXX-XXXX",
-              "original_confidence": 73,
-              "original_file": "<TMPDIR>/notes.txt",
-              "pattern_name": "US_Dashed",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "not_repeating": true,
-                "not_sequential": true,
-                "not_ssn_pattern": true,
-                "not_test_number": false,
-                "not_timestamp": true,
-                "reasonable_length": true,
-                "valid_country": true,
-                "valid_digits": true,
-                "valid_format": true
-              },
-              "validation_path": "document"
-            },
-            "negativeKeywords": [
-              "example"
-            ],
-            "positiveKeywords": [
-              "call",
-              "contact"
-            ],
-            "validator": "phone"
-          },
-          "rank": 61.5,
-          "ruleId": "PHONE"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "file://<TMPDIR>/notes.txt"
-                },
-                "contextRegion": {
-                  "snippet": {
                     "text": "AWS key \nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n in the config."
                   },
                   "startLine": 2
@@ -348,6 +272,82 @@
           },
           "rank": 41.5,
           "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/notes.txt"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Contact john.doe@example.com or call \nContact john.doe@example.com or call 212-555-0142.\n."
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 50,
+                  "snippet": {
+                    "text": "Contact john.doe@example.com or call 212-555-0142."
+                  },
+                  "startColumn": 38,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in notes.txt at line 1 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "clean_number": "2125550142",
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "context_impact": -12,
+              "country": "US/CA",
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 15,
+              "original_file": "<TMPDIR>/notes.txt",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "positiveKeywords": [
+              "call",
+              "contact"
+            ],
+            "validator": "phone"
+          },
+          "rank": 32.5,
+          "ruleId": "PHONE"
         }
       ],
       "tool": {

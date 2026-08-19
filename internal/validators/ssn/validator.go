@@ -1069,6 +1069,26 @@ func (v *Validator) isValidAreaNumber(area string) bool {
 
 func (v *Validator) isTestSSN(ssn string) bool {
 	testSSNs := map[string]bool{
+		// 078-05-1120 was printed on the specimen card in Woolworth wallets from
+		// 1938; around 40,000 people went on to file it as their own and the SSA
+		// voided it. It identifies nobody and is still the most widely copied
+		// example SSN, so it belongs with the entries below — but note the
+		// difference in kind: the rest of this map is shape-based (repdigits,
+		// sequences), while this is an individually enumerated fact.
+		//
+		// Two neighbours deliberately left out:
+		//   - 987-65-4320..4329, which the SSA reserves for advertising, need no
+		//     entry: area 987 is outside the valid 001-665/667-899 range, so
+		//     isValidSSN already rejects them (verified: 987-65-4325 yields no
+		//     finding). "987654321" below is dead for the same reason and is left
+		//     alone rather than quietly removed.
+		//   - 219-09-9999, also described as voided, is this suite's canonical
+		//     REAL-SSN fixture, and validator_test.go asserts isTestSSN returns
+		//     false for it. Suppressing it is a separate call with a much larger
+		//     fixture migration behind it, so it is tracked in #364 rather than
+		//     bundled in here.
+		"078051120": true,
+
 		"123456789": true,
 		"111111111": true,
 		"222222222": true,

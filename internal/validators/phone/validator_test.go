@@ -765,12 +765,19 @@ func TestPhoneValidator_RegressionTests(t *testing.T) {
 // formatted NANP numbers in area codes 200-214 (and 19xx/20xx long forms) were
 // penalized -60 as Unix timestamps/dates. The timestamp heuristic now only fires
 // on a bare digit run with no phone separators.
+//
+// The subscriber numbers below deliberately avoid the 555-0100..0199 reserved
+// fictional block, which is now capped at the top of LOW (see
+// reserved_fictional_test.go). This test needs numbers that can legitimately
+// reach MEDIUM; the area code is the part under test, so the subscriber half is
+// free to be anything that is not reserved. It read "555-0173" before, which
+// made the assertion unsatisfiable for a reason unrelated to what it checks.
 func TestPhoneValidator_NANPAreaCodesNotTimestamps(t *testing.T) {
 	v := NewValidator()
 	for _, line := range []string{
-		"call (212) 555-0173 now",
-		"Phone: (202) 555-0173",
-		"contact 213-555-0173",
+		"call (212) 246-8135 now",
+		"Phone: (202) 246-8135",
+		"contact 213-246-8135",
 		"phone 201-998-7654",
 	} {
 		matches, _ := v.ValidateContent(line, "test.txt")
@@ -785,10 +792,10 @@ func TestPhoneValidator_NANPAreaCodesNotTimestamps(t *testing.T) {
 		}
 	}
 	// A bare 10-digit run with no separators may still be treated as a timestamp.
-	if !v.looksLikeTimestamp("2125550173") {
+	if !v.looksLikeTimestamp("2122468135") {
 		t.Error("a bare 10-digit run should still be eligible as a timestamp")
 	}
-	if v.looksLikeTimestamp("(212) 555-0173") {
+	if v.looksLikeTimestamp("(212) 246-8135") {
 		t.Error("a separator-formatted phone must not be treated as a timestamp")
 	}
 }

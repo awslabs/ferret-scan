@@ -6,7 +6,7 @@ call us at [PHONE-REDACTED] today
 error code [PHONE-REDACTED] in the diagnostics log
 SKU [PHONE-REDACTED] restocked
 === FINDINGS (sorted) ===
-type=PHONE line=4 conf=high match=212-555-0142
+type=PHONE line=4 conf=low match=212-555-0142
 type=PHONE line=5 conf=low match=212-555-0142
 type=PHONE line=6 conf=low match=313-555-0175
 type=SSN line=1 conf=high match=449-87-4100

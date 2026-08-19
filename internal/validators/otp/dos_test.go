@@ -16,6 +16,13 @@ import (
 // The fix computes AnalyzeContext / keyword sets / positive-negative context
 // once per line and builds ContextInfo from FindAllStringIndex offsets
 // instead of re-scanning the line per match.
+// The base32 secrets in this file are deliberately NOT the otpauth documentation
+// example (JBSWY3DPEHPK3PXP) or the RFC 4226/6238 test seed (GEZDGNBVGY3TQOJQ...),
+// which every TOTP tutorial reproduces. Those are now capped at the top of LOW as
+// published test secrets, so a test asserting HIGH confidence for one of them
+// asserts the defect. Use an invented base32 value here; the published ones belong
+// only in published_secret_test.go, which asserts the cap.
+
 func TestSingleLongLine_NotQuadratic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DoS timing regression in -short mode")
@@ -25,7 +32,7 @@ func TestSingleLongLine_NotQuadratic(t *testing.T) {
 	b.Grow(48*1024 + 64)
 	b.WriteString("2fa secret totp ")
 	for b.Len() < 48*1024 {
-		b.WriteString("jbswy3dpehpk3pxp krugkidrovuwg2zamjzg653o JBSWY3DPEHPK3PXP ")
+		b.WriteString("k5cuwy3znrxw4z3t krugkidrovuwg2zamjzg653o K5CUWY3ZNRXW4Z3T ")
 	}
 	content := b.String()
 	if strings.Contains(content, "\n") {
@@ -56,7 +63,7 @@ func TestSingleLongLine_Cancellable(t *testing.T) {
 	b.Grow(1<<20 + 64)
 	b.WriteString("2fa secret totp ")
 	for b.Len() < 1<<20 {
-		b.WriteString("jbswy3dpehpk3pxp krugkidrovuwg2zamjzg653o JBSWY3DPEHPK3PXP ")
+		b.WriteString("k5cuwy3znrxw4z3t krugkidrovuwg2zamjzg653o K5CUWY3ZNRXW4Z3T ")
 	}
 
 	ctx, cancel := stdctx.WithCancel(stdctx.Background())

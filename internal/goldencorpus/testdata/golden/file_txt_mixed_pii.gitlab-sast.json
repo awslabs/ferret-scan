@@ -81,32 +81,6 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 1)\n**Confidence:** MEDIUM (73.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\nContact john.doe@example.com or call 212-555-0142.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "PHONE"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "phone"
-        }
-      ],
-      "location": {
-        "end_line": 1,
-        "file": "notes.txt",
-        "start_line": 1
-      },
-      "message": "Phone number detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Phone Number Detected",
-      "severity": "High"
-    },
-    {
-      "category": "sast",
-      "confidence": "Medium",
       "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 2)\n**Confidence:** MEDIUM (69.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
@@ -154,6 +128,32 @@
       },
       "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
       "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 1)\n**Confidence:** LOW (15.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\nContact john.doe@example.com or call 212-555-0142.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PHONE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "phone"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "notes.txt",
+        "start_line": 1
+      },
+      "message": "Phone number detected: [HIDDEN] (confidence: LOW)",
+      "name": "Phone Number Detected",
       "severity": "Medium"
     }
   ]

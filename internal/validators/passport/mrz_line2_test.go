@@ -226,7 +226,7 @@ func TestRealWorld44CharShapesAreNotPassports(t *testing.T) {
 		"0123456789012345678901234567890123456789ABCD", // sequential digits
 		strings.Repeat("A", 44),
 		strings.Repeat("<", 44),
-		"JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXPJBSWY3DPEHPK", // base32
+		"K5CUWY3ZNRXW4Z3TK5CUWY3ZNRXW4Z3TJBSWY3DPEHPK", // base32
 	}
 
 	for _, tok := range tokens {

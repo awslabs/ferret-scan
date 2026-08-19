@@ -77,81 +77,6 @@
                 "artifactLocation": {
                   "uri": "file://<TMPDIR>/clip.wav"
                 },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Comment: contact \nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n or AKIAIOSFODNN7EXAMPLE"
-                  },
-                  "startLine": 7
-                },
-                "region": {
-                  "endColumn": 30,
-                  "snippet": {
-                    "text": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
-                  },
-                  "startColumn": 18,
-                  "startLine": 7
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Phone Number Detected in clip.wav at line 7 (confidence: 82.0% - MEDIUM). Matched text: '212-555-0142'"
-          },
-          "properties": {
-            "confidence": 82,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "clean_number": "2125550142",
-              "confidence_adjustment": 0,
-              "context_confidence": 0,
-              "context_doctype": "Configuration",
-              "context_domain": "Unknown",
-              "context_impact": -3,
-              "country": "US/CA",
-              "format": "XXX-XXX-XXXX",
-              "original_confidence": 82,
-              "original_file": "<TMPDIR>/clip.wav",
-              "pattern_name": "US_Dashed",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "not_repeating": true,
-                "not_sequential": true,
-                "not_ssn_pattern": true,
-                "not_test_number": false,
-                "not_timestamp": true,
-                "reasonable_length": true,
-                "valid_country": true,
-                "valid_digits": true,
-                "valid_format": true
-              },
-              "validation_path": "document"
-            },
-            "negativeKeywords": [
-              "example"
-            ],
-            "positiveKeywords": [
-              "contact"
-            ],
-            "validator": "phone"
-          },
-          "rank": 66,
-          "ruleId": "PHONE"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "file://<TMPDIR>/clip.wav"
-                },
                 "region": {
                   "endColumn": 29,
                   "snippet": {
@@ -336,6 +261,81 @@
           },
           "rank": 37.5,
           "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/clip.wav"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Comment: contact \nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 30,
+                  "snippet": {
+                    "text": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startColumn": 18,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in clip.wav at line 7 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "clean_number": "2125550142",
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": -3,
+              "country": "US/CA",
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 15,
+              "original_file": "<TMPDIR>/clip.wav",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "positiveKeywords": [
+              "contact"
+            ],
+            "validator": "phone"
+          },
+          "rank": 32.5,
+          "ruleId": "PHONE"
         }
       ],
       "tool": {

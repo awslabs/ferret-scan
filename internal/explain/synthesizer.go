@@ -68,7 +68,10 @@ func (s *SignalSynthesizer) rationale(m detector.Match, checks map[string]bool, 
 
 	// Signals that point toward test / placeholder data.
 	var weak []string
-	if v, ok := checks["not_test"]; ok && !v {
+	// Every validator's own test-check key, not just creditcard's "not_test" —
+	// see testCheckKeys. Before this the "Why" sentence silently omitted the one
+	// signal that mattered most for a reserved or published value.
+	if hasFailedTestCheck(checks) {
 		weak = append(weak, "it matches a known test/placeholder pattern")
 	}
 	if v, ok := checks["not_repeating"]; ok && !v {
@@ -89,6 +92,41 @@ func (s *SignalSynthesizer) rationale(m detector.Match, checks map[string]bool, 
 	return fmt.Sprintf("%s (confidence %.0f%%, %s)", sentence, m.Confidence, tier(m.Confidence))
 }
 
+// testCheckKeys are the validation-check keys that mean "the validator itself
+// judged this value to be test or example data". A false value under any of them
+// is a test signal.
+//
+// There are seven names for one concept because each validator grew its own, and
+// verdict() previously consulted only "not_test" — which creditcard uses and
+// nothing else does. So every other validator's own test judgement was invisible
+// here: a phone number in the NANP reserved fictional range came back
+// `Not Test Number: false` in the rendered check list and `Verdict: likely_real`
+// in the same output, and --explain then advised "REVIEW BEFORE SUPPRESSING".
+//
+// Consulting all seven rather than renaming them keeps this a display-layer fix.
+// The keys are part of each finding's Metadata["validation_checks"], which is
+// machine-readable output that consumers may already parse, so renaming them is a
+// breaking change that belongs in its own PR.
+var testCheckKeys = []string{
+	"not_test",                  // creditcard
+	"not_test_number",           // phone, ssn
+	"not_test_email",            // email
+	"not_test_ip",               // ipaddress
+	"not_test_data",             // personname
+	"not_example",               // passport
+	"not_published_test_secret", // otp
+}
+
+// hasFailedTestCheck reports whether any validator-supplied test check failed.
+func hasFailedTestCheck(checks map[string]bool) bool {
+	for _, k := range testCheckKeys {
+		if v, ok := checks[k]; ok && !v {
+			return true
+		}
+	}
+	return false
+}
+
 // verdict glosses the EXISTING confidence, nudged by explicit test signals.
 // It is never an independent claim and never contradicts a HIGH finding.
 func (s *SignalSynthesizer) verdict(m detector.Match, checks map[string]bool, inTestFile bool) Verdict {
@@ -98,10 +136,7 @@ func (s *SignalSynthesizer) verdict(m detector.Match, checks map[string]bool, in
 		return VerdictLikelyReal
 	}
 
-	testSignal := inTestFile
-	if v, ok := checks["not_test"]; ok && !v {
-		testSignal = true
-	}
+	testSignal := inTestFile || hasFailedTestCheck(checks)
 
 	switch {
 	case testSignal && m.Confidence < mediumConfidence:

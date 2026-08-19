@@ -1,7 +1,7 @@
 LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                          FILE
 --------------------------------------------------------------------------------------------------------
 [MEDIUM] secrets      AWS_ACCESS_KEY         84.00% line     7 AKIAIOSFODNN7EXAMPLE           clip.wav
-[MEDIUM] phone        PHONE                  82.00% line     7 212-555-0142                   clip.wav
 [MEDIUM] metadata     AUTHOR_INFO            80.00% line     6 john.doe@example.com           clip.wav
 [MEDIUM] metadata     DOCUMENT_COMMENTS      65.00% line     7 contact 212-555-0142 or AKI... clip.wav
 [LOW   ] email        BUSINESS               25.00% line     6 john.doe@example.com           clip.wav
+[LOW   ] phone        PHONE                  15.00% line     7 212-555-0142                   clip.wav
