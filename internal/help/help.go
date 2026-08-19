@@ -11,6 +11,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/fatih/color"
+
+	"github.com/awslabs/ferret-scan/v2/internal/version"
 )
 
 // CheckInfo contains standardized information about a check
@@ -188,8 +190,8 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Println("  Environment: FERRET_CONFIG_DIR - Override config directory")
 	fmt.Println()
 	h.colors["header"].Println("SUPPORT:")
-	fmt.Println("  Issues:  https://github.com/awslabs/ferret-scan/issues")
-	fmt.Println("  Source:  https://github.com/awslabs/ferret-scan")
+	fmt.Println("  Issues:  " + version.IssuesURL)
+	fmt.Println("  Source:  " + version.RepositoryURL)
 }
 
 // ShowChecksHelp displays information about all available checks

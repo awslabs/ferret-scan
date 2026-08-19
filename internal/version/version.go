@@ -8,6 +8,20 @@ import (
 	"runtime"
 )
 
+// Project identity that is fixed at author time rather than build time.
+const (
+	// RepositoryURL is the canonical upstream repository, and the single source of
+	// truth for it. Report formats that name where the analyzer came from MUST derive
+	// it from here rather than repeating the literal: SARIF and GitLab SAST once
+	// disagreed about the origin of this scanner because each carried its own copy,
+	// and a consumer comparing two reports of the same scan had no way to tell which
+	// was lying.
+	RepositoryURL = "https://github.com/awslabs/ferret-scan"
+
+	// IssuesURL is where users are told to report problems.
+	IssuesURL = RepositoryURL + "/issues"
+)
+
 // Version information set by semantic-release
 var (
 	// Version is the current version of ferret-scan
