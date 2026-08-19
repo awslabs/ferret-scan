@@ -6,6 +6,8 @@ package gitlabsast
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/awslabs/ferret-scan/v2/internal/version"
 )
 
 // GitLabSecurityReport represents the top-level GitLab Security Report structure
@@ -339,9 +341,10 @@ const (
 	GitLabSASTScanType      = "sast"
 	GitLabSASTCategory      = "sast"
 
-	// Ferret Scan specific constants
+	// Ferret Scan specific constants. FerretAnalyzerURL derives from
+	// internal/version so it cannot drift from the URL the SARIF formatter reports.
 	FerretAnalyzerID   = "ferret-scan"
 	FerretAnalyzerName = "Ferret Scan"
-	FerretAnalyzerURL  = "https://github.com/bank-vaults/ferret-scan"
-	FerretVendorName   = "Bank Vaults"
+	FerretAnalyzerURL  = version.RepositoryURL
+	FerretVendorName   = "Amazon Web Services"
 )

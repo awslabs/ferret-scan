@@ -3,7 +3,10 @@
 
 package sarif
 
-import "github.com/awslabs/ferret-scan/v2/internal/core"
+import (
+	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/version"
+)
 
 // SARIF specification constants
 const (
@@ -19,8 +22,9 @@ const (
 	// ToolName is the name of the ferret-scan tool
 	ToolName = "Ferret Scan"
 
-	// ToolInformationURI is the URL to the ferret-scan repository
-	ToolInformationURI = "https://github.com/awslabs/ferret-scan"
+	// ToolInformationURI is the URL to the ferret-scan repository. Kept as a named
+	// constant so existing references stay valid; the value lives in internal/version.
+	ToolInformationURI = version.RepositoryURL
 )
 
 // SARIF level constants
