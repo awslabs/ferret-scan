@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/audio"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/image"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/legacyole"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/office"
@@ -212,6 +213,7 @@ func NewDefaultRedactionManager(outputDir string, strategy redactors.RedactionSt
 		officeRedactor,
 		legacyole.NewLegacyOLERedactor(outputManager, observer),
 		image.NewImageMetadataRedactor(outputManager, observer),
+		audio.NewAudioRedactor(outputManager, observer),
 	} {
 		if err := manager.RegisterRedactor(r); err != nil {
 			return nil, nil, fmt.Errorf("failed to register redactor %s: %w", r.GetName(), err)
