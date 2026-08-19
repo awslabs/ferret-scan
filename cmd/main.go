@@ -2176,15 +2176,57 @@ func main() {
 		scannedFiles = 0
 	}
 
-	// consideredFiles is every entry this run took responsibility for: the files it
-	// queued to scan PLUS the ones discovery refused. The denominator has to include
-	// both, or the report reads "2 of 1 file" — the refused entries appear in the
-	// numerator while being absent from the total they are counted against.
+	// consideredFiles is every entry this run took responsibility for: the files it queued
+	// to scan, PLUS the ones discovery refused as a coverage loss, PLUS the ones discovery
+	// SKIPPED. The denominator has to include all three, or the report reads "2 of 1 file" —
+	// entries appear in the numerator while being absent from the total they are counted
+	// against.
 	//
-	// Derived once and used by the stats block AND the not-examined report below, for
-	// the same reason the entries themselves are collected once: two independent counts
-	// of the same thing eventually disagree.
-	consideredFiles := len(filesToProcess) + len(discoveryUnexamined)
+	// totalSkipped was the missing term (#342). Every result.SkippedFiles entry increments it
+	// and none of them are ever appended to filesToProcess, so a run with one small .txt plus
+	// one oversize unprocessable file printed total_files=1, files_processed=1,
+	// files_skipped=1 — two files accounted against a total of one, off by exactly one per
+	// discovery-time skip. Measured before this change: gap +1 for one such file, +3 for three.
+	//
+	// # The identity, which is asserted rather than assumed
+	//
+	//	files_processed + files_skipped + files_not_examined
+	//	    == total_files + overlapMetaOnly + overlapCutShort
+	//
+	// The two correction terms are DELIBERATE double counts, not defects: one file legitimately
+	// occupies two categories, because it was both examined and incompletely examined.
+	//
+	//   - overlapMetaOnly: a file whose body yielded no text but whose METADATA produced a
+	//     surviving finding. Counted as scanned (it produced findings) and as not-examined (its
+	//     body was not read). See the silentEmpty comment above: only the genuinely silent ones
+	//     are removed from the scanned count.
+	//
+	//   - overlapCutShort: a file whose validator coverage was cut short — a per-validator
+	//     budget, a cancellation, or a match-budget stop. The pool leaves Result.Error nil for
+	//     these, so the file is counted in ProcessedFiles AND listed in IncompleteFiles.
+	//     Measured: one file under --validator-budget all=1ns gives total_files=1,
+	//     files_processed=1, files_not_examined=1.
+	//
+	// This term is NOT mentioned in #342 and was not documented anywhere; it breaks the naive
+	// sum with no discovery-time skip involved at all, which is why the reconciliation test
+	// asserts the identity WITH its overlap terms rather than asserting a plain sum.
+	//
+	// Two things deliberately absent from the identity:
+	//   - unreadable and failed-processing files are in total_files and in files_not_examined
+	//     but in NEITHER files_processed nor files_skipped. They need no correction term; they
+	//     are what makes the sum close. An assertion of the form
+	//     "files_processed + files_skipped == total_files" is therefore wrong.
+	//   - the scannedFiles clamp above cannot fire: silentEmpty counts a subset of
+	//     emptyExtractionFiles, every one of which is already counted in processedFiles.
+	//
+	// The identity is over ENTRIES, not distinct paths. collectUnscanned does not deduplicate,
+	// so a file that is both body-empty and cut short contributes two entries — which is why
+	// both terms are counted independently rather than as a set union.
+	//
+	// Derived once and used by the stats block AND the not-examined report below, for the same
+	// reason the entries themselves are collected once: two independent counts of the same
+	// thing eventually disagree.
+	consideredFiles := len(filesToProcess) + len(discoveryUnexamined) + totalSkipped
 
 	formatterOptions.Stats = &formatters.ScanStats{
 		TotalFiles:       consideredFiles,
