@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -80,12 +81,23 @@ func buildEmbeddedParts(t *testing.T, n int) []EmbeddedMedia {
 	return out
 }
 
-// timeAssemble runs the assembly and returns the elapsed time plus the combined length.
+// measureAssemble runs the assembly and reports BYTES ALLOCATED, elapsed time, the combined
+// text length and the number of parts routed.
 //
-// The length is the non-vacuity signal. An assembly that stopped appending would be fast
-// and would produce nothing, so a timing-only assertion would happily pass on a function
-// that had been turned into a no-op.
-func timeAssemble(t *testing.T, n, blockSize int) (time.Duration, int, int) {
+// Allocation is the primary signal, not time. The defect is "O(n^2) bytes copied", and bytes
+// copied is exactly what TotalAlloc counts — deterministically, with no dependence on
+// scheduler noise, CI load, or whether -race is enabled. Measured both ways on the same
+// fixtures:
+//
+//	                  60 parts   240 parts   ratio
+//	strings.Builder     29 MB      116 MB     3.96x
+//	string +=          123 MB     1842 MB    15.0x
+//
+// against wall clock, which measured 2.7x locally and 6.4x on a loaded CI macOS runner for the
+// SAME correct code — straddling the 6.0 threshold and turning this guard into a flake. Time is
+// kept only as an absolute ceiling for the case a ratio cannot catch: both samples slowing
+// together.
+func measureAssemble(t *testing.T, n, blockSize int) (alloc uint64, elapsed time.Duration, textLen, calls int) {
 	t.Helper()
 
 	bmp := NewBaseMetadataPreprocessor("probe", "image_metadata")
@@ -94,11 +106,17 @@ func timeAssemble(t *testing.T, n, blockSize int) (time.Duration, int, int) {
 
 	parts := buildEmbeddedParts(t, n)
 
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
 	start := time.Now()
 	text, _, _ := bmp.ProcessEmbeddedMedia("container.docx", parts)
-	elapsed := time.Since(start)
+	elapsed = time.Since(start)
 
-	return elapsed, len(text), router.calls
+	runtime.ReadMemStats(&after)
+
+	return after.TotalAlloc - before.TotalAlloc, elapsed, len(text), router.calls
 }
 
 // TestProcessEmbeddedMediaAssemblyIsNotQuadratic is the guard.
@@ -136,11 +154,13 @@ func timeAssemble(t *testing.T, n, blockSize int) (time.Duration, int, int) {
 // moves with GOMAXPROCS and GC timing across the three CI runners, at a cost of ~1.4GB of
 // churn per run. A gate that flaky is worse than no gate.
 //
-// Driving the assembly loop in isolation gives a 3.6x margin instead — the accumulator
-// measures ~9.5-11.5x against the Builder's ~2.9-3.2x — which is what makes an assertion
-// possible at all. The cost is honest and worth stating: a stub router means only the append
-// loop is pinned here, so a quadratic introduced in part enumeration, in ProcessEmbedded, or
-// in container-side stitching would need its own target.
+// Driving the assembly loop in isolation, and measuring ALLOCATION rather than time, gives a
+// margin that holds everywhere: 3.96x with the Builder against 15.0x with the accumulator, on
+// a figure no scheduler can perturb. That is what makes an assertion possible at all.
+//
+// The cost is honest and worth stating: a stub router means only the append loop is pinned
+// here, so a quadratic introduced in part enumeration, in ProcessEmbedded, or in
+// container-side stitching would need its own target.
 func TestProcessEmbeddedMediaAssemblyIsNotQuadratic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("embedded-media assembly complexity guard skipped in -short mode")
@@ -151,8 +171,8 @@ func TestProcessEmbeddedMediaAssemblyIsNotQuadratic(t *testing.T) {
 		baseN, bigN = 60, 240  // 4x
 	)
 
-	tBase, lenBase, callsBase := timeAssemble(t, baseN, blockSize)
-	tBig, lenBig, callsBig := timeAssemble(t, bigN, blockSize)
+	allocBase, tBase, lenBase, callsBase := measureAssemble(t, baseN, blockSize)
+	allocBig, tBig, lenBig, callsBig := measureAssemble(t, bigN, blockSize)
 
 	// Non-vacuity floors, both directions.
 	//
@@ -172,28 +192,29 @@ func TestProcessEmbeddedMediaAssemblyIsNotQuadratic(t *testing.T) {
 			"being dropped, so this measures the wrong thing", ratio, lenBase, lenBig)
 	}
 
-	ratio := float64(tBig) / float64(tBase)
-	t.Logf("4x parts at %dKB each: %.1fx time (base=%v big=%v, %d -> %d bytes). "+
-		"A Builder is linear in total bytes, so ~4x is expected; the string accumulator this "+
-		"replaced copied the whole prefix per part, i.e. ~16x.",
-		blockSize>>10, ratio, tBase, tBig, lenBase, lenBig)
+	if allocBase == 0 || allocBig == 0 {
+		t.Fatalf("measured zero allocation (%d, %d bytes) — the probe is not running", allocBase, allocBig)
+	}
+	ratio := float64(allocBig) / float64(allocBase)
+	t.Logf("4x parts at %dKB each: %.2fx allocation (%.0fMB -> %.0fMB), %v -> %v elapsed, "+
+		"%d -> %d bytes of text. A Builder is linear in total bytes, so ~4x is expected; the "+
+		"string accumulator this replaced copied the whole prefix per part, i.e. ~16x.",
+		blockSize>>10, ratio, float64(allocBase)/(1<<20), float64(allocBig)/(1<<20),
+		tBase, tBig, lenBase, lenBig)
 
 	// The RATIO is asserted, not just a ceiling.
 	//
-	// A ceiling alone made this guard VACUOUS: restoring the string accumulator measured
-	// 9.5x here against the Builder's 2.9x — unmistakably quadratic — and still passed,
-	// because 70ms is nowhere near any sane wall-clock ceiling. The defect this test exists
-	// for was invisible to it.
+	// A ceiling alone made this guard VACUOUS: restoring the string accumulator was
+	// unmistakably quadratic and still passed, because tens of milliseconds is nowhere near
+	// any sane wall-clock ceiling. The defect this test exists for was invisible to it.
 	//
-	// A ratio is usable here precisely because the base sample is MILLISECONDS, not
-	// microseconds: at 3-7ms scheduler noise does not dominate, unlike the redaction guard
-	// whose base is small enough that only a ceiling is meaningful.
-	//
-	// The threshold sits between the two measurements with room on both sides: linear is
-	// 4.0, the Builder measures ~2.9, the accumulator ~9.5, true quadratic is 16.0.
+	// The threshold sits between the two measurements with room on both sides: linear is 4.0,
+	// the Builder measures 3.96x, the accumulator 15.0x, true quadratic is 16.0. Those are
+	// ALLOCATION figures, which is why the margin holds on every runner — see
+	// measureAssemble for why the wall-clock version of this assertion had to go.
 	const maxGrowth = 6.0
 	if ratio > maxGrowth {
-		t.Errorf("4x the parts cost %.1fx the time (> %.1f) — assembly is scaling with "+
+		t.Errorf("4x the parts allocated %.2fx the bytes (> %.1f) — assembly is scaling with "+
 			"(parts x accumulated bytes) again, i.e. the combined text is being re-copied per "+
 			"part instead of appended", ratio, maxGrowth)
 	}
