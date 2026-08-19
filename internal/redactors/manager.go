@@ -14,6 +14,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 )
 
 // RedactionManager coordinates all redaction operations and manages multiple redactors
@@ -303,12 +304,39 @@ func (rm *RedactionManager) GetRedactorForFile(filePath string) (Redactor, error
 	defer rm.mu.RUnlock()
 
 	ext := strings.ToLower(filepath.Ext(filePath))
-	if ext == "" {
-		return nil, fmt.Errorf("file has no extension: %s", filePath)
-	}
 
 	redactor, exists := rm.redactors[ext]
 	if !exists {
+		// A file whose BYTES are text is redactable as text, whatever it is named.
+		//
+		// The scanner admits files by SNIFFING them — router.isTextFile reads the first 512
+		// bytes and asks preprocessors.LooksLikeText — so it happily scans .env, .tfvars, .sql,
+		// .py, .sh, .properties, .toml, .pem, Dockerfile and Makefile. Redactor selection
+		// instead matched an eleven-extension allowlist, so every one of those was scanned,
+		// reported findings, and could never produce a redacted copy. Measured on a file
+		// holding an AWS secret key and a database password: 3 findings, no output file,
+		// exit 0, for all eleven names above, while the same content in a .txt redacted fine.
+		//
+		// This is the same "reported but unredactable" failure as #306, and .env is the single
+		// likeliest file in a repository to hold a live credential.
+		//
+		// The fix reuses the SNIFF rather than lengthening the list, so the two decisions
+		// cannot drift apart again: whatever the scanner is willing to read as text, the
+		// redactor is willing to write as text. A longer allowlist is a list of names someone
+		// thought of, and the failure being fixed is a name nobody thought of.
+		//
+		// Binary files are not at risk. LooksLikeText is the null-byte-and-encoding sniff the
+		// text preprocessor uses, and it returns false for every binary container this tool
+		// handles — verified against real .mp3, .m4a, .flac, .wav, .jpg, .png, .zip and
+		// arbitrary byte soup. Those keep falling through to the refusal below, which is
+		// disclosed. It returns TRUE for UTF-16 text, which a naive null-byte check would
+		// have rejected.
+		if plain, ok := rm.redactors[".txt"]; ok && looksLikeTextFile(filePath) {
+			return plain, nil
+		}
+		if ext == "" {
+			return nil, fmt.Errorf("file has no extension and its bytes are not text: %s", filePath)
+		}
 		return nil, fmt.Errorf("no redactor registered for file type: %s", ext)
 	}
 
@@ -331,6 +359,34 @@ func (rm *RedactionManager) GetRedactorForFile(filePath string) (Redactor, error
 	}
 
 	return redactor, nil
+}
+
+// looksLikeTextFile reports whether a file's leading bytes are text, using the SAME sniff that
+// decided to scan it.
+//
+// Shared deliberately rather than reimplemented: preprocessors.LooksLikeText is what
+// router.isTextFile calls to admit a file for scanning, so routing this through it makes scan
+// coverage and redact coverage agree by construction. Two local definitions of "text" would
+// eventually disagree, and the direction they disagree in is a file that gets scanned and
+// cannot be redacted — which is the bug this exists to close.
+//
+// A read failure is false, not an error: the caller's next step is a refusal that gets
+// disclosed either way, and a file that cannot be opened here cannot be redacted anyway.
+// A zero-byte file is false too — router.isTextFile calls an empty file text so it is not
+// reported as unreadable, but an empty file has no findings to remove.
+func looksLikeTextFile(filePath string) bool {
+	f, err := os.Open(filepath.Clean(filePath)) // #nosec G304 -- path already vetted by the router
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	if n == 0 {
+		return false
+	}
+	return preprocessors.LooksLikeText(buf[:n])
 }
 
 // containerRedactorExtensions are the extensions handled by a redactor that
