@@ -339,9 +339,13 @@ const (
 	GitLabSASTScanType      = "sast"
 	GitLabSASTCategory      = "sast"
 
-	// Ferret Scan specific constants
+	// Ferret Scan specific constants.
+	//
+	// FerretAnalyzerURL must stay in sync with sarif.ToolInformationURI — both name
+	// the upstream repository, and a GitLab report that disagrees with the SARIF
+	// report about where the analyzer comes from is a report nobody can trace.
 	FerretAnalyzerID   = "ferret-scan"
 	FerretAnalyzerName = "Ferret Scan"
-	FerretAnalyzerURL  = "https://github.com/bank-vaults/ferret-scan"
-	FerretVendorName   = "Bank Vaults"
+	FerretAnalyzerURL  = "https://github.com/awslabs/ferret-scan"
+	FerretVendorName   = "Amazon Web Services"
 )

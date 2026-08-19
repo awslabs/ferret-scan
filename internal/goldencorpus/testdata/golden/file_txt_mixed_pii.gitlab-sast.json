@@ -4,9 +4,9 @@
     "analyzer": {
       "id": "ferret-scan",
       "name": "Ferret Scan",
-      "url": "https://github.com/bank-vaults/ferret-scan",
+      "url": "https://github.com/awslabs/ferret-scan",
       "vendor": {
-        "name": "Bank Vaults"
+        "name": "Amazon Web Services"
       },
       "version": "0.0.0-development"
     },
@@ -14,9 +14,9 @@
     "scanner": {
       "id": "ferret-scan",
       "name": "Ferret Scan",
-      "url": "https://github.com/bank-vaults/ferret-scan",
+      "url": "https://github.com/awslabs/ferret-scan",
       "vendor": {
-        "name": "Bank Vaults"
+        "name": "Amazon Web Services"
       },
       "version": "0.0.0-development"
     },
