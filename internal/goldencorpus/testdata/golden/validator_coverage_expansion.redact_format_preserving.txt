@@ -13,7 +13,7 @@ the authentication protocol requires base configuration
 === FINDINGS (sorted) ===
 type=DRIVERS_LICENSE line=5 conf=medium match=D12345678901234
 type=DRIVERS_LICENSE line=6 conf=medium match=J1234567890123
-type=OTP_SECRET line=7 conf=medium match=jbswy3dpehpk3pxp
+type=OTP_SECRET line=7 conf=medium match=k5cuwy3znrxw4z3t
 type=US_MILITARY_ADDRESS line=1 conf=high match=PSC 1523, Box 25, APO AE 09009
 type=US_RURAL_ROUTE line=2 conf=high match=Rural Route 3 Box 88
 type=US_RURAL_ROUTE line=8 conf=low match=RR 4

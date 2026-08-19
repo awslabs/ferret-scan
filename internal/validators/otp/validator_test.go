@@ -10,6 +10,13 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
+// The base32 secrets in this file are deliberately NOT the otpauth documentation
+// example (JBSWY3DPEHPK3PXP) or the RFC 4226/6238 test seed (GEZDGNBVGY3TQOJQ...),
+// which every TOTP tutorial reproduces. Those are now capped at the top of LOW as
+// published test secrets, so a test asserting HIGH confidence for one of them
+// asserts the defect. Use an invented base32 value here; the published ones belong
+// only in published_secret_test.go, which asserts the cap.
+
 func TestOTPValidator_OTPAuthURIs(t *testing.T) {
 	validator := NewValidator()
 
@@ -22,7 +29,7 @@ func TestOTPValidator_OTPAuthURIs(t *testing.T) {
 	}{
 		{
 			name:        "Standard TOTP URI",
-			content:     `otpauth://totp/Example:alice@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example`,
+			content:     `otpauth://totp/Example:alice@example.com?secret=K5CUWY3ZNRXW4Z3T&issuer=Example`,
 			expectMatch: true,
 			matchType:   "OTPAUTH_URI",
 			description: "Standard TOTP provisioning URI",
@@ -36,7 +43,7 @@ func TestOTPValidator_OTPAuthURIs(t *testing.T) {
 		},
 		{
 			name:        "TOTP URI without issuer param",
-			content:     `otpauth://totp/MyApp:user@domain.com?secret=GEZDGNBVGY3TQOJQ`,
+			content:     `otpauth://totp/MyApp:user@domain.com?secret=MFYGC4TLLBQXA5DP`,
 			expectMatch: true,
 			matchType:   "OTPAUTH_URI",
 			description: "TOTP URI with minimal parameters",
@@ -50,7 +57,7 @@ func TestOTPValidator_OTPAuthURIs(t *testing.T) {
 		},
 		{
 			name:        "URI with algorithm and digits params",
-			content:     `otpauth://totp/AWS:root@account.com?secret=JBSWY3DPEHPK3PXP&algorithm=SHA256&digits=8&period=30`,
+			content:     `otpauth://totp/AWS:root@account.com?secret=K5CUWY3ZNRXW4Z3T&algorithm=SHA256&digits=8&period=30`,
 			expectMatch: true,
 			matchType:   "OTPAUTH_URI",
 			description: "URI with full parameter set",
@@ -90,7 +97,7 @@ func TestOTPValidator_Base32Secrets(t *testing.T) {
 	}{
 		{
 			name:        "TOTP secret with authenticator keyword",
-			content:     "Google Authenticator secret key: JBSWY3DPEHPK3PXP",
+			content:     "Google Authenticator secret key: K5CUWY3ZNRXW4Z3T",
 			expectMatch: true,
 			matchType:   "OTP_SECRET",
 			description: "Base32 secret with authenticator context",
@@ -104,7 +111,7 @@ func TestOTPValidator_Base32Secrets(t *testing.T) {
 		},
 		{
 			name:        "Secret with TOTP keyword",
-			content:     "TOTP seed: GEZDGNBVGY3TQOJQ",
+			content:     "TOTP seed: MFYGC4TLLBQXA5DP",
 			expectMatch: true,
 			matchType:   "OTP_SECRET",
 			description: "Base32 secret with TOTP keyword",
@@ -118,7 +125,7 @@ func TestOTPValidator_Base32Secrets(t *testing.T) {
 		},
 		{
 			name:        "Secret key from OTP enrollment",
-			content:     "Your OTP enrollment secret is NBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+			content:     "Your OTP enrollment secret is NBSWY3DPEHPK3PXPK5CUWY3ZNRXW4Z3T",
 			expectMatch: true,
 			matchType:   "OTP_SECRET",
 			description: "32-char secret from OTP enrollment",
@@ -152,11 +159,11 @@ func TestOTPValidator_Base32Secrets(t *testing.T) {
 func TestOTPValidator_ExtraPositiveKeywords(t *testing.T) {
 	validator := NewValidator()
 	for _, content := range []string{
-		"passcode secret JBSWY3DPEHPK3PXP",
-		"one time password JBSWY3DPEHPK3PXP",
-		"two-step secret key JBSWY3DPEHPK3PXP",
-		"authentication code JBSWY3DPEHPK3PXP",
-		"security code seed JBSWY3DPEHPK3PXP",
+		"passcode secret K5CUWY3ZNRXW4Z3T",
+		"one time password K5CUWY3ZNRXW4Z3T",
+		"two-step secret key K5CUWY3ZNRXW4Z3T",
+		"authentication code K5CUWY3ZNRXW4Z3T",
+		"security code seed K5CUWY3ZNRXW4Z3T",
 	} {
 		matches, err := validator.ValidateContent(content, "test.txt")
 		if err != nil {
@@ -187,7 +194,7 @@ func TestOTPValidator_SessionAndDeviceGating(t *testing.T) {
 
 	// "session" without a JWT must NOT suppress a real TOTP secret.
 	got, err := validator.ValidateContent(
-		"2FA authenticator secret key JBSWY3DPEHPK3PXP for this session", "test.txt")
+		"2FA authenticator secret key K5CUWY3ZNRXW4Z3T for this session", "test.txt")
 	if err != nil {
 		t.Fatalf("ValidateContent() error = %v", err)
 	}
@@ -364,7 +371,7 @@ func TestOTPValidator_FalsePositives(t *testing.T) {
 	}{
 		{
 			name:    "Random base32 without context",
-			content: "JBSWY3DPEHPK3PXP",
+			content: "K5CUWY3ZNRXW4Z3T",
 		},
 		{
 			name:    "License key pattern",
@@ -388,11 +395,11 @@ func TestOTPValidator_FalsePositives(t *testing.T) {
 		},
 		{
 			name:    "Base32 with test keyword",
-			content: "test secret: JBSWY3DPEHPK3PXP",
+			content: "test secret: K5CUWY3ZNRXW4Z3T",
 		},
 		{
 			name:    "Base32 with example keyword",
-			content: "example TOTP: JBSWY3DPEHPK3PXP",
+			content: "example TOTP: K5CUWY3ZNRXW4Z3T",
 		},
 		{
 			name:    "Single dash-separated block without recovery context",
@@ -434,9 +441,9 @@ func TestOTPValidator_ContextAnalysis(t *testing.T) {
 
 	t.Run("Positive keywords boost confidence", func(t *testing.T) {
 		matchAuth, _ := validator.ValidateContent(
-			"Google Authenticator secret key: JBSWY3DPEHPK3PXP", "test.txt")
+			"Google Authenticator secret key: K5CUWY3ZNRXW4Z3T", "test.txt")
 		matchBare, _ := validator.ValidateContent(
-			"OTP key JBSWY3DPEHPK3PXP", "test.txt")
+			"OTP key K5CUWY3ZNRXW4Z3T", "test.txt")
 
 		if len(matchAuth) == 0 {
 			t.Fatal("Expected match with authenticator context")
@@ -453,9 +460,9 @@ func TestOTPValidator_ContextAnalysis(t *testing.T) {
 
 	t.Run("Negative keywords reduce confidence", func(t *testing.T) {
 		matchPositive, _ := validator.ValidateContent(
-			`otpauth://totp/App:user@test.com?secret=JBSWY3DPEHPK3PXP`, "test.txt")
+			`otpauth://totp/App:user@test.com?secret=K5CUWY3ZNRXW4Z3T`, "test.txt")
 		matchNegative, _ := validator.ValidateContent(
-			`example demo otpauth://totp/App:user@test.com?secret=JBSWY3DPEHPK3PXP`, "test.txt")
+			`example demo otpauth://totp/App:user@test.com?secret=K5CUWY3ZNRXW4Z3T`, "test.txt")
 
 		if len(matchPositive) == 0 {
 			t.Fatal("Expected match in positive context")
@@ -481,8 +488,8 @@ func TestOTPValidator_AnalyzeContextMethod(t *testing.T) {
 	}{
 		{
 			name:           "Authenticator keyword positive",
-			match:          "JBSWY3DPEHPK3PXP",
-			line:           "Google Authenticator secret: JBSWY3DPEHPK3PXP",
+			match:          "K5CUWY3ZNRXW4Z3T",
+			line:           "Google Authenticator secret: K5CUWY3ZNRXW4Z3T",
 			expectedImpact: "positive",
 		},
 		{
@@ -493,14 +500,14 @@ func TestOTPValidator_AnalyzeContextMethod(t *testing.T) {
 		},
 		{
 			name:           "2FA keyword positive",
-			match:          "JBSWY3DPEHPK3PXP",
-			line:           "2FA setup key: JBSWY3DPEHPK3PXP",
+			match:          "K5CUWY3ZNRXW4Z3T",
+			line:           "2FA setup key: K5CUWY3ZNRXW4Z3T",
 			expectedImpact: "positive",
 		},
 		{
 			name:           "Test keyword negative",
-			match:          "JBSWY3DPEHPK3PXP",
-			line:           "test example: JBSWY3DPEHPK3PXP",
+			match:          "K5CUWY3ZNRXW4Z3T",
+			line:           "test example: K5CUWY3ZNRXW4Z3T",
 			expectedImpact: "negative",
 		},
 	}
@@ -537,7 +544,7 @@ func TestOTPValidator_CalculateConfidence(t *testing.T) {
 	}{
 		{
 			name:          "OTPAuth URI with secret param",
-			match:         "otpauth://totp/App:user@domain.com?secret=JBSWY3DPEHPK3PXP&issuer=App",
+			match:         "otpauth://totp/App:user@domain.com?secret=K5CUWY3ZNRXW4Z3T&issuer=App",
 			minConfidence: 90,
 			maxConfidence: 100,
 		},
@@ -549,13 +556,13 @@ func TestOTPValidator_CalculateConfidence(t *testing.T) {
 		},
 		{
 			name:          "16-char base32 secret",
-			match:         "JBSWY3DPEHPK3PXP",
+			match:         "K5CUWY3ZNRXW4Z3T",
 			minConfidence: 50,
 			maxConfidence: 70,
 		},
 		{
 			name:          "32-char base32 secret",
-			match:         "NBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+			match:         "NBSWY3DPEHPK3PXPK5CUWY3ZNRXW4Z3T",
 			minConfidence: 60,
 			maxConfidence: 80,
 		},
@@ -602,7 +609,7 @@ func TestOTPValidator_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("Multiple OTP findings on separate lines", func(t *testing.T) {
-		content := "otpauth://totp/App:user@ex.com?secret=JBSWY3DPEHPK3PXP\nMFA secret: HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ"
+		content := "otpauth://totp/App:user@ex.com?secret=K5CUWY3ZNRXW4Z3T\nMFA secret: HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ"
 		matches, err := validator.ValidateContent(content, "test.txt")
 		if err != nil {
 			t.Fatalf("ValidateContent() error = %v", err)
@@ -627,7 +634,7 @@ func TestOTPValidator_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("Unicode content does not crash", func(t *testing.T) {
-		content := "2FA secret: JBSWY3DPEHPK3PXP with unicode chars"
+		content := "2FA secret: K5CUWY3ZNRXW4Z3T with unicode chars"
 		matches, err := validator.ValidateContent(content, "test.txt")
 		if err != nil {
 			t.Fatalf("ValidateContent() error = %v", err)
@@ -638,7 +645,7 @@ func TestOTPValidator_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("Metadata fields present", func(t *testing.T) {
-		content := `otpauth://totp/App:user@ex.com?secret=JBSWY3DPEHPK3PXP`
+		content := `otpauth://totp/App:user@ex.com?secret=K5CUWY3ZNRXW4Z3T`
 		matches, err := validator.ValidateContent(content, "secrets.txt")
 		if err != nil {
 			t.Fatalf("ValidateContent() error = %v", err)
@@ -701,11 +708,11 @@ func TestOTPValidator_IsValidBase32(t *testing.T) {
 		input string
 		valid bool
 	}{
-		{"JBSWY3DPEHPK3PXP", true},                 // 16 chars, valid
+		{"K5CUWY3ZNRXW4Z3T", true},                 // 16 chars, valid
 		{"HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ", true}, // 32 chars, valid
 		{"ABC", false},                             // Too short
 		{"JBSWY3DPEHPK3PX!", false},                // Invalid char
-		{"jbswy3dpehpk3pxp", false},                // Lowercase not valid base32
+		{"k5cuwy3znrxw4z3t", false},                // Lowercase not valid base32
 		{"ABCDEFGHIJKLMNOP", true},                 // 16 chars A-Z only
 		{"1234567890123456", false},                // Digits 0,1,8,9 invalid in base32
 		{"AAAAAAAAAAAAAAAA", true},                 // Valid base32 (though suspicious)
@@ -752,7 +759,7 @@ func TestOTPValidator_IsLikelyWord(t *testing.T) {
 	}{
 		{"AAAAAAAAAAAAAAAA", true},  // All same
 		{"ABABABABABABABAB", true},  // Repeating pair
-		{"JBSWY3DPEHPK3PXP", false}, // Random-looking
+		{"K5CUWY3ZNRXW4Z3T", false}, // Random-looking
 		{"HXDMVJECJJWSRB3H", false}, // Random-looking
 	}
 
@@ -778,9 +785,9 @@ func TestOTPValidator_LowercaseBase32Secrets(t *testing.T) {
 	}{
 		{
 			name:        "Lowercase TOTP secret with context",
-			content:     "totp secret: jbswy3dpehpk3pxp",
+			content:     "totp secret: k5cuwy3znrxw4z3t",
 			expectMatch: true,
-			matchText:   "jbswy3dpehpk3pxp",
+			matchText:   "k5cuwy3znrxw4z3t",
 			description: "Lowercase base32 with TOTP keyword should match",
 		},
 		{
@@ -792,7 +799,7 @@ func TestOTPValidator_LowercaseBase32Secrets(t *testing.T) {
 		},
 		{
 			name:        "Lowercase base32 without context",
-			content:     "random data: jbswy3dpehpk3pxp here",
+			content:     "random data: k5cuwy3znrxw4z3t here",
 			expectMatch: false,
 			description: "Lowercase base32 without OTP keywords should not match",
 		},
@@ -804,7 +811,7 @@ func TestOTPValidator_LowercaseBase32Secrets(t *testing.T) {
 		},
 		{
 			name:        "Lowercase with negative context suppression",
-			content:     "test example totp key: jbswy3dpehpk3pxp",
+			content:     "test example totp key: k5cuwy3znrxw4z3t",
 			expectMatch: false,
 			description: "Negative keywords should suppress even lowercase matches",
 		},
@@ -842,7 +849,7 @@ func TestOTPValidator_SecretInsideOTPAuthURI(t *testing.T) {
 
 	// When a base32 secret appears inside an otpauth URI, we should not
 	// double-report it as both an OTPAUTH_URI and an OTP_SECRET.
-	content := "2FA otpauth://totp/App:user@ex.com?secret=JBSWY3DPEHPK3PXP&issuer=App"
+	content := "2FA otpauth://totp/App:user@ex.com?secret=K5CUWY3ZNRXW4Z3T&issuer=App"
 	matches, err := validator.ValidateContent(content, "test.txt")
 	if err != nil {
 		t.Fatalf("ValidateContent() error = %v", err)

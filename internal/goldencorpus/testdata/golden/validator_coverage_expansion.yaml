@@ -117,7 +117,7 @@ results:
             not_all_zeros: true
             not_sequential: false
         validation_path: document
-    - text: jbswy3dpehpk3pxp
+    - text: k5cuwy3znrxw4z3t
       line_number: 7
       type: OTP_SECRET
       confidence: 85

@@ -22,7 +22,7 @@ repos:
   # PYTHON SECURITY
   # ============================================================================
   - repo: https://github.com/pypa/pip-audit
-    rev: v2.10.0
+    rev: v2.10.1
     hooks:
       - id: pip-audit
         args: ["-r", "requirements.txt"]
@@ -32,12 +32,12 @@ repos:
   # SECURITY SCANNING
   # ============================================================================
   - repo: https://github.com/awslabs/automated-security-helper
-    rev: v3.5.3
+    rev: v3.5.9
     hooks:
       - id: ash-simple-scan
 
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.8.3
+    rev: v2.3.2
     hooks:
       - id: ferret-scan
         name: Ferret Scan Security Check
@@ -47,14 +47,13 @@ repos:
             "--confidence",
             "medium,high",
             "--checks",
-            "EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,SECRETS,SOCIAL_MEDIA",
+            "CLOUD_RESOURCES,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,OTP,SECRETS,SOCIAL_MEDIA",
             "--disable-ip-types",
             "trademark,copyright,trade_secret",
             "--config",
             ".devsecops/ferret-scan.yaml",
           ]
-        files: '\.(go|java|json|md|py|sh|sql|txt|xml|yaml|yml)$'
-        # Note: .js files temporarily removed from files pending performance fix
+        files: '\.(go|java|json|kt|kts|md|py|sh|sql|swift|txt|xml|yaml|yml)$'
         exclude: '(^\.git/|\.ash/|\.cache/|\.devsecops/|\.dsr/|\.idea/|\.kiro/|\.venv/|\.virtualenv/|__pycache__/|\.pytest_cache/|\.mypy_cache/|\.ruff_cache/|\.tox/|\.terraform/|\.next/|\.nuxt/|\.svelte-kit/|\.turbo/|\.docusaurus/|_build/|site/|bin/|cdk\.out/|dist/|node_modules/|\.pnpm-store/|\.yarn/|bower_components/|\.vscode/|out/|\.output/|\.nyc_output/|test-results/|reports/|tmp/|temp/|logs/|setup\.sh|vendor/|Pods/|venv/|test_|_test\.|^README\.md$|\.DS_Store$|Thumbs\.db$|.*\.pyc$|.*\.pyo$|.*\.swp$|.*\.swo$|.*\.log$|package-lock\.json$|yarn\.lock$|pnpm-lock\.yaml$|poetry\.lock$|Pipfile\.lock$|Gemfile\.lock$|\.terraform\.lock\.hcl$|terraform\.tfstate$|cdk\.context\.json$)'
         pass_filenames: true
 
@@ -62,13 +61,13 @@ repos:
   # INFRASTRUCTURE SECURITY
   # ============================================================================
   - repo: https://github.com/aws-cloudformation/cfn-lint
-    rev: v1.51.2
+    rev: v1.55.1
     hooks:
       - id: cfn-lint
         exclude: ^\.*
 
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.105.0
+    rev: v1.108.1
     hooks:
       - id: terraform_tflint
         files: '\.tf$'
@@ -79,6 +78,15 @@ repos:
   # ============================================================================
   # LICENSE COMPLIANCE
   # ============================================================================
+  # DO NOT bump to 2026.x — `pre-commit autoupdate` will try to. Two regressions
+  # break template consumers:
+  #   1. No pyproject.toml -> hard crash "RuntimeError: All resolvers failed".
+  #      The CLI's hardcoded requirements_paths default ("pyproject.toml")
+  #      overrides the value set in licensecheck.toml, so a project using
+  #      requirements.txt still crashes. Passing --requirements-paths works
+  #      around it, but every path listed must exist or it crashes again.
+  #   2. A project with zero dependencies exits 3 instead of 0.
+  # 2025.1.0 prints "No packages" and exits 0 in both cases.
   - repo: https://github.com/FHPythonUtils/LicenseCheck
     rev: "2025.1.0"
     hooks:

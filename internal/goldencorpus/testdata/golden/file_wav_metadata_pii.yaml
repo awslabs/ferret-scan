@@ -33,43 +33,6 @@ results:
             test_environment_penalty: true
             valid_format: true
         validation_path: document
-    - text: 212-555-0142
-      line_number: 7
-      type: PHONE
-      confidence: 82
-      confidence_level: MEDIUM
-      filename: <TMPDIR>/clip.wav
-      validator: phone
-      metadata:
-        clean_number: "2125550142"
-        confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Configuration
-        context_domain: Unknown
-        context_impact: -3
-        country: US/CA
-        format: XXX-XXX-XXXX
-        original_confidence: 82
-        original_file: <TMPDIR>/clip.wav
-        pattern_name: US_Dashed
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
-        source: preprocessed_content
-        validation_checks:
-            not_repeating: true
-            not_sequential: true
-            not_ssn_pattern: true
-            not_test_number: false
-            not_timestamp: true
-            reasonable_length: true
-            valid_country: true
-            valid_digits: true
-            valid_format: true
-        validation_path: document
     - text: john.doe@example.com
       line_number: 6
       type: AUTHOR_INFO
@@ -175,4 +138,41 @@ results:
             valid_format: true
             valid_tld: true
             valid_username: true
+        validation_path: document
+    - text: 212-555-0142
+      line_number: 7
+      type: PHONE
+      confidence: 15
+      confidence_level: LOW
+      filename: <TMPDIR>/clip.wav
+      validator: phone
+      metadata:
+        clean_number: "2125550142"
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Configuration
+        context_domain: Unknown
+        context_impact: -3
+        country: US/CA
+        format: XXX-XXX-XXXX
+        original_confidence: 15
+        original_file: <TMPDIR>/clip.wav
+        pattern_name: US_Dashed
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            not_repeating: true
+            not_sequential: true
+            not_ssn_pattern: true
+            not_test_number: false
+            not_timestamp: true
+            reasonable_length: true
+            valid_country: true
+            valid_digits: true
+            valid_format: true
         validation_path: document

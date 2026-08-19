@@ -26,7 +26,7 @@ var (
 	reBase32Secret = regexp.MustCompile(`\b[A-Z2-7]{16,64}\b`)
 
 	// Lowercase base32 secrets: same charset but lowercase. Some tools/configs emit
-	// secrets in lowercase (e.g., "jbswy3dpehpk3pxp"). Matched separately and only
+	// secrets in lowercase (e.g., "k5cuwy3znrxw4z3t"). Matched separately and only
 	// considered when positive OTP context is present on the line.
 	reBase32SecretLower = regexp.MustCompile(`\b[a-z2-7]{16,64}\b`)
 
@@ -51,6 +51,126 @@ var (
 
 	// JWT pattern to exclude "token" keyword false positives.
 	reJWT = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
+
+	// reOTPAuthSecretParam captures the secret= parameter of an otpauth:// URI, so
+	// a URI carrying a published example secret can be recognized as the example
+	// it is. Without this, suppressing the bare secret still left the enclosing
+	// URI reported at 100 HIGH.
+	reOTPAuthSecretParam = regexp.MustCompile(`(?i)[?&]secret=([A-Za-z2-7=]+)`)
+)
+
+// publishedSecretCeiling is the highest confidence a published test secret may
+// carry — the top of LOW, matching phone's reservedFictionalCeiling and the cap
+// creditcard applies to known test cards, so all three treat the same class of
+// value alike.
+const publishedSecretCeiling = 15.0
+
+// publishedTestSecrets are shared secrets printed in specifications and vendor
+// documentation, and therefore known to everyone.
+//
+// The reasoning differs from every other entry in this file. Elsewhere the
+// question is "does this LOOK like a secret" — here the value provably is one,
+// and is reported anyway because a secret published in an RFC and copied into
+// every TOTP tutorial protects nothing. Even in the unlikely case that someone
+// really provisioned one of these, disclosing it discloses nothing that was not
+// already public, so there is nothing for a report to warn about and nothing for
+// redaction to protect.
+//
+// Keys are uppercase, unpadded base32 — the canonical form equalBase32Fold
+// compares against. A slice rather than a map so the scan order is fixed; at most
+// one entry can match a given value, but a fixed order keeps that a property of
+// the code rather than of Go's map iteration.
+var publishedTestSecrets = []struct {
+	key, source string
+}{
+	// RFC 6238 Appendix B test vector seed, ASCII "12345678901234567890".
+	{"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", "RFC 6238 Appendix B test vector"},
+	// RFC 4226 Appendix D uses the same 20-byte ASCII seed for HOTP.
+	{"GEZDGNBVGY3TQOJQ", "RFC 4226 / RFC 6238 test seed (first 10 bytes)"},
+	// The secret in the Key Uri Format examples, reproduced in essentially every
+	// authenticator tutorial and QR-code sample.
+	{"JBSWY3DPEHPK3PXP", "otpauth Key Uri Format documentation example"},
+}
+
+// equalBase32Fold reports whether s is key, ignoring ASCII case and skipping the
+// '=' padding base32 permits and the spaces or dashes humans add for readability.
+//
+// Allocation-free on purpose. The first version normalized s into a new string
+// (strings.ToUpper over a strings.Replacer) before a map lookup, which ran for
+// every candidate on every line: measured on a line of 800 base32 secrets that
+// cost +127% bytes allocated and +19% wall time against main. Comparing in place
+// removed all of it.
+//
+// Only those three characters are skipped, never "anything outside the base32
+// alphabet" — that broader rule would fold "JBSWY3DPEHPK3PXP0" onto the published
+// secret and demote a different value, which is exactly the over-reach a
+// suppression must not have.
+func equalBase32Fold(s, key string) bool {
+	j := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '=' || c == ' ' || c == '-' {
+			continue
+		}
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		if j >= len(key) || c != key[j] {
+			return false
+		}
+		j++
+	}
+	return j == len(key)
+}
+
+// publishedTestSecretFor returns the documentation source for an exact published
+// secret, or false.
+func publishedTestSecretFor(s string) (string, bool) {
+	for _, p := range publishedTestSecrets {
+		if equalBase32Fold(s, p.key) {
+			return p.source, true
+		}
+	}
+	return "", false
+}
+
+// publishedTestSecretIn reports the documentation source when text is, or
+// carries, a published test secret.
+//
+// Handles both reported shapes: a bare secret (OTP_SECRET, whose Text is the
+// secret) and a provisioning URI (OTPAUTH_URI, whose Text is the whole URI and
+// whose secret sits in a query parameter).
+// Both arms are length- and shape-gated first, so the common case — an ordinary
+// secret or URI — costs two integer comparisons and one substring probe rather
+// than a normalization (which allocates) plus a regex. emit runs this for every
+// candidate on every line, and per-match line work is how this validator family
+// became quadratic on dense input before.
+func publishedTestSecretIn(text string) (string, bool) {
+	// A bare secret. The keys are 16 and 32 characters; maxPublishedSecretLen
+	// leaves room for '=' padding and readability separators, and anything longer
+	// cannot normalize onto one.
+	if len(text) >= minPublishedSecretLen && len(text) <= maxPublishedSecretLen {
+		if src, ok := publishedTestSecretFor(text); ok {
+			return src, true
+		}
+	}
+	// A provisioning URI carrying one in its secret= parameter.
+	if strings.Contains(text, "otpauth") {
+		if m := reOTPAuthSecretParam.FindStringSubmatch(text); m != nil {
+			if src, ok := publishedTestSecretFor(m[1]); ok {
+				return src, true
+			}
+		}
+	}
+	return "", false
+}
+
+// Bounds on the raw length of a value that could normalize onto a
+// publishedTestSecrets key. The shortest key is 16 characters; the longest is 32,
+// and 48 leaves generous room for padding and space- or dash-grouping around it.
+const (
+	minPublishedSecretLen = 16
+	maxPublishedSecretLen = 48
 )
 
 // containsKeyword reports whether text contains keyword as a whole word/phrase,
@@ -196,12 +316,37 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// per-match path; only the redundant per-match line scans are gone.
 		emit := func(start, length int, matchType string, applyNegative bool) {
 			text := line[start : start+length]
+
 			confidence, checks := v.CalculateConfidence(text)
 			confidence += lc.impact
 			if applyNegative && lc.hasNeg {
 				confidence -= 30
 			}
 			confidence = v.clampConfidence(confidence)
+
+			// Published-secret ceiling, applied AFTER context so context cannot
+			// lift it. A secret printed in an RFC and copied into every
+			// authenticator tutorial protects nothing, so it must not present as a
+			// real credential: measured before this, "TOTP secret JBSWY3DPEHPK3PXP
+			// for the authenticator app" scored 95 HIGH, the otpauth:// URI
+			// carrying the same secret scored 100, and the RFC 6238 Appendix B seed
+			// scored 100.
+			//
+			// Capped rather than dropped, for the reason spelled out in
+			// phone/validator.go: only reported findings are redacted, and these
+			// values are also what this repo's own fixtures and golden corpus use
+			// to exercise OTP detection at all. A cap keeps that coverage and keeps
+			// the redaction path, while making MEDIUM/HIGH unreachable.
+			// Recorded in checks rather than as a new Metadata key so the flag
+			// reaches --explain through the existing validation_checks channel
+			// without adding a field to every OTP finding's output.
+			if _, published := publishedTestSecretIn(text); published {
+				checks["not_published_test_secret"] = false
+				if confidence > publishedSecretCeiling {
+					confidence = publishedSecretCeiling
+				}
+			}
+
 			if confidence <= 0 {
 				return
 			}

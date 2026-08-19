@@ -55,32 +55,6 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** MEDIUM (82.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- context_impact: -3\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "PHONE"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "phone"
-        }
-      ],
-      "location": {
-        "end_line": 7,
-        "file": "clip.wav",
-        "start_line": 7
-      },
-      "message": "Phone number detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Phone Number Detected",
-      "severity": "High"
-    },
-    {
-      "category": "sast",
-      "confidence": "High",
       "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 6)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nArtist: john.doe@example.com\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
       "identifiers": [
@@ -154,6 +128,32 @@
       },
       "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
       "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** LOW (15.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- context_impact: -3\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PHONE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "phone"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "clip.wav",
+        "start_line": 7
+      },
+      "message": "Phone number detected: [HIDDEN] (confidence: LOW)",
+      "name": "Phone Number Detected",
       "severity": "Medium"
     }
   ]

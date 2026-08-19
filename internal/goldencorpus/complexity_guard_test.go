@@ -196,7 +196,7 @@ var complexityTargets = []struct {
 	{
 		name:            "otp",
 		new:             func() validatorUnderTest { return otp.NewValidator() },
-		unit:            "2fa secret JBSWY3DPEHPK3PXP totp KRUGKIDROVUWG2ZA backup code abcd-efgh-1234 ",
+		unit:            "2fa secret K5CUWY3ZNRXW4Z3T totp KRUGKIDROVUWG2ZA backup code abcd-efgh-1234 ",
 		minMatches:      800,
 		wantMatchGrowth: true,
 		threshold:       5 * time.Second,

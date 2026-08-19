@@ -26,7 +26,57 @@ var (
 	ssnPattern             = regexp.MustCompile(`^\d{3}[-.\s]\d{2}[-.\s]\d{4}$`)
 	phoneMultiSpacePattern = regexp.MustCompile(`\s{2,}`)
 	namePhonePattern       = regexp.MustCompile(`[A-Z][a-z]+\s+[A-Z][a-z]+\s+\(?\d{3}\)?`)
+
+	// rePhoneExtensionSuffix matches a trailing extension, using the same markers
+	// the US_Extension / International_Extension patterns below use to capture one.
+	// cleanPhoneNumber folds an extension's digits into the number, which moves the
+	// end of the string and defeats any end-anchored test — see
+	// isReservedFictionalNumber.
+	rePhoneExtensionSuffix = regexp.MustCompile(`(?i)[-.\s]?(?:ext\.?|extension|x)[-.\s]?\d{1,6}\s*$`)
 )
+
+// reservedFictionalCeiling is the highest confidence a number from a reserved
+// fictional range may carry. 15 is the top of LOW, chosen to match the cap
+// creditcard applies to its known test cards so the two validators treat the
+// same class of value the same way. Low enough that the standard CI filter
+// (--confidence medium,high, as this repo's own pre-commit hook uses) never sees
+// it, high enough that the finding still exists and is therefore still redacted.
+const reservedFictionalCeiling = 15.0
+
+// isReservedFictionalNumber reports whether a number falls in a range a
+// numbering authority has permanently withheld from assignment, so it cannot
+// belong to any subscriber, now or later.
+//
+// This is deliberately NARROWER than isTestPhoneNumber, and the two must not be
+// merged. isTestPhoneNumber also fires on repdigit shapes ("555-555-5555") and
+// on the words "test"/"example" appearing anywhere in the raw value — both are
+// heuristics about how a value LOOKS or what surrounds it, and both can be true
+// of a real number. Only the numbering-plan reservation below is a fact about
+// the number itself, which is what justifies dropping the finding outright
+// rather than scoring it down. See #364.
+//
+// Currently one range:
+//
+//	NANP 555-0100..555-0199 -- withheld by NANPA/ATIS for fictional use in
+//	film, television and documentation. Never assignable, so a value here is
+//	not a means of contacting anyone.
+//
+// Non-NANP fictional ranges (UK Ofcom 07700 900xxx, AU 0491 570 xxx, etc.) are
+// the same class and belong here too; they are simply not implemented yet, and
+// listing that gap is more useful than implying the check is exhaustive.
+//
+// An extension is stripped first because reFictional555 is end-anchored while
+// cleanPhoneNumber folds the extension's digits into the number: "(212) 555-0187
+// ext 4" cleans to 21255501874, whose last two digits are "74", so the pattern
+// missed it. Measured, and it was not academic — the extension form is what the
+// US_Extension pattern reports, and once the plain form was dropped the longer
+// variant stopped being deduplicated against it and surfaced at 100 HIGH in its
+// place. Everything a caller can add after the subscriber number has to be
+// removed before an end-anchored test means anything.
+func (v *Validator) isReservedFictionalNumber(phone string) bool {
+	trimmed := rePhoneExtensionSuffix.ReplaceAllString(phone, "")
+	return reFictional555.MatchString(v.cleanPhoneNumber(trimmed))
+}
 
 // Validator implements the detector.Validator interface for detecting
 // phone numbers using regex patterns and contextual analysis.
@@ -402,6 +452,48 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					confidence = 100
 				} else if confidence < 0 {
 					confidence = 0
+				}
+
+				// Reserved-fictional ceiling, applied AFTER context.
+				//
+				// The -20 penalty in CalculateConfidence was already firing on
+				// these and was out-voted every time: measured before this, "Call
+				// the support desk on 415-555-0100 for help." scored 100 HIGH with
+				// `Not Test Number: false`, and --explain called it "likely_real"
+				// and advised "REVIEW BEFORE SUPPRESSING". A fixed penalty always
+				// loses eventually, because the penalty is a constant and the
+				// context budget is not — the same asymmetry as TM-11, mirrored.
+				// So the fix is a ceiling context cannot lift, not a bigger number.
+				// See #364.
+				//
+				// A ceiling rather than a drop, deliberately. Dropping would be
+				// defensible on the value alone (555-01xx is unassignable, so it
+				// reaches nobody), but it also takes the value out of the
+				// REDACTION path, since only reported findings are rewritten. A
+				// ceiling keeps the finding, so a fictional number in a document
+				// is still masked, while guaranteeing it can never present as
+				// MEDIUM or HIGH. This is the treatment creditcard already gives
+				// its known test cards (creditcard/validator.go:348), and it is
+				// why CREDIT_CARD measured 15 for 4111111111111111 while PHONE
+				// measured 100 for 555-0100.
+				//
+				// Written as a cap, never an assignment: capping can only lower a
+				// score, so it cannot resurrect a finding that context had already
+				// zeroed below.
+				// cleanNew is already computed for dedup, so the substring probe is
+				// free and keeps the regex work off the hot path. It is sound as a
+				// pre-filter: isReservedFictionalNumber strips only a trailing
+				// extension, so the digits it tests are a PREFIX of cleanNew, and
+				// reFictional555 requires "55501" inside that prefix. Every match it
+				// can accept therefore has "55501" somewhere in cleanNew. Without
+				// this, every phone match on the line would pay a regex replace, a
+				// second cleanPhoneNumber and a regex match — per-match line work is
+				// how this validator family became quadratic before.
+				if confidence > reservedFictionalCeiling &&
+					strings.Contains(cleanNew, "55501") &&
+					v.isReservedFictionalNumber(match) {
+					confidence = reservedFictionalCeiling
+					checks["not_test_number"] = false
 				}
 
 				// Skip matches with 0% confidence - they are false positives

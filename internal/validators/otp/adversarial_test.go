@@ -10,6 +10,13 @@ import (
 
 // TestAdversarial_FalsePositive_Base32NormalText tests that common English-like
 // base32 strings are NOT flagged as OTP secrets even with positive keyword context.
+// The base32 secrets in this file are deliberately NOT the otpauth documentation
+// example (JBSWY3DPEHPK3PXP) or the RFC 4226/6238 test seed (GEZDGNBVGY3TQOJQ...),
+// which every TOTP tutorial reproduces. Those are now capped at the top of LOW as
+// published test secrets, so a test asserting HIGH confidence for one of them
+// asserts the defect. Use an invented base32 value here; the published ones belong
+// only in published_secret_test.go, which asserts the cap.
+
 func TestAdversarial_FalsePositive_Base32NormalText(t *testing.T) {
 	validator := NewValidator()
 
@@ -202,7 +209,7 @@ func TestAdversarial_OTPAuthURI_HighConfidence(t *testing.T) {
 	}{
 		{
 			name:    "Bare TOTP URI no surrounding text",
-			content: "otpauth://totp/Service:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Service",
+			content: "otpauth://totp/Service:user@example.com?secret=K5CUWY3ZNRXW4Z3T&issuer=Service",
 			desc:    "Standard TOTP URI must be >= 80 confidence",
 		},
 		{
@@ -212,12 +219,12 @@ func TestAdversarial_OTPAuthURI_HighConfidence(t *testing.T) {
 		},
 		{
 			name:    "URI in negative context (test file)",
-			content: "test fixture: otpauth://totp/TestApp:test@test.com?secret=GEZDGNBVGY3TQOJQ",
+			content: "test fixture: otpauth://totp/TestApp:test@test.com?secret=MFYGC4TLLBQXA5DP",
 			desc:    "Even with 'test' negative keyword, otpauth URI should remain HIGH (>= 60 at minimum)",
 		},
 		{
 			name:    "URI with URL-encoded characters",
-			content: "otpauth://totp/My%20Service:user%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=My%20Service",
+			content: "otpauth://totp/My%20Service:user%40example.com?secret=K5CUWY3ZNRXW4Z3T&issuer=My%20Service",
 			desc:    "URL-encoded URI must still be detected at HIGH confidence",
 		},
 		{
@@ -349,7 +356,7 @@ func TestAdversarial_ContextWeakness(t *testing.T) {
 	validator := NewValidator()
 
 	t.Run("Base32 secret with vs without keywords", func(t *testing.T) {
-		secret := "JBSWY3DPEHPK3PXP"
+		secret := "K5CUWY3ZNRXW4Z3T"
 		withKeyword := "Google Authenticator 2FA secret key: " + secret
 		withoutKeyword := "data: " + secret
 
@@ -495,7 +502,7 @@ func TestAdversarial_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("Unicode before base32 secret", func(t *testing.T) {
-		content := "\xF0\x9F\x94\x91 2FA secret: JBSWY3DPEHPK3PXP"
+		content := "\xF0\x9F\x94\x91 2FA secret: K5CUWY3ZNRXW4Z3T"
 		matches, err := validator.ValidateContent(content, "test.txt")
 		if err != nil {
 			t.Fatalf("error: %v", err)
@@ -518,7 +525,7 @@ func TestAdversarial_EdgeCases(t *testing.T) {
 
 	t.Run("Very long line with otpauth URI at end", func(t *testing.T) {
 		padding := strings.Repeat("x", 5000)
-		content := padding + " otpauth://totp/App:u@e.com?secret=JBSWY3DPEHPK3PXP"
+		content := padding + " otpauth://totp/App:u@e.com?secret=K5CUWY3ZNRXW4Z3T"
 		matches, err := validator.ValidateContent(content, "test.txt")
 		if err != nil {
 			t.Fatalf("error: %v", err)
@@ -609,7 +616,7 @@ func TestAdversarial_FalseNegative_LowercaseBase32(t *testing.T) {
 
 	// Many OTP apps display secrets in lowercase or with spaces.
 	// This is a known false negative.
-	content := "2FA secret: jbswy3dpehpk3pxp"
+	content := "2FA secret: k5cuwy3znrxw4z3t"
 	matches, err := validator.ValidateContent(content, "test.txt")
 	if err != nil {
 		t.Fatalf("error: %v", err)
@@ -623,7 +630,7 @@ func TestAdversarial_FalseNegative_LowercaseBase32(t *testing.T) {
 	}
 	if !hasOTPSecret {
 		t.Log("KNOWN FALSE NEGATIVE: lowercase base32 TOTP secrets are not detected")
-		t.Log("  Input: \"2FA secret: jbswy3dpehpk3pxp\"")
+		t.Log("  Input: \"2FA secret: k5cuwy3znrxw4z3t\"")
 		t.Log("  The regex only matches [A-Z2-7]{16,64}")
 	}
 }

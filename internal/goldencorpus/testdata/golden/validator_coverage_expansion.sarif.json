@@ -304,14 +304,14 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "2fa secret: \n2fa secret: jbswy3dpehpk3pxp lowercase\n lowercase"
+                    "text": "2fa secret: \n2fa secret: k5cuwy3znrxw4z3t lowercase\n lowercase"
                   },
                   "startLine": 7
                 },
                 "region": {
                   "endColumn": 29,
                   "snippet": {
-                    "text": "2fa secret: jbswy3dpehpk3pxp lowercase"
+                    "text": "2fa secret: k5cuwy3znrxw4z3t lowercase"
                   },
                   "startColumn": 13,
                   "startLine": 7
@@ -320,7 +320,7 @@
             }
           ],
           "message": {
-            "text": "OTP_SECRET Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'jbswy3dpehpk3pxp'"
+            "text": "OTP_SECRET Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'k5cuwy3znrxw4z3t'"
           },
           "properties": {
             "confidence": 85,

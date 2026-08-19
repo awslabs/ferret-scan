@@ -184,7 +184,11 @@ var Cases = []Case{
 			"deliver 456 King-Smith Rd today\n" +
 			"new jersey driver license D12345678901234 on record\n" +
 			"wisconsin dl J1234567890123 verified\n" +
-			"2fa secret: jbswy3dpehpk3pxp lowercase\n" +
+			// Not the otpauth documentation secret this used to be. That value is now
+			// capped at the top of LOW as a published test secret, which would have
+			// left this case asserting the cap instead of the lowercase detection pass
+			// it exists for. See otp/published_secret_test.go.
+			"2fa secret: k5cuwy3znrxw4z3t lowercase\n" +
 			"The package weighs RR 4 lbs on the scale\n" +
 			"APO is an abbreviation for Apollo\n" +
 			"123 O' clock reading on the dial\n" +
