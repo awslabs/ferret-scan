@@ -200,3 +200,63 @@ func docxWithoutBodyPart() []byte {
 	}
 	return out.Bytes()
 }
+
+// A warning that already names its producer must not be prefixed with that name again.
+//
+// An embedded container routes back through this same combine step, and every level used to
+// add its own copy, so a note from four levels down reached the operator as
+//
+//	office_metadata: office_metadata: office_metadata: office_metadata: embedded item …
+//
+// measured on a .docx nested six deep. The name is there to say which reader produced the
+// note; repeating it says nothing more and pushes the part that matters off the line.
+func TestAWarningIsNotPrefixedTwiceWithItsOwnProducer(t *testing.T) {
+	fr := NewFileRouter(false)
+	fr.preprocessors = []preprocessors.Preprocessor{
+		// Exactly what a nested container hands back: the child's combine step already
+		// prefixed the note, and the parent's is about to run over it.
+		&stubPreprocessor{
+			name:    "office_metadata",
+			text:    "Author: Jane Analyst\n",
+			warning: `office_metadata: embedded item "attachment.docx" was not examined: embedded container nesting limit reached`,
+		},
+	}
+
+	got, err := fr.ProcessFileWithContext("outer.docx", &ProcessingContext{FilePath: "outer.docx"})
+	if err != nil {
+		t.Fatalf("routing failed: %v", err)
+	}
+	if n := strings.Count(got.ExtractionWarning, "office_metadata: "); n != 1 {
+		t.Errorf("the producer name appears %d times, want 1:\n  %q", n, got.ExtractionWarning)
+	}
+	// Still prefixed once, because a combined result has several producers and the
+	// operator needs to know which one is talking.
+	if !strings.HasPrefix(got.ExtractionWarning, "office_metadata: ") {
+		t.Errorf("ExtractionWarning = %q, want it to name the producer once", got.ExtractionWarning)
+	}
+	if !strings.Contains(got.ExtractionWarning, "attachment.docx") {
+		t.Errorf("ExtractionWarning = %q, want the part it is about to survive the prefixing",
+			got.ExtractionWarning)
+	}
+}
+
+// The other direction: a note that does NOT already carry its producer's name still gets one.
+// Dropping the prefix entirely would be the obvious wrong way to remove the duplication.
+func TestAnUnprefixedWarningStillGetsItsProducer(t *testing.T) {
+	fr := NewFileRouter(false)
+	fr.preprocessors = []preprocessors.Preprocessor{
+		&stubPreprocessor{
+			name:    "audio_metadata",
+			text:    "Artist: Jane Analyst\n",
+			warning: "audio metadata may be incomplete: the WAV chunk layout could not be walked to the end",
+		},
+	}
+
+	got, err := fr.ProcessFileWithContext("clip.wav", &ProcessingContext{FilePath: "clip.wav"})
+	if err != nil {
+		t.Fatalf("routing failed: %v", err)
+	}
+	if !strings.HasPrefix(got.ExtractionWarning, "audio_metadata: ") {
+		t.Errorf("ExtractionWarning = %q, want the producing preprocessor named", got.ExtractionWarning)
+	}
+}

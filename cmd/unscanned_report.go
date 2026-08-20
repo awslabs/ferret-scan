@@ -232,6 +232,58 @@ func describeUnparseable(path string) string {
 	}
 }
 
+// noBodyTextPrefix is the wording every producer of a "the body held no text" warning uses,
+// and it is the CONTRACT that lets this side tell the two meanings of an extraction warning
+// apart. See classifyExtractionWarning.
+const noBodyTextPrefix = "no text extracted from"
+
+// classifyExtractionWarning maps an ExtractionWarning to a user-facing cause.
+//
+// The ExtractionWarning channel carries two different statements, and this side used to file
+// every one of them under causeNoText:
+//
+//	"no text extracted from .docx: no document body part was found"      <- the body was empty
+//	"embedded part %q was not examined: declares N bytes, over the cap"  <- the body was fine
+//
+// Reporting the second as "no body text (metadata still scanned)" asserts something untrue
+// about a document whose body text was read and scanned normally, and it is exactly the
+// mislabelling the cause taxonomy warns about: an operator cannot act on a reason that
+// describes a different failure. A container with an oversize embedded part is PARTLY
+// scanned, which is what causeCutShort means.
+//
+// The discriminator is the prefix rather than a keyword grab-bag, because every no-text
+// producer builds its message from one helper and shares that prefix — the office text
+// extractor, both PDF paths. Anything else on this channel is a coverage note: a WAV whose
+// chunk layout could not be walked to the end, an embedded part refused for size, an embedded
+// container past the nesting bound. Those are all partial coverage.
+//
+// A structured cause travelling with the diagnostic would be better than matching on prose,
+// and would mean threading a field from every preprocessor through worker_pool and
+// parallel_processor into FileDiagnostic. That is worth doing and is not this change; the
+// prefix is asserted by a test that enumerates every producer, so a new wording that lands in
+// the wrong bucket fails there rather than in a report.
+// A file can carry BOTH statements at once, joined with "; " by the router or by the Office
+// preprocessor. It is then only a no-text case if EVERY segment says so: one segment about an
+// unexamined part means coverage really was cut short, and that is the fact the operator has to
+// act on. Segment-wise rather than a whole-string match, because a substring test would let a
+// leading no-text warning hide an unexamined embedded document behind it.
+func classifyExtractionWarning(reason string) unscannedCause {
+	segments := strings.Split(reason, "; ")
+	for _, seg := range segments {
+		seg = strings.ToLower(strings.TrimSpace(seg))
+		if seg == "" {
+			continue
+		}
+		// The router and the Office preprocessor prefix a segment with the producing
+		// preprocessor's name ("office_metadata: no text extracted from ..."), so the
+		// marker can sit after a prefix rather than at the start of the segment.
+		if !strings.Contains(seg, noBodyTextPrefix) {
+			return causeCutShort
+		}
+	}
+	return causeNoText
+}
+
 // classifyReason maps a diagnostic to a user-facing cause.
 func classifyReason(reason string) unscannedCause {
 	l := strings.ToLower(reason)
@@ -296,7 +348,7 @@ func collectUnscanned(
 		if d == "" {
 			d = "no readable text found"
 		}
-		out = append(out, unscannedEntry{fd.FilePath, causeNoText, d})
+		out = append(out, unscannedEntry{fd.FilePath, classifyExtractionWarning(fd.Reason), d})
 	}
 	for _, fd := range failed {
 		cause := classifyReason(fd.Reason)
