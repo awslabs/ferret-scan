@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
@@ -109,12 +110,24 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 	lines := strings.Split(content, "\n")
 
+	// In a CSV export the LABEL is the header row, one or more lines above the
+	// value, and the keyword search stops at the newline — so a member_id column
+	// produced no finding at all while the identical value written inline as
+	// "Member ID: W9998887776" is reported. An unreported value is never handed to
+	// the redactor: measured on a 3-column export, the redacted copy still held
+	// every member ID and driver's licence in cleartext.
+	//
+	// tabular.Analyze is conservative by construction (>=3 fields, a consistent
+	// delimiter, a header row of words), so a non-table document produces a nil
+	// table and behaviour is unchanged. Analyzed ONCE per document, not per line.
+	table := tabular.Analyze(content)
+
 	for lineNum, line := range lines {
 		if execguard.LineLoopCancelled(ctx, lineNum) {
 			return matches, ctx.Err()
 		}
 
-		lineMatches := v.scanLine(ctx, line, lineNum, originalPath)
+		lineMatches := v.scanLine(ctx, line, lineNum, originalPath, table)
 		matches = append(matches, lineMatches...)
 	}
 
@@ -127,6 +140,15 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 // per match (as the evaluators used to) was the source of the O(n^2) blowup
 // on a dense line.
 type medicalLineContext struct {
+	// table and bounds resolve the header cell naming a match's own column. Held
+	// rather than pre-flattened because the header varies ALONG the row: folding
+	// every column's header into one per-line string would let a member_id column
+	// lend insurance context to a notes column, which is a false positive the
+	// per-match lookup avoids. HeaderAt is a binary search over the row's field
+	// bounds, so the per-match cost is logarithmic rather than a rescan.
+	table  *tabular.Table
+	bounds *tabular.LineBounds
+
 	lineImpact float64
 	posKW      []string
 	negKW      []string
@@ -152,10 +174,17 @@ type medicalLineContext struct {
 }
 
 // scanLine scans a single line for all medical ID types.
-func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string) []detector.Match {
+func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string, table *tabular.Table) []detector.Match {
 	var matches []detector.Match
 
 	lowerLine := strings.ToLower(line)
+
+	// Column bounds for this row, resolved once. Only for a DATA row: the header
+	// row itself is not a value-bearing line.
+	var lineBounds *tabular.LineBounds
+	if table.IsTable() && lineNum != table.HeaderLine() {
+		lineBounds = table.Bounds(line)
+	}
 
 	// Per-line invariants, hoisted out of the per-match loop. analyzeContext and
 	// the keyword-collection in buildContext scan only lowerLine (they ignore the
@@ -175,6 +204,8 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	// medicalid O(n^2) the expanded complexity guard caught. Computed once
 	// here and passed down via lc.
 	lc := medicalLineContext{
+		table:        table,
+		bounds:       lineBounds,
 		lineImpact:   lineImpact,
 		posKW:        linePositiveKeywords,
 		negKW:        lineNegativeKeywords,
@@ -234,14 +265,63 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 		}
 	}
 
-	// Check for Insurance Member IDs (only if insurance context is present)
-	if v.hasInsuranceContext(lowerLine) {
+	// Check for Insurance Member IDs (only if insurance context is present).
+	//
+	// The header-row arm is what admits a CSV export: the keyword sits one or more
+	// lines above the value, so hasInsuranceContext(lowerLine) is false for every
+	// data row and this scan never ran. Admission is per ROW; whether a given
+	// candidate actually has insurance context is decided per COLUMN in
+	// evaluateInsuranceID via insuranceContextFor.
+	if v.hasInsuranceContext(lowerLine) || v.headerRowHasInsuranceContext(lc) {
 		if !scanMatches(reInsuranceID, v.evaluateInsuranceID) {
 			return matches
 		}
 	}
 
 	return matches
+}
+
+// columnHeaderAt returns the lowercased header cell naming the column that the byte
+// offset off falls in, or "" when the document is not tabular or this is the header
+// row itself.
+func (lc medicalLineContext) columnHeaderAt(off int) string {
+	if lc.table == nil || lc.bounds == nil {
+		return ""
+	}
+	return lc.table.HeaderAt(lc.bounds, off)
+}
+
+// headerRowHasInsuranceContext reports whether ANY column header on this table
+// carries an insurance keyword.
+//
+// Used only for ADMISSION — deciding whether the member-ID scan runs on this row at
+// all. It is deliberately permissive at that level and narrowed per match by
+// insuranceContextFor, because a row cannot be scanned column-by-column before its
+// candidates are found.
+func (v *Validator) headerRowHasInsuranceContext(lc medicalLineContext) bool {
+	if lc.table == nil || lc.bounds == nil {
+		return false
+	}
+	for _, h := range lc.table.Headers() {
+		if v.hasInsuranceContext(strings.ToLower(h)) {
+			return true
+		}
+	}
+	return false
+}
+
+// insuranceContextFor reports whether this match has insurance context: on its own
+// line, or in the header of its OWN column. The column check is what makes a CSV
+// export behave like the equivalent inline label without letting one column's header
+// vouch for another's values.
+func (v *Validator) insuranceContextFor(lc medicalLineContext, off int) bool {
+	if lc.insKeyword {
+		return true
+	}
+	if h := lc.columnHeaderAt(off); h != "" {
+		return v.hasInsuranceContext(h)
+	}
+	return false
 }
 
 // evaluateNPI checks an NPI candidate and returns a match if valid.
@@ -480,14 +560,29 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lc medica
 		return detector.Match{}, false
 	}
 
+	// Insurance context for THIS candidate: on its own line, or in the header of its
+	// OWN column. Resolved per match rather than per line because the header varies
+	// along a table row — folding the whole header row into one predicate would let a
+	// member_id column lend context to a notes column.
+	insContext := v.insuranceContextFor(lc, matchStart)
+
 	// Skip if it looks like a common non-insurance pattern
 	// Two tiers, mirroring evaluateMRN: a different number type always
 	// suppresses; an identifier LABEL suppresses only when no insurance keyword
 	// is present, so a labelled member ID beside "patient account 88213" survives.
-	if lc.nonInsKW || (lc.nonInsSoftKW && !lc.insKeyword) ||
-		v.looksLikeNonInsuranceIDShape(match, lc.insKeyword) {
+	if lc.nonInsKW || (lc.nonInsSoftKW && !insContext) ||
+		v.looksLikeNonInsuranceIDShape(match, insContext) {
 		return detector.Match{}, false
 	}
+
+	// No extra per-column gate is needed here, and one was removed rather than shipped:
+	// threading insContext into the two checks above IS the gate. With a hard
+	// `if !insContext { return }` added and then removed, both a
+	// name,member_id,internal_notes,order_ref fixture and a neutral
+	// name,member_id,col_c fixture reported IDENTICALLY — the unlabelled column's value
+	// is already rejected by looksLikeNonInsuranceIDShape, which now receives the
+	// per-column answer. An unreachable guard is worse than none: it reads as the thing
+	// preventing the leak while the substitution above is what actually does.
 
 	// A value that already passes a checksum belonging to a MORE SPECIFIC
 	// subtype is reported by that subtype's evaluator, not here. evaluateMRN
@@ -510,8 +605,9 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lc medica
 
 	confidence := 50.0 // Moderate base — alphanumeric with insurance context
 
-	// Boost if strong insurance keywords present
-	if lc.insKeyword {
+	// Boost if strong insurance keywords present. A column header naming this value's
+	// column counts, exactly as a same-line label does.
+	if insContext {
 		confidence += 20 // -> 70
 	}
 
