@@ -4,6 +4,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // A file refused for being over the size limit must be COUNTED, and its treatment
@@ -73,6 +76,55 @@ func bigOpaqueFile(t *testing.T, path string) string {
 	return path
 }
 
+// audioFile writes a .wav whose RIFF LIST/INFO chunk carries an SSN in its IART field,
+// sparse-extended to the requested size.
+//
+// Real header bytes rather than a stub, because the point of the over-limit case is that
+// this file WOULD have yielded a finding: the same header under the limit reports SSN at
+// HIGH 100. A fixture that could not produce a finding either way would pass whether or
+// not the coverage loss is disclosed.
+func audioFile(t *testing.T, path string, size int64) string {
+	t.Helper()
+	var buf bytes.Buffer
+	fmtChunk := []byte{
+		1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x80, 0x3e, 0, 0, 2, 0, 0x10, 0,
+	}
+	value := append([]byte("SSN: 452-11-9384"), 0)
+	var info bytes.Buffer
+	info.WriteString("INFO")
+	info.WriteString("IART")
+	_ = binary.Write(&info, binary.LittleEndian, uint32(len(value)))
+	info.Write(value)
+
+	var body bytes.Buffer
+	body.WriteString("fmt ")
+	_ = binary.Write(&body, binary.LittleEndian, uint32(len(fmtChunk)))
+	body.Write(fmtChunk)
+	body.WriteString("LIST")
+	_ = binary.Write(&body, binary.LittleEndian, uint32(info.Len()))
+	body.Write(info.Bytes())
+
+	buf.WriteString("RIFF")
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(4+body.Len()))
+	buf.WriteString("WAVE")
+	buf.Write(body.Bytes())
+
+	f, err := os.Create(path) // #nosec G304 -- test temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(buf.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if size > int64(buf.Len()) {
+		if err := f.Truncate(size); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = f.Close()
+	return path
+}
+
 func pathsOf(entries []SkippedFile) []string {
 	out := make([]string, 0, len(entries))
 	for _, e := range entries {
@@ -81,7 +133,12 @@ func pathsOf(entries []SkippedFile) []string {
 	return out
 }
 
-// All three discovery routes must agree: single file, glob, and recursive walk.
+// The glob and recursive-walk discovery routes must agree.
+//
+// The third route — a file named directly on the command line — is covered by
+// TestOversizeAudioNamedDirectlyIsUnexamined below, and it is worth its own test because
+// it was the one route with a size limit of its own. This table claimed to cover all
+// three and never did, which is where #355 hid.
 func TestOversizeProcessableFileIsUnexamined(t *testing.T) {
 	routes := []struct {
 		name  string
@@ -387,5 +444,86 @@ func TestSoloOversizeFileIsUnexaminedWithEmptyQueue(t *testing.T) {
 	}
 	if got := resolveIncompleteExitCode(0, false, len(entries)); got != 0 {
 		t.Errorf("resolveIncompleteExitCode without the flag = %d, want 0", got)
+	}
+}
+
+// A file named DIRECTLY on the command line takes its own branch of getFilesToProcess, and
+// that branch used to carry a size limit of its own: 500MB for .mp3/.wav/.m4a/.flac against
+// the 100MB every other gate applies.
+//
+// The consequence was not a larger scan, it was a silent one. The router refuses the file at
+// 100MB, and the router's refusal lands in the "unsupported file types" bucket rather than in
+// files_not_examined — so a 150MB .wav named directly gave exit 0, "No matches found", no
+// files_not_examined entry, and success from --fail-on-incomplete for a file that was never
+// opened (#355). Audio metadata is exactly where this tool finds PII in media, so the file
+// most likely to hold an unredacted name was the one reported as an unsupported type.
+//
+// Every audio extension that had the allowance is checked, because the fix removes a map and
+// a partial revert would restore one entry.
+func TestOversizeAudioNamedDirectlyIsUnexamined(t *testing.T) {
+	for _, ext := range []string{".mp3", ".wav", ".m4a", ".flac"} {
+		t.Run(ext, func(t *testing.T) {
+			dir := t.TempDir()
+			big := audioFile(t, filepath.Join(dir, "recording"+ext), maxScanSize+1)
+
+			res, err := getFilesToProcess(big, false, nil, nil, true)
+			if err != nil {
+				t.Fatalf("getFilesToProcess: %v", err)
+			}
+
+			if len(res.FilesToProcess) != 0 {
+				t.Errorf("FilesToProcess = %v, want empty: the router refuses this file at "+
+					"%dMB, so admitting it here only moves the miss to a bucket that does not "+
+					"reach --fail-on-incomplete", res.FilesToProcess, maxScanSize/(1024*1024))
+			}
+			if len(res.UnexaminedFiles) != 1 {
+				t.Fatalf("UnexaminedFiles = %v, want the oversize recording: a processable type "+
+					"refused for size is a coverage loss", pathsOf(res.UnexaminedFiles))
+			}
+			if got := res.UnexaminedFiles[0].Cause; got != causeTooLarge {
+				t.Errorf("Cause = %v, want causeTooLarge", got)
+			}
+			if got := res.UnexaminedFiles[0].Reason; !strings.Contains(got, "100MB") {
+				t.Errorf("Reason = %q, want it to name the limit that refused the file", got)
+			}
+			if len(res.SkippedFiles) != 0 {
+				t.Errorf("SkippedFiles = %v, want empty: this is not a skip, and the messages on "+
+					"that bucket call it an unsupported TYPE", pathsOf(res.SkippedFiles))
+			}
+		})
+	}
+}
+
+// The limit must still ADMIT audio under it, or the test above would pass on a build that
+// refuses every audio file and reports a coverage loss for all of them.
+func TestUnderLimitAudioNamedDirectlyIsScanned(t *testing.T) {
+	dir := t.TempDir()
+	small := audioFile(t, filepath.Join(dir, "recording.wav"), 0)
+
+	res, err := getFilesToProcess(small, false, nil, nil, true)
+	if err != nil {
+		t.Fatalf("getFilesToProcess: %v", err)
+	}
+	if len(res.FilesToProcess) != 1 || res.FilesToProcess[0] != small {
+		t.Errorf("FilesToProcess = %v, want the recording itself", res.FilesToProcess)
+	}
+	if len(res.UnexaminedFiles) != 0 {
+		t.Errorf("UnexaminedFiles = %v, want empty", pathsOf(res.UnexaminedFiles))
+	}
+}
+
+// Discovery's limit and the router's must never disagree.
+//
+// They were independent numbers and they drifted, which is the whole of #355. This compares
+// the two VALUES, so it fails the moment either side moves without the other — the failure
+// mode that produced the bug. It cannot see how each is spelled, so it would not notice
+// maxScanSize being rewritten as its own literal while the numbers still match; the
+// derivation is what makes that harmless, and the comment on maxScanSize is what asks a
+// future editor to keep it.
+func TestDiscoveryLimitIsTheRouterLimit(t *testing.T) {
+	if maxScanSize != router.MaxFileSize {
+		t.Errorf("maxScanSize = %d, router.MaxFileSize = %d: discovery must admit exactly what "+
+			"the router accepts, or a file admitted here is refused there and the refusal is "+
+			"filed as an unsupported type", maxScanSize, router.MaxFileSize)
 	}
 }
