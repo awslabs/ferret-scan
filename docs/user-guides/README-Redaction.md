@@ -109,6 +109,14 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > `simple` and `format_preserving` are. And detection of body text is approximate
 > (see the Office metadata preprocessor README), so redaction of `.doc` body text is
 > only as complete as detection was — document **properties** are exact.
+>
+> That includes **multi-valued** properties. A workbook keeps its sheet-name list, and a
+> deck its slide titles, in a vector-valued property, and those were reported by nothing
+> at all until #267: the property-set reader mis-reads a vector's type word, so the value
+> arrived as the literal `0`. Measured on 19 real `.doc`/`.xls`/`.ppt` files, 14 of them
+> carry such a property and 40 elements now decode — sheet names, slide titles, theme and
+> font names. A value inside one is redactable like any other, because an element is stored
+> behind its own length prefix and a same-length overwrite never touches it.
 
 ## Synthetic Strategy — Token Details
 
