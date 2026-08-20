@@ -214,3 +214,114 @@ func BenchmarkContainsLowerHit(b *testing.B) {
 		ContainsLower(text, "ssn")
 	}
 }
+
+// ContainsLabel lets a keyword space match ZERO separators, so a concatenated or camelCase
+// label counts as context. Text is lowercased before matching, so "memberId" and "memberid"
+// are the same string here — which is why one rule covers both.
+//
+// Before this, "member id" could never match either, and camelCase is the default key style
+// of JSON, REST payloads and ORM exports. Measured on a file of camelCase/snake_case pairs of
+// the same shape, all four camelCase halves scored 0 while their twins scored 75, 80, 90 and
+// 100; in a two-key object one member ID sat in cleartext beside its redacted twin. See #372.
+func TestConcatenatedKeywordMatches(t *testing.T) {
+	for _, c := range []struct{ text, keyword string }{
+		{`"memberid": "xq4839271"`, "member id"},
+		{`"memberid":"xq4839271"`, "member id"},
+		{"memberid: w9998887779", "member id"},
+		{"medicalrecordnumber 4839272", "medical record number"},
+		{"driverslicense d1234562", "drivers license"},
+		{"routingnumber 026009593", "routing number"},
+		{"taxid 123456789", "tax id"},
+		// The separator forms must all keep working.
+		{"member id: x", "member id"},
+		{"member_id: x", "member id"},
+		{"member-id: x", "member id"},
+		{"member\tid: x", "member id"},
+		{"member  id: x", "member id"},
+	} {
+		if !ContainsLabelLower(c.text, c.keyword) {
+			t.Errorf("ContainsLabelLower(%q, %q) = false, want true", c.text, c.keyword)
+		}
+		// The strict form must NOT match a concatenation. That is what keeps every
+		// suppressor in the tree at its old reach; see TestSuppressorsKeepTheirSeparator.
+		if !strings.ContainsAny(c.text, " \t_-") && ContainsLower(c.text, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = true, want false: only ContainsLabel may widen",
+				c.text, c.keyword)
+		}
+	}
+}
+
+// The outer word-boundary rule is what makes zero separators safe, and these are the cases
+// that would break first if it were lost. A keyword must not match inside a longer word at
+// either end.
+func TestConcatenatedKeywordStillRespectsWordBoundaries(t *testing.T) {
+	for _, c := range []struct {
+		text, keyword, why string
+	}{
+		{"remembering things", "member id", "the anchor is inside a longer word on the left"},
+		{"teammemberid: x", "member id", "the anchor is preceded by a word byte"},
+		{"memberidentification: x", "member id", "the match is followed by a word byte"},
+		{"memberids: x", "member id", "a trailing 's' is still a word byte"},
+		// The '.' and '/' exclusions are a RECORDED MEASURED decision (isSepByte) and this
+		// change must not touch them: they cross sentence and URL boundaries where the two
+		// words are unrelated.
+		{"see member.id in the schema docs", "member id", "'.' is not a separator, by measurement"},
+		{"https://example.com/member/id/lookup", "member id", "'/' is not a separator, by measurement"},
+	} {
+		if ContainsLabelLower(c.text, c.keyword) {
+			t.Errorf("ContainsLabelLower(%q, %q) = true, want false: %s", c.text, c.keyword, c.why)
+		}
+		if ContainsLower(c.text, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = true, want false: %s", c.text, c.keyword, c.why)
+		}
+	}
+}
+
+// Every SUPPRESSOR in the tree keeps its old reach, because the widening is opt-in and no
+// suppressor list opts in. This is the test that would have caught the leak the first attempt
+// at #372 shipped.
+//
+// With zero separators as the DEFAULT, medicalid's suppressor "ip address" matched the
+// ubiquitous key "ipAddress", and that veto is unconditional, so
+// {"member_id": "W1234567801", "ipAddress": "10.11.12.13"} lost its INSURANCE_MEMBER_ID
+// finding and was written back with the member ID in CLEARTEXT while the IP was masked. The
+// same threat applies to ssn, whose suppressor list holds "part number", "policy number",
+// "order number", "employee id" and "tax id" — every one a common camelCase key.
+//
+// A dictionary screen does not catch this: "ipaddress" is not an English word.
+func TestSuppressorsKeepTheirSeparator(t *testing.T) {
+	// Real suppressor keywords, from medicalid, ssn, bankaccount and vin.
+	for _, c := range []struct {
+		text, keyword, why string
+	}{
+		{`"ipaddress": "10.11.12.13"`, "ip address", "medicalid's unconditional veto"},
+		{"ipaddress 10.11.12.13", "ip address", "same, unquoted"},
+		{"partnumber: 078-05-1120", "part number", "ssn suppressor"},
+		{"policynumber: 078-05-1120", "policy number", "ssn suppressor"},
+		{"ordernumber: 078-05-1120", "order number", "ssn suppressor"},
+		{"employeeid: 078-05-1120", "employee id", "ssn suppressor"},
+		{"taxid: 078-05-1120", "tax id", "ssn suppressor"},
+		{"callus debridement", "call us", "bankaccount phone suppressor"},
+		{"macaddress 00:11:22:33:44:55", "mac address", "vin suppressor"},
+		{"modelnumber 1G1YY22G", "model number", "vin suppressor"},
+	} {
+		if ContainsLower(c.text, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = true, want false (%s): widening a suppressor "+
+				"silences real values, and a silenced finding is never redacted",
+				c.text, c.keyword, c.why)
+		}
+		// The separator forms must still suppress exactly as before.
+		spaced := strings.Replace(c.text, strings.ReplaceAll(c.keyword, " ", ""), c.keyword, 1)
+		if spaced != c.text && !ContainsLower(spaced, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = false, want true: the suppressor must keep "+
+				"working on its spaced form", spaced, c.keyword)
+		}
+	}
+
+	// And the two forms must genuinely differ on the concatenation, or the opt-in is
+	// decorative and every suppressor is one edit away from widening again.
+	if !ContainsLabelLower("callus debridement", "call us") {
+		t.Error("ContainsLabelLower no longer matches the concatenated form, so the strict " +
+			"default protects nothing and this whole distinction is dead weight")
+	}
+}

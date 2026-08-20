@@ -29,8 +29,12 @@ func TestContainsLower_SeparatorForms(t *testing.T) {
 		{"member  id: X9876543210", true, "padded alignment"},
 		{"member \t _ id: X9876543210", true, "mixed separator run"},
 
-		// A space in the keyword means "at least one separator", never zero:
-		// "memberid" is a different token and must not match.
+		// A space in the keyword means AT LEAST ONE separator here, so the run-together
+		// "memberid" is a different token. #372 did not overturn this: it added
+		// [ContainsLabel], an opt-in form whose spaces may match zero separators, and
+		// left this default alone -- the default is what every SUPPRESSOR in the tree
+		// uses, and widening a suppressor silences real values rather than finding more.
+		// The concatenated form is asserted against ContainsLabel in kwmatch_test.go.
 		{"memberid: X9876543210", false, "no separator is not a separator"},
 
 		// '.' and '/' are excluded on purpose: they cross sentence and URL
@@ -87,8 +91,24 @@ func TestContainsLower_MultiWordSeparatorsAreIndependent(t *testing.T) {
 			t.Errorf("ContainsLower(%q, %q) = false, want true", text, kw)
 		}
 	}
+	// Zero separators is NOT one of the independent choices for the default matcher --
+	// that is [ContainsLabel], which ssn deliberately does not use, because ssn's suppressor
+	// list holds "part number", "policy number", "order number", "employee id" and "tax id",
+	// every one a common camelCase key that would newly veto a real SSN on the same line.
 	for _, text := range []string{
 		"socialsecuritynumber: 078-05-1120",
+		"social_securitynumber: 078-05-1120",
+	} {
+		if ContainsLower(text, kw) {
+			t.Errorf("ContainsLower(%q, %q) = true, want false: a space is at least one "+
+				"separator in the default matcher", text, kw)
+		}
+		if !ContainsLabelLower(text, kw) {
+			t.Errorf("ContainsLabelLower(%q, %q) = false, want true: the opt-in form is what "+
+				"admits the concatenation", text, kw)
+		}
+	}
+	for _, text := range []string{
 		"social security numbers_are_fine", // right boundary
 		"antisocial security number",       // left boundary
 	} {

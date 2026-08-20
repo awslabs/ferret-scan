@@ -109,3 +109,25 @@ results:
             TestData: 0.125
         subtype: INSURANCE_MEMBER_ID
         validation_path: document
+    - text: W9998887776
+      line_number: 6
+      type: INSURANCE_MEMBER_ID
+      confidence: 80
+      confidence_level: MEDIUM
+      filename: <golden:keyword_separator_forms>
+      validator: medicalid
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Configuration
+        context_domain: Unknown
+        context_impact: 10
+        original_confidence: 80
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        subtype: INSURANCE_MEMBER_ID
+        validation_path: document

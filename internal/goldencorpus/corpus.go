@@ -244,10 +244,22 @@ var Cases = []Case{
 			"rather than merely boosting confidence, a labelled ID written the snake_case way " +
 			"produced no finding at all and passed through redaction in cleartext. Decoy lines " +
 			"lock the exclusions: '.' and '/' are NOT separators, because they cross sentence " +
-			"and URL boundaries where the two words are unrelated, and a space in a keyword " +
-			"still means at least one separator, so the run-together \"memberid\" is a different " +
-			"token. The last two lines pin that the outer whole-word rule still applies at both " +
-			"ends of the separator-flexible match.",
+			"and URL boundaries where the two words are unrelated. The last two lines pin that " +
+			"the outer whole-word rule still applies at both ends of the separator-flexible " +
+			"match. " +
+			"LINE 6, THE RUN-TOGETHER FORM, IS A FINDING SINCE #372, and how it got there is " +
+			"the part worth keeping. camelCase is the default key style of JSON, REST payloads " +
+			"and ORM exports, and text is lowercased before matching, so \"memberId\" and " +
+			"\"memberid\" are the same string: in a two-key object one member ID sat in " +
+			"cleartext beside its redacted twin. But the fix is NOT that a keyword space now " +
+			"means \"zero or more separators\" everywhere — that was tried and it LEAKED. The " +
+			"suppressor \"ip address\" began matching \"ipAddress\", an ordinary JSON key, and " +
+			"that veto is unconditional, so a real member ID beside it was silenced and written " +
+			"back in cleartext. So the widened form is OPT-IN (kwmatch.ContainsLabel) and only " +
+			"positive label lists use it; every suppressor still requires a separator, which is " +
+			"why the four decoy lines below stay silent and why '.' and '/' — a recorded " +
+			"false-positive measurement — are untouched in both modes. medicalid opts in, which " +
+			"is what makes line 6 report here.",
 		Checks: []string{"MEDICAL_ID"},
 		Input: "member_id: W1234567801\n" +
 			"member-id: X9876543210\n" +

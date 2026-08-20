@@ -5,3 +5,4 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH       FILE
 [MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     3 W1122009988 <golden:keyword_separator_forms>
 [MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     4 X5556667778 <golden:keyword_separator_forms>
 [MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     5 W3344556677 <golden:keyword_separator_forms>
+[MEDIUM] medicalid    INSURANCE_MEMBER_ID    80.00% line     6 W9998887776 <golden:keyword_separator_forms>
