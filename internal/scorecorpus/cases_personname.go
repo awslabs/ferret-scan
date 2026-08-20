@@ -68,6 +68,30 @@ var PersonNameCases = []Case{
 		Redactable: true,
 	},
 	{
+		Name:   "person_locale_surnames_recovered",
+		Origin: "promoted out of quarantine 2026-08-19 after the surname/first-name data fix; bands measured against the real CLI",
+		Rationale: "Was person_locale_surnames_UNSUPPORTED. #282 diagnosed these as a DATA gap " +
+			"rather than a pattern one — the surname gate rejected them because neither half was " +
+			"in the name database — and recorded that the surname list was the fix. That data " +
+			"landed, so the case is now asserted rather than quarantined.\n" +
+			"Measured before and after, same fixture, same flags:\n" +
+			"  Mehmet Yilmaz  0 -> 67 -> 92   |   Haruto Sato  0 -> 67 -> 92   |   Thabo Nkosi  0 -> 67 -> 92\n" +
+			"The middle figure is the surname list alone; 92 needs the FIRST name too, which is " +
+			"why both lists were extended. The Dutch particle line that used to sit in this case " +
+			"moved to person_lowercase_particles_UNSUPPORTED, where it belongs: 'Piet de Vries' " +
+			"fails on the lowercase particle, not on database coverage.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Prepared by Mehmet Yilmaz on Monday.\n" +
+			"Reviewed by Haruto Sato in Osaka.\n" +
+			"Approved by Thabo Nkosi for the team.\n",
+		Labels: []Label{
+			{Line: 1, Value: "Mehmet Yilmaz", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 2, Value: "Haruto Sato", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 3, Value: "Thabo Nkosi", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+		},
+		Redactable: true,
+	},
+	{
 		Name:   "fp__business_noun_phrases",
 		Origin: "harvested from probes against shipped code, 2026-08",
 		Rationale: "Capitalised business vocabulary whose FIRST word is also a given name: " +
@@ -207,30 +231,17 @@ var PersonNameQuarantine = []Case{
 			"is a cleartext leak concentrated on non-Anglo names.\n" +
 			"Quarantined rather than labelled because the fix is not a pattern change alone: a " +
 			"particle-aware regex also matches the eponym negatives above, so it needs the " +
-			"surname-anchored gate underneath it.",
+			"surname-anchored gate underneath it.\n" +
+			"As of 2026-08-19 this case owns the Dutch particle line exclusively: the surname " +
+			"data gap it used to share with person_locale_surnames_UNSUPPORTED is closed, and " +
+			"that case was promoted to person_locale_surnames_recovered. What remains here is " +
+			"purely the lowercase particle.",
 		Checks: []string{"PERSON_NAME"},
 		Input: "Signed by Ana de la Cruz.\n" +
 			"Signed by Carlos dos Santos.\n" +
 			"Signed by Jan van der Berg.\n" +
 			"Signed by Piet de Vries.\n" +
 			"Signed by Mohammed al-Rashid.\n",
-		Redactable: true,
-	},
-	{
-		Name:   "person_locale_surnames_UNSUPPORTED",
-		Origin: "authored 2026-08 for scorecorpus; measured against the real CLI",
-		Rationale: "Plain First-Last names rejected because NEITHER half is in the name " +
-			"database: Mehmet Yilmaz, Ayse Kaya, Haruto Sato, Ren Watanabe, Thabo Nkosi, " +
-			"Piet Vries. The simplest possible shape — basic_western_name already matches the " +
-			"text — so no regex change can recover them. They die at the database gate, whose " +
-			"7,405 entries carry zero non-ASCII characters.\n" +
-			"Measured coverage across 14 locales: 85.1% overall, Turkish 20%, Dutch 60%, " +
-			"Japanese 60%, African 60%. This is the case that shows the fix is DATA, not pattern.",
-		Checks: []string{"PERSON_NAME"},
-		Input: "Prepared by Mehmet Yilmaz on Monday.\n" +
-			"Reviewed by Haruto Sato in Osaka.\n" +
-			"Approved by Thabo Nkosi for the team.\n" +
-			"Signed by Piet de Vries at the branch.\n",
 		Redactable: true,
 	},
 }
