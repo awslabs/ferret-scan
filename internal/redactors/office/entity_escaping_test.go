@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -284,5 +285,132 @@ func TestEscapeCharDataRoundTrips(t *testing.T) {
 		if back.String() != s {
 			t.Errorf("round trip lost data: %q -> %q -> %q", s, buf.String(), back.String())
 		}
+	}
+}
+
+// The parent document had NO residue check at all. That absence is what let the
+// entity-escaping defect attest success: applyPendingRedactions could no-op for a
+// value and RedactDocument still returned Success with failed_redactions:0, because
+// nothing ever asked whether the value was gone.
+//
+// The check must compare on DECODED text. A raw-byte search for the reported value
+// would not find "Fairbanks &amp; Kettleworth" while looking for
+// "Fairbanks & Kettleworth", so it would certify the exact leak it exists to catch.
+
+func TestParentPartResidueComparesDecoded(t *testing.T) {
+	const reported = "Fairbanks & Kettleworth Holdings"
+
+	cases := []struct {
+		name    string
+		stored  string
+		wantHit bool
+	}{
+		{"escaped ampersand is still residue", `<t>Company: Fairbanks &amp; Kettleworth Holdings</t>`, true},
+		{"decimal reference is still residue", `<t>Company: Fairbanks &#38; Kettleworth Holdings</t>`, true},
+		// A bare '&' is not well-formed XML, so this part does not tokenize and is
+		// skipped. Kept as a case because it documents the interaction: for a value
+		// CONTAINING an ampersand, a "plain spelling" cannot exist in a valid part.
+		{"a bare ampersand does not tokenize, so the part is skipped", `<t>Company: Fairbanks & Kettleworth Holdings</t>`, false},
+		{"redacted value is not residue", `<t>Company: ********************************</t>`, false},
+		{"value in an attribute is residue", `<p w:val="Fairbanks &amp; Kettleworth Holdings"/>`, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &OfficeZipContents{Files: map[string][]byte{"word/document.xml": []byte("<r>" + tc.stored + "</r>")}}
+			got := parentPartResidue(c, []detector.Match{{Text: reported, Type: "COMPANY_INFO"}})
+			if tc.wantHit && len(got) == 0 {
+				t.Errorf("residue not detected in %s — a missed rewrite would be attested as success", tc.stored)
+			}
+			if !tc.wantHit && len(got) != 0 {
+				t.Errorf("residue falsely reported %v in %s — a false refusal turns a working redaction into an error", got, tc.stored)
+			}
+		})
+	}
+}
+
+// A raw-byte search cannot do this job. Pinned so nobody "simplifies" the decode away.
+func TestResidueRawByteSearchWouldMiss(t *testing.T) {
+	const reported = "Fairbanks & Kettleworth Holdings"
+	stored := []byte(`<r><t>Company: Fairbanks &amp; Kettleworth Holdings</t></r>`)
+
+	if strings.Contains(string(stored), reported) {
+		t.Fatal("fixture is wrong: the reported value occurs literally, so this proves nothing")
+	}
+	c := &OfficeZipContents{Files: map[string][]byte{"word/document.xml": stored}}
+	if got := parentPartResidue(c, []detector.Match{{Text: reported}}); len(got) == 0 {
+		t.Error("parentPartResidue missed a value that is present only in escaped form — the decode is load-bearing")
+	}
+}
+
+// A part that does not tokenize is skipped, not treated as residue: absence cannot be
+// established there, but neither can presence, and refusing on a malformed part the
+// redactor never claimed to rewrite would fail closed on the wrong thing.
+func TestResidueSkipsUntokenizableParts(t *testing.T) {
+	c := &OfficeZipContents{Files: map[string][]byte{
+		"word/document.xml": []byte(`<t>value 449-87-4100 and &foo; trailing</t>`),
+	}}
+	if got := parentPartResidue(c, []detector.Match{{Text: "449-87-4100"}}); len(got) != 0 {
+		t.Errorf("parentPartResidue = %v on an untokenizable part, want none", got)
+	}
+}
+
+// Values below the embedded value set's floor are not searched for, matching
+// embeddedValueSet. A three-character value produces meaningless hits.
+func TestResidueIgnoresShortValues(t *testing.T) {
+	c := &OfficeZipContents{Files: map[string][]byte{"word/document.xml": []byte(`<t>abc</t>`)}}
+	if got := parentPartResidue(c, []detector.Match{{Text: "abc"}}); len(got) != 0 {
+		t.Errorf("parentPartResidue = %v for a value shorter than minResidueValueLen, want none", got)
+	}
+}
+
+// The residue check must not be quadratic in the number of reported values.
+//
+// The first version did one strings.Contains per value per part. Measured on a real
+// .docx as the reported-value count doubled through 500/1000/2000/4000, the residue
+// check added +0.00s, +0.01s, +0.02s then +0.09s — about 4.5x per doubling.
+//
+// It is now two stages: one strings.Replacer trie pass, whose cost does not grow with
+// the value count, decides whether ANY value is present; the per-value identification
+// loop runs only when the document is already going to be refused.
+//
+// This asserts the STRUCTURE via a counter, not a duration or an allocation figure.
+// Both alternatives were tried and both are blind here:
+//
+//   - allocation: the quadratic is pure strings.Contains work and allocates nothing.
+//     An allocation-ratio version of this test PASSED with the quadratic restored.
+//   - wall clock: not portable to the Windows runner, and this repo has already had a
+//     locally-tuned timing guard fail on CI at 6.1x its local ratio.
+func TestResidueIdentificationStaysOffTheCleanPath(t *testing.T) {
+	part := []byte(`<r><t>` + strings.Repeat("ordinary document prose that matches nothing. ", 400) + `</t></r>`)
+	contents := &OfficeZipContents{Files: map[string][]byte{"word/document.xml": part}}
+
+	matches := make([]detector.Match, 2000)
+	for i := range matches {
+		matches[i] = detector.Match{Text: "absent-value-" + strconv.Itoa(i), Type: "SSN"}
+	}
+
+	before := residueIdentifyPasses.Load()
+	if got := parentPartResidue(contents, matches); len(got) != 0 {
+		t.Fatalf("parentPartResidue reported %v on a part containing none of the values", got)
+	}
+	if after := residueIdentifyPasses.Load(); after != before {
+		t.Errorf("the per-value identification loop ran %d time(s) with no residue present. "+
+			"It is O(values x text) and must stay on the refusal path only: the trie probe "+
+			"decides presence in a single pass.", after-before)
+	}
+
+	// Non-vacuity: the counter must actually move when there IS residue, otherwise the
+	// assertion above would pass against a function that never identifies anything.
+	withResidue := &OfficeZipContents{Files: map[string][]byte{
+		"word/document.xml": []byte(`<r><t>Employee SSN: 449-87-4100 on file</t></r>`),
+	}}
+	before = residueIdentifyPasses.Load()
+	if got := parentPartResidue(withResidue, []detector.Match{{Text: "449-87-4100"}}); len(got) != 1 {
+		t.Fatalf("parentPartResidue = %v, want the one present value", got)
+	}
+	if after := residueIdentifyPasses.Load(); after == before {
+		t.Error("the identification loop did not run even though residue was present, so the " +
+			"counter cannot detect a regression")
 	}
 }
