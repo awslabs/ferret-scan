@@ -244,9 +244,14 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 	// forwards must not be a document containing an SSN in a directory named
 	// "redacted".
 	if residue := parentPartResidue(modifiedContents, matches); len(residue) > 0 {
+		// TYPES, never the values. This message reaches stderr and every machine format
+		// with no --show-match, so listing the residual values would publish the exact
+		// data the refusal exists to protect — the same rule that keeps a matched value
+		// out of a validator's debug log, and out of #367's failed-extraction line.
+		// The count and the types are what an operator acts on.
 		return nil, fmt.Errorf(
-			"refusing to write %s: %d reported value(s) still present in the document's own parts: %s",
-			filepath.Base(outputPath), len(residue), strings.Join(residue, ", "))
+			"refusing to write %s: %d reported value(s) still present in the document's own parts (types: %s)",
+			filepath.Base(outputPath), len(residue), strings.Join(residueTypes(residue), ", "))
 	}
 
 	// Repackage ZIP with modified contents
@@ -928,21 +933,21 @@ var residueIdentifyPasses atomic.Uint64
 // identification loop runs ONLY when a hit has already been found, i.e. only on the
 // path that is about to refuse to write the document, where an extra pass is free
 // relative to failing the run.
-func parentPartResidue(contents *OfficeZipContents, matches []detector.Match) []string {
+func parentPartResidue(contents *OfficeZipContents, matches []detector.Match) []detector.Match {
 	if contents == nil || len(matches) == 0 {
 		return nil
 	}
 
 	wanted := make([]string, 0, len(matches))
-	seen := make(map[string]struct{}, len(matches))
+	byText := make(map[string]detector.Match, len(matches))
 	for _, m := range matches {
 		if len(m.Text) < minResidueValueLen {
 			continue
 		}
-		if _, dup := seen[m.Text]; dup {
+		if _, dup := byText[m.Text]; dup {
 			continue
 		}
-		seen[m.Text] = struct{}{}
+		byText[m.Text] = m
 		wanted = append(wanted, m.Text)
 	}
 	if len(wanted) == 0 {
@@ -998,12 +1003,36 @@ func parentPartResidue(contents *OfficeZipContents, matches []detector.Match) []
 		}
 	}
 
-	out := make([]string, 0, len(found))
+	out := make([]detector.Match, 0, len(found))
 	for _, v := range wanted {
 		if _, ok := found[v]; ok {
-			out = append(out, v)
+			out = append(out, byText[v])
 		}
 	}
+	return out
+}
+
+// residueTypes lists the distinct finding types of a residue set, sorted, for a message
+// that must not carry the values themselves.
+//
+// A match with no Type still has to be counted as something an operator can see, so it
+// is named "unknown" rather than dropped — a residue that reports fewer types than
+// values would understate what is still in the file.
+func residueTypes(residue []detector.Match) []string {
+	seen := make(map[string]struct{}, len(residue))
+	out := make([]string, 0, len(residue))
+	for _, m := range residue {
+		t := m.Type
+		if t == "" {
+			t = "unknown"
+		}
+		if _, dup := seen[t]; dup {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	sort.Strings(out)
 	return out
 }
 

@@ -414,3 +414,80 @@ func TestResidueIdentificationStaysOffTheCleanPath(t *testing.T) {
 			"counter cannot detect a regression")
 	}
 }
+
+// A refusal must not publish the values it is refusing over.
+//
+// The residue message reaches stderr and every machine format with no --show-match, so listing
+// the residual values there would hand out the exact data the refusal exists to protect. It did:
+// measured on a .docx whose value sits in a vt:blob property, the message read
+//
+//	refusing to write blobbed.docx: 2 reported value(s) still present in the document's own
+//	parts: 449-87-4100, SSN 449-87-4100 payload
+//
+// This is the same rule that keeps a matched value out of a validator's debug log and a scanned
+// path out of a failed-extraction line (#367). The count and the TYPES are what an operator acts
+// on; the value is what they already have in the original.
+func TestResidueRefusalNamesTypesNotValues(t *testing.T) {
+	const ssn = "449-87-4100"
+	contents := &OfficeZipContents{Files: map[string][]byte{
+		"docProps/custom.xml": []byte(`<?xml version="1.0"?><Properties><property name="X">` +
+			`<vt:blob>SSN ` + ssn + ` payload</vt:blob></property></Properties>`),
+	}}
+	matches := []detector.Match{
+		{Text: ssn, Type: "SSN"},
+		{Text: "SSN " + ssn + " payload", Type: "CUSTOM_PROPERTY"},
+	}
+
+	residue := parentPartResidue(contents, matches)
+	if len(residue) != 2 {
+		t.Fatalf("parentPartResidue = %d entries, want 2; the rest of this test would be vacuous", len(residue))
+	}
+
+	types := residueTypes(residue)
+	if strings.Join(types, ",") != "CUSTOM_PROPERTY,SSN" {
+		t.Errorf("residueTypes = %v, want the distinct types sorted", types)
+	}
+	for _, tp := range types {
+		if strings.Contains(tp, ssn) || strings.Contains(tp, "payload") {
+			t.Errorf("residueTypes leaked a value: %q", tp)
+		}
+	}
+
+	// A match with no type must still be counted, or the message would understate what is
+	// left in the file.
+	untyped := residueTypes([]detector.Match{{Text: ssn}})
+	if len(untyped) != 1 || untyped[0] != "unknown" {
+		t.Errorf("residueTypes for an untyped match = %v, want [unknown]", untyped)
+	}
+
+	// And the assertion that actually matters is on the OPERATOR-VISIBLE string, not on the
+	// helper: this error is what reaches stderr and every machine format. Asserting only on
+	// residueTypes let a mutation that restored the value-joining message survive.
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.docx")
+	custom := `<?xml version="1.0"?>` +
+		`<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" ` +
+		`xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">` +
+		`<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="Blobbed">` +
+		`<vt:blob>SSN ` + ssn + ` payload</vt:blob></property></Properties>`
+	if err := os.WriteFile(src, buildPkg(t, "Body text with nothing sensitive.",
+		map[string][]byte{"docProps/custom.xml": []byte(custom)}), 0o600); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	r := NewOfficeRedactor(nil, nil)
+	_, err := r.RedactDocument(src, filepath.Join(dir, "out.docx"),
+		[]detector.Match{{Text: ssn, Type: "SSN", Confidence: 90, LineNumber: 1}},
+		redactors.RedactionSimple)
+	if err == nil {
+		t.Fatal("a value inside a vt:blob must be refused, not written — the binary families are " +
+			"deliberately not rewritten in place, because a same-length replacement inside base64 " +
+			"produces invalid base64")
+	}
+	if strings.Contains(err.Error(), ssn) {
+		t.Errorf("the refusal published the value it is refusing over:\n  %v", err)
+	}
+	if !strings.Contains(err.Error(), "types:") || !strings.Contains(err.Error(), "SSN") {
+		t.Errorf("the refusal does not name the finding TYPE, which is what an operator acts on:\n  %v", err)
+	}
+}
