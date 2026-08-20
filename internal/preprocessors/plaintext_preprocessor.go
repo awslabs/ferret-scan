@@ -4,6 +4,7 @@
 package preprocessors
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -169,6 +170,11 @@ func claimedByAnotherPreprocessor(ext string) bool {
 //
 // PDF is included for the same reason as the rest: a text file named .pdf is
 // exactly as unscannable as one named .docx, and the sniff is what decides.
+// pdfMagic is the header every PDF is required to begin with (PDF 1.7 §7.5.2). It is the
+// discriminator LooksLikeText uses, because a PDF's header is ASCII and a printability sniff
+// therefore cannot tell one from a text file.
+var pdfMagic = []byte("%PDF-")
+
 var containerExtensions = map[string]bool{
 	".docx": true, ".xlsx": true, ".pptx": true,
 	".docm": true, ".xlsm": true, ".pptm": true,
@@ -360,6 +366,39 @@ func (ptp *PlainTextPreprocessor) isTextFile(filePath string) bool {
 // which are not valid UTF-8 but are still text someone may want scanned.
 func LooksLikeText(buf []byte) bool {
 	if len(buf) == 0 {
+		return false
+	}
+
+	// A format whose header is ASCII BY SPECIFICATION cannot be judged by a printability
+	// sniff, so it is judged by its magic bytes instead.
+	//
+	// PDF is the only such container in this tree. Every PDF opens "%PDF-1.x", and one written
+	// by a browser or by Office follows that with a large ASCII metadata dictionary (/Title,
+	// /Creator, /Producer), so the first 512 bytes carry no NUL and are ~100% printable — and
+	// the tests below therefore returned TRUE for a file that is mostly compressed streams.
+	//
+	// Measured on one real 957KB PDF: the plaintext preprocessor claimed it and handed 533,976
+	// characters of RAW PDF SOURCE to every validator, 33% of it non-printable. That produced
+	// 200 TWITTER findings at HIGH 100 on stream bytes, 41 PHONE findings on xref table offsets
+	// ("0000956276" is a byte offset, not a number anyone can call), and INTELLECTUAL_PROPERTY
+	// on stray 0xA9/0xAE bytes. Across 10 real PDFs the finding count tracked the non-printable
+	// share of the extracted text almost exactly, and the three whose extraction was clean
+	// produced ZERO (#419).
+	//
+	// The other container extensions are safe and always were, though for two different
+	// reasons. ZIP fails on its magic alone, because PK\x03\x04 carries NUL bytes. OLE's magic
+	// does NOT — \xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 has no NUL and every byte >= 0xA0
+	// counts as printable in the fallback below — so .doc/.xls/.ppt are rejected by the
+	// NUL-filled header REGION that follows their magic rather than by a signature. Verified
+	// against real files of all six types; see TestLooksLikeText_WhyOnlyPDFNeedsAMagicCheck,
+	// which pins the distinction so a future NUL-free container variant is not assumed safe.
+	//
+	// This does NOT withdraw #271. A text file merely NAMED .pdf does not carry the magic, so
+	// it still sniffs as text and is still scanned and redacted — that mislabelled case is what
+	// #271 exists for, and it keeps working. Nor does it stop PDFs being scanned: the router
+	// accepts them as "Binary document" (isBinaryDocument -> IsPDFFile) before this sniff is
+	// ever consulted, and the PDF text and metadata extractors have their own parsers.
+	if bytes.HasPrefix(buf, pdfMagic) {
 		return false
 	}
 
