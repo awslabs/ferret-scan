@@ -6,6 +6,7 @@ package web
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -26,6 +27,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 	"github.com/awslabs/ferret-scan/v2/internal/paths"
 	"github.com/awslabs/ferret-scan/v2/internal/platform"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 	"github.com/awslabs/ferret-scan/v2/internal/version"
 
@@ -492,8 +494,35 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		}
 		matches, suppressed, suppCount, incomplete, err := ws.processUploadedFileWithCLILogic(fileHeader, i, confidence, checks, verbose, recursive, displayName)
 		if err != nil {
-			ws.sendError(responseWriter, err.Error())
-			return
+			// A PER-FILE condition must not abandon the batch.
+			//
+			// This used to sendError and return, which discarded every match already collected
+			// and never looked at the remaining files. Measured: uploading a file containing an
+			// SSN together with one unsupported .bin returned `success: false` with ZERO
+			// results, while the CLI reported the same SSN at HIGH 100 and exited 0 (#416).
+			// Dragging a folder in is the web UI's primary interaction and ordinary folders hold
+			// files this tool cannot scan — .DS_Store, Thumbs.db, partial downloads — so any one
+			// of them turned a scan that found real PII into "scan failed".
+			var refusal *uploadRefusal
+			if errors.As(err, &refusal) {
+				// Disclose a lost-coverage refusal; stay silent about a benign skip, which is
+				// exactly what the CLI does for a type nothing could have read.
+				if refusal.coverageGap {
+					incompleteFiles = append(incompleteFiles, parallel.FileDiagnostic{
+						FilePath: refusal.name,
+						Reason:   refusal.reason,
+					})
+				}
+				continue
+			}
+			// Anything else is an infrastructure failure for THIS file (could not open it,
+			// could not create a temp file). Still per-file: record it and carry on, so one
+			// failure cannot hide findings in the others.
+			incompleteFiles = append(incompleteFiles, parallel.FileDiagnostic{
+				FilePath: displayName,
+				Reason:   "could not be scanned",
+			})
+			continue
 		}
 		allMatches = append(allMatches, matches...)
 		suppressedMatches = append(suppressedMatches, suppressed...)
@@ -561,6 +590,59 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	})
 }
 
+// reasonWithoutTempPath rewrites the server's upload temp path out of a coverage-loss reason,
+// replacing it with the name the operator uploaded.
+//
+// The FilePath field of the diagnostic was already the display name, but the REASON text is
+// built deeper down by whichever extractor produced it, and those producers embed the path they
+// were given. On the CLI that is the operator's own file and naming it is the point; here it is
+// the server's temp file, so the operator saw
+//
+//	/var/folders/fs/nx3gj.../T/ferret_upload_1787253078_0_1151739760.docx: Text Extractor: …
+//
+// which tells them nothing about their own document and discloses the server's filesystem layout
+// and upload naming scheme. Both the full path and its base name are replaced, because some
+// producers pass filepath.Base.
+func (ws *WebServer) reasonWithoutTempPath(reason, tempPath, originalFilename string) string {
+	safe := ws.sanitizeFilenameForDisplay(originalFilename)
+	if tempPath != "" {
+		reason = strings.ReplaceAll(reason, tempPath, safe)
+		if base := filepath.Base(tempPath); base != "" && base != "." {
+			reason = strings.ReplaceAll(reason, base, safe)
+		}
+	}
+	return reason
+}
+
+// maxJSONRequestBytes bounds every JSON request body this server decodes.
+//
+// The endpoints that use it accept small objects — a rule id, a suppression hash, a reason
+// string, one finding's fields, a list of formats — so 1MB is several orders of magnitude more
+// than any legitimate request and exists only to stop an unbounded one. The file-upload path has
+// its own, much larger bound: router.MaxFileSize.
+const maxJSONRequestBytes = 1 << 20 // 1MB
+
+// uploadRefusal is a condition that applies to ONE uploaded file, carried as an error so the
+// existing call chain can return it, but handled by handleScan as a per-file outcome rather
+// than a request failure.
+//
+// The distinction it carries is the one router.CanProcessType exists to make, and the same one
+// discovery applies on the CLI side:
+//
+//   - coverageGap true  — the tool could have found something and did not (too large,
+//     unreadable). That is lost coverage and must be disclosed.
+//   - coverageGap false — nothing was ever possible from this file (an unsupported type). That
+//     is a benign skip, and the CLI stays silent about it.
+//
+// Either way it must not abort the batch: see handleScan.
+type uploadRefusal struct {
+	name        string
+	reason      string
+	coverageGap bool
+}
+
+func (e *uploadRefusal) Error() string { return e.name + ": " + e.reason }
+
 // summarizeIncompleteFiles builds a short, payload-free explanation of degraded
 // coverage for the scan response, or "" when coverage was complete. It names the
 // single offending file, or counts them when several were incomplete.
@@ -599,16 +681,55 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
-	// Copy uploaded file content to temporary file with size limit protection
-	const maxFileSize = 100 << 20 // 100MB limit to prevent decompression bombs
-	limitedReader := io.LimitReader(file, maxFileSize)
-	_, err = io.Copy(tempFile, limitedReader)
+	// Copy the upload to the temp file, REFUSING anything over the limit rather than
+	// truncating it.
+	//
+	// io.LimitReader + io.Copy returns no error when the limit is reached — it simply stops,
+	// and the caller cannot tell a complete copy from a truncated one. So a 150MB upload was
+	// silently cut to 100MB, scanned, and reported as `success: true` with whatever the first
+	// 100MB happened to contain: measured, an SSN at the 110MB mark produced zero findings and
+	// no warning of any kind (#415). The CLI refuses the same file and discloses it as
+	// `file too large to scan` at exit 3, so the two surfaces disagreed about one input, and
+	// the web UI's answer was the dangerous one.
+	//
+	// Reading ONE byte past the limit is what makes the difference detectable: if the copy
+	// reaches maxFileSize+1 the input was larger than we may scan.
+	limitedReader := io.LimitReader(file, router.MaxFileSize+1)
+	written, err := io.Copy(tempFile, limitedReader)
 	if err != nil {
 		return nil, nil, 0, nil, fmt.Errorf("failed to copy file content: %v", err)
+	}
+	if written > router.MaxFileSize {
+		// Named by displayName, never by the temp path — see the note in handleScan.
+		return nil, nil, 0, nil, &uploadRefusal{
+			name: displayName,
+			// Same wording as the CLI's causeTooLarge entry, so an operator comparing the two
+			// surfaces sees one reason rather than two.
+			reason:      fmt.Sprintf("file too large to scan (max size: %dMB)", router.MaxFileSize/(1024*1024)),
+			coverageGap: true,
+		}
 	}
 
 	// Normalize the temporary file path for the current platform
 	normalizedTempPath := paths.NormalizePath(tempFile.Name())
+
+	// Classify a refusal HERE, where the path is known, rather than letting core.ScanFile
+	// collapse every reason into one string.
+	//
+	// core.ScanFile discards the router's reason (`canProcess, _ :=`, scanner.go:147) and
+	// returns "file type not supported for processing: <temp path>" for an unsupported type, an
+	// oversize file, an unreadable one and a device node alike. handleScan then treated that as
+	// a request failure, so ONE unsupported file in a batch discarded every other file's
+	// findings (#416). Asking the router directly gives back the distinction the CLI relies on.
+	if canProcess, reason := router.NewFileRouter(false).CanProcessFile(normalizedTempPath, true); !canProcess {
+		return nil, nil, 0, nil, &uploadRefusal{
+			name:   displayName,
+			reason: reason,
+			// A processable TYPE refused for some other cause is lost coverage; a type nothing
+			// could read is a benign skip. Same test discovery applies on the CLI side.
+			coverageGap: router.CanProcessType(normalizedTempPath, true),
+		}
+	}
 
 	// Run full CLI scanning logic on this file with original filename
 	return ws.runFullCLIScan(normalizedTempPath, displayName, confidence, checks, verbose, recursive)
@@ -668,7 +789,7 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 	if result.Incomplete {
 		incomplete = []parallel.FileDiagnostic{{
 			FilePath: ws.sanitizeFilenameForDisplay(originalFilename),
-			Reason:   result.IncompleteReason,
+			Reason:   ws.reasonWithoutTempPath(result.IncompleteReason, filePath, originalFilename),
 		}}
 	}
 
@@ -678,6 +799,18 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 	safeFilename := ws.sanitizeFilenameForDisplay(originalFilename)
 	for i := range result.Matches {
 		result.Matches[i].Filename = safeFilename
+		// Metadata carries paths too, and renaming only Filename left them behind: a .docx
+		// whose finding came from its properties shipped
+		// metadata.original_file = "/var/folders/…/T/ferret_upload_…docx" straight to the
+		// browser. Same reasoning as reasonWithoutTempPath — the operator's own name is the
+		// only path that means anything here, and the temp path discloses the server's layout.
+		for k, v := range result.Matches[i].Metadata {
+			if str, ok := v.(string); ok {
+				if rewritten := ws.reasonWithoutTempPath(str, filePath, originalFilename); rewritten != str {
+					result.Matches[i].Metadata[k] = rewritten
+				}
+			}
+		}
 	}
 
 	// Annotate findings with an advisory explanation now that filenames are
@@ -721,7 +854,8 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 		Verbose   bool                        `json:"verbose"`
 	}
 
-	if err := json.NewDecoder(request.Body).Decode(&exportRequest); err != nil {
+	// Bounded for the same reason as the suppression endpoints — see maxJSONRequestBytes.
+	if err := json.NewDecoder(http.MaxBytesReader(responseWriter, request.Body, maxJSONRequestBytes)).Decode(&exportRequest); err != nil {
 		ws.sendError(responseWriter, "Invalid JSON in request body")
 		return
 	}
@@ -1039,7 +1173,14 @@ func (ws *WebServer) suppressionEndpoint(method string, decode bool,
 
 		var req suppressionRequest
 		if decode {
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			// Bound the body. Decoding straight from r.Body reads as much as the client sends,
+			// so a single POST could drive allocation without limit (#380). Every request this
+			// endpoint family accepts is a small object — an id, a hash, a reason, one
+			// finding's fields — so the cap is generous by orders of magnitude and only ever
+			// rejects abuse. http.MaxBytesReader is the right tool rather than io.LimitReader:
+			// it returns an ERROR at the limit instead of a silent short read, which is the
+			// same distinction #415 turned on.
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONRequestBytes)).Decode(&req); err != nil {
 				ws.sendError(w, "Invalid JSON in request body")
 				return
 			}

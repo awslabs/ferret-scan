@@ -155,6 +155,32 @@
       "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Insurance Member Id Detected",
       "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:keyword_separator_forms> (line 6)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmemberid: W9998887776\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "medicalid"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "<golden:keyword_separator_forms>",
+        "start_line": 6
+      },
+      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Insurance Member Id Detected",
+      "severity": "High"
     }
   ]
 }

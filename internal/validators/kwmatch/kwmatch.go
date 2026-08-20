@@ -80,7 +80,7 @@ func ContainsFunc(text, keyword string, accept func(start, end int) bool) bool {
 		return false
 	}
 	if fw := firstWordLen(keyword); fw != len(keyword) {
-		return containsSepFlex(text, keyword, fw, accept)
+		return containsSepFlex(text, keyword, fw, true, accept)
 	}
 	for from := 0; from+len(keyword) <= len(text); {
 		i := strings.Index(text[from:], keyword)
@@ -108,6 +108,34 @@ func ContainsAny(text string, keywords []string) bool {
 		}
 	}
 	return false
+}
+
+// ContainsLabel is [Contains] with the keyword's spaces allowed to match ZERO separator
+// bytes, so "member id" also finds "memberid" and — since text is lowercased before matching
+// — the camelCase "memberId". That spelling is the default key style of JSON, REST payloads
+// and ORM exports.
+//
+// Use it ONLY for a keyword that identifies the value it labels, never for one that
+// suppresses or penalizes a finding. See matchSepFlexAt for why that asymmetry is not a
+// stylistic preference: widening a suppressor's reach silences real values.
+//
+// The outer whole-word rule still applies, so "member id" does not match inside
+// "remembering", "teammemberid" or "memberidentification".
+//
+// A single-word keyword contains no space, so this is identical to [Contains] for one.
+func ContainsLabel(text, keyword string) bool {
+	return ContainsLabelLower(strings.ToLower(text), strings.ToLower(keyword))
+}
+
+// ContainsLabelLower is [ContainsLabel] for callers holding lowercased values.
+func ContainsLabelLower(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	if fw := firstWordLen(keyword); fw != len(keyword) {
+		return containsSepFlex(text, keyword, fw, false, nil)
+	}
+	return ContainsLower(text, keyword)
 }
 
 // --- PR6 separator-flexible multi-word matching -------------------------------
@@ -143,8 +171,54 @@ func allWordsPresent(text, keyword string) bool {
 }
 
 // matchSepFlexAt walks keyword against text[start:], letting each space RUN in
-// the keyword consume a run of 1+ separator bytes. Returns the end offset or -1.
-func matchSepFlexAt(text, keyword string, start int) int {
+// the keyword consume a run of separator bytes. Returns the end offset or -1.
+//
+// requireSep decides whether that run may be EMPTY, and it is the whole of #372.
+//
+// # What zero separators buys
+//
+// With a separator required, "member id" can never match "memberid" or "memberId" — text is
+// lowercased before matching, so those two are the same string here. camelCase and
+// concatenated keys are the default style of JSON, REST payloads and ORM exports. Measured on
+// a JSON file holding camelCase/snake_case pairs of the same shape, the camelCase halves
+// scored 0 while their twins scored 75, 80 and 100 — and in a two-key object one member ID
+// sat in cleartext beside its redacted twin, because only reported findings reach the
+// redactor.
+//
+// # Why it is OPT-IN, and asymmetric
+//
+// A keyword list is not one kind of thing. A POSITIVE keyword identifies the value it labels,
+// so widening its reach can only add findings. A SUPPRESSOR withholds or vetoes a finding, so
+// widening ITS reach silences real values — and a silenced finding is never redacted.
+//
+// That is not hypothetical. It shipped, briefly, when this defaulted to zero separators:
+// medicalid's suppressor "ip address" began matching the ubiquitous key "ipAddress", and that
+// veto is unconditional (nonInsuranceKeywordPresent), so
+//
+//	{"member_id": "W1234567801", "ipAddress": "10.11.12.13"}
+//
+// lost its INSURANCE_MEMBER_ID finding entirely and was written back with the member ID in
+// CLEARTEXT while the IP was masked — a redacted file that reported success and leaked. The
+// same shape threatens ssn, whose suppressor list holds "part number", "policy number",
+// "order number", "employee id" and "tax id": every one of those is a common camelCase key,
+// and every one of them would newly veto a real SSN on the same line.
+//
+// A dictionary screen does not catch this. "ipaddress" is not an English word, so checking
+// concatenations against /usr/share/dict/words passed it. The property that matters is not
+// "is a word" but "is a token that occurs in real text", which no word list decides.
+//
+// So the widening is reached only through [ContainsLabel], and only positive label lists call
+// it. [Contains] and its siblings keep requiring a separator, which is what every suppressor
+// in this tree gets.
+//
+// The outer word-boundary rule in containsSepFlex is what keeps even the widened form honest:
+// a left boundary at the anchor and a right boundary at the end, so "member id" still cannot
+// match inside "remembering" or "teammemberid", and "memberidentification" is rejected at the
+// right edge.
+//
+// '.' and '/' remain excluded from the separator class in both modes, by measurement: they
+// cross sentence and URL boundaries, where the two words are unrelated.
+func matchSepFlexAt(text, keyword string, start int, requireSep bool) int {
 	ti, ki := start, 0
 	for ki < len(keyword) {
 		if keyword[ki] == ' ' {
@@ -156,7 +230,7 @@ func matchSepFlexAt(text, keyword string, start int) int {
 				ti++
 				n++
 			}
-			if n == 0 {
+			if requireSep && n == 0 {
 				return -1
 			}
 			continue
@@ -172,7 +246,7 @@ func matchSepFlexAt(text, keyword string, start int) int {
 
 // containsSepFlex anchors on the keyword's first word and verifies the rest with
 // separator flexibility, applying the same outer word-boundary rule.
-func containsSepFlex(text, keyword string, fw int, accept func(start, end int) bool) bool {
+func containsSepFlex(text, keyword string, fw int, requireSep bool, accept func(start, end int) bool) bool {
 	anchor := keyword[:fw]
 	misses := 0
 	for from := 0; from+fw <= len(text); {
@@ -182,7 +256,7 @@ func containsSepFlex(text, keyword string, fw int, accept func(start, end int) b
 		}
 		i += from
 		if i == 0 || !isWordByte(text[i-1]) {
-			if end := matchSepFlexAt(text, keyword, i); end > 0 {
+			if end := matchSepFlexAt(text, keyword, i, requireSep); end > 0 {
 				if end >= len(text) || !isWordByte(text[end]) {
 					if accept == nil || accept(i, end) {
 						return true

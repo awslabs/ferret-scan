@@ -28,6 +28,60 @@ internal/validators/<name>/
 
 ---
 
+## 1a. Matching context keywords
+
+Never hand-roll `strings.Contains` for a keyword. Use `internal/validators/kwmatch`,
+which applies the whole-word rule the validators depend on — `strings.Contains` finds
+`ssn` inside `assign` and `ein` inside `Einstein`.
+
+| Call | Use for | Matches |
+|---|---|---|
+| `kwmatch.Contains(text, kw)` | **the default — and every suppressor** | `member id`, `member_id`, `member-id`, `member  id` |
+| `kwmatch.ContainsLabel(text, kw)` | a POSITIVE keyword that labels the value beside it | the above **plus** `memberid`, `memberId` |
+| `…Lower` variants of either | callers that already hold lowercased text, to skip the allocations | as above |
+| `kwmatch.ContainsAny(text, kws)` | any of a list | as `Contains` |
+
+Rules a multi-word keyword follows:
+
+- **A space matches one or more separator bytes** (space, tab, `_`, `-`), so one keyword
+  covers the spaced, snake_case, kebab-case and padded spellings.
+- **`ContainsLabel` also allows ZERO separators**, adding the concatenated and camelCase
+  spellings that JSON, REST payloads and ORM exports emit by default. Text is lowercased
+  before matching, so `memberId` and `memberid` are the same string.
+- **`.` and `/` are not separators** in either mode, by measurement: they cross sentence and
+  URL boundaries, where the two words are unrelated (`see member.id in the docs`,
+  `/member/id/lookup`).
+- **The whole-word rule still applies at both ends** in either mode, so `member id` does not
+  match inside `remembering`, `teammemberid` or `memberidentification`.
+
+### The asymmetry is the important part
+
+`ContainsLabel` is opt-in because **widening a suppressor's reach silences real values**, and a
+silenced finding is never redacted. A positive keyword identifies the value it labels, so
+widening it can only add findings; a suppressor withholds one.
+
+That is not hypothetical. When the widened form was briefly the default, `medicalid`'s
+suppressor `ip address` matched the ubiquitous key `ipAddress` — an unconditional veto — so
+
+```json
+{"member_id": "W1234567801", "ipAddress": "10.11.12.13"}
+```
+
+lost its finding entirely and was written back with the member ID in **cleartext** while the IP
+was masked. `ssn`'s suppressor list carries the same threat: `part number`, `policy number`,
+`order number`, `employee id`, `tax id` are all common camelCase keys.
+
+So: **positive lists may use `ContainsLabel`; negative, suppressor and veto lists must use
+`Contains`.** If one helper in your validator serves both lists, add a second one rather than
+widening both — and if a helper *reports* which keywords matched, pass it the same matcher the
+scorer used, or the context will disagree with the confidence.
+
+Note that a dictionary screen does not substitute for this rule: `ipaddress` is not an English
+word, so checking concatenations against `/usr/share/dict/words` passes it. The property that
+matters is "is a token that occurs in real text", which no word list decides.
+
+---
+
 ## 2. Register in the factory
 
 **File:** `internal/core/factory.go`

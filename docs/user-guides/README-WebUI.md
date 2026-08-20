@@ -89,7 +89,11 @@ The web UI supports the same file types as the CLI version:
 - **Local Processing**: Files are processed locally on your machine - no data is sent to external servers
 - **Temporary Storage**: Files are temporarily stored during scanning and automatically deleted
 - **Memory Scrubbing**: Secure memory handling for sensitive data
-- **Upload Limits**: Maximum file upload size is 100 MB per file (decompression-bomb guard)
+- **Upload Limits**: Maximum file upload size is 100 MB per file (decompression-bomb guard),
+  the same limit the CLI applies. A file over the limit is **refused and reported**, not
+  truncated: the response carries `incomplete: true` with `file too large to scan` as the
+  reason, so a partial scan is never presented as a complete one. Request bodies on the JSON
+  endpoints (`/export`, `/suppressions/*`) are capped at 1 MB.
 - **No Data Retention**: Scan results are displayed in browser only, not stored permanently
 - **Audit Trail**: Comprehensive logging for compliance requirements
 
@@ -147,8 +151,10 @@ The web UI includes a comprehensive suppression management system:
 
 **File upload fails**:
 
-- Check that the file is under 100 MB
-- Ensure the file type is supported by Ferret Scan
+- Check that the file is under 100 MB. Over that, the file is refused and the response says so
+  (`incomplete: true`, reason `file too large to scan`) — split the file and scan the parts
+- Ensure the file type is supported by Ferret Scan. A file the tool cannot scan does **not** fail
+  the upload: it is skipped, and the other files in the same drop are still scanned and reported
 - Try uploading files one at a time if multiple uploads fail
 - For folder drops: very large directory trees can take a moment to enumerate client-side; the upload zone shows "Reading files…" while the walk is in progress
 

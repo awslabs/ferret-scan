@@ -104,6 +104,18 @@ func containsKeyword(text, keyword string) bool {
 	return kwmatch.Contains(text, keyword)
 }
 
+// containsLabel is containsKeyword for a keyword that LABELS the value it sits beside,
+// letting its spaces match zero separators so "routing number" also finds "routingNumber".
+//
+// Only positive keyword lists may use it. containsKeyword still requires a separator, which
+// is what the negative and phone-suppressor lists here keep — widening a suppressor silences
+// real values, and "call us" -> "callus" is a live example in this package: the phone
+// suppressor gates looksLikePhone, so an ordinary clinical line mentioning a callus would
+// drop a real account number beside it. See kwmatch.ContainsLabel.
+func containsLabel(text, keyword string) bool {
+	return kwmatch.ContainsLabel(text, keyword)
+}
+
 // Validator implements the detector.Validator interface for detecting
 // bank account numbers, routing numbers, IBANs, and SWIFT/BIC codes.
 type Validator struct {
@@ -946,7 +958,7 @@ func (v *Validator) buildContextInfo(line string, matchStart, matchLen int) dete
 // hasBankingKeywords checks if the line contains any banking-related keywords.
 func (v *Validator) hasBankingKeywords(line string) bool {
 	for _, kw := range v.positiveKeywords {
-		if containsKeyword(line, kw) {
+		if containsLabel(line, kw) {
 			return true
 		}
 	}
