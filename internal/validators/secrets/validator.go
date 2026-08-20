@@ -1527,6 +1527,11 @@ func (v *Validator) isObviousPlaceholderPattern(pattern string) bool {
 func (v *Validator) processScopedCandidates(matches []scopedCandidate, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, lineHasShellVars bool, envType string, isShellScript bool) []spannedMatch {
 	var results []spannedMatch
 
+	// Hoisted out of the candidate loop: the nearby-keyword answer depends only on the
+	// line, so computing it per candidate made the scan quadratic in the number of
+	// candidates on one line. See lineKeywordState for the measurement.
+	lineKw := v.lineHasAnyPositiveKeyword(line)
+
 	for _, cand := range matches {
 		match := cand.text
 		detectionMethod := cand.method
@@ -1543,7 +1548,7 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 		// always originates from this exact line, so this is behavior-preserving
 		// and additionally avoids the latent first-occurrence bug where a
 		// duplicated token resolves to a different line's context.
-		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, contextInsights, isShellScript, envType)
+		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, lineKw, contextInsights, isShellScript, envType)
 
 		// Skip matches with 0% confidence - they are false positives
 		if confidence <= 0 {
@@ -1791,7 +1796,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCache(match, fullContent stri
 // nearby-keyword check (those matches are always specific_pattern=true), so it
 // passes an empty line hint.
 func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullContent string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
-	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", contextInsights, isShellScript, envType)
+	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", lineKeywordUnknown, contextInsights, isShellScript, envType)
 }
 
 // calculateEnhancedConfidenceWithCacheAndEnvAndLine is identical to
@@ -1800,7 +1805,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 // check inspects that line directly instead of rescanning the whole content via
 // strings.Index — eliminating an O(content) scan per match (the O(n^2) hot path)
 // and the latent first-occurrence bug for duplicated tokens.
-func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
+func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, lineKw lineKeywordState, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
 	// Start with base confidence calculation
 	confidence, checks := v.CalculateConfidence(match)
 
@@ -1902,7 +1907,11 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// (AWS/JWT/GitHub/...) and there is no corroborating secret keyword nearby,
 	// cap it just below the MEDIUM threshold so it does not surface as MEDIUM/HIGH
 	// on shape alone. A specific pattern, or a nearby secret keyword, lifts it.
-	if !checks["specific_pattern"] && !v.hasNearbySecretKeyword(fullContent, match, lineHint) {
+	nearbyKeyword := lineKw == lineKeywordPresent
+	if lineKw == lineKeywordUnknown {
+		nearbyKeyword = v.hasNearbySecretKeyword(fullContent, match, lineHint)
+	}
+	if !checks["specific_pattern"] && !nearbyKeyword {
 		if confidence > 55 {
 			confidence = 55
 		}
@@ -1916,6 +1925,49 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	}
 
 	return confidence, checks
+}
+
+// lineKeywordState memoizes hasNearbySecretKeyword's answer for one line.
+//
+// The answer depends only on the LINE, so it is identical for every candidate on that
+// line — but it was recomputed per candidate, and each recomputation scans the whole
+// line once per positive keyword. On a single line holding K assignments the line
+// length grows with K, so the cost was O(K x lineLen x keywords), i.e. quadratic in K.
+//
+// Measured on one line of K quoted password= assignments, before this:
+//
+//	K =  1000   0.46s
+//	K =  2000   0.37s
+//	K =  4000   1.22s   3.30x
+//	K =  8000   4.62s   3.79x
+//	K = 16000  17.70s   3.83x   <- converging on 4x, i.e. quadratic
+//
+// with findings staying linear in K. A CPU profile attributed 86% of the run to
+// lineHasKeyword and 100% of THAT to hasNearbySecretKeyword — not to AnalyzeContext,
+// which #362 also names. The keyword scan itself is fine; calling it per candidate is
+// not.
+//
+// A tri-state rather than a bool because the multi-line fallback path calls the
+// confidence function with no line hint and must keep computing the answer itself.
+type lineKeywordState int8
+
+const (
+	// lineKeywordUnknown means the caller has no per-line answer, so the callee
+	// computes it as before.
+	lineKeywordUnknown lineKeywordState = iota
+	lineKeywordAbsent
+	lineKeywordPresent
+)
+
+// lineHasAnyPositiveKeyword computes the per-line answer once, for hoisting out of a
+// per-candidate loop.
+func (v *Validator) lineHasAnyPositiveKeyword(line string) lineKeywordState {
+	for _, kw := range v.positiveKeywords {
+		if lineHasKeyword(line, kw) {
+			return lineKeywordPresent
+		}
+	}
+	return lineKeywordAbsent
 }
 
 // hasNearbySecretKeyword reports whether a positive secret keyword appears on the
