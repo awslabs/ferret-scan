@@ -97,10 +97,17 @@ var kindByExt = map[string]string{
 	".bmp": "image", ".webp": "image",
 
 	// Audio. Admitted on the read side because tags carry free text (Artist,
-	// Comment). NOTE: no redactor handles audio, so a finding inside an
-	// embedded clip cannot be removed — that case must be disclosed rather
-	// than silently dropped. See Redactable.
+	// Comment), and redactable on the write side since #357 — this note used to
+	// say the opposite. Measured on a .docx carrying word/embeddings/clip.mp3
+	// with an SSN in its ID3 comment: reported at HIGH 100, and absent from the
+	// embedded part of the redacted document.
 	".mp3": "audio", ".wav": "audio", ".m4a": "audio", ".flac": "audio",
+
+	// Video is deliberately NOT here. It is redactable at the top level (#358),
+	// but admitting it as an embedded part is a read-side change with its own
+	// extraction cost and budget questions, and nothing measures it yet. An
+	// embedded clip is therefore not scanned at all rather than scanned and
+	// left unredacted.
 
 	// Legacy OLE compound files. A leaf on the read side: the extractor reads
 	// their streams directly and does not follow embeddings, so admitting them

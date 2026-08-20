@@ -6,14 +6,10 @@ package audio
 import (
 	"bytes"
 	"encoding/binary"
-)
 
-// byteRange is a half-open [start, end) span of the file that holds metadata.
-type byteRange struct {
-	start int
-	end   int
-	label string // which container structure it came from, for the audit trail
-}
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/isobmff"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/tagmeta"
+)
 
 // metadataRanges returns the spans of buf that hold tag metadata for the given format.
 //
@@ -32,7 +28,7 @@ type byteRange struct {
 // An empty result means "no metadata region found", which the caller must treat as a refusal
 // rather than as success — a file whose tags could not be located is a file whose values were
 // not removed.
-func metadataRanges(buf []byte, format audioFormat) []byteRange {
+func metadataRanges(buf []byte, format audioFormat) []tagmeta.Region {
 	switch format {
 	case formatWAV:
 		return riffMetadataRanges(buf)
@@ -55,14 +51,14 @@ func metadataRanges(buf []byte, format audioFormat) []byteRange {
 // extractor detects it (#312 and the INFO-walk follow-up): a non-compliant writer omits it,
 // and seeking past a byte that is not there puts every subsequent offset one out. Here that
 // would mean overwriting the wrong bytes, so the consequence is worse than a missed read.
-func riffMetadataRanges(buf []byte) []byteRange {
+func riffMetadataRanges(buf []byte) []tagmeta.Region {
 	// "RIFF" + size(4) + "WAVE" = 12 bytes before the first chunk.
 	const riffHeader = 12
 	if len(buf) < riffHeader || !bytes.Equal(buf[0:4], []byte("RIFF")) || !bytes.Equal(buf[8:12], []byte("WAVE")) {
 		return nil
 	}
 
-	var out []byteRange
+	var out []tagmeta.Region
 	pos := riffHeader
 	for pos+8 <= len(buf) {
 		id := buf[pos : pos+4]
@@ -80,10 +76,10 @@ func riffMetadataRanges(buf []byte) []byteRange {
 
 		switch {
 		case bytes.Equal(id, []byte("LIST")):
-			out = append(out, byteRange{dataStart, dataEnd, "RIFF LIST"})
+			out = append(out, tagmeta.Region{Start: dataStart, End: dataEnd, Label: "RIFF LIST"})
 		case bytes.Equal(id, []byte("id3 ")), bytes.Equal(id, []byte("ID3 ")):
 			// A WAV may carry an ID3 tag in its own chunk.
-			out = append(out, byteRange{dataStart, dataEnd, "RIFF id3"})
+			out = append(out, tagmeta.Region{Start: dataStart, End: dataEnd, Label: "RIFF id3"})
 		}
 
 		next := dataEnd
@@ -108,8 +104,8 @@ func riffMetadataRanges(buf []byte) []byteRange {
 // never contain a byte sequence a decoder would mistake for a frame sync. Reading it as a
 // plain big-endian uint32 gives a value that is too large and drifts further with every size —
 // the classic ID3 parsing bug.
-func id3MetadataRanges(buf []byte) []byteRange {
-	var out []byteRange
+func id3MetadataRanges(buf []byte) []tagmeta.Region {
+	var out []tagmeta.Region
 
 	// ID3v2: "ID3" ver(2) flags(1) synchsafe-size(4), then size bytes of frames.
 	const id3v2Header = 10
@@ -120,7 +116,7 @@ func id3MetadataRanges(buf []byte) []byteRange {
 			end = len(buf)
 		}
 		if end > id3v2Header {
-			out = append(out, byteRange{id3v2Header, end, "ID3v2"})
+			out = append(out, tagmeta.Region{Start: id3v2Header, End: end, Label: "ID3v2"})
 		}
 	}
 
@@ -129,7 +125,7 @@ func id3MetadataRanges(buf []byte) []byteRange {
 	if len(buf) >= id3v1Size {
 		tail := len(buf) - id3v1Size
 		if bytes.Equal(buf[tail:tail+3], []byte("TAG")) {
-			out = append(out, byteRange{tail + 3, len(buf), "ID3v1"})
+			out = append(out, tagmeta.Region{Start: tail + 3, End: len(buf), Label: "ID3v1"})
 		}
 	}
 
@@ -149,7 +145,7 @@ func synchsafe(b []byte) int {
 // Only type 4. STREAMINFO (0) is numeric and mandatory, SEEKTABLE (3) is offsets, and
 // PICTURE (6) is binary image data whose bytes could coincidentally match a short value.
 // Comments are where the text tags live.
-func flacMetadataRanges(buf []byte) []byteRange {
+func flacMetadataRanges(buf []byte) []tagmeta.Region {
 	if len(buf) < 4 || !bytes.Equal(buf[0:4], []byte("fLaC")) {
 		return nil
 	}
@@ -158,7 +154,7 @@ func flacMetadataRanges(buf []byte) []byteRange {
 		blockHeader        = 4
 		vorbisCommentBlock = 4
 	)
-	var out []byteRange
+	var out []tagmeta.Region
 	pos := 4
 	for pos+blockHeader <= len(buf) {
 		header := buf[pos]
@@ -172,7 +168,7 @@ func flacMetadataRanges(buf []byte) []byteRange {
 			dataEnd = len(buf)
 		}
 		if blockType == vorbisCommentBlock && dataEnd > dataStart {
-			out = append(out, byteRange{dataStart, dataEnd, "FLAC VORBIS_COMMENT"})
+			out = append(out, tagmeta.Region{Start: dataStart, End: dataEnd, Label: "FLAC VORBIS_COMMENT"})
 		}
 		if last || dataEnd <= pos {
 			break
@@ -185,81 +181,27 @@ func flacMetadataRanges(buf []byte) []byteRange {
 // mp4MetadataRanges finds udta (user data) atoms in an MP4/M4A file, which is where the
 // iTunes-style ilst tags live.
 //
-// Scoped to udta rather than to moov: moov also holds the sample tables (stbl/stco/stsz),
-// which are offset and size arrays. Overwriting bytes there would desynchronise the decoder
-// from the audio while the file still parsed as a container — a corrupt output that looks
-// successful. udta is the only subtree that is purely descriptive.
-func mp4MetadataRanges(buf []byte) []byteRange {
-	var out []byteRange
-	collectUdta(buf, 0, len(buf), 0, &out)
+// The walk itself lives in internal/redactors/isobmff because the video redactor needs the
+// same offsets, and the rule that keeps this safe — scope to udta, never to moov, because moov
+// also holds the sample tables (stbl/stco/stsz) whose bytes are offsets into the media — must
+// not be able to drift between two copies of it. See that package for why.
+func mp4MetadataRanges(buf []byte) []tagmeta.Region {
+	// The atom-budget error is deliberately dropped here rather than propagated. The spans
+	// found before the budget ran out are still correct, and residualValues is what decides
+	// whether the file may be written: a value outside the spans that were found is still
+	// present in the output and is still refused. Only the streaming video path, which cannot
+	// re-check the whole file as cheaply, treats a partial walk as a refusal in its own right.
+	spans, _ := isobmff.MetadataSpansIn(buf)
+
+	out := make([]tagmeta.Region, 0, len(spans))
+	for _, sp := range spans {
+		// Converting a file offset to a slice index is where the bound belongs. An audio
+		// buffer is already in memory so this cannot overflow in practice, but the check is
+		// what makes that true rather than assumed.
+		if sp.Start < 0 || sp.End > int64(len(buf)) || sp.Start >= sp.End {
+			continue
+		}
+		out = append(out, tagmeta.Region{Start: int(sp.Start), End: int(sp.End), Label: sp.Label})
+	}
 	return out
-}
-
-// collectUdta walks the atom tree in buf[start:end), appending every udta payload it finds.
-//
-// The depth bound is belt-and-braces, and worth being honest about: termination is ALREADY
-// guaranteed without it, because every level consumes at least the 8 bytes of an atom header
-// out of a finite buffer and the child range is strictly inside the parent's. So a hostile
-// file cannot drive unbounded recursion — it can only drive deep recursion, bounded by
-// filesize/8. The explicit ceiling costs one comparison and keeps that reasoning from having
-// to be re-derived by the next reader; it is deliberately not covered by a test, because a
-// fixture deep enough to distinguish its presence would have to be hundreds of thousands of
-// levels deep and would be measuring Go's stack growth rather than this code.
-func collectUdta(buf []byte, start, end, depth int, out *[]byteRange) {
-	const maxDepth = 8
-	if depth > maxDepth {
-		return
-	}
-
-	pos := start
-	for pos+8 <= end {
-		size := int(binary.BigEndian.Uint32(buf[pos : pos+4]))
-		name := buf[pos+4 : pos+8]
-		header := 8
-
-		switch size {
-		case 0:
-			// Size 0 means "extends to the end of the file" (permitted for the last atom).
-			size = end - pos
-		case 1:
-			// Size 1 means the real 64-bit size follows the name.
-			if pos+16 > end {
-				return
-			}
-			large := binary.BigEndian.Uint64(buf[pos+8 : pos+16])
-			// Bound the cast: a declared size beyond the buffer is malformed, and on a
-			// 32-bit build the conversion would wrap.
-			if large > uint64(end-pos) {
-				return
-			}
-			size = int(large)
-			header = 16
-		}
-
-		if size < header || pos+size > end {
-			return // malformed or truncated: stop rather than guess
-		}
-
-		payloadStart := pos + header
-		payloadEnd := pos + size
-
-		if bytes.Equal(name, []byte("udta")) {
-			*out = append(*out, byteRange{payloadStart, payloadEnd, "MP4 udta"})
-		} else if isMP4Container(name) {
-			collectUdta(buf, payloadStart, payloadEnd, depth+1, out)
-		}
-
-		pos = payloadEnd
-	}
-}
-
-// isMP4Container reports whether an atom holds child atoms worth descending into on the way
-// to udta. Listed explicitly rather than descending into everything, because descending into
-// a leaf atom would interpret its payload bytes as atom headers and produce nonsense ranges.
-func isMP4Container(name []byte) bool {
-	switch string(name) {
-	case "moov", "trak", "mdia", "minf", "stbl", "edts", "moof", "traf", "mvex":
-		return true
-	}
-	return false
 }

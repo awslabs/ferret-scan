@@ -8,6 +8,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -317,4 +320,30 @@ func (ri *RedactionAuditLog) Validate() error {
 func GenerateDocumentHash(content []byte) string {
 	hash := sha256.Sum256(content)
 	return hex.EncodeToString(hash[:])
+}
+
+// HashFile is GenerateDocumentHash over a file, without reading it into memory.
+//
+// The audit trail records a verification hash of the original, and computing it used to cost the
+// file's whole size in RSS: os.ReadFile followed by sha256.Sum256. Measured on an 80 MB video,
+// peak resident memory rose from 30 MB for a scan to 111 MB for the same scan with redaction
+// enabled — the difference being one buffer nothing keeps. sha256 is a streaming hash, so a
+// 32 KB io.Copy produces the identical digest at a constant cost, and it does so for every
+// redactor rather than only for the streaming ones.
+//
+// An unreadable file returns an empty hash, matching what the caller did with a read error
+// before: the audit entry records no hash rather than the redaction failing over its own
+// bookkeeping.
+func HashFile(path string) string {
+	f, err := os.Open(filepath.Clean(path)) // #nosec G304 -- path already vetted by the caller
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
