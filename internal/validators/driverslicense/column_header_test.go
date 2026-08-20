@@ -65,8 +65,8 @@ func TestNonTabularBehaviourIsUnchanged(t *testing.T) {
 		t.Errorf("a bare unlabelled value was reported %v; context is the only evidence here, "+
 			"so this must stay silent", got)
 	}
-	if got := hdrDetect(t, "drivers_license\n"+"D12345678901234"+"\n"); len(got) != 0 {
-		t.Errorf("a two-line non-table was treated as tabular: %v. tabular.Analyze requires "+
-			">=3 fields and a consistent delimiter precisely so prose is not reinterpreted", got)
+	if got := hdrDetect(t, "col_a\n"+"D12345678901234"+"\n"); len(got) != 0 {
+		t.Errorf("a two-line file with a NON-label first line was admitted: %v. neither mechanism should fire: tabular.Analyze needs >=3 fields, and "+
+			"the label window needs a bare field LABEL, which \"col_a\" is not", got)
 	}
 }

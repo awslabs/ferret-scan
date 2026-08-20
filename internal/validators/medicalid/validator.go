@@ -127,7 +127,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			return matches, ctx.Err()
 		}
 
-		lineMatches := v.scanLine(ctx, line, lineNum, originalPath, table)
+		prevLine := ""
+		if lineNum > 0 {
+			prevLine = lines[lineNum-1]
+		}
+		lineMatches := v.scanLine(ctx, line, lineNum, originalPath, table, prevLine)
 		matches = append(matches, lineMatches...)
 	}
 
@@ -174,10 +178,30 @@ type medicalLineContext struct {
 }
 
 // scanLine scans a single line for all medical ID types.
-func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string, table *tabular.Table) []detector.Match {
+func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string, table *tabular.Table, prevLine string) []detector.Match {
 	var matches []detector.Match
 
 	lowerLine := strings.ToLower(line)
+
+	// ctxLine is lowerLine plus a bare field LABEL from the line above, used ONLY for
+	// the keyword predicates below. lowerLine itself is left alone because match offsets
+	// are computed against it.
+	//
+	// Same defect as the column header in a different layout: MEDICAL_ID is label-gated
+	// and the keyword search stops at the newline, so
+	//
+	//	Member ID
+	//	W9998887776
+	//
+	// reported nothing and the value was left in cleartext. Gated on
+	// kwmatch.LooksLikeFieldLabel rather than on a keyword being present, because a
+	// keyword alone admits prose — "Send the member the insurance packet today" carries
+	// two keywords and vouches for nothing. Bounded to exactly one line back, mirroring
+	// the +/-1 window the secrets validator already uses for AWS keys.
+	ctxLine := lowerLine
+	if kwmatch.LooksLikeFieldLabel(prevLine, v.positiveKeywords) {
+		ctxLine = lowerLine + " " + strings.ToLower(strings.TrimSpace(prevLine))
+	}
 
 	// Column bounds for this row, resolved once. Only for a DATA row: the header
 	// row itself is not a value-bearing line.
@@ -192,8 +216,8 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	// Computing them ONCE per line instead of once per match is what keeps
 	// scanning O(line length) rather than O(matches × line length) — the latter
 	// is a single-long-line CPU-exhaustion DoS. See the timing regression test.
-	lineImpact := v.analyzeContext("", lowerLine)
-	linePositiveKeywords := v.keywordsPresent(lowerLine, v.positiveKeywords)
+	lineImpact := v.analyzeContext("", ctxLine)
+	linePositiveKeywords := v.keywordsPresent(ctxLine, v.positiveKeywords)
 	lineNegativeKeywords := v.keywordsPresent(lowerLine, v.negativeKeywords)
 
 	// Per-line context predicates, hoisted out of the per-match evaluators.
@@ -204,18 +228,24 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	// medicalid O(n^2) the expanded complexity guard caught. Computed once
 	// here and passed down via lc.
 	lc := medicalLineContext{
-		table:        table,
-		bounds:       lineBounds,
-		lineImpact:   lineImpact,
-		posKW:        linePositiveKeywords,
-		negKW:        lineNegativeKeywords,
-		phone:        v.hasPhoneContext(lowerLine),
-		provider:     v.hasProviderContext(lowerLine),
-		dea:          v.hasDEAContext(lowerLine),
-		medicare:     v.hasMedicareContext(lowerLine),
-		medical:      v.hasMedicalContext(lowerLine),
-		mrnKeyword:   v.hasMRNKeyword(lowerLine),
-		insKeyword:   v.hasInsuranceKeyword(lowerLine),
+		table:      table,
+		bounds:     lineBounds,
+		lineImpact: lineImpact,
+		posKW:      linePositiveKeywords,
+		negKW:      lineNegativeKeywords,
+		phone:      v.hasPhoneContext(ctxLine),
+		provider:   v.hasProviderContext(ctxLine),
+		dea:        v.hasDEAContext(ctxLine),
+		medicare:   v.hasMedicareContext(ctxLine),
+		medical:    v.hasMedicalContext(ctxLine),
+		// POSITIVE context reads ctxLine, so a bare label on the line above counts.
+		mrnKeyword: v.hasMRNKeyword(ctxLine),
+		insKeyword: v.hasInsuranceKeyword(ctxLine),
+		// The SUPPRESSORS below deliberately keep reading lowerLine only. A label above
+		// should be able to vouch FOR the value beneath it, but must not be able to
+		// suppress it: "Invoice number" above an unrelated line would otherwise silence a
+		// real member ID sitting on that line. Asymmetric on purpose — the sink rule makes
+		// a wrong suppression costlier than a wrong admission.
 		nonMedHardKW: v.nonMedicalHardKeywordPresent(lowerLine),
 		nonMedSoftKW: v.nonMedicalSoftKeywordPresent(lowerLine),
 		nonInsKW:     v.nonInsuranceKeywordPresent(lowerLine),
@@ -272,7 +302,7 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	// data row and this scan never ran. Admission is per ROW; whether a given
 	// candidate actually has insurance context is decided per COLUMN in
 	// evaluateInsuranceID via insuranceContextFor.
-	if v.hasInsuranceContext(lowerLine) || v.headerRowHasInsuranceContext(lc) {
+	if v.hasInsuranceContext(ctxLine) || v.headerRowHasInsuranceContext(lc) {
 		if !scanMatches(reInsuranceID, v.evaluateInsuranceID) {
 			return matches
 		}

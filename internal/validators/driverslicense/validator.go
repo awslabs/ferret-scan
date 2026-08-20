@@ -188,7 +188,26 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// Admission is per ROW and deliberately permissive; whether a given candidate
 		// actually sits in a labelled column is decided per COLUMN by impactForColumn,
 		// so a notes column does not inherit the licence column's standing.
-		lineKeyworded := v.lineHasPositiveKeyword(line)
+		// A bare field LABEL on the line above is context for this line's value.
+		//
+		// DRIVERS_LICENSE is label-gated — a licence has no checksum, and the formats are
+		// ambiguous enough that this validator refuses to scan a line with no keyword at
+		// all — so a two-line form
+		//
+		//	Driver's License Number
+		//	D12345678901234
+		//
+		// reported nothing and the value was left in cleartext. Gated on
+		// kwmatch.LooksLikeFieldLabel rather than on a keyword being present: measured,
+		// "Please renew your driver's license soon." is the same length, carries the
+		// keyword and has no digits, and the line after it is not a licence. Bounded to
+		// exactly one line back, like the secrets validator's AWS-key window.
+		labelAbove := ""
+		if lineNum > 0 && kwmatch.LooksLikeFieldLabel(lines[lineNum-1], v.positiveKeywords) {
+			labelAbove = lines[lineNum-1]
+		}
+
+		lineKeyworded := v.lineHasPositiveKeyword(line) || labelAbove != ""
 		if !lineKeyworded && !v.tableHeaderHasPositiveKeyword(table, lineNum) {
 			continue
 		}
@@ -300,6 +319,15 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// name,member_id,drivers_license,routing_number export, the two
 			// routing_number values were reported as driver's licences at 40 purely
 			// because the row had been admitted for the licence column.
+			if labelAbove != "" {
+				// Scored with the same keyword logic as a line, so a label above carries
+				// exactly the weight the inline form would. Never negative: a label
+				// cannot be evidence AGAINST the value it names.
+				if imp := v.AnalyzeContext("", detector.ContextInfo{FullLine: labelAbove}); imp > 0 {
+					confidence += imp
+				}
+			}
+
 			columnImpact := impactForColumn(spanStart)
 			if !lineKeyworded && columnImpact <= 0 {
 				return

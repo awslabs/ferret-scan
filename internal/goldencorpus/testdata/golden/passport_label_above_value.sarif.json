@@ -2,11 +2,149 @@
   "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
   "runs": [
     {
-      "results": [],
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:passport_label_above_value>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Value: \nValue: 512345678"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 17,
+                  "snippet": {
+                    "text": "Value: 512345678"
+                  },
+                  "startColumn": 8,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Passport Number Detected in <golden:passport_label_above_value> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '512345678'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 20,
+              "country": "UK",
+              "original_confidence": 80,
+              "original_file": "<golden:passport_label_above_value>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format": true,
+                "length": true,
+                "not_common_word": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_characters": true,
+                "valid_country_code": false
+              },
+              "validation_path": "document"
+            },
+            "validator": "passport"
+          },
+          "rank": 90,
+          "ruleId": "PASSPORT"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:passport_label_above_value>"
+                },
+                "region": {
+                  "endColumn": 10,
+                  "snippet": {
+                    "text": "987654321"
+                  },
+                  "startColumn": 1,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Passport Number Detected in <golden:passport_label_above_value> at line 2 (confidence: 75.0% - MEDIUM). Matched text: '987654321'"
+          },
+          "properties": {
+            "confidence": 75,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 15,
+              "country": "UK",
+              "original_confidence": 75,
+              "original_file": "<golden:passport_label_above_value>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format": true,
+                "length": true,
+                "not_common_word": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_characters": true,
+                "valid_country_code": false
+              },
+              "validation_path": "document"
+            },
+            "validator": "passport"
+          },
+          "rank": 87.5,
+          "ruleId": "PASSPORT"
+        }
+      ],
       "tool": {
         "driver": {
           "informationUri": "https://github.com/awslabs/ferret-scan",
           "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A passport number pattern was detected in the scanned content. Passport numbers are highly sensitive personally identifiable information that must be protected."
+              },
+              "help": {
+                "text": "Passport numbers are protected under various privacy and identity theft prevention regulations. They should never be stored in source code or logs. Remove this passport number immediately and ensure it is stored in a secure, encrypted system with strict access controls and audit logging."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PASSPORT.md",
+              "id": "PASSPORT",
+              "shortDescription": {
+                "text": "Passport Number Detected"
+              }
+            }
+          ],
           "semanticVersion": "0.0.0-development",
           "version": "0.0.0-development"
         }

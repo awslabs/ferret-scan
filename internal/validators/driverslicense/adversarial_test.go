@@ -589,17 +589,50 @@ func TestAdversarial_EdgeCases(t *testing.T) {
 		}
 	})
 
-	t.Run("DL on line with keyword on different line", func(t *testing.T) {
-		// Keywords only matter on the SAME line
+	t.Run("DL under a bare field label on the line above DOES match", func(t *testing.T) {
+		// CONTRACT CHANGE, deliberate. This case previously asserted that "keywords only
+		// matter on the SAME line", and the fixture below is exactly the form layout that
+		// rule made undetectable:
+		//
+		//	driver's license information:
+		//	12345678
+		//
+		// A licence has no checksum, so a label is the only evidence — and the label
+		// search stopped at the newline, so this reported nothing and the value was left
+		// in cleartext by --enable-redaction. The window is bounded to ONE line back and
+		// gated on kwmatch.LooksLikeFieldLabel, so only a bare label qualifies; the
+		// sibling case below pins that prose still does not.
 		content := "driver's license information:\n12345678"
 		matches, err := validator.ValidateContent(content, "test.txt")
 		if err != nil {
 			t.Fatalf("error: %v", err)
 		}
-		// Line 2 has no keyword, so should not match
+		found := false
 		for _, m := range matches {
 			if m.LineNumber == 2 {
-				t.Errorf("Number on line without keywords should not match, got %q confidence=%.1f", m.Text, m.Confidence)
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("a value under a bare field label was not matched; an unreported value "+
+				"is never redacted (got %d matches)", len(matches))
+		}
+	})
+
+	t.Run("DL under PROSE on the line above does NOT match", func(t *testing.T) {
+		// The other half of the contract, and the reason the window is gated on line
+		// SHAPE rather than on keyword presence. This line is the same length as the
+		// label above, carries the same keyword and has no digits — only its shape
+		// differs.
+		content := "Please renew your driver's license soon.\n12345678"
+		matches, err := validator.ValidateContent(content, "test.txt")
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		for _, m := range matches {
+			if m.LineNumber == 2 {
+				t.Errorf("a value under PROSE was matched (%q at %.0f); a keyword in a sentence "+
+					"must not vouch for the next line", m.Text, m.Confidence)
 			}
 		}
 	})

@@ -14,6 +14,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/tabular"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // Package-level pre-compiled regexps for static patterns
@@ -642,6 +643,14 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		lineIsTabular := v.isTabularDataLine(line)
 		lineIsForm := v.isInFormContextLine(lineLower)
 
+		// A bare field label on the previous line is context for this line's value.
+		// Bounded to exactly one line back, mirroring the +/-1 window the secrets
+		// validator already uses for AWS keys (awsSecretContextOpen), so the cost is one
+		// short-string test per line and cannot grow with document size.
+		if lineNum > 0 && kwmatch.LooksLikeFieldLabel(lines[lineNum-1], v.positiveKeywords) {
+			lc.labelAbove = strings.ToLower(strings.TrimSpace(lines[lineNum-1]))
+		}
+
 		// Field offsets for this line, computed once and reused for every match on
 		// it, so mapping a match to its column stays a binary search rather than a
 		// per-match rescan. Nil when the document is not tabular, or on the header
@@ -885,6 +894,25 @@ type lineContext struct {
 	// resolved by binary search over per-line bounds, so the per-match cost is
 	// logarithmic rather than a rescan.
 	columnHeader string
+
+	// labelAbove is the lowercased previous line when that line is a bare form-field
+	// LABEL rather than prose.
+	//
+	// Same defect as columnHeader in a different layout. PASSPORT is label-gated and the
+	// keyword search stops at the newline, so a two-line form
+	//
+	//	Field: Passport Number
+	//	Value: 512345678
+	//
+	// produced no passport finding. Worse than a plain miss: the number was reported as
+	// an SSN at 50 instead, so redaction applied SSN's partial mask and left four digits
+	// readable in a file the tool called redacted.
+	//
+	// Gated on kwmatch.LooksLikeFieldLabel rather than on a keyword being present,
+	// because a keyword alone admits prose: "Please renew your driver's license soon."
+	// is the same length, carries the keyword and has no digits. The shape test is what
+	// separates them.
+	labelAbove string
 }
 
 func newLineContext(lineLower string) *lineContext {
@@ -921,6 +949,11 @@ func (c *lineContext) contains(kw, beforeLower, afterLower string) bool {
 	// FOR this value in exactly the way a same-line label is. Checked first
 	// because it is a short string and the common case is a miss.
 	if c.columnHeader != "" && strings.Contains(c.columnHeader, kw) {
+		return true
+	}
+	// A bare field label on the line above is context for this line's value, for the
+	// same reason. Also a short string, so the miss is cheap.
+	if c.labelAbove != "" && strings.Contains(c.labelAbove, kw) {
 		return true
 	}
 	if len(c.lineLower) <= 256 {

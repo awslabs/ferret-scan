@@ -78,9 +78,9 @@ func TestNonTabularBehaviourIsUnchanged(t *testing.T) {
 			"member ID is one, so this must stay silent", got)
 	}
 	// A header-shaped first line that is NOT a table (too few fields) must not admit.
-	if got := detect(t, "member_id\nW9998887776\n"); len(got) != 0 {
-		t.Errorf("a two-line non-table was treated as tabular: %v. tabular.Analyze requires "+
-			">=3 fields and a consistent delimiter precisely so prose is not reinterpreted", got)
+	if got := detect(t, "col_a\nW9998887776\n"); len(got) != 0 {
+		t.Errorf("a two-line file with a NON-label first line was admitted: %v. neither mechanism should fire: tabular.Analyze needs >=3 fields, and "+
+			"the label window needs a bare field LABEL, which \"col_a\" is not", got)
 	}
 }
 
