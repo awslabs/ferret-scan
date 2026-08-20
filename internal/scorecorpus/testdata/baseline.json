@@ -93,8 +93,8 @@
       "extra_same_span": 0
     },
     "PERSON_NAME": {
-      "tp": 14,
-      "tp_high_medium": 14,
+      "tp": 17,
+      "tp_high_medium": 17,
       "fn_missed": 0,
       "fn_band": 0,
       "fp_high_medium": 0,
@@ -157,21 +157,21 @@
       "residue4": 0
     }
   },
-  "sink_labels": 184,
+  "sink_labels": 187,
   "suppression": {
-    "cases": 59,
-    "targeted": 59,
-    "silenced": 59,
+    "cases": 60,
+    "targeted": 60,
+    "silenced": 60,
     "collateral": 0,
     "ineffective": 0
   },
   "undecided": {
-    "cases": 2,
-    "findings": 3
+    "cases": 1,
+    "findings": 0
   },
   "global": {
-    "cases": 150,
-    "labels": 190,
+    "cases": 151,
+    "labels": 193,
     "negatives": 27
   }
 }
