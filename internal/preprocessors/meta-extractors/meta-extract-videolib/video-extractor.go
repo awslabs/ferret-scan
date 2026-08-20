@@ -488,7 +488,13 @@ func parseMoovBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		size := binary.BigEndian.Uint32(data[offset : offset+4])
 		boxType := string(data[offset+4 : offset+8])
 
-		if size < BoxHeaderSize {
+		// The second half of this guard is what the eight sibling walkers already carry, and
+		// moov was the one that did not: a child declaring more bytes than the box holds sliced
+		// out of range. `[moov > mvhd declaring 64 with 8 bytes present]` panicked with
+		// "slice bounds out of range [:64] with capacity 32" — caught by the router's recover()
+		// so the process survived, but video metadata extraction was abandoned and its findings
+		// lost (#377).
+		if size < BoxHeaderSize || offset+int(size) > len(data) {
 			break
 		}
 
@@ -498,20 +504,41 @@ func parseMoovBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		case "mvhd":
 			err := parseMvhdBox(boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		case "udta":
 			err := parseUdtaBoxWithContext(ctx, boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		case "trak":
 			err := parseTrakBoxWithContext(ctx, boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		}
 
@@ -636,8 +663,15 @@ func parseUdtaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		case "meta":
 			err := parseMetaBoxWithContext(ctx, boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		case "©nam":
 			metadata.Title = parseStringBox(boxData)
@@ -742,8 +776,15 @@ func parseMetaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		if boxType == "ilst" {
 			err := parseIlstBoxWithContext(ctx, boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		}
 
@@ -995,14 +1036,28 @@ func parseTrakBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		case "tkhd":
 			err := parseTkhdBox(boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		case "mdia":
 			err := parseMdiaBoxWithContext(ctx, boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		}
 
@@ -1077,8 +1132,15 @@ func parseMdiaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		case "minf":
 			err := parseMinfBoxWithContext(ctx, boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		}
 
@@ -1117,8 +1179,15 @@ func parseMinfBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		case "stbl":
 			err := parseStblBoxWithContext(ctx, boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		}
 
@@ -1157,8 +1226,15 @@ func parseStblBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		case "stsd":
 			err := parseStsdBox(boxData, metadata)
 			if err != nil {
-				// Non-fatal error
-				continue
+				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
+				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
+				// loop, so the walk stopped advancing and spun until the 30s processing timeout
+				// cancelled it. Measured: a 16-byte `[moov > mvhd(8, empty)]` burned 30s of CPU,
+				// and a 24-byte `[moov > trak > tkhd(empty)]` did the same through the trak
+				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
+				// per-file timeout times the file count (#377). Six walkers shared the pattern;
+				// the issue named one.
+				_ = err
 			}
 		}
 

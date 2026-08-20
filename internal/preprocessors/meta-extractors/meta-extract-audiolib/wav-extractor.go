@@ -122,6 +122,23 @@ func (e *WAVExtractor) parseChunks(file *os.File, metadata *AudioMetadata) error
 	// because recovery succeeds and the note belongs to the file, not to one chunk.
 	sawMissingPad := false
 
+	// The FILE's length is the only bound in this function that an attacker does not write.
+	//
+	// Every chunk size here is a uint32 read out of the file, so bounding one declaration by
+	// another bounds nothing: parseInfoChunks capped a field by the bytes left in its LIST, and
+	// the LIST's own size is equally attacker-chosen. Declaring LIST=0xFFFFFFF0 with a child of
+	// 0xFFFFFFE4 satisfies that check and reaches make([]byte, ~4GB). Measured: a 56-byte .wav,
+	// eight of them inside a 2.2KB .docx, drove 8.03GB of resident memory at exit 0 — and
+	// --max-live-bytes 64MB did not bound it, because that budget charges the on-disk size of
+	// the file being scanned, which is 2.2KB (#375).
+	//
+	// Clamping to what is actually left in the file makes every allocation below proportional to
+	// the input and costs nothing on a well-formed file, where the declared size already fits.
+	fileSize := int64(-1)
+	if info, err := file.Stat(); err == nil {
+		fileSize = info.Size()
+	}
+
 	for {
 		var header WAVChunkHeader
 		if err := binary.Read(file, binary.LittleEndian, &header); err != nil {
@@ -170,10 +187,26 @@ func (e *WAVExtractor) parseChunks(file *os.File, metadata *AudioMetadata) error
 				return err
 			}
 		case "LIST":
+			// Hand down the SMALLER of what the header claims and what the file still holds, so
+			// the field walk inside inherits a bound the file's author did not choose. Disclose
+			// it when the clamp bites: the fields past the clamp were not read, and a truncation
+			// nobody is told about is the failure this extractor's warnings exist to prevent.
+			listSize := header.Size
+			if fileSize >= 0 {
+				if avail := fileSize - dataStart; avail >= 0 && int64(listSize) > avail {
+					listSize = uint32(avail)
+					if metadata.ExtractionWarning == "" {
+						metadata.ExtractionWarning = "audio metadata may be incomplete: a WAV " +
+							"LIST chunk declares more data than the file contains, so it was " +
+							"read only to the end of the file"
+					}
+				}
+			}
+
 			// A malformed LIST costs its own metadata, not the rest of the file: the
 			// absolute reposition below puts the walk back on the next chunk boundary
 			// regardless of where this parse stopped.
-			if err := e.parseListChunk(file, header.Size, metadata); err != nil &&
+			if err := e.parseListChunk(file, listSize, metadata); err != nil &&
 				metadata.ExtractionWarning == "" {
 				metadata.ExtractionWarning = "audio metadata may be incomplete: a WAV " +
 					"LIST chunk could not be parsed, so the fields it holds were not read"
