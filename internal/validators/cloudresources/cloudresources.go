@@ -127,13 +127,27 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		finishTiming = v.observer.StartTiming("cloud_resources", "validate_content", originalPath)
 	}
 
-	// Guard against pathological inputs.
+	// Guard against pathological inputs — and SAY SO.
+	//
+	// This used to `return nil, nil`, which a caller cannot distinguish from "scanned it, found
+	// nothing", and the accompanying logDetail is debug-only. So an AWS ARN on line 1 of a 6MB
+	// file was reported as a clean, complete scan: the same ARN in a 1MB file scored a finding,
+	// files_processed was 1 either way, files_not_examined was absent, and the exit code was 0
+	// (#414). 5MB is small for the file types that carry infrastructure identifiers — Terraform
+	// plans, CloudTrail exports, build logs, support bundles routinely exceed it.
+	//
+	// The error is the disclosure channel: the scanner turns any validator error into a
+	// FileDiagnostic that reaches files_not_examined and --fail-on-incomplete, while every other
+	// validator's matches for the file are preserved. The cap stays — it guards a measured DoS —
+	// but a refusal is now visible instead of silent.
 	if len(content) > maxContentBytes {
 		v.logDetail(fmt.Sprintf("Content %d bytes exceeds %d-byte cap; skipping cloud-resource scan for %q", len(content), maxContentBytes, originalPath))
 		if finishTiming != nil {
 			finishTiming(true, map[string]interface{}{"match_count": 0, "skipped_oversize": true})
 		}
-		return nil, nil
+		// Payload-free: sizes and the cap only, never the path or any content.
+		return nil, fmt.Errorf("%w: cloud-resource scan skipped, content is %d bytes against a "+
+			"%d-byte cap", execguard.ErrContentTooLarge, len(content), maxContentBytes)
 	}
 
 	// Entry-level cancellation check (v2 Phase 3): the whole-content regex pass and

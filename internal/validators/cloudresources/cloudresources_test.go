@@ -4,11 +4,14 @@
 package cloudresources
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 )
 
 // scan is a test helper that runs the validator over content and returns the matches.
@@ -390,9 +393,19 @@ func TestOversizeContentSkipped(t *testing.T) {
 	if len(big) <= maxContentBytes {
 		t.Fatalf("test setup: content not over cap (%d <= %d)", len(big), maxContentBytes)
 	}
-	ms := scan(t, big)
+
+	// Skipping is still the behaviour; it is now SAID as well. The refusal returns
+	// execguard.ErrContentTooLarge so the scan is flagged incomplete rather than reported clean
+	// — previously `nil, nil` made a skipped 6MB file indistinguishable from a scanned one
+	// (#414). This test therefore calls ValidateContent directly rather than through scan(),
+	// whose helper fails on any error.
+	ms, err := NewValidator().ValidateContent(big, "oversize.txt")
 	if len(ms) != 0 {
 		t.Errorf("oversize content should be skipped, got %d matches", len(ms))
+	}
+	if !errors.Is(err, execguard.ErrContentTooLarge) {
+		t.Errorf("err = %v, want execguard.ErrContentTooLarge: skipping silently is what made a "+
+			"real ARN in a 6MB file report as a clean scan at exit 0", err)
 	}
 }
 
