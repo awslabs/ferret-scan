@@ -5,7 +5,6 @@ package parallel
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -23,9 +22,7 @@ import (
 // incomplete). A hard error keeps the historical behavior of discarding its
 // partial slice.
 func partialMatchesSurvive(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded) ||
-		errors.Is(err, context.Canceled) ||
-		errors.Is(err, execguard.ErrMatchBudgetExceeded)
+	return execguard.IsCoverageCutShort(err)
 }
 
 // ValidatorStrategy controls how a single validator invocation is executed.

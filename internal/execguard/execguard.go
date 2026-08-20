@@ -42,6 +42,41 @@ import (
 // hit is not a deadline/cancellation.
 var ErrMatchBudgetExceeded = errors.New("validator match budget exceeded")
 
+// ErrContentTooLarge is returned by a validator that DECLINED to scan its input because the
+// content exceeded a size the validator will not process. It belongs to the same family as
+// ErrMatchBudgetExceeded: a guard fired, so the result is partial and must be disclosed, while
+// whatever the validator did find is genuine.
+//
+// Returning an error rather than an empty slice is the whole point. `return nil, nil` is
+// indistinguishable from "scanned it, found nothing", so a caller cannot tell coverage was lost:
+// cloudresources refused anything over 5MB that way, and a real AWS ARN on line 1 of a 6MB file
+// was reported as a clean, complete scan — files_processed=1, no files_not_examined, exit 0 (#414).
+// 5MB is small for the file types that carry infrastructure identifiers: Terraform plans,
+// CloudTrail exports, build logs, support bundles.
+//
+// The cap itself is legitimate — this validator has a measured DoS history — so the fix is to
+// DISCLOSE the refusal, not to remove the bound.
+var ErrContentTooLarge = errors.New("validator declined oversize content")
+
+// IsCoverageCutShort reports whether err means a validator GUARD fired rather than a validator
+// failing: the scan completed, the result is partial, and whatever was found is genuine.
+//
+// This exists because the same family was enumerated in FOUR places — parallel.partialMatchesSurvive,
+// validators.firstBudgetError, the dual-path bridge's match-preservation branch, and core.ScanContent
+// — and adding a member meant finding all four. Missing one is silent: ErrContentTooLarge was
+// returned correctly by cloudresources, recorded by the bridge, and then dropped by
+// firstBudgetError, so the refusal was logged and never disclosed (#414). One predicate cannot
+// drift out of step with itself.
+//
+// Callers that need to distinguish WHICH guard fired (to word a message) still switch on the
+// specific sentinel; this answers only "was coverage cut short".
+func IsCoverageCutShort(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, ErrMatchBudgetExceeded) ||
+		errors.Is(err, ErrContentTooLarge)
+}
+
 // ContextAwareValidator is an OPTIONAL extension of detector.Validator. A
 // validator that implements it receives the active context and is expected to
 // poll ctx.Err() at loop/match boundaries so it can abort promptly on deadline

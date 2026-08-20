@@ -781,9 +781,7 @@ func validatorName(v detector.Validator) string {
 // ordinary validator errors are deliberately excluded (historical behavior).
 func firstBudgetError(errs []error) error {
 	for _, err := range errs {
-		if errors.Is(err, stdctx.DeadlineExceeded) ||
-			errors.Is(err, stdctx.Canceled) ||
-			errors.Is(err, execguard.ErrMatchBudgetExceeded) {
+		if execguard.IsCoverageCutShort(err) {
 			return err
 		}
 	}
@@ -883,7 +881,7 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 				// matches are genuine findings and must be kept, unlike a real
 				// validator error (which discards its partial slice). The error is
 				// still recorded above so the scan is flagged incomplete.
-				if errors.Is(err, execguard.ErrMatchBudgetExceeded) {
+				if execguard.IsCoverageCutShort(err) {
 					resultsChan <- validatorResult{index: idx, matches: matches, err: err}
 					return
 				}

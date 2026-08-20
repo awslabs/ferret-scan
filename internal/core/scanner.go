@@ -379,6 +379,13 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 		// partial in the same load-bearing way as a timeout.
 		incomplete = true
 		incompleteReason = "validator match budget exceeded: " + validationErr.Error()
+	} else if validationErr != nil && errors.Is(validationErr, execguard.ErrContentTooLarge) {
+		// A validator declined its input for size: that content went unscanned by it, so the
+		// result is partial. The file path reaches this through ValidationError -> a
+		// FileDiagnostic; this arm is what gives library callers of ScanContent the same signal
+		// instead of a silently narrower scan (#414).
+		incomplete = true
+		incompleteReason = "validator declined oversize content: " + validationErr.Error()
 	}
 
 	// Stamp every match as virtual and ensure the filename is the synthetic
