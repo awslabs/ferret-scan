@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+	"time"
 )
 
 // The metadata ranges are asserted by exact OFFSET, not just by "the value was removed".
@@ -177,16 +178,35 @@ func TestMP4DeepNestingTerminates(t *testing.T) {
 	}
 	buf := append(make([]byte, 0, len(payload)), payload...)
 
+	// ONE receive, in a select with a liveness bound. The previous form was
+	//
+	//	select {
+	//	case <-done:      // consumed the only value the worker ever sends
+	//	default:
+	//	}
+	//	if n := <-done; ...   // blocked forever when the case above fired
+	//
+	// The worker sends exactly once and exits, so whenever it won the race the `case` drained the
+	// channel (discarding the value, skipping the assertion) and the unconditional receive below
+	// then blocked with no sender alive — a ~1-in-250 hang to the 10m package timeout. It is what
+	// timed out one ubuntu job of a commit whose other three jobs passed the package in under a
+	// second, and the CI goroutine dump named this line in [chan receive] with NO worker goroutine
+	// present, because the worker had already finished (#402).
+	//
+	// The bound is kept because it is what the old select was reaching for — detecting
+	// non-termination — but as a real timeout rather than a non-blocking peek that could not
+	// detect anything. 30s against a function that returns in well under a millisecond, so it can
+	// only fire on a genuine hang, never on a slow runner; and a stack overflow still panics the
+	// test binary outright.
 	done := make(chan int, 1)
 	go func() { done <- len(mp4MetadataRanges(buf)) }()
 	select {
-	case <-done:
-	default:
-		// mp4MetadataRanges is synchronous and fast; a goroutine that has not finished by the
-		// time this runs would indicate unbounded recursion. Reading the channel below is the
-		// real assertion — a stack overflow panics the test binary.
-	}
-	if n := <-done; n != 0 {
-		t.Errorf("found %d ranges in a tree with no udta, want 0", n)
+	case n := <-done:
+		if n != 0 {
+			t.Errorf("found %d ranges in a tree with no udta, want 0", n)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("mp4MetadataRanges did not return on a 40-deep moov nest: the depth bound is " +
+			"not terminating the walk")
 	}
 }
