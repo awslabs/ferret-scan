@@ -766,6 +766,32 @@ var FileCases = []FileCase{
 		EnablePreprocessors: true,
 	},
 	{
+		Name: "file_xls_legacy_vector_sheet_names",
+		Description: "Tier 4: a legacy .xls whose SHEET-NAME LIST is a vector-valued property (DocumentParts, " +
+			"0x0D), one of the names carrying an SSN. The property-set reader mis-reads a vector's type word and " +
+			"yields the scalar I1(0), so before #267 the list arrived as the literal \"0\" and every name in it was " +
+			"reported by nothing. Measured on 19 real .doc/.xls/.ppt files, 14 carry such a property. This locks " +
+			"that the elements are decoded, that each lands on its own line (a joined line would let a validator " +
+			"match across two unrelated sheet names), and that ordinary names add no findings of their own. Diff " +
+			"against file_xls_legacy_workbook_stream, which is the same shape with scalar properties only.",
+		Checks:   []string{"SSN", "METADATA"},
+		Filename: "sheetnames.xls",
+		Content: olefixture.MustBuild([]olefixture.Stream{
+			{Name: olefixture.StreamWorkbook, Data: []byte("Workbook body with nothing sensitive.\r")},
+			{Name: olefixture.StreamDocSummaryInformation, Data: olefixture.DocSummaryInformationWithVectors(
+				map[uint32]string{olefixture.PropCompany: "Fairbanks Holdings"},
+				map[uint32][]string{olefixture.PropDocumentParts: {
+					// Lengths 12, 24 and 7 with their terminators: at least one is NOT a
+					// multiple of 4, which is what catches a decoder that pads between
+					// vector elements. Real files desynced on exactly that.
+					"First Sheet", "Payroll SSN 449-87-4100", "Sheet3",
+				}},
+			)},
+		}),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
 		Name: "file_doc_legacy_not_a_container",
 		Description: "Tier 4: plain text named .doc — the extension routes to the OLE path, but the bytes are not a " +
 			"compound file. This used to record \"No matches found.\": routing is decided by extension, the Office " +
