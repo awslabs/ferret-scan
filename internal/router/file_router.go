@@ -465,8 +465,19 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 
 	for _, pResult := range ordered {
 		if pResult.result != nil && pResult.result.ExtractionWarning != "" {
-			extractionWarnings = append(extractionWarnings,
-				pResult.name+": "+pResult.result.ExtractionWarning)
+			// Prefix ONCE. An embedded container routes back through this same function,
+			// and each level used to add its own copy, so a note from four levels down
+			// reached the operator as
+			//
+			//	office_metadata: office_metadata: office_metadata: office_metadata: embedded item …
+			//
+			// The name is here to say which reader produced the note; repeating it says
+			// nothing more and pushes the part that matters off the line.
+			warning := pResult.result.ExtractionWarning
+			if !strings.HasPrefix(warning, pResult.name+": ") {
+				warning = pResult.name + ": " + warning
+			}
+			extractionWarnings = append(extractionWarnings, warning)
 		}
 		if pResult.err == nil && pResult.result != nil && pResult.result.Success && pResult.result.Text != "" {
 			if len(successfulProcessors) == 0 {

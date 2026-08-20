@@ -184,9 +184,24 @@ func (omp *OfficeMetadataPreprocessor) formatOfficeMetadata(meta *meta_extract_o
 // returning the text to append and the out-of-band sections describing it.
 func (omp *OfficeMetadataPreprocessor) processEmbeddedMedia(filePath string) (string, []ContentSection, []string) {
 	// Extract embedded media for processing
-	embeddedMedia, err := meta_extract_officelib.ExtractEmbeddedMediaForProcessing(filePath)
-	if err != nil || len(embeddedMedia) == 0 {
+	embeddedMedia, notExamined, err := meta_extract_officelib.ExtractEmbeddedMediaForProcessing(filePath)
+	if err != nil {
+		// The only error here is "this file is not a ZIP", and processOfficeMetadata has
+		// already called ExtractMetadata on the same path, which opens the same archive and
+		// returns an error content for exactly that case. So the file is reported as
+		// unparseable through its own channel and there is nothing left to disclose here.
 		return "", nil, nil
+	}
+	// A part that could not be extracted is disclosed even when NOTHING extracted.
+	//
+	// The early return used to cover len(embeddedMedia) == 0 as well, which threw the
+	// notes away in precisely the case that matters most: a document whose only embedded
+	// part is the one refused for size leaves an empty media slice, so the refusal was
+	// dropped one line after being detected. Measured before this: 0 findings, exit 0,
+	// exit 0 again under --fail-on-incomplete, nothing on stderr, while the same inner
+	// document under the cap reported its SSN at HIGH 100. See #374.
+	if len(embeddedMedia) == 0 {
+		return "", nil, notExamined
 	}
 
 	// Ensure cleanup of temporary files
@@ -203,7 +218,13 @@ func (omp *OfficeMetadataPreprocessor) processEmbeddedMedia(filePath string) (st
 	}
 
 	// Process through base preprocessor's embedded media handler
-	return omp.ProcessEmbeddedMedia(filePath, baseEmbeddedMedia)
+	text, sections, warnings := omp.ProcessEmbeddedMedia(filePath, baseEmbeddedMedia)
+
+	// Extraction refusals first, then the descent's own warnings. Both are the same kind
+	// of statement — "this item's content was not examined" — and they are joined by the
+	// caller into one ExtractionWarning, so ordering them puts the parts that never
+	// reached the router ahead of the ones that reached it and were declined.
+	return text, sections, append(notExamined, warnings...)
 }
 
 // GetSupportedExtensions returns the file extensions this preprocessor supports

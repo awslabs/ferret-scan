@@ -6,7 +6,6 @@ package redactors
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -53,9 +52,10 @@ func (rim *RedactionAuditLogManager) CreateAuditLog(documentID, originalPath, re
 	// Create new audit log
 	auditLog := NewRedactionAuditLog(documentID, originalPath, redactedPath, rim.ferretVersion)
 
-	// Generate verification hash for the original document
-	if originalContent, err := os.ReadFile(originalPath); err == nil {
-		auditLog.SetOriginalFileHash(GenerateDocumentHash(originalContent))
+	// Generate verification hash for the original document, streaming rather than buffering:
+	// see HashFile for the 80 MB measurement that motivated it.
+	if hash := HashFile(originalPath); hash != "" {
+		auditLog.SetOriginalFileHash(hash)
 	}
 
 	// Store the audit log

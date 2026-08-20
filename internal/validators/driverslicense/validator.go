@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
@@ -167,6 +168,17 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 	lines := strings.Split(content, "\n")
 
+	// In a CSV export the label IS the header row, one or more lines above the value,
+	// and the keyword search stops at the newline. Measured: "Driver's License Number:
+	// D12345678901234" scores 80, the identical value in a drivers_license COLUMN scores
+	// nothing, and an unreported value is never handed to the redactor — the redacted
+	// copy of that export still held the licence number in cleartext.
+	//
+	// tabular.Analyze is conservative (>=3 fields, consistent delimiter, word-like
+	// header row), so a non-table document yields a nil table and behaviour is
+	// unchanged. Analyzed ONCE per document.
+	table := tabular.Analyze(content)
+
 	for lineNum, line := range lines {
 		if execguard.LineLoopCancelled(ctx, lineNum) {
 			return matches, ctx.Err()
@@ -175,7 +187,39 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// Quick pre-check: does the line contain any DL-related keyword?
 		// Because DL formats are extremely ambiguous (8 digits, 9 digits, etc.),
 		// we ONLY scan lines that have at least one positive keyword present.
-		if !v.lineHasPositiveKeyword(line) {
+		//
+		// A table data row is admitted when the HEADER ROW carries the keyword, because
+		// in a CSV export that is where the label lives. Without this arm the row was
+		// never scanned at all, so the per-column header boost below could not run and
+		// a drivers_license column reported nothing — while the identical value written
+		// inline as "Driver's License Number: D12345678901234" scores 80. Measured base
+		// confidence for that value is 5 and the header contributes 55, so the value is
+		// well clear of the emit threshold once the row is scanned.
+		//
+		// Admission is per ROW and deliberately permissive; whether a given candidate
+		// actually sits in a labelled column is decided per COLUMN by impactForColumn,
+		// so a notes column does not inherit the licence column's standing.
+		// A bare field LABEL on the line above is context for this line's value.
+		//
+		// DRIVERS_LICENSE is label-gated — a licence has no checksum, and the formats are
+		// ambiguous enough that this validator refuses to scan a line with no keyword at
+		// all — so a two-line form
+		//
+		//	Driver's License Number
+		//	D12345678901234
+		//
+		// reported nothing and the value was left in cleartext. Gated on
+		// kwmatch.LooksLikeFieldLabel rather than on a keyword being present: measured,
+		// "Please renew your driver's license soon." is the same length, carries the
+		// keyword and has no digits, and the line after it is not a licence. Bounded to
+		// exactly one line back, like the secrets validator's AWS-key window.
+		labelAbove := ""
+		if lineNum > 0 && kwmatch.LooksLikeFieldLabel(lines[lineNum-1], v.positiveKeywords) {
+			labelAbove = lines[lineNum-1]
+		}
+
+		lineKeyworded := v.lineHasPositiveKeyword(line) || labelAbove != ""
+		if !lineKeyworded && !v.tableHeaderHasPositiveKeyword(table, lineNum) {
 			continue
 		}
 
@@ -199,6 +243,42 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// checked in emit via markerOpensAsideAfter, which reads only the handful
 		// of bytes after the span and so does not reintroduce the quadratic.
 		lineImpact := v.AnalyzeContext("", detector.ContextInfo{FullLine: line})
+
+		// Column bounds for this row, plus a memo of the per-header impact.
+		//
+		// The header is scored with the SAME keyword logic as a line, so a
+		// drivers_license column carries exactly the weight the inline label would.
+		// It is resolved per MATCH because the header varies along the row — folding
+		// the row's headers together would let one column vouch for another's values.
+		// The memo keys on the header cell, of which there are only as many as there
+		// are columns, and each is a short string: this cannot reintroduce the
+		// per-match whole-line scan that made this validator quadratic before.
+		var lineBounds *tabular.LineBounds
+		if table.IsTable() && lineNum != table.HeaderLine() {
+			lineBounds = table.Bounds(line)
+		}
+		headerImpact := make(map[string]float64, 4)
+		impactForColumn := func(off int) float64 {
+			if lineBounds == nil {
+				return 0
+			}
+			h := table.HeaderAt(lineBounds, off)
+			if h == "" {
+				return 0
+			}
+			if v, ok := headerImpact[h]; ok {
+				return v
+			}
+			imp := v.AnalyzeContext("", detector.ContextInfo{FullLine: h})
+			if imp < 0 {
+				// A header only ever ADDS the standing an inline label would. It must
+				// not penalise: a column named "notes" is not evidence against the
+				// value in the drivers_license column beside it.
+				imp = 0
+			}
+			headerImpact[h] = imp
+			return imp
+		}
 		linePositiveKeywords := v.findKeywordsOnLine(line, v.positiveKeywords)
 		lineNegativeKeywords := v.findKeywordsOnLine(line, v.negativeKeywords)
 
@@ -243,6 +323,27 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			}
 
 			confidence += contextImpact
+
+			// A row admitted ONLY by its header row must have the label in the
+			// candidate's OWN column. Without this the permissive row-level admission
+			// leaks across columns: measured on a
+			// name,member_id,drivers_license,routing_number export, the two
+			// routing_number values were reported as driver's licences at 40 purely
+			// because the row had been admitted for the licence column.
+			if labelAbove != "" {
+				// Scored with the same keyword logic as a line, so a label above carries
+				// exactly the weight the inline form would. Never negative: a label
+				// cannot be evidence AGAINST the value it names.
+				if imp := v.AnalyzeContext("", detector.ContextInfo{FullLine: labelAbove}); imp > 0 {
+					confidence += imp
+				}
+			}
+
+			columnImpact := impactForColumn(spanStart)
+			if !lineKeyworded && columnImpact <= 0 {
+				return
+			}
+			confidence += columnImpact
 
 			// Store keywords found (per-line invariant)
 			contextInfo.PositiveKeywords = linePositiveKeywords
@@ -663,6 +764,23 @@ func keywordIndexIn(s, kw string) int {
 func isWordByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
 		(b >= '0' && b <= '9') || b == '_'
+}
+
+// tableHeaderHasPositiveKeyword reports whether any column header of a delimited table
+// carries a DL keyword, for admitting a DATA row whose label sits in the header.
+//
+// Used only for admission. The precise per-column decision is impactForColumn, which
+// scores the header of the match's own column.
+func (v *Validator) tableHeaderHasPositiveKeyword(table *tabular.Table, lineNum int) bool {
+	if !table.IsTable() || lineNum == table.HeaderLine() {
+		return false
+	}
+	for _, h := range table.Headers() {
+		if v.lineHasPositiveKeyword(h) {
+			return true
+		}
+	}
+	return false
 }
 
 // AnalyzeContext analyzes context around a match and returns a confidence adjustment.
