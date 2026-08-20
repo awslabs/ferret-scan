@@ -54,6 +54,40 @@ import (
 // process) — so CI can tell degraded coverage apart from a genuinely clean scan.
 const exitCodeIncompleteCoverage = 3
 
+// maxScanSize is the largest file discovery will admit, and it is deliberately
+// router.MaxFileSize rather than a number of its own.
+//
+// These two gates used to be independent, and they drifted. Discovery allowed 500MB for
+// .mp3/.wav/.m4a/.flac while the router refused everything over 100MB — and the router's
+// refusal lands in a different counter than discovery's, the one whose messages call it an
+// unsupported TYPE. So a 150MB .wav named on the command line was admitted here, refused
+// there, and filed as an unsupported file type: exit 0, "No matches found", no
+// files_not_examined entry, and --fail-on-incomplete returning success for a file the tool
+// never opened (#355). Audio metadata is where this tool finds PII in media — IART, ICMT,
+// ICOP, IENG carry artist, comment, copyright and engineer — so the file most likely to
+// hold an unredacted name was the one reported as an unsupported type.
+//
+// The allowance never bought anything. THREE independent gates downstream cap audio at
+// 100MB: the router (internal/router/file_router.go MaxFileSize), the audio extractor
+// (meta-extract-audiolib MaxAudioFileSize) and the media resource manager
+// (preprocessors/resource_limits.go MaxAudioFileSize, reached from
+// audio_metadata_preprocessor.go). Measured on 150MB and 450MB .wav, .mp3 and .flac files
+// each carrying an SSN in their metadata: ZERO findings as shipped, and still zero with the
+// router's and the extractor's caps both raised to 500MB. No audio file above 100MB has
+// ever been scanned; the allowance only decided which counter recorded the miss.
+//
+// Deriving discovery's limit from the router's constant is the fix for the CLASS rather than
+// the instance: one number cannot disagree with itself. Raising the ceiling later belongs in
+// router.MaxFileSize, where every gate that consults it moves together.
+const maxScanSize = router.MaxFileSize
+
+// tooLargeReason is the operator-facing wording for a size refusal, built from the same
+// constant that did the refusing so the number in the message cannot drift from the number
+// that produced it. Four call sites used to spell it out by hand.
+func tooLargeReason() string {
+	return fmt.Sprintf("file too large (max size: %dMB)", maxScanSize/(1024*1024))
+}
+
 // resolveIncompleteExitCode applies the --fail-on-incomplete policy on top of a
 // base exit code: when enabled and coverage was incomplete, an otherwise-clean
 // result (base 0) escalates to exitCodeIncompleteCoverage, but a non-zero base
@@ -2579,17 +2613,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			return nil, fmt.Errorf("path does not exist or is not accessible: %w", err)
 		}
 		if info.Mode().IsRegular() {
-			ext := strings.ToLower(filepath.Ext(inputPath))
-			audioTypes := map[string]bool{
-				".mp3": true, ".wav": true, ".m4a": true, ".flac": true,
-			}
-
-			var sizeLimit int64 = 100 * 1024 * 1024 // 100MB default
-			if audioTypes[ext] {
-				sizeLimit = 500 * 1024 * 1024 // 500MB for audio files
-			}
-
-			if info.Size() <= sizeLimit {
+			if info.Size() <= maxScanSize {
 				// Check if file is excluded
 				if isExcluded(inputPath, excludePatterns) {
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
@@ -2614,8 +2638,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// whether the tool could have processed its type at all — see
 			// router.CanProcessType. An unprocessable type is a genuine skip; a
 			// processable one was expected to produce a result and did not.
-			limitMB := sizeLimit / (1024 * 1024)
-			reason := fmt.Sprintf("file too large (max size: %dMB)", limitMB)
+			reason := tooLargeReason()
 			if router.CanProcessType(inputPath, enablePreprocessors) {
 				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 					Path:   inputPath,
@@ -2731,7 +2754,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					continue // Skip gitignored files
 				}
 
-				if info.Size() <= 100*1024*1024 {
+				if info.Size() <= maxScanSize {
 					filesToProcess = append(filesToProcess, cleanMatch)
 				} else if router.CanProcessType(cleanMatch, enablePreprocessors) {
 					// A processable type refused for size is a coverage LOSS, so it has
@@ -2743,7 +2766,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					// CI discards.
 					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 						Path:   cleanMatch,
-						Reason: "file too large (max size: 100MB)",
+						Reason: tooLargeReason(),
 						Cause:  causeTooLarge,
 					})
 				} else {
@@ -2752,7 +2775,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					// denominator.
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
 						Path:   cleanMatch,
-						Reason: "file too large (max size: 100MB)",
+						Reason: tooLargeReason(),
 						Silent: true,
 					})
 				}
@@ -2782,8 +2805,8 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 	if fileInfo.Mode().IsRegular() {
 		// A file refused for size — see the identical decision on the glob path above
 		// and router.CanProcessType.
-		if fileInfo.Size() > 100*1024*1024 { // 100MB limit
-			const reason = "file too large (max size: 100MB)"
+		if fileInfo.Size() > maxScanSize {
+			reason := tooLargeReason()
 			if router.CanProcessType(inputPath, enablePreprocessors) {
 				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 					Path:   inputPath,
@@ -2930,7 +2953,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// Only add regular files
 			if info.Mode().IsRegular() {
 				// Check file size
-				if info.Size() <= 100*1024*1024 { // 100MB limit
+				if info.Size() <= maxScanSize {
 					filesToProcess = append(filesToProcess, cleanWalkPath)
 				} else if router.CanProcessType(cleanWalkPath, enablePreprocessors) {
 					// Processable type refused for size: a coverage loss, so it must reach
@@ -2938,14 +2961,14 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					// stderr line that CI discards. See the glob path above.
 					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 						Path:   cleanWalkPath,
-						Reason: "file too large (max size: 100MB)",
+						Reason: tooLargeReason(),
 						Cause:  causeTooLarge,
 					})
 				} else {
 					// Unprocessable at any size: a genuine skip.
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
 						Path:   cleanWalkPath,
-						Reason: "file too large (max size: 100MB)",
+						Reason: tooLargeReason(),
 						Silent: true,
 					})
 				}
@@ -2967,7 +2990,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				// Collected rather than decided here: whether to follow depends on
 				// whether the target is also reachable as a real file in this same
 				// walk, which is not known until the walk ends.
-				d, resolved, reason := classifySymlink(cleanWalkPath, cleanPath, 100*1024*1024)
+				d, resolved, reason := classifySymlink(cleanWalkPath, cleanPath, maxScanSize)
 				symlinkCands = append(symlinkCands, symlinkCandidate{
 					linkPath: cleanWalkPath,
 					resolved: resolved,
