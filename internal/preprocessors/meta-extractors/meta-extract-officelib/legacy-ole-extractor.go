@@ -157,8 +157,26 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 	if err != nil {
 		return
 	}
-	for _, p := range r.Property {
+
+	// Vector-valued properties are decoded from the stream, because msoleps cannot
+	// read one: it looks for the vector flag in the wrong half of the type word, so a
+	// real vector arrives here as the scalar I1(0) and p.String() returns "0". See
+	// legacy-ole-vectors.go for the measurement. Keyed by index into r.Property,
+	// which msoleps builds in property-table order.
+	vectors := legacyVectorStrings(streamBytes)
+
+	for i, p := range r.Property {
 		v := strings.TrimSpace(p.String())
+		if vec, ok := vectors[i]; ok {
+			// A multi-valued property collected as a custom property gets ONE entry
+			// per element, so no validator can match across two unrelated elements —
+			// two adjacent sheet names joined on one line would invite exactly that.
+			// A mapped scalar field has nowhere to put a list, so those are joined.
+			if handleVectorProperty(metadata, p.Name, vec) {
+				continue
+			}
+			v = strings.Join(vec.Elements, "; ")
+		}
 		if v == "" {
 			continue
 		}
@@ -250,7 +268,19 @@ var legacyStructuralProperties = map[string]bool{
 	"Hyperlinks changed": true, "Digital Signature": true, "Thumbnail": true,
 	"DocSecurity": true, "EditTime": true, "LastPrinted": true,
 	"Version": true, "Document Version": true, "Presentation Format": true,
-	"Heading pair": true, "Document parts": true,
+	// "Heading pair" stays: it is a VT_VECTOR|VT_VARIANT of (name, count) pairs, so
+	// its text is the words "Worksheets"/"Slide Titles" and its numbers are counts.
+	"Heading pair": true,
+	// "Document parts" (DocumentSummaryInformation 0x0D) is NOT structural and is no
+	// longer excluded. It is the vector of part names: every SHEET NAME in a workbook,
+	// every SLIDE TITLE in a deck. That is document content an author wrote, and it
+	// routinely carries a customer name, a project codename or an account number.
+	//
+	// It was excluded when the value reaching this code was the literal "0" — msoleps
+	// mis-decodes a vector (see legacy-ole-vectors.go), so the property looked like
+	// structural noise. Now that the elements are decoded, excluding it would drop
+	// real content: measured on an .xls whose sheet names include an SSN, the value
+	// was reported by nothing at all.
 }
 
 // isCollectableCustomProperty reports whether an unmapped property name should be
