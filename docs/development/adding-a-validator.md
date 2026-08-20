@@ -28,6 +28,37 @@ internal/validators/<name>/
 
 ---
 
+## 1a. Matching context keywords
+
+Never hand-roll `strings.Contains` for a keyword. Use `internal/validators/kwmatch`,
+which applies the whole-word rule the validators depend on — `strings.Contains` finds
+`ssn` inside `assign` and `ein` inside `Einstein`.
+
+| Call | Use for | Matches |
+|---|---|---|
+| `kwmatch.Contains(text, kw)` | the default, incl. every identifier-style label | `member id`, `member_id`, `member-id`, `member  id`, `memberid`, `memberId` |
+| `kwmatch.ContainsPhrase(text, kw)` | a keyword that is PROSE, whose concatenation is a different word | `call us`, `call-us` — but **not** `callus` |
+| `kwmatch.ContainsLower` / `ContainsPhraseLower` | callers that already hold lowercased text, to skip the allocations | as above |
+| `kwmatch.ContainsAny(text, kws)` | any of a list | as `Contains` |
+
+Rules a multi-word keyword follows:
+
+- **A space matches zero or more separator bytes** (space, tab, `_`, `-`), so one keyword
+  covers the spaced, snake_case, kebab-case, padded and concatenated/camelCase spellings.
+  Text is lowercased before matching, so `memberId` and `memberid` are the same string.
+- **`.` and `/` are not separators**, by measurement: they cross sentence and URL
+  boundaries, where the two words are unrelated (`see member.id in the docs`,
+  `/member/id/lookup`).
+- **The whole-word rule still applies at both ends** of the match, so `member id` does not
+  match inside `remembering`, `teammemberid` or `memberidentification`.
+
+Pick `ContainsPhrase` only when the concatenation is a real different word **and** the
+keyword suppresses or lowers a finding — there a wrong match hides real data. Across all
+457 multi-word literals in non-test validator code, exactly two concatenate into a
+dictionary word (`one time`, `call us`), so this is rare by construction.
+
+---
+
 ## 2. Register in the factory
 
 **File:** `internal/core/factory.go`
