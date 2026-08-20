@@ -240,6 +240,9 @@ type Validator struct {
 
 	// Keyword patterns
 	keywordPatterns []*regexp.Regexp
+	// unquotedPatterns match assignments whose value is NOT quoted; see
+	// compileUnquotedPatterns for why they are separate.
+	unquotedPatterns []*regexp.Regexp
 
 	// Context keywords
 	positiveKeywords []string
@@ -278,7 +281,8 @@ func NewValidator() *Validator {
 		base64Limit:   4.5,
 		hexLimit:      3.0,
 
-		keywordPatterns: compileKeywordPatterns(),
+		keywordPatterns:  compileKeywordPatterns(),
+		unquotedPatterns: compileUnquotedPatterns(),
 
 		// positiveKeywords corroborate that a nearby high-entropy string is a
 		// credential (lifting it past the M24 generic-entropy cap). Matched by
@@ -346,6 +350,12 @@ func NewValidator() *Validator {
 			"xxxxxxxxxxxxxxxx", "000000000000000", "1234567890abcdef",
 			"abcdef123456789", "replace_with_actual", "insert_key_here",
 			"your_api_key_here", "test_api_key_here",
+			// Same your_*_here family as the entry above. Reachable only now that
+			// unquoted assignments are detected at all: measured on an FP probe,
+			// "password=your_password_here" was one of only two lines out of 18 that
+			// reported, and it is the same placeholder shape as your_api_key_here.
+			"your_password_here", "your_secret_here", "your_token_here",
+			"insert_password_here", "insert_secret_here", "insert_token_here",
 			// Test-specific patterns
 			"example_secret_key", "placeholder_token", "sample_password", "demo_private_key",
 			"mock_jwt_token", "fake_access_token", "dummy_credential",
@@ -450,6 +460,7 @@ func compileKeywordPatterns() []*regexp.Regexp {
 			`(?i)["']` + keyword + `["']\s*:\s*["']([^"']{8,})["']`,
 		)
 		patterns = append(patterns, pattern)
+
 	}
 
 	return patterns
@@ -786,6 +797,127 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 // pattern (capture-group branch). Candidates therefore carry their byte span
 // so the caller can collapse same-span claims instead of reporting one secret
 // two or three times; see dedupeBySpan.
+// secretAssignmentKeywords are the keyword stems used for UNQUOTED assignments.
+//
+// Same stems the quoted patterns use, kept as their own list so the two sets cannot be
+// changed independently by accident and so the unquoted patterns can carry a stricter value
+// filter without touching the quoted ones.
+var secretAssignmentKeywords = []string{
+	"api_?key", "auth_?key", "service_?key", "account_?key", "db_?key",
+	"database_?key", "priv_?key", "private_?key", "client_?key",
+	// access_key is the stem the highest-value credential class uses. Without it
+	// AWS_SECRET_ACCESS_KEY= does not match: "secret" IS present but is followed by
+	// "_ACCESS_KEY=", so `secret\s*[=:]` never fires. Measured — 7 of 8 real
+	// assignments matched and this was the miss.
+	"access_?key", "secret_?access_?key", "secret_?key",
+	"password", "passwd", "pwd", "secret", "token", "bearer",
+	"oauth", "jwt", "session", "credential", "access_?token",
+}
+
+// compileUnquotedPatterns builds the assignment patterns for values with NO quotes.
+//
+// compileKeywordPatterns emits two patterns per keyword and both require ["'] on either side
+// of the value, so no unquoted assignment could match anything — while containsSecretIndicators
+// admits exactly those lines and its comment promises them ("This catches cases like:
+// api_key=abc123 or password:secret123"). The line was let through and nothing could claim it.
+// Measured before this: password=, PASSWORD=, db_password:, DATABASE_PASSWORD=, secret=,
+// api_key= and token= all reported NOTHING at any confidence, while the same values in quotes
+// were found. See #360.
+//
+// Unquoted is the dominant real-world form, not an edge case: .env, shell exports, CI
+// variables, Dockerfile ENV, systemd/ini and unquoted YAML all write it that way, and those
+// are where credentials sit.
+//
+// Kept SEPARATE from keywordPatterns rather than appended to it, because these need a value
+// filter the quoted patterns must not get. Quotes are themselves evidence of intent — someone
+// wrote `password="something"` deliberately — whereas an unquoted capture takes whatever
+// follows the delimiter, so it needs plausibleUnquotedSecret to reject prose.
+//
+// '/' is deliberately allowed in the value even though excluding it would remove the
+// file-path false positives, because a real AWS secret access key contains it: the reference
+// value wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY has two. Losing a real credential class to
+// tidy up a cosmetic one is the wrong trade.
+func compileUnquotedPatterns() []*regexp.Regexp {
+	patterns := make([]*regexp.Regexp, 0, len(secretAssignmentKeywords))
+	for _, keyword := range secretAssignmentKeywords {
+		patterns = append(patterns, regexp.MustCompile(
+			`(?i)`+keyword+`\s*[=:]\s*([^\s"\';,#<${(\[][^\s"\';,#]{7,})`,
+		))
+	}
+	return patterns
+}
+
+// plausibleUnquotedSecret reports whether an unquoted captured value could be a secret.
+//
+// This is the whole reason the unquoted patterns are a separate set. Measured on 400 real
+// third-party files the unquoted pattern added exactly ONE finding over the baseline, and that
+// one was the word "creating" — captured from a line like `token: creating` and scored HIGH.
+// Probing the shape directly produced more of the same:
+//
+//	token: creating      -> HIGH
+//	password: something  -> HIGH
+//	secret: available    -> MEDIUM
+//
+// The existing commonWords list cannot catch these (it holds six entries: password, secret,
+// example, test, sample, default) and the entropy penalty does not demote them far enough. A
+// secrets validator that calls "something" a HIGH-confidence credential trains people to
+// ignore it, which costs more than the detection gains.
+//
+// The rejections below are shape-based rather than a word list, because a word list is a list
+// of words someone thought of:
+//
+//   - all-lowercase-alphabetic AND shorter than 16 characters. Real credentials carry a digit,
+//     an uppercase letter or a symbol; English words in log lines and prose do not. The length
+//     floor keeps a genuine all-lowercase passphrase ("correcthorsebatterystaple") accepted,
+//     since dictionary words in this position are short.
+//   - all digits, which is a phone number, port, timestamp or id rather than a secret.
+//   - digits and hyphens only, which is a date or a formatted number.
+//   - UUID shape, which identifies a thing rather than authenticating one.
+//
+// A genuinely all-lowercase short secret is rejected, and that is a deliberate, stated cost.
+func plausibleUnquotedSecret(v string) bool {
+	if len(v) < 8 {
+		return false
+	}
+
+	var hasLower, hasUpper, hasDigit, hasOther bool
+	for _, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z':
+			hasLower = true
+		case r >= 'A' && r <= 'Z':
+			hasUpper = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		default:
+			hasOther = true
+		}
+	}
+
+	// Prose: only lowercase letters, and short enough to be a dictionary word.
+	if hasLower && !hasUpper && !hasDigit && !hasOther && len(v) < 16 {
+		return false
+	}
+	// Numbers and formatted numbers.
+	if hasDigit && !hasLower && !hasUpper {
+		if !hasOther {
+			return false
+		}
+		if uuidLikeValue.MatchString(v) || digitsAndDashes.MatchString(v) {
+			return false
+		}
+	}
+	if uuidLikeValue.MatchString(v) {
+		return false
+	}
+	return true
+}
+
+var (
+	uuidLikeValue   = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	digitsAndDashes = regexp.MustCompile(`^[0-9-]+$`)
+)
+
 func (v *Validator) findKeywordSecrets(line string) []candidate {
 	// Early exit: skip lines that clearly don't contain secrets
 	if !v.containsSecretIndicators(line) {
@@ -804,6 +936,20 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 				matches = append(matches, candidate{text: line[m[2]:m[3]], start: m[2], end: m[3]})
 			} else if m[1]-m[0] >= 8 {
 				matches = append(matches, candidate{text: line[m[0]:m[1]], start: m[0], end: m[1]})
+			}
+		}
+	}
+
+	// Unquoted assignments, filtered. Separate loop because these candidates must pass
+	// plausibleUnquotedSecret and the quoted ones must not — quotes are evidence of intent.
+	for _, pattern := range v.unquotedPatterns {
+		for _, m := range pattern.FindAllStringSubmatchIndex(line, -1) {
+			if len(m) > 3 && m[2] >= 0 && m[3]-m[2] >= 8 {
+				value := line[m[2]:m[3]]
+				if !plausibleUnquotedSecret(value) {
+					continue
+				}
+				matches = append(matches, candidate{text: value, start: m[2], end: m[3]})
 			}
 		}
 	}
@@ -1527,6 +1673,11 @@ func (v *Validator) isObviousPlaceholderPattern(pattern string) bool {
 func (v *Validator) processScopedCandidates(matches []scopedCandidate, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, lineHasShellVars bool, envType string, isShellScript bool) []spannedMatch {
 	var results []spannedMatch
 
+	// Hoisted out of the candidate loop: the nearby-keyword answer depends only on the
+	// line, so computing it per candidate made the scan quadratic in the number of
+	// candidates on one line. See lineKeywordState for the measurement.
+	lineKw := v.lineHasAnyPositiveKeyword(line)
+
 	for _, cand := range matches {
 		match := cand.text
 		detectionMethod := cand.method
@@ -1543,7 +1694,7 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 		// always originates from this exact line, so this is behavior-preserving
 		// and additionally avoids the latent first-occurrence bug where a
 		// duplicated token resolves to a different line's context.
-		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, contextInsights, isShellScript, envType)
+		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, lineKw, contextInsights, isShellScript, envType)
 
 		// Skip matches with 0% confidence - they are false positives
 		if confidence <= 0 {
@@ -1791,7 +1942,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCache(match, fullContent stri
 // nearby-keyword check (those matches are always specific_pattern=true), so it
 // passes an empty line hint.
 func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullContent string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
-	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", contextInsights, isShellScript, envType)
+	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", lineKeywordUnknown, contextInsights, isShellScript, envType)
 }
 
 // calculateEnhancedConfidenceWithCacheAndEnvAndLine is identical to
@@ -1800,7 +1951,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 // check inspects that line directly instead of rescanning the whole content via
 // strings.Index — eliminating an O(content) scan per match (the O(n^2) hot path)
 // and the latent first-occurrence bug for duplicated tokens.
-func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
+func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, lineKw lineKeywordState, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
 	// Start with base confidence calculation
 	confidence, checks := v.CalculateConfidence(match)
 
@@ -1902,7 +2053,11 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// (AWS/JWT/GitHub/...) and there is no corroborating secret keyword nearby,
 	// cap it just below the MEDIUM threshold so it does not surface as MEDIUM/HIGH
 	// on shape alone. A specific pattern, or a nearby secret keyword, lifts it.
-	if !checks["specific_pattern"] && !v.hasNearbySecretKeyword(fullContent, match, lineHint) {
+	nearbyKeyword := lineKw == lineKeywordPresent
+	if lineKw == lineKeywordUnknown {
+		nearbyKeyword = v.hasNearbySecretKeyword(fullContent, match, lineHint)
+	}
+	if !checks["specific_pattern"] && !nearbyKeyword {
 		if confidence > 55 {
 			confidence = 55
 		}
@@ -1916,6 +2071,49 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	}
 
 	return confidence, checks
+}
+
+// lineKeywordState memoizes hasNearbySecretKeyword's answer for one line.
+//
+// The answer depends only on the LINE, so it is identical for every candidate on that
+// line — but it was recomputed per candidate, and each recomputation scans the whole
+// line once per positive keyword. On a single line holding K assignments the line
+// length grows with K, so the cost was O(K x lineLen x keywords), i.e. quadratic in K.
+//
+// Measured on one line of K quoted password= assignments, before this:
+//
+//	K =  1000   0.46s
+//	K =  2000   0.37s
+//	K =  4000   1.22s   3.30x
+//	K =  8000   4.62s   3.79x
+//	K = 16000  17.70s   3.83x   <- converging on 4x, i.e. quadratic
+//
+// with findings staying linear in K. A CPU profile attributed 86% of the run to
+// lineHasKeyword and 100% of THAT to hasNearbySecretKeyword — not to AnalyzeContext,
+// which #362 also names. The keyword scan itself is fine; calling it per candidate is
+// not.
+//
+// A tri-state rather than a bool because the multi-line fallback path calls the
+// confidence function with no line hint and must keep computing the answer itself.
+type lineKeywordState int8
+
+const (
+	// lineKeywordUnknown means the caller has no per-line answer, so the callee
+	// computes it as before.
+	lineKeywordUnknown lineKeywordState = iota
+	lineKeywordAbsent
+	lineKeywordPresent
+)
+
+// lineHasAnyPositiveKeyword computes the per-line answer once, for hoisting out of a
+// per-candidate loop.
+func (v *Validator) lineHasAnyPositiveKeyword(line string) lineKeywordState {
+	for _, kw := range v.positiveKeywords {
+		if lineHasKeyword(line, kw) {
+			return lineKeywordPresent
+		}
+	}
+	return lineKeywordAbsent
 }
 
 // hasNearbySecretKeyword reports whether a positive secret keyword appears on the

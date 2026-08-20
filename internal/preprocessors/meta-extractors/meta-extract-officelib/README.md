@@ -4,13 +4,15 @@ This library extracts metadata from various office document formats using Go's s
 
 ## Features
 
-- Extracts metadata from Microsoft Office and OpenDocument formats
-- Provides document properties (title, author, subject, etc.)
+- Extracts metadata from Microsoft Office, legacy Office and OpenDocument formats
+- Provides document properties (title, author, subject, etc.), including custom
+  (user-defined) properties and **multi-valued** ones such as a workbook's sheet-name list
 - Extracts creation and modification dates
 - Retrieves document statistics (page count, word count, etc.)
-- No external dependencies - uses only Go standard libraries
 
 ## Supported File Types
+
+OOXML and OpenDocument (ZIP containers):
 
 - Microsoft Word (.docx)
 - Microsoft Excel (.xlsx)
@@ -18,6 +20,26 @@ This library extracts metadata from various office document formats using Go's s
 - OpenDocument Text (.odt)
 - OpenDocument Spreadsheet (.ods)
 - OpenDocument Presentation (.odp)
+
+Legacy Office (OLE compound files, added in #265):
+
+- Microsoft Word 97-2003 (.doc)
+- Microsoft Excel 97-2003 (.xls)
+- Microsoft PowerPoint 97-2003 (.ppt)
+
+## Dependencies
+
+An earlier version of this file said "no external dependencies — uses only Go standard
+libraries". That has not been true since legacy support landed: the OLE container is read
+with `mscfb` and its property sets with `msoleps`.
+
+`msoleps` cannot read a VECTOR-valued property. A property's type in [MS-OLEPS] is one
+32-bit value with `VT_VECTOR` (0x1000) OR'd into the same 16-bit type field, and the
+library looks for that flag in the other half of the word — so a real vector resolves to
+no known type and comes back as the scalar `I1(0)`, whose string form is `"0"`. Those
+properties are therefore decoded from the stream here; see `legacy-ole-vectors.go`, which
+records the measurement and the element layout (vector elements are packed end to end,
+NOT padded to 4 bytes like a standalone property value).
 
 ## Usage
 

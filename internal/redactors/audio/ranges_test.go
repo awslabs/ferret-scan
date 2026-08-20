@@ -42,19 +42,19 @@ func TestID3RangeStopsExactlyAtTheTagBoundary(t *testing.T) {
 
 	const headerLen = 10
 	wantEnd := headerLen + n
-	if got[0].start != headerLen || got[0].end != wantEnd {
+	if got[0].Start != headerLen || got[0].End != wantEnd {
 		t.Errorf("range = [%d,%d), want [%d,%d).\n"+
 			"Reading the tag size as a plain big-endian integer instead of a synchsafe one gives "+
 			"%d here, which extends the overwrite region %d bytes into the MPEG audio frames — a "+
 			"value occurring by chance in the samples would then be overwritten and the recording "+
 			"corrupted, while the run still reported success.",
-			got[0].start, got[0].end, headerLen, wantEnd,
+			got[0].Start, got[0].End, headerLen, wantEnd,
 			headerLen+int(binary.BigEndian.Uint32(buf[6:10])),
 			headerLen+int(binary.BigEndian.Uint32(buf[6:10]))-wantEnd)
 	}
-	if got[0].end > len(tag) {
+	if got[0].End > len(tag) {
 		t.Errorf("the range extends %d bytes past the tag and into the audio frames",
-			got[0].end-len(tag))
+			got[0].End-len(tag))
 	}
 }
 
@@ -89,14 +89,14 @@ func TestRIFFRangeCoversOnlyTheListChunk(t *testing.T) {
 	}
 	// +8 for the RIFF header that precedes body.
 	wantStart := 8 + listAt
-	if got[0].start != wantStart || got[0].end != wantStart+len(info) {
-		t.Errorf("range = [%d,%d), want [%d,%d)", got[0].start, got[0].end, wantStart, wantStart+len(info))
+	if got[0].Start != wantStart || got[0].End != wantStart+len(info) {
+		t.Errorf("range = [%d,%d), want [%d,%d)", got[0].Start, got[0].End, wantStart, wantStart+len(info))
 	}
 	// The data chunk must be entirely outside every range, or redaction could overwrite audio.
 	dataStart := bytes.Index(buf, []byte("data"))
 	for _, rg := range got {
-		if dataStart >= rg.start && dataStart < rg.end {
-			t.Errorf("the data chunk at %d falls inside metadata range [%d,%d)", dataStart, rg.start, rg.end)
+		if dataStart >= rg.Start && dataStart < rg.End {
+			t.Errorf("the data chunk at %d falls inside metadata range [%d,%d)", dataStart, rg.Start, rg.End)
 		}
 	}
 }
@@ -119,14 +119,14 @@ func TestFLACRangeCoversOnlyTheCommentBlock(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("flacMetadataRanges returned %d ranges, want only VORBIS_COMMENT: %+v", len(got), got)
 	}
-	if got[0].start != commentAt || got[0].end != commentAt+len(comment) {
-		t.Errorf("range = [%d,%d), want [%d,%d)", got[0].start, got[0].end, commentAt, commentAt+len(comment))
+	if got[0].Start != commentAt || got[0].End != commentAt+len(comment) {
+		t.Errorf("range = [%d,%d), want [%d,%d)", got[0].Start, got[0].End, commentAt, commentAt+len(comment))
 	}
 	// A PICTURE block is binary image data; a short reported value could match inside it by
 	// chance, so it must stay out of scope.
 	picAt := len(buf) - len(picture)
 	for _, rg := range got {
-		if picAt >= rg.start && picAt < rg.end {
+		if picAt >= rg.Start && picAt < rg.End {
 			t.Error("the PICTURE block falls inside a metadata range")
 		}
 	}
@@ -153,15 +153,15 @@ func TestMP4RangeCoversUdtaAndNotTheSampleTables(t *testing.T) {
 	}
 
 	udtaAt := bytes.Index(buf, []byte("udta"))
-	if got[0].start != udtaAt+4 {
-		t.Errorf("range starts at %d, want %d (the udta payload)", got[0].start, udtaAt+4)
+	if got[0].Start != udtaAt+4 {
+		t.Errorf("range starts at %d, want %d (the udta payload)", got[0].Start, udtaAt+4)
 	}
 
 	stblAt := bytes.Index(buf, []byte("stbl"))
 	for _, rg := range got {
-		if stblAt >= rg.start && stblAt < rg.end {
+		if stblAt >= rg.Start && stblAt < rg.End {
 			t.Errorf("stbl at %d falls inside metadata range [%d,%d) — sample tables must never be "+
-				"overwritten", stblAt, rg.start, rg.end)
+				"overwritten", stblAt, rg.Start, rg.End)
 		}
 	}
 }

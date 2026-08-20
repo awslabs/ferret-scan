@@ -1,8 +1,10 @@
 === REDACTED ===
 passport_number
-987654321
+[PASSPORT-REDACTED]
 Field: Passport Number
-Value: 512345678
+Value: [PASSPORT-REDACTED]
 name,email,passport_number,country
 Jane,jane.smith@acmecorp.io,512345671,US
 === FINDINGS (sorted) ===
+type=PASSPORT line=2 conf=medium match=987654321
+type=PASSPORT line=4 conf=medium match=512345678

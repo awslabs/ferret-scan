@@ -4,6 +4,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"os"
@@ -92,20 +93,20 @@ func TestRedactFile_CleanFileIsCopiedThrough(t *testing.T) {
 func TestRedactFile_UnredactableFileTypeIsAnError(t *testing.T) {
 	in := t.TempDir()
 	out := t.TempDir()
-	// Reserved documentation values, in a file type with no redactor.
+	// Reserved documentation values, in a file whose findings cannot be masked.
 	//
-	// A VIDEO file, not a .go source file. Source files used to have no redactor, which made
-	// them a convenient stand-in here — but a .go file holding a hardcoded key is exactly a
-	// file that should be redacted, and text files of any extension now are (#315). Video is
-	// scanned (there is a video metadata preprocessor) and has no redactor, so it keeps
-	// exercising the guard this test exists for rather than becoming redactable under it.
+	// Re-fixtured for #358, exactly as the previous comment here said it would have to be.
+	// The fixture used to be a video with its values in udta, because video had no redactor
+	// at all; now it has one, so that file redacts and this guard would never fire. What the
+	// test is about is the invariant, not the format.
 	//
-	// A video redactor IS now planned (#358). When it lands this fixture stops being
-	// unredactable and this test fails — loudly, which is the intended behaviour. The
-	// invariant is what matters, not the format: keep the assertion and re-fixture. If
-	// nothing scanned is left unredactable by then, a manager with a deliberately limited
-	// redactor set is the honest replacement.
-	src := writeUnredactableVideo(t, in, "creds.mp4")
+	// The replacement keeps its values in a "uuid" atom — the XMP form — which is scanned (a
+	// chunk scan reaches it and reports the key) and which the video redactor deliberately
+	// refuses, because its metadata walk is scoped to udta and meta and it will not claim to
+	// have removed a value it cannot locate. That is a STRONGER version of the same guard: the
+	// error now comes from a registered redactor declining, rather than from no redactor
+	// existing, and it is the path a caller actually hits.
+	src := writeRefusedVideo(t, in, "creds.mp4")
 
 	res, err := RedactFile(RedactConfig{
 		FilePath:  src,
@@ -163,12 +164,16 @@ func TestRedactFile_DefaultsToFormatPreserving(t *testing.T) {
 	}
 }
 
-// writeUnredactableVideo writes a minimal MP4 whose udta/ilst metadata carries reserved
-// documentation values, for tests that need a file which IS scanned but has no redactor.
+// writeRefusedVideo writes a minimal MP4 whose reserved documentation values live in a uuid
+// (XMP) atom, for tests that need a file which IS scanned but whose findings cannot be masked.
 //
-// Hand-built rather than produced by ffmpeg, which is not on every CI runner. 95 bytes is
-// enough: ftyp plus moov>udta>meta>ilst>©cmt is what the metadata extractor walks.
-func writeUnredactableVideo(t *testing.T, dir, name string) string {
+// Hand-built rather than produced by ffmpeg, which is not on every CI runner. Measured on this
+// exact shape: the scan reports AWS_ACCESS_KEY at MEDIUM 84, and redaction writes no file and
+// reports "no video metadata region found", because the redactor's walk covers udta and meta —
+// where every value the extractor can attribute to a tag lives — and not a uuid payload.
+//
+// Deliberately NOT a udta/ilst video any more: that is now redactable (#358).
+func writeRefusedVideo(t *testing.T, dir, name string) string {
 	t.Helper()
 
 	atom := func(kind string, payload []byte) []byte {
@@ -178,11 +183,10 @@ func writeUnredactableVideo(t *testing.T, dir, name string) string {
 		return append(out, payload...)
 	}
 
-	data := append([]byte{0, 0, 0, 1, 0, 0, 0, 0},
-		[]byte("key AKIAIOSFODNN7EXAMPLE contact jordan@example.com")...)
-	body := atom("moov", atom("udta", atom("meta",
-		append([]byte{0, 0, 0, 0}, atom("ilst", atom("\xa9cmt", atom("data", data)))...))))
-	out := append(atom("ftyp", []byte("isomiso2mp41")), body...)
+	xmp := append(bytes.Repeat([]byte{0x11}, 16),
+		[]byte("<x:xmpmeta><desc>key AKIAIOSFODNN7EXAMPLE contact jordan@example.com</desc></x:xmpmeta>")...)
+	out := append(atom("ftyp", []byte("isomiso2mp41")), atom("moov", atom("mvhd", make([]byte, 100)))...)
+	out = append(out, atom("uuid", xmp)...)
 
 	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, out, 0o600); err != nil {

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -230,6 +231,27 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 		return nil, fmt.Errorf(
 			"refusing to write %s: %d embedded part(s) still contain reported values: %s",
 			filepath.Base(outputPath), len(unredacted), embeddedFailureSummary(unredacted))
+	}
+
+	// Refuse to write a document whose OWN parts still hold a reported value.
+	//
+	// The embedded refusal above covers children only. The parent document was never
+	// checked at all, which is what let the entity-escaping defect attest success:
+	// applyPendingRedactions could no-op for a value and RedactDocument still returned
+	// Success with failed_redactions:0, because nothing ever asked whether the value
+	// was gone. A missed rewrite is now a refusal rather than a false attestation, on
+	// the same fail-closed policy and for the same reason — the artefact a user
+	// forwards must not be a document containing an SSN in a directory named
+	// "redacted".
+	if residue := parentPartResidue(modifiedContents, matches); len(residue) > 0 {
+		// TYPES, never the values. This message reaches stderr and every machine format
+		// with no --show-match, so listing the residual values would publish the exact
+		// data the refusal exists to protect — the same rule that keeps a matched value
+		// out of a validator's debug log, and out of #367's failed-extraction line.
+		// The count and the types are what an operator acts on.
+		return nil, fmt.Errorf(
+			"refusing to write %s: %d reported value(s) still present in the document's own parts (types: %s)",
+			filepath.Base(outputPath), len(residue), strings.Join(residueTypes(residue), ", "))
 	}
 
 	// Repackage ZIP with modified contents
@@ -578,10 +600,53 @@ var docPropsValueElements = map[string]bool{
 	"TitlesOfParts":      true,
 	"HeadingPairs":       true,
 
-	// docProps/custom.xml — author-defined property values
-	"lpwstr": true,
-	"lpstr":  true,
-	"bstr":   true,
+	// docProps/custom.xml — author-defined property values.
+	//
+	// Every SCALAR value type, not only the string ones. A custom property named
+	// "MemberId" or "RecordId" is routinely written as <vt:i4>, and with only the string
+	// types listed the redactor never extracted that character data, so no replacement
+	// was ever registered for the part and a reported value was skipped. Measured on a
+	// .docx whose only property is <vt:i4>729183640</vt:i4>: the scan reports it, and
+	// before this the value came back byte-identical from --enable-redaction at rc 0.
+	// See #373.
+	//
+	// Numeric here does not mean harmless: an account, member, patient or case number is
+	// a number, and a date of birth is a date. Which of them is SENSITIVE is the
+	// validators' decision, not this map's — nothing here creates a finding. This list
+	// only decides where an ALREADY REPORTED value can be located and masked, so a wider
+	// list cannot over-redact; it can only stop a reported value being missed.
+	"lpwstr":   true,
+	"lpstr":    true,
+	"bstr":     true,
+	"i1":       true,
+	"i2":       true,
+	"i4":       true,
+	"i8":       true,
+	"int":      true,
+	"ui1":      true,
+	"ui2":      true,
+	"ui4":      true,
+	"ui8":      true,
+	"uint":     true,
+	"r4":       true,
+	"r8":       true,
+	"decimal":  true,
+	"cy":       true,
+	"date":     true,
+	"filetime": true,
+	"clsid":    true,
+	"error":    true,
+	// Excluded, deliberately: "bool" (true/false carries nothing reportable) and the
+	// binary families — blob, oblob, storage, stream, ostorage, ostream, vstream, cf. A
+	// same-length text replacement inside base64 produces invalid base64, so a value
+	// reported from one of those must NOT be rewritten in place. If it ever is reported,
+	// parentPartResidue refuses the document rather than shipping a corrupt part, which
+	// is the honest outcome.
+	//
+	// That refusal is also why this list being incomplete is no longer a leak: since the
+	// residue check landed, a value the redactor cannot locate makes the write fail
+	// loudly instead of attesting success. The list decides whether redaction can
+	// SUCCEED, not whether a miss is disclosed.
 }
 
 // isDocPropsValueElement reports whether an element's character data is a
@@ -845,18 +910,325 @@ func (or *OfficeRedactor) applyPendingRedactions(zipContents *OfficeZipContents,
 			args = append(args, v, pr.repl[v])
 		}
 
-		modifiedContent := []byte(strings.NewReplacer(args...).Replace(string(xmlContent)))
+		replacer := strings.NewReplacer(args...)
+		modifiedContent, charDataRewrites := rewritePartText(xmlContent, replacer)
 		zipContents.addFile(name, modifiedContent)
 
 		or.logEvent("xml_content_modified", true, map[string]interface{}{
-			"file_name":     name,
-			"original_size": len(xmlContent),
-			"modified_size": len(modifiedContent),
-			"values":        len(values),
+			"file_name":         name,
+			"original_size":     len(xmlContent),
+			"modified_size":     len(modifiedContent),
+			"values":            len(values),
+			"chardata_rewrites": charDataRewrites,
 		})
 	}
 
 	return nil
+}
+
+// residueIdentifyPasses counts how many times the residue check has entered its
+// per-value identification loop.
+//
+// It exists for one guard: the identification loop is O(values x text) and must stay
+// off the successful path. Measured when it was NOT: +0.00s, +0.01s, +0.02s then
+// +0.09s as the reported-value count doubled through 500/1000/2000/4000, i.e. about
+// 4.5x per doubling.
+//
+// A counter rather than a timing assertion, because the quadratic here is pure
+// strings.Contains work that allocates nothing — so an allocation-based guard is blind
+// to it (verified: restoring the quadratic passed an allocation ratio test) — and
+// wall-clock thresholds are not portable to the Windows runner.
+var residueIdentifyPasses atomic.Uint64
+
+// parentPartResidue returns the reported values still present in the document's own
+// XML parts after redaction, comparing on DECODED text.
+//
+// Decoding is the whole point. The defect this guards against is a value whose stored
+// spelling differs from its reported form, so a raw-byte search for the reported value
+// would not find "Fairbanks &amp; Kettleworth" while looking for
+// "Fairbanks & Kettleworth" and would cheerfully report no residue — certifying the
+// exact leak it exists to catch. Tokenizing and comparing the decoded character data
+// and attribute values is what makes the check mean anything.
+//
+// Scope is deliberately narrow, because a false refusal turns a working redaction into
+// an error:
+//
+//   - Only XML parts. Binary entries (thumbnails, embedded media) belong to the
+//     embedded path, which has its own residue check and its own refusal.
+//   - Only values at or above minResidueValueLen, matching the embedded value set. A
+//     shorter value produces meaningless hits and is not something redaction targets.
+//   - A part that does not tokenize is SKIPPED rather than treated as residue. Absence
+//     cannot be established there, but neither can presence, and refusing on a
+//     malformed part the redactor never claimed to rewrite would fail closed on the
+//     wrong thing.
+//
+// # Cost
+//
+// Two stages, and the split is deliberate. A naive "one strings.Contains per value per
+// part" is O(values x text) and measured quadratic: on a .docx with 4000 distinct
+// reported values the identification scan cost +0.00s, +0.01s, +0.02s then +0.09s as
+// the value count doubled — about 4.5x per doubling. Small in absolute terms, but this
+// repo has repeatedly been bitten by exactly that shape once inputs grew.
+//
+// So the common case pays only a single trie pass. strings.Replacer builds one trie
+// over all the values and scans each part once, independent of how many values there
+// are; if nothing matched, there is no residue and we are done. The per-value
+// identification loop runs ONLY when a hit has already been found, i.e. only on the
+// path that is about to refuse to write the document, where an extra pass is free
+// relative to failing the run.
+func parentPartResidue(contents *OfficeZipContents, matches []detector.Match) []detector.Match {
+	if contents == nil || len(matches) == 0 {
+		return nil
+	}
+
+	wanted := make([]string, 0, len(matches))
+	byText := make(map[string]detector.Match, len(matches))
+	for _, m := range matches {
+		if len(m.Text) < minResidueValueLen {
+			continue
+		}
+		if _, dup := byText[m.Text]; dup {
+			continue
+		}
+		byText[m.Text] = m
+		wanted = append(wanted, m.Text)
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+
+	// Sorted part order so the reported residue list is stable run to run.
+	names := make([]string, 0, len(contents.Files))
+	for name := range contents.Files {
+		if strings.HasSuffix(strings.ToLower(name), ".xml") {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	// Stage 1: one trie pass per part over ALL values at once. Replacing every value
+	// with nothing and comparing is a presence oracle whose cost does not grow with the
+	// number of values.
+	probeArgs := make([]string, 0, len(wanted)*2)
+	for _, v := range wanted {
+		probeArgs = append(probeArgs, v, "")
+	}
+	probe := strings.NewReplacer(probeArgs...)
+
+	texts := make([]string, 0, len(names))
+	anyHit := false
+	for _, name := range names {
+		text, ok := decodedPartText(contents.Files[name])
+		if !ok {
+			continue
+		}
+		texts = append(texts, text)
+		if !anyHit && probe.Replace(text) != text {
+			anyHit = true
+		}
+	}
+	if !anyHit {
+		return nil
+	}
+
+	// Stage 2: name the offenders. Only reached when the document is already going to
+	// be refused, so the per-value scan is not on any successful path.
+	residueIdentifyPasses.Add(1)
+	found := make(map[string]struct{}, len(wanted))
+	for _, text := range texts {
+		for _, v := range wanted {
+			if _, already := found[v]; already {
+				continue
+			}
+			if strings.Contains(text, v) {
+				found[v] = struct{}{}
+			}
+		}
+	}
+
+	out := make([]detector.Match, 0, len(found))
+	for _, v := range wanted {
+		if _, ok := found[v]; ok {
+			out = append(out, byText[v])
+		}
+	}
+	return out
+}
+
+// residueTypes lists the distinct finding types of a residue set, sorted, for a message
+// that must not carry the values themselves.
+//
+// A match with no Type still has to be counted as something an operator can see, so it
+// is named "unknown" rather than dropped — a residue that reports fewer types than
+// values would understate what is still in the file.
+func residueTypes(residue []detector.Match) []string {
+	seen := make(map[string]struct{}, len(residue))
+	out := make([]string, 0, len(residue))
+	for _, m := range residue {
+		t := m.Type
+		if t == "" {
+			t = "unknown"
+		}
+		if _, dup := seen[t]; dup {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// decodedPartText concatenates a part's entity-decoded character data and attribute
+// values. It reports false when the part cannot be tokenized, so the caller can skip
+// it rather than guess.
+func decodedPartText(content []byte) (string, bool) {
+	var sb strings.Builder
+	sb.Grow(len(content) / 2)
+
+	dec := xml.NewDecoder(bytes.NewReader(content))
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", false
+		}
+		switch t := tok.(type) {
+		case xml.CharData:
+			sb.Write(t)
+			// A separator keeps two adjacent runs from concatenating into a value that
+			// is in neither of them.
+			sb.WriteByte('\n')
+		case xml.StartElement:
+			// Attribute values are covered because the raw replacer rewrites them, so a
+			// value living in one is in scope for the refusal too.
+			for _, a := range t.Attr {
+				sb.WriteString(a.Value)
+				sb.WriteByte('\n')
+			}
+		}
+	}
+	return sb.String(), true
+}
+
+// rewritePartText applies repl to an XML part, matching character data on its
+// DECODED form so a value's stored spelling cannot hide it.
+//
+// # The defect this exists for
+//
+// extractTextFromXML reads part text through encoding/xml, so the text offered to
+// the validators is entity-decoded: the value the report names is "Fairbanks &
+// Kettleworth", never the "Fairbanks &amp; Kettleworth" that is actually on disk.
+// Rewriting used to run the replacer over the RAW part bytes, so the literal never
+// occurred, the replacer was a no-op for that value, and RedactDocument still
+// returned Success with failed_redactions:0. Measured before this: a .docx whose
+// Company property held an ampersand came back from --enable-redaction with the
+// company name intact — confirmed by exiftool reading it out of the "redacted"
+// copy — while a sibling value in the same part masked correctly.
+//
+// This needs no attacker. XML REQUIRES '&' in character data to be written "&amp;",
+// so every document whose text or properties contain an ampersand was affected.
+//
+// # Why enumerating escaped spellings cannot fix it
+//
+// embedded.XMLEscapeVariants offers the "&amp;"/"&apos;" spellings as extra
+// replacer keys, which covers the predefined entities and nothing else. '&' also
+// introduces character references, so ANY character at ANY offset can be respelled:
+// "449-87-41&#48;0", "&#52;49-87-4100" and "449&#45;87&#45;4100" are all the same
+// value, as is the &#x30; hex form. The spellings are combinatorial, so only letting
+// the codec canonicalize them is complete.
+//
+// # Why this is a strict superset of the old behaviour
+//
+// Character data is matched on its decoded form and re-emitted escaped. Everything
+// else — markup, attribute values, and any character data that did not change — is
+// handed to the SAME raw replacer the old code used, over the byte ranges between
+// rewrites. So every replacement the old code made is still made (including a value
+// sitting in an attribute, which is not character data and would otherwise have been
+// lost), and the entity-spelled cases are newly covered.
+//
+// A tokenizer error is not fatal: encoding/xml rejects an undefined entity such as
+// "&foo;", and a part that cannot be tokenized simply falls through to the raw
+// replacer for its remainder, which is exactly what shipped before. The residue
+// check is what turns a miss into a refusal rather than a silent success.
+//
+// # Cost
+//
+// One tokenizing pass plus the replacer applied to disjoint regions summing to at
+// most len(content), so the work stays linear in part size — the same order as the
+// single whole-part Replace it replaces. The replacer is built ONCE per part by the
+// caller and must stay that way: building it per token would make this quadratic in
+// the number of values, which is the shape that has bitten this repo repeatedly.
+//
+// Returns the rewritten part and the number of character-data spans rewritten
+// through the decoded path, which the caller logs.
+func rewritePartText(content []byte, repl *strings.Replacer) ([]byte, int) {
+	dec := xml.NewDecoder(bytes.NewReader(content))
+
+	var out bytes.Buffer
+	out.Grow(len(content) + len(content)/8)
+
+	prev, rewrites := 0, 0
+	for {
+		// InputOffset gives the end of the last token and the start of the next, so
+		// reading it either side of Token() brackets the token's byte span exactly.
+		start := int(dec.InputOffset())
+		tok, err := dec.Token()
+		if err != nil {
+			// io.EOF, or a part encoding/xml refuses. Either way the tail is emitted
+			// below through the raw replacer, preserving the previous behaviour.
+			break
+		}
+		end := int(dec.InputOffset())
+
+		cd, ok := tok.(xml.CharData)
+		if !ok {
+			continue
+		}
+		decoded := string(cd)
+		replaced := repl.Replace(decoded)
+		if replaced == decoded {
+			continue
+		}
+
+		// Everything since the last rewrite, still through the raw replacer.
+		out.WriteString(repl.Replace(string(content[prev:start])))
+		escapeCharData(&out, replaced)
+		prev = end
+		rewrites++
+	}
+
+	out.WriteString(repl.Replace(string(content[prev:])))
+	return out.Bytes(), rewrites
+}
+
+// escapeCharData writes s as XML character data.
+//
+// Only '&', '<' and '>' are escaped — the set character data actually requires —
+// rather than using xml.EscapeText, which also rewrites quotes and turns newlines
+// into "&#xA;". Keeping the escaping minimal keeps the rewritten part as close to the
+// original bytes as possible, so a redaction shows up in a diff as the redaction and
+// nothing else.
+//
+// '&' is escaped UNCONDITIONALLY. A decoded value can legitimately contain an
+// ampersand followed by entity-looking text — "&amp;lt;" decodes to the literal
+// "&lt;" — so an escaper that tried to be clever and skip '&' before a known entity
+// name would silently corrupt that value on the way back out.
+func escapeCharData(out *bytes.Buffer, s string) {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '&':
+			out.WriteString("&amp;")
+		case '<':
+			out.WriteString("&lt;")
+		case '>':
+			out.WriteString("&gt;")
+		default:
+			out.WriteByte(s[i])
+		}
+	}
 }
 
 // positionForOffset returns the extracted-text position covering off.

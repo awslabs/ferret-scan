@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
@@ -243,6 +244,20 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 // length × keywords) — the single-long-line CPU-exhaustion DoS the other
 // validators were already hardened against. See the timing regression test.
 type otpLineContext struct {
+	// table and bounds resolve the header cell naming a match's own column.
+	//
+	// A base32 secret is admitted only with positive OTP context on the line, and in a
+	// CSV export that context is the HEADER ROW, one or more lines above the value. So
+	// a totp_secret column produced nothing while the identical value written inline as
+	// "totp secret K5CUWY3ZNRXW4Z3T" scores 85 — and an unreported secret is never
+	// redacted. Resolved per MATCH because the header varies along the row: folding the
+	// row's headers together would let a totp_secret column vouch for a notes column.
+	table  *tabular.Table
+	bounds *tabular.LineBounds
+	// headerPos is true when ANY column header carries OTP context, used for row
+	// ADMISSION only; per-column standing is decided by columnHasPositiveContext.
+	headerPos bool
+
 	impact  float64
 	posKW   []string
 	negKW   []string
@@ -283,6 +298,20 @@ func (v *Validator) contextInfoAt(line string, start, length int, lc otpLineCont
 	return ci
 }
 
+// columnHasPositiveContext reports whether the header naming the column at byte offset
+// off carries OTP context. Empty header (non-tabular, or the header row itself) is
+// false, so a non-table document is unaffected.
+func (v *Validator) columnHasPositiveContext(lc otpLineContext, off int) bool {
+	if lc.table == nil || lc.bounds == nil {
+		return false
+	}
+	h := lc.table.HeaderAt(lc.bounds, off)
+	if h == "" {
+		return false
+	}
+	return v.hasPositiveContext(h)
+}
+
 // insideAnySpan reports whether [start,end) falls inside any span in locs
 // (sorted by start, as FindAllStringIndex returns them).
 func insideAnySpan(locs [][]int, start, end int) bool {
@@ -304,18 +333,43 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 	lines := strings.Split(content, "\n")
 
+	// Conservative by construction (>=3 fields, consistent delimiter, word-like header
+	// row), so a non-table document yields a nil table and behaviour is unchanged.
+	// Analyzed ONCE per document.
+	table := tabular.Analyze(content)
+
 	for lineNum, line := range lines {
 		if execguard.LineLoopCancelled(ctx, lineNum) {
 			return matches, ctx.Err()
 		}
 
 		lc := v.buildOTPLineContext(line)
+		if table.IsTable() && lineNum != table.HeaderLine() {
+			lc.table = table
+			lc.bounds = table.Bounds(line)
+			for _, h := range table.Headers() {
+				if v.hasPositiveContext(strings.ToLower(h)) {
+					lc.headerPos = true
+					break
+				}
+			}
+		}
 
 		// emit scores one candidate at a known offset and appends it if it
 		// survives clamping. Confidence math is identical to the original
 		// per-match path; only the redundant per-match line scans are gone.
 		emit := func(start, length int, matchType string, applyNegative bool) {
 			text := line[start : start+length]
+
+			// A row admitted ONLY by its header row must carry the label in the
+			// candidate's OWN column. Row-level admission is deliberately permissive so
+			// candidates can be found at all; without this per-column requirement a
+			// notes column's base32-shaped value would ride in on the totp_secret
+			// column's header. The equivalent leak was measured in driverslicense,
+			// where two routing_number values were reported as licences at 40.
+			if !lc.hasPos && lc.headerPos && !v.columnHasPositiveContext(lc, start) {
+				return
+			}
 
 			confidence, checks := v.CalculateConfidence(text)
 			confidence += lc.impact
@@ -378,7 +432,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 		// Check for base32 secrets (only with context keywords — a bare
 		// base32 string is far too ambiguous on its own).
-		if lc.hasPos {
+		if lc.hasPos || lc.headerPos {
 			for i, loc := range reBase32Secret.FindAllStringIndex(line, -1) {
 				if execguard.LineLoopCancelled(ctx, i) {
 					return matches, ctx.Err()

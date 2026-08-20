@@ -1,1 +1,4 @@
-No matches found.
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH      FILE
+------------------------------------------------------------------------------------
+[MEDIUM] passport     PASSPORT               80.00% line     4 512345678  <golden:passport_label_above_value>
+[MEDIUM] passport     PASSPORT               75.00% line     2 987654321  <golden:passport_label_above_value>

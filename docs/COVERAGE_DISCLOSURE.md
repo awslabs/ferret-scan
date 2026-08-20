@@ -26,7 +26,7 @@ one `.docx` whose body could not be extracted, the in-band signal on **stdout** 
 The human-readable report was always produced for the machine formats — it went to
 **stderr**, which pipelines routinely discard.
 
-## The four causes
+## The six causes
 
 | cause | meaning | were findings possible? |
 |---|---|---|
@@ -34,10 +34,42 @@ The human-readable report was always produced for the machine formats — it wen
 | `cannot parse` | bytes do not match the declared type | no text was recovered |
 | `no body text (metadata still scanned)` | opened and parsed, no body text found | **yes** — metadata was scanned and may already have produced findings |
 | `coverage cut short` | a budget, size cap or timeout fired | **yes** — the file is partly scanned |
+| `symlink not followed` | a link that dangles, loops, names a directory or device, or resolves outside the scanned tree | the target was never read; scan it directly |
+| `file too large to scan` | over the size limit, so never opened — and of a type the tool WOULD have processed | no |
 
 The third and fourth never claim the file was unread. A `.docx` with an empty body but
 PII in its author field appears both as findings *and* in this list, and saying its
 contents were never read would contradict the same report.
+
+`symlink not followed` (#326) and `file too large to scan` (#324) were added to the code
+after this table was written and are documented here retroactively; both are deliberately
+distinct from `cannot read`, which would assert a failure that did not happen — for most
+of those files the bytes could have been read and the tool declined.
+
+An **unprocessable** type refused for size is not listed at all. It is a genuine skip: no
+finding was ever possible from it, so reporting lost coverage would be reporting a
+non-event.
+
+### What `coverage cut short` covers inside a container
+
+A container is partly scanned when one of its parts could not be examined, and the
+container's own text was read normally. Three cases reach this cause:
+
+| case | what the operator sees |
+|---|---|
+| an embedded part over the 50 MB embedded cap | `embedded part "attachment.docx" was not examined: declares N bytes, over the 52428800-byte embedded cap` |
+| an embedded part whose bytes could not be extracted | `embedded part "broken.jpg" was not examined: flate: corrupt input before offset 1` |
+| an embedded container past the nesting bound (3) | `embedded item "attachment.docx" was not examined: embedded container nesting limit reached` |
+
+The first two used to be **silent** (#374): the part was skipped, the container reported
+`No matches found` at exit 0, and `--fail-on-incomplete` also exited 0 — while the same
+inner document under the cap reported its SSN at HIGH 100. All three are now `coverage cut
+short` rather than `no body text`, because the container's body text *was* read: claiming
+otherwise describes a failure that did not happen.
+
+An embedded part of a type nothing can read stays silent on purpose. A line on stderr for
+every decorative `.emf` in every slide deck trains operators to ignore the warnings that
+matter.
 
 ## Per-format details
 

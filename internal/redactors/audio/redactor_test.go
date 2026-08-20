@@ -13,6 +13,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/tagmeta"
 )
 
 // Fixtures are hand-built rather than produced by ffmpeg, which is not present on every CI
@@ -379,7 +380,7 @@ func TestUTF16TagTextIsRedacted(t *testing.T) {
 	dir := t.TempDir()
 
 	// ID3v2.3 frame with encoding byte 0x01 (UTF-16 with BOM).
-	wide := append([]byte{0xFF, 0xFE}, toUTF16LE("Call "+testPhone)...)
+	wide := append([]byte{0xFF, 0xFE}, tagmeta.UTF16LE("Call "+testPhone)...)
 	payload := append([]byte{0x01}, wide...)
 	var body bytes.Buffer
 	body.WriteString("COMM")
@@ -396,13 +397,13 @@ func TestUTF16TagTextIsRedacted(t *testing.T) {
 	tag = append(tag, 0xFF, 0xFB, 0x90, 0x00)
 
 	src := writeFixture(t, dir, "utf16.mp3", tag)
-	if !bytes.Contains(tag, toUTF16LE(testPhone)) {
+	if !bytes.Contains(tag, tagmeta.UTF16LE(testPhone)) {
 		t.Fatal("fixture does not hold the value UTF-16 encoded, so this proves nothing")
 	}
 
 	after := redact(t, src, []detector.Match{match(testPhone, "PHONE")})
 
-	if bytes.Contains(after, toUTF16LE(testPhone)) {
+	if bytes.Contains(after, tagmeta.UTF16LE(testPhone)) {
 		t.Error("the UTF-16 encoded phone number survived; a UTF-8-only search leaves wide tag " +
 			"text in cleartext")
 	}
@@ -479,25 +480,25 @@ func TestOverlappingSpansAreMaskedAsOne(t *testing.T) {
 // exactly why it is asserted here as a unit.
 func TestResidualValuesDetectsWhatWasMissed(t *testing.T) {
 	region := []byte("ARTIST=Contact " + testSSN + "\x00")
-	ranges := []byteRange{{0, len(region), "test"}}
+	ranges := []tagmeta.Region{{Start: 0, End: len(region), Label: "test"}}
 	matches := []detector.Match{match(testSSN, "SSN")}
 
-	if got := residualValues(region, ranges, matches); got != 1 {
+	if got := tagmeta.Residual(region, ranges, matches); got != 1 {
 		t.Errorf("residualValues = %d, want 1: the value is present in the region and must be "+
 			"reported as residue", got)
 	}
 
 	scrubbed := bytes.ReplaceAll(region, []byte(testSSN), []byte(strings.Repeat("*", len(testSSN))))
-	if got := residualValues(scrubbed, ranges, matches); got != 0 {
+	if got := tagmeta.Residual(scrubbed, ranges, matches); got != 0 {
 		t.Errorf("residualValues = %d, want 0 after the value was overwritten", got)
 	}
 
 	// UTF-16, both byte orders. A check that only knows one of them passes while the value is
 	// still readable in the other.
-	for name, enc := range map[string]func(string) []byte{"LE": toUTF16LE, "BE": toUTF16BE} {
+	for name, enc := range map[string]func(string) []byte{"LE": tagmeta.UTF16LE, "BE": tagmeta.UTF16BE} {
 		wide := append([]byte("ARTIST="), enc(testSSN)...)
-		wr := []byteRange{{0, len(wide), "test"}}
-		if got := residualValues(wide, wr, matches); got != 1 {
+		wr := []tagmeta.Region{{Start: 0, End: len(wide), Label: "test"}}
+		if got := tagmeta.Residual(wide, wr, matches); got != 1 {
 			t.Errorf("residualValues = %d for a UTF-16%s region, want 1", got, name)
 		}
 	}
@@ -508,7 +509,7 @@ func TestUTF16BETagTextIsRedacted(t *testing.T) {
 	dir := t.TempDir()
 
 	// ID3v2.4 encoding byte 0x02: UTF-16BE, no BOM.
-	payload := append([]byte{0x02}, toUTF16BE("Call "+testPhone)...)
+	payload := append([]byte{0x02}, tagmeta.UTF16BE("Call "+testPhone)...)
 	var body bytes.Buffer
 	body.WriteString("COMM")
 	size := make([]byte, 4)
@@ -524,12 +525,12 @@ func TestUTF16BETagTextIsRedacted(t *testing.T) {
 	tag = append(tag, 0xFF, 0xFB, 0x90, 0x00)
 
 	src := writeFixture(t, dir, "utf16be.mp3", tag)
-	if !bytes.Contains(tag, toUTF16BE(testPhone)) {
+	if !bytes.Contains(tag, tagmeta.UTF16BE(testPhone)) {
 		t.Fatal("fixture does not hold the value UTF-16BE encoded")
 	}
 
 	after := redact(t, src, []detector.Match{match(testPhone, "PHONE")})
-	if bytes.Contains(after, toUTF16BE(testPhone)) {
+	if bytes.Contains(after, tagmeta.UTF16BE(testPhone)) {
 		t.Error("the UTF-16BE encoded phone number survived; ID3v2.4 allows this encoding and a " +
 			"little-endian-only search leaves it in cleartext")
 	}

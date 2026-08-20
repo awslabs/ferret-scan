@@ -194,6 +194,13 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 			confidence = 0.0
 		}
 
+		// Unverified-surname ceiling, applied AFTER context so context cannot lift it.
+		// See hasExplicitNameMarker: this match was admitted on a title or suffix rather
+		// than on database confirmation, so it must never present as HIGH.
+		if validationChecks["known_last_name_unverified"] && confidence > unverifiedSurnameCeiling {
+			confidence = unverifiedSurnameCeiling
+		}
+
 		// Only include matches with reasonable confidence
 		if confidence >= 50.0 {
 			if !keywordsComputed {
@@ -268,6 +275,13 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 		}
 		if confidence < 0 {
 			confidence = 0
+		}
+
+		// Unverified-surname ceiling, applied AFTER context so context cannot lift it.
+		// See hasExplicitNameMarker: this match was admitted on a title or suffix rather
+		// than on database confirmation, so it must never present as HIGH.
+		if validationChecks["known_last_name_unverified"] && confidence > unverifiedSurnameCeiling {
+			confidence = unverifiedSurnameCeiling
 		}
 
 		// Only include matches with reasonable confidence
@@ -417,11 +431,42 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 	// rule can fix, and not something the OR rule fixed either: it recovered those
 	// names only by also accepting every noun phrase above.
 	if !checks["known_last_name"] {
-		// A known given name alone is not evidence of a person: it is evidence of a
-		// word that is also a name.
-		checks["has_known_name_component"] = false
-		checks["both_names_known"] = false
-		return 0.0, checks // Early exit - avoid all expensive calculations
+		// An explicit human-name MARKER is evidence the database cannot supply.
+		//
+		// The surname list will always be incomplete — it holds ~2.3K entries against
+		// an unbounded population — and a name it does not carry is unreportable at
+		// every confidence level, so it is never redacted. That is the leak this arm
+		// bounds: a title or a generational suffix says "the following tokens are a
+		// person's name" regardless of whether the surname is on any list.
+		//
+		// Measured before this, with a surname absent from the list:
+		//
+		//	Dr. Elena Brightwater reviewed the chart.   not reported
+		//	Ms. Priya Thorncastle filed the report.     not reported
+		//	Thomas Vellamore Jr. signed today.         not reported
+		//
+		// TITLES AND SUFFIXES ONLY, and the exclusion is measured rather than assumed.
+		// isFormalNamePattern also covers the comma forms (last_comma_first and
+		// friends), and those are a bare punctuation shape that document structure
+		// imitates: "Overview, Introduction" and "Appendix, Summary" both match it, and
+		// both are rejected today only because "overview" and "appendix" are not
+		// surnames. Admitting comma forms here would report them. The five fp__ decoy
+		// cases contain no comma-form line, so the corpus could not have caught that —
+		// negatives were added for it.
+		//
+		// Capped, not merely scored down. A ceiling context cannot lift is the same
+		// shape used for reserved values in PR #365: any fixed penalty is out-voted by
+		// enough positive context, so an unverified surname must not be able to present
+		// as HIGH. The cap sits in MEDIUM so the finding reaches the default review
+		// surface and the redactor, while a database-confirmed name still outranks it.
+		if !v.hasExplicitNameMarker(components.Pattern) {
+			// A known given name alone is not evidence of a person: it is evidence of a
+			// word that is also a name.
+			checks["has_known_name_component"] = false
+			checks["both_names_known"] = false
+			return 0.0, checks // Early exit - avoid all expensive calculations
+		}
+		checks["known_last_name_unverified"] = true
 	}
 
 	// The GIVEN half must not be an English function word.
@@ -811,6 +856,32 @@ func (v *Validator) isKnownShortName(name string) bool {
 }
 
 // isFormalNamePattern checks if the pattern indicates a formal/complete person name
+// unverifiedSurnameCeiling bounds a name admitted on an explicit marker rather than on
+// database confirmation.
+//
+// 65 sits inside MEDIUM: high enough that the finding reaches the default review
+// surface and the redactor, low enough that it can never present as HIGH and can never
+// outrank a name whose surname the database actually carries. A ceiling rather than a
+// penalty, because a fixed penalty is out-voted by enough positive context — the same
+// reasoning as the reserved-value ceilings in PR #365.
+const unverifiedSurnameCeiling = 65.0
+
+// hasExplicitNameMarker reports whether the pattern carries a token that states the
+// match is a person's name — a title or a generational/professional suffix.
+//
+// A strict subset of isFormalNamePattern, which also includes the comma forms. Those
+// are excluded deliberately: "Surname, Given" is a bare punctuation shape that document
+// structure imitates ("Overview, Introduction", "Appendix, Summary"), so it carries no
+// evidence of personhood on its own. A title or suffix does.
+func (v *Validator) hasExplicitNameMarker(patternName string) bool {
+	switch patternName {
+	case "name_with_title", "name_with_multiple_titles",
+		"name_with_suffix", "name_with_professional_suffix":
+		return true
+	}
+	return false
+}
+
 func (v *Validator) isFormalNamePattern(patternName string) bool {
 	formalPatterns := []string{
 		"name_with_title",

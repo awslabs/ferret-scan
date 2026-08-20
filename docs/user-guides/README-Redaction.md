@@ -88,17 +88,46 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 
 | File Type | Extensions | Redaction Method |
 |-----------|-----------|-----------------|
-| Plain text | `.txt` `.log` `.csv` `.json` `.yaml` `.md` `.xml` | Direct string replacement |
+| Plain text | **any file whose bytes are text** — `.txt` `.log` `.csv` `.json` `.yaml` `.md` `.xml` `.sql` `.html` `.tsv` `.env` `.tfvars` `.properties`, `Dockerfile`, `Makefile`, … | Direct string replacement |
 | Word | `.docx` | XML element replacement inside ZIP |
 | Excel | `.xlsx` | Shared strings + cell values inside ZIP |
 | PowerPoint | `.pptx` | Text elements inside ZIP |
 | Legacy Office | `.doc` `.xls` `.ppt` | Same-length in-place overwrite of stream bytes |
 | Images | `.jpg` `.png` `.tiff` `.gif` `.bmp` `.webp` | EXIF metadata removal only |
-| PDF | `.pdf` | ⚠️ Not yet implemented — file is copied unchanged |
+| Audio | `.mp3` `.wav` `.m4a` `.flac` | Same-length in-place overwrite of tag metadata |
+| Video | `.mp4` `.m4v` `.mov` | Same-length in-place overwrite of tag metadata; GPS payload zeroed |
+| PDF | `.pdf` | ⚠️ Not redactable — **no output file is written** and the run says so |
 
+> **Note on plain text**: selection follows the same content sniff the scanner uses, so
+> whatever ferret-scan is willing to read as text it is willing to write back as text —
+> extension or no extension. A `.env` holding a live credential is redacted exactly like
+> a `.txt`.
+>
 > **Note on images**: Only EXIF metadata (GPS, camera info, timestamps) is removed. Text embedded in image pixels is not redacted.
 >
-> **Note on PDFs**: PDF redaction is on the roadmap. Currently the tool detects findings in PDFs but the output file is an unchanged copy.
+> **Note on PDFs**: PDF redaction is on the roadmap. Until then a PDF with findings
+> produces **no redacted copy at all** — not an unchanged copy — and the run reports
+> `redaction incomplete … the original values remain in cleartext`, naming the file. Use
+> `--fail-on-incomplete` to turn that into exit code 3. An earlier version of this table
+> said the file was "copied unchanged", which was worse than wrong: it implied an output
+> file exists at the sanitized path.
+>
+> **Note on audio and video**: only the tag metadata is redacted — a comment, artist,
+> title, copyright, camera make and model, software, or GPS position. The audio or video
+> stream itself is never read or modified, so nothing in the recording's *content* is
+> redacted. Replacements are exactly as long as the value they replace, so no chunk,
+> frame, atom size or sample offset has to be recomputed and the file stays playable.
+> Two consequences follow. `synthetic` is **not** offered for these formats, because a
+> generated value's length is unrelated to the original; `simple` and
+> `format_preserving` are. And the redactor **refuses** rather than writing a partly
+> handled file: if a reported value cannot be located in the tag bytes, no output is
+> written and the run discloses it.
+>
+> **Note on GPS in video**: a position is stored as binary fixed-point or as an ISO 6709
+> string (`+36.3506-082.6985+447.403/`), and reports render it as decimal degrees — so the
+> value never appears in the file as the text that was reported. Those payloads are
+> therefore zeroed structurally rather than string-matched, which is also why a redacted
+> clip reads as having no location rather than as having a masked one.
 >
 > **Note on legacy Office (`.doc` `.xls` `.ppt`)**: these are OLE compound files, not
 > ZIPs. Redaction overwrites the matched bytes with a replacement of exactly the same
@@ -109,6 +138,14 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > `simple` and `format_preserving` are. And detection of body text is approximate
 > (see the Office metadata preprocessor README), so redaction of `.doc` body text is
 > only as complete as detection was — document **properties** are exact.
+>
+> That includes **multi-valued** properties. A workbook keeps its sheet-name list, and a
+> deck its slide titles, in a vector-valued property, and those were reported by nothing
+> at all until #267: the property-set reader mis-reads a vector's type word, so the value
+> arrived as the literal `0`. Measured on 19 real `.doc`/`.xls`/`.ppt` files, 14 of them
+> carry such a property and 40 elements now decode — sheet names, slide titles, theme and
+> font names. A value inside one is redactable like any other, because an element is stored
+> behind its own length prefix and a same-length overwrite never touches it.
 
 ## Synthetic Strategy — Token Details
 

@@ -112,10 +112,13 @@ type EmbeddedRedactor interface {
 
 // ErrNoEmbeddedRedactor reports that no registered redactor handles a part's type.
 //
-// A distinct sentinel because this is the audio case and the not-yet-implemented
-// PDF case: the part was scanned and may hold reported findings, but nothing can
-// rewrite it. That is a permanent property of the tool's coverage rather than a
-// failure of this run, and the disclosure wording differs accordingly.
+// A distinct sentinel because the part was scanned and may hold reported findings,
+// but nothing can rewrite it: a property of the tool's coverage rather than a
+// failure of this run, so the disclosure wording differs accordingly.
+//
+// This used to name audio as the example. Audio is redactable since #357 and video
+// since #358, so what reaches here now is PDF — and any type admitted on the read
+// side in future before its redactor exists.
 var ErrNoEmbeddedRedactor = errors.New("no redactor handles this embedded file type")
 
 // embeddedDepthState tracks nesting depth across re-entrant redaction.
