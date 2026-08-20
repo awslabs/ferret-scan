@@ -845,18 +845,138 @@ func (or *OfficeRedactor) applyPendingRedactions(zipContents *OfficeZipContents,
 			args = append(args, v, pr.repl[v])
 		}
 
-		modifiedContent := []byte(strings.NewReplacer(args...).Replace(string(xmlContent)))
+		replacer := strings.NewReplacer(args...)
+		modifiedContent, charDataRewrites := rewritePartText(xmlContent, replacer)
 		zipContents.addFile(name, modifiedContent)
 
 		or.logEvent("xml_content_modified", true, map[string]interface{}{
-			"file_name":     name,
-			"original_size": len(xmlContent),
-			"modified_size": len(modifiedContent),
-			"values":        len(values),
+			"file_name":         name,
+			"original_size":     len(xmlContent),
+			"modified_size":     len(modifiedContent),
+			"values":            len(values),
+			"chardata_rewrites": charDataRewrites,
 		})
 	}
 
 	return nil
+}
+
+// rewritePartText applies repl to an XML part, matching character data on its
+// DECODED form so a value's stored spelling cannot hide it.
+//
+// # The defect this exists for
+//
+// extractTextFromXML reads part text through encoding/xml, so the text offered to
+// the validators is entity-decoded: the value the report names is "Fairbanks &
+// Kettleworth", never the "Fairbanks &amp; Kettleworth" that is actually on disk.
+// Rewriting used to run the replacer over the RAW part bytes, so the literal never
+// occurred, the replacer was a no-op for that value, and RedactDocument still
+// returned Success with failed_redactions:0. Measured before this: a .docx whose
+// Company property held an ampersand came back from --enable-redaction with the
+// company name intact — confirmed by exiftool reading it out of the "redacted"
+// copy — while a sibling value in the same part masked correctly.
+//
+// This needs no attacker. XML REQUIRES '&' in character data to be written "&amp;",
+// so every document whose text or properties contain an ampersand was affected.
+//
+// # Why enumerating escaped spellings cannot fix it
+//
+// embedded.XMLEscapeVariants offers the "&amp;"/"&apos;" spellings as extra
+// replacer keys, which covers the predefined entities and nothing else. '&' also
+// introduces character references, so ANY character at ANY offset can be respelled:
+// "449-87-41&#48;0", "&#52;49-87-4100" and "449&#45;87&#45;4100" are all the same
+// value, as is the &#x30; hex form. The spellings are combinatorial, so only letting
+// the codec canonicalize them is complete.
+//
+// # Why this is a strict superset of the old behaviour
+//
+// Character data is matched on its decoded form and re-emitted escaped. Everything
+// else — markup, attribute values, and any character data that did not change — is
+// handed to the SAME raw replacer the old code used, over the byte ranges between
+// rewrites. So every replacement the old code made is still made (including a value
+// sitting in an attribute, which is not character data and would otherwise have been
+// lost), and the entity-spelled cases are newly covered.
+//
+// A tokenizer error is not fatal: encoding/xml rejects an undefined entity such as
+// "&foo;", and a part that cannot be tokenized simply falls through to the raw
+// replacer for its remainder, which is exactly what shipped before. The residue
+// check is what turns a miss into a refusal rather than a silent success.
+//
+// # Cost
+//
+// One tokenizing pass plus the replacer applied to disjoint regions summing to at
+// most len(content), so the work stays linear in part size — the same order as the
+// single whole-part Replace it replaces. The replacer is built ONCE per part by the
+// caller and must stay that way: building it per token would make this quadratic in
+// the number of values, which is the shape that has bitten this repo repeatedly.
+//
+// Returns the rewritten part and the number of character-data spans rewritten
+// through the decoded path, which the caller logs.
+func rewritePartText(content []byte, repl *strings.Replacer) ([]byte, int) {
+	dec := xml.NewDecoder(bytes.NewReader(content))
+
+	var out bytes.Buffer
+	out.Grow(len(content) + len(content)/8)
+
+	prev, rewrites := 0, 0
+	for {
+		// InputOffset gives the end of the last token and the start of the next, so
+		// reading it either side of Token() brackets the token's byte span exactly.
+		start := int(dec.InputOffset())
+		tok, err := dec.Token()
+		if err != nil {
+			// io.EOF, or a part encoding/xml refuses. Either way the tail is emitted
+			// below through the raw replacer, preserving the previous behaviour.
+			break
+		}
+		end := int(dec.InputOffset())
+
+		cd, ok := tok.(xml.CharData)
+		if !ok {
+			continue
+		}
+		decoded := string(cd)
+		replaced := repl.Replace(decoded)
+		if replaced == decoded {
+			continue
+		}
+
+		// Everything since the last rewrite, still through the raw replacer.
+		out.WriteString(repl.Replace(string(content[prev:start])))
+		escapeCharData(&out, replaced)
+		prev = end
+		rewrites++
+	}
+
+	out.WriteString(repl.Replace(string(content[prev:])))
+	return out.Bytes(), rewrites
+}
+
+// escapeCharData writes s as XML character data.
+//
+// Only '&', '<' and '>' are escaped — the set character data actually requires —
+// rather than using xml.EscapeText, which also rewrites quotes and turns newlines
+// into "&#xA;". Keeping the escaping minimal keeps the rewritten part as close to the
+// original bytes as possible, so a redaction shows up in a diff as the redaction and
+// nothing else.
+//
+// '&' is escaped UNCONDITIONALLY. A decoded value can legitimately contain an
+// ampersand followed by entity-looking text — "&amp;lt;" decodes to the literal
+// "&lt;" — so an escaper that tried to be clever and skip '&' before a known entity
+// name would silently corrupt that value on the way back out.
+func escapeCharData(out *bytes.Buffer, s string) {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '&':
+			out.WriteString("&amp;")
+		case '<':
+			out.WriteString("&lt;")
+		case '>':
+			out.WriteString("&gt;")
+		default:
+			out.WriteByte(s[i])
+		}
+	}
 }
 
 // positionForOffset returns the extracted-text position covering off.
