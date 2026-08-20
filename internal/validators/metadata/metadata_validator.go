@@ -2951,6 +2951,18 @@ func isValuelessProperty(value string) bool {
 	// Bare integers ("0"), integer tuples ("50, 3, 0, 1"), GUIDs, and ISO
 	// timestamps are all machine identifiers or counters. A value made only of
 	// digits, hex, and structural punctuation has no prose in it to disclose.
+	//
+	// EXCEPT when the digits are an identifier. This used to be a blanket
+	// "no letter -> nothing to disclose", which swallowed exactly the values a
+	// custom property is most likely to leak:
+	//
+	//	Custom_ControlText = "Ledger 8291746350284"  -> CUSTOM_PROPERTY 60
+	//	Custom_BillingRef  = "8291746350284"         -> nothing at all
+	//
+	// Same digits, same part; one English word was the whole difference. A 9-digit
+	// case number, a 13-digit billing reference and "449-87-4100" under a property
+	// named SubscriberSSN were all reported by nothing, and a value reported by
+	// nothing is never redacted. See #373.
 	hasLetter := false
 	for _, r := range trimmed {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
@@ -2959,7 +2971,7 @@ func isValuelessProperty(value string) bool {
 		}
 	}
 	if !hasLetter {
-		return true
+		return !isIdentifierDigitRun(trimmed)
 	}
 
 	// Everything below is a machine identifier of some shape, and all of those
@@ -2988,6 +3000,89 @@ func isValuelessProperty(value string) bool {
 	// T/Z separators, so the hasLetter check above does not catch these.
 	return isoTimestampPattern.MatchString(trimmed)
 }
+
+// isIdentifierDigitRun reports whether a letterless value is long enough, and shaped
+// enough, to be an identifier rather than a counter.
+//
+// # The measurement this is sized against
+//
+// 150 real Office documents from this machine, 117 of them carrying
+// docProps/custom.xml, 908 custom properties, of which 193 values contain no ASCII
+// letter and are therefore invisible today. By shape:
+//
+//	98  bare integers of 4 digits or fewer   <- Purview MSIP_Label ContentBits
+//	89  integer tuples ("11, 2, 1, 0")       <- Purview MSIP_Label Tag
+//	 2  unbroken runs of 7-8 digits
+//	 4  one 5-6 digit run, one date-ish, two bracket literals
+//
+// This rule admits 2 of those 193, and 0 of the 187 Purview bookkeeping rows —
+// they are all either short or comma-separated. The two it admits are a 7-digit value
+// under a property named "db_document_id" (a document identifier, which is the point)
+// and a 7-digit sort key under "Order" (a false positive, one across 150 documents).
+// That is the whole false-positive budget, and it is why the rule tests the VALUE's
+// shape rather than the property's NAME: a name vocabulary would have to be maintained
+// and would still miss a digit run under "Ref" or "Field3".
+//
+// # What stays valueless, and what enforces it
+//
+// The two patterns are anchored and accept ONLY digits, hyphens and spaces, so almost
+// every exclusion follows from them rather than needing its own check:
+//
+//   - fewer than 7 digits: rejected by the floor. Page counts, Purview ContentBits and
+//     sort positions all live here — every bare integer in the measured corpus was 4
+//     digits or fewer.
+//   - integer tuples ("11, 2, 1, 0"): rejected because a comma is not a separator the
+//     grouped pattern accepts. This is the commonest bookkeeping shape in the corpus,
+//     89 of the 193 letterless values.
+//   - versions, times and slash-dates ("1.2.3.4567", "12:34:56", "2026/01/14", and the
+//     measured "2026-01-14.0002" under db_template_version): same reason.
+//   - a plain calendar date, "YYYY-MM-DD": this one DOES need its own check, because 8
+//     digits in hyphen-separated groups is exactly what the grouped pattern accepts.
+//
+// An earlier version also rejected any value containing ".,:/" up front. That check was
+// unreachable — no string containing one of those can match either anchored pattern —
+// and a mutation removing it changed no behaviour, which is how it was found. The
+// exclusions are still asserted as BEHAVIOUR by the tests, so removing the redundant
+// guard did not remove their coverage.
+//
+// Hyphens and spaces ARE allowed as separators, because that is how a real identifier is
+// written: "449-87-4100" and "415 892 4471" are the shapes this exists to recover.
+func isIdentifierDigitRun(trimmed string) bool {
+	if plainDatePattern.MatchString(trimmed) {
+		return false
+	}
+	if unbrokenDigitRunPattern.MatchString(trimmed) {
+		return true
+	}
+	if !groupedDigitRunPattern.MatchString(trimmed) {
+		return false
+	}
+	digits := 0
+	for _, r := range trimmed {
+		if r >= '0' && r <= '9' {
+			digits++
+		}
+	}
+	return digits >= identifierDigitFloor
+}
+
+// identifierDigitFloor is the fewest digits an identifier is assumed to carry.
+//
+// Seven, because that is where real schemes start (a 7-digit member or case number)
+// and because everything shorter in the measured corpus is a counter: every one of the
+// 98 bare integers was 4 digits or fewer.
+const identifierDigitFloor = 7
+
+var (
+	// An unbroken run of digits, nothing else. The floor is identifierDigitFloor, spelled
+	// out here because a regexp built by string concatenation is harder to read than the
+	// one thing it expresses; the test asserts the two agree.
+	unbrokenDigitRunPattern = regexp.MustCompile(`^\d{7,}$`)
+	// Digit groups separated by single hyphens or spaces: 449-87-4100, 415 892 4471.
+	groupedDigitRunPattern = regexp.MustCompile(`^\d+(?:[- ]\d+)+$`)
+	// A plain calendar date, which the grouped form would otherwise admit.
+	plainDatePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+)
 
 var (
 	guidPattern         = regexp.MustCompile(`^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$`)
