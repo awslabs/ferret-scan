@@ -235,12 +235,7 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 	// Remove all remaining XML tags
 	cleanedXML = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(cleanedXML, "")
 
-	// Clean up XML entities
-	cleanedXML = strings.Replace(cleanedXML, "&lt;", "<", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&gt;", ">", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&amp;", "&", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&quot;", "\"", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&apos;", "'", -1)
+	cleanedXML = decodeXMLEntities(cleanedXML)
 
 	// Clean up whitespace while preserving tabs and structure
 	// Convert non-breaking spaces to regular spaces
@@ -686,13 +681,7 @@ func extractTextFromXML(file *zip.File, pattern string) (string, error) {
 
 	for _, match := range matches {
 		if len(match) > 1 {
-			// Clean up XML entities
-			text := string(match[1])
-			text = strings.Replace(text, "&lt;", "<", -1)
-			text = strings.Replace(text, "&gt;", ">", -1)
-			text = strings.Replace(text, "&amp;", "&", -1)
-			text = strings.Replace(text, "&quot;", "\"", -1)
-			text = strings.Replace(text, "&apos;", "'", -1)
+			text := decodeXMLEntities(string(match[1]))
 
 			// Remove any XML tags that might be inside the text
 			text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, "")
@@ -1162,12 +1151,7 @@ func extractWordXMLText(file *zip.File) (string, error) {
 	cleanedXML = regexp.MustCompile(`<w:tab[^>]*/?>`).ReplaceAllString(cleanedXML, "\t")
 	cleanedXML = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(cleanedXML, "")
 
-	// Clean up XML entities
-	cleanedXML = strings.Replace(cleanedXML, "&lt;", "<", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&gt;", ">", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&amp;", "&", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&quot;", "\"", -1)
-	cleanedXML = strings.Replace(cleanedXML, "&apos;", "'", -1)
+	cleanedXML = decodeXMLEntities(cleanedXML)
 
 	// Clean up whitespace
 	cleanedXML = regexp.MustCompile(`[ ]+`).ReplaceAllString(cleanedXML, " ")
