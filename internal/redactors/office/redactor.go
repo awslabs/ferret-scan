@@ -600,10 +600,53 @@ var docPropsValueElements = map[string]bool{
 	"TitlesOfParts":      true,
 	"HeadingPairs":       true,
 
-	// docProps/custom.xml — author-defined property values
-	"lpwstr": true,
-	"lpstr":  true,
-	"bstr":   true,
+	// docProps/custom.xml — author-defined property values.
+	//
+	// Every SCALAR value type, not only the string ones. A custom property named
+	// "MemberId" or "RecordId" is routinely written as <vt:i4>, and with only the string
+	// types listed the redactor never extracted that character data, so no replacement
+	// was ever registered for the part and a reported value was skipped. Measured on a
+	// .docx whose only property is <vt:i4>729183640</vt:i4>: the scan reports it, and
+	// before this the value came back byte-identical from --enable-redaction at rc 0.
+	// See #373.
+	//
+	// Numeric here does not mean harmless: an account, member, patient or case number is
+	// a number, and a date of birth is a date. Which of them is SENSITIVE is the
+	// validators' decision, not this map's — nothing here creates a finding. This list
+	// only decides where an ALREADY REPORTED value can be located and masked, so a wider
+	// list cannot over-redact; it can only stop a reported value being missed.
+	"lpwstr":   true,
+	"lpstr":    true,
+	"bstr":     true,
+	"i1":       true,
+	"i2":       true,
+	"i4":       true,
+	"i8":       true,
+	"int":      true,
+	"ui1":      true,
+	"ui2":      true,
+	"ui4":      true,
+	"ui8":      true,
+	"uint":     true,
+	"r4":       true,
+	"r8":       true,
+	"decimal":  true,
+	"cy":       true,
+	"date":     true,
+	"filetime": true,
+	"clsid":    true,
+	"error":    true,
+	// Excluded, deliberately: "bool" (true/false carries nothing reportable) and the
+	// binary families — blob, oblob, storage, stream, ostorage, ostream, vstream, cf. A
+	// same-length text replacement inside base64 produces invalid base64, so a value
+	// reported from one of those must NOT be rewritten in place. If it ever is reported,
+	// parentPartResidue refuses the document rather than shipping a corrupt part, which
+	// is the honest outcome.
+	//
+	// That refusal is also why this list being incomplete is no longer a leak: since the
+	// residue check landed, a value the redactor cannot locate makes the write fail
+	// loudly instead of attesting success. The list decides whether redaction can
+	// SUCCEED, not whether a miss is disclosed.
 }
 
 // isDocPropsValueElement reports whether an element's character data is a

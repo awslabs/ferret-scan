@@ -491,3 +491,50 @@ func TestResidueRefusalNamesTypesNotValues(t *testing.T) {
 		t.Errorf("the refusal does not name the finding TYPE, which is what an operator acts on:\n  %v", err)
 	}
 }
+
+// A reported value in a NUMERIC custom property must be masked, not skipped.
+//
+// A custom property named MemberId or RecordId is routinely written as <vt:i4>. The redactor
+// extracted only the string-typed elements, so no replacement was ever registered for the part
+// and the value came back byte-identical at rc 0 — measured on a .docx whose only property is
+// <vt:i4>729183640</vt:i4>. See #373.
+//
+// The same fixture in <vt:lpwstr> already redacted, which is what makes this an element-list
+// defect rather than a rewriting one.
+func TestNumericDocPropsValueIsRedacted(t *testing.T) {
+	for _, element := range []string{"i4", "i8", "int", "ui4", "r8", "decimal", "lpwstr"} {
+		t.Run(element, func(t *testing.T) {
+			const value = "729183640"
+			dir := t.TempDir()
+			src := filepath.Join(dir, "in.docx")
+			custom := `<?xml version="1.0"?>` +
+				`<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" ` +
+				`xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">` +
+				`<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="RecordId">` +
+				`<vt:` + element + `>` + value + `</vt:` + element + `></property></Properties>`
+			if err := os.WriteFile(src, buildPkg(t, "Body text with nothing sensitive.",
+				map[string][]byte{"docProps/custom.xml": []byte(custom)}), 0o600); err != nil {
+				t.Fatalf("writing fixture: %v", err)
+			}
+
+			out := filepath.Join(dir, "out.docx")
+			r := NewOfficeRedactor(nil, nil)
+			if _, err := r.RedactDocument(src, out, []detector.Match{{
+				Text: value, Type: "SSN", Confidence: 50, LineNumber: 1,
+			}}, redactors.RedactionFormatPreserving); err != nil {
+				t.Fatalf("RedactDocument: %v", err)
+			}
+
+			pkg, err := os.ReadFile(out) // #nosec G304 -- test-controlled temp path
+			if err != nil {
+				t.Fatalf("reading output: %v", err)
+			}
+			got := decodedCharData(t, pkg, "docProps/custom.xml")
+			if strings.Contains(got, value) {
+				t.Errorf("<vt:%s> still holds the reported value after redaction: %q\n"+
+					"A value the redactor cannot locate is a value it silently leaves behind, in a "+
+					"file the tool reports as redacted.", element, got)
+			}
+		})
+	}
+}
