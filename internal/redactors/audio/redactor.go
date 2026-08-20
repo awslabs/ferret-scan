@@ -36,18 +36,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf16"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
-	"github.com/awslabs/ferret-scan/v2/internal/redactors/replacement"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/tagmeta"
 )
-
-// maskByte is what a value becomes when no length-preserving replacement fits. '*' matches
-// what FormatPreserving already uses, so a masked value looks the same whichever path
-// produced it.
-const maskByte = '*'
 
 // audioFormat identifies which container's metadata layout applies.
 type audioFormat int
@@ -162,10 +156,10 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 	// anything. Reported matches overlap — an AUTHOR_INFO field value contains the SSN
 	// reported separately — and a sequential replace loses whichever one it handles second.
 	// See planOverwrites.
-	plan, perMatch := planOverwrites(raw, ranges, matches, strategy)
+	plan, perMatch := tagmeta.Plan(raw, ranges, matches, strategy)
 
 	modified := append([]byte(nil), raw...)
-	applyOverwrites(modified, plan)
+	tagmeta.Apply(modified, plan)
 
 	var mappings []redactors.RedactionMapping
 	for i, m := range matches {
@@ -186,7 +180,7 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 			continue
 		}
 		mappings = append(mappings, redactors.RedactionMapping{
-			RedactedText: sameLengthReplacement(m.Text, m.Type, strategy),
+			RedactedText: tagmeta.SameLengthReplacement(m.Text, m.Type, strategy),
 			DataType:     m.Type,
 			Strategy:     strategy,
 			Confidence:   m.Confidence,
@@ -211,7 +205,7 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 	// or in an encoding the search did not try, and every one of those looks like a success
 	// from the mapping count alone. Verifying the OUTPUT is the only assertion that cannot be
 	// satisfied by a partial job.
-	if residual := residualValues(modified, ranges, matches); residual > 0 {
+	if residual := tagmeta.Residual(modified, ranges, matches); residual > 0 {
 		return nil, fmt.Errorf("%d reported value(s) remain in the %s metadata of %s after redaction; refusing to write a file that would look redacted",
 			residual, format, filepath.Base(originalPath))
 	}
@@ -231,7 +225,7 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 		RedactedFilePath: outputPath,
 		RedactionMap:     mappings,
 		ProcessingTime:   time.Since(start),
-		Confidence:       overallConfidence(mappings),
+		Confidence:       tagmeta.OverallConfidence(mappings),
 		Error:            nil,
 	}, nil
 }
@@ -269,96 +263,6 @@ func detectFormat(path string, buf []byte) audioFormat {
 	return formatUnknown
 }
 
-// residualValues counts reported values still present in the metadata ranges.
-//
-// Searched in both encodings, exactly as the overwrite is, so the check cannot pass because it
-// looked for something narrower than what was written.
-func residualValues(buf []byte, ranges []byteRange, matches []detector.Match) int {
-	residual := 0
-	for _, m := range matches {
-		if m.Text == "" {
-			continue
-		}
-		narrow := []byte(m.Text)
-		wideLE := toUTF16LE(m.Text)
-		wideBE := toUTF16BE(m.Text)
-		for _, rg := range ranges {
-			if rg.start < 0 || rg.end > len(buf) || rg.start >= rg.end {
-				continue
-			}
-			region := buf[rg.start:rg.end]
-			if bytes.Contains(region, narrow) {
-				residual++
-				break
-			}
-			if len(wideLE) > 0 && bytes.Contains(region, wideLE) {
-				residual++
-				break
-			}
-			if len(wideBE) > 0 && bytes.Contains(region, wideBE) {
-				residual++
-				break
-			}
-		}
-	}
-	return residual
-}
-
-// sameLengthReplacement produces a replacement with exactly len(original) bytes.
-//
-// FormatPreserving is tried first so a redacted .mp3 reads like a redacted .docx. It is
-// length-preserving by construction, but that is verified rather than assumed, and the
-// replacement must also DIFFER from the input: a masking scheme can return its argument
-// unchanged at some input size, and writing that back is a redaction that redacts nothing.
-// legacyole records that this was not hypothetical — preserveEmail returned "a@b.co"
-// unchanged for a single-character local part.
-func sameLengthReplacement(original, dataType string, strategy redactors.RedactionStrategy) string {
-	if strategy == redactors.RedactionFormatPreserving || strategy == redactors.RedactionSimple {
-		fp := replacement.FormatPreserving(original, dataType)
-		if len(fp) == len(original) && fp != original {
-			return fp
-		}
-	}
-	return strings.Repeat(string(maskByte), len(original))
-}
-
-// toUTF16LE encodes a string as UTF-16 little-endian, with surrogate pairs for anything
-// outside the BMP.
-//
-// utf16.Encode rather than a hand-rolled loop: a wrong encoding would either miss the value
-// (a leak) or match unrelated bytes (corruption), and hand-rolling gets the surrogate cases
-// wrong. legacyole learned this the same way — its wide pass used to bail out on any
-// non-ASCII rune, so "José Ramírez" was searched only as UTF-8 and never found.
-// toUTF16BE encodes a string as UTF-16 BIG-endian.
-//
-// ID3v2.4 encoding byte 0x02 is UTF-16BE with no BOM, so a comment frame written that way
-// holds the value in this encoding and in no other. A search that covered only UTF-8 and
-// UTF-16LE would not find it — and not finding it means leaving it in cleartext, which is the
-// same failure this package exists to close.
-func toUTF16BE(s string) []byte {
-	if s == "" {
-		return nil
-	}
-	units := utf16.Encode([]rune(s))
-	out := make([]byte, 0, len(units)*2)
-	for _, u := range units {
-		out = append(out, byte(u>>8), byte(u))
-	}
-	return out
-}
-
-func toUTF16LE(s string) []byte {
-	if s == "" {
-		return nil
-	}
-	units := utf16.Encode([]rune(s))
-	out := make([]byte, 0, len(units)*2)
-	for _, u := range units {
-		out = append(out, byte(u), byte(u>>8))
-	}
-	return out
-}
-
 func (r *AudioRedactor) logEvent(op string, success bool, meta map[string]interface{}) {
 	if r.observer == nil {
 		return
@@ -369,19 +273,6 @@ func (r *AudioRedactor) logEvent(op string, success bool, meta map[string]interf
 		Success:   success,
 		Metadata:  meta,
 	})
-}
-
-// overallConfidence averages the mapping confidences, matching what the other redactors
-// report.
-func overallConfidence(mappings []redactors.RedactionMapping) float64 {
-	if len(mappings) == 0 {
-		return 1.0
-	}
-	total := 0.0
-	for _, m := range mappings {
-		total += m.Confidence
-	}
-	return total / float64(len(mappings))
 }
 
 // compile-time check that this satisfies the interface the manager requires.
