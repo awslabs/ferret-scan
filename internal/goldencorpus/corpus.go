@@ -247,15 +247,19 @@ var Cases = []Case{
 			"and URL boundaries where the two words are unrelated. The last two lines pin that " +
 			"the outer whole-word rule still applies at both ends of the separator-flexible " +
 			"match. " +
-			"THE RUN-TOGETHER LINE CHANGED SIDES in #372: this description used to say a space " +
-			"still meant at least one separator, so \"memberid\" was \"a different token\" and " +
-			"produced nothing. That was asserted, not measured — unlike the '.' and '/' " +
-			"exclusions, which carry a recorded false-positive measurement and are untouched. " +
-			"camelCase is the default key style of JSON, REST payloads and ORM exports, and " +
-			"since text is lowercased before matching, \"memberId\" and \"memberid\" are the " +
-			"same string: in a two-key object one member ID sat in cleartext beside its " +
-			"redacted twin. So line 6 is now a FINDING, and the four decoy lines below it still " +
-			"are not, which is what makes the change safe rather than merely wider.",
+			"LINE 6, THE RUN-TOGETHER FORM, IS A FINDING SINCE #372, and how it got there is " +
+			"the part worth keeping. camelCase is the default key style of JSON, REST payloads " +
+			"and ORM exports, and text is lowercased before matching, so \"memberId\" and " +
+			"\"memberid\" are the same string: in a two-key object one member ID sat in " +
+			"cleartext beside its redacted twin. But the fix is NOT that a keyword space now " +
+			"means \"zero or more separators\" everywhere — that was tried and it LEAKED. The " +
+			"suppressor \"ip address\" began matching \"ipAddress\", an ordinary JSON key, and " +
+			"that veto is unconditional, so a real member ID beside it was silenced and written " +
+			"back in cleartext. So the widened form is OPT-IN (kwmatch.ContainsLabel) and only " +
+			"positive label lists use it; every suppressor still requires a separator, which is " +
+			"why the four decoy lines below stay silent and why '.' and '/' — a recorded " +
+			"false-positive measurement — are untouched in both modes. medicalid opts in, which " +
+			"is what makes line 6 report here.",
 		Checks: []string{"MEDICAL_ID"},
 		Input: "member_id: W1234567801\n" +
 			"member-id: X9876543210\n" +

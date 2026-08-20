@@ -85,6 +85,17 @@ func containsKeyword(text, keyword string) bool {
 	return kwmatch.Contains(text, keyword)
 }
 
+// containsLabel is containsKeyword for a keyword that LABELS the value beside it, letting its
+// spaces match zero separators so "drivers license" also finds "driversLicense" — the
+// camelCase spelling JSON and ORM exports use (#372).
+//
+// Only the POSITIVE keyword gates use it. strongSuppressKeywords and negativeKeywords keep
+// containsKeyword, because widening a suppressor's reach silences real values rather than
+// finding more of them. See kwmatch.ContainsLabel.
+func containsLabel(text, keyword string) bool {
+	return kwmatch.ContainsLabel(text, keyword)
+}
+
 // Validator implements the detector.Validator interface for detecting
 // US driver's license numbers using state-specific regex patterns and
 // keyword-dependent contextual analysis.
@@ -387,7 +398,7 @@ func isDateOrZipShape(text string) bool {
 // match is considered (because all DL formats overlap with generic numbers).
 func (v *Validator) lineHasPositiveKeyword(line string) bool {
 	for _, kw := range v.positiveKeywords {
-		if containsKeyword(line, kw) {
+		if containsLabel(line, kw) {
 			return true
 		}
 	}
@@ -706,7 +717,7 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		// Check for positive keywords (moderate signal)
 		keywordCount := 0
 		for _, kw := range v.positiveKeywords {
-			if containsKeyword(line, kw) {
+			if containsLabel(line, kw) {
 				keywordCount++
 			}
 		}

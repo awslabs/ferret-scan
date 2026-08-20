@@ -80,7 +80,7 @@ func ContainsFunc(text, keyword string, accept func(start, end int) bool) bool {
 		return false
 	}
 	if fw := firstWordLen(keyword); fw != len(keyword) {
-		return containsSepFlex(text, keyword, fw, false, accept)
+		return containsSepFlex(text, keyword, fw, true, accept)
 	}
 	for from := 0; from+len(keyword) <= len(text); {
 		i := strings.Index(text[from:], keyword)
@@ -110,27 +110,30 @@ func ContainsAny(text string, keywords []string) bool {
 	return false
 }
 
-// ContainsPhrase is [Contains] for a keyword that is PROSE rather than an identifier: every
-// space must match at least one separator byte, so "call us" matches "call us" and "call-us"
-// but not "callus".
+// ContainsLabel is [Contains] with the keyword's spaces allowed to match ZERO separator
+// bytes, so "member id" also finds "memberid" and — since text is lowercased before matching
+// — the camelCase "memberId". That spelling is the default key style of JSON, REST payloads
+// and ORM exports.
 //
-// Use it for a phrase whose concatenation is a different word. There are exactly two such
-// keywords in this tree — see matchSepFlexAt — and only one of them wants this behaviour.
-// Everything else should use [Contains], because a concatenated or camelCase spelling of an
-// identifier-style keyword is the case #372 exists to recover.
+// Use it ONLY for a keyword that identifies the value it labels, never for one that
+// suppresses or penalizes a finding. See matchSepFlexAt for why that asymmetry is not a
+// stylistic preference: widening a suppressor's reach silences real values.
+//
+// The outer whole-word rule still applies, so "member id" does not match inside
+// "remembering", "teammemberid" or "memberidentification".
 //
 // A single-word keyword contains no space, so this is identical to [Contains] for one.
-func ContainsPhrase(text, keyword string) bool {
-	return ContainsPhraseLower(strings.ToLower(text), strings.ToLower(keyword))
+func ContainsLabel(text, keyword string) bool {
+	return ContainsLabelLower(strings.ToLower(text), strings.ToLower(keyword))
 }
 
-// ContainsPhraseLower is [ContainsPhrase] for callers holding lowercased values.
-func ContainsPhraseLower(text, keyword string) bool {
+// ContainsLabelLower is [ContainsLabel] for callers holding lowercased values.
+func ContainsLabelLower(text, keyword string) bool {
 	if keyword == "" {
 		return false
 	}
 	if fw := firstWordLen(keyword); fw != len(keyword) {
-		return containsSepFlex(text, keyword, fw, true, nil)
+		return containsSepFlex(text, keyword, fw, false, nil)
 	}
 	return ContainsLower(text, keyword)
 }
@@ -172,33 +175,49 @@ func allWordsPresent(text, keyword string) bool {
 //
 // requireSep decides whether that run may be EMPTY, and it is the whole of #372.
 //
-// # Why zero separators is the default
+// # What zero separators buys
 //
-// A space used to demand at least one separator byte, so "member id" could never match
-// "memberid" or "memberId" — text is lowercased before matching, so those two are the
-// same string here. camelCase and concatenated keys are the default style of JSON, REST
-// payloads and ORM exports, and 14 validator packages match multi-word keywords, so
-// every one of them lost its concatenated form. Measured on a JSON file holding
-// camelCase/snake_case pairs of the same shape, all four camelCase halves scored 0 while
-// their twins scored 75, 80, 90 and 100 — and in a two-key object one member ID was left
-// in cleartext beside its redacted twin.
+// With a separator required, "member id" can never match "memberid" or "memberId" — text is
+// lowercased before matching, so those two are the same string here. camelCase and
+// concatenated keys are the default style of JSON, REST payloads and ORM exports. Measured on
+// a JSON file holding camelCase/snake_case pairs of the same shape, the camelCase halves
+// scored 0 while their twins scored 75, 80 and 100 — and in a two-key object one member ID
+// sat in cleartext beside its redacted twin, because only reported findings reach the
+// redactor.
 //
-// The outer word-boundary rule in containsSepFlex is what keeps this honest: a left
-// boundary at the anchor and a right boundary at the end, so "member id" still cannot
-// match inside "remembering" or "teammemberid", and "memberidentification" is rejected
-// at the right edge.
+// # Why it is OPT-IN, and asymmetric
 //
-// # Why a phrase form still exists
+// A keyword list is not one kind of thing. A POSITIVE keyword identifies the value it labels,
+// so widening its reach can only add findings. A SUPPRESSOR withholds or vetoes a finding, so
+// widening ITS reach silences real values — and a silenced finding is never redacted.
 //
-// A concatenation can be a different word. Checked against the system dictionary
-// (234,456 lowercased entries) over all 457 multi-word lowercase string literals in
-// non-test validator code -- a superset of the keyword lists -- exactly 2 concatenate
-// into an English word: "one time" -> "onetime" and "call us" -> "callus". The first is a
-// positive OTP keyword, where matching "oneTime" is the point. The second is a phone-context
-// SUPPRESSOR in bankaccount, where "callus" would newly silence a real account number on
-// any line that happens to mention one — a podiatry billing line is not a hypothetical.
-// So prose phrases keep the old behaviour through ContainsPhrase, and identifier-style
-// keywords get the new one.
+// That is not hypothetical. It shipped, briefly, when this defaulted to zero separators:
+// medicalid's suppressor "ip address" began matching the ubiquitous key "ipAddress", and that
+// veto is unconditional (nonInsuranceKeywordPresent), so
+//
+//	{"member_id": "W1234567801", "ipAddress": "10.11.12.13"}
+//
+// lost its INSURANCE_MEMBER_ID finding entirely and was written back with the member ID in
+// CLEARTEXT while the IP was masked — a redacted file that reported success and leaked. The
+// same shape threatens ssn, whose suppressor list holds "part number", "policy number",
+// "order number", "employee id" and "tax id": every one of those is a common camelCase key,
+// and every one of them would newly veto a real SSN on the same line.
+//
+// A dictionary screen does not catch this. "ipaddress" is not an English word, so checking
+// concatenations against /usr/share/dict/words passed it. The property that matters is not
+// "is a word" but "is a token that occurs in real text", which no word list decides.
+//
+// So the widening is reached only through [ContainsLabel], and only positive label lists call
+// it. [Contains] and its siblings keep requiring a separator, which is what every suppressor
+// in this tree gets.
+//
+// The outer word-boundary rule in containsSepFlex is what keeps even the widened form honest:
+// a left boundary at the anchor and a right boundary at the end, so "member id" still cannot
+// match inside "remembering" or "teammemberid", and "memberidentification" is rejected at the
+// right edge.
+//
+// '.' and '/' remain excluded from the separator class in both modes, by measurement: they
+// cross sentence and URL boundaries, where the two words are unrelated.
 func matchSepFlexAt(text, keyword string, start int, requireSep bool) int {
 	ti, ki := start, 0
 	for ki < len(keyword) {

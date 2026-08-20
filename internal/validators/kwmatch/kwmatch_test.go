@@ -215,9 +215,9 @@ func BenchmarkContainsLowerHit(b *testing.B) {
 	}
 }
 
-// A keyword space may match ZERO separators, so a concatenated or camelCase label counts as
-// context. Text is lowercased before matching, so "memberId" and "memberid" are the same
-// string here — which is why one rule covers both.
+// ContainsLabel lets a keyword space match ZERO separators, so a concatenated or camelCase
+// label counts as context. Text is lowercased before matching, so "memberId" and "memberid"
+// are the same string here — which is why one rule covers both.
 //
 // Before this, "member id" could never match either, and camelCase is the default key style
 // of JSON, REST payloads and ORM exports. Measured on a file of camelCase/snake_case pairs of
@@ -239,8 +239,14 @@ func TestConcatenatedKeywordMatches(t *testing.T) {
 		{"member\tid: x", "member id"},
 		{"member  id: x", "member id"},
 	} {
-		if !ContainsLower(c.text, c.keyword) {
-			t.Errorf("ContainsLower(%q, %q) = false, want true", c.text, c.keyword)
+		if !ContainsLabelLower(c.text, c.keyword) {
+			t.Errorf("ContainsLabelLower(%q, %q) = false, want true", c.text, c.keyword)
+		}
+		// The strict form must NOT match a concatenation. That is what keeps every
+		// suppressor in the tree at its old reach; see TestSuppressorsKeepTheirSeparator.
+		if !strings.ContainsAny(c.text, " \t_-") && ContainsLower(c.text, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = true, want false: only ContainsLabel may widen",
+				c.text, c.keyword)
 		}
 	}
 }
@@ -262,45 +268,60 @@ func TestConcatenatedKeywordStillRespectsWordBoundaries(t *testing.T) {
 		{"see member.id in the schema docs", "member id", "'.' is not a separator, by measurement"},
 		{"https://example.com/member/id/lookup", "member id", "'/' is not a separator, by measurement"},
 	} {
+		if ContainsLabelLower(c.text, c.keyword) {
+			t.Errorf("ContainsLabelLower(%q, %q) = true, want false: %s", c.text, c.keyword, c.why)
+		}
 		if ContainsLower(c.text, c.keyword) {
 			t.Errorf("ContainsLower(%q, %q) = true, want false: %s", c.text, c.keyword, c.why)
 		}
 	}
 }
 
-// ContainsPhrase keeps the old behaviour for a keyword that is PROSE, and it exists for a
-// measured reason.
+// Every SUPPRESSOR in the tree keeps its old reach, because the widening is opt-in and no
+// suppressor list opts in. This is the test that would have caught the leak the first attempt
+// at #372 shipped.
 //
-// Checked against the system dictionary (234,456 lowercased entries), exactly 2 of the 457
-// multi-word
-// keywords in this tree concatenate into an English word: "one time" -> "onetime" and
-// "call us" -> "callus". The first is a positive OTP keyword where matching "oneTime" is the
-// point. The second is a phone-context SUPPRESSOR in bankaccount, so "callus" would silence a
-// real account number on any line that mentions one — measured: with plain Contains, a
-// "callus debridement, bank account 4432198765" line LOSES its US_BANK_ACCOUNT finding.
-func TestContainsPhraseStillRequiresASeparator(t *testing.T) {
+// With zero separators as the DEFAULT, medicalid's suppressor "ip address" matched the
+// ubiquitous key "ipAddress", and that veto is unconditional, so
+// {"member_id": "W1234567801", "ipAddress": "10.11.12.13"} lost its INSURANCE_MEMBER_ID
+// finding and was written back with the member ID in CLEARTEXT while the IP was masked. The
+// same threat applies to ssn, whose suppressor list holds "part number", "policy number",
+// "order number", "employee id" and "tax id" — every one a common camelCase key.
+//
+// A dictionary screen does not catch this: "ipaddress" is not an English word.
+func TestSuppressorsKeepTheirSeparator(t *testing.T) {
+	// Real suppressor keywords, from medicalid, ssn, bankaccount and vin.
 	for _, c := range []struct {
-		text, keyword string
-		want          bool
+		text, keyword, why string
 	}{
-		{"callus debridement", "call us", false},
-		{"please call us today", "call us", true},
-		{"please call-us today", "call us", true},
-		{"please call_us today", "call us", true},
-		{"recall using the form", "call us", false}, // a plain substring test would match here
-		// A single-word keyword has no space, so the phrase form is just Contains.
-		{"phone: 415-555-0142", "phone", true},
-		{"telephones", "phone", false},
+		{`"ipaddress": "10.11.12.13"`, "ip address", "medicalid's unconditional veto"},
+		{"ipaddress 10.11.12.13", "ip address", "same, unquoted"},
+		{"partnumber: 078-05-1120", "part number", "ssn suppressor"},
+		{"policynumber: 078-05-1120", "policy number", "ssn suppressor"},
+		{"ordernumber: 078-05-1120", "order number", "ssn suppressor"},
+		{"employeeid: 078-05-1120", "employee id", "ssn suppressor"},
+		{"taxid: 078-05-1120", "tax id", "ssn suppressor"},
+		{"callus debridement", "call us", "bankaccount phone suppressor"},
+		{"macaddress 00:11:22:33:44:55", "mac address", "vin suppressor"},
+		{"modelnumber 1G1YY22G", "model number", "vin suppressor"},
 	} {
-		if got := ContainsPhraseLower(c.text, c.keyword); got != c.want {
-			t.Errorf("ContainsPhraseLower(%q, %q) = %v, want %v", c.text, c.keyword, got, c.want)
+		if ContainsLower(c.text, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = true, want false (%s): widening a suppressor "+
+				"silences real values, and a silenced finding is never redacted",
+				c.text, c.keyword, c.why)
+		}
+		// The separator forms must still suppress exactly as before.
+		spaced := strings.Replace(c.text, strings.ReplaceAll(c.keyword, " ", ""), c.keyword, 1)
+		if spaced != c.text && !ContainsLower(spaced, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = false, want true: the suppressor must keep "+
+				"working on its spaced form", spaced, c.keyword)
 		}
 	}
 
-	// And the two forms must genuinely differ on the concatenation, or the phrase API is
-	// decorative.
-	if !ContainsLower("callus debridement", "call us") {
-		t.Error("ContainsLower no longer matches the concatenated form, so ContainsPhrase " +
-			"protects nothing and this whole distinction is dead weight")
+	// And the two forms must genuinely differ on the concatenation, or the opt-in is
+	// decorative and every suppressor is one edit away from widening again.
+	if !ContainsLabelLower("callus debridement", "call us") {
+		t.Error("ContainsLabelLower no longer matches the concatenated form, so the strict " +
+			"default protects nothing and this whole distinction is dead weight")
 	}
 }

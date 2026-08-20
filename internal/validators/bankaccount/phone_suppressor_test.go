@@ -9,19 +9,19 @@ import (
 )
 
 // "call us" is a phone-context SUPPRESSOR here: a line that reads like a phone number stops a
-// 10-digit run being reported as an account. Since #372 a keyword space may match zero
-// separators, so plain keyword matching would fire on "callus" — an English word — and silence
-// a real account number.
+// 10-digit run being reported as an account. It must keep matching only its SPACED forms.
 //
-// Measured with plain keyword matching instead of the phrase form: a
-// "callus debridement, bank account 4432198765" line LOSES its US_BANK_ACCOUNT finding. A
-// podiatry billing line is not a hypothetical, and a suppressed finding is never redacted.
+// #372 added kwmatch.ContainsLabel, whose keyword spaces may match zero separators, so that a
+// camelCase key like "routingNumber" counts as context. That form is opt-in for exactly this
+// reason: "call us" concatenates to "callus", an ordinary English word, and measured with the
+// widened matcher a "callus debridement, bank account 4432198765" line LOSES its
+// US_BANK_ACCOUNT finding. A podiatry billing line is not a hypothetical, and a suppressed
+// finding is never redacted, so this is a leak rather than a precision question.
 //
-// Of the 457 multi-word literals in non-test validator code, checked against the system
-// dictionary, exactly
-// two concatenate into an English word and this is the only one where that direction costs a
-// finding.
-func TestCallUsSuppressorNeedsItsSeparator(t *testing.T) {
+// 147 distinct multi-word keywords reach the matcher across this tree, measured by recording
+// every call. This test guards the direction that costs findings; the direction that gains
+// them is guarded by the positive-gate tests.
+func TestCallUsSuppressorKeepsItsSeparator(t *testing.T) {
 	v := NewValidator()
 
 	const (

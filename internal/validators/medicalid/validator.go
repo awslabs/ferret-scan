@@ -60,6 +60,19 @@ func containsKeyword(text, keyword string) bool {
 	return kwmatch.Contains(text, keyword)
 }
 
+// containsLabel is containsKeyword for a keyword that LABELS the value beside it, letting its
+// spaces match zero separators so "member id" also finds "memberId" — the camelCase spelling
+// JSON and ORM exports use (#372).
+//
+// ONLY the insurance positive gates use it, and that restriction is load-bearing. This
+// package's suppressor "ip address" matched "ipAddress" when the widening was the default,
+// and nonInsuranceKeywordPresent is an unconditional veto, so
+// {"member_id": "W1234567801", "ipAddress": "10.11.12.13"} lost its finding and was written
+// back with the member ID in cleartext. Suppressors keep containsKeyword.
+func containsLabel(text, keyword string) bool {
+	return kwmatch.ContainsLabel(text, keyword)
+}
+
 // Validator implements the detector.Validator interface for detecting
 // medical identifiers (NPI, DEA, MRN, Insurance Member ID, Medicare MBI).
 type Validator struct {
@@ -164,8 +177,8 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 	// scanning O(line length) rather than O(matches × line length) — the latter
 	// is a single-long-line CPU-exhaustion DoS. See the timing regression test.
 	lineImpact := v.analyzeContext("", lowerLine)
-	linePositiveKeywords := v.keywordsPresent(lowerLine, v.positiveKeywords)
-	lineNegativeKeywords := v.keywordsPresent(lowerLine, v.negativeKeywords)
+	linePositiveKeywords := v.keywordsPresent(lowerLine, v.positiveKeywords, containsLabel)
+	lineNegativeKeywords := v.keywordsPresent(lowerLine, v.negativeKeywords, containsKeyword)
 
 	// Per-line context predicates, hoisted out of the per-match evaluators.
 	// Each hasXContext scans the whole lowerLine and ignores the match, so its
@@ -590,7 +603,7 @@ func (v *Validator) analyzeContext(match, lowerLine string) float64 {
 	}
 
 	for _, kw := range v.positiveKeywords {
-		if containsKeyword(lowerLine, kw) {
+		if containsLabel(lowerLine, kw) {
 			impact += 10
 		}
 	}
@@ -633,10 +646,16 @@ func (v *Validator) analyzeContext(match, lowerLine string) float64 {
 // keywordsPresent returns the subset of keywords that appear in lowerLine.
 // Hoisted per line (not per match) so buildContext does no per-match keyword
 // scanning — see scanLine's O(n^2) note.
-func (v *Validator) keywordsPresent(lowerLine string, keywords []string) []string {
+// match is passed in rather than fixed, so each caller states the POLARITY of the list it is
+// reporting. A positive label list uses containsLabel, matching the widened form the scorer
+// used; a suppressor list uses containsKeyword. Reporting the two the same way would either
+// list a keyword that did not score or omit one that did — the context and the confidence
+// have to agree about which keywords were seen. See kwmatch.ContainsLabel.
+func (v *Validator) keywordsPresent(lowerLine string, keywords []string,
+	match func(text, keyword string) bool) []string {
 	var found []string
 	for _, kw := range keywords {
-		if containsKeyword(lowerLine, kw) {
+		if match(lowerLine, kw) {
 			found = append(found, kw)
 		}
 	}
@@ -788,7 +807,7 @@ func (v *Validator) hasInsuranceContext(lowerLine string) bool {
 		"rxbin", "rxpcn", "rxgrp", "rx bin", "rx group",
 	}
 	for _, kw := range insKW {
-		if containsKeyword(lowerLine, kw) {
+		if containsLabel(lowerLine, kw) {
 			return true
 		}
 	}
@@ -809,7 +828,7 @@ func (v *Validator) hasInsuranceKeyword(lowerLine string) bool {
 		"enrollee identification", "policyholder id",
 	}
 	for _, kw := range strongKW {
-		if containsKeyword(lowerLine, kw) {
+		if containsLabel(lowerLine, kw) {
 			return true
 		}
 	}

@@ -104,20 +104,16 @@ func containsKeyword(text, keyword string) bool {
 	return kwmatch.Contains(text, keyword)
 }
 
-// containsPhrase is containsKeyword for a keyword that is PROSE, where every space must
-// match at least one separator byte.
+// containsLabel is containsKeyword for a keyword that LABELS the value it sits beside,
+// letting its spaces match zero separators so "routing number" also finds "routingNumber".
 //
-// One keyword here needs it. Since #372 a keyword space may match ZERO separators, so
-// "member id" finds "memberId" — the camelCase spelling that JSON and ORM exports use. Of
-// the 457 multi-word literals in non-test validator code, exactly two concatenate into a
-// dictionary word,
-// and "call us" -> "callus" is the one that matters: it is a phone-context SUPPRESSOR here,
-// so a line mentioning a callus would silence a real account number beside it. A podiatry
-// billing line is not a hypothetical, and a suppressed finding is never redacted.
-//
-// The other phone keywords are single words and unaffected.
-func containsPhrase(text, keyword string) bool {
-	return kwmatch.ContainsPhrase(text, keyword)
+// Only positive keyword lists may use it. containsKeyword still requires a separator, which
+// is what the negative and phone-suppressor lists here keep — widening a suppressor silences
+// real values, and "call us" -> "callus" is a live example in this package: the phone
+// suppressor gates looksLikePhone, so an ordinary clinical line mentioning a callus would
+// drop a real account number beside it. See kwmatch.ContainsLabel.
+func containsLabel(text, keyword string) bool {
+	return kwmatch.ContainsLabel(text, keyword)
 }
 
 // Validator implements the detector.Validator interface for detecting
@@ -193,7 +189,7 @@ func (v *Validator) buildLineContext(line string) lineContext {
 		// back to O(line length) — this was the bankaccount O(n^2) the
 		// expanded complexity guard caught.
 		phoneKeyword: containsKeyword(line, "phone") || containsKeyword(line, "telephone") ||
-			containsKeyword(line, "fax") || containsPhrase(line, "call us") ||
+			containsKeyword(line, "fax") || containsKeyword(line, "call us") ||
 			containsKeyword(line, "mobile") || containsKeyword(line, "cell"),
 	}
 }
@@ -962,7 +958,7 @@ func (v *Validator) buildContextInfo(line string, matchStart, matchLen int) dete
 // hasBankingKeywords checks if the line contains any banking-related keywords.
 func (v *Validator) hasBankingKeywords(line string) bool {
 	for _, kw := range v.positiveKeywords {
-		if containsKeyword(line, kw) {
+		if containsLabel(line, kw) {
 			return true
 		}
 	}
