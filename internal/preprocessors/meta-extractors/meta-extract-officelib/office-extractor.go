@@ -30,6 +30,19 @@ const (
 	// exhaust the temp filesystem (security finding MED-3). The XML readers in
 	// this file already cap at MaxXMLSize; media is larger but still bounded.
 	MaxEmbeddedMediaSize = 50 * 1024 * 1024 // 50MB max per embedded media file
+	// maxEmbeddedNotes bounds how many individually-named refusals one container can put
+	// into its disclosure, because that text goes on ONE line of stderr and into every
+	// machine format.
+	//
+	// The part count is attacker-controlled and cheap: a 6 MB .docx holding 120 entries
+	// that each deflate from 50 MB of zeros produced a single 16.8 KB warning line,
+	// measured, and the shape scales linearly with entries a container can declare. A
+	// report an operator cannot read is a report they will not read.
+	//
+	// The count is never lost — what is dropped is the NAMES beyond this many, and the note
+	// that replaces them says how many. A cap that truncates silently would be the same
+	// class of defect as the silent skip this disclosure exists to fix.
+	maxEmbeddedNotes = 8
 )
 
 // Global replacer for efficient error sanitization (initialized once)
@@ -795,6 +808,19 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 		// Extract media to temp file
 		tempFile, err := extractImageToTemp(file)
 		if err != nil {
+			// Silent HERE, deliberately, and not the same omission as the one #374 fixed.
+			//
+			// This loop exists only to count the embedded parts and record their names as
+			// metadata properties; it deletes every temp file it makes (see the defer above).
+			// The loop that decides what actually gets SCANNED is
+			// ExtractEmbeddedMediaForProcessing, which walks the same parts against the same
+			// cap and returns a note for each one it could not extract. Reporting the refusal
+			// here as well would put the same part on the operator's screen twice.
+			//
+			// The visible cost is that EmbeddedMediaCount under-counts by the refused parts.
+			// That count is a report hint, and it is rendered into the text the validators
+			// scan, so changing it changes scanned content — a separate decision from
+			// disclosure.
 			continue
 		}
 		tempFiles = append(tempFiles, tempFile)
@@ -829,8 +855,12 @@ func extractImageToTemp(file *zip.File) (string, error) {
 
 	// Reject before extracting when the entry declares a size over the cap.
 	if file.UncompressedSize64 > MaxEmbeddedMediaSize {
-		return "", fmt.Errorf("embedded media %q declares %d bytes, exceeding the %d cap (possible decompression bomb)",
-			file.Name, file.UncompressedSize64, MaxEmbeddedMediaSize)
+		// The part's NAME is deliberately absent from the message. The only caller that
+		// surfaces this error names the part's base name itself, and a scanned tree's
+		// internal paths should not be repeated into a report twice — see #367, which is
+		// open about exactly that. Sizes only.
+		return "", fmt.Errorf("declares %d bytes, over the %d-byte embedded cap (possible decompression bomb)",
+			file.UncompressedSize64, MaxEmbeddedMediaSize)
 	}
 
 	// Create temp file.
@@ -848,7 +878,7 @@ func extractImageToTemp(file *zip.File) (string, error) {
 	// only so this function has no path that concatenates an unvalidated string.
 	safeExt, ok := embedded.SafeExt(file.Name)
 	if !ok {
-		return "", fmt.Errorf("embedded part %q has no admitted file type", filepath.Base(file.Name))
+		return "", fmt.Errorf("no admitted file type")
 	}
 	tempFile, err := os.CreateTemp("", "office_embedded_*"+safeExt)
 	if err != nil {
@@ -866,23 +896,46 @@ func extractImageToTemp(file *zip.File) (string, error) {
 	}
 	if n > MaxEmbeddedMediaSize {
 		os.Remove(tempFile.Name())
-		return "", fmt.Errorf("embedded media %q exceeds the %d extraction cap (possible decompression bomb)",
-			file.Name, MaxEmbeddedMediaSize)
+		// Name omitted for the same reason as the declared-size refusal above.
+		return "", fmt.Errorf("exceeds the %d-byte embedded extraction cap while being read (possible decompression bomb)",
+			MaxEmbeddedMediaSize)
 	}
 
 	return tempFile.Name(), nil
 }
 
-// ExtractEmbeddedMediaForProcessing extracts embedded media and returns temp file paths for full processing
-func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, error) {
+// ExtractEmbeddedMediaForProcessing extracts embedded media and returns temp file paths for
+// full processing, plus one note per part it could NOT extract.
+//
+// # Why the notes exist
+//
+// This loop used to discard extractImageToTemp's error with a bare `continue`. When that error
+// was the MaxEmbeddedMediaSize refusal, the part was never scanned and nothing said so: an
+// outer .docx whose word/embeddings/attachment.docx crossed the cap reported "No matches
+// found" at exit 0, and exit 0 again under --fail-on-incomplete, with nothing on stderr —
+// while the identical inner document under the cap reported its SSN at HIGH 100. A container
+// declared clean while sensitive content sat unread inside it is the cleartext-passthrough
+// shape this tool exists to prevent, and the flag whose entire purpose is to escalate
+// incomplete coverage could not see it. See #374.
+//
+// The notes are returned rather than logged because the caller owns the disclosure channel:
+// OfficeMetadataPreprocessor merges them into ProcessedContent.ExtractionWarning, which
+// survives FileRouter's combine step and reaches both the operator's "NOT FULLY EXAMINED"
+// section and the --fail-on-incomplete exit code.
+//
+// Payload-free by construction: a note names the part's BASE name and the reason, never a
+// path and never any bytes from the part. It reaches stderr and every machine format.
+func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []string, error) {
 	// Open the file as a ZIP archive
 	reader, err := zip.OpenReader(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("error opening file as ZIP: %v", err)
+		return nil, nil, fmt.Errorf("error opening file as ZIP: %v", err)
 	}
 	defer reader.Close()
 
 	var embeddedMedia []EmbeddedMedia
+	var notExamined []string
+	refused := 0
 
 	for _, file := range reader.File {
 		if !isEmbeddedPartPath(file.Name) {
@@ -913,6 +966,22 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, error)
 		// Extract media to temp file
 		tempFile, err := extractImageToTemp(file)
 		if err != nil {
+			// DISCLOSE rather than skip. Every error this can return means a part that the
+			// router was going to be asked about was not made available to it: the size
+			// refusals, a zip entry that will not open, a temp file that cannot be created,
+			// a read that fails part way. In each case content the operator believes was
+			// scanned was not, so the note has to travel — a silent `continue` here is what
+			// #374 is.
+			//
+			// Deliberately NOT the same judgement as the router's own admission check. That
+			// one stays silent on purpose (a part nothing can read is a non-event, and a
+			// line per decorative .emf trains operators to ignore warnings). This is the
+			// opposite case: whether the part was readable is exactly what we no longer know.
+			refused++
+			if len(notExamined) < maxEmbeddedNotes {
+				notExamined = append(notExamined, fmt.Sprintf("embedded part %q was not examined: %v",
+					filepath.Base(file.Name), err))
+			}
 			continue
 		}
 
@@ -923,7 +992,12 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, error)
 		})
 	}
 
-	return embeddedMedia, nil
+	if refused > len(notExamined) {
+		notExamined = append(notExamined, fmt.Sprintf(
+			"and %d more embedded part(s) were not examined", refused-len(notExamined)))
+	}
+
+	return embeddedMedia, notExamined, nil
 }
 
 // CleanupEmbeddedMedia removes temporary files
