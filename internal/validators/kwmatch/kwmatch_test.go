@@ -214,3 +214,93 @@ func BenchmarkContainsLowerHit(b *testing.B) {
 		ContainsLower(text, "ssn")
 	}
 }
+
+// A keyword space may match ZERO separators, so a concatenated or camelCase label counts as
+// context. Text is lowercased before matching, so "memberId" and "memberid" are the same
+// string here — which is why one rule covers both.
+//
+// Before this, "member id" could never match either, and camelCase is the default key style
+// of JSON, REST payloads and ORM exports. Measured on a file of camelCase/snake_case pairs of
+// the same shape, all four camelCase halves scored 0 while their twins scored 75, 80, 90 and
+// 100; in a two-key object one member ID sat in cleartext beside its redacted twin. See #372.
+func TestConcatenatedKeywordMatches(t *testing.T) {
+	for _, c := range []struct{ text, keyword string }{
+		{`"memberid": "xq4839271"`, "member id"},
+		{`"memberid":"xq4839271"`, "member id"},
+		{"memberid: w9998887779", "member id"},
+		{"medicalrecordnumber 4839272", "medical record number"},
+		{"driverslicense d1234562", "drivers license"},
+		{"routingnumber 026009593", "routing number"},
+		{"taxid 123456789", "tax id"},
+		// The separator forms must all keep working.
+		{"member id: x", "member id"},
+		{"member_id: x", "member id"},
+		{"member-id: x", "member id"},
+		{"member\tid: x", "member id"},
+		{"member  id: x", "member id"},
+	} {
+		if !ContainsLower(c.text, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = false, want true", c.text, c.keyword)
+		}
+	}
+}
+
+// The outer word-boundary rule is what makes zero separators safe, and these are the cases
+// that would break first if it were lost. A keyword must not match inside a longer word at
+// either end.
+func TestConcatenatedKeywordStillRespectsWordBoundaries(t *testing.T) {
+	for _, c := range []struct {
+		text, keyword, why string
+	}{
+		{"remembering things", "member id", "the anchor is inside a longer word on the left"},
+		{"teammemberid: x", "member id", "the anchor is preceded by a word byte"},
+		{"memberidentification: x", "member id", "the match is followed by a word byte"},
+		{"memberids: x", "member id", "a trailing 's' is still a word byte"},
+		// The '.' and '/' exclusions are a RECORDED MEASURED decision (isSepByte) and this
+		// change must not touch them: they cross sentence and URL boundaries where the two
+		// words are unrelated.
+		{"see member.id in the schema docs", "member id", "'.' is not a separator, by measurement"},
+		{"https://example.com/member/id/lookup", "member id", "'/' is not a separator, by measurement"},
+	} {
+		if ContainsLower(c.text, c.keyword) {
+			t.Errorf("ContainsLower(%q, %q) = true, want false: %s", c.text, c.keyword, c.why)
+		}
+	}
+}
+
+// ContainsPhrase keeps the old behaviour for a keyword that is PROSE, and it exists for a
+// measured reason.
+//
+// Checked against the system dictionary (234,456 lowercased entries), exactly 2 of the 457
+// multi-word
+// keywords in this tree concatenate into an English word: "one time" -> "onetime" and
+// "call us" -> "callus". The first is a positive OTP keyword where matching "oneTime" is the
+// point. The second is a phone-context SUPPRESSOR in bankaccount, so "callus" would silence a
+// real account number on any line that mentions one — measured: with plain Contains, a
+// "callus debridement, bank account 4432198765" line LOSES its US_BANK_ACCOUNT finding.
+func TestContainsPhraseStillRequiresASeparator(t *testing.T) {
+	for _, c := range []struct {
+		text, keyword string
+		want          bool
+	}{
+		{"callus debridement", "call us", false},
+		{"please call us today", "call us", true},
+		{"please call-us today", "call us", true},
+		{"please call_us today", "call us", true},
+		{"recall using the form", "call us", false}, // a plain substring test would match here
+		// A single-word keyword has no space, so the phrase form is just Contains.
+		{"phone: 415-555-0142", "phone", true},
+		{"telephones", "phone", false},
+	} {
+		if got := ContainsPhraseLower(c.text, c.keyword); got != c.want {
+			t.Errorf("ContainsPhraseLower(%q, %q) = %v, want %v", c.text, c.keyword, got, c.want)
+		}
+	}
+
+	// And the two forms must genuinely differ on the concatenation, or the phrase API is
+	// decorative.
+	if !ContainsLower("callus debridement", "call us") {
+		t.Error("ContainsLower no longer matches the concatenated form, so ContainsPhrase " +
+			"protects nothing and this whole distinction is dead weight")
+	}
+}

@@ -244,10 +244,18 @@ var Cases = []Case{
 			"rather than merely boosting confidence, a labelled ID written the snake_case way " +
 			"produced no finding at all and passed through redaction in cleartext. Decoy lines " +
 			"lock the exclusions: '.' and '/' are NOT separators, because they cross sentence " +
-			"and URL boundaries where the two words are unrelated, and a space in a keyword " +
-			"still means at least one separator, so the run-together \"memberid\" is a different " +
-			"token. The last two lines pin that the outer whole-word rule still applies at both " +
-			"ends of the separator-flexible match.",
+			"and URL boundaries where the two words are unrelated. The last two lines pin that " +
+			"the outer whole-word rule still applies at both ends of the separator-flexible " +
+			"match. " +
+			"THE RUN-TOGETHER LINE CHANGED SIDES in #372: this description used to say a space " +
+			"still meant at least one separator, so \"memberid\" was \"a different token\" and " +
+			"produced nothing. That was asserted, not measured — unlike the '.' and '/' " +
+			"exclusions, which carry a recorded false-positive measurement and are untouched. " +
+			"camelCase is the default key style of JSON, REST payloads and ORM exports, and " +
+			"since text is lowercased before matching, \"memberId\" and \"memberid\" are the " +
+			"same string: in a two-key object one member ID sat in cleartext beside its " +
+			"redacted twin. So line 6 is now a FINDING, and the four decoy lines below it still " +
+			"are not, which is what makes the change safe rather than merely wider.",
 		Checks: []string{"MEDICAL_ID"},
 		Input: "member_id: W1234567801\n" +
 			"member-id: X9876543210\n" +

@@ -29,9 +29,15 @@ func TestContainsLower_SeparatorForms(t *testing.T) {
 		{"member  id: X9876543210", true, "padded alignment"},
 		{"member \t _ id: X9876543210", true, "mixed separator run"},
 
-		// A space in the keyword means "at least one separator", never zero:
-		// "memberid" is a different token and must not match.
-		{"memberid: X9876543210", false, "no separator is not a separator"},
+		// A space in the keyword means "zero or more separators". This line was
+		// asserted false until #372, on the theory that "memberid" is "a different
+		// token" -- but text is lowercased before matching, so this is also the
+		// camelCase "memberId" that JSON, REST payloads and ORM exports emit by
+		// default. Excluding it left one member ID in cleartext beside its
+		// redacted twin in the same object. Unlike the '.' and '/' exclusions
+		// below, the zero-separator exclusion carried no measurement; admitting it
+		// changed nothing across 184 real documents and payloads.
+		{"memberid: X9876543210", true, "concatenated/camelCase"},
 
 		// '.' and '/' are excluded on purpose: they cross sentence and URL
 		// boundaries, where the two words are unrelated.
@@ -87,8 +93,29 @@ func TestContainsLower_MultiWordSeparatorsAreIndependent(t *testing.T) {
 			t.Errorf("ContainsLower(%q, %q) = false, want true", text, kw)
 		}
 	}
+	// Independent separators includes independently ZERO of them, so a fully or
+	// partially concatenated label matches too (#372).
 	for _, text := range []string{
 		"socialsecuritynumber: 078-05-1120",
+		"social_securitynumber: 078-05-1120",
+	} {
+		if !ContainsLower(text, kw) {
+			t.Errorf("ContainsLower(%q, %q) = false, want true", text, kw)
+		}
+	}
+	// The camelCase spelling this admits reaches ContainsLower already folded, so
+	// pin it through Contains, which is the entry point that folds. Asserting the
+	// mixed-case form against ContainsLower would test the fold, not the fix.
+	for _, text := range []string{
+		"socialSecurityNumber: 078-05-1120",
+		"social_securityNumber: 078-05-1120",
+		"SocialSecurityNumber: 078-05-1120",
+	} {
+		if !Contains(text, kw) {
+			t.Errorf("Contains(%q, %q) = false, want true", text, kw)
+		}
+	}
+	for _, text := range []string{
 		"social security numbers_are_fine", // right boundary
 		"antisocial security number",       // left boundary
 	} {

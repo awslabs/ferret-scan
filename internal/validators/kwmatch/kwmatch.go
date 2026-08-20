@@ -80,7 +80,7 @@ func ContainsFunc(text, keyword string, accept func(start, end int) bool) bool {
 		return false
 	}
 	if fw := firstWordLen(keyword); fw != len(keyword) {
-		return containsSepFlex(text, keyword, fw, accept)
+		return containsSepFlex(text, keyword, fw, false, accept)
 	}
 	for from := 0; from+len(keyword) <= len(text); {
 		i := strings.Index(text[from:], keyword)
@@ -108,6 +108,31 @@ func ContainsAny(text string, keywords []string) bool {
 		}
 	}
 	return false
+}
+
+// ContainsPhrase is [Contains] for a keyword that is PROSE rather than an identifier: every
+// space must match at least one separator byte, so "call us" matches "call us" and "call-us"
+// but not "callus".
+//
+// Use it for a phrase whose concatenation is a different word. There are exactly two such
+// keywords in this tree — see matchSepFlexAt — and only one of them wants this behaviour.
+// Everything else should use [Contains], because a concatenated or camelCase spelling of an
+// identifier-style keyword is the case #372 exists to recover.
+//
+// A single-word keyword contains no space, so this is identical to [Contains] for one.
+func ContainsPhrase(text, keyword string) bool {
+	return ContainsPhraseLower(strings.ToLower(text), strings.ToLower(keyword))
+}
+
+// ContainsPhraseLower is [ContainsPhrase] for callers holding lowercased values.
+func ContainsPhraseLower(text, keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	if fw := firstWordLen(keyword); fw != len(keyword) {
+		return containsSepFlex(text, keyword, fw, true, nil)
+	}
+	return ContainsLower(text, keyword)
 }
 
 // --- PR6 separator-flexible multi-word matching -------------------------------
@@ -143,8 +168,38 @@ func allWordsPresent(text, keyword string) bool {
 }
 
 // matchSepFlexAt walks keyword against text[start:], letting each space RUN in
-// the keyword consume a run of 1+ separator bytes. Returns the end offset or -1.
-func matchSepFlexAt(text, keyword string, start int) int {
+// the keyword consume a run of separator bytes. Returns the end offset or -1.
+//
+// requireSep decides whether that run may be EMPTY, and it is the whole of #372.
+//
+// # Why zero separators is the default
+//
+// A space used to demand at least one separator byte, so "member id" could never match
+// "memberid" or "memberId" — text is lowercased before matching, so those two are the
+// same string here. camelCase and concatenated keys are the default style of JSON, REST
+// payloads and ORM exports, and 14 validator packages match multi-word keywords, so
+// every one of them lost its concatenated form. Measured on a JSON file holding
+// camelCase/snake_case pairs of the same shape, all four camelCase halves scored 0 while
+// their twins scored 75, 80, 90 and 100 — and in a two-key object one member ID was left
+// in cleartext beside its redacted twin.
+//
+// The outer word-boundary rule in containsSepFlex is what keeps this honest: a left
+// boundary at the anchor and a right boundary at the end, so "member id" still cannot
+// match inside "remembering" or "teammemberid", and "memberidentification" is rejected
+// at the right edge.
+//
+// # Why a phrase form still exists
+//
+// A concatenation can be a different word. Checked against the system dictionary
+// (234,456 lowercased entries) over all 457 multi-word lowercase string literals in
+// non-test validator code -- a superset of the keyword lists -- exactly 2 concatenate
+// into an English word: "one time" -> "onetime" and "call us" -> "callus". The first is a
+// positive OTP keyword, where matching "oneTime" is the point. The second is a phone-context
+// SUPPRESSOR in bankaccount, where "callus" would newly silence a real account number on
+// any line that happens to mention one — a podiatry billing line is not a hypothetical.
+// So prose phrases keep the old behaviour through ContainsPhrase, and identifier-style
+// keywords get the new one.
+func matchSepFlexAt(text, keyword string, start int, requireSep bool) int {
 	ti, ki := start, 0
 	for ki < len(keyword) {
 		if keyword[ki] == ' ' {
@@ -156,7 +211,7 @@ func matchSepFlexAt(text, keyword string, start int) int {
 				ti++
 				n++
 			}
-			if n == 0 {
+			if requireSep && n == 0 {
 				return -1
 			}
 			continue
@@ -172,7 +227,7 @@ func matchSepFlexAt(text, keyword string, start int) int {
 
 // containsSepFlex anchors on the keyword's first word and verifies the rest with
 // separator flexibility, applying the same outer word-boundary rule.
-func containsSepFlex(text, keyword string, fw int, accept func(start, end int) bool) bool {
+func containsSepFlex(text, keyword string, fw int, requireSep bool, accept func(start, end int) bool) bool {
 	anchor := keyword[:fw]
 	misses := 0
 	for from := 0; from+fw <= len(text); {
@@ -182,7 +237,7 @@ func containsSepFlex(text, keyword string, fw int, accept func(start, end int) b
 		}
 		i += from
 		if i == 0 || !isWordByte(text[i-1]) {
-			if end := matchSepFlexAt(text, keyword, i); end > 0 {
+			if end := matchSepFlexAt(text, keyword, i, requireSep); end > 0 {
 				if end >= len(text) || !isWordByte(text[end]) {
 					if accept == nil || accept(i, end) {
 						return true

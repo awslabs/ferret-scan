@@ -104,6 +104,22 @@ func containsKeyword(text, keyword string) bool {
 	return kwmatch.Contains(text, keyword)
 }
 
+// containsPhrase is containsKeyword for a keyword that is PROSE, where every space must
+// match at least one separator byte.
+//
+// One keyword here needs it. Since #372 a keyword space may match ZERO separators, so
+// "member id" finds "memberId" — the camelCase spelling that JSON and ORM exports use. Of
+// the 457 multi-word literals in non-test validator code, exactly two concatenate into a
+// dictionary word,
+// and "call us" -> "callus" is the one that matters: it is a phone-context SUPPRESSOR here,
+// so a line mentioning a callus would silence a real account number beside it. A podiatry
+// billing line is not a hypothetical, and a suppressed finding is never redacted.
+//
+// The other phone keywords are single words and unaffected.
+func containsPhrase(text, keyword string) bool {
+	return kwmatch.ContainsPhrase(text, keyword)
+}
+
 // Validator implements the detector.Validator interface for detecting
 // bank account numbers, routing numbers, IBANs, and SWIFT/BIC codes.
 type Validator struct {
@@ -177,7 +193,7 @@ func (v *Validator) buildLineContext(line string) lineContext {
 		// back to O(line length) — this was the bankaccount O(n^2) the
 		// expanded complexity guard caught.
 		phoneKeyword: containsKeyword(line, "phone") || containsKeyword(line, "telephone") ||
-			containsKeyword(line, "fax") || containsKeyword(line, "call us") ||
+			containsKeyword(line, "fax") || containsPhrase(line, "call us") ||
 			containsKeyword(line, "mobile") || containsKeyword(line, "cell"),
 	}
 }

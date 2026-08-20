@@ -282,6 +282,62 @@
           },
           "rank": 65,
           "ruleId": "INSURANCE_MEMBER_ID"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:keyword_separator_forms>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "memberid: \nmemberid: W9998887776"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 22,
+                  "snippet": {
+                    "text": "memberid: W9998887776"
+                  },
+                  "startColumn": 11,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "INSURANCE_MEMBER_ID Detected in <golden:keyword_separator_forms> at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'W9998887776'"
+          },
+          "properties": {
+            "confidence": 80,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "context_impact": 10,
+              "original_confidence": 80,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "subtype": "INSURANCE_MEMBER_ID",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "member id"
+            ],
+            "validator": "medicalid"
+          },
+          "rank": 65,
+          "ruleId": "INSURANCE_MEMBER_ID"
         }
       ],
       "tool": {
