@@ -642,6 +642,24 @@ var FileCases = []FileCase{
 		EnablePreprocessors: true,
 	},
 	{
+		Name: "file_docx_numeric_character_reference",
+		Description: "Tier 3: a .docx whose w:t runs spell SSN digits as XML numeric character references (&#57; and &#x37;). " +
+			"Word renders them as the digits, so this locks BOTH halves of the escaped-value leak: the extractor must decode " +
+			"them (#371) and the redactor must remove them from the part bytes (#368). Before the extractor fix the scan " +
+			"reported 1 of 4; before the redactor fix 3 of 4 survived --enable-redaction in a file reported as successfully " +
+			"redacted. Diff against file_docx_body_and_metadata, which is the same shape with no references.",
+		Checks:   []string{"SSN", "METADATA"},
+		Filename: "numrefs.docx",
+		Content: BuildDOCXWithRawRuns("Jane Analyst", "Ops Reviewer", []string{
+			"Employee SSN 449-87-4100 on file.",
+			"Employee SSN 51&#57;-42-8836 on file.",
+			"Employee SSN &#53;&#54;&#51;-&#49;&#56;-&#55;&#50;&#52;&#57; on file.",
+			"Employee SSN 60&#x37;-31-9284 on file.",
+		}),
+		Tier1Parity:         false, // container extraction has no content-mode equivalent
+		EnablePreprocessors: true,
+	},
+	{
 		Name:        "file_xlsx_sheet_cells",
 		Description: "Tier 3 control: an .xlsx with PII in worksheet cells at the conventional sheet part name.",
 		Checks:      []string{"SSN", "CREDIT_CARD", "METADATA"},
@@ -904,6 +922,20 @@ func BuildDOCX(creator, lastModifiedBy string, paras []string) []byte {
 	return buildOOXML(docxParts("word/document.xml", creator, lastModifiedBy, paras))
 }
 
+// BuildDOCXWithRawRuns is BuildDOCX with the paragraph text inserted VERBATIM into <w:t>.
+//
+// BuildDOCX escapes its paragraphs, which is right for every case whose subject is the document's
+// content. It is wrong for a case whose subject is the ESCAPING itself: a paragraph written
+// "51&#57;-42-8836" would be stored as "51&amp;#57;-42-8836", i.e. the literal five characters
+// "&#57;", and the case would test nothing. Word renders a numeric character reference as the
+// character it names, so the reference form is what a real evasion looks like on disk.
+//
+// The caller is therefore responsible for the argument being valid XML character data. It exists
+// for exactly one kind of case; anything about a document's content should use BuildDOCX.
+func BuildDOCXWithRawRuns(creator, lastModifiedBy string, rawParas []string) []byte {
+	return buildOOXML(docxPartsRaw("word/document.xml", creator, lastModifiedBy, rawParas))
+}
+
 // BuildDOCXWithMainPart is BuildDOCX with control over the main part's NAME, so a
 // case can lock what happens when the document body is not at the conventional
 // path. It also points the package relationship at that name, as a real producer
@@ -924,6 +956,36 @@ func docxParts(mainPart, creator, lastModifiedBy string, paras []string) []ooxml
 	for _, p := range paras {
 		body.WriteString(`<w:p><w:r><w:t xml:space="preserve">`)
 		body.WriteString(escapeXML(p))
+		body.WriteString(`</w:t></w:r></w:p>`)
+	}
+	doc := xmlDecl + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>` +
+		body.String() + `</w:body></w:document>`
+
+	contentTypes := xmlDecl + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Override PartName="/` + mainPart + `" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>` +
+		`<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
+		`</Types>`
+
+	rels := xmlDecl + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="` + mainPart + `"/>` +
+		`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
+		`</Relationships>`
+
+	return []ooxmlPart{
+		{"[Content_Types].xml", contentTypes},
+		{"_rels/.rels", rels},
+		{"docProps/core.xml", coreProps(creator, lastModifiedBy)},
+		{mainPart, doc},
+	}
+}
+
+func docxPartsRaw(mainPart, creator, lastModifiedBy string, paras []string) []ooxmlPart {
+	var body strings.Builder
+	for _, p := range paras {
+		body.WriteString(`<w:p><w:r><w:t xml:space="preserve">`)
+		body.WriteString(p) // verbatim: see BuildDOCXWithRawRuns
 		body.WriteString(`</w:t></w:r></w:p>`)
 	}
 	doc := xmlDecl + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>` +

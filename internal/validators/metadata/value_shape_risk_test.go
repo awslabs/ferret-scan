@@ -112,6 +112,20 @@ func TestValuelessPropertiesAreSkipped(t *testing.T) {
 		"5280104a-472d-4538-9ccf-1e1d0efe8b1b", // _SiteId GUID
 		"2026-01-14T21:22:37Z",                 // _SetDate
 		"0x010100D3F06DC058215A4D90BF",         // SharePoint ContentTypeId
+
+		// Letterless values that must STAY unreported after #373 admitted
+		// identifier-length digit runs. Every one of these was measured in the
+		// 150-document corpus that sized that rule, and each is the reason for one
+		// clause of it.
+		"1234",        // a counter: below the 7-digit floor
+		"999999",      // 6 digits, still below the floor
+		"11, 2, 1, 0", // MSIP_Label _Tag, the commonest shape in the corpus (89 rows)
+		"2026-01-14",  // a plain date: 8 digits with hyphens, which the grouped form
+		// would otherwise admit
+		"2026-01-14.0002", // measured under db_template_version: a dot means a version
+		"1.2.3.4567",      // a version, not an identifier
+		"12:34:56",        // a time
+		"2026/01/14",      // a date with slashes
 	}
 	for _, v := range valueless {
 		if !isValuelessProperty(v) {
@@ -130,6 +144,18 @@ func TestValuelessPropertiesAreSkipped(t *testing.T) {
 		"Nasdaq - Internal Use: Distribution limited to personnel",
 		"SECRET - Project Nightjar",
 		"CC-99213-NIGHTJAR",
+
+		// Identifier-length digit runs (#373). These carry no ASCII letter and were
+		// therefore never scored, which is how a case number, a billing reference and an
+		// SSN under a property named SubscriberSSN reached no validator at all. The
+		// sharpest pair measured: "Ledger 8291746350284" scored CUSTOM_PROPERTY 60 while
+		// the bare "8291746350284" scored nothing — one English word was the whole
+		// difference.
+		"923456781",     // a 9-digit member id that no other validator claims
+		"8291746350284", // a 13-digit billing reference
+		"9999999",       // exactly at the 7-digit floor
+		"449-87-4100",   // measured under a property named SubscriberSSN
+		"415 892 4471",  // space-separated groups are how a phone-shaped id is written
 	}
 	for _, v := range meaningful {
 		if isValuelessProperty(v) {
@@ -205,4 +231,90 @@ func TestCustomPropertyIDIsWholeWord(t *testing.T) {
 			t.Errorf("property %q produced no risk factors: an employee/badge identifier must still be recognised", name)
 		}
 	}
+}
+
+// The digit-run rule is sized against a corpus, so the corpus's own distribution is what
+// the test asserts — not a handful of invented strings.
+//
+// 150 real Office documents from this machine, 117 carrying docProps/custom.xml, 908 custom
+// properties, 193 of whose values contain no ASCII letter and were therefore invisible:
+//
+//	98  bare integers of 4 digits or fewer   <- Purview MSIP_Label ContentBits
+//	89  integer tuples ("11, 2, 1, 0")       <- Purview MSIP_Label Tag
+//	 2  unbroken runs of 7-8 digits
+//	 4  one 5-6 digit run, one date-ish, two bracket literals
+//
+// The rule admits 2 of 193 and 0 of the 187 Purview rows. End to end over the same 150
+// documents the finding count went 1956 -> 1958. That is the false-positive budget, and this
+// test pins the two properties that keep it: the floor, and the exclusions.
+func TestIdentifierDigitRunFloorAndExclusions(t *testing.T) {
+	// The floor is what keeps the 187 Purview bookkeeping rows out. A rule that admitted
+	// 4-digit values would report one finding per label per document.
+	if identifierDigitFloor != 7 {
+		t.Errorf("identifierDigitFloor = %d; the corpus measurement that sized this rule "+
+			"assumed 7, and every bare integer it found was 4 digits or fewer",
+			identifierDigitFloor)
+	}
+	// The pattern and the constant have to agree, or the floor is decorative.
+	for _, below := range []string{"1", "12", "123456"} {
+		if unbrokenDigitRunPattern.MatchString(below) {
+			t.Errorf("unbrokenDigitRunPattern matched %q, shorter than identifierDigitFloor=%d",
+				below, identifierDigitFloor)
+		}
+	}
+	if !unbrokenDigitRunPattern.MatchString("1234567") {
+		t.Errorf("unbrokenDigitRunPattern rejects a %d-digit run, so the floor is wrong",
+			identifierDigitFloor)
+	}
+
+	// Each exclusion, asserted through the function an operator's findings depend on.
+	for _, c := range []struct {
+		value  string
+		reason string
+	}{
+		{"11, 2, 1, 0", "a comma makes it an integer tuple, the commonest bookkeeping shape measured"},
+		{"2026-01-14", "a plain date is 8 digits with hyphens and would otherwise be admitted"},
+		{"2026-01-14.0002", "a dot means a version; measured under db_template_version"},
+		{"1.2.3.4567", "a version"},
+		{"12:34:56", "a time"},
+		{"2026/01/14", "a slash-separated date"},
+		{"123456", "below the floor"},
+	} {
+		if isIdentifierDigitRun(c.value) {
+			t.Errorf("isIdentifierDigitRun(%q) = true, want false: %s", c.value, c.reason)
+		}
+	}
+
+	for _, c := range []struct {
+		value  string
+		reason string
+	}{
+		{"1234567", "exactly at the floor"},
+		{"923456781", "a 9-digit member id that no other validator claims"},
+		{"8291746350284", "a 13-digit billing reference"},
+		{"449-87-4100", "hyphen-grouped, measured under a property named SubscriberSSN"},
+		{"415 892 4471", "space-grouped groups, how a phone-shaped id is written"},
+	} {
+		if !isIdentifierDigitRun(c.value) {
+			t.Errorf("isIdentifierDigitRun(%q) = false, want true: %s", c.value, c.reason)
+		}
+	}
+}
+
+// A letterless value that IS admitted must be admitted for the right reason: the shape of the
+// VALUE, never the property's name.
+//
+// A name vocabulary would have to be maintained, and it would still miss a digit run under
+// "Ref" or "Field3" — while the corpus shows the value shape alone costs 2 findings in 150
+// documents. This pins that the decision does not consult a name, so nobody later "improves"
+// the rule into a keyword list without noticing it changes what the measurement covered.
+func TestIdentifierAdmissionDoesNotDependOnThePropertyName(t *testing.T) {
+	const value = "923456781"
+	if isValuelessProperty(value) {
+		t.Fatalf("isValuelessProperty(%q) = true; the rest of this test would be vacuous", value)
+	}
+	// isValuelessProperty takes only the value — there is no name parameter to consult.
+	// This compiles as an assertion of that fact; if a name is ever threaded through, this
+	// call fails to build and the author has to come and read the comment above.
+	var _ func(string) bool = isValuelessProperty
 }
