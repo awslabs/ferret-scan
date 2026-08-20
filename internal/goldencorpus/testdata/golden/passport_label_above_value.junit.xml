@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="ferret-scan" tests="0" failures="0" errors="0" time="0.000">
-  <testsuite name="security-scan" tests="0" failures="0" errors="0" time="0.000"></testsuite>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:passport_label_above_value&gt;" classname="security-scan" time="0.001">
+      <failure message="2 security findings detected" type="SECURITY_FINDINGS">Line 4: PASSPORT detected with 80.0% confidence (MEDIUM)&#xA;Match: 512345678&#xA;Validator: passport&#xA;Line 2: PASSPORT detected with 75.0% confidence (MEDIUM)&#xA;Match: 987654321&#xA;Validator: passport</failure>
+    </testcase>
+  </testsuite>
 </testsuites>
