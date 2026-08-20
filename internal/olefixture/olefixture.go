@@ -637,6 +637,33 @@ func DocSummaryInformation(props map[uint32]string) []byte {
 	return propertySet(fmtidDocSummaryInformation, props, nil)
 }
 
+// DocSummaryInformationWithVectors additionally encodes VECTOR-valued string
+// properties, which is how a real .xls stores its sheet-name list and a real .ppt its
+// slide titles (DocumentParts, property 0x0D).
+//
+// Worth encoding exactly as [MS-OLEPS] specifies, because the whole reason vector
+// properties were unreadable is a type-word disagreement: the property type is ONE
+// 32-bit value with VT_VECTOR (0x1000) OR'd into the same 16-bit type field, so a
+// vector of VT_LPSTR is 0x0000101E — NOT 0x001E with a separate flag word. A fixture
+// that encoded it the other way would make a broken reader look correct.
+func DocSummaryInformationWithVectors(props map[uint32]string, vectors map[uint32][]string) []byte {
+	return propertySetWith(fmtidDocSummaryInformation, props, nil, vectors)
+}
+
+// SummaryInformationWithVectors is the same for the SummaryInformation set, where a
+// Keywords list may be stored as a vector rather than one delimited string.
+func SummaryInformationWithVectors(props map[uint32]string, vectors map[uint32][]string) []byte {
+	return propertySetWith(fmtidSummaryInformation, props, nil, vectors)
+}
+
+// PropDocumentParts is DocumentSummaryInformation 0x0D: the vector of part names —
+// sheet names in a workbook, slide titles in a presentation. msoleps labels it
+// "Document parts".
+const PropDocumentParts = 0x0000000D
+
+// PropHyperlinks is DocumentSummaryInformation 0x15, also vector-valued.
+const PropHyperlinks = 0x00000015
+
 // fmtidUserDefined is {D5CDD502-2E9C-101C-9397-08002B2CF9AE}, the user-defined
 // property set. Note it differs from DocumentSummaryInformation's FMTID in ONE
 // nibble (101C vs 101B), which is easy to mistype into a set no reader recognises.
@@ -735,11 +762,19 @@ const firstCustomPropID = 2
 // order so the bytes are stable across calls: ranging a map directly would vary the
 // output and any golden snapshot built on it would flap.
 func propertySet(fmtid []byte, strs map[uint32]string, times map[uint32]uint64) []byte {
-	ids := make([]uint32, 0, len(strs)+len(times))
+	return propertySetWith(fmtid, strs, times, nil)
+}
+
+// propertySetWith is propertySet plus VT_VECTOR|VT_LPSTR properties.
+func propertySetWith(fmtid []byte, strs map[uint32]string, times map[uint32]uint64, vectors map[uint32][]string) []byte {
+	ids := make([]uint32, 0, len(strs)+len(times)+len(vectors))
 	for id := range strs {
 		ids = append(ids, id)
 	}
 	for id := range times {
+		ids = append(ids, id)
+	}
+	for id := range vectors {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
@@ -750,6 +785,33 @@ func propertySet(fmtid []byte, strs map[uint32]string, times map[uint32]uint64) 
 	}
 	vals := make([]encoded, 0, len(ids))
 	for _, id := range ids {
+		if elems, ok := vectors[id]; ok {
+			// VT_VECTOR|VT_LPSTR (0x101E): the 32-bit type word, a 4-byte element
+			// count, then each element as a VT_LPSTR body — 4-byte length INCLUDING
+			// the null terminator, then the bytes padded to a 4-byte boundary.
+			v := make([]byte, 8)
+			binary.LittleEndian.PutUint32(v[0:], 0x0000101E)
+			binary.LittleEndian.PutUint32(v[4:], uint32(len(elems)))
+			for _, e := range elems {
+				// NO padding between elements. A standalone CodePageString property value
+				// is padded to a multiple of 4; the elements inside a vector are packed
+				// end to end. Verified against three real Excel-written files — in
+				// poi_sampless.xls the element lengths run 12, 15, 7 and the next
+				// property's type word follows the last byte immediately.
+				//
+				// A first version of this encoder padded each element, and so did the
+				// first version of the decoder that reads them. The two agreed, so every
+				// test passed while a real file decoded 2 of 3 sheet names. An encoder
+				// that matches a buggy reader is worse than no fixture at all.
+				body := append([]byte(e), 0)
+				n := make([]byte, 4)
+				binary.LittleEndian.PutUint32(n, uint32(len(body)))
+				v = append(v, n...)
+				v = append(v, body...)
+			}
+			vals = append(vals, encoded{id: id, val: v})
+			continue
+		}
 		if ft, ok := times[id]; ok {
 			// VT_FILETIME (0x0040): 2-byte type, 2 bytes padding, 8-byte FILETIME.
 			v := make([]byte, 12)

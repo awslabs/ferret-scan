@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH              FILE
+--------------------------------------------------------------------------------------------
+[HIGH  ] ssn          SSN                   100.00% line     3 449-87-4100        sheetnames.xls
+[LOW   ] metadata     COMPANY_INFO           55.00% line     1 Fairbanks Holdings sheetnames.xls
