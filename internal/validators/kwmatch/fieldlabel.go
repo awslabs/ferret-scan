@@ -68,7 +68,18 @@ func LooksLikeFieldLabel(line string, keywords []string) bool {
 	// "Driver's License Number" missed every keyword while its individual lowercased
 	// words matched — the bug this ordering fixes.
 	lower := strings.ToLower(t)
-	if !ContainsAny(lower, keywords) {
+	// ContainsAnyLabel, not ContainsAny: a label written without separators is still that label.
+	//
+	// This is the gate that actually rejected a camelCase label, and it fires BEFORE the per-word
+	// loop below — so teaching only that loop about concatenated spellings would have been a no-op.
+	// Measured at HEAD: for "memberId:" this returned false while "member id:" and "member_id:"
+	// returned true, which is why the spaced spellings opened a cross-line window and the camelCase
+	// one did not (#409).
+	//
+	// Widening here is the safe direction: this function only ever ADMITS context that would
+	// otherwise be ignored, so it can add a finding and never remove one. That is the restriction
+	// ContainsLabel documents, and the per-word loop below is what still keeps a non-label line out.
+	if !ContainsAnyLabel(lower, keywords) {
 		return false
 	}
 	for _, w := range strings.FieldsFunc(lower, func(r rune) bool {
@@ -95,20 +106,48 @@ func LooksLikeFieldLabel(line string, keywords []string) bool {
 	return true
 }
 
-// keywordWord reports whether w appears as one of the WORDS of any keyword.
+// keywordWord reports whether w appears as one of the WORDS of any keyword, or is the whole keyword
+// with its separators removed.
 //
 // Per-word rather than ContainsAny(w, keywords), because most of these vocabularies are
 // multi-word: "member id", "driver's license", "medical record". Testing the whole
 // keyword against a single word can never match, so "Member ID" was rejected as
 // non-label vocabulary even though "member id" is a keyword — the bug this fixes.
+//
+// The concatenated spelling counts because it is the same label written the way a JSON key or an ORM
+// field is: "memberid" for "member id", "driverslicensenumber" for "driver's license number". Without
+// it, a line consisting of exactly that one token has no qualifying word at all and is rejected as
+// non-label vocabulary (#409).
+//
+// Only the FULL concatenation, deliberately. Accepting an arbitrary run of a keyword's words would
+// admit "licensenumber" from "driver's license number", and this loop is the false-positive gate that
+// keeps a non-label line from opening a cross-line window, so the narrowest widening that closes the
+// gap is the right one.
+//
+// The concatenation is compared INCREMENTALLY rather than built. A strings.Builder here cost one
+// allocation per keyword — measured at +1 alloc/op and +12% on a label line walked word by word —
+// while consuming w as the keyword's words are visited costs none, and abandons a keyword as soon as
+// its prefix diverges.
 func keywordWord(w string, keywords []string) bool {
 	for _, kw := range keywords {
+		consumed := 0   // bytes of w matched by this keyword's words so far
+		aligned := true // w is still a prefix-match of the concatenation
 		for _, part := range strings.FieldsFunc(strings.ToLower(kw), func(r rune) bool {
 			return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '\''
 		}) {
 			if part == w {
 				return true
 			}
+			if aligned {
+				if consumed+len(part) <= len(w) && w[consumed:consumed+len(part)] == part {
+					consumed += len(part)
+				} else {
+					aligned = false
+				}
+			}
+		}
+		if aligned && consumed == len(w) && consumed > 0 {
+			return true
 		}
 	}
 	return false
