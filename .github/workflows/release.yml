@@ -14,6 +14,25 @@ on:
 permissions:
   contents: write
   packages: write
+  # Needed because #425 switched the Homebrew formula from a direct push to main
+  # over to a pull request. A workflow that declares a permissions block gets NONE
+  # for every scope it does not list -- not the repository default -- so omitting
+  # this made `pull-requests` none, and goreleaser's PR step failed the v2.3.4
+  # release after the assets were already published:
+  #
+  #	pushing              branch=chore/brew-formula-2.3.4 file=HomebrewFormula/ferret-scan.rb
+  #	opening pull request base=awslabs:ferret-scan:main head=awslabs:ferret-scan:chore/brew-formula-2.3.4
+  #	release failed after 1m57s
+  #	  * homebrew formula: could not create pull request:
+  #	    POST https://api.github.com/repos/awslabs/ferret-scan/pulls:
+  #	    403 Resource not accessible by integration
+  #
+  # "Resource not accessible by integration" is the missing-scope signature. The
+  # separate org policy that forbids Actions from creating pull requests reports
+  # itself differently -- "GitHub Actions is not permitted to create or approve pull
+  # requests" -- so if THAT message appears on a future release, this line is not the
+  # remedy and the tap has to move to its own repository instead.
+  pull-requests: write
 
 jobs:
   goreleaser:
