@@ -825,14 +825,44 @@ func (v *Validator) buildContext(match, line string, matchStart int, posKW, negK
 
 // --- Context helper functions ---
 
+// hasMedicalContext is the gate that decides whether the MRN scan runs at all, so a label it cannot
+// recognise means the regex never executes and the value is never reported.
+//
+// It matches with containsLabel rather than containsKeyword. A keyword list holding only the
+// SUB-PHRASES of a label cannot match that label's concatenated spelling: the whole-word rule
+// correctly refuses "medical record" inside "medicalrecordnumber", because "number" continues the
+// word, and equally refuses "record number", because "medical" precedes it. So
+// `medicalRecordNumber: 4839271` carried no medical context whatsoever and reported nothing, while
+// `medical_record_number: 5729183` reported MRN at HIGH 90 — measured, both at HEAD (#408).
+//
+// The full-length spellings below are what the concatenated forms actually match, and they have to
+// be listed explicitly for the same reason: three words joined into one token are reachable only
+// from the three-word keyword. The same asymmetry is already recorded for "patient identification"
+// in hasMRNKeyword.
+//
+// Widening a POSITIVE gate is the safe direction. This package's own comment on containsLabel
+// records why: when the widening was the default, the suppressor "ip address" matched "ipAddress"
+// and vetoed a real member ID. Every use here only ever admits more findings.
 func (v *Validator) hasMedicalContext(lowerLine string) bool {
 	medicalKW := []string{
 		"medical record", "mrn", "patient", "hospital", "clinic",
 		"physician", "doctor", "healthcare", "health record", "medical",
 		"admission", "discharge", "diagnosis", "treatment",
+		// Concatenatable long forms. Unreachable from the two-word entries above.
+		"medical record number", "health record number",
+		"patient record number", "hospital record number",
+		// Medical-specific label spellings, so an EHR export's camelCase field name reaches the
+		// scan: patientId, patientNumber, chartNumber, admissionNumber. Each names a patient or a
+		// chart, so each IS medical context on its own.
+		//
+		// A bare "record number" is deliberately NOT here. It names an MRN only in a medical
+		// setting, and this list is what decides whether the line is a medical setting at all —
+		// admitting it would make every generic record identifier medical context.
+		"patient id", "patient identification", "patient identification number",
+		"patient number", "chart number", "admission number",
 	}
 	for _, kw := range medicalKW {
-		if containsKeyword(lowerLine, kw) {
+		if containsLabel(lowerLine, kw) {
 			return true
 		}
 	}
@@ -914,9 +944,17 @@ func (v *Validator) hasMRNKeyword(lowerLine string) bool {
 		// Long form of "patient id" — not reachable from the abbreviation,
 		// since keywords match whole tokens.
 		"patient identification",
+		// And the three-word concatenations, which are reachable from neither the
+		// abbreviation nor the two-word forms above: "patientIdentificationNumber" and
+		// "medicalRecordNumber" are one token each, so only a three-word keyword matches them.
+		"patient identification number", "medical record number",
 	}
 	for _, kw := range mrnKW {
-		if containsKeyword(lowerLine, kw) {
+		// containsLabel, so the camelCase spellings an EHR export writes are recognised:
+		// "patientId", "recordNumber", "chartNumber", "admissionNumber". This flag only ever
+		// admits a finding — it boosts confidence and it CANCELS the soft non-medical
+		// suppressor — so widening it cannot suppress anything.
+		if containsLabel(lowerLine, kw) {
 			return true
 		}
 	}
