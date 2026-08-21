@@ -229,6 +229,15 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		testSuites.Errors += notExaminedSuite.Errors
 	}
 
+	// The redaction disclosure rolls up into FAILURES, not errors: the suite emits
+	// <failure> unconditionally, and the top-level totals must agree with the suite or
+	// consumers that trust the roll-up will disagree with ones that count elements.
+	if unredactedSuite, ok := buildUnredactedSuite(options); ok {
+		testSuites.TestSuites = append(testSuites.TestSuites, unredactedSuite)
+		testSuites.Tests += unredactedSuite.Tests
+		testSuites.Failures += unredactedSuite.Failures
+	}
+
 	// Generate XML
 	xmlData, err := xml.MarshalIndent(testSuites, "", "  ")
 	if err != nil {
