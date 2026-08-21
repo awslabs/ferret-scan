@@ -59,10 +59,16 @@ import (
 // walk already bounds each span by the file's actual length — this bounds the SUM, which the
 // per-span check does not.
 //
-// 10 MB matches the metadata extractor's own MaxMetadataRead, so a value beyond it could not
-// have been reported in the first place. Exceeding it is a refusal rather than a truncation:
-// #374 is an open issue about exactly the "skip the oversize part and report the container
-// clean" shape.
+// This bounds the SUM of metadata bytes, which is a different quantity from anything on the read
+// side. An earlier version of this note justified the value by saying it "matches the metadata
+// extractor's own MaxMetadataRead, so a value beyond it could not have been reported in the first
+// place". That was wrong twice over: MaxMetadataRead bounded a cumulative FILE OFFSET rather than a
+// volume of metadata, so the two were never the same measure; and a file whose metadata sum exceeds
+// this is perfectly capable of reporting findings first and being refused here second. It no longer
+// exists in any case — #398 replaced it with an offset-free walk.
+//
+// Exceeding this is a refusal rather than a truncation: #374 is an open issue about exactly the
+// "skip the oversize part and report the container clean" shape.
 const maxTagBytes = 10 << 20
 
 // gpsType is the finding type the metadata validator emits for a position.

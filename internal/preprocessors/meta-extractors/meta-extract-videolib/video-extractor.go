@@ -65,25 +65,66 @@ type VideoMetadata struct {
 
 	// Additional properties
 	Properties map[string]string
+
+	// ExtractionWarning is a payload-free note that extraction finished but covered less than the
+	// whole file, so a value may be missing. It carries box types, byte offsets and limit
+	// constants only — never a metadata value, and never matched text.
+	//
+	// Before this existed the walk gave up on a bare `break` and returned a nil error, so a file
+	// whose metadata was never reached was reported as a complete, clean scan. AudioMetadata has
+	// carried the equivalent field for the same reason.
+	ExtractionWarning string
 }
 
-// MP4Box represents an MP4 atom/box structure
-type MP4Box struct {
-	Size   uint32
-	Type   [4]byte
-	Data   []byte
-	Offset int64
+// noteTruncation records the FIRST reason coverage was lost and keeps it.
+//
+// First wins rather than last: the earliest failure is the one that explains the others, and a
+// later note would otherwise overwrite the cause with a symptom.
+func noteTruncation(metadata *VideoMetadata, note string) {
+	if metadata.ExtractionWarning == "" {
+		metadata.ExtractionWarning = note
+	}
 }
 
 // Constants for MP4 parsing
 const (
-	MaxFileSize       = 500 * 1024 * 1024 // 500MB limit
-	MaxBoxSize        = 100 * 1024 * 1024 // 100MB per box limit
-	BoxHeaderSize     = 8                 // 4 bytes size + 4 bytes type
-	ExtendedBoxSize   = 16                // For 64-bit size boxes
-	MaxMetadataRead   = 10 * 1024 * 1024  // Only read first 10MB for metadata
-	ProcessingTimeout = 30 * time.Second  // 30 second timeout
+	// MaxFileSize is the extractor's own ceiling. It sits above the router's 100MB gate, which
+	// refuses the file first, so it is effectively unreachable on the CLI path.
+	MaxFileSize   = 500 * 1024 * 1024 // 500MB limit
+	BoxHeaderSize = 8                 // 4 bytes size + 4 bytes type
+
+	// ExtendedBoxSize is the header length when a box declares a 64-bit size (size == 1).
+	ExtendedBoxSize = 16
+
+	// MaxMoovParse bounds the ONE allocation this extractor makes: the moov payload it parses.
+	// Memory is therefore O(min(|moov|, MaxMoovParse)) and independent of the file's size.
+	//
+	// 32MB is measured headroom rather than a guess. The router refuses anything over 100MB before
+	// extraction runs, and a real moov is a fraction of its file — 0.14%, 0.27% and 0.39% across
+	// the videos on the machine this was written on — so a 100MB file's moov is a few hundred
+	// kilobytes. A moov beyond this is clamped and DISCLOSED, never silently truncated.
+	MaxMoovParse = 32 * 1024 * 1024
+
+	// MaxTopLevelBoxes bounds the walk's work so a file made of millions of tiny boxes cannot turn
+	// a scan into a CPU amplifier. A well-formed movie has a handful; a fragmented one (DASH/CMAF,
+	// a moof+mdat pair per fragment) can legitimately have tens of thousands.
+	//
+	// 1<<20 matches the atom budget the redactor's walk already uses, so the two sides give up at
+	// the same point. Measured cost is ~1.3µs per box — 100k boxes walk in 0.13s — so this ceiling
+	// is ~1.4s in the worst case, well inside ProcessingTimeout. A tighter 100k ceiling was tried
+	// first and rejected: it is reachable in an 800KB file, and it LOST a finding that the previous
+	// code found, which is the wrong direction to trade even for a disclosure.
+	MaxTopLevelBoxes = 1 << 20
+
+	ProcessingTimeout = 30 * time.Second // 30 second timeout
 )
+
+// errDeclaredOverrun marks a box whose declared size runs past the real end of the file.
+//
+// Its own sentinel because it is the one header error worth recovering from: the bytes up to the
+// real end are still worth parsing, which turns a truncated download into a partial result plus a
+// disclosure rather than nothing at all.
+var errDeclaredOverrun = errors.New("box declares more bytes than the file holds")
 
 // ExtractVideoMetadata extracts metadata from video files with resource limits
 func ExtractVideoMetadata(filePath string) (*VideoMetadata, error) {
@@ -313,140 +354,6 @@ func isVideoErrorRecoverable(errorType string) bool {
 	default:
 		return false
 	}
-}
-
-// parseMP4ContainerWithContext parses the MP4/MOV container structure with context
-func parseMP4ContainerWithContext(ctx context.Context, file *os.File, metadata *VideoMetadata) error {
-	bytesRead := int64(0)
-
-	for {
-		// Check context for cancellation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// Stop reading if we've read too much metadata
-		if bytesRead > MaxMetadataRead {
-			break
-		}
-
-		box, err := readMP4BoxWithContext(ctx, file)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to read box: %w", err)
-		}
-
-		bytesRead += int64(box.Size) + BoxHeaderSize
-
-		// Process specific box types
-		switch string(box.Type[:]) {
-		case "moov":
-			err = parseMoovBoxWithContext(ctx, box.Data, metadata)
-			if err != nil {
-				return fmt.Errorf("failed to parse moov box: %w", err)
-			}
-		case "ftyp":
-			err = parseFtypBox(box.Data, metadata)
-			if err != nil {
-				// Non-fatal error for ftyp parsing
-				continue
-			}
-		case "mdat":
-			// Skip media data - we only need metadata
-			continue
-		}
-	}
-
-	return nil
-}
-
-// readMP4BoxWithContext reads an MP4 box from the file with context
-func readMP4BoxWithContext(ctx context.Context, file *os.File) (*MP4Box, error) {
-	// Check context before reading
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	var header [BoxHeaderSize]byte
-	n, err := file.Read(header[:])
-	if err != nil {
-		return nil, err
-	}
-	if n != BoxHeaderSize {
-		return nil, io.EOF
-	}
-
-	// Parse box header
-	size := binary.BigEndian.Uint32(header[0:4])
-	var boxType [4]byte
-	copy(boxType[:], header[4:8])
-
-	// Handle extended size (64-bit)
-	if size == 1 {
-		var extSize [8]byte
-		n, err := file.Read(extSize[:])
-		if err != nil {
-			return nil, err
-		}
-		if n != 8 {
-			return nil, io.EOF
-		}
-		size64 := binary.BigEndian.Uint64(extSize[:])
-		if size64 > MaxBoxSize {
-			return nil, fmt.Errorf("box too large: %d bytes", size64)
-		}
-		// Safe conversion with bounds checking
-		if size64 < ExtendedBoxSize {
-			return nil, fmt.Errorf("invalid box size: %d is less than extended box size %d", size64, ExtendedBoxSize)
-		}
-		adjustedSize := size64 - ExtendedBoxSize
-		if adjustedSize > math.MaxUint32 {
-			return nil, fmt.Errorf("box size too large for uint32: %d", adjustedSize)
-		}
-		size = uint32(adjustedSize)
-	} else if size == 0 {
-		// Box extends to end of file - skip for safety
-		return nil, io.EOF
-	} else {
-		size -= BoxHeaderSize
-	}
-
-	// Safety check for box size
-	if size > MaxBoxSize {
-		return nil, fmt.Errorf("box too large: %d bytes", size)
-	}
-
-	// Check context before reading data
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	// Read box data efficiently
-	data := make([]byte, size)
-	if size > 0 {
-		n, err := file.Read(data)
-		if err != nil {
-			return nil, err
-		}
-		// Safe comparison with bounds checking
-		if n < 0 || uint64(n) > math.MaxUint32 || uint32(n) != size {
-			return nil, fmt.Errorf("incomplete box read: expected %d, got %d", size, n)
-		}
-	}
-
-	return &MP4Box{
-		Size: size,
-		Type: boxType,
-		Data: data,
-	}, nil
 }
 
 // parseFtypBox parses the file type box
@@ -1500,107 +1407,6 @@ func NewOptimizedVideoReader(filePath string) (*OptimizedVideoReader, error) {
 	}, nil
 }
 
-// ReadBoxHeader reads a box header efficiently
-func (ovr *OptimizedVideoReader) ReadBoxHeader() (*MP4Box, error) {
-	var header [BoxHeaderSize]byte
-	n, err := ovr.file.Read(header[:])
-	if err != nil {
-		return nil, err
-	}
-	if n != BoxHeaderSize {
-		return nil, io.EOF
-	}
-
-	ovr.position += BoxHeaderSize
-
-	// Parse box header
-	size := binary.BigEndian.Uint32(header[0:4])
-	var boxType [4]byte
-	copy(boxType[:], header[4:8])
-
-	// Handle extended size (64-bit)
-	if size == 1 {
-		var extSize [8]byte
-		n, err := ovr.file.Read(extSize[:])
-		if err != nil {
-			return nil, err
-		}
-		if n != 8 {
-			return nil, io.EOF
-		}
-		ovr.position += 8
-		size64 := binary.BigEndian.Uint64(extSize[:])
-		if size64 > MaxBoxSize {
-			return nil, fmt.Errorf("box too large: %d bytes", size64)
-		}
-		// Safe conversion with bounds checking
-		if size64 < ExtendedBoxSize {
-			return nil, fmt.Errorf("invalid box size: %d is less than extended box size %d", size64, ExtendedBoxSize)
-		}
-		adjustedSize := size64 - ExtendedBoxSize
-		if adjustedSize > math.MaxUint32 {
-			return nil, fmt.Errorf("box size too large for uint32: %d", adjustedSize)
-		}
-		size = uint32(adjustedSize)
-	} else if size == 0 {
-		// Box extends to end of file - skip for safety
-		return nil, io.EOF
-	} else {
-		size -= BoxHeaderSize
-	}
-
-	// Safety check for box size
-	if size > MaxBoxSize {
-		return nil, fmt.Errorf("box too large: %d bytes", size)
-	}
-
-	return &MP4Box{
-		Size: size,
-		Type: boxType,
-		Data: nil, // Data will be read on demand
-	}, nil
-}
-
-// ReadBoxData reads box data efficiently
-func (ovr *OptimizedVideoReader) ReadBoxData(size uint32) ([]byte, error) {
-	if size == 0 {
-		return nil, nil
-	}
-
-	data := make([]byte, size)
-	n, err := ovr.file.Read(data)
-	if err != nil {
-		return nil, err
-	}
-	// Safe comparison with bounds checking
-	if n < 0 || uint64(n) > math.MaxUint32 || uint32(n) != size {
-		return nil, fmt.Errorf("incomplete box read: expected %d, got %d", size, n)
-	}
-
-	ovr.position += int64(size)
-	return data, nil
-}
-
-// SkipBoxData skips box data without reading it
-func (ovr *OptimizedVideoReader) SkipBoxData(size uint32) error {
-	if size == 0 {
-		return nil
-	}
-
-	_, err := ovr.file.Seek(int64(size), io.SeekCurrent)
-	if err != nil {
-		return err
-	}
-
-	ovr.position += int64(size)
-	return nil
-}
-
-// GetPosition returns the current position
-func (ovr *OptimizedVideoReader) GetPosition() int64 {
-	return ovr.position
-}
-
 // GetFileSize returns the file size
 func (ovr *OptimizedVideoReader) GetFileSize() int64 {
 	return ovr.fileSize
@@ -1611,85 +1417,172 @@ func (ovr *OptimizedVideoReader) Close() error {
 	return ovr.file.Close()
 }
 
-// parseMP4ContainerOptimized parses MP4 container with optimized reading
-func parseMP4ContainerOptimized(ctx context.Context, reader *OptimizedVideoReader, metadata *VideoMetadata) error {
-	bytesRead := int64(0)
+// readTopLevelHeaderAt reads one top-level box header at off and returns its type, its TOTAL size
+// (header included) and the length of that header.
+//
+// Takes an io.ReaderAt rather than the file so a test can wrap it and count exactly how many bytes
+// the walk reads — which is the only way to assert that a media payload is never touched.
+//
+// Every declared size is checked against the real end of the file before it is trusted. That check
+// is written as `total > fileSize-off`, deliberately NOT as `off+total > fileSize`: a 64-bit
+// largesize near 2^63 makes the addition overflow to a negative offset, which a bounds test phrased
+// that way silently accepts. Both operands here are non-negative, so the comparison cannot wrap.
+func readTopLevelHeaderAt(r io.ReaderAt, off, fileSize int64) (boxType string, total, hdrLen int64, err error) {
+	var head [ExtendedBoxSize]byte
+	if _, err = io.ReadFull(io.NewSectionReader(r, off, BoxHeaderSize), head[:BoxHeaderSize]); err != nil {
+		return "", 0, 0, err
+	}
+	size32 := binary.BigEndian.Uint32(head[0:4])
+	boxType = string(head[4:8])
+	hdrLen = BoxHeaderSize
 
-	for {
-		// Check context for cancellation
+	switch size32 {
+	case 1:
+		// The real size is a 64-bit value following the type.
+		if _, err = io.ReadFull(io.NewSectionReader(r, off+BoxHeaderSize, 8), head[BoxHeaderSize:ExtendedBoxSize]); err != nil {
+			return "", 0, 0, err
+		}
+		hdrLen = ExtendedBoxSize
+		size64 := binary.BigEndian.Uint64(head[BoxHeaderSize:ExtendedBoxSize])
+		if size64 > math.MaxInt64 {
+			return boxType, 0, hdrLen, fmt.Errorf("box %q declares an unrepresentable 64-bit size", boxType)
+		}
+		total = int64(size64)
+	case 0:
+		// Size 0 means "extends to the end of the file", permitted for the last box.
+		total = fileSize - off
+	default:
+		total = int64(size32)
+	}
+
+	// A box cannot be smaller than its own header. Stepping by such a size would not advance the
+	// walk, which is the spin this file has already been bitten by once.
+	if total < hdrLen {
+		return boxType, 0, hdrLen, fmt.Errorf("box %q declares %d bytes, smaller than its %d-byte header", boxType, total, hdrLen)
+	}
+	if total > fileSize-off {
+		return boxType, 0, hdrLen, errDeclaredOverrun
+	}
+	return boxType, total, hdrLen, nil
+}
+
+// parseMP4ContainerOptimized walks the top-level boxes and parses the metadata ones.
+//
+// The walk is by ABSOLUTE OFFSET and has no positional budget, because moov is legal anywhere in the
+// file. ISO/IEC 14496-12 cl. 8.2.1.1 says moov is "normally ... close to the beginning or end of the
+// file, though this is not required", and Apple's QTFF is blunter: "QuickTime does not impose any
+// rules about the order of these atoms." ffmpeg and every camera measured on this machine write moov
+// LAST by default; faststart is a second pass nobody runs by accident.
+//
+// What was here before charged a 10MB budget for every box it stepped over, including the mdat it
+// skipped with a bare seek and never read — so the counter measured a file offset, not bytes read,
+// and a 12MB movie exhausted a "metadata" allowance while costing no memory at all. The walk then
+// stopped with a bare `break` and returned nil, so a file whose entire moov was never reached was
+// reported as a complete, clean scan at exit 0 (#398).
+//
+// Cost: TIME is O(number of top-level boxes) — a handful of 8-byte header reads. MEMORY is
+// O(min(|moov|, MaxMoovParse)), independent of the file's size, because no other box is ever read.
+// A media payload is stepped over by arithmetic, not even seeked.
+//
+// Always returns nil once the file is open. Lost coverage is reported through
+// metadata.ExtractionWarning instead, so a file that yielded SOME metadata keeps it — an error here
+// would throw away findings the walk had already collected.
+func parseMP4ContainerOptimized(ctx context.Context, reader *OptimizedVideoReader, metadata *VideoMetadata) error {
+	fileSize := reader.GetFileSize()
+	cur := int64(0)
+	boxes := 0
+	sawMoov := false
+
+	for cur+BoxHeaderSize <= fileSize {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		// Stop reading if we've read too much metadata
-		if bytesRead > MaxMetadataRead {
+		if boxes >= MaxTopLevelBoxes {
+			noteTruncation(metadata, fmt.Sprintf(
+				"video metadata may be incomplete: the box walk stopped after %d top-level boxes",
+				MaxTopLevelBoxes))
 			break
 		}
+		boxes++
 
-		// Read box header
-		box, err := reader.ReadBoxHeader()
-		if err == io.EOF {
-			break
+		boxType, total, hdrLen, err := readTopLevelHeaderAt(reader.file, cur, fileSize)
+		switch {
+		case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+			// A clean end of file, or a few stray bytes after the last box. Nothing was lost.
+			return nil
+		case errors.Is(err, errDeclaredOverrun):
+			// A truncated file. Read to its real end rather than abandoning the box: a partial
+			// moov still yields values, and the operator is told coverage was cut short.
+			noteTruncation(metadata, fmt.Sprintf(
+				"video metadata may be incomplete: the %q box at offset %d declares more bytes than "+
+					"the file holds, so it was read only to the file's real end", boxType, cur))
+			total = fileSize - cur
+			if total < hdrLen {
+				return nil
+			}
+		case err != nil:
+			noteTruncation(metadata, fmt.Sprintf(
+				"video metadata may be incomplete: the box structure could not be followed past "+
+					"offset %d (%v)", cur, err))
+			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("failed to read box header: %w", err)
-		}
 
-		boxType := string(box.Type[:])
-		bytesRead += int64(box.Size) + BoxHeaderSize
+		payloadStart := cur + hdrLen
+		payloadLen := total - hdrLen
 
-		// Process specific box types
 		switch boxType {
 		case "moov":
-			// Read moov box data for metadata
-			data, err := reader.ReadBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to read moov box data: %w", err)
+			sawMoov = true
+			readLen := payloadLen
+			if readLen > MaxMoovParse {
+				readLen = MaxMoovParse
+				noteTruncation(metadata, fmt.Sprintf(
+					"video metadata may be incomplete: the moov box is %d bytes and only the first "+
+						"%d were parsed", payloadLen, MaxMoovParse))
 			}
-			box.Data = data
-
-			err = parseMoovBoxWithContext(ctx, box.Data, metadata)
-			if err != nil {
-				return fmt.Errorf("failed to parse moov box: %w", err)
+			data := make([]byte, readLen)
+			if _, err := io.ReadFull(io.NewSectionReader(reader.file, payloadStart, readLen), data); err != nil {
+				noteTruncation(metadata, fmt.Sprintf(
+					"video metadata may be incomplete: the moov box at offset %d could not be read "+
+						"in full (%v)", cur, err))
+			} else if err := parseMoovBoxWithContext(ctx, data, metadata); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				noteTruncation(metadata, fmt.Sprintf(
+					"video metadata may be incomplete: the moov box at offset %d could not be "+
+						"parsed in full (%v)", cur, err))
 			}
 		case "ftyp":
-			// Read ftyp box data for file type info
-			data, err := reader.ReadBoxData(box.Size)
-			if err != nil {
-				// Non-fatal error for ftyp reading
-				reader.SkipBoxData(box.Size)
-				continue
+			// Only the brands are wanted, and they sit at the front of the payload.
+			readLen := payloadLen
+			if readLen > 1024 {
+				readLen = 1024
 			}
-			box.Data = data
-
-			err = parseFtypBox(box.Data, metadata)
-			if err != nil {
-				// Non-fatal error for ftyp parsing
-				continue
-			}
-		case "mdat":
-			// Skip media data - we only need metadata
-			err = reader.SkipBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to skip mdat box: %w", err)
-			}
-		case "free", "skip":
-			// Skip free space boxes
-			err = reader.SkipBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to skip %s box: %w", boxType, err)
+			data := make([]byte, readLen)
+			if _, err := io.ReadFull(io.NewSectionReader(reader.file, payloadStart, readLen), data); err == nil {
+				_ = parseFtypBox(data, metadata) // brands are advisory; a bad ftyp is not a failure
 			}
 		default:
-			// Skip unknown boxes to save time and memory
-			err = reader.SkipBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to skip %s box: %w", boxType, err)
-			}
+			// mdat, free, skip, wide, uuid and anything unrecognised: stepped over by arithmetic.
+			// No read, no allocation, not even a seek — which is what makes a 90MB movie cost the
+			// same as a 90KB one.
 		}
+
+		if metadata.ExtractionWarning != "" && errors.Is(err, errDeclaredOverrun) {
+			// The file ended early; there is nothing after this box to walk.
+			return nil
+		}
+		cur += total // total >= hdrLen >= BoxHeaderSize, so the walk always advances
 	}
 
+	if !sawMoov {
+		noteTruncation(metadata,
+			"video metadata may be incomplete: no moov box was found in the file")
+	}
 	return nil
 }
 

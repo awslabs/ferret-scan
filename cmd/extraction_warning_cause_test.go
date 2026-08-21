@@ -84,6 +84,40 @@ func TestEveryExtractionWarningProducerLandsInTheRightBucket(t *testing.T) {
 			reason:   `Text Extractor: no text extracted from .docx: no document body part was found in the archive, so document content was NOT scanned; office_metadata: embedded part "attachment.docx" was not examined: declares 52433928 bytes, over the 52428800-byte embedded cap`,
 			want:     causeCutShort,
 		},
+		// The video walk's six wordings (#398). Each is a case where SOME of the file was read and
+		// the rest was not, so all six are cut-short rather than no-text. A phrasing that happened
+		// to contain "no text extracted from" would be filed under the milder cause and reported to
+		// the operator under a heading that asserts something untrue.
+		{
+			producer: "video walk, box budget exhausted",
+			reason:   "video_metadata: video metadata may be incomplete: the box walk stopped after 1048576 top-level boxes",
+			want:     causeCutShort,
+		},
+		{
+			producer: "video walk, box declares more than the file holds",
+			reason:   `video_metadata: video metadata may be incomplete: the "mdat" box at offset 28 declares more bytes than the file holds, so it was read only to the file's real end`,
+			want:     causeCutShort,
+		},
+		{
+			producer: "video walk, structure not followable",
+			reason:   `video_metadata: video metadata may be incomplete: the box structure could not be followed past offset 20 (box "junk" declares 4 bytes, smaller than its 8-byte header)`,
+			want:     causeCutShort,
+		},
+		{
+			producer: "video walk, moov past the parse limit",
+			reason:   "video_metadata: video metadata may be incomplete: the moov box is 41943040 bytes and only the first 33554432 were parsed",
+			want:     causeCutShort,
+		},
+		{
+			producer: "video walk, moov unreadable",
+			reason:   "video_metadata: video metadata may be incomplete: the moov box at offset 27296158 could not be read in full (unexpected EOF)",
+			want:     causeCutShort,
+		},
+		{
+			producer: "video walk, no moov found",
+			reason:   "video_metadata: video metadata may be incomplete: no moov box was found in the file",
+			want:     causeCutShort,
+		},
 	}
 
 	for _, c := range cases {

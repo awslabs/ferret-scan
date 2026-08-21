@@ -25,6 +25,31 @@ A file over the limit is **not** silently dropped: if it is a type the tool coul
 processed, it is reported under `files_not_examined`, listed in the `NOT FULLY EXAMINED`
 block, and `--fail-on-incomplete` exits 3. See [Coverage Disclosure](../COVERAGE_DISCLOSURE.md).
 
+### Video metadata bounds
+
+Video metadata lives in the `moov` box, which the standards allow anywhere in the file — ISO/IEC
+14496-12 cl. 8.2.1.1 says it is "normally ... close to the beginning or end of the file, though this
+is not required", and Apple's QuickTime format reference states outright that "QuickTime does not
+impose any rules about the order of these atoms". ffmpeg and typical cameras write it **last**;
+`-movflags faststart` is a second pass that moves it to the front.
+
+The extractor therefore has **no positional limit** — it walks the top-level boxes by header and
+reads only the metadata ones, so a `moov` at the end of a 99MB file is read exactly like one at the
+start, and the media payload is never read at all. Two work bounds remain:
+
+| Bound | Value | Configurable | Disclosed when it bites |
+|---|---|---|---|
+| `MaxMoovParse` | 32MB of `moov` payload parsed | No | Yes |
+| `MaxTopLevelBoxes` | 1,048,576 top-level boxes walked | No | Yes |
+
+Both are far above any real file: a real `moov` measures a fraction of a percent of its file, and a
+well-formed movie has a handful of top-level boxes. When either bound is reached the result is a
+`coverage cut short` disclosure, not a silent truncation.
+
+Before this, the extractor stopped once the walk passed a 10MB **file offset** — counting the media
+bytes it skipped without reading — so a camera-default recording over about 10MB reported no metadata
+at all, at exit 0, with nothing under `files_not_examined`.
+
 ## Processing and Performance Limits
 
 | Component | Limit | Type | Configurable | Notes |

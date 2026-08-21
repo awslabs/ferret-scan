@@ -108,6 +108,19 @@ func buildISOFile(t *testing.T, path string, mdatBytes int64, moovFirst bool, ud
 	return path
 }
 
+// itunesAtom builds one of the iTunes/QuickTime metadata atom types, whose first byte is 0xA9.
+//
+// NOT []byte("©cmt"). The Go literal "©" is its two-byte UTF-8 encoding, so that spelling is a FIVE
+// byte type which copies into a four-byte field truncated — the box then has a nonsense type and is
+// silently ignored. The extractor's own canonicalBoxType comment records this same trap, and writing
+// the fixtures the wrong way is what made the first run of these tests fail.
+func itunesAtom(threeCC string) []byte {
+	if len(threeCC) != 3 {
+		panic("an iTunes atom type is 0xA9 plus exactly three characters, got " + threeCC)
+	}
+	return []byte{0xA9, threeCC[0], threeCC[1], threeCC[2]}
+}
+
 // textAtom encodes a QuickTime string atom the way parseStringBox reads one: a 2-byte text length,
 // a 2-byte language code, then the text.
 func textAtom(boxType []byte, text string) []byte {

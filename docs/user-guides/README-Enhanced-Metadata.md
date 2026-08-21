@@ -123,6 +123,13 @@ Contact: manager@johnmusician.com
 ### Video Files
 **Supported Formats**: MP4, MOV, M4V
 
+Video metadata lives in the `moov` box, and the file formats allow it **anywhere** — ffmpeg and
+typical cameras write it at the END of the file, while `-movflags faststart` moves it to the front.
+Both layouts are read identically, and where the box sits does not change what is reported. The
+media payload itself is never read, so a long recording costs no more memory than a short one. If a
+file's box structure cannot be followed to the end, the scan says so rather than reporting the file
+as fully examined — see [Coverage Disclosure](../COVERAGE_DISCLOSURE.md).
+
 **Metadata Extracted**:
 - **Location Data**: GPS coordinates, recording location
 - **Device Information**: Camera make/model, recording device

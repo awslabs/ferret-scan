@@ -71,6 +71,34 @@ An embedded part of a type nothing can read stays silent on purpose. A line on s
 every decorative `.emf` in every slide deck trains operators to ignore the warnings that
 matter.
 
+### What `coverage cut short` covers in a video container
+
+Video metadata sits in the `moov` box, which the standards permit anywhere in the file and which
+ffmpeg and typical cameras write **last**. The box walk reads only headers and metadata boxes, so a
+`moov` at the end of a 99 MB recording is read like one at the start. Six cases stop it early, and
+each says so:
+
+| case | what the operator sees |
+|---|---|
+| no `moov` box in the file | `video metadata may be incomplete: no moov box was found in the file` |
+| a box declaring more bytes than the file holds | `video metadata may be incomplete: the "mdat" box at offset N declares more bytes than the file holds, so it was read only to the file's real end` |
+| a box smaller than its own header, or an unfollowable structure | `video metadata may be incomplete: the box structure could not be followed past offset N (...)` |
+| a `moov` past the 32 MB parse limit | `video metadata may be incomplete: the moov box is N bytes and only the first 33554432 were parsed` |
+| a `moov` that could not be read or parsed in full | `video metadata may be incomplete: the moov box at offset N could not be read in full (...)` |
+| more than 1,048,576 top-level boxes | `video metadata may be incomplete: the box walk stopped after 1048576 top-level boxes` |
+
+All six were **silent** before #398, and so was the much larger case they sit alongside: the walk
+used to stop once it had passed a 10 MB *file offset*, counting the media bytes it skipped without
+reading. A camera-default recording over roughly 10 MB therefore reported no metadata at all, at
+exit 0, with nothing under `files_not_examined` — and `--fail-on-incomplete` exited 0 too. The same
+file with its `moov` moved to the front reported an SSN at HIGH 100.
+
+These are `coverage cut short` rather than `no body text` for the same reason as the container cases
+above: some of the file genuinely was read. An over-declared `moov` is clamped to the file's real end
+and still yields whatever values are present, so a disclosure here does not mean nothing was found.
+
+A well-formed video never produces any of these lines.
+
 ## Per-format details
 
 ### gitlab-sast — `scan.messages[]`
