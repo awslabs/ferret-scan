@@ -106,6 +106,82 @@ func buildRedactionFixture(n int, fillerLines int) (string, []detector.Match) {
 // unexported text-level helper: the public entry point is what the CLI uses, and
 // a timing guard should measure the path that ships. File I/O adds a constant
 // that cancels in the ratio.
+// buildRedactionFixtureRepeated returns text with n distinct SSNs each emitted TWICE, plus the
+// matches a scan would report for all 2n occurrences.
+//
+// This is the shape buildRedactionFixture deliberately excludes, and excluding it is what let a
+// quadratic hide from the guard for so long. Its comment explains the omission — repeated values
+// "would let a redactor replace every occurrence in one pass and defeat the measurement" — which is
+// true of the plaintext REPLACEMENT step and false of the POSITION CORRELATION that runs first.
+//
+// Correlation scores an exact match 0.95 for a unique value but 0.95*(0.5+0.5/n) for n occurrences,
+// which is 0.7125 at n=2 — below the 0.8 confidenceThreshold. So every duplicated value fell
+// through to the fuzzy matcher, which slid over the whole document per match. Measured at HEAD
+// before the fix, at equal file size and equal finding count:
+//
+//	fixture   bytes   duplicated   distinct
+//	n=75      3.9KB      0.89s      0.07s
+//	n=150     7.9KB     19.92s      0.11s
+//	n=300    16.0KB    128.49s      0.10s
+//
+// Quadratic against a flat control, and 16x past this file's 8s ceiling at 16KB. A log or CSV that
+// repeats any value is the ordinary case, not a hostile one (#376).
+func buildRedactionFixtureRepeated(n int) (string, []detector.Match) {
+	var b strings.Builder
+	matches := make([]detector.Match, 0, 2*n)
+	line := 0
+	for i := 0; i < n; i++ {
+		// Distinct across i, and none are real: area group 900+ is unassigned.
+		ssn := fmt.Sprintf("9%02d-%02d-%04d", i%100, (i/100)%100, i%10000)
+		for _, tag := range [2]string{"record", "repeat"} {
+			line++
+			text := fmt.Sprintf("%s %d ssn %s", tag, i, ssn)
+			b.WriteString(text)
+			b.WriteByte('\n')
+			matches = append(matches, detector.Match{
+				Text:       ssn,
+				Type:       "SSN",
+				Confidence: 100,
+				LineNumber: line,
+				Context:    detector.ContextInfo{FullLine: text},
+			})
+		}
+	}
+	return b.String(), matches
+}
+
+// A value repeated in the document must not cost more than a distinct one.
+//
+// Asserted against the same redactionAbsoluteCeiling the rest of this file uses, and paired with a
+// DISTINCT control of the same size and match count so the assertion cannot pass by the whole
+// redactor being slow or the machine being fast. timeRedact's leak floor applies to every sample,
+// so an "optimisation" that skips matches fails instead of looking quick.
+func TestRedactionComplexity_RepeatedValues(t *testing.T) {
+	const n = 300 // 600 matches, ~16KB — 128s at HEAD before the fix
+
+	repeatedText, repeatedMatches := buildRedactionFixtureRepeated(n)
+	distinctText, distinctMatches := buildRedactionFixture(2*n, 0)
+
+	repeated, _ := timeRedact(t, repeatedText, repeatedMatches)
+	distinct, _ := timeRedact(t, distinctText, distinctMatches)
+
+	if repeated > redactionAbsoluteCeiling {
+		t.Errorf("redacting %d repeated-value matches over %d bytes took %v, ceiling %v — a "+
+			"document that repeats a value routes every match through the whole-document fuzzy "+
+			"slide (#376). The distinct control of the same shape took %v",
+			len(repeatedMatches), len(repeatedText), repeated, redactionAbsoluteCeiling, distinct)
+	}
+
+	// The comparison is the real signal: the two fixtures are the same size and carry the same
+	// number of matches, so any large gap is the duplicate-value path costing extra rather than
+	// redaction being slow in general.
+	if distinct > 0 && repeated > 20*distinct && repeated > 500*time.Millisecond {
+		t.Errorf("repeated values took %v against %v for the same size and match count (%.0fx) — "+
+			"the duplicate path is doing work the distinct path is not", repeated, distinct,
+			float64(repeated)/float64(distinct))
+	}
+}
+
 func timeRedact(t *testing.T, text string, matches []detector.Match) (time.Duration, int) {
 	t.Helper()
 

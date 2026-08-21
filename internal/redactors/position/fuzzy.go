@@ -17,6 +17,43 @@ func (dpc *DefaultPositionCorrelator) findBestFuzzyMatch(targetText, originalTex
 		return nil
 	}
 
+	// An EXACT occurrence needs no fuzzy search, and skipping to it is what keeps this
+	// function linear instead of quadratic.
+	//
+	// Callers reach here whenever exactMatchConfidence falls below confidenceThreshold, and it
+	// does that for any value occurring more than once: 0.95*(0.5+0.5/n) is 0.7125 at n=2 against
+	// a 0.8 threshold. So a document that repeats ANY value — a log, a CSV, an export — routed
+	// every one of its findings through the slide below, which walks the whole document running
+	// ~7 lengths x ~7 starts of a freshly allocated Levenshtein matrix per position. Measured on
+	// fixtures of equal size and equal finding count, duplicated against distinct:
+	//
+	//	3.9KB   0.89s  vs 0.07s
+	//	7.9KB  19.92s  vs 0.11s
+	//	16KB  128.49s  vs 0.10s      <- distinct is flat; duplicated is quadratic
+	//
+	// Extrapolated against the 100MB MaxFileSize that is days. Availability only — the output was
+	// always correct — but the streaming redaction path hangs on ordinary input (#376).
+	//
+	// This is OUTPUT-IDENTICAL to the loop, not an approximation:
+	//   - an exact match requires editDistance == 0, which requires substring == targetText, so it
+	//     can only occur at length == targetLen;
+	//   - findBestMatchInCandidate RETURNS the moment editDistance == 0, and the slide below
+	//     BREAKS the moment bestMatch.EditDistance == 0;
+	//   - the earliest window that can contain the first occurrence at offset p is
+	//     max(0, p-2*maxEditDistance), and within it the ascending `start` scan reaches p before
+	//     any later occurrence.
+	// So the loop's own result for a document containing targetText is exactly
+	// {targetText, firstIndex, 0, 1.0} — which is what this returns. calculateStringSimilarity
+	// returns 1.0 for identical strings, so even the Similarity field agrees.
+	if idx := strings.Index(originalText, targetText); idx >= 0 {
+		return &FuzzyMatch{
+			Text:         targetText,
+			Index:        idx,
+			EditDistance: 0,
+			Similarity:   1.0,
+		}
+	}
+
 	bestMatch := &FuzzyMatch{
 		EditDistance: math.MaxInt32,
 		Similarity:   0.0,
