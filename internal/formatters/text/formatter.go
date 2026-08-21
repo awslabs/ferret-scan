@@ -203,13 +203,52 @@ func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, 
 // dangerous output the tool can produce, because it is the same text a genuinely
 // clean scan produces. The footer is the only thing distinguishing "I looked and
 // found nothing" from "I could not look".
+// disclosureFooter is everything the summary frame must enclose below its own line.
+//
+// Two independent disclosures land here — coverage gaps (files never fully read) and
+// redaction refusals (values reported but left in cleartext) — and a run can have
+// both. They are joined rather than given separate frames because the frame's job is
+// to keep one contiguous block on ONE stream: two frames printed in sequence read as
+// two reports, and a piped stdout could receive one and not the other.
+//
+// Each block carries its own heading, so no divider is added between them; the
+// headings already say which is which.
+func disclosureFooter(options formatters.FormatterOptions) string {
+	// The redaction block is rendered HERE from the structured disclosure, so it does
+	// not depend on a caller having built prose. UnredactedFooter remains an override
+	// for a caller that wants its own wording; empty means "derive it", which is what
+	// the CLI, the web UI and every library consumer do.
+	unredacted := options.UnredactedFooter
+	if unredacted == "" {
+		total := 0
+		if options.Stats != nil {
+			total = options.Stats.TotalFiles
+		}
+		// The exit hint is omitted when the not-examined block above already carries
+		// it: both feed the same --fail-on-incomplete escalation, so printing the same
+		// instruction twice inside one frame reads as two separate policies.
+		unredacted = formatters.RenderBlock(options.Unredacted, total, options.FailOnIncomplete,
+			options.NotExaminedFooter == "")
+	}
+
+	switch {
+	case options.NotExaminedFooter == "":
+		return unredacted
+	case unredacted == "":
+		return options.NotExaminedFooter
+	default:
+		return options.NotExaminedFooter + unredacted
+	}
+}
+
 func (f *Formatter) noMatchesText(msg string, options formatters.FormatterOptions) string {
-	if options.NotExaminedFooter == "" {
+	footer := disclosureFooter(options)
+	if footer == "" {
 		return msg
 	}
 
 	width := summaryRuleFloor
-	for _, line := range strings.Split(options.NotExaminedFooter, "\n") {
+	for _, line := range strings.Split(footer, "\n") {
 		if n := displayWidth(line); n > width {
 			width = n
 		}
@@ -220,7 +259,7 @@ func (f *Formatter) noMatchesText(msg string, options formatters.FormatterOption
 
 	return msg + "\n\n" +
 		rule("─", width) + "\n" +
-		options.NotExaminedFooter +
+		footer +
 		rule("═", width)
 }
 
@@ -282,7 +321,8 @@ func (f *Formatter) writeSummaryHeader(w io.Writer, options formatters.Formatter
 	if n := displayWidth(summaryLine); n > width {
 		width = n
 	}
-	for _, line := range strings.Split(options.NotExaminedFooter, "\n") {
+	footer := disclosureFooter(options)
+	for _, line := range strings.Split(footer, "\n") {
 		if n := displayWidth(line); n > width {
 			width = n
 		}
@@ -297,14 +337,14 @@ func (f *Formatter) writeSummaryHeader(w io.Writer, options formatters.Formatter
 	fmt.Fprintf(w, "\n%s\n", top)
 	fmt.Fprintln(w, summaryLine)
 
-	if options.NotExaminedFooter == "" {
+	if footer == "" {
 		fmt.Fprintf(w, "%s\n", rule("═", width))
 		return
 	}
 
 	// Single rule divides the two sections; double rule closes the block.
 	fmt.Fprintf(w, "%s\n", rule("─", width))
-	fmt.Fprint(w, options.NotExaminedFooter)
+	fmt.Fprint(w, footer)
 	fmt.Fprintf(w, "%s\n", rule("═", width))
 }
 

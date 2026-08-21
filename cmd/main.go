@@ -2262,17 +2262,27 @@ func main() {
 	// thing eventually disagree.
 	consideredFiles := len(filesToProcess) + len(discoveryUnexamined) + totalSkipped
 
+	// The unredacted disclosure, built ONCE and used by the stats counters, the
+	// structured formatter field and the text footer below.
+	//
+	// Counted over unsuppressedMatches — the slice the formatters actually render — so
+	// the "values in cleartext" number cannot disagree with the rows beneath it. Using
+	// allMatches would count suppressed findings as exposure and overstate it.
+	unredactedDisclosure := toFormatterUnredacted(unredactedFiles, unsuppressedMatches)
+
 	formatterOptions.Stats = &formatters.ScanStats{
-		TotalFiles:       consideredFiles,
-		FilesProcessed:   scannedFiles,
-		FilesSkipped:     finalSkippedCount,
-		FilesNotExamined: len(unscannedEntries),
-		TotalFindings:    len(unsuppressedMatches),
-		High:             highCount,
-		Medium:           mediumCount,
-		Low:              lowCount,
-		Suppressed:       suppressedCount,
-		Duration:         elapsed.Seconds(),
+		TotalFiles:        consideredFiles,
+		FilesProcessed:    scannedFiles,
+		FilesSkipped:      finalSkippedCount,
+		FilesNotExamined:  len(unscannedEntries),
+		FilesNotRedacted:  len(unredactedDisclosure),
+		ValuesNotRedacted: formatters.UnredactedValueCount(unredactedDisclosure),
+		TotalFindings:     len(unsuppressedMatches),
+		High:              highCount,
+		Medium:            mediumCount,
+		Low:               lowCount,
+		Suppressed:        suppressedCount,
+		Duration:          elapsed.Seconds(),
 	}
 
 	// The same disclosure, in structured form, for formats that cannot carry prose.
@@ -2286,6 +2296,16 @@ func main() {
 	// must disclose even when the text renderer declines to (it is skipped entirely
 	// in pre-commit mode).
 	formatterOptions.NotExamined = toFormatterNotExamined(unscannedEntries)
+
+	// The redaction disclosure, in structured form, for the same reason: seven of seven
+	// formats said nothing about a refusal, so a consumer parsing stdout could not tell
+	// a sanitized run from one that left every value in cleartext (#441).
+	formatterOptions.Unredacted = unredactedDisclosure
+
+	// Lets a formatter tell "redaction was not asked for" from "it was asked for and
+	// succeeded". CSV reports per finding and needs all three states; without this a
+	// read-only scan would claim every value was redacted.
+	formatterOptions.RedactionRequested = finalConfig.enableRedaction
 
 	// The JUnit formatter reads this to decide the VALENCE of the not-examined
 	// entries (<skipped> vs <error>), so one flag governs both the XML verdict and
@@ -2323,6 +2343,24 @@ func main() {
 			}
 		}
 	}
+
+	// No footer is built here on purpose. The text formatter renders this block itself
+	// from formatterOptions.Unredacted (formatters.RenderBlock), so every caller of the
+	// formatter -- the CLI, the web UI, any library consumer of formatters.Export --
+	// gets the disclosure from the same structured data.
+	//
+	// The not-examined disclosure above works the other way round: cmd renders its
+	// footer and the formatter prints whatever prose it is handed. That shape has a
+	// hole, because a caller that sets the structured field but not the footer gets a
+	// text report with no disclosure at all, and copying it here would have
+	// reintroduced #441 on the web and library surfaces while the CLI looked fixed.
+	//
+	// There is also no stderr fallback, unlike not-examined: every format now carries
+	// this IN-BAND (unredacted[] in json/yaml, two columns in csv, a <failure> suite in
+	// junit, scan.messages in gitlab-sast, toolExecutionNotifications in sarif), so a
+	// stderr copy was the same fact a third time. Measured with it in place: json put
+	// the list on stdout AND the block on stderr AND the terse warning on stderr. The
+	// terse per-file warning stays as the human signal.
 
 	// Pre-commit mode owns a deliberately terse output contract, but "terse" must not
 	// mean silent about files that were never read.
@@ -2476,7 +2514,21 @@ func main() {
 	// A file that was opened and extracted to NOTHING is the third member of that
 	// set and the hardest to notice without help: unlike the other two it produces
 	// no error anywhere, just an empty document body and a clean report.
-	coverageGaps := len(unscannedEntries)
+	//
+	// A file whose findings were REPORTED but NOT REDACTED joins the same set, which
+	// widens what --fail-on-incomplete means: it was "the scan did not see everything",
+	// it is now "the run did not fully do what was asked". That is a deliberate change
+	// of the flag's meaning, decided rather than inherited, because the alternative
+	// left the one outcome the sink rule forbids -- values still in cleartext while the
+	// report looks complete -- as the only failure with no machine-readable signal at
+	// all. Measured before this: exit 0, and seven of seven output formats silent.
+	//
+	// The consequence to know: a job that set the flag to catch validator timeouts will
+	// now also fail when a PDF cannot be redacted. That is the intended reading of
+	// "incomplete", and both causes are named separately in the report and in
+	// stats.files_not_examined / stats.files_not_redacted, so the operator can tell
+	// which one fired without changing flags.
+	coverageGaps := len(unscannedEntries) + len(unredactedDisclosure)
 	if precommitConfig != nil {
 		exitCode := precommit.GetExitCode(hasFindings, hasErrors, highestConfidence, precommitConfig)
 		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps))

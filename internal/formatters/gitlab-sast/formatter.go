@@ -125,6 +125,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// is a different and false statement. Coverage is reported through messages, and
 	// the exit code (with --fail-on-incomplete) carries the verdict.
 	addNotExaminedMessages(report, options)
+	addUnredactedMessages(report, options)
 
 	// Handle empty results - return valid empty GitLab report structure
 	if len(matches) == 0 {
