@@ -33,20 +33,33 @@ import (
 // check and a pointer compare. K=8000 went 19.5ms -> 0.69ms, a 28x improvement, and
 // growth 18.5x -> 8.1x at times small enough that noise dominates.
 //
-// What remains, and is a RATCHET rather than a target:
+// Both shapes are now linear:
 //
-//   - MANY OCCURRENCES OF ONE VALUE is now near-linear. The cursor advances past each
-//     occurrence and the memo removes the per-match hash.
-//   - MANY DISTINCT VALUES is still O(K x line length): each value owns a cursor
-//     starting at zero, so each strings.Index scans from the line start to that value.
-//     Measured 16.2x for 4x input, 148ms at K=8000 — which the arithmetic corroborates
-//     (8000 values x ~64KB average scan is ~512MB). Making it linear needs a
-//     multi-pattern single pass over the line, not a tweak, and per-validator execution
-//     budgets already bound pathological single-line input.
+//   - MANY OCCURRENCES OF ONE VALUE. The cursor advances past each occurrence and the
+//     memo removes the per-match hash.
+//   - MANY DISTINCT VALUES. This was O(K x line length) — each value owned a cursor
+//     starting at zero, so every strings.Index scanned from the line start to that value.
+//     ResolveLineSpans now indexes a dense line in ONE pass instead, keyed on value
+//     LENGTH rather than on value, so the cost no longer carries a factor of K (#388).
 //
-// None of this is visible end-to-end, because validator cost dominates a real scan:
-// through the CLI on a dense single-line file the whole change measured +1.7% to +8.9%
-// and the scan stayed linear. That masking is exactly why the shape is measured here.
+// Two claims that used to sit here were wrong, and correcting them is why the ratio below
+// is now ASSERTED rather than logged:
+//
+//   - "Making it linear needs a multi-pattern single pass over the line, not a tweak, and
+//     per-validator execution budgets already bound pathological single-line input." The
+//     first half was right and is what was done. The second half was not: nothing bounded
+//     it.
+//   - "None of this is visible end-to-end, because validator cost dominates a real scan:
+//     through the CLI on a dense single-line file the whole change measured +1.7% to
+//     +8.9%." Measured directly at 64,000 distinct values on a 1.14 MB line,
+//     ResolveLineSpans was 8.14s of a 9.64s scan — 84% of it, not a rounding error. The
+//     +1.7% to +8.9% figure came from a fixture that did not reach this shape. A shape
+//     measured only in isolation can look harmless there and dominate in production;
+//     measure BOTH.
+//
+// After the change the same 64,000-value line resolves in 53ms, and every input size
+// measured is faster than before — 1.14x at 1,000 values through 6.3x at 32,000 end to
+// end, with no size slower.
 
 // columnsAbsoluteCeiling bounds the largest sample.
 //
@@ -166,18 +179,31 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 	tBase := timeAssign(t, buildDistinctOnOneLine(baseK), true)
 	tBig := timeAssign(t, buildDistinctOnOneLine(bigK), true)
 
-	// LOGGED, not asserted. Each distinct value owns its cursor and therefore scans
-	// from the line start, so 4x input is expected to cost well over 4x here. The
-	// number is recorded so a human can see the shape move.
 	ratio := float64(tBig) / float64(tBase)
-	t.Logf("4x input, K DISTINCT values on one line: %.1fx (base=%v big=%v) — informational. "+
-		"Each value owns a cursor starting at zero, so this is O(K x line length); linear "+
-		"would be 4x.", ratio, tBase, tBig)
+	t.Logf("4x input, K DISTINCT values on one line: %.1fx (base=%v big=%v) — linear is 4x. "+
+		"Was 16.2x when each value owned a cursor starting at zero.", ratio, tBase, tBig)
 
 	if tBig > columnsAbsoluteCeiling {
 		t.Errorf("assigning columns for %d distinct values on one line took %v (> %v) — a "+
 			"regression of this size means the per-value scan got worse than a single pass "+
 			"over the line", bigK, tBig, columnsAbsoluteCeiling)
+	}
+
+	// ASSERTED now, where it used to be logged only.
+	//
+	// The ceiling above cannot catch this shape returning: at K=8000 the old quadratic cost
+	// 148ms, which is comfortably inside a 4s ceiling, so it passed for as long as the
+	// quadratic existed. A growth bound is what actually pins the shape.
+	//
+	// 8x rather than 4x because both the value COUNT and the line LENGTH grow with K here, and
+	// these samples are milliseconds where scheduler noise is a large fraction. A return to
+	// O(K x line) would show 16x.
+	const maxGrowth = 8.0
+	if tBase > 0 && ratio > maxGrowth {
+		t.Errorf("4x input cost %.1fx (base=%v big=%v), over %.0fx: the per-value line rescan is "+
+			"back. Each distinct value scanning from the line start is O(K x line length), which "+
+			"measured 8.14s of a 9.64s scan on a 1.14MB line before #388",
+			ratio, tBase, tBig, maxGrowth)
 	}
 }
 
@@ -214,5 +240,89 @@ func TestAssignLineColumnsComplexityManyLines(t *testing.T) {
 	if tBig > columnsAbsoluteCeiling {
 		t.Errorf("assigning columns across %d lines took %v (> %v) — the ordinary document "+
 			"shape must stay linear in the number of lines", bigN, tBig, columnsAbsoluteCeiling)
+	}
+}
+
+// The INDEX path must stay linear when values are also REPEATED, which needs its own guard.
+//
+// The two existing shapes miss it: many-distinct-values uses the index but never repeats a value, and
+// one-repeated-value stays on the rescan path (correctly — the cursor already makes that linear, so
+// indexing would only add allocations). The shape that exercises both at once is a log with thousands
+// of DISTINCT values each appearing many times, which is ordinary machine-generated input.
+//
+// It guards a specific mechanism: resolveByIndex keeps a per-value pointer into that value's
+// occurrence list so hand-out is amortised O(1). Removing that pointer's advance leaves correctness
+// untouched — the end-offset check still skips consumed occurrences — while making each match rescan
+// the occurrence list from the start, i.e. quadratic in the repeat count. Mutation-verified: deleting
+// the advance passes every other test in this package.
+func TestAssignLineColumnsComplexityDistinctAndRepeated(t *testing.T) {
+	if testing.Short() {
+		t.Skip("column-assignment complexity guard skipped in -short mode")
+	}
+
+	build := func(distinct, repeats int) []Match {
+		var sb strings.Builder
+		vals := make([]string, 0, distinct)
+		for i := 0; i < distinct; i++ {
+			vals = append(vals, fmt.Sprintf("%03d-%02d-%04d", 400+(i/8100)%500, 10+(i/90)%90, 1000+i%9000))
+		}
+		for r := 0; r < repeats; r++ {
+			for _, v := range vals {
+				sb.WriteString("SSN ")
+				sb.WriteString(v)
+				sb.WriteString(" ")
+			}
+		}
+		line := sb.String()
+
+		out := make([]Match, 0, distinct*repeats)
+		for r := 0; r < repeats; r++ {
+			for _, v := range vals {
+				out = append(out, Match{
+					Text: v, Type: "SSN", LineNumber: 1,
+					Context: ContextInfo{FullLine: line},
+				})
+			}
+		}
+		return out
+	}
+
+	// Hold the distinct count fixed and grow the REPEAT count, so what scales is exactly the
+	// occurrence-list walking this pins. The repeat count has to be LARGE for that walk to be
+	// measurable: without the pointer the r-th match of a value walks r entries, so the cost is
+	// O(repeats^2) per value and only separates from linear once repeats is in the hundreds. A
+	// first attempt used 4 and 16 repeats, where the difference is a few hundred thousand steps
+	// and the mutation survived.
+	const distinct = 40
+
+	tBase := timeAssign(t, build(distinct, 500), false)
+	tBig := timeAssign(t, build(distinct, 2000), false) // 4x the repeats
+
+	ratio := float64(tBig) / float64(tBase)
+	t.Logf("4x the repeats of %d distinct values on one line: %.1fx (base=%v big=%v) — linear is 4x",
+		distinct, ratio, tBase, tBig)
+
+	// The ABSOLUTE time of the big case is asserted, not the growth ratio, because it is the far
+	// cleaner signal. Measured over five runs each, with and without the pointer:
+	//
+	//   with:     base 4.7-6.7ms   big 22.7-25.2ms   ratio 3.6-5.1x
+	//   without:  base 34-40ms     big 422-465ms     ratio ~11-12x
+	//
+	// So the big case separates by ~18x while the ratio separates by only ~2.5x — and a ratio of two
+	// millisecond samples is exactly where scheduler noise lives. The ceiling below sits ~10x above
+	// the observed big case, so a runner an order of magnitude slower than this one still passes,
+	// while the quadratic hand-out (440ms) does not.
+	//
+	// The ratio is still asserted, loosely, because it is scale-free and so catches a machine that is
+	// uniformly slow enough to hide the ceiling.
+	const repeatBigCeiling = 250 * time.Millisecond
+	if tBig > repeatBigCeiling {
+		t.Errorf("resolving %d repeats of %d distinct values took %v (> %v): hand-out is walking "+
+			"each value's occurrence list from the start instead of carrying a pointer into it, "+
+			"which is O(repeats^2) per value", 2000, distinct, tBig, repeatBigCeiling)
+	}
+	const maxGrowth = 8.0
+	if tBase > 0 && ratio > maxGrowth {
+		t.Errorf("4x the repeats cost %.1fx (base=%v big=%v), over %.0fx", ratio, tBase, tBig, maxGrowth)
 	}
 }
