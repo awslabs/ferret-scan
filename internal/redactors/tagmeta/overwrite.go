@@ -22,6 +22,9 @@ package tagmeta
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"unicode/utf16"
@@ -253,10 +256,56 @@ func Apply(buf []byte, plan []Occurrence) int {
 	return applied
 }
 
+// ResidualAnywhere counts reported values still present ANYWHERE in buf.
+//
+// This is the check a caller wants before writing a file. Residual, below, searches only the
+// regions it was handed — which are the regions the overwrite pass already rewrote — so it is
+// structurally unable to see a value that survives outside them. Measured on a real .m4a whose
+// Artist tag exiftool had written in two places:
+//
+//	Residual(output, mapped_ranges, [card]) = 0   // blind
+//	ResidualAnywhere(output, [card])        = 1   // present at offset 11613
+//
+// The mapped range covered [10892,11268); the surviving copy sat at 11613. The occurrence inside
+// the range was overwritten, the one outside was not, and the redactor wrote the file and reported
+// success with the value still in it. Residual's own doc comment claims to cover "a value ... in a
+// second region", which it cannot.
+//
+// Whole-buffer search is strictly stronger and cannot pass while a value survives anywhere, which
+// is the property the caller needs: the output is about to be handed to someone as sanitized.
+//
+// A value that appears in the media STREAM rather than in metadata will also be counted here, and
+// that is the honest outcome: a same-length tag overwrite cannot remove it, so writing the file
+// would be a false claim either way.
+func ResidualAnywhere(buf []byte, matches []detector.Match) int {
+	residual := 0
+	for _, m := range matches {
+		if m.Text == "" {
+			continue
+		}
+		if bytes.Contains(buf, []byte(m.Text)) ||
+			containsWide(buf, UTF16LE(m.Text)) ||
+			containsWide(buf, UTF16BE(m.Text)) {
+			residual++
+		}
+	}
+	return residual
+}
+
+// containsWide is bytes.Contains guarded against an empty needle, which would match everything.
+func containsWide(buf, needle []byte) bool {
+	return len(needle) > 0 && bytes.Contains(buf, needle)
+}
+
 // Residual counts reported values still present in the given regions of buf.
 //
 // Searched in both encodings, exactly as the overwrite is, so the check cannot pass because it
 // looked for something narrower than what was written.
+//
+// NOT SUFFICIENT AS A PRE-WRITE GATE. regions are the spans the overwrite already rewrote, so a
+// value surviving outside them is invisible here — see ResidualAnywhere above, which is what a
+// caller should use before writing. This remains for callers that genuinely mean "within these
+// spans", such as asserting a specific block was cleaned.
 //
 // A caller must treat a non-zero result as a refusal to write the file at all. Counting
 // replacements is not enough: a value can occur twice in one region, or in a second region, or
@@ -359,4 +408,108 @@ func OverallConfidence(mappings []redactors.RedactionMapping) float64 {
 		total += m.Confidence
 	}
 	return total / float64(len(mappings))
+}
+
+// ResidualInReader streams a written file and counts reported values still present in it.
+//
+// The streaming counterpart of ResidualAnywhere, for the video path, which never holds the whole
+// file in memory. It exists for the same reason: the video redactor's own residual check searches
+// only the tag BLOCKS it parsed, so a value living anywhere else — an XMP packet, a second metadata
+// location, the stream itself — is invisible to it, and the redactor wrote the file and reported
+// success with a reported SSN still in it (#449).
+//
+// Reads in fixed chunks with an overlap of maxNeedle-1 bytes, so a value straddling a chunk boundary
+// is still found. Memory is bounded by chunkBytes regardless of file size, which is what makes this
+// affordable on a movie: it costs one extra sequential read, not a buffer the size of the input.
+//
+// A value in the media stream rather than in metadata is counted too. That is deliberate: a
+// same-length tag overwrite cannot remove it, so writing the file would be a false claim of
+// sanitization either way, and the caller must refuse rather than pretend.
+func ResidualInReader(r io.ReaderAt, size int64, matches []detector.Match) (int, error) {
+	if size <= 0 || len(matches) == 0 {
+		return 0, nil
+	}
+
+	// Every encoding of every value, deduplicated, so one value counted once.
+	type needleSet struct {
+		forms [][]byte
+	}
+	sets := make([]needleSet, 0, len(matches))
+	maxNeedle := 0
+	for _, m := range matches {
+		if m.Text == "" {
+			continue
+		}
+		forms := [][]byte{[]byte(m.Text)}
+		if w := UTF16LE(m.Text); len(w) > 0 {
+			forms = append(forms, w)
+		}
+		if w := UTF16BE(m.Text); len(w) > 0 {
+			forms = append(forms, w)
+		}
+		for _, f := range forms {
+			if len(f) > maxNeedle {
+				maxNeedle = len(f)
+			}
+		}
+		sets = append(sets, needleSet{forms: forms})
+	}
+	if len(sets) == 0 {
+		return 0, nil
+	}
+
+	const chunkBytes = 1 << 20
+	overlap := maxNeedle - 1
+	if overlap < 0 {
+		overlap = 0
+	}
+
+	found := make([]bool, len(sets))
+	remaining := len(sets)
+
+	buf := make([]byte, chunkBytes+overlap)
+	var off int64
+	for off < size && remaining > 0 {
+		// Start each window `overlap` bytes before the new data so a straddling value is whole
+		// somewhere in exactly one window.
+		start := off - int64(overlap)
+		if start < 0 {
+			start = 0
+		}
+		want := int64(len(buf))
+		if start+want > size {
+			want = size - start
+		}
+		n, err := r.ReadAt(buf[:want], start)
+		if n > 0 {
+			window := buf[:n]
+			for i := range sets {
+				if found[i] {
+					continue
+				}
+				for _, f := range sets[i].forms {
+					if bytes.Contains(window, f) {
+						found[i] = true
+						remaining--
+						break
+					}
+				}
+			}
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, fmt.Errorf("failed to re-read the redacted file at offset %d: %w", start, err)
+		}
+		if n == 0 {
+			break
+		}
+		off = start + int64(n)
+	}
+
+	residual := 0
+	for _, f := range found {
+		if f {
+			residual++
+		}
+	}
+	return residual, nil
 }
