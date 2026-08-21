@@ -669,7 +669,18 @@ func (ptr *PlainTextRedactor) calculateCharacterPositions(match detector.Match, 
 	// Find the match text in the line
 	startChar := strings.Index(line, match.Text)
 	if startChar == -1 {
-		return 0, 0, fmt.Errorf("match text %q not found in line %d", match.Text, match.LineNumber)
+		// The value is NOT interpolated. This error reaches the operator through
+		// FileDiagnostic.Reason, which is now carried into every output format as the
+		// detail of the unredacted disclosure (#441) -- so %q of match.Text would have
+		// printed the raw sensitive value into JSON, YAML, SARIF, JUnit and GitLab
+		// reports regardless of --show-match. It already printed it to stderr.
+		//
+		// Type and length instead, following the [HIDDEN] (len=%d) convention used by
+		// the preprocessors' debug logging. They identify which finding failed without
+		// disclosing it, which is all the reader needs: the finding itself is in the
+		// same report, with its own line number.
+		return 0, 0, fmt.Errorf("%s match ([HIDDEN], len=%d) not found in line %d",
+			match.Type, len(match.Text), match.LineNumber)
 	}
 
 	endChar := startChar + len(match.Text)
