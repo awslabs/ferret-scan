@@ -4,6 +4,7 @@
 package metaextractvideolib
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -17,6 +18,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	// isobmff is a pure-standard-library ISO base media container parser — its own package
+	// comment states that nothing about redaction belongs in it — and it owns the spec-derived
+	// definition of an ISO 6709 position string. The extractor shares that definition rather
+	// than keeping a second copy, because the two sides disagreeing about what a position looks
+	// like is exactly the defect being fixed here (#399). Its home under internal/redactors is
+	// historical; moving it somewhere neutral is a separate, purely mechanical change.
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/isobmff"
 )
 
 // VideoMetadata represents extracted video file metadata
@@ -683,7 +692,9 @@ func parseUdtaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 				metadata.CreatedDate = date
 			}
 		case "©xyz":
-			parseGPSBox(boxData, metadata)
+			parsePositionAtom(boxData, metadata)
+		case "loci":
+			parseLociBox(boxData, metadata)
 		case "©cpy":
 			metadata.Copyright = parseStringBox(boxData)
 		case "©des":
@@ -917,6 +928,82 @@ func parseStringBox(data []byte) string {
 	}
 
 	return strings.TrimSpace(string(data))
+}
+
+// parsePositionAtom reads a ©xyz payload, which carries a position in EITHER of two encodings.
+//
+// The atom name does not say which, so the payload's SHAPE decides. ffmpeg writes a .mov ©xyz as a
+// 2-byte text length, a 2-byte language code and then an ISO 6709 string; some cameras write three
+// 16.16 fixed-point words instead. Reading the text form as fixed-point turns the length and
+// language bytes into a latitude: the payload "\x00\x12\x55\xc4+36.3506-082.6985/" was reported as
+// 18.335022, 11059.211639 at HIGH confidence, while the real position sat unreported in the same
+// bytes (#399).
+//
+// The shape test is isobmff.FindISO6709, the same spec-derived pattern the redactor uses to locate a
+// position. Sharing it is the point: the redactor's own notes record that these two readers
+// disagreeing about what a position looks like is what produced the garbage value, and a second copy
+// of the pattern here would let them drift apart again.
+//
+// A zero-filled payload still yields nothing, which is what keeps redaction verifiable by rescanning
+// the output: it holds no ISO 6709 text, so it falls to the fixed-point branch, decodes to 0/0, and
+// parseGPSBox drops that.
+func parsePositionAtom(data []byte, metadata *VideoMetadata) {
+	if match := isobmff.FindISO6709(data); match != nil {
+		parseISO6709Location(string(match), metadata)
+		return
+	}
+	parseGPSBox(data, metadata)
+}
+
+// parseLociBox reads a 3GPP/QuickTime loci atom, the form ffmpeg writes into .mp4 by default.
+//
+// Layout: a version byte and three flag bytes, a 2-byte language code, a NUL-terminated UTF-8 place
+// name, a one-byte role, then LONGITUDE, LATITUDE and altitude as 16.16 fixed-point in that order —
+// longitude first, unlike ©xyz — then a NUL-terminated astronomical body and NUL-terminated notes.
+//
+// The place name is location data in its own right and is kept. The reversed word order is the trap
+// here: reading them as lat/lon swaps the coordinates, which stays plausible near the equator and is
+// wrong everywhere else.
+func parseLociBox(data []byte, metadata *VideoMetadata) {
+	const (
+		versionAndFlags = 4
+		languageBytes   = 2
+		roleBytes       = 1
+		coordinateWords = 3 * 4
+	)
+	if len(data) < versionAndFlags+languageBytes+1+roleBytes+coordinateWords {
+		return
+	}
+
+	offset := versionAndFlags + languageBytes
+	nameEnd := bytes.IndexByte(data[offset:], 0)
+	if nameEnd < 0 {
+		return // unterminated name: the coordinate offsets below cannot be trusted
+	}
+	name := strings.TrimSpace(string(data[offset : offset+nameEnd]))
+	offset += nameEnd + 1 + roleBytes
+
+	if offset+coordinateWords > len(data) {
+		return
+	}
+	// #nosec G115 -- bit-pattern preservation for sign-extension, as in parseGPSBox
+	lon := float64(int32(binary.BigEndian.Uint32(data[offset:offset+4]))) / 65536.0
+	// #nosec G115 -- see lon above
+	lat := float64(int32(binary.BigEndian.Uint32(data[offset+4:offset+8]))) / 65536.0
+	// #nosec G115 -- see lon above
+	alt := float64(int32(binary.BigEndian.Uint32(data[offset+8:offset+12]))) / 65536.0
+
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return // not a position on Earth; see parseISO6709Location on why this is dropped
+	}
+	if lat != 0 || lon != 0 {
+		metadata.GPSLatitude = lat
+		metadata.GPSLongitude = lon
+		metadata.GPSAltitude = alt
+	}
+	if name != "" {
+		metadata.Location = name
+	}
 }
 
 // parseGPSBox parses GPS coordinates from binary data
@@ -1831,65 +1918,136 @@ func extractAppleMetadataValue(searchArea, metadataKey string) string {
 	return ""
 }
 
-// parseISO6709Location parses GPS coordinates in ISO 6709 format
+// parseISO6709Location parses GPS coordinates in ISO 6709 Annex H format.
+//
+// The three forms differ only in how many INTEGER digits the angle carries, and that is the whole
+// difficulty: ±DD, ±DDMM and ±DDMMSS for latitude, ±DDD, ±DDDMM and ±DDDMMSS for longitude, with an
+// optional fraction on the smallest unit present. A plain ParseFloat is correct for the first form
+// and silently wrong for the other two — measured before this change, "+4012.22-07500.25/" (40°12.22′
+// north, 75°00.25′ west) reported latitude 4012.22 and longitude -7500.25, and
+// "+401230.5-0750015.3/" reported 401230.5. An impossible coordinate at HIGH confidence is a false
+// positive that also buries the real position, which is the pair of defects #399 is about.
+//
+// A value that cannot be a position on Earth is DROPPED rather than reported. That is what stops
+// this function turning a misread payload into a finding, and it is why the caller may hand it a
+// candidate it is not certain about.
 func parseISO6709Location(iso6709Str string, metadata *VideoMetadata) {
-	// ISO 6709 format: ±DD.DDDD±DDD.DDDD±AAA.AAA/
-	// Example: +36.3506-082.6985+447.403/
-
 	iso6709Str = strings.TrimSpace(iso6709Str)
-	if len(iso6709Str) == 0 {
+	iso6709Str = strings.TrimSuffix(iso6709Str, "/")
+	if iso6709Str == "" {
 		return
 	}
 
-	// Remove trailing slash if present
-	iso6709Str = strings.TrimSuffix(iso6709Str, "/")
+	// A CRS suffix is permitted after the height and is not part of any angle.
+	if i := strings.Index(iso6709Str, "CRS"); i > 0 {
+		iso6709Str = iso6709Str[:i]
+	}
 
-	// Parse latitude (first coordinate)
-	if len(iso6709Str) > 0 {
-		// Find the second sign (longitude start)
-		lonStart := -1
-		for i := 1; i < len(iso6709Str); i++ {
-			if iso6709Str[i] == '+' || iso6709Str[i] == '-' {
-				lonStart = i
-				break
-			}
-		}
-
-		if lonStart > 0 {
-			latStr := iso6709Str[:lonStart]
-			if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
-				metadata.GPSLatitude = lat
-			}
-
-			// Parse longitude (second coordinate)
-			remaining := iso6709Str[lonStart:]
-			altStart := -1
-			for i := 1; i < len(remaining); i++ {
-				if remaining[i] == '+' || remaining[i] == '-' {
-					altStart = i
-					break
-				}
-			}
-
-			if altStart > 0 {
-				lonStr := remaining[:altStart]
-				if lon, err := strconv.ParseFloat(lonStr, 64); err == nil {
-					metadata.GPSLongitude = lon
-				}
-
-				// Parse altitude (third coordinate)
-				altStr := remaining[altStart:]
-				if alt, err := strconv.ParseFloat(altStr, 64); err == nil {
-					metadata.GPSAltitude = alt
-				}
-			} else {
-				// No altitude, just longitude
-				if lon, err := strconv.ParseFloat(remaining, 64); err == nil {
-					metadata.GPSLongitude = lon
-				}
-			}
+	// Split on the signs that introduce each component; every component keeps its own sign.
+	var fields []string
+	start := 0
+	for i := 1; i < len(iso6709Str); i++ {
+		if iso6709Str[i] == '+' || iso6709Str[i] == '-' {
+			fields = append(fields, iso6709Str[start:i])
+			start = i
 		}
 	}
+	fields = append(fields, iso6709Str[start:])
+	if len(fields) < 2 {
+		return
+	}
+
+	lat, latOK := decodeISO6709Angle(fields[0], 2, 90)
+	lon, lonOK := decodeISO6709Angle(fields[1], 3, 180)
+	if !latOK || !lonOK {
+		// Not a position. Reporting half of one, or a value out of range, is worse than
+		// reporting nothing: it is a finding the operator cannot act on.
+		return
+	}
+	metadata.GPSLatitude = lat
+	metadata.GPSLongitude = lon
+
+	// Height is plain signed decimal metres, not a sexagesimal angle.
+	if len(fields) >= 3 {
+		if alt, err := strconv.ParseFloat(fields[2], 64); err == nil {
+			metadata.GPSAltitude = alt
+		}
+	}
+}
+
+// decodeISO6709Angle converts one signed ISO 6709 angle to decimal degrees.
+//
+// degreeDigits is 2 for a latitude and 3 for a longitude; the digits beyond that are minutes, then
+// seconds, and any fraction belongs to the smallest unit present. limit is the largest magnitude
+// the angle may have. Reports false for anything that is not one of the three legal widths or is
+// out of range, so a caller can use it as the shape test as well as the parse.
+func decodeISO6709Angle(field string, degreeDigits int, limit float64) (float64, bool) {
+	if len(field) < 2 || (field[0] != '+' && field[0] != '-') {
+		return 0, false
+	}
+	sign, body := 1.0, field[1:]
+	if field[0] == '-' {
+		sign = -1.0
+	}
+
+	intPart, frac := body, ""
+	if dot := strings.IndexByte(body, '.'); dot >= 0 {
+		intPart, frac = body[:dot], body[dot:]
+		if len(frac) < 2 {
+			return 0, false // a trailing '.' with no digits
+		}
+	}
+	for i := 0; i < len(intPart); i++ {
+		if intPart[i] < '0' || intPart[i] > '9' {
+			return 0, false
+		}
+	}
+
+	// Only DD / DDMM / DDMMSS widths exist, so the surplus over the degree field is 0, 2 or 4.
+	surplus := len(intPart) - degreeDigits
+	if surplus != 0 && surplus != 2 && surplus != 4 {
+		return 0, false
+	}
+
+	parse := func(s string) (float64, bool) {
+		v, err := strconv.ParseFloat(s, 64)
+		return v, err == nil
+	}
+
+	var deg, minutes, seconds float64
+	var ok bool
+	switch surplus {
+	case 0:
+		if deg, ok = parse(intPart + frac); !ok {
+			return 0, false
+		}
+	case 2:
+		if deg, ok = parse(intPart[:degreeDigits]); !ok {
+			return 0, false
+		}
+		if minutes, ok = parse(intPart[degreeDigits:] + frac); !ok {
+			return 0, false
+		}
+	case 4:
+		if deg, ok = parse(intPart[:degreeDigits]); !ok {
+			return 0, false
+		}
+		if minutes, ok = parse(intPart[degreeDigits : degreeDigits+2]); !ok {
+			return 0, false
+		}
+		if seconds, ok = parse(intPart[degreeDigits+2:] + frac); !ok {
+			return 0, false
+		}
+	}
+	if minutes >= 60 || seconds >= 60 {
+		return 0, false
+	}
+
+	value := sign * (deg + minutes/60 + seconds/3600)
+	if value < -limit || value > limit {
+		return 0, false
+	}
+	return value, true
 }
 
 // parseDMSCoordinates parses GPS coordinates in degrees/minutes/seconds format
