@@ -110,6 +110,21 @@ func ContainsAny(text string, keywords []string) bool {
 	return false
 }
 
+// ContainsAnyLabel is [ContainsAny] with each keyword matched as a LABEL, so a concatenated or
+// camelCase spelling counts: "member id" finds "memberid" and "memberId".
+//
+// Both text and keywords must already be lowercased, matching ContainsAny. Carries the same
+// restriction as [ContainsLabel] and for the same reason: use it only where a keyword identifies the
+// value beside it, never where one suppresses a finding.
+func ContainsAnyLabel(text string, keywords []string) bool {
+	for _, kw := range keywords {
+		if ContainsLabelLower(text, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // ContainsLabel is [Contains] with the keyword's spaces allowed to match ZERO separator
 // bytes, so "member id" also finds "memberid" and — since text is lowercased before matching
 // — the camelCase "memberId". That spelling is the default key style of JSON, REST payloads
