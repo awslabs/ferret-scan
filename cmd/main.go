@@ -2384,6 +2384,26 @@ func main() {
 			len(unscannedEntries), noun)
 	}
 
+	// The same courtesy for a redaction refusal, and it matters MORE here.
+	//
+	// Pre-commit mode is auto-detected on any Windows box with a Git environment and there is no
+	// opt-out (#353), so on Windows this is not an unusual path — it is the DEFAULT one. Without
+	// this line the disclosure that #441 exists to add would be invisible to exactly the users who
+	// never chose pre-commit mode, and a cleartext leak would stay silent on a whole platform.
+	//
+	// One line, no frame, no per-file list: pre-commit output is read in a terminal mid-commit. It
+	// states the counts and how to see the rest, like its sibling above.
+	if precommitConfig != nil && len(unredactedDisclosure) > 0 {
+		noun := "files"
+		if len(unredactedDisclosure) == 1 {
+			noun = "file"
+		}
+		fmt.Fprintf(os.Stderr,
+			"ferret-scan: %d %s NOT redacted — %d reported value(s) remain in cleartext. "+
+				"Re-run without --pre-commit for detail.\n",
+			len(unredactedDisclosure), noun, formatters.UnredactedValueCount(unredactedDisclosure))
+	}
+
 	// Enable streaming for text format writing to stdout (no output file).
 	// The text formatter writes directly to os.Stdout, avoiding a multi-GB
 	// string buffer for large result sets.

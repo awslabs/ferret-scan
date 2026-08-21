@@ -28,6 +28,34 @@ import (
 // Exit 0 with values in cleartext and a clean-looking report on stdout is the one
 // outcome the sink rule forbids (#441).
 
+// hermeticEnv returns an environment with every pre-commit AUTO-DETECTION trigger removed.
+//
+// Pre-commit mode reshapes output and exit codes, and it is auto-detected — on Windows from any Git
+// environment at all, with no way to turn it off (#353). On a Windows CI runner that made these
+// tests measure pre-commit behaviour instead of the contract under test: every run exited 1 instead
+// of 0 or 3, the text footer was suppressed by its precommitConfig guard, and the CSV header became
+// the terse pre-commit one without the new columns. json, yaml, junit, sarif and gitlab-sast still
+// disclosed, which is what made the failure look format-specific rather than environmental.
+//
+// Stripped rather than skipped, because the contract is the same on every platform and a skip would
+// have left Windows unverified for exactly the disclosure this file exists to pin. The pre-commit
+// path has its own coverage; see TestPrecommitStillDisclosesARefusal.
+func hermeticEnv() []string {
+	drop := map[string]bool{
+		"PRE_COMMIT": true, "_PRE_COMMIT_RUNNING": true, "PRE_COMMIT_HOME": true,
+		"PRE_COMMIT_HOOK": true, "GIT_HOOK_TYPE": true,
+		"MSYSTEM": true, "MINGW_PREFIX": true, "GIT_EXEC_PATH": true, "GITHUB_DESKTOP": true,
+	}
+	out := make([]string, 0, len(os.Environ()))
+	for _, kv := range os.Environ() {
+		if i := strings.IndexByte(kv, '='); i > 0 && drop[kv[:i]] {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
 func buildForRedactionTest(t *testing.T) string {
 	t.Helper()
 	name := "ferret-scan-unredacted-test"
@@ -67,7 +95,10 @@ func runRedaction(t *testing.T, bin, dir, format string, extra ...string) redact
 	}, extra...)
 
 	cmd := exec.Command(bin, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = hermeticEnv()
+	// Outside any git repository: detection also fires on "in a git repo that has pre-commit
+	// hooks", which the repo under test is.
+	cmd.Dir = t.TempDir()
 	var so, se strings.Builder
 	cmd.Stdout = &so
 	cmd.Stderr = &se
@@ -427,6 +458,8 @@ func TestReadOnlyScanCarriesNoRedactionDisclosure(t *testing.T) {
 				"--format", format, "--limit", "0", "--quiet",
 			}
 			cmd := exec.Command(bin, args...)
+			cmd.Env = hermeticEnv()
+			cmd.Dir = t.TempDir()
 			var so, se strings.Builder
 			cmd.Stdout = &so
 			cmd.Stderr = &se
@@ -468,6 +501,8 @@ func TestSuppressedFileIsNotReportedAsExposed(t *testing.T) {
 	supFile := filepath.Join(t.TempDir(), "sup.yaml")
 	gen := exec.Command(bin, "--file", dir, "--recursive", "--config", os.DevNull,
 		"--generate-suppressions", "--suppression-file", supFile, "--limit", "0", "--quiet")
+	gen.Env = hermeticEnv()
+	gen.Dir = t.TempDir()
 	if out, err := gen.CombinedOutput(); err != nil {
 		t.Fatalf("generate suppressions: %v\n%s", err, out)
 	}
@@ -554,6 +589,8 @@ func TestUnwritableOutputDirIsClassifiedAsAWriteFailure(t *testing.T) {
 	cmd := exec.Command(bin, "--file", dir, "--recursive", "--config", os.DevNull,
 		"--enable-redaction", "--redaction-output-dir", outDir,
 		"--format", "json", "--limit", "0", "--quiet")
+	cmd.Env = hermeticEnv()
+	cmd.Dir = t.TempDir()
 	var so, se strings.Builder
 	cmd.Stdout = &so
 	cmd.Stderr = &se
@@ -574,5 +611,48 @@ func TestUnwritableOutputDirIsClassifiedAsAWriteFailure(t *testing.T) {
 	if !strings.Contains(doc.Unredacted[0].Cause, "could not write") {
 		t.Errorf("cause = %q, want a write failure: a filesystem problem must not be reported "+
 			"as a missing redactor, because the remedies are unrelated", doc.Unredacted[0].Cause)
+	}
+}
+
+// Pre-commit mode must still say that values were left in cleartext.
+//
+// It reshapes output deliberately — terse, no frame, no per-file list — and the structured
+// disclosure is guarded by precommitConfig == nil for that reason. But silence is not an option
+// here: the whole point of #441 is that a cleartext leak must not be invisible.
+//
+// This is not an unusual path. Pre-commit mode is AUTO-DETECTED from any Git environment on Windows
+// with no way to turn it off (#353), so on that platform it is the default one — which is how the
+// first version of this change shipped a disclosure that Windows users would never have seen.
+func TestPrecommitStillDisclosesARefusal(t *testing.T) {
+	bin := buildForRedactionTest(t)
+	dir := unredactableDir(t)
+
+	outDir := filepath.Join(t.TempDir(), "redacted")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	cmd := exec.Command(bin, "--file", dir, "--recursive", "--config", os.DevNull,
+		"--enable-redaction", "--redaction-output-dir", outDir, "--limit", "0", "--quiet")
+	// Forced ON explicitly rather than relying on detection, so this test means the same thing on
+	// every platform.
+	cmd.Env = append(hermeticEnv(), "PRE_COMMIT=1")
+	cmd.Dir = t.TempDir()
+	var so, se strings.Builder
+	cmd.Stdout = &so
+	cmd.Stderr = &se
+	_ = cmd.Run()
+
+	if !strings.Contains(se.String(), "NOT redacted") {
+		t.Errorf("pre-commit mode says nothing about a refusal, so a cleartext leak is silent on "+
+			"every Windows box (where this mode is auto-detected)\n--- stderr ---\n%s", se.String())
+	}
+	if !strings.Contains(se.String(), "remain in cleartext") {
+		t.Errorf("the pre-commit line does not state the consequence\n--- stderr ---\n%s", se.String())
+	}
+	// Terse by contract: the framed block belongs to the normal path.
+	if strings.Contains(so.String(), "VALUES LEFT IN CLEARTEXT") {
+		t.Errorf("pre-commit mode emitted the full framed block, breaking its terse output "+
+			"contract\n--- stdout ---\n%s", so.String())
 	}
 }
