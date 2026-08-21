@@ -2095,8 +2095,14 @@ func (v *Validator) isOverlyBroadMatch(match string, platform string) bool {
 		return true
 	}
 
-	// Platform-specific overly broad pattern checks
-	switch strings.ToLower(platform) {
+	// Platform-specific overly broad pattern checks.
+	//
+	// The key is normalised because every other platform switch in this file spells its cases as
+	// `case "instagram", "instagram_patterns":` while the four below carry the bare form only. No
+	// shipped config uses the "<platform>_patterns" spelling — config.yaml and examples/ferret.yaml
+	// both key platform_patterns bare, so these cases do fire today — but a config using the other
+	// form would silently skip them while every other check still applied.
+	switch strings.TrimSuffix(strings.ToLower(platform), "_patterns") {
 	case "twitter", "x":
 		// Twitter handles should not be just numbers or single characters
 		if matched, _ := regexp.MatchString(`^[0-9]+$`, match); matched {
@@ -2736,6 +2742,15 @@ func (v *Validator) processMatchOptimized(match, platform string, patternIndex i
 
 	// Filter out other common false positive patterns
 	if v.isFalsePositiveHandle(match, line, matchOffset) {
+		return nil
+	}
+
+	// A URL addressing one of the platform's own system pages is refused outright. It has to be a
+	// veto and not a score adjustment: confidence is capped at 100 while the raw total for these
+	// URLs reaches 134, so validateNotFalsePositive's 30-point penalty is absorbed by the cap and
+	// the finding still lands at HIGH 100. See reserved_paths.go for the measurement and for why
+	// suppressing these cannot suppress a real profile.
+	if isReservedPlatformPath(match, platform) {
 		return nil
 	}
 

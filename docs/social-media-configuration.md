@@ -203,11 +203,46 @@ validators:
   `isFalsePositiveHandle`: a handle immediately followed by `.`, `-` or `@` is a
   domain or a federated (Mastodon-style) address rather than a bare handle.
 
+### Platform system pages are not profiles
+
+Eight of the shipped platforms have no path prefix in their profile pattern — `facebook.com/…`,
+`instagram.com/…`, `pinterest.com/…`, `skype.com/…`, `t.me/…`, `twitch.tv/…`,
+`(twitter|x).com/…` and `discord.gg/…` — so for those, **any** single path segment reads as a
+handle. `instagram.com/explore` and `instagram.com/reneemueller` are the same shape.
+
+The validator therefore refuses a match whose first path segment is one of the platform's own
+system pages: `about`, `help`, `legal`, `privacy`, `terms`, `settings`, `login`, `explore`,
+`search` and similar, plus per-platform additions such as Instagram's `reels` and `tv`,
+Pinterest's `today` and `categories`, Twitter's `home` and `i`, and Telegram's `joinchat`. The
+tables live in `internal/validators/socialmedia/reserved_paths.go`.
+
+Three properties are worth knowing:
+
+- **It is a refusal, not a score reduction.** Confidence is capped at 100 while the raw score for
+  these URLs reaches 134, so a penalty is absorbed by the cap and the finding still reports at
+  HIGH. It also cannot be a threshold: `instagram.com/explore` scores *higher* than a real
+  profile, because nothing distinguishes them but the vocabulary.
+- **Only the first path segment is judged.** Platforms whose pattern carries a prefix
+  (`linkedin.com/in/`, `reddit.com/u/`, `bsky.app/profile/`, and the `/@handle` forms) put the
+  handle in the second segment, so `linkedin.com/in/about` is detected normally.
+- **The whole segment must match.** `instagram.com/exploration` and `twitter.com/homer` are real
+  handles and are detected.
+
+This matters most for redaction: a reported system URL is overwritten in the redacted copy, which
+corrupts a document that was only citing the platform's own help page.
+
+The tables cover the system pages that turn up cited in documents rather than every path a
+platform serves, so an uncovered one remains a false positive. Prefer that direction: an entry
+that is wrong the other way would suppress a real profile, and a suppressed finding is never
+redacted.
+
 ### Pattern Guidelines
 - Use case-insensitive patterns: `(?i)`
 - Include both full URLs and domain-only patterns
 - Test patterns to avoid false positives
 - Consider platform-specific username rules
+- Prefer a pattern with a path prefix where the platform has one (`linkedin.com/in/…` rather than
+  `linkedin.com/…`); a prefix-less pattern makes every system page on that host a candidate handle
 
 ### Security Considerations
 - Social media detection is disabled by default
@@ -248,8 +283,15 @@ ferret-scan --file document.pdf --checks SOCIAL_MEDIA --debug
 ### False positives
 1. Add negative keywords
 2. Use whitelist patterns
-3. Refine regex patterns
+3. Refine regex patterns — give the pattern the platform's path prefix if it has one
 4. Check for email/social media conflicts
+
+### A platform's own help or policy page is reported as a profile
+
+The first path segment is not in the reserved tables for that platform. See
+[Platform system pages are not profiles](#platform-system-pages-are-not-profiles); the tables in
+`internal/validators/socialmedia/reserved_paths.go` are not exhaustive. A `whitelist_patterns`
+entry reduces the confidence of such a match but does not remove it.
 
 ### Email addresses detected as social media
 1. Remove email patterns from social media config
