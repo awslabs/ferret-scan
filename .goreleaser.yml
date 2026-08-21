@@ -151,7 +151,36 @@ brews:
     repository:
       owner: awslabs
       name: ferret-scan
-      branch: main
+      # Open a PR instead of committing the formula straight to main.
+      #
+      # This is the ONE thing a release writes to a BRANCH. Everything else it
+      # publishes — the six platform binaries, checksums, the SBOM, the Python
+      # wheel and sdist — goes to the GitHub Releases API, which attaches
+      # artefacts to a TAG and never touches a branch, so branch protection has
+      # nothing to say about them. The formula differs only because the tap lives
+      # inside this repo, so writing it is a commit to main.
+      #
+      # With main protected (required_pull_request_reviews on, enforce_admins off)
+      # the Actions token is not an admin, so the direct push was rejected:
+      #
+      #	homebrew formula: could not update "HomebrewFormula/ferret-scan.rb":
+      #	409 Could not update file: Changes must be made through a pull request.
+      #
+      # goreleaser then exited 1 AFTER the release had already been published, so
+      # v2.3.3 shipped every asset while the formula on main still said 2.3.2 —
+      # `brew install` served the previous version — and the "brew install + smoke"
+      # job was skipped because it needs this one.
+      #
+      # The smoke job is unaffected by this switch: it downloads the GENERATED
+      # formula as a workflow artifact and installs it from a throwaway local tap,
+      # so it validates this release's formula whether or not the commit has landed.
+      branch: "chore/brew-formula-{{ .Version }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: awslabs
+          name: ferret-scan
+          branch: main
     directory: HomebrewFormula
     commit_author:
       name: goreleaser[bot]
