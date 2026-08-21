@@ -64,7 +64,20 @@ func (vmp *VideoMetadataPreprocessor) processVideoMetadata(filePath string) (*Pr
 	// Convert video metadata to text format for validation
 	text := meta.ToProcessedContent()
 
-	return vmp.BuildSuccessContent(filePath, text, "video_metadata", 0), nil
+	content := vmp.BuildSuccessContent(filePath, text, "video_metadata", 0)
+
+	// Carry an extraction caveat forward, so a file whose box layout could not be followed to the
+	// end is not reported as clean.
+	//
+	// Deliberately NOT an Error, for the same reason as the audio path above: extraction succeeded
+	// and may have produced findings, and failing the file would discard them. Only
+	// ExtractionWarning survives the router's combine step. Without this, a movie whose moov the
+	// walk never reached printed "No matches found." and exited 0 — output byte-identical to a
+	// genuinely clean file, and unchanged even under --fail-on-incomplete (#398).
+	if content != nil && meta.ExtractionWarning != "" {
+		content.ExtractionWarning = meta.ExtractionWarning
+	}
+	return content, nil
 }
 
 // SetObserver sets the observability component

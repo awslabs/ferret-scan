@@ -4,6 +4,7 @@
 package metaextractvideolib
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -17,6 +18,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	// isobmff is a pure-standard-library ISO base media container parser — its own package
+	// comment states that nothing about redaction belongs in it — and it owns the spec-derived
+	// definition of an ISO 6709 position string. The extractor shares that definition rather
+	// than keeping a second copy, because the two sides disagreeing about what a position looks
+	// like is exactly the defect being fixed here (#399). Its home under internal/redactors is
+	// historical; moving it somewhere neutral is a separate, purely mechanical change.
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/isobmff"
 )
 
 // VideoMetadata represents extracted video file metadata
@@ -56,25 +65,66 @@ type VideoMetadata struct {
 
 	// Additional properties
 	Properties map[string]string
+
+	// ExtractionWarning is a payload-free note that extraction finished but covered less than the
+	// whole file, so a value may be missing. It carries box types, byte offsets and limit
+	// constants only — never a metadata value, and never matched text.
+	//
+	// Before this existed the walk gave up on a bare `break` and returned a nil error, so a file
+	// whose metadata was never reached was reported as a complete, clean scan. AudioMetadata has
+	// carried the equivalent field for the same reason.
+	ExtractionWarning string
 }
 
-// MP4Box represents an MP4 atom/box structure
-type MP4Box struct {
-	Size   uint32
-	Type   [4]byte
-	Data   []byte
-	Offset int64
+// noteTruncation records the FIRST reason coverage was lost and keeps it.
+//
+// First wins rather than last: the earliest failure is the one that explains the others, and a
+// later note would otherwise overwrite the cause with a symptom.
+func noteTruncation(metadata *VideoMetadata, note string) {
+	if metadata.ExtractionWarning == "" {
+		metadata.ExtractionWarning = note
+	}
 }
 
 // Constants for MP4 parsing
 const (
-	MaxFileSize       = 500 * 1024 * 1024 // 500MB limit
-	MaxBoxSize        = 100 * 1024 * 1024 // 100MB per box limit
-	BoxHeaderSize     = 8                 // 4 bytes size + 4 bytes type
-	ExtendedBoxSize   = 16                // For 64-bit size boxes
-	MaxMetadataRead   = 10 * 1024 * 1024  // Only read first 10MB for metadata
-	ProcessingTimeout = 30 * time.Second  // 30 second timeout
+	// MaxFileSize is the extractor's own ceiling. It sits above the router's 100MB gate, which
+	// refuses the file first, so it is effectively unreachable on the CLI path.
+	MaxFileSize   = 500 * 1024 * 1024 // 500MB limit
+	BoxHeaderSize = 8                 // 4 bytes size + 4 bytes type
+
+	// ExtendedBoxSize is the header length when a box declares a 64-bit size (size == 1).
+	ExtendedBoxSize = 16
+
+	// MaxMoovParse bounds the ONE allocation this extractor makes: the moov payload it parses.
+	// Memory is therefore O(min(|moov|, MaxMoovParse)) and independent of the file's size.
+	//
+	// 32MB is measured headroom rather than a guess. The router refuses anything over 100MB before
+	// extraction runs, and a real moov is a fraction of its file — 0.14%, 0.27% and 0.39% across
+	// the videos on the machine this was written on — so a 100MB file's moov is a few hundred
+	// kilobytes. A moov beyond this is clamped and DISCLOSED, never silently truncated.
+	MaxMoovParse = 32 * 1024 * 1024
+
+	// MaxTopLevelBoxes bounds the walk's work so a file made of millions of tiny boxes cannot turn
+	// a scan into a CPU amplifier. A well-formed movie has a handful; a fragmented one (DASH/CMAF,
+	// a moof+mdat pair per fragment) can legitimately have tens of thousands.
+	//
+	// 1<<20 matches the atom budget the redactor's walk already uses, so the two sides give up at
+	// the same point. Measured cost is ~1.3µs per box — 100k boxes walk in 0.13s — so this ceiling
+	// is ~1.4s in the worst case, well inside ProcessingTimeout. A tighter 100k ceiling was tried
+	// first and rejected: it is reachable in an 800KB file, and it LOST a finding that the previous
+	// code found, which is the wrong direction to trade even for a disclosure.
+	MaxTopLevelBoxes = 1 << 20
+
+	ProcessingTimeout = 30 * time.Second // 30 second timeout
 )
+
+// errDeclaredOverrun marks a box whose declared size runs past the real end of the file.
+//
+// Its own sentinel because it is the one header error worth recovering from: the bytes up to the
+// real end are still worth parsing, which turns a truncated download into a partial result plus a
+// disclosure rather than nothing at all.
+var errDeclaredOverrun = errors.New("box declares more bytes than the file holds")
 
 // ExtractVideoMetadata extracts metadata from video files with resource limits
 func ExtractVideoMetadata(filePath string) (*VideoMetadata, error) {
@@ -304,140 +354,6 @@ func isVideoErrorRecoverable(errorType string) bool {
 	default:
 		return false
 	}
-}
-
-// parseMP4ContainerWithContext parses the MP4/MOV container structure with context
-func parseMP4ContainerWithContext(ctx context.Context, file *os.File, metadata *VideoMetadata) error {
-	bytesRead := int64(0)
-
-	for {
-		// Check context for cancellation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// Stop reading if we've read too much metadata
-		if bytesRead > MaxMetadataRead {
-			break
-		}
-
-		box, err := readMP4BoxWithContext(ctx, file)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to read box: %w", err)
-		}
-
-		bytesRead += int64(box.Size) + BoxHeaderSize
-
-		// Process specific box types
-		switch string(box.Type[:]) {
-		case "moov":
-			err = parseMoovBoxWithContext(ctx, box.Data, metadata)
-			if err != nil {
-				return fmt.Errorf("failed to parse moov box: %w", err)
-			}
-		case "ftyp":
-			err = parseFtypBox(box.Data, metadata)
-			if err != nil {
-				// Non-fatal error for ftyp parsing
-				continue
-			}
-		case "mdat":
-			// Skip media data - we only need metadata
-			continue
-		}
-	}
-
-	return nil
-}
-
-// readMP4BoxWithContext reads an MP4 box from the file with context
-func readMP4BoxWithContext(ctx context.Context, file *os.File) (*MP4Box, error) {
-	// Check context before reading
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	var header [BoxHeaderSize]byte
-	n, err := file.Read(header[:])
-	if err != nil {
-		return nil, err
-	}
-	if n != BoxHeaderSize {
-		return nil, io.EOF
-	}
-
-	// Parse box header
-	size := binary.BigEndian.Uint32(header[0:4])
-	var boxType [4]byte
-	copy(boxType[:], header[4:8])
-
-	// Handle extended size (64-bit)
-	if size == 1 {
-		var extSize [8]byte
-		n, err := file.Read(extSize[:])
-		if err != nil {
-			return nil, err
-		}
-		if n != 8 {
-			return nil, io.EOF
-		}
-		size64 := binary.BigEndian.Uint64(extSize[:])
-		if size64 > MaxBoxSize {
-			return nil, fmt.Errorf("box too large: %d bytes", size64)
-		}
-		// Safe conversion with bounds checking
-		if size64 < ExtendedBoxSize {
-			return nil, fmt.Errorf("invalid box size: %d is less than extended box size %d", size64, ExtendedBoxSize)
-		}
-		adjustedSize := size64 - ExtendedBoxSize
-		if adjustedSize > math.MaxUint32 {
-			return nil, fmt.Errorf("box size too large for uint32: %d", adjustedSize)
-		}
-		size = uint32(adjustedSize)
-	} else if size == 0 {
-		// Box extends to end of file - skip for safety
-		return nil, io.EOF
-	} else {
-		size -= BoxHeaderSize
-	}
-
-	// Safety check for box size
-	if size > MaxBoxSize {
-		return nil, fmt.Errorf("box too large: %d bytes", size)
-	}
-
-	// Check context before reading data
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	// Read box data efficiently
-	data := make([]byte, size)
-	if size > 0 {
-		n, err := file.Read(data)
-		if err != nil {
-			return nil, err
-		}
-		// Safe comparison with bounds checking
-		if n < 0 || uint64(n) > math.MaxUint32 || uint32(n) != size {
-			return nil, fmt.Errorf("incomplete box read: expected %d, got %d", size, n)
-		}
-	}
-
-	return &MP4Box{
-		Size: size,
-		Type: boxType,
-		Data: data,
-	}, nil
 }
 
 // parseFtypBox parses the file type box
@@ -683,7 +599,9 @@ func parseUdtaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 				metadata.CreatedDate = date
 			}
 		case "©xyz":
-			parseGPSBox(boxData, metadata)
+			parsePositionAtom(boxData, metadata)
+		case "loci":
+			parseLociBox(boxData, metadata)
 		case "©cpy":
 			metadata.Copyright = parseStringBox(boxData)
 		case "©des":
@@ -917,6 +835,82 @@ func parseStringBox(data []byte) string {
 	}
 
 	return strings.TrimSpace(string(data))
+}
+
+// parsePositionAtom reads a ©xyz payload, which carries a position in EITHER of two encodings.
+//
+// The atom name does not say which, so the payload's SHAPE decides. ffmpeg writes a .mov ©xyz as a
+// 2-byte text length, a 2-byte language code and then an ISO 6709 string; some cameras write three
+// 16.16 fixed-point words instead. Reading the text form as fixed-point turns the length and
+// language bytes into a latitude: the payload "\x00\x12\x55\xc4+36.3506-082.6985/" was reported as
+// 18.335022, 11059.211639 at HIGH confidence, while the real position sat unreported in the same
+// bytes (#399).
+//
+// The shape test is isobmff.FindISO6709, the same spec-derived pattern the redactor uses to locate a
+// position. Sharing it is the point: the redactor's own notes record that these two readers
+// disagreeing about what a position looks like is what produced the garbage value, and a second copy
+// of the pattern here would let them drift apart again.
+//
+// A zero-filled payload still yields nothing, which is what keeps redaction verifiable by rescanning
+// the output: it holds no ISO 6709 text, so it falls to the fixed-point branch, decodes to 0/0, and
+// parseGPSBox drops that.
+func parsePositionAtom(data []byte, metadata *VideoMetadata) {
+	if match := isobmff.FindISO6709(data); match != nil {
+		parseISO6709Location(string(match), metadata)
+		return
+	}
+	parseGPSBox(data, metadata)
+}
+
+// parseLociBox reads a 3GPP/QuickTime loci atom, the form ffmpeg writes into .mp4 by default.
+//
+// Layout: a version byte and three flag bytes, a 2-byte language code, a NUL-terminated UTF-8 place
+// name, a one-byte role, then LONGITUDE, LATITUDE and altitude as 16.16 fixed-point in that order —
+// longitude first, unlike ©xyz — then a NUL-terminated astronomical body and NUL-terminated notes.
+//
+// The place name is location data in its own right and is kept. The reversed word order is the trap
+// here: reading them as lat/lon swaps the coordinates, which stays plausible near the equator and is
+// wrong everywhere else.
+func parseLociBox(data []byte, metadata *VideoMetadata) {
+	const (
+		versionAndFlags = 4
+		languageBytes   = 2
+		roleBytes       = 1
+		coordinateWords = 3 * 4
+	)
+	if len(data) < versionAndFlags+languageBytes+1+roleBytes+coordinateWords {
+		return
+	}
+
+	offset := versionAndFlags + languageBytes
+	nameEnd := bytes.IndexByte(data[offset:], 0)
+	if nameEnd < 0 {
+		return // unterminated name: the coordinate offsets below cannot be trusted
+	}
+	name := strings.TrimSpace(string(data[offset : offset+nameEnd]))
+	offset += nameEnd + 1 + roleBytes
+
+	if offset+coordinateWords > len(data) {
+		return
+	}
+	// #nosec G115 -- bit-pattern preservation for sign-extension, as in parseGPSBox
+	lon := float64(int32(binary.BigEndian.Uint32(data[offset:offset+4]))) / 65536.0
+	// #nosec G115 -- see lon above
+	lat := float64(int32(binary.BigEndian.Uint32(data[offset+4:offset+8]))) / 65536.0
+	// #nosec G115 -- see lon above
+	alt := float64(int32(binary.BigEndian.Uint32(data[offset+8:offset+12]))) / 65536.0
+
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return // not a position on Earth; see parseISO6709Location on why this is dropped
+	}
+	if lat != 0 || lon != 0 {
+		metadata.GPSLatitude = lat
+		metadata.GPSLongitude = lon
+		metadata.GPSAltitude = alt
+	}
+	if name != "" {
+		metadata.Location = name
+	}
 }
 
 // parseGPSBox parses GPS coordinates from binary data
@@ -1413,107 +1407,6 @@ func NewOptimizedVideoReader(filePath string) (*OptimizedVideoReader, error) {
 	}, nil
 }
 
-// ReadBoxHeader reads a box header efficiently
-func (ovr *OptimizedVideoReader) ReadBoxHeader() (*MP4Box, error) {
-	var header [BoxHeaderSize]byte
-	n, err := ovr.file.Read(header[:])
-	if err != nil {
-		return nil, err
-	}
-	if n != BoxHeaderSize {
-		return nil, io.EOF
-	}
-
-	ovr.position += BoxHeaderSize
-
-	// Parse box header
-	size := binary.BigEndian.Uint32(header[0:4])
-	var boxType [4]byte
-	copy(boxType[:], header[4:8])
-
-	// Handle extended size (64-bit)
-	if size == 1 {
-		var extSize [8]byte
-		n, err := ovr.file.Read(extSize[:])
-		if err != nil {
-			return nil, err
-		}
-		if n != 8 {
-			return nil, io.EOF
-		}
-		ovr.position += 8
-		size64 := binary.BigEndian.Uint64(extSize[:])
-		if size64 > MaxBoxSize {
-			return nil, fmt.Errorf("box too large: %d bytes", size64)
-		}
-		// Safe conversion with bounds checking
-		if size64 < ExtendedBoxSize {
-			return nil, fmt.Errorf("invalid box size: %d is less than extended box size %d", size64, ExtendedBoxSize)
-		}
-		adjustedSize := size64 - ExtendedBoxSize
-		if adjustedSize > math.MaxUint32 {
-			return nil, fmt.Errorf("box size too large for uint32: %d", adjustedSize)
-		}
-		size = uint32(adjustedSize)
-	} else if size == 0 {
-		// Box extends to end of file - skip for safety
-		return nil, io.EOF
-	} else {
-		size -= BoxHeaderSize
-	}
-
-	// Safety check for box size
-	if size > MaxBoxSize {
-		return nil, fmt.Errorf("box too large: %d bytes", size)
-	}
-
-	return &MP4Box{
-		Size: size,
-		Type: boxType,
-		Data: nil, // Data will be read on demand
-	}, nil
-}
-
-// ReadBoxData reads box data efficiently
-func (ovr *OptimizedVideoReader) ReadBoxData(size uint32) ([]byte, error) {
-	if size == 0 {
-		return nil, nil
-	}
-
-	data := make([]byte, size)
-	n, err := ovr.file.Read(data)
-	if err != nil {
-		return nil, err
-	}
-	// Safe comparison with bounds checking
-	if n < 0 || uint64(n) > math.MaxUint32 || uint32(n) != size {
-		return nil, fmt.Errorf("incomplete box read: expected %d, got %d", size, n)
-	}
-
-	ovr.position += int64(size)
-	return data, nil
-}
-
-// SkipBoxData skips box data without reading it
-func (ovr *OptimizedVideoReader) SkipBoxData(size uint32) error {
-	if size == 0 {
-		return nil
-	}
-
-	_, err := ovr.file.Seek(int64(size), io.SeekCurrent)
-	if err != nil {
-		return err
-	}
-
-	ovr.position += int64(size)
-	return nil
-}
-
-// GetPosition returns the current position
-func (ovr *OptimizedVideoReader) GetPosition() int64 {
-	return ovr.position
-}
-
 // GetFileSize returns the file size
 func (ovr *OptimizedVideoReader) GetFileSize() int64 {
 	return ovr.fileSize
@@ -1524,85 +1417,172 @@ func (ovr *OptimizedVideoReader) Close() error {
 	return ovr.file.Close()
 }
 
-// parseMP4ContainerOptimized parses MP4 container with optimized reading
-func parseMP4ContainerOptimized(ctx context.Context, reader *OptimizedVideoReader, metadata *VideoMetadata) error {
-	bytesRead := int64(0)
+// readTopLevelHeaderAt reads one top-level box header at off and returns its type, its TOTAL size
+// (header included) and the length of that header.
+//
+// Takes an io.ReaderAt rather than the file so a test can wrap it and count exactly how many bytes
+// the walk reads — which is the only way to assert that a media payload is never touched.
+//
+// Every declared size is checked against the real end of the file before it is trusted. That check
+// is written as `total > fileSize-off`, deliberately NOT as `off+total > fileSize`: a 64-bit
+// largesize near 2^63 makes the addition overflow to a negative offset, which a bounds test phrased
+// that way silently accepts. Both operands here are non-negative, so the comparison cannot wrap.
+func readTopLevelHeaderAt(r io.ReaderAt, off, fileSize int64) (boxType string, total, hdrLen int64, err error) {
+	var head [ExtendedBoxSize]byte
+	if _, err = io.ReadFull(io.NewSectionReader(r, off, BoxHeaderSize), head[:BoxHeaderSize]); err != nil {
+		return "", 0, 0, err
+	}
+	size32 := binary.BigEndian.Uint32(head[0:4])
+	boxType = string(head[4:8])
+	hdrLen = BoxHeaderSize
 
-	for {
-		// Check context for cancellation
+	switch size32 {
+	case 1:
+		// The real size is a 64-bit value following the type.
+		if _, err = io.ReadFull(io.NewSectionReader(r, off+BoxHeaderSize, 8), head[BoxHeaderSize:ExtendedBoxSize]); err != nil {
+			return "", 0, 0, err
+		}
+		hdrLen = ExtendedBoxSize
+		size64 := binary.BigEndian.Uint64(head[BoxHeaderSize:ExtendedBoxSize])
+		if size64 > math.MaxInt64 {
+			return boxType, 0, hdrLen, fmt.Errorf("box %q declares an unrepresentable 64-bit size", boxType)
+		}
+		total = int64(size64)
+	case 0:
+		// Size 0 means "extends to the end of the file", permitted for the last box.
+		total = fileSize - off
+	default:
+		total = int64(size32)
+	}
+
+	// A box cannot be smaller than its own header. Stepping by such a size would not advance the
+	// walk, which is the spin this file has already been bitten by once.
+	if total < hdrLen {
+		return boxType, 0, hdrLen, fmt.Errorf("box %q declares %d bytes, smaller than its %d-byte header", boxType, total, hdrLen)
+	}
+	if total > fileSize-off {
+		return boxType, 0, hdrLen, errDeclaredOverrun
+	}
+	return boxType, total, hdrLen, nil
+}
+
+// parseMP4ContainerOptimized walks the top-level boxes and parses the metadata ones.
+//
+// The walk is by ABSOLUTE OFFSET and has no positional budget, because moov is legal anywhere in the
+// file. ISO/IEC 14496-12 cl. 8.2.1.1 says moov is "normally ... close to the beginning or end of the
+// file, though this is not required", and Apple's QTFF is blunter: "QuickTime does not impose any
+// rules about the order of these atoms." ffmpeg and every camera measured on this machine write moov
+// LAST by default; faststart is a second pass nobody runs by accident.
+//
+// What was here before charged a 10MB budget for every box it stepped over, including the mdat it
+// skipped with a bare seek and never read — so the counter measured a file offset, not bytes read,
+// and a 12MB movie exhausted a "metadata" allowance while costing no memory at all. The walk then
+// stopped with a bare `break` and returned nil, so a file whose entire moov was never reached was
+// reported as a complete, clean scan at exit 0 (#398).
+//
+// Cost: TIME is O(number of top-level boxes) — a handful of 8-byte header reads. MEMORY is
+// O(min(|moov|, MaxMoovParse)), independent of the file's size, because no other box is ever read.
+// A media payload is stepped over by arithmetic, not even seeked.
+//
+// Always returns nil once the file is open. Lost coverage is reported through
+// metadata.ExtractionWarning instead, so a file that yielded SOME metadata keeps it — an error here
+// would throw away findings the walk had already collected.
+func parseMP4ContainerOptimized(ctx context.Context, reader *OptimizedVideoReader, metadata *VideoMetadata) error {
+	fileSize := reader.GetFileSize()
+	cur := int64(0)
+	boxes := 0
+	sawMoov := false
+
+	for cur+BoxHeaderSize <= fileSize {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		// Stop reading if we've read too much metadata
-		if bytesRead > MaxMetadataRead {
+		if boxes >= MaxTopLevelBoxes {
+			noteTruncation(metadata, fmt.Sprintf(
+				"video metadata may be incomplete: the box walk stopped after %d top-level boxes",
+				MaxTopLevelBoxes))
 			break
 		}
+		boxes++
 
-		// Read box header
-		box, err := reader.ReadBoxHeader()
-		if err == io.EOF {
-			break
+		boxType, total, hdrLen, err := readTopLevelHeaderAt(reader.file, cur, fileSize)
+		switch {
+		case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+			// A clean end of file, or a few stray bytes after the last box. Nothing was lost.
+			return nil
+		case errors.Is(err, errDeclaredOverrun):
+			// A truncated file. Read to its real end rather than abandoning the box: a partial
+			// moov still yields values, and the operator is told coverage was cut short.
+			noteTruncation(metadata, fmt.Sprintf(
+				"video metadata may be incomplete: the %q box at offset %d declares more bytes than "+
+					"the file holds, so it was read only to the file's real end", boxType, cur))
+			total = fileSize - cur
+			if total < hdrLen {
+				return nil
+			}
+		case err != nil:
+			noteTruncation(metadata, fmt.Sprintf(
+				"video metadata may be incomplete: the box structure could not be followed past "+
+					"offset %d (%v)", cur, err))
+			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("failed to read box header: %w", err)
-		}
 
-		boxType := string(box.Type[:])
-		bytesRead += int64(box.Size) + BoxHeaderSize
+		payloadStart := cur + hdrLen
+		payloadLen := total - hdrLen
 
-		// Process specific box types
 		switch boxType {
 		case "moov":
-			// Read moov box data for metadata
-			data, err := reader.ReadBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to read moov box data: %w", err)
+			sawMoov = true
+			readLen := payloadLen
+			if readLen > MaxMoovParse {
+				readLen = MaxMoovParse
+				noteTruncation(metadata, fmt.Sprintf(
+					"video metadata may be incomplete: the moov box is %d bytes and only the first "+
+						"%d were parsed", payloadLen, MaxMoovParse))
 			}
-			box.Data = data
-
-			err = parseMoovBoxWithContext(ctx, box.Data, metadata)
-			if err != nil {
-				return fmt.Errorf("failed to parse moov box: %w", err)
+			data := make([]byte, readLen)
+			if _, err := io.ReadFull(io.NewSectionReader(reader.file, payloadStart, readLen), data); err != nil {
+				noteTruncation(metadata, fmt.Sprintf(
+					"video metadata may be incomplete: the moov box at offset %d could not be read "+
+						"in full (%v)", cur, err))
+			} else if err := parseMoovBoxWithContext(ctx, data, metadata); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				noteTruncation(metadata, fmt.Sprintf(
+					"video metadata may be incomplete: the moov box at offset %d could not be "+
+						"parsed in full (%v)", cur, err))
 			}
 		case "ftyp":
-			// Read ftyp box data for file type info
-			data, err := reader.ReadBoxData(box.Size)
-			if err != nil {
-				// Non-fatal error for ftyp reading
-				reader.SkipBoxData(box.Size)
-				continue
+			// Only the brands are wanted, and they sit at the front of the payload.
+			readLen := payloadLen
+			if readLen > 1024 {
+				readLen = 1024
 			}
-			box.Data = data
-
-			err = parseFtypBox(box.Data, metadata)
-			if err != nil {
-				// Non-fatal error for ftyp parsing
-				continue
-			}
-		case "mdat":
-			// Skip media data - we only need metadata
-			err = reader.SkipBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to skip mdat box: %w", err)
-			}
-		case "free", "skip":
-			// Skip free space boxes
-			err = reader.SkipBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to skip %s box: %w", boxType, err)
+			data := make([]byte, readLen)
+			if _, err := io.ReadFull(io.NewSectionReader(reader.file, payloadStart, readLen), data); err == nil {
+				_ = parseFtypBox(data, metadata) // brands are advisory; a bad ftyp is not a failure
 			}
 		default:
-			// Skip unknown boxes to save time and memory
-			err = reader.SkipBoxData(box.Size)
-			if err != nil {
-				return fmt.Errorf("failed to skip %s box: %w", boxType, err)
-			}
+			// mdat, free, skip, wide, uuid and anything unrecognised: stepped over by arithmetic.
+			// No read, no allocation, not even a seek — which is what makes a 90MB movie cost the
+			// same as a 90KB one.
 		}
+
+		if metadata.ExtractionWarning != "" && errors.Is(err, errDeclaredOverrun) {
+			// The file ended early; there is nothing after this box to walk.
+			return nil
+		}
+		cur += total // total >= hdrLen >= BoxHeaderSize, so the walk always advances
 	}
 
+	if !sawMoov {
+		noteTruncation(metadata,
+			"video metadata may be incomplete: no moov box was found in the file")
+	}
 	return nil
 }
 
@@ -1831,65 +1811,136 @@ func extractAppleMetadataValue(searchArea, metadataKey string) string {
 	return ""
 }
 
-// parseISO6709Location parses GPS coordinates in ISO 6709 format
+// parseISO6709Location parses GPS coordinates in ISO 6709 Annex H format.
+//
+// The three forms differ only in how many INTEGER digits the angle carries, and that is the whole
+// difficulty: ±DD, ±DDMM and ±DDMMSS for latitude, ±DDD, ±DDDMM and ±DDDMMSS for longitude, with an
+// optional fraction on the smallest unit present. A plain ParseFloat is correct for the first form
+// and silently wrong for the other two — measured before this change, "+4012.22-07500.25/" (40°12.22′
+// north, 75°00.25′ west) reported latitude 4012.22 and longitude -7500.25, and
+// "+401230.5-0750015.3/" reported 401230.5. An impossible coordinate at HIGH confidence is a false
+// positive that also buries the real position, which is the pair of defects #399 is about.
+//
+// A value that cannot be a position on Earth is DROPPED rather than reported. That is what stops
+// this function turning a misread payload into a finding, and it is why the caller may hand it a
+// candidate it is not certain about.
 func parseISO6709Location(iso6709Str string, metadata *VideoMetadata) {
-	// ISO 6709 format: ±DD.DDDD±DDD.DDDD±AAA.AAA/
-	// Example: +36.3506-082.6985+447.403/
-
 	iso6709Str = strings.TrimSpace(iso6709Str)
-	if len(iso6709Str) == 0 {
+	iso6709Str = strings.TrimSuffix(iso6709Str, "/")
+	if iso6709Str == "" {
 		return
 	}
 
-	// Remove trailing slash if present
-	iso6709Str = strings.TrimSuffix(iso6709Str, "/")
+	// A CRS suffix is permitted after the height and is not part of any angle.
+	if i := strings.Index(iso6709Str, "CRS"); i > 0 {
+		iso6709Str = iso6709Str[:i]
+	}
 
-	// Parse latitude (first coordinate)
-	if len(iso6709Str) > 0 {
-		// Find the second sign (longitude start)
-		lonStart := -1
-		for i := 1; i < len(iso6709Str); i++ {
-			if iso6709Str[i] == '+' || iso6709Str[i] == '-' {
-				lonStart = i
-				break
-			}
-		}
-
-		if lonStart > 0 {
-			latStr := iso6709Str[:lonStart]
-			if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
-				metadata.GPSLatitude = lat
-			}
-
-			// Parse longitude (second coordinate)
-			remaining := iso6709Str[lonStart:]
-			altStart := -1
-			for i := 1; i < len(remaining); i++ {
-				if remaining[i] == '+' || remaining[i] == '-' {
-					altStart = i
-					break
-				}
-			}
-
-			if altStart > 0 {
-				lonStr := remaining[:altStart]
-				if lon, err := strconv.ParseFloat(lonStr, 64); err == nil {
-					metadata.GPSLongitude = lon
-				}
-
-				// Parse altitude (third coordinate)
-				altStr := remaining[altStart:]
-				if alt, err := strconv.ParseFloat(altStr, 64); err == nil {
-					metadata.GPSAltitude = alt
-				}
-			} else {
-				// No altitude, just longitude
-				if lon, err := strconv.ParseFloat(remaining, 64); err == nil {
-					metadata.GPSLongitude = lon
-				}
-			}
+	// Split on the signs that introduce each component; every component keeps its own sign.
+	var fields []string
+	start := 0
+	for i := 1; i < len(iso6709Str); i++ {
+		if iso6709Str[i] == '+' || iso6709Str[i] == '-' {
+			fields = append(fields, iso6709Str[start:i])
+			start = i
 		}
 	}
+	fields = append(fields, iso6709Str[start:])
+	if len(fields) < 2 {
+		return
+	}
+
+	lat, latOK := decodeISO6709Angle(fields[0], 2, 90)
+	lon, lonOK := decodeISO6709Angle(fields[1], 3, 180)
+	if !latOK || !lonOK {
+		// Not a position. Reporting half of one, or a value out of range, is worse than
+		// reporting nothing: it is a finding the operator cannot act on.
+		return
+	}
+	metadata.GPSLatitude = lat
+	metadata.GPSLongitude = lon
+
+	// Height is plain signed decimal metres, not a sexagesimal angle.
+	if len(fields) >= 3 {
+		if alt, err := strconv.ParseFloat(fields[2], 64); err == nil {
+			metadata.GPSAltitude = alt
+		}
+	}
+}
+
+// decodeISO6709Angle converts one signed ISO 6709 angle to decimal degrees.
+//
+// degreeDigits is 2 for a latitude and 3 for a longitude; the digits beyond that are minutes, then
+// seconds, and any fraction belongs to the smallest unit present. limit is the largest magnitude
+// the angle may have. Reports false for anything that is not one of the three legal widths or is
+// out of range, so a caller can use it as the shape test as well as the parse.
+func decodeISO6709Angle(field string, degreeDigits int, limit float64) (float64, bool) {
+	if len(field) < 2 || (field[0] != '+' && field[0] != '-') {
+		return 0, false
+	}
+	sign, body := 1.0, field[1:]
+	if field[0] == '-' {
+		sign = -1.0
+	}
+
+	intPart, frac := body, ""
+	if dot := strings.IndexByte(body, '.'); dot >= 0 {
+		intPart, frac = body[:dot], body[dot:]
+		if len(frac) < 2 {
+			return 0, false // a trailing '.' with no digits
+		}
+	}
+	for i := 0; i < len(intPart); i++ {
+		if intPart[i] < '0' || intPart[i] > '9' {
+			return 0, false
+		}
+	}
+
+	// Only DD / DDMM / DDMMSS widths exist, so the surplus over the degree field is 0, 2 or 4.
+	surplus := len(intPart) - degreeDigits
+	if surplus != 0 && surplus != 2 && surplus != 4 {
+		return 0, false
+	}
+
+	parse := func(s string) (float64, bool) {
+		v, err := strconv.ParseFloat(s, 64)
+		return v, err == nil
+	}
+
+	var deg, minutes, seconds float64
+	var ok bool
+	switch surplus {
+	case 0:
+		if deg, ok = parse(intPart + frac); !ok {
+			return 0, false
+		}
+	case 2:
+		if deg, ok = parse(intPart[:degreeDigits]); !ok {
+			return 0, false
+		}
+		if minutes, ok = parse(intPart[degreeDigits:] + frac); !ok {
+			return 0, false
+		}
+	case 4:
+		if deg, ok = parse(intPart[:degreeDigits]); !ok {
+			return 0, false
+		}
+		if minutes, ok = parse(intPart[degreeDigits : degreeDigits+2]); !ok {
+			return 0, false
+		}
+		if seconds, ok = parse(intPart[degreeDigits+2:] + frac); !ok {
+			return 0, false
+		}
+	}
+	if minutes >= 60 || seconds >= 60 {
+		return 0, false
+	}
+
+	value := sign * (deg + minutes/60 + seconds/3600)
+	if value < -limit || value > limit {
+		return 0, false
+	}
+	return value, true
 }
 
 // parseDMSCoordinates parses GPS coordinates in degrees/minutes/seconds format

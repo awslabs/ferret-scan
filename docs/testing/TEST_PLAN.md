@@ -107,6 +107,22 @@ can be megabytes and a file can be tens of thousands of near-identical rows. A h
 - A measured regression is a blocker unless it is the unavoidable cost of correct
   behavior (e.g. emitting findings that were previously dropped) — and then it is
   stated in the PR with the reason.
+- **A size read out of the file is not a size.** Every allocation taken from a DECLARED
+  length needs the declared value bounded by the bytes that are really there, checked
+  against `Stat`. This repo has produced 8.62GB of RSS from a 4KB `.docx` and 631MB from
+  sixteen 80-byte `.mp4` files, both by trusting a number an attacker supplied. Assert it
+  by **allocation**, not by timing: a bomb often parses fast, so a wall-clock assertion
+  passes on the broken build and flakes on slow CI.
+  Write the bound as `declared > remaining`, never as `offset + declared > size` — a
+  64-bit size near 2^63 makes the addition overflow to a negative number that every
+  later check accepts.
+- **Where metadata sits in a file is not a bound.** A container format that permits its
+  metadata anywhere (ISO base media `moov`, which ffmpeg and cameras write LAST) must be
+  tested in both layouts, and the two must produce identical output. A fixture generator
+  that always writes the easy layout hides this completely — every MP4 fixture in this
+  repo was implicitly faststart, which is why a 10MB positional cap went unnoticed.
+  Build the large-but-cheap case with `Truncate` so the media payload is a hole: it is
+  never read, so it need not exist.
 
 ### 5. Redaction — all types
 

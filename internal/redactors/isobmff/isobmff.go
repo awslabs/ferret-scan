@@ -89,6 +89,18 @@ func (s Span) Len() int64 { return s.End - s.Start }
 // match what writers emit, not what they should emit.
 var iso6709 = regexp.MustCompile(`[+-]\d{2}(?:\d{2}(?:\d{2})?)?(?:\.\d+)?[+-]\d{3}(?:\d{2}(?:\d{2})?)?(?:\.\d+)?(?:[+-]\d+(?:\.\d+)?)?(?:CRS[A-Za-z0-9_:.\-/]*?)?/`)
 
+// FindISO6709 returns the first ISO 6709 Annex H position string in b, or nil if there is none.
+//
+// Exported so the metadata EXTRACTOR can decide "is this payload a position, and in which form?"
+// against the same definition the redactor uses. The two sides disagreeing about that is not
+// hypothetical — it is the bug documented above, where ffmpeg's .mov ©xyz text payload was read as
+// fixed-point and reported as 18.335022, 11059.211639 (#399). A second copy of this pattern in the
+// extractor would let the two drift apart again, and the shape is spec-derived rather than
+// obvious: the integer digit counts are what distinguish the three forms.
+//
+// The returned slice aliases b; callers that keep it past a buffer reuse must copy.
+func FindISO6709(b []byte) []byte { return iso6709.Find(b) }
+
 var (
 	udtaAtom = []byte("udta")
 	metaAtom = []byte("meta")
