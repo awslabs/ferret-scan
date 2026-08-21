@@ -1464,6 +1464,26 @@ func (v *Validator) isEmbeddedInIdentifierAt(match, line string, matchIndex int)
 			return false
 		}
 
+		// A '.' before the match can be a decimal point, in which case the match has
+		// claimed the FRACTIONAL digits of a number and read them as the start of a
+		// phone number. "35.008 31.354" matched as "008 31.354": the leading "00"
+		// reads as an international dialing prefix, which scores HIGH 100 -- higher
+		// than a real "Phone: 415-555-0132", which scores 15.
+		//
+		// Measured on the public AWS Architecture Icons package (1,842 .svg, 4,012
+		// files): 15,514 findings, 13,790 of them HIGH, essentially all PHONE
+		// claiming ".00xx" path coordinates. SVG path data carries four decimal
+		// places, so ".00xx" turns up in roughly 1% of coordinates. The same shape
+		// hits GeoJSON, coordinate CSVs and telemetry dumps.
+		//
+		// This is also the stated reason embedded .svg parts are excluded from
+		// scanning (internal/embedded/embedded.go), which makes a value in an
+		// embedded SVG a cleartext leak (#314) -- so the exclusion is downstream of
+		// this arm.
+		if charBefore == '.' && isDecimalFractionTail(line, matchIndex, match) {
+			return true
+		}
+
 		// If the character before is alphanumeric or common identifier separators, this phone is embedded
 		if (charBefore >= 'a' && charBefore <= 'z') ||
 			(charBefore >= 'A' && charBefore <= 'Z') ||
@@ -1711,6 +1731,45 @@ func isWordByteASCII(b byte) bool {
 // (ami-050451375729, i-057034242931) is right, but it also swallowed every
 // number written the way North American numbers are dictated. A resource prefix
 // is alphabetic or multi-character; a bare single "1" is not one.
+// isDecimalFractionTail reports whether a match starting at matchIndex, whose
+// preceding character is '.', is the fractional tail of a decimal number rather
+// than the start of a phone number written with dots.
+//
+// The '.' must be a real decimal point -- a digit immediately before it -- so a
+// sentence-ending period is excluded (there charBefore is the space, not the '.')
+// and so is a bare ".5551234", which has no number in front of it.
+//
+// The discriminator against DOTTED PHONE NOTATION is the separator that follows
+// the match's first digit group. A dotted number continues with dots, so in
+// "1.415.555.0132" the match "415.555.0132" runs on in the same style and is a
+// phone; whereas in "35.008 31.354" the match "008 31.354" changes separator
+// immediately, which means it has run out of the number it started in and across
+// a boundary into the next one. Getting this wrong in the permissive direction
+// would silently drop "1.415.555.0132", so the exception is deliberate and is
+// pinned by a test.
+func isDecimalFractionTail(line string, matchIndex int, match string) bool {
+	// A digit must sit immediately before the '.', or it is not a decimal point.
+	if matchIndex < 2 {
+		return false
+	}
+	if d := line[matchIndex-2]; d < '0' || d > '9' {
+		return false
+	}
+
+	// Find the separator after the match's first run of digits. A match that is
+	// all digits has no separator and is a plain fractional tail.
+	for i := 0; i < len(match); i++ {
+		c := match[i]
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		// Same-style continuation: still inside one dotted number, so treat the
+		// match as a phone and let the later arms judge it.
+		return c != '.'
+	}
+	return true
+}
+
 func isNANPCountryCodePrefix(line string, dashAt int) bool {
 	if dashAt <= 0 || dashAt >= len(line) || line[dashAt] != '-' {
 		return false
