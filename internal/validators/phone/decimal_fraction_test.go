@@ -37,8 +37,14 @@ func TestDecimalFractionIsNotAPhoneNumber(t *testing.T) {
 		{"csv coordinate pair, other fraction", "35.009 31.354"},
 		{"four-decimal precision", "32.0078 31.3992"},
 		{"svg path attribute", `<path d="M32.6982,23.9008 C33.0592,24.3698 32.0078 31.3992"/>`},
-		{"geojson coordinates", `{"coordinates":[[-122.0078,31.3992],[-122.0091,31.4002]]}`},
 		{"leading zero run", "1.0012 34.5678"},
+
+		// This row is a SHAPE GUARD, not a regression test: a comma-separated GeoJSON
+		// array already reported nothing on the parent commit, because the pattern
+		// wants whitespace between the groups. It is kept so that a future widening of
+		// the separator set cannot quietly admit the comma form, but it does not
+		// discriminate this fix -- the five rows above do.
+		{"geojson coordinates (shape guard only)", `{"coordinates":[[-122.0078,31.3992],[-122.0091,31.4002]]}`},
 	}
 
 	for _, c := range cases {
