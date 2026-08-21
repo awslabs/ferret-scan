@@ -1210,8 +1210,17 @@ func (v *Validator) analyzeContextCached(match string, matchStart int, cache *li
 //
 // Note this is wider than the negative-keyword penalty's 15, even though many
 // words appear in both lists (13 of 19 geographic patterns and 17 business
-// patterns are also negativeKeywords). That is intentional: the two penalties
-// stack, so the keyword path still contributes at its own tighter distance.
+// patterns are also negativeKeywords).
+//
+// This comment used to end "That is intentional: the two penalties stack, so the
+// keyword path still contributes at its own tighter distance." The window being
+// wider is still intentional and unchanged. The STACKING was not measured, and it
+// cost real names: one "Street" beside a name paid -35 here and -15 there, and
+// 100 - 58 landed at 42, under the 50 emit floor — so five of eight mailing-label
+// forms reported nothing at all and were never redacted (#387). A word outside the
+// name is now charged once, at the higher of the two rates; a word INSIDE the
+// candidate span still stacks, because there the geography and the "name" are the
+// same evidence. See analyzeLineContextForMatch.
 const specificPatternProximity = 25
 
 // matchIndex resolves the byte offset of the match within lowerLine, preferring
@@ -1220,6 +1229,66 @@ const specificPatternProximity = 25
 // lookup finds it (the directly-tested public AnalyzeContext path). Returns -1 if
 // the match cannot be located, in which case no proximity penalty is applied —
 // failing OPEN, because a name is reported rather than silently dropped.
+// negativeKeywordProximity and negativeKeywordPenalty are the window and cost of the
+// negative-keyword penalty, named because specificPatternPenalties has to compare against the cost
+// to decide whether a word has already been charged more heavily elsewhere.
+const (
+	negativeKeywordProximity = 15
+	negativeKeywordPenalty   = 15.0
+)
+
+// specificPatternPenalties returns the total business/product/geographic penalty for a name at
+// nameIndex, and the byte offset of every pattern that contributed, mapped to the largest penalty
+// charged at that offset.
+//
+// The offsets are what let the caller avoid charging one word under two penalty families. They are
+// directly comparable with cache.negativeKeywordIndices: both are first-occurrence byte offsets
+// into the same lowered line.
+//
+// A family charges once even when several of its patterns are in range — that is the pre-existing
+// behaviour of the bool-returning check this replaces, and widening it would be a separate
+// (precision-reducing) decision.
+func (v *Validator) specificPatternPenalties(cache *lineContextCache, nameIndex int) (float64, map[int]float64) {
+	if nameIndex < 0 {
+		return 0, nil
+	}
+
+	var total float64
+	var charged map[int]float64
+
+	families := []struct {
+		indices []int
+		penalty float64
+	}{
+		{cache.businessIndices, 20.0}, // business/technical context
+		{cache.productIndices, 8.0},   // product context
+		{cache.geoIndices, 35.0},      // geographic context
+	}
+
+	for _, f := range families {
+		if !nearestWithin(f.indices, nameIndex, specificPatternProximity) {
+			continue
+		}
+		total += f.penalty
+		for _, idx := range f.indices {
+			distance := idx - nameIndex
+			if distance < 0 {
+				distance = -distance
+			}
+			if distance >= specificPatternProximity {
+				continue
+			}
+			if charged == nil {
+				charged = make(map[int]float64, len(families))
+			}
+			if charged[idx] < f.penalty {
+				charged[idx] = f.penalty
+			}
+		}
+	}
+	return total, charged
+}
+
 func matchIndex(matchStart int, lowerLine, match string) int {
 	if matchStart >= 0 {
 		return matchStart
@@ -1253,6 +1322,16 @@ func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cac
 	lowerLine := cache.lowerLine
 	adjustment := cache.positiveAdjustment
 
+	// Work out which specific-pattern families penalise THIS name, and at which byte offsets,
+	// before the negative-keyword count below — because the two lists overlap and a word must not
+	// be charged twice for being one word.
+	//
+	// 13 of 19 geographic patterns and 17 business patterns are also negativeKeywords, so a single
+	// "Street" used to pay -35 as geography AND -15 as a negative keyword. The penalties are
+	// applied in the original order further down; only the COUNT below changes.
+	nameIdx := matchIndex(matchStart, lowerLine, match)
+	specificPenalty, chargedOffsets := v.specificPatternPenalties(cache, nameIdx)
+
 	if cache.hasNegativeKeyword {
 		// Apply the business-context penalty only when guard-passing negative
 		// keywords sit close (<15 chars) to the name. The keyword positions and
@@ -1260,10 +1339,7 @@ func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cac
 		// here we just compare each against the name's offset. nameIndex uses the
 		// known matchStart (or a single fallback lookup) instead of re-scanning the
 		// whole line per match.
-		nameIndex := matchStart
-		if nameIndex < 0 {
-			nameIndex = strings.Index(lowerLine, strings.ToLower(match))
-		}
+		nameIndex := nameIdx
 
 		closeNegativeMatches := 0
 		if nameIndex >= 0 {
@@ -1272,14 +1348,38 @@ func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cac
 				if distance < 0 {
 					distance = -distance
 				}
-				if distance < 15 {
-					closeNegativeMatches++
+				if distance >= negativeKeywordProximity {
+					continue
 				}
+				// One word OUTSIDE the name, one charge. If a specific-pattern family already
+				// penalised the word at this offset by at least as much, charging it again here
+				// is charging the same evidence twice.
+				//
+				// Measured: "1247 Oakmont Street, Marcus Whitfield" paid -35 (geographic) -15
+				// (negative keyword) -8 (product) = -58, taking a list-surname name from 100 to
+				// 42 — under the hardcoded 50 emit floor, so the finding did not exist at any
+				// --confidence setting and no redacted file was written at all. Five of eight
+				// realistic mailing-label forms behaved that way (#387).
+				//
+				// The span test is what keeps this from re-admitting place names, and it is the
+				// real distinction between the two classes. In "Jordan Lake State Recreation
+				// Area" the geographic word IS the second token of the candidate — the "name" is
+				// the place — so both charges are evidence about the same thing and the stack is
+				// correct. In a mailing label the street suffix sits outside the name entirely and
+				// says nothing more about it than the geographic penalty already did. Measured:
+				// without this test, that line returned as a LOW 57 false positive.
+				insideName := nameIndex >= 0 && keywordIndex >= nameIndex && keywordIndex < nameIndex+len(match)
+				if !insideName {
+					if charged, ok := chargedOffsets[keywordIndex]; ok && charged >= negativeKeywordPenalty {
+						continue
+					}
+				}
+				closeNegativeMatches++
 			}
 		}
 
 		if closeNegativeMatches > 0 {
-			adjustment -= float64(closeNegativeMatches) * 15.0
+			adjustment -= float64(closeNegativeMatches) * negativeKeywordPenalty
 			if closeNegativeMatches > 1 {
 				adjustment = -25.0 // Moderate penalty for multiple close negative keywords
 			}
@@ -1298,17 +1398,9 @@ func (v *Validator) analyzeLineContextForMatch(match string, matchStart int, cac
 	// Same window as the negative-keyword penalty: a pattern has to sit within
 	// specificPatternProximity of the name to say anything about THAT name. A
 	// street address at the other end of a CSV row does not.
-	if nameIndex := matchIndex(matchStart, lowerLine, match); nameIndex >= 0 {
-		if nearestWithin(cache.businessIndices, nameIndex, specificPatternProximity) {
-			adjustment -= 20.0 // business/technical context
-		}
-		if nearestWithin(cache.productIndices, nameIndex, specificPatternProximity) {
-			adjustment -= 8.0 // product context
-		}
-		if nearestWithin(cache.geoIndices, nameIndex, specificPatternProximity) {
-			adjustment -= 35.0 // geographic context
-		}
-	}
+	// Computed above, before the negative-keyword count, so that count can tell which words have
+	// already been charged. The arithmetic and its position here are unchanged.
+	adjustment -= specificPenalty
 
 	trimmedLine := strings.TrimSpace(lowerLine)
 	trimmedMatch := strings.TrimSpace(match)
