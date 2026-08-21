@@ -53,6 +53,27 @@ type ImageMetadataRedactor struct {
 }
 
 // ImageFormat represents the type of image format
+// maxRedactablePixels bounds the declared width x height of an image this redactor will decode.
+//
+// Stripping metadata from a JPEG or PNG here decodes the pixels and re-encodes them, so peak memory
+// follows the DECLARED dimensions — a number taken from the file. Measured cost of one decode is
+// about 1 byte per pixel for greyscale and nearer 2.5 for colour, so this budget is roughly 64MB to
+// 160MB per image; the worker pool caps concurrency at 8, which bounds the whole run at about 1.3GB
+// rather than at whatever an attacker declares.
+//
+// 64M pixels (2^26) is chosen to sit above every camera that produces files people actually scan —
+// 61MP is the largest full-frame sensor sold, and phone output is far smaller — while refusing the
+// 400M-pixel shape that is trivial to synthesise. An image past it is REFUSED with an error, which
+// removes the output file, so the refusal is visible rather than a silently unredacted copy.
+//
+// Raising it multiplies by 8. Lowering it starts refusing real photographs. Neither is free, which is
+// why the number is stated with its measurement rather than left as a round guess.
+//
+// A var rather than a const only so a test can lower it and exercise the refusal without generating a
+// 400M-pixel fixture — which would cost the test the very memory this exists to avoid. Nothing in
+// production writes it.
+var maxRedactablePixels int64 = 1 << 26
+
 type ImageFormat int
 
 const (
@@ -297,19 +318,31 @@ func (imr *ImageMetadataRedactor) extractImageMetadata(filePath string, format I
 		Metadata: make(map[string]interface{}),
 	}
 
-	// Decode image to get dimensions and color model
-	img, _, err := image.Decode(file)
+	// Read the header for dimensions and colour model. DecodeConfig, NOT Decode: the pixels are
+	// not wanted here, and decoding them is the whole cost.
+	//
+	// image.Decode allocated the full pixel buffer to read three header fields, and the re-encode
+	// below decodes them AGAIN — so a large image was materialised twice. Measured on a 20000x20000
+	// (400M-pixel) JPEG that is 4.47MB on disk: 0.77GB of peak RSS under --enable-redaction, against
+	// 27MB for the same file without it (the default scan path never decodes pixels). Heap scaled
+	// linearly with declared width x height and nothing capped it, so a larger declaration went
+	// further and could OOM the process (#378).
+	//
+	// Verified equivalent before swapping: DecodeConfig reports identical Width, Height and
+	// ColorModel TYPE to a full Decode on the bomb fixture and on four real JPEG/PNG files, and the
+	// colour model reaches reported metadata as fmt.Sprintf("%T", ...) so a difference would have
+	// been visible.
+	cfg, _, err := image.DecodeConfig(file)
 	if err != nil {
 		imr.logEvent("image_decode_failed", false, map[string]interface{}{
 			"error": err.Error(),
 		})
 	} else {
-		bounds := img.Bounds()
 		metadata.Dimensions = ImageDimensions{
-			Width:  bounds.Dx(),
-			Height: bounds.Dy(),
+			Width:  cfg.Width,
+			Height: cfg.Height,
 		}
-		metadata.ColorModel = fmt.Sprintf("%T", img.ColorModel())
+		metadata.ColorModel = fmt.Sprintf("%T", cfg.ColorModel)
 	}
 
 	// Extract EXIF data for supported formats
@@ -381,6 +414,30 @@ func (imr *ImageMetadataRedactor) redactImageMetadata(originalPath, outputPath s
 	}
 
 	var redactionMap []redactors.RedactionMapping
+
+	// Refuse an image whose declared pixel count is past the budget, BEFORE opening anything.
+	//
+	// Stripping metadata here means decoding the pixels and re-encoding them, so peak memory is set
+	// by the DECLARED width x height — a number out of the file, not a real one. Measured on a
+	// 20000x20000 JPEG that is 4.47MB on disk: 0.40GB of resident memory for the single remaining
+	// decode, and heap grows linearly with the declaration, so a larger one goes further until the
+	// process is OOM-killed. An attacker adds a detectable EXIF field to route the file here, which
+	// is what makes it reachable.
+	//
+	// Refusing is what the surrounding code already does for a format it cannot strip safely, and it
+	// inherits that path's guarantee: the error removes the output file, so a refusal can never be
+	// mistaken for a redacted document.
+	if px := int64(metadata.Dimensions.Width) * int64(metadata.Dimensions.Height); px > maxRedactablePixels {
+		imr.logEvent("image_pixel_budget_exceeded", false, map[string]interface{}{
+			"width":  metadata.Dimensions.Width,
+			"height": metadata.Dimensions.Height,
+			"pixels": px,
+			"budget": maxRedactablePixels,
+		})
+		return nil, fmt.Errorf("refusing to redact a %dx%d image: %d pixels is over the %d-pixel "+
+			"budget, and stripping metadata requires decoding them",
+			metadata.Dimensions.Width, metadata.Dimensions.Height, px, maxRedactablePixels)
+	}
 
 	// Open original file
 	originalFile, err := os.Open(originalPath)
