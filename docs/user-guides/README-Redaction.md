@@ -93,7 +93,8 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 | Excel | `.xlsx` | Shared strings + cell values inside ZIP |
 | PowerPoint | `.pptx` | Text elements inside ZIP |
 | Legacy Office | `.doc` `.xls` `.ppt` | Same-length in-place overwrite of stream bytes |
-| Images | `.jpg` `.png` `.tiff` `.gif` `.bmp` `.webp` | EXIF metadata removal only |
+| Images | `.jpg` `.jpeg` `.png` | EXIF metadata removal only, by decode + re-encode; images over 64M pixels are refused |
+| Other images | `.tiff` `.gif` `.bmp` `.webp` | ⚠️ Not redactable — **no output file is written** and the run says so |
 | Audio | `.mp3` `.wav` `.m4a` `.flac` | Same-length in-place overwrite of tag metadata |
 | Video | `.mp4` `.m4v` `.mov` | Same-length in-place overwrite of tag metadata; GPS payload zeroed |
 | PDF | `.pdf` | ⚠️ Not redactable — **no output file is written** and the run says so |
@@ -103,14 +104,36 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > extension or no extension. A `.env` holding a live credential is redacted exactly like
 > a `.txt`.
 >
-> **Note on images**: Only EXIF metadata (GPS, camera info, timestamps) is removed. Text embedded in image pixels is not redacted.
+> **Note on images**: Only EXIF metadata (GPS, camera info, timestamps) is removed. Text embedded
+> in image pixels is not redacted. Only **JPEG and PNG** have an implementation: a `.tiff` `.gif`
+> `.bmp` or `.webp` file with findings produces **no redacted copy**, and the run reports
+> `redaction incomplete … the original values remain in cleartext`, naming the file. An earlier
+> version of this table listed all six extensions as redacted, which was wrong in the dangerous
+> direction — it implied a stripped copy where none is written.
+>
+> Stripping EXIF from a JPEG or PNG works by decoding the pixels and re-encoding them, so peak
+> memory follows the image's **declared** width × height rather than its size on disk. Images over
+> **64M pixels** (2^26 — above every camera sold, including a 61MP full-frame sensor) are therefore
+> refused with the same disclosed warning, because a 4MB file can declare 400M pixels and a large
+> enough declaration would otherwise exhaust memory. One consequence worth knowing: because the
+> pixels are re-encoded, a redacted JPEG is **not** byte-identical to the original outside its
+> metadata.
 >
 > **Note on PDFs**: PDF redaction is on the roadmap. Until then a PDF with findings
 > produces **no redacted copy at all** — not an unchanged copy — and the run reports
-> `redaction incomplete … the original values remain in cleartext`, naming the file. Use
-> `--fail-on-incomplete` to turn that into exit code 3. An earlier version of this table
-> said the file was "copied unchanged", which was worse than wrong: it implied an output
-> file exists at the sanitized path.
+> `redaction incomplete … the original values remain in cleartext`, naming the file. An
+> earlier version of this table said the file was "copied unchanged", which was worse than
+> wrong: it implied an output file exists at the sanitized path.
+>
+> **Note on the exit code for a refusal**: every refusal above is disclosed on the console,
+> but none of them changes the exit code — a run that leaves values in cleartext still exits
+> `0`. `--fail-on-incomplete` does **not** cover this: it reports incomplete *scan* coverage
+> (a validator timeout or budget, or a file that could not be opened), and a refused
+> redaction is a fully scanned file. An earlier version of this page said
+> `--fail-on-incomplete` turned a PDF refusal into exit code 3; measured, it does not. Gate
+> CI on the presence of the warning, or on the redacted file existing, until
+> [#441](https://github.com/awslabs/ferret-scan/issues/441) gives these refusals an exit code
+> of their own.
 >
 > **Note on audio and video**: only the tag metadata is redacted — a comment, artist,
 > title, copyright, camera make and model, software, or GPS position. The audio or video

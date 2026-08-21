@@ -958,7 +958,8 @@ Each strategy's behaviour is fixed and takes no options:
 |------|-----------------|
 | `.txt` `.csv` `.json` `.yaml` `.md` `.log` | Direct string replacement |
 | `.docx` `.xlsx` `.pptx` | XML element replacement inside ZIP |
-| `.jpg` `.png` `.tiff` `.gif` `.bmp` `.webp` | EXIF metadata removal only |
+| `.jpg` `.jpeg` `.png` | EXIF metadata removal only, by decode + re-encode; over 64M pixels is refused |
+| `.tiff` `.gif` `.bmp` `.webp` | ⚠️ Not yet implemented |
 | `.pdf` | ⚠️ Not yet implemented |
 
 See the [Redaction Guide](user-guides/README-Redaction.md) for full details including per-validator behaviour and synthetic token formats.
