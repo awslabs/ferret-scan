@@ -178,6 +178,89 @@ var PersonNameCases = []Case{
 		Redactable: true,
 	},
 	{
+		Name:   "person_lowercase_particles_recovered",
+		Origin: "promoted out of quarantine 2026-08-22 by the #422 particle patterns; bands measured against the real CLI",
+		Rationale: "Was person_lowercase_particles_UNSUPPORTED. Every pattern required each name " +
+			"token to start with a capital, so a lowercase particle terminated the match and these " +
+			"names produced no candidate at all — never reported, therefore never redacted, a " +
+			"cleartext leak concentrated on non-Anglo names.\n" +
+			"Measured before and after, same fixture, same flags:\n" +
+			"  Ana de la Cruz  NONE -> 77   |   Carlos dos Santos  NONE -> 77\n" +
+			"  Jan van der Berg  NONE -> 77 |   Piet de Vries       NONE -> 77\n" +
+			"MEDIUM rather than HIGH is the ceiling working as designed, not a shortfall: the " +
+			"particle pattern is not a formal-name pattern, so it earns no title/suffix boost.\n" +
+			"The quarantine rationale predicted that a particle-aware regex would also light up " +
+			"the fp__eponym_technical_terms negatives below, and that it therefore needed a gate " +
+			"underneath it. It did light them up: \"Discussed von Neumann\" and \"Applied de " +
+			"Morgan\" both appeared, because the token after the particle is a genuine surname. " +
+			"The gate is requiresBothNamesKnown — for this pattern the GIVEN half must be a known " +
+			"name too, which is exactly the structure fp__latin_and_prose_particles named. Both " +
+			"negative cases are silent with these labels asserted.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Signed by Ana de la Cruz.\n" +
+			"Signed by Carlos dos Santos.\n" +
+			"Signed by Jan van der Berg.\n" +
+			"Signed by Piet de Vries.\n",
+		Labels: []Label{
+			{Line: 1, Value: "Ana de la Cruz", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+			{Line: 2, Value: "Carlos dos Santos", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+			{Line: 3, Value: "Jan van der Berg", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+			{Line: 4, Value: "Piet de Vries", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+		},
+		Redactable: true,
+	},
+	{
+		Name:   "person_routing_word_before_name",
+		Origin: "authored 2026-08-22 for #434; bands measured against the real CLI",
+		Rationale: "A memo header or salutation that is not followed by punctuation. Go's regexp " +
+			"finds leftmost NON-OVERLAPPING matches, so the routing word did not merely get " +
+			"included in the span — it CONSUMED the given name and the real name was never a " +
+			"candidate. The same header therefore behaved two different wrong ways:\n" +
+			"  \"Attn Marcus Whitfield\"      -> NONE  (never reported, so never redacted)\n" +
+			"  \"Attention Marcus Whitfield\" -> 81 on the whole string, routing word inside " +
+			"the reported value\n" +
+			"Pinned to the punctuated form's behaviour, which was already correct: " +
+			"\"Attn: Marcus Holloway\" -> 92. Both now agree.\n" +
+			"The cause was isolated by length rather than by vocabulary: \"X Marcus Holloway\" " +
+			"-> 92 already worked, because a one-letter token cannot start a name token and so " +
+			"consumes nothing.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Attn Marcus Whitfield\n" +
+			"Attention Marcus Whitfield\n" +
+			"Dear Marcus Holloway\n" +
+			"Regards Marcus Holloway\n" +
+			"Cc Marcus Holloway\n",
+		Labels: []Label{
+			{Line: 1, Value: "Marcus Whitfield", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 2, Value: "Marcus Whitfield", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 3, Value: "Marcus Holloway", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 4, Value: "Marcus Holloway", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 5, Value: "Marcus Holloway", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+		},
+		Redactable: true,
+	},
+	{
+		Name:   "fp__masking_is_limited_to_routing_words",
+		Origin: "harvested from a 714-document real-corpus measurement, 2026-08-22",
+		Rationale: "The counterweight to person_routing_word_before_name. Reaching a name behind " +
+			"a routing word works by masking that word and re-running the patterns, and the first " +
+			"version of it masked every Title-Case function word. That recovered the salutation " +
+			"names AND exposed 18 findings on 714 real documents that had been hidden behind an " +
+			"ordinary function word, almost all false: \"Firm Fixed Price\" (7 hits, behind " +
+			"\"For\"), \"Fixed Price\", \"Epic House\", \"Advice Regarding Grant\" at 100.\n" +
+			"So the mask list is routingWordsMap — salutations and memo headers only — not " +
+			"functionWordsMap. These lines pin that: each has a Title-Case function word in front " +
+			"of a noun phrase whose last token is a real surname, which is exactly the shape the " +
+			"broad mask lit up. Widening the mask again fails here.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "For Firm Fixed Price contracts only.\n" +
+			"The Fixed Price applies.\n" +
+			"About Epic House today.\n" +
+			"With Person Sessions scheduled.\n",
+		Negative:   true,
+		Redactable: true,
+	},
+	{
 		Name:   "fp__eponym_technical_terms",
 		Origin: "authored 2026-08 for scorecorpus; behavior verified against the real CLI",
 		Rationale: "Scientific terms that ARE people's surnames: van der Waals, von Neumann, " +
@@ -219,29 +302,27 @@ var PersonNameCases = []Case{
 // changes a number and fails until explained.
 var PersonNameQuarantine = []Case{
 	{
-		Name:   "person_lowercase_particles_UNSUPPORTED",
-		Origin: "authored 2026-08 for scorecorpus; measured against the real CLI",
-		Rationale: "Surnames with a lowercase nobiliary particle are NOT detected: de la Cruz, " +
-			"dos Santos, van der Berg, von Mises, de Vries, van den Heuvel, al-Rashid, El-Sayed. " +
-			"Isolated to prove the particle is the sole cause — capitalising it works and the " +
-			"correct lowercase form does not:\n" +
-			"  \"Ana de la Cruz\" -> NONE   |   \"Ana De La Cruz\" -> 94   |   \"Ana Cruz\" -> 92\n" +
-			"Measured 0 of 4 Dutch/German, 1 of 4 Arabic, 0 of 3 Hispanic-with-particle. Roughly " +
-			"a quarter of Dutch surnames carry one. An undetected name is never redacted, so this " +
-			"is a cleartext leak concentrated on non-Anglo names.\n" +
-			"Quarantined rather than labelled because the fix is not a pattern change alone: a " +
-			"particle-aware regex also matches the eponym negatives above, so it needs the " +
-			"surname-anchored gate underneath it.\n" +
-			"As of 2026-08-19 this case owns the Dutch particle line exclusively: the surname " +
-			"data gap it used to share with person_locale_surnames_UNSUPPORTED is closed, and " +
-			"that case was promoted to person_locale_surnames_recovered. What remains here is " +
-			"purely the lowercase particle.",
+		Name:   "person_hyphenated_particle_UNSUPPORTED",
+		Origin: "narrowed from person_lowercase_particles_UNSUPPORTED 2026-08-22; measured against the real CLI",
+		Rationale: "What remains of the particle gap after #422: the particle attached to the " +
+			"surname by a HYPHEN rather than separated by a space — al-Rashid, El-Sayed, " +
+			"de-la-Cruz. The space-separated forms this case used to hold are now detected and " +
+			"were promoted to person_lowercase_particles_recovered.\n" +
+			"A different shape, not a shorter version of the same one: nameParticleRun joins the " +
+			"particle to the surname with nameSpace, and hyphenated_last_name requires a CAPITAL " +
+			"after the hyphen, so a lowercase hyphenated particle satisfies neither.\n" +
+			"Isolated by holding the surname constant at one the database carries, so the cause " +
+			"is the hyphen alone and not a data gap (measured 2026-08-22 against the real CLI):\n" +
+			"  \"Ana de la Cruz\" -> 77   |   \"Ana de-la-Cruz\" -> NONE   |   \"Ana Cruz\" -> 92\n" +
+			"  \"Jan van Berg\"   -> 77   |   \"Jan van-Berg\"   -> NONE   |   \"Jan Berg\"  -> 92\n" +
+			"The al-Rashid and El-Sayed lines below have BOTH causes: the hyphen shape above and " +
+			"a surname the list does not carry (\"Mohammed Rashid\" and \"Layla Sayed\" are also " +
+			"NONE), so they need the data fix of person_locale_surnames_recovered as well.",
 		Checks: []string{"PERSON_NAME"},
-		Input: "Signed by Ana de la Cruz.\n" +
-			"Signed by Carlos dos Santos.\n" +
-			"Signed by Jan van der Berg.\n" +
-			"Signed by Piet de Vries.\n" +
-			"Signed by Mohammed al-Rashid.\n",
+		Input: "Signed by Ana de-la-Cruz.\n" +
+			"Signed by Jan van-Berg.\n" +
+			"Signed by Mohammed al-Rashid.\n" +
+			"Signed by Layla El-Sayed.\n",
 		Redactable: true,
 	},
 }
