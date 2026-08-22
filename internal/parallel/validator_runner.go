@@ -286,6 +286,26 @@ func RunValidators(
 		// order restored above — assigning occurrences in goroutine-completion
 		// order would hand the same finding a different column run to run.
 		detector.AssignLineColumns(allMatches)
+
+		// Detach the findings from the extracted buffer, for the same reason the line
+		// columns are assigned here: this is the one point every match passes through.
+		//
+		// Every string on a match is a substring of processedContent.Text, and a Go
+		// substring retains its parent's WHOLE backing array — so without this, one
+		// 16-byte finding keeps that file's entire extracted content alive for as long
+		// as the finding lives, which is until the process exits. Measured on 64 files
+		// of 2 MB with one EMAIL each: 130 MB of live heap held by 64 findings.
+		//
+		// It must run AFTER AssignLineColumns, which is why it sits here rather than
+		// earlier: the column assignment walks the original strings, and the detach
+		// gives every match on a line the SAME copy, so the line identity that
+		// AssignLineColumns and the redaction-path overlap resolver depend on is
+		// preserved rather than fragmented.
+		//
+		// DetachMatches declines when the finding-bearing text is most of the buffer
+		// (a single-line minified document), because there the copy is as large as what
+		// it would free. That case is a deliberate non-improvement, not an oversight.
+		detector.DetachMatches(allMatches, processedContent.Text)
 	}
 
 	select {
