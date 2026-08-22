@@ -201,8 +201,9 @@ The validator includes sensible defaults but can be tailored to organizational n
 		"        - \"creator\"\n" +
 		"        - \"content\"\n" +
 		"    \n" +
-		"    # Whitelist patterns to exclude known false positives (optional)\n" +
-		"    whitelist_patterns:\n" +
+		"    # Allowlist patterns. A match overlapping one of these is EXCLUDED from the\n" +
+		"    # report, not scored down. \"whitelist_patterns\" is a deprecated alias.\n" +
+		"    allowlist_patterns:\n" +
 		"      - \"(?i)example\\.com\"  # Exclude example domains\n" +
 		"      - \"(?i)test.*social\"  # Exclude test social media references\n" +
 		"```\n\n" +
