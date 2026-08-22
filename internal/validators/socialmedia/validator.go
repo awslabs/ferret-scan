@@ -73,6 +73,12 @@ type Validator struct {
 	platformPatterns map[string][]string
 	compiledPatterns map[string][]*regexp.Regexp
 
+	// sortedPlatforms holds the compiledPatterns keys in sorted order so identifyPlatform
+	// can iterate deterministically without sorting per match. Rebuilt by
+	// rebuildSortedPlatforms wherever compiledPatterns is finalised — read-only on the
+	// scanning path, which is what keeps it race-free.
+	sortedPlatforms []string
+
 	// Contextual analysis keywords
 	positiveKeywords []string
 	negativeKeywords []string
@@ -304,6 +310,7 @@ func (v *Validator) Configure(cfg *config.Config) {
 			v.patternsConfigured = false
 			v.platformPatterns = make(map[string][]string)
 			v.compiledPatterns = make(map[string][]*regexp.Regexp)
+			v.rebuildSortedPlatforms()
 		}
 	}()
 
@@ -825,9 +832,27 @@ func (v *Validator) processLineMatchesWithClustering(lineMatches map[int][]detec
 	return processedMatches
 }
 
-// CalculateConfidence implements the detector.Validator interface
-// with multi-factor validation and platform-specific confidence scoring
+// CalculateConfidence implements the detector.Validator interface.
+//
+// The interface hands over only the matched text, so the platform has to be re-derived
+// here. The scanner's own path does not come through this entry point: it calls
+// calculateConfidenceForPlatform with the platform its pattern loop already knows, which
+// is both correct and independent of map order. See #390.
 func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool) {
+	return v.calculateConfidenceForPlatform(match, v.identifyPlatform(match))
+}
+
+// calculateConfidenceForPlatform scores a match against a KNOWN platform.
+//
+// Roughly ten validations below are platform-specific — validateURLFormat, validateDomain,
+// validateUsernameFormat, validatePatternSpecificity and friends — so the platform is not
+// a label on the result, it is an input to the score. Feeding it a re-derived guess made
+// the score a function of Go's map iteration order: for
+// "https://www.youtube.com/@handle", which the youtube URL pattern AND twitter's bare
+// "@handle" pattern both match, the same input in 30 identical runs of one binary scored
+// 100 in 18 runs and 17 in 12, and the split reached the report as the
+// original_confidences metadata.
+func (v *Validator) calculateConfidenceForPlatform(match string, platform string) (float64, map[string]bool) {
 	checks := make(map[string]bool)
 	var confidence float64 = 0
 
@@ -857,8 +882,8 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	}
 	checks["valid_input"] = true
 
-	// Determine which platform this match belongs to
-	platform := v.identifyPlatform(match)
+	// The platform is supplied by the caller; see the doc comment above for why it must
+	// not be re-derived here.
 	if platform == "" {
 		// Unknown platform - assign low confidence with enhanced logging
 		if v.observer != nil && v.observer.Debug() != nil {
@@ -968,17 +993,65 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	return confidence, checks
 }
 
+// sortedCompiledPlatforms returns the configured platform names in a stable order.
+//
+// Computed once per pattern-compilation rather than per call: identifyPlatform sits on a
+// per-match path, and sorting there would allocate for every match on every line.
+// compilePatterns resets this alongside compiledPatterns, so the two cannot disagree.
+func (v *Validator) sortedCompiledPlatforms() []string {
+	return v.sortedPlatforms
+}
+
+// rebuildSortedPlatforms recomputes the cache from compiledPatterns. Called wherever
+// compiledPatterns is finalised, never from a per-match path: a lazily-populated cache
+// would be a write on the scanning path, and validators are shared across the
+// per-file goroutines.
+func (v *Validator) rebuildSortedPlatforms() {
+	names := make([]string, 0, len(v.compiledPatterns))
+	for platform := range v.compiledPatterns {
+		names = append(names, platform)
+	}
+	sort.Strings(names)
+	v.sortedPlatforms = names
+}
+
 // identifyPlatform determines which platform a match belongs to
 func (v *Validator) identifyPlatform(match string) string {
 	matchLower := strings.ToLower(match)
 
-	// Check each platform's patterns to identify the match
-	for platform, patterns := range v.compiledPatterns {
-		for _, regex := range patterns {
-			if regex.MatchString(match) {
+	// Longest match wins, over platforms visited in sorted order.
+	//
+	// This used to range v.compiledPatterns and return the first platform whose pattern
+	// matched anywhere. Both halves of that were wrong for an overlapping match. Go
+	// randomizes map iteration, so the answer varied run to run; and "matched anywhere"
+	// treats a substring hit as equal to a whole-string hit, so twitter's bare "@handle"
+	// pattern competed with youtube's full URL pattern on
+	// "https://www.youtube.com/@handle" — a 7-character match against a 36-character one.
+	//
+	// Preferring the longest matched span resolves it on evidence rather than on order:
+	// the platform whose pattern explains more of the value wins. Sorted iteration then
+	// makes the remaining ties (two platforms matching the same span length) fall to the
+	// lexicographically first platform, so the result is a function of the input alone.
+	best, bestLen := "", 0
+	for _, platform := range v.sortedCompiledPlatforms() {
+		for _, regex := range v.compiledPatterns[platform] {
+			loc := regex.FindStringIndex(match)
+			if loc == nil {
+				continue
+			}
+			span := loc[1] - loc[0]
+			if span == len(match) {
+				// Spans the whole value; nothing can beat it, and sorted order means the
+				// first such platform is always the same one.
 				return platform
 			}
+			if span > bestLen {
+				best, bestLen = platform, span
+			}
 		}
+	}
+	if best != "" {
+		return best
 	}
 
 	// Fallback: identify by domain/content
@@ -2305,6 +2378,7 @@ func (v *Validator) compilePlatformPatterns() {
 	// Handle empty pattern maps gracefully
 	if len(v.platformPatterns) == 0 {
 		v.compiledPatterns = make(map[string][]*regexp.Regexp)
+		v.rebuildSortedPlatforms()
 		if v.observer != nil && v.observer.Debug() != nil {
 			v.observer.Debug().LogDetail("socialmedia", "No social media patterns to compile - empty pattern map")
 		}
@@ -2446,6 +2520,11 @@ func (v *Validator) compilePlatformPatterns() {
 	if totalCompiled == 0 && len(v.platformPatterns) > 0 {
 		v.logNoSocialMediaPatterns("all social media patterns failed to compile during regex compilation")
 	}
+
+	// compiledPatterns is now final for this configuration, so fix the iteration order
+	// identifyPlatform will use. Done here rather than lazily on first match: this is the
+	// only write, and it happens before any scanning goroutine reads it.
+	v.rebuildSortedPlatforms()
 }
 
 // compileOptimizedPattern compiles a regex pattern with performance optimizations
@@ -2754,8 +2833,9 @@ func (v *Validator) processMatchOptimized(match, platform string, patternIndex i
 		return nil
 	}
 
-	// Calculate confidence for this match
-	confidence, checks := v.CalculateConfidence(match)
+	// Score against the platform whose pattern actually produced this match, rather than
+	// letting CalculateConfidence re-derive it (#390).
+	confidence, checks := v.calculateConfidenceForPlatform(match, platform)
 
 	// Build context from the in-memory line. The previous code called
 	// contextExtractor.ExtractContext, which re-opens and re-reads the file from
@@ -4495,7 +4575,7 @@ func (v *Validator) reconstructSocialMediaCluster(matches []detector.Match) (det
 		//
 		// Held as lean copies with SecureText dropped: these carry the matched value, so
 		// they are withheld from output by the formatters' deny-by-default metadata
-		// allowlist unless --show-match is set, and a SecureString has no business being
+		// whitelist unless --show-match is set, and a SecureString has no business being
 		// serialized.
 		"cluster_members": leanClusterMembers(matches),
 
