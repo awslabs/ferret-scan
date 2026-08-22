@@ -282,6 +282,21 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 			if execguard.LineLoopCancelled(ctx, i) {
 				return false
 			}
+			// The digits after a decimal point are not an identifier. Applied at this
+			// chokepoint rather than inside each evaluator, so NPI, DEA, MBI and anything
+			// added later are covered by one line instead of by remembering.
+			//
+			// Measured at main @ 0610b7e: "0.1234567893" reported MEDICAL_ID NPI LOW 40.
+			// It is the third instance of one predicate — PHONE (#443) and SSN (#446) were
+			// the first two, fixed separately by hand — and was found only by testing the
+			// class rather than waiting for a report.
+			//
+			// Harmless for the alphanumeric forms: a decimal fraction cannot produce a DEA
+			// or MBI, so the guard never fires for them.
+			if kwmatch.IsDecimalFractionTail(line, loc[0]) {
+				continue
+			}
+
 			match := line[loc[0]:loc[1]]
 			if m, ok := eval(match, line, lowerLine, lc, loc[0], lineNum, originalPath); ok {
 				matches = append(matches, m)

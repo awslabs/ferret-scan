@@ -5,6 +5,7 @@ package ssn
 
 import (
 	stdctx "context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -131,10 +132,23 @@ func TestDecimalFractionsAreNotSSNs(t *testing.T) {
 	cases := []struct {
 		name string
 		line string
+		// wantZero distinguishes the two SIDES of the value, which is the whole design
+		// boundary of #446's guard.
+		//
+		// A decimal point BEFORE the match means the digits are a fraction, and the guard
+		// removes them. A period AFTER the match cannot be judged that way: an earlier
+		// attempt at this fix looked ahead, so it read the period in
+		// "Employee SSN: 130-07-5728." as a decimal point and deleted a labelled SSN. It
+		// was refuted for that, and TestLabelledSSNsTheRejectedGuardDeletedStillReport
+		// keeps those four rows.
+		//
+		// So the trailing form stays reported, bounded below HIGH. Asserting zero for it
+		// would require reintroducing the leak.
+		wantZero bool
 	}{
-		{"leading decimal", "ratio 1.130075728 computed"},
-		{"trailing decimal", "value 130075728.44 recorded"},
-		{"version-like", "build 1.130075728.2"},
+		{"leading decimal", "ratio 1.130075728 computed", true},
+		{"version-like", "build 1.130075728.2", true},
+		{"trailing decimal", "value 130075728.44 recorded", false},
 	}
 
 	for _, tc := range cases {
@@ -143,10 +157,34 @@ func TestDecimalFractionsAreNotSSNs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ValidateContentCtx: %v", err)
 			}
-			// Not asserted as zero: this documents today's behavior so a future
-			// precision fix has a measured starting point. What IS asserted is that
-			// nothing here reaches the HIGH band, since an unlabelled digit run
-			// inside a decimal has no business being high-confidence.
+			// NOW ASSERTED AS ZERO. This test used to record today's behaviour rather
+			// than require it, saying "a future precision fix has a measured starting
+			// point" — #446 is that fix, and every row here is one of the shapes it
+			// removes: the digits after a decimal point are not an identifier, whatever
+			// they are worth.
+			//
+			// Before it, these reported below HIGH from this file (metrics.txt) but the
+			// SAME digits in comma-bearing path data reached HIGH 100, because the
+			// tabular detector reads commas as CSV and grants a context boost. So the
+			// band this test checked was a property of the FILE, not of the value.
+			var got []string
+			for _, m := range matches {
+				got = append(got, fmt.Sprintf("%s@%.0f%%", m.Text, m.Confidence))
+			}
+
+			if tc.wantZero {
+				if len(matches) != 0 {
+					t.Errorf("a decimal fraction is still reported as an SSN: %q -> %v\n"+
+						"  reporting these drives redaction, which overwrites ordinary numbers; "+
+						"must not regress TestLabelledSSNInProseIsDetected", tc.line, got)
+				}
+				return
+			}
+
+			// Bounded, not removed. The band matters because these same digits reached
+			// HIGH 100 in comma-bearing path data before #446 — the tabular detector reads
+			// commas as CSV and grants a context boost — so the ceiling used to be a
+			// property of the FILE rather than of the value.
 			for _, m := range matches {
 				if m.Confidence >= 90 {
 					t.Errorf("reported %q at confidence %.1f (HIGH) on a line with no SSN "+
@@ -154,12 +192,8 @@ func TestDecimalFractionsAreNotSSNs(t *testing.T) {
 				}
 			}
 			if len(matches) > 0 {
-				var got []string
-				for _, m := range matches {
-					got = append(got, m.Text)
-				}
-				t.Logf("current behavior: reports %v (below HIGH) — a precision fix here must "+
-					"not regress TestLabelledSSNInProseIsDetected", got)
+				t.Logf("still reported below HIGH, by design: %v — removing this needs a "+
+					"look-AHEAD guard, which deletes labelled SSNs at the end of a sentence", got)
 			}
 		})
 	}
