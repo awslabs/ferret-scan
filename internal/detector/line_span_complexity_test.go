@@ -153,13 +153,22 @@ func timeAssign(t *testing.T, matches []Match, wantDistinct bool) time.Duration 
 // that a scheduler hiccup cannot move in the direction that fails the build.
 //
 // Fixtures are rebuilt per attempt because timeAssign MUTATES its matches — it assigns the columns
-// it then asserts on — so reusing one slice would time an already-assigned run.
-func bestAssign(t *testing.T, k int, build func(int) []Match, wantDistinct bool) time.Duration {
+// it then asserts on — so reusing one slice would time an already-assigned run. mk is a thunk
+// rather than a (size, builder) pair so that every timing target here can use it whatever its
+// builder's arity: the first version of this helper took func(int) and so could only be applied to
+// one of the four tests, which left the other three on a single sample.
+//
+// That gap was not theoretical. TestAssignLineColumnsComplexityDistinctAndRepeated failed on a
+// macOS CI runner at base=40.67ms big=306.40ms against a 250ms ceiling, while the same commit
+// locally measured base=4.2-6.0ms big=18.8-23.5ms. The base being ~7x its local value says the
+// machine was loaded; the big term being ~13x says the load landed inside the big run. A spike in
+// one sample is precisely what best-of-N removes, and it is why all four targets now use it.
+func bestAssign(t *testing.T, mk func() []Match, wantDistinct bool) time.Duration {
 	t.Helper()
 	const attempts = 3
 	var best time.Duration
 	for i := 0; i < attempts; i++ {
-		d := timeAssign(t, build(k), wantDistinct)
+		d := timeAssign(t, mk(), wantDistinct)
 		if best == 0 || d < best {
 			best = d
 		}
@@ -175,8 +184,8 @@ func TestAssignLineColumnsComplexityRepeatedValue(t *testing.T) {
 
 	const baseK, bigK = 2000, 8000 // 4x
 
-	tBase := timeAssign(t, buildRepeatedOnOneLine(baseK), true)
-	tBig := timeAssign(t, buildRepeatedOnOneLine(bigK), true)
+	tBase := bestAssign(t, func() []Match { return buildRepeatedOnOneLine(baseK) }, true)
+	tBig := bestAssign(t, func() []Match { return buildRepeatedOnOneLine(bigK) }, true)
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x input, ONE repeated value: %.1fx (base=%v big=%v) — the cursor advances past "+
@@ -205,8 +214,8 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 	// signal did not change; the sample became large enough to see it. Measured, not guessed.
 	const baseK, bigK = 8000, 32000 // 4x
 
-	tBase := bestAssign(t, baseK, buildDistinctOnOneLine, true)
-	tBig := bestAssign(t, bigK, buildDistinctOnOneLine, true)
+	tBase := bestAssign(t, func() []Match { return buildDistinctOnOneLine(baseK) }, true)
+	tBig := bestAssign(t, func() []Match { return buildDistinctOnOneLine(bigK) }, true)
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x input, K DISTINCT values on one line: %.1fx (base=%v big=%v) — linear is 4x. "+
@@ -260,8 +269,8 @@ func TestAssignLineColumnsComplexityManyLines(t *testing.T) {
 
 	const baseN, bigN = 5000, 20000 // 4x
 
-	tBase := timeAssign(t, build(baseN), false)
-	tBig := timeAssign(t, build(bigN), false)
+	tBase := bestAssign(t, func() []Match { return build(baseN) }, false)
+	tBig := bestAssign(t, func() []Match { return build(bigN) }, false)
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x input, one match per line across many lines: %.1fx (base=%v big=%v)",
@@ -325,8 +334,8 @@ func TestAssignLineColumnsComplexityDistinctAndRepeated(t *testing.T) {
 	// and the mutation survived.
 	const distinct = 40
 
-	tBase := timeAssign(t, build(distinct, 500), false)
-	tBig := timeAssign(t, build(distinct, 2000), false) // 4x the repeats
+	tBase := bestAssign(t, func() []Match { return build(distinct, 500) }, false)
+	tBig := bestAssign(t, func() []Match { return build(distinct, 2000) }, false) // 4x the repeats
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x the repeats of %d distinct values on one line: %.1fx (base=%v big=%v) — linear is 4x",
