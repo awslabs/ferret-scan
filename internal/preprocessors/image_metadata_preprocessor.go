@@ -285,18 +285,35 @@ func (imp *ImageMetadataPreprocessor) createMinimalImageMetadata(filePath string
 		Tags:     make(map[string]string),
 	}
 
-	// Add basic file information
-	if stat, err := filepath.Abs(filePath); err == nil {
-		exifData.Tags["FileName"] = filepath.Base(stat)
-		exifData.Tags["FileExtension"] = strings.ToUpper(strings.TrimPrefix(filepath.Ext(stat), "."))
-	}
-
-	// Add file system metadata if available
-	if stat, err := filepath.Abs(filePath); err == nil {
-		if fileInfo, err := filepath.Abs(stat); err == nil {
-			exifData.Tags["FilePath"] = fileInfo
-		}
-	}
+	// The file's own NAME and PATH are deliberately NOT tags.
+	//
+	// Tags become scannable content, so putting them there made the tool scan its own input
+	// path and report findings from it. Measured on two PNGs with byte-identical content
+	// (sha 258c3a962b02796a) differing only in filename:
+	//
+	//	asset_64@5x.png  ->  2 x EMAIL HIGH 90   ("64@5x.png" parses as local@domain.tld)
+	//	asset_64_5x.png  ->  no findings
+	//
+	// and `grep -c @5x` on the bytes is 0. The public AWS icon package alone holds 328 such
+	// files, and every macOS or iOS asset directory is full of them.
+	//
+	// It generalised past the name: with FilePath a tag, a file inside a directory called
+	// "claim-449-87-4100" reported SSN MEDIUM 60 on byte-identical content, while a .txt in
+	// the same directory reported nothing — so the same exposure was type-dependent. And the
+	// finding was unredactable by construction: redaction returned rc=0 having written a
+	// "redacted" copy to an output path that still contained the SSN, which is the one
+	// outcome the sink rule forbids (#444).
+	//
+	// Nothing read these tags: no validator derives a finding type from them, no test asserts
+	// on them, and the path is already carried per finding in Match.Filename, where a consumer
+	// can see it without it being treated as document content.
+	//
+	// FileExtension stays. It describes the file's TYPE rather than reproducing a caller's
+	// string, so it cannot carry a value from the scanned tree.
+	//
+	// If path exposure is worth reporting, it needs its own finding kind marked unredactable
+	// rather than being smuggled in as content; that is noted on #444.
+	exifData.Tags["FileExtension"] = strings.ToUpper(strings.TrimPrefix(filepath.Ext(filePath), "."))
 
 	// Add a note about missing EXIF data
 	exifData.Tags["MetadataNote"] = "No EXIF data available for this image format"
