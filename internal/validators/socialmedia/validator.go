@@ -87,8 +87,8 @@ type Validator struct {
 	platformKeywords map[string][]string
 
 	// False positive prevention
-	whitelistPatterns         []string
-	compiledWhitelistPatterns []*regexp.Regexp
+	allowlistPatterns         []string
+	compiledAllowlistPatterns []*regexp.Regexp
 
 	// Configuration tracking
 	patternsConfigured bool
@@ -264,8 +264,8 @@ func NewValidator() *Validator {
 		},
 
 		// Initialize false positive prevention
-		whitelistPatterns:         []string{},
-		compiledWhitelistPatterns: []*regexp.Regexp{},
+		allowlistPatterns:         []string{},
+		compiledAllowlistPatterns: []*regexp.Regexp{},
 
 		// Track configuration status
 		patternsConfigured: false,
@@ -505,54 +505,63 @@ func (v *Validator) Configure(cfg *config.Config) {
 		}
 	}
 
-	// Update whitelist patterns if provided
-	if whitelistPatterns, ok := smConfig["whitelist_patterns"].([]any); ok {
-		customWhitelistPatterns := []string{}
-		validWhitelistPatterns := []string{}
+	// Update allowlist patterns if provided.
+	//
+	// "allowlist_patterns" is the documented key; "whitelist_patterns" is still read so
+	// existing configuration keeps working. If both are present the inclusive spelling
+	// wins, and the older one is ignored rather than merged — a silent union of two lists
+	// would make the effective configuration depend on which key the reader noticed.
+	allowlistKeyed, ok := smConfig["allowlist_patterns"].([]any)
+	if !ok {
+		allowlistKeyed, ok = smConfig["whitelist_patterns"].([]any)
+	}
+	if allowlistPatterns := allowlistKeyed; ok {
+		customAllowlistPatterns := []string{}
+		validAllowlistPatterns := []string{}
 		invalidCount := 0
 
-		for _, patternAny := range whitelistPatterns {
+		for _, patternAny := range allowlistPatterns {
 			if patternStr, ok := patternAny.(string); ok {
 				// Add case-insensitive flag if not already present
 				processedPattern := v.ensureCaseInsensitive(patternStr)
 
 				// Validate regex pattern
 				if _, err := regexp.Compile(processedPattern); err != nil {
-					// Log warning for invalid whitelist pattern but continue with valid ones
+					// Log warning for invalid allowlist pattern but continue with valid ones
 					if v.observer != nil && v.observer.Debug() != nil {
-						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid whitelist pattern '%s': %v", patternStr, err))
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid allowlist pattern '%s': %v", patternStr, err))
 					}
 
-					// Log invalid whitelist pattern in debug mode
+					// Log invalid allowlist pattern in debug mode
 					if os.Getenv("FERRET_DEBUG") == "1" {
-						fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Invalid whitelist pattern: %v\n", err)
+						fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Invalid allowlist pattern: %v\n", err)
 					}
 					invalidCount++
 					continue
 				}
-				customWhitelistPatterns = append(customWhitelistPatterns, patternStr)
-				validWhitelistPatterns = append(validWhitelistPatterns, processedPattern)
+				customAllowlistPatterns = append(customAllowlistPatterns, patternStr)
+				validAllowlistPatterns = append(validAllowlistPatterns, processedPattern)
 			}
 		}
 
-		if len(validWhitelistPatterns) > 0 {
-			v.whitelistPatterns = customWhitelistPatterns
-			v.compileWhitelistPatterns()
+		if len(validAllowlistPatterns) > 0 {
+			v.allowlistPatterns = customAllowlistPatterns
+			v.compileAllowlistPatterns()
 			if v.observer != nil && v.observer.Debug() != nil {
-				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Loaded %d valid whitelist patterns (%d invalid patterns skipped)", len(validWhitelistPatterns), invalidCount))
-				for i, pattern := range customWhitelistPatterns {
-					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Whitelist pattern %d: %s", i+1, pattern))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Loaded %d valid allowlist patterns (%d invalid patterns skipped)", len(validAllowlistPatterns), invalidCount))
+				for i, pattern := range customAllowlistPatterns {
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Allowlist pattern %d: %s", i+1, pattern))
 				}
 			}
 
-			// Log whitelist patterns in debug mode
-			if os.Getenv("FERRET_DEBUG") == "1" && len(validWhitelistPatterns) > 0 {
-				fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Loaded %d whitelist patterns\n", len(validWhitelistPatterns))
+			// Log allowlist patterns in debug mode
+			if os.Getenv("FERRET_DEBUG") == "1" && len(validAllowlistPatterns) > 0 {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Loaded %d allowlist patterns\n", len(validAllowlistPatterns))
 			}
 		} else if invalidCount > 0 {
-			// All whitelist patterns were invalid
+			// All allowlist patterns were invalid
 			if v.observer != nil && v.observer.Debug() != nil {
-				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("All %d configured whitelist patterns are invalid", invalidCount))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("All %d configured allowlist patterns are invalid", invalidCount))
 			}
 		}
 	}
@@ -1914,10 +1923,10 @@ func (v *Validator) validatePathStructure(match string, platform string) bool {
 // - Placeholder URL detection and exclusion
 // - Context-based false positive detection (code comments, documentation)
 // - Pattern specificity checks to avoid overly broad matches
-// - Whitelist pattern support for excluding known false positives
+// - Allowlist pattern support for excluding known false positives
 func (v *Validator) validateNotFalsePositive(match string, platform string) bool {
-	// 1. Check whitelist patterns first - if match is whitelisted, exclude it
-	if v.isWhitelistedMatch(match) {
+	// 1. Check allowlist patterns first - if match is allowlisted, exclude it
+	if v.isAllowlistedMatch(match) {
 		return false
 	}
 
@@ -1944,9 +1953,43 @@ func (v *Validator) validateNotFalsePositive(match string, platform string) bool
 	return true
 }
 
-// isWhitelistedMatch checks if the match should be excluded based on whitelist patterns
-func (v *Validator) isWhitelistedMatch(match string) bool {
-	for _, pattern := range v.compiledWhitelistPatterns {
+// allowlistedSpans returns the byte ranges of the line an operator has listed as noise, or nil
+// when no allowlist is configured (the default — SOCIAL_MEDIA ships none).
+//
+// Spans rather than value comparison, because the two are not the same shape. An allowlist
+// entry like `twitter\.com/companybrand` matches a SUBSTRING of the reported value
+// "https://twitter.com/companybrand", so the allowlist span sits inside the match span; while
+// an overlapping pattern from another platform can report "@companybrand", a fragment whose
+// span sits inside the allowlist span. Vetoing on OVERLAP covers both directions, and covers
+// nothing else: a second profile elsewhere on the same line does not overlap and is untouched.
+//
+// This is what makes the veto actually exclude the value the operator named. Measured before:
+// allowlisting a YouTube channel URL still reported "@brandchannel" at HIGH 100, because
+// twitter's bare-handle pattern claimed a fragment of the same URL under a different name.
+func (v *Validator) allowlistedSpans(line string) [][]int {
+	if len(v.compiledAllowlistPatterns) == 0 {
+		return nil
+	}
+	var spans [][]int
+	for _, pattern := range v.compiledAllowlistPatterns {
+		spans = append(spans, pattern.FindAllStringIndex(line, -1)...)
+	}
+	return spans
+}
+
+// overlapsAllowlistedSpan reports whether [start,end) intersects any allowlisted span.
+func overlapsAllowlistedSpan(spans [][]int, start, end int) bool {
+	for _, s := range spans {
+		if start < s[1] && s[0] < end {
+			return true
+		}
+	}
+	return false
+}
+
+// isAllowlistedMatch checks if the match should be excluded based on allowlist patterns
+func (v *Validator) isAllowlistedMatch(match string) bool {
+	for _, pattern := range v.compiledAllowlistPatterns {
 		if pattern.MatchString(match) {
 			return true
 		}
@@ -2571,32 +2614,32 @@ func (v *Validator) monitorMemoryUsage(operation string, metadata map[string]any
 	}
 }
 
-// compileWhitelistPatterns compiles the whitelist patterns into regex objects
+// compileAllowlistPatterns compiles the allowlist patterns into regex objects
 // for false positive prevention
-func (v *Validator) compileWhitelistPatterns() {
-	// Handle empty whitelist patterns gracefully
-	if len(v.whitelistPatterns) == 0 {
-		v.compiledWhitelistPatterns = []*regexp.Regexp{}
+func (v *Validator) compileAllowlistPatterns() {
+	// Handle empty allowlist patterns gracefully
+	if len(v.allowlistPatterns) == 0 {
+		v.compiledAllowlistPatterns = []*regexp.Regexp{}
 		if v.observer != nil && v.observer.Debug() != nil {
-			v.observer.Debug().LogDetail("socialmedia", "No whitelist patterns to compile - empty pattern list")
+			v.observer.Debug().LogDetail("socialmedia", "No allowlist patterns to compile - empty pattern list")
 		}
 		return
 	}
 
 	// Pre-allocate slice with exact capacity for better memory efficiency
-	v.compiledWhitelistPatterns = make([]*regexp.Regexp, 0, len(v.whitelistPatterns))
+	v.compiledAllowlistPatterns = make([]*regexp.Regexp, 0, len(v.allowlistPatterns))
 	compiledCount := 0
 	failedCount := 0
 
-	for i, pattern := range v.whitelistPatterns {
+	for i, pattern := range v.allowlistPatterns {
 		// Skip empty patterns gracefully
 		if pattern == "" {
 			failedCount++
 			if v.observer != nil && v.observer.Debug() != nil {
-				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping empty whitelist pattern at index %d", i+1))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping empty allowlist pattern at index %d", i+1))
 			}
 			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[WARNING] Social Media Validator: Empty whitelist pattern at index %d - skipping\n", i+1)
+				fmt.Fprintf(os.Stderr, "[WARNING] Social Media Validator: Empty allowlist pattern at index %d - skipping\n", i+1)
 			}
 			continue
 		}
@@ -2612,12 +2655,12 @@ func (v *Validator) compileWhitelistPatterns() {
 
 			// Log compilation errors for debugging
 			if v.observer != nil && v.observer.Debug() != nil {
-				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Failed to compile whitelist pattern %d: '%s' - Error: %v", i+1, pattern, err))
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Failed to compile allowlist pattern %d: '%s' - Error: %v", i+1, pattern, err))
 			}
 
 			// Also log to stderr in debug mode
 			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Failed to compile whitelist pattern\n")
+				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Failed to compile allowlist pattern\n")
 				fmt.Fprintf(os.Stderr, "[ERROR]   Pattern %d: %s\n", i+1, pattern)
 				fmt.Fprintf(os.Stderr, "[ERROR]   Error: %v\n", err)
 				fmt.Fprintf(os.Stderr, "[ERROR]   Action: Skipping pattern and continuing with remaining patterns\n")
@@ -2626,22 +2669,22 @@ func (v *Validator) compileWhitelistPatterns() {
 		}
 
 		// Successfully compiled pattern
-		v.compiledWhitelistPatterns = append(v.compiledWhitelistPatterns, regex)
+		v.compiledAllowlistPatterns = append(v.compiledAllowlistPatterns, regex)
 		compiledCount++
 	}
 
 	// Log compilation summary
 	if v.observer != nil && v.observer.Debug() != nil {
-		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Whitelist pattern compilation: %d successful, %d failed", compiledCount, failedCount))
+		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Allowlist pattern compilation: %d successful, %d failed", compiledCount, failedCount))
 		if compiledCount > 0 {
-			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d whitelist regex patterns", compiledCount))
+			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d allowlist regex patterns", compiledCount))
 		}
 	}
 
 	// Also log to stderr in debug mode
 	if os.Getenv("FERRET_DEBUG") == "1" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Whitelist compilation summary\n")
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Total patterns: %d\n", len(v.whitelistPatterns))
+		fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Allowlist compilation summary\n")
+		fmt.Fprintf(os.Stderr, "[DEBUG]   Total patterns: %d\n", len(v.allowlistPatterns))
 		fmt.Fprintf(os.Stderr, "[DEBUG]   Successfully compiled: %d\n", compiledCount)
 		fmt.Fprintf(os.Stderr, "[DEBUG]   Failed to compile: %d\n", failedCount)
 	}
@@ -2759,6 +2802,10 @@ func (v *Validator) processLineForAllPatterns(line string, lineNum int, original
 	// match, which on a long packed line is O(matches × keywords × lineLen).
 	lineLower := strings.ToLower(line)
 
+	// Byte ranges the operator has listed as noise, computed once per line. nil unless an
+	// allowlist is configured, so the default path pays nothing.
+	allowSpans := v.allowlistedSpans(line)
+
 	// Check each platform's patterns
 	for platform, patterns := range v.compiledPatterns {
 		for patternIndex, regex := range patterns {
@@ -2774,6 +2821,17 @@ func (v *Validator) processLineForAllPatterns(line string, lineNum int, original
 				match := line[loc[0]:loc[1]]
 				// Skip empty matches
 				if len(strings.TrimSpace(match)) == 0 {
+					continue
+				}
+
+				// An operator's allowlist entry is an instruction, not a heuristic, so it is a
+				// veto here rather than a score adjustment (#429) — for the same measured
+				// reason as the reserved paths in processMatchOptimized:
+				// validateNotFalsePositive already says "if match is allowlisted, exclude it",
+				// but its result is only advisory, the caller turns it into a 30-point
+				// penalty, and the cap absorbs it. Before this, an allowlisted URL and an
+				// ordinary one were both reported at HIGH 100.
+				if overlapsAllowlistedSpan(allowSpans, loc[0], loc[1]) {
 					continue
 				}
 
@@ -4575,7 +4633,7 @@ func (v *Validator) reconstructSocialMediaCluster(matches []detector.Match) (det
 		//
 		// Held as lean copies with SecureText dropped: these carry the matched value, so
 		// they are withheld from output by the formatters' deny-by-default metadata
-		// whitelist unless --show-match is set, and a SecureString has no business being
+		// allowlist unless --show-match is set, and a SecureString has no business being
 		// serialized.
 		"cluster_members": leanClusterMembers(matches),
 
