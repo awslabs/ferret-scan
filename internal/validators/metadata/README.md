@@ -80,6 +80,41 @@ The validator uses a sophisticated multi-factor confidence scoring system:
 - **Pattern Strength**: How well the content matches expected patterns
 - **Context Indicators**: Surrounding metadata that supports the match
 
+### Sensitivity labels and decoration
+
+A custom property carrying a sensitivity label states the document's **handling class**. It does
+not disclose content, and Purview/MSIP writes one into a large fraction of real enterprise
+documents — measured, `CUSTOM_PROPERTY` was the largest HIGH population of any metadata type on a
+real corpus. Scoring the label as a disclosure therefore crowds the band operators triage first
+with plumbing.
+
+So the classification signal is graded:
+
+| value | treated as | why |
+|---|---|---|
+| `Confidential` | marking | nothing but the label (#307) |
+| `Confidential - Draft`, `Amazon Confidential`, `Confidential (Rev 3)` | marking | the label plus decoration (#320) |
+| `Confidential - Project Nightjar acquisition` | disclosure | names something beyond the label |
+| `Confidential - alice@example.com` | disclosure | ditto |
+
+Decoration is recognised by **shape, not by vocabulary**. The marking phrases are removed, and what
+remains counts as decoration only if it is at most one ordinary word, a stem fused to a small
+number (`FY25`, `v2`), or a stem followed by a small number (`Rev 3`). Anything else — a second
+word, an address, a path, a long digit run — keeps the full weight.
+
+That is deliberate: a list of decoration words would have invisible omissions, and
+`Confidential - Draft` scoring MEDIUM while `Confidential - Preliminary` scored HIGH is more
+confusing than either rule alone. The marking vocabulary (`classificationMarkings`) is the set of
+things a label **is**, and must not grow a decoration side.
+
+**A marking is demoted, never vetoed.** It is still reported, because it is worth knowing a
+document is labelled, and redaction is confidence-blind — a demoted value is still masked in the
+redacted copy even when the run is filtered to `--confidence high`.
+
+**Known limitation.** A one-word remainder cannot be distinguished from a status word by any
+intrinsic signal, so `Confidential - Nightjar` is graded as decoration. Measured at zero
+occurrences across 714 real documents; the finding is still reported at MEDIUM and still redacted.
+
 ### Preprocessor-Specific Boosts
 - **Type-Specific Adjustments**: Confidence boosts based on metadata source type
 - **Field Category Weighting**: Different weights for GPS, device, creator, etc.

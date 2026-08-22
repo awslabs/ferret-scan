@@ -3353,37 +3353,142 @@ var classificationMarkings = map[string]bool{
 	"non-business": true, "personal": true, "protected": true,
 }
 
-// classificationIsBareMarking reports whether a value is nothing but a sensitivity
-// marking, so it states the document's handling class without disclosing content.
+// classificationIsBareMarking reports whether a value states the document's handling class
+// without disclosing content.
 //
-// Punctuation and label-plumbing decoration are stripped before the comparison because
-// real labels arrive dressed: "Confidential", "[Confidential]", "Confidential."  and
-// "Confidential / Internal" are all the same statement. What must NOT be stripped is a
-// project name, a person or a system — those are the content that makes a classification
-// property a disclosure, and anything left over after decoration is treated as exactly
-// that.
+// The previous rule split the value and required EVERY part to be a known marking. That made the
+// test a membership question, and harmless decoration defeated it: "Confidential - Draft",
+// "Confidential FY25" and "Confidential (Rev 3)" all read as content and took the full CRITICAL
+// weight, scoring 100 — indistinguishable from "Confidential - Project Nightjar acquisition",
+// which actually discloses something (#320).
+//
+// The rule is now: remove the marking phrases, then ask whether what remains has the SHAPE of
+// label decoration. Two properties follow from asking it that way.
+//
+// It needs no vocabulary of decoration words. "Draft", "Preliminary" and "Vorabversion" are all
+// handled by the same shape rule, so the set of things that count as decoration cannot silently
+// omit one — the failure mode that produced #307 and would have produced its successor. The
+// marking vocabulary in classificationMarkings is reused as-is and deliberately NOT extended.
+//
+// It fails in the safe direction. Decoration is recognised by a narrow, closed set of shapes, so
+// anything unrecognised — an email, a path, a multi-word phrase, a long digit run — keeps the full
+// weight rather than being demoted by an omission.
+//
+// The known hole, stated rather than discovered later: a ONE-WORD remainder cannot be told from
+// "Draft" by any intrinsic signal, so "Confidential - Nightjar" is demoted alongside it. That is
+// forced by the acceptance criteria — "Confidential - Draft" is structurally identical — and it
+// costs nothing measured: zero occurrences across 714 real documents. The finding is still
+// reported (both shipped profiles include MEDIUM) and redaction is confidence-blind, so the value
+// is still masked.
 func classificationIsBareMarking(propValueLower string) bool {
 	v := strings.TrimSpace(propValueLower)
 	if v == "" {
 		return true
 	}
-	// Split on the separators labels use, then require EVERY part to be a known marking.
-	// Requiring all parts (rather than any) is what keeps
-	// "confidential - project nightjar" out: one part is a marking, the other is not.
-	parts := strings.FieldsFunc(v, func(r rune) bool {
-		switch r {
-		case '/', '\\', '|', ',', ';', '-', '\u2013', '\u2014', ':', '(', ')', '[', ']', '.', '_':
-			return true
-		}
-		return false
-	})
-	if len(parts) == 0 {
+	return isLabelDecoration(markingResidual(v))
+}
+
+// isClassificationLabelSeparator reports the characters labels use to join their parts.
+//
+// Lifted verbatim from the closure this replaced, so separator handling is provably unchanged and
+// only the judgement applied to the resulting tokens is new.
+func isClassificationLabelSeparator(r rune) bool {
+	switch r {
+	case '/', '\\', '|', ',', ';', '-', '–', '—', ':', '(', ')', '[', ']', '.', '_':
 		return true
 	}
-	for _, p := range parts {
-		if !classificationMarkings[strings.TrimSpace(p)] {
-			return false
-		}
+	return false
+}
+
+// classificationMarkingMaxWords is the longest marking phrase in classificationMarkings, in words.
+// markingResidual tries phrases longest-first up to this length.
+//
+// TestClassificationMarkingMaxWordsCoversTheVocabulary computes the real maximum and fails if this
+// falls behind it. Without that guard, adding a four-word label later would leave its last word in
+// the residual and the label would start reading as a disclosure — a silent change in the wrong
+// direction, caused by an edit that looks like it only adds vocabulary.
+const classificationMarkingMaxWords = 3
+
+// markingResidual returns the tokens left after removing every marking phrase.
+//
+// Longest-first, because the vocabulary holds phrases as well as words: "internal use only" must
+// be consumed whole rather than leaving "use only" behind, and "acme highly confidential" must
+// leave only "acme". A word-at-a-time scan gets both wrong.
+func markingResidual(valueLower string) []string {
+	parts := strings.FieldsFunc(valueLower, isClassificationLabelSeparator)
+
+	// The separators are punctuation only, so a part can still hold spaces ("internal use only"
+	// arrives as one part). Re-split so phrase matching sees individual words.
+	var words []string
+	for _, t := range parts {
+		words = append(words, strings.Fields(t)...)
 	}
-	return true
+
+	var residual []string
+	for i := 0; i < len(words); {
+		matched := 0
+		for n := classificationMarkingMaxWords; n >= 1; n-- {
+			if i+n > len(words) {
+				continue
+			}
+			if classificationMarkings[strings.Join(words[i:i+n], " ")] {
+				matched = n
+				break
+			}
+		}
+		if matched > 0 {
+			i += matched
+			continue
+		}
+		residual = append(residual, words[i])
+		i++
+	}
+	return residual
+}
+
+// The shapes that count as label decoration. Closed and narrow on purpose: this is the
+// deny-by-default half of the rule, so a shape that is not listed keeps the full weight.
+var (
+	// A single ordinary word: "draft", "final", "preliminary", "vorabversion", "amazon".
+	// Bounded at 24 runes because a longer letter run is not a status word; the apostrophe and
+	// ampersand admit real organisation names ("o'brien", "j&j") that appear as label prefixes.
+	labelWordPattern = regexp.MustCompile(`^[a-z][a-z'&]{0,23}$`)
+
+	// A stem fused to a small number: "fy25", "v2", "rev3", "q4". Four digits at most, so a year
+	// or a quarter qualifies and an account or record number does not.
+	labelSequenceTokenPattern = regexp.MustCompile(`^[a-z]{0,10}[0-9]{1,4}$`)
+
+	// The stem half of a separated sequence: the "rev" of "rev 3", the "copy" of "copy 1".
+	// Shorter than labelWordPattern because it is only ever a marker, never a name.
+	labelStemPattern = regexp.MustCompile(`^[a-z]{1,10}$`)
+
+	// The number half: the "3" of "rev 3". Four digits at most for the same reason — this is what
+	// keeps "confidential 923456781" out of the decoration set.
+	labelNumeralPattern = regexp.MustCompile(`^[0-9]{1,4}$`)
+)
+
+// isLabelDecoration reports whether a residual is nothing but label decoration.
+//
+// At most ONE word is allowed, and that single bound is what separates a label from a disclosure:
+// "amazon" (an org prefix) and "draft" (a status) are one word, while "marcus holloway",
+// "project nightjar" and "to the acme merger team" are more — a second word is the first point at
+// which a value starts naming something. The two-token form exists only for a stem followed by a
+// number, which is a sequence marker rather than a second word.
+func isLabelDecoration(residual []string) bool {
+	switch len(residual) {
+	case 0:
+		// Nothing but markings: the bare label #307 demoted.
+		return true
+	case 1:
+		t := residual[0]
+		return labelWordPattern.MatchString(t) ||
+			labelSequenceTokenPattern.MatchString(t) ||
+			labelNumeralPattern.MatchString(t)
+	case 2:
+		// "rev 3", "copy 1", "version 2" — a marker and its number, in that order.
+		return labelStemPattern.MatchString(residual[0]) &&
+			labelNumeralPattern.MatchString(residual[1])
+	default:
+		return false
+	}
 }
