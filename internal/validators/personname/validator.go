@@ -178,6 +178,16 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 
 		confidence, validationChecks := v.CalculateConfidenceWithComponents(nameText, nameComponents)
 
+		// A tab-separated candidate carries a column boundary between its tokens, so
+		// it must clear the stricter both-known bar. Applied here rather than inside
+		// CalculateConfidenceWithComponents so it cannot be undone by a later
+		// context boost, and applied in BOTH findNames* paths — a check added to only
+		// one of them would be dead on whichever path the caller actually uses.
+		if requiresBothNamesKnown(patternMatch.Pattern.Name) &&
+			!(validationChecks["known_first_name"] && validationChecks["known_last_name"]) {
+			continue
+		}
+
 		// Apply basic context analysis (cached per-line; identical to AnalyzeContext
 		// for ContextInfo{FullLine: line}). The match's known byte offset is passed
 		// so the proximity check is a bounded window lookup rather than a full-line
@@ -254,6 +264,16 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 		nameComponents := ParseNameComponents(nameText, patternMatch.Pattern)
 
 		confidence, validationChecks := v.CalculateConfidenceWithComponents(nameText, nameComponents)
+
+		// A tab-separated candidate carries a column boundary between its tokens, so
+		// it must clear the stricter both-known bar. Applied here rather than inside
+		// CalculateConfidenceWithComponents so it cannot be undone by a later
+		// context boost, and applied in BOTH findNames* paths — a check added to only
+		// one of them would be dead on whichever path the caller actually uses.
+		if requiresBothNamesKnown(patternMatch.Pattern.Name) &&
+			!(validationChecks["known_first_name"] && validationChecks["known_last_name"]) {
+			continue
+		}
 
 		// Apply basic context analysis (cached per-line; identical to AnalyzeContext
 		// for ContextInfo{FullLine: line}). Pass the match offset so proximity is a

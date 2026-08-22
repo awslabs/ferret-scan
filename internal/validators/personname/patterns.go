@@ -36,6 +36,41 @@ const (
 	nameLetter = nameUpper + nameLower
 )
 
+// nameSpace is the separator allowed BETWEEN the tokens of one name: a run of
+// ordinary spaces.
+//
+// It deliberately excludes the tab, which the `\s+` these patterns used to use
+// would accept. A tab is a column boundary in extracted table and spreadsheet
+// content, not a word space, so `\s+` glued two adjacent cells into a single
+// "name". Measured over 714 real Office/PDF documents before this change: 95 of
+// 1931 PERSON_NAME findings (4.9%) spanned a tab and 32 of those presented as
+// HIGH — a two-column table row "Preventative<TAB>Strong" scored 100, and
+// "Financial Services<TAB>Washington" scored 100, because the second cell
+// happened to hold a real surname.
+//
+// The tab still separates: wrapNamePattern's boundary class is "not a letter",
+// so a tab bounds a name rather than joining two. \n cannot appear here at all —
+// ValidateContentCtx splits content on newlines before these patterns run — and
+// \f/\r are excluded for the same reason as the tab.
+//
+// A genuine "First Name | Last Name" two-column row does exist, and excluding
+// the tab here would make it unreportable. tabSeparatedNamePattern below keeps
+// that shape reachable on stricter evidence rather than on the tab alone.
+const nameSpace = `[ ]+`
+
+// nameTabSpace is a separator run containing at least one tab, used only by
+// tabSeparatedNamePattern. It tolerates spaces around the tab so a padded cell
+// boundary ("Marcus \t Holloway") is still one candidate.
+const nameTabSpace = `[ ]*\t[ \t]*`
+
+// tabSeparatedNamePattern is the one pattern whose tokens may be separated by a
+// tab. Because a tab is a column boundary, the shape "X<TAB>Y" is far weaker
+// evidence of a name than "X Y" is, so findNamesInLine requires BOTH tokens to
+// be database-confirmed for this pattern alone (see requiresBothNamesKnown).
+// Every other pattern keeps the surname-only bar documented in
+// CalculateConfidenceWithComponents.
+const tabSeparatedNamePattern = "tab_separated_name"
+
 // wrapNamePattern turns a "core" name pattern into a boundary-anchored pattern
 // with the name captured in group 1. The leading/trailing groups consume a
 // non-letter character (or the string start/end) so the match does not run into
@@ -43,6 +78,17 @@ const (
 // cannot. Callers must read submatch group 1 (see FindMatches).
 func wrapNamePattern(core string) string {
 	return `(?:^|[^` + nameLetter + `])(` + core + `)(?:[^` + nameLetter + `]|$)`
+}
+
+// requiresBothNamesKnown reports whether a pattern's candidates must have BOTH a
+// database-confirmed given name and a database-confirmed surname, rather than the
+// surname-only bar that CalculateConfidenceWithComponents applies to the rest.
+//
+// Only the tab-separated pattern needs it: its two tokens sit in different table
+// columns, so their adjacency is a layout artefact rather than evidence that they
+// form one name.
+func requiresBothNamesKnown(patternName string) bool {
+	return patternName == tabSeparatedNamePattern
 }
 
 // PatternManager manages name detection patterns
@@ -68,10 +114,31 @@ func (pm *PatternManager) compileAllPatterns() {
 	}{
 		{
 			name:        "basic_western_name",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Basic Western name format: First Last (minimum 2 chars each)",
 			priority:    5,
 			cultural:    []string{"western", "english", "european"},
+		},
+		{
+			// A name split across two table columns: "First Name | Last Name".
+			//
+			// This is the only pattern that may span a tab, and it exists so that
+			// excluding the tab from nameSpace does not silently drop a real
+			// two-column roster row. It is the weakest candidate finder here — a tab
+			// says the two tokens are in DIFFERENT cells, which is evidence against a
+			// name relationship, not for it — so requiresBothNamesKnown demands a
+			// database hit on BOTH tokens rather than the usual surname-only bar.
+			//
+			// Measured over 714 real Office/PDF documents: 95 tab-spanning findings
+			// (44 distinct values) were reported before this change, and in 94 of the
+			// 95 the left-hand token was not a known given name ("Closed<TAB>Cook",
+			// "Project<TAB>Sun", "Preventative<TAB>Strong"), so the both-known bar
+			// removes them while keeping "Marcus<TAB>Holloway" reportable.
+			name:        tabSeparatedNamePattern,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameTabSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			description: "Name split across two table columns: First<TAB>Last",
+			priority:    2,
+			cultural:    []string{"tabular", "database"},
 		},
 		{
 			name: "all_caps_name",
@@ -83,21 +150,21 @@ func (pm *PatternManager) compileAllPatterns() {
 			// CODE", "TODO FIXME") is rejected, and the common-word-bigram gate
 			// keeps DB-colliding word pairs out of the HIGH bucket. Low priority —
 			// all-caps is weaker evidence than mixed-case.
-			pattern:     `[` + nameUpper + `]{2,30}\s+[` + nameUpper + `]{2,30}`,
+			pattern:     `[` + nameUpper + `]{2,30}` + nameSpace + `[` + nameUpper + `]{2,30}`,
 			description: "All-caps name: FIRST LAST",
 			priority:    3,
 			cultural:    []string{"western", "formal"},
 		},
 		{
 			name:        "name_with_middle_initial",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `]\.\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `]\.` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with middle initial: First M. Last",
 			priority:    7,
 			cultural:    []string{"western", "american"},
 		},
 		{
 			name:        "name_with_title",
-			pattern:     `(?:Mr|Ms|Mrs|Dr|Prof|Sir|Dame|Lord|Lady)\.\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `(?:Mr|Ms|Mrs|Dr|Prof|Sir|Dame|Lord|Lady)\.` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with title: Dr. First Last",
 			priority:    8,
 			cultural:    []string{"western", "formal"},
@@ -110,42 +177,42 @@ func (pm *PatternManager) compileAllPatterns() {
 			// suffix. Jr/Sr/III/IV plus the academic suffixes cover the common
 			// cases; wrapNamePattern supplies the trailing boundary that stops
 			// "IV"/"III" matching inside "IVory"/"IIIumination".
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+(?:Jr\.?|Sr\.?|III|IV|PhD|MD|Esq\.?)`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `(?:Jr\.?|Sr\.?|III|IV|PhD|MD|Esq\.?)`,
 			description: "Name with suffix: First Last Jr.",
 			priority:    8,
 			cultural:    []string{"western", "american", "academic"},
 		},
 		{
 			name:        "three_part_name",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Three-part name: First Middle Last",
 			priority:    6,
 			cultural:    []string{"western", "hispanic", "compound"},
 		},
 		{
 			name:        "hyphenated_last_name",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Hyphenated last name: First Last-Name",
 			priority:    7,
 			cultural:    []string{"western", "modern", "compound"},
 		},
 		{
 			name:        "name_with_apostrophe_first",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]*'[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]*'[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with apostrophe in first name: O'Connor Smith",
 			priority:    7,
 			cultural:    []string{"irish", "scottish", "western"},
 		},
 		{
 			name:        "name_with_apostrophe_last",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]*'[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]*'[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Name with apostrophe in last name: David O'Connor",
 			priority:    7,
 			cultural:    []string{"irish", "scottish", "western"},
 		},
 		{
 			name:        "compound_first_name",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Compound first name: Mary-Jane Smith",
 			priority:    6,
 			cultural:    []string{"western", "compound", "modern"},
@@ -167,7 +234,7 @@ func (pm *PatternManager) compileAllPatterns() {
 			// Priority 8 puts it above both partial patterns (6 and 7) so the full
 			// span wins the overlap rather than tying with a fragment of itself.
 			name:        "compound_first_and_hyphenated_last",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Hyphen in both parts: Anne-Marie Delacroix-Webb",
 			priority:    8,
 			cultural:    []string{"western", "french", "compound", "modern"},
@@ -187,49 +254,49 @@ func (pm *PatternManager) compileAllPatterns() {
 			// run away across a sentence; priority 8 matches the sibling above so the
 			// widest span wins over the partials it contains.
 			name:        "compound_first_and_multiword_last",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}-[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Compound first name with two-part surname: Jean-Claude Van Damme",
 			priority:    8,
 			cultural:    []string{"western", "french", "dutch", "compound"},
 		},
 		{
 			name:        "name_with_multiple_titles",
-			pattern:     `(?:Dr|Prof)\.\s+(?:Mr|Ms|Mrs)\.\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `(?:Dr|Prof)\.` + nameSpace + `(?:Mr|Ms|Mrs)\.` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Multiple titles: Dr. Ms. First Last",
 			priority:    9,
 			cultural:    []string{"academic", "formal"},
 		},
 		{
 			name:        "four_part_name",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Four-part name: First Middle Middle Last",
 			priority:    4,
 			cultural:    []string{"hispanic", "compound", "formal"},
 		},
 		{
 			name:        "last_comma_first",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Last, First format (database/directory style)",
 			priority:    8,
 			cultural:    []string{"formal", "database", "directory"},
 		},
 		{
 			name:        "last_comma_first_middle",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
 			description: "Last, First Middle format",
 			priority:    8,
 			cultural:    []string{"formal", "database", "directory"},
 		},
 		{
 			name:        "last_comma_first_initial",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},\s+[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `]\.`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29},` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `]\.`,
 			description: "Last, First M. format",
 			priority:    8,
 			cultural:    []string{"formal", "database", "directory"},
 		},
 		{
 			name:        "name_with_professional_suffix",
-			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}\s+[` + nameUpper + `][` + nameLower + `]{1,29},\s+(?:PhD|MD|DDS|JD|EdD|PharmD|PsyD|DVM|RN|CPA|PE)`,
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29},` + nameSpace + `(?:PhD|MD|DDS|JD|EdD|PharmD|PsyD|DVM|RN|CPA|PE)`,
 			description: "Name with professional suffix: John Smith, PhD",
 			priority:    9,
 			cultural:    []string{"academic", "professional", "formal"},
