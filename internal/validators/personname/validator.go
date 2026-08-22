@@ -1117,6 +1117,13 @@ func (v *Validator) isTechnicalTerm(match string) bool {
 		return true
 	}
 
+	// A font family name is document formatting, not a data subject (#406). Same
+	// exact-phrase lookup, kept as its own map so the vocabulary and its reasoning stay
+	// together — see fontFamiliesMap.
+	if fontFamiliesMap[lowerMatch] {
+		return true
+	}
+
 	// Check for business suffixes (company names) using package-level variable
 	for _, suffix := range businessSuffixes {
 		if strings.HasSuffix(lowerMatch, " "+suffix) || strings.HasSuffix(lowerMatch, suffix) {

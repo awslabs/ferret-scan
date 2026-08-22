@@ -403,6 +403,54 @@ var functionWordsMap = map[string]bool{
 	"attention": true, "subject": true, "bcc": true, "fwd": true,
 }
 
+// fontFamiliesMap holds multi-word font family names, which the patterns match as
+// two-and-three-token Title-Case names and the surname gate then accepts whenever the
+// LAST token happens to be a real surname (#406):
+//
+//	Times New Roman -> 81   Arial Black -> 80   Bitstream Vera -> 80
+//
+// Only three families actually fire, and that is the whole mechanism rather than a
+// coincidence: of 37 standard multi-word families measured, the other 34 are already
+// rejected because their final token ("Gothic", "Sans", "Linotype", "UI", "Pro") is not
+// in the surname list. Roman, Black and Vera are. The rest of the list is here so that
+// a future addition to the surname data cannot silently reopen the hole.
+//
+// Keyed on the WHOLE phrase, which is what makes it a safe suppressor: it can never
+// silence a person named Roman or Black, because the entire matched value has to equal
+// the family name. A token-level list would be the exact mistake this validator's
+// history warns about.
+//
+// Styled variants need no entries of their own. "Times New Roman Bold" is reported as
+// "Times New Roman" — the four-token span is rejected because "Bold" is not a surname —
+// so the value that reaches this map is already the base family.
+//
+// Deliberately NOT fixed in the extractor instead: these arrive from the legacy .doc
+// font table, and legacy-ole-extractor.go recovers body text by scanning for printable
+// runs, which cannot tell a font-table string from a sentence. A denylist there would be
+// the same list in a worse place, where it could delete real body text.
+var fontFamiliesMap = map[string]bool{
+	// the three measured false positives
+	"times new roman": true,
+	"arial black":     true,
+	"bitstream vera":  true,
+	// the rest of the standard multi-word families, silent today on the surname gate
+	"arial narrow": true, "arial unicode ms": true, "century gothic": true,
+	"book antiqua": true, "comic sans": true, "comic sans ms": true,
+	"courier new": true, "franklin gothic": true, "gill sans": true,
+	"lucida grande": true, "lucida console": true, "lucida sans": true,
+	"palatino linotype": true, "segoe ui": true, "segoe print": true,
+	"trebuchet ms": true, "bookman old style": true, "monotype corsiva": true,
+	"helvetica neue": true, "avenir next": true, "myriad pro": true,
+	"minion pro": true, "open sans": true, "source sans pro": true,
+	"noto sans": true, "noto serif": true, "dejavu sans": true,
+	"dejavu serif": true, "liberation sans": true, "liberation serif": true,
+	"pt sans": true, "pt serif": true, "yu gothic": true, "yu mincho": true,
+	"ms gothic": true, "ms mincho": true, "ms sans serif": true, "ms serif": true,
+	"malgun gothic": true, "microsoft sans serif": true, "microsoft yahei": true,
+	"hiragino sans": true, "songti sc": true, "apple chancery": true,
+	"andale mono": true, "brush script mt": true, "goudy old style": true,
+}
+
 // routingWordsMap is the subset of functionWordsMap that introduces a NAME — the
 // salutation and memo-header words. It drives maskNonNameGivenWords, which is a
 // narrower job than the gate above and must use a narrower list.
