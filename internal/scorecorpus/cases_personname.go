@@ -210,6 +210,57 @@ var PersonNameCases = []Case{
 		Redactable: true,
 	},
 	{
+		Name:   "person_routing_word_before_name",
+		Origin: "authored 2026-08-22 for #434; bands measured against the real CLI",
+		Rationale: "A memo header or salutation that is not followed by punctuation. Go's regexp " +
+			"finds leftmost NON-OVERLAPPING matches, so the routing word did not merely get " +
+			"included in the span — it CONSUMED the given name and the real name was never a " +
+			"candidate. The same header therefore behaved two different wrong ways:\n" +
+			"  \"Attn Marcus Whitfield\"      -> NONE  (never reported, so never redacted)\n" +
+			"  \"Attention Marcus Whitfield\" -> 81 on the whole string, routing word inside " +
+			"the reported value\n" +
+			"Pinned to the punctuated form's behaviour, which was already correct: " +
+			"\"Attn: Marcus Holloway\" -> 92. Both now agree.\n" +
+			"The cause was isolated by length rather than by vocabulary: \"X Marcus Holloway\" " +
+			"-> 92 already worked, because a one-letter token cannot start a name token and so " +
+			"consumes nothing.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Attn Marcus Whitfield\n" +
+			"Attention Marcus Whitfield\n" +
+			"Dear Marcus Holloway\n" +
+			"Regards Marcus Holloway\n" +
+			"Cc Marcus Holloway\n",
+		Labels: []Label{
+			{Line: 1, Value: "Marcus Whitfield", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 2, Value: "Marcus Whitfield", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 3, Value: "Marcus Holloway", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 4, Value: "Marcus Holloway", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+			{Line: 5, Value: "Marcus Holloway", Types: []string{"PERSON_NAME"}, MinBand: BandHigh},
+		},
+		Redactable: true,
+	},
+	{
+		Name:   "fp__masking_is_limited_to_routing_words",
+		Origin: "harvested from a 714-document real-corpus measurement, 2026-08-22",
+		Rationale: "The counterweight to person_routing_word_before_name. Reaching a name behind " +
+			"a routing word works by masking that word and re-running the patterns, and the first " +
+			"version of it masked every Title-Case function word. That recovered the salutation " +
+			"names AND exposed 18 findings on 714 real documents that had been hidden behind an " +
+			"ordinary function word, almost all false: \"Firm Fixed Price\" (7 hits, behind " +
+			"\"For\"), \"Fixed Price\", \"Epic House\", \"Advice Regarding Grant\" at 100.\n" +
+			"So the mask list is routingWordsMap — salutations and memo headers only — not " +
+			"functionWordsMap. These lines pin that: each has a Title-Case function word in front " +
+			"of a noun phrase whose last token is a real surname, which is exactly the shape the " +
+			"broad mask lit up. Widening the mask again fails here.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "For Firm Fixed Price contracts only.\n" +
+			"The Fixed Price applies.\n" +
+			"About Epic House today.\n" +
+			"With Person Sessions scheduled.\n",
+		Negative:   true,
+		Redactable: true,
+	},
+	{
 		Name:   "fp__eponym_technical_terms",
 		Origin: "authored 2026-08 for scorecorpus; behavior verified against the real CLI",
 		Rationale: "Scientific terms that ARE people's surnames: van der Waals, von Neumann, " +

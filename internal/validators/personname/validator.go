@@ -163,7 +163,7 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 	var matches []detector.Match
 
 	// Use pattern manager to find matches
-	patternMatches := v.patternManager.FindMatches(line)
+	patternMatches := v.findPatternCandidates(line)
 
 	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
 	// scans, context-keyword list) is identical for every match on this line, so
@@ -250,7 +250,7 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 	var matches []detector.Match
 
 	// Use pattern manager to find matches
-	patternMatches := v.patternManager.FindMatches(line)
+	patternMatches := v.findPatternCandidates(line)
 
 	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
 	// scans, context-keyword list) is identical for every match on this line, so
@@ -853,6 +853,143 @@ func (v *Validator) isFunctionWordGiven(first string) bool {
 		return false
 	}
 	return true
+}
+
+// maskChar replaces a word that cannot be part of a name during the second candidate
+// pass. It must be a non-letter so wrapNamePattern treats it as a boundary, and it
+// must NOT be a space: nameSpace accepts a run of spaces, so blanking the word would
+// let a name token on each side join across the hole ("Holloway Attn Marcus" would
+// become the candidate "Holloway      Marcus", whose text in the original line is not
+// a name at all). '#' bounds without joining, and is the same byte width as any ASCII
+// letter it replaces, so every match offset still indexes the original line.
+const maskChar = '#'
+
+// maskNonNameGivenWords blanks each Title-Case word that cannot be the GIVEN half of a
+// name, and reports whether it changed anything.
+//
+// This exists because Go's regexp finds leftmost NON-OVERLAPPING matches, so a
+// capitalised non-name word in front of a real name does not merely get included in
+// the span — it CONSUMES the given name, and the real name is never offered as a
+// candidate at all:
+//
+//	"Attn Marcus Holloway"    basic_western_name claims "Attn Marcus", the scan
+//	                          resumes at "Holloway", and one token cannot match.
+//	                          Reported: nothing. The name never reached the report,
+//	                          so it was never redacted either.
+//	"X Marcus Holloway"       reported 92 — "X" is too short to start a name token,
+//	                          which is what pins the cause to the consumed token
+//	                          rather than to scoring.
+//
+// Masking rather than re-scanning at an offset keeps the pass linear: one extra
+// regexp sweep of the same line, not one sweep per rejected candidate. Offsets are
+// preserved byte-for-byte, so a match found in the masked line indexes the original
+// line unchanged — and a match can never contain a masked byte, because the mask is
+// not a letter and not a separator.
+//
+// The word list is routingWordsMap — the salutation and memo-header subset, NOT the
+// whole function-word list; see the measurement recorded there for why masking every
+// Title-Case function word costs more in exposed noun phrases than it recovers in
+// names. A word is only masked when the NEXT token is also Title-Case, because that is
+// the only arrangement in which it could have consumed a name.
+//
+// There is deliberately NO name-database check here, unlike isFunctionWordGiven.
+// Masking cannot lose a name: findPatternCandidates keeps the unmasked pass and ADDS
+// the masked one, so if a routing word ever collides with a real given name the
+// original candidate is still there ("Will Smith" is reported whether or not "will" is
+// masked). A database check would read as a safety net while protecting nothing, and an
+// earlier draft of this function had one — it survived every mutation, which is how it
+// was found to be dead.
+func (v *Validator) maskNonNameGivenWords(line string) (string, bool) {
+	type token struct {
+		start, end int
+		upper      bool
+	}
+
+	var tokens []token
+	inWord := false
+	start := 0
+	for i, r := range line {
+		if isNameLetter(r) {
+			if !inWord {
+				inWord, start = true, i
+			}
+			continue
+		}
+		if inWord {
+			tokens = append(tokens, token{start, i, unicode.IsUpper([]rune(line[start:i])[0])})
+			inWord = false
+		}
+	}
+	if inWord {
+		tokens = append(tokens, token{start, len(line), unicode.IsUpper([]rune(line[start:])[0])})
+	}
+
+	masked := []byte(line)
+	changed := false
+	for i, tk := range tokens {
+		if !tk.upper {
+			continue
+		}
+		// Only a word followed by another Title-Case token can have consumed a name.
+		if i+1 >= len(tokens) || !tokens[i+1].upper {
+			continue
+		}
+		if !routingWordsMap[strings.ToLower(line[tk.start:tk.end])] {
+			continue
+		}
+		for b := tk.start; b < tk.end; b++ {
+			masked[b] = maskChar
+		}
+		changed = true
+	}
+	if !changed {
+		return line, false
+	}
+	return string(masked), true
+}
+
+// isNameLetter reports whether r is one of the letters the name patterns accept, so
+// tokenisation here and matching there agree on where a word begins and ends.
+func isNameLetter(r rune) bool {
+	switch {
+	case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z':
+		return true
+	case r >= 0x00C0 && r <= 0x00D6, r >= 0x00D8 && r <= 0x00DE: // Latin-1 uppercase
+		return true
+	case r >= 0x00DF && r <= 0x00F6, r >= 0x00F8 && r <= 0x00FF: // Latin-1 lowercase
+		return true
+	}
+	return false
+}
+
+// findPatternCandidates returns the candidates for one line, including those hidden
+// behind a Title-Case non-name word (see maskNonNameGivenWords). Shared by both
+// findNames* paths so the two cannot drift.
+func (v *Validator) findPatternCandidates(line string) []PatternMatch {
+	candidates := v.patternManager.FindMatches(line)
+
+	masked, changed := v.maskNonNameGivenWords(line)
+	if !changed {
+		return candidates
+	}
+
+	seen := make(map[[2]int]struct{}, len(candidates))
+	for _, c := range candidates {
+		seen[[2]int{c.StartIndex, c.EndIndex}] = struct{}{}
+	}
+	for _, c := range v.patternManager.FindMatches(masked) {
+		key := [2]int{c.StartIndex, c.EndIndex}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		// Read the text from the ORIGINAL line. The span cannot include a masked byte,
+		// so this is the same string the masked pass matched — but taking it from the
+		// original is what makes that an invariant rather than an assumption.
+		c.Text = line[c.StartIndex:c.EndIndex]
+		candidates = append(candidates, c)
+	}
+	return candidates
 }
 
 // isKnownShortName checks if a short name (< 4 chars) is in the known name databases

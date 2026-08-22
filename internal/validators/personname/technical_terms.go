@@ -385,9 +385,43 @@ var functionWordsMap = map[string]bool{
 	"should": true, "might": true, "must": true, "shall": true, "can": true,
 	"will": true, "may": true, "cannot": true,
 	"said": true, "says": true, "see": true, "note": true, "please": true,
-	// correspondence formalities that precede a name and are not part of it
+	// correspondence formalities that precede a name and are not part of it.
+	//
+	// "attention", "subject", "bcc" and "fwd" complete the set the abbreviations
+	// already covered: "attn" was here but its expansion was not, so the same memo
+	// header behaved two different wrong ways — "Attn Marcus Holloway" reported
+	// nothing at all, while "Attention Marcus Holloway" reported the routing word
+	// INSIDE the name at 81 (#434).
+	//
+	// Ordinary vocabulary that can also precede a name — "signed", "contact",
+	// "prepared", "reviewed" — is deliberately NOT here. Those are not correspondence
+	// formalities, and admitting them would widen a suppressor on a guess; their
+	// span-absorption is the pre-existing three_part_name shape already pinned by the
+	// fp__business_noun_phrases corpus case, not something this list should reach.
 	"dear": true, "sincerely": true, "regards": true, "thanks": true,
 	"thank": true, "yes": true, "attn": true, "cc": true, "re": true,
+	"attention": true, "subject": true, "bcc": true, "fwd": true,
+}
+
+// routingWordsMap is the subset of functionWordsMap that introduces a NAME — the
+// salutation and memo-header words. It drives maskNonNameGivenWords, which is a
+// narrower job than the gate above and must use a narrower list.
+//
+// Measured why, on 714 real Office/PDF documents: masking every Title-Case function
+// word recovered the salutation names it was written for but also exposed 18 findings
+// that had been hidden behind an ordinary Title-Case function word, almost all of them
+// false — "Firm Fixed Price" (7 hits, behind "For"), "Advice Regarding Grant" at 100,
+// "Fixed Price", "Epic House". Masking is only needed where a word plausibly PRECEDES
+// a person's name, and "For"/"The"/"About" introduce a noun phrase far more often than
+// they introduce a person.
+//
+// Kept as its own map rather than a flag on the entries above so the gate's list can
+// stay deliberately complete (see the note there) while this one stays deliberately
+// small.
+var routingWordsMap = map[string]bool{
+	"attn": true, "attention": true, "cc": true, "bcc": true, "fwd": true,
+	"re": true, "subject": true,
+	"dear": true, "sincerely": true, "regards": true, "thanks": true, "thank": true,
 }
 
 // emailPatternsMap for efficient email context analysis
