@@ -94,7 +94,7 @@ Nineteen validators, each purpose-built. Enable a subset with `--checks CREDIT_C
 | `IP_ADDRESS` | IPv4 / IPv6 addresses | Skips RFC1918 / reserved / test ranges; context-keyword gated |
 | `PASSPORT` | Passport numbers | US / UK / CA / EU + MRZ |
 | `VIN` | Vehicle Identification Numbers | ISO 3779, position-9 check digit, WMI manufacturer lookup |
-| `PERSON_NAME` | Personal names | Embedded name databases, titles, cultural variations |
+| `PERSON_NAME` | Personal names | Embedded name databases, titles, nobiliary particles, cultural variations |
 | `CLOUD_RESOURCES` | Cloud resource identifiers | AWS ARNs, Azure IDs, GCP, OCI, IBM CRN, Alibaba |
 | `INTELLECTUAL_PROPERTY` | IP / confidentiality markers | Patents, trademarks, copyrights, trade secrets |
 | `SOCIAL_MEDIA` | Social media handles / profiles | Requires configuration to activate |

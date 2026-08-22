@@ -14,7 +14,7 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 
 It identifies various name formats including first and last names, names with titles (Mr./Ms./Dr.), names with suffixes (Jr./Sr./III), and names with middle initials. The validator uses an embedded database of ~5,200 common first names and ~2,100 surnames with database-first optimization for 98% performance improvement.
 
-// TODO: Document rationale for surname database reduction and validate detection accuracy
+A name is reported only when its SURNAME is confirmed by the database, or when a title or generational suffix explicitly states that the tokens are a person's name. A name admitted on that marker alone is capped inside MEDIUM, so it always reaches review and redaction but never outranks a database-confirmed name.
 
 The check analyzes surrounding context to distinguish between person names and business/product names. It applies confidence adjustments based on contextual keywords, validates names against common test data patterns, and includes enhanced technical context detection for reduced false positives.
 
@@ -26,9 +26,16 @@ The check analyzes surrounding context to distinguish between person names and b
 - **Multiple Names** - Three or more name components (e.g., "Mary Jane Watson")
 - **Hyphenated Names** - Hyphenated last names (e.g., "Sarah Smith-Jones")
 - **Names with Apostrophes** - Cultural variations (e.g., "Patrick O'Connor")
+- **Names with a Nobiliary Particle** - A connective inside a multi-word surname, in either spelling (e.g., "Ana de la Cruz", "Dr. Marco Di Salvo")
+- **Two-Column Table Rows** - A name split across adjacent table cells (e.g., a "First Name / Last Name" spreadsheet row). Requires BOTH tokens to be database-confirmed, because a tab is a column boundary rather than a word space
+
+**Deliberately Not Reported:**
+- **Routing words** - A salutation or memo header in front of a name is excluded from the reported value, so "Attn Marcus Whitfield" reports "Marcus Whitfield" rather than nothing or the whole string
+- **Font family names** - Document formatting such as "Times New Roman" or "Arial Black", matched as a whole phrase only, so a person named Roman or Black is unaffected
+- **Leading function words** - An article, pronoun or preposition before a real surname ("The Grace", "Via Morgan"), unless the name database recognizes the word as a name itself ("Will Smith", "May Chen")
 
 **Cultural Support:**
-The validator supports Western name patterns and can be extended for other cultural naming conventions. It includes recognition of common titles, suffixes, and name structures used in English-speaking countries.`,
+Beyond Western First/Last forms, the validator recognizes multi-word surnames carrying a nobiliary or patronymic particle — Dutch and German (van, von, van der, van den), Iberian (de, del, de la, dos, das), Italian (di, della, dal) and Arabic (bin, bint, ibn, al) — in both the lowercase and capitalized spellings. A particle attached to the surname by a HYPHEN (al-Rashid, El-Sayed) is not yet matched. It includes recognition of common titles, suffixes, and name structures used in English-speaking countries.`,
 
 		Patterns: []string{
 			"First Last (e.g., John Smith)",
@@ -38,6 +45,9 @@ The validator supports Western name patterns and can be extended for other cultu
 			"First Last Suffix (e.g., Robert Johnson Jr.)",
 			"First Hyphenated-Last (e.g., Sarah Smith-Jones)",
 			"First O'Last (e.g., Patrick O'Connor)",
+			"First particle Last (e.g., Ana de la Cruz, Ludwig van Beethoven)",
+			"Title First particle Last (e.g., Dr. Marco Di Salvo)",
+			"First<TAB>Last across two table columns (e.g., a First Name / Last Name spreadsheet row)",
 		},
 
 		SupportedFormats: []string{
@@ -48,6 +58,8 @@ The validator supports Western name patterns and can be extended for other cultu
 			"Hyphenated surnames and compound names",
 			"Names with apostrophes (Irish, French origins)",
 			"Multiple first names or compound first names",
+			"Multi-word surnames with a nobiliary or patronymic particle, lowercase or capitalized (Dutch, German, Iberian, Italian, Arabic)",
+			"Names split across two adjacent table or spreadsheet columns",
 		},
 
 		ConfidenceFactors: []help.ConfidenceFactor{

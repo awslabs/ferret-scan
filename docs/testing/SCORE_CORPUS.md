@@ -134,23 +134,26 @@ make score-mutation-check   # prove the gate still catches real regressions
 Sample output:
 
 ```
-scorecorpus  141 cases, 177 gated labels, 16 check(s)
+scorecorpus  154 cases, 202 gated labels, 16 check(s)
 
 check      TP  FN(miss)  FN(band)  FP(H+M)  FP(low)  recall_all  recall_hm  prec_hm
 CREDIT_CARD    3         0         0        0        0      1.0000     1.0000   1.0000
 EMAIL          3         0         0        2        0      1.0000     1.0000   0.6000
 IP_ADDRESS     2         0         0        0        0      1.0000     1.0000   1.0000
-SSN          155         0         0       45        0      1.0000     0.9935   0.7739
+PERSON_NAME   26         0         0        0        0      1.0000     1.0000   1.0000
+SSN          155         0         0       12       33      1.0000     0.9935   0.9277
 ...
-TOTAL        177         0         0       47        0      1.0000     0.9944   0.7892
+TOTAL        202         0         0       14       33      1.0000     0.9950   0.9349
 
-redaction sink (core.RedactFile, label-driven; 169 labels)
+not gated, baselined:  extra_same_span 0   undecided 1 cases / 0 findings
+
+redaction sink (core.RedactFile, label-driven; 196 labels)
   strategy              whole_leak   residue4
   simple                         0          0
-  format_preserving              0        817
+  format_preserving              0        829
 
 suppression layer (a rule must silence exactly what it names)
-  rules exercised 55   silenced 55   collateral 0   ineffective 0
+  rules exercised 62   silenced 62   collateral 0   ineffective 0
 ```
 
 Cost, measured: **~1.0s** for the in-process layers, ~5s including the executable
