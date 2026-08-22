@@ -80,15 +80,56 @@ func wrapNamePattern(core string) string {
 	return `(?:^|[^` + nameLetter + `])(` + core + `)(?:[^` + nameLetter + `]|$)`
 }
 
+// nameParticle matches a nobiliary or patronymic particle — the connective inside a
+// multi-word surname (van Beethoven, von Bismarck, de Silva, Di Salvo, bin Salman).
+//
+// Every other pattern here requires each name token to begin with a capital, so a
+// lowercase particle terminated the match: "Dr. Ludwig van Beethoven" produced no
+// candidate at all, and the title marker that would have admitted the off-list
+// surname never got the chance to apply. Capitalised spellings are accepted on the
+// same footing because English usage varies ("Di Salvo", "Van Damme", "De Luca"), and
+// a capitalised particle caused the mirror-image defect: name_with_title claimed
+// "Dr. Marco Di" and left "Salvo" out of the reported value.
+//
+// The set is closed and small on purpose. "of" and "and" are deliberately absent:
+// they are ordinary English function words, and admitting them would match
+// "Institute of Technology". Even for the particles listed, the surname bar in
+// CalculateConfidenceWithComponents still applies, so "Ministerio de Educación" is
+// rejected on the surname rather than on the particle.
+const nameParticle = `(?:[Vv]an|[Vv]on|[Dd]ell[ao]|[Dd]el|[Dd]en|[Dd]er|[Dd]es|[Dd]os|[Dd]as|[Dd]al|[Dd]e|[Dd]a|[Dd]i|[Dd]o|[Dd]u|[Tt]en|[Tt]er|[Ll]a|[Ll]e|[Ee]l|[Aa]l|[Bb]int|[Bb]in|[Ii]bn)`
+
+// nameParticleRun allows one or two particles so the common compounds are matched in
+// full: "de la Cruz", "van der Berg", "van den Broek".
+const nameParticleRun = `(?:` + nameParticle + nameSpace + `){1,2}`
+
 // requiresBothNamesKnown reports whether a pattern's candidates must have BOTH a
 // database-confirmed given name and a database-confirmed surname, rather than the
 // surname-only bar that CalculateConfidenceWithComponents applies to the rest.
 //
-// Only the tab-separated pattern needs it: its two tokens sit in different table
-// columns, so their adjacency is a layout artefact rather than evidence that they
-// form one name.
+// Two patterns need it, for the same underlying reason — the shape they match is
+// something document text produces on its own, so the surname alone is not enough to
+// tell a name from a coincidence:
+//
+//   - tab_separated_name: its tokens sit in different table columns, so their
+//     adjacency is a layout artefact rather than evidence that they form one name.
+//
+//   - name_with_particle: a lowercase particle between two capitalised words is
+//     ordinary prose as often as it is a name. "Discussed von Neumann architecture"
+//     and "Applied de Morgan's law" both have a genuine surname after the particle,
+//     and both are eponyms rather than data subjects. Requiring the GIVEN half to be
+//     a known name is what separates them from "Ana de la Cruz", and it is what the
+//     fp__latin_and_prose_particles corpus case prescribes.
+//
+// The titled variant is deliberately NOT here. Its title is an explicit statement
+// that the following tokens name a person, which is evidence the database cannot
+// supply — that is the whole reason "Dr. Ludwig van Beethoven" is reportable when
+// the surname is off-list. Nothing writes "Dr. Applied de Morgan".
 func requiresBothNamesKnown(patternName string) bool {
-	return patternName == tabSeparatedNamePattern
+	switch patternName {
+	case tabSeparatedNamePattern, "name_with_particle":
+		return true
+	}
+	return false
 }
 
 // PatternManager manages name detection patterns
@@ -181,6 +222,36 @@ func (pm *PatternManager) compileAllPatterns() {
 			description: "Name with suffix: First Last Jr.",
 			priority:    8,
 			cultural:    []string{"western", "american", "academic"},
+		},
+		{
+			// "Ludwig van Beethoven", "Maria de la Cruz", "Ahmed bin Salman".
+			//
+			// Priority sits with three_part_name: this is the same three-token shape,
+			// with a particle in the middle slot instead of a middle name.
+			name:        "name_with_particle",
+			pattern:     `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + nameParticleRun + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			description: "Name with a nobiliary particle: First van Last",
+			priority:    6,
+			cultural:    []string{"dutch", "german", "spanish", "portuguese", "italian", "arabic"},
+		},
+		{
+			// The titled form of the pattern above, and the fix for the truncation a
+			// CAPITALISED particle used to cause: name_with_title matches exactly two
+			// name tokens after the title, so "Dr. Marco Di Salvo" was reported as
+			// "Dr. Marco Di" — a name whose reported value stops mid-surname.
+			//
+			// Restricting the extra token to a particle is what keeps this safe: a
+			// pattern that simply allowed a fourth token would claim
+			// "Dr. John Smith Reviewed" and put the following word inside the name.
+			//
+			// Registered in hasExplicitNameMarker and isFormalNamePattern alongside
+			// name_with_title — the title is the same evidence of personhood here, and
+			// it is what admits an off-list surname such as "Beethoven" at all.
+			name:        "name_with_title_and_particle",
+			pattern:     `(?:Mr|Ms|Mrs|Dr|Prof|Sir|Dame|Lord|Lady)\.` + nameSpace + `[` + nameUpper + `][` + nameLower + `]{1,29}` + nameSpace + nameParticleRun + `[` + nameUpper + `][` + nameLower + `]{1,29}`,
+			description: "Titled name with a nobiliary particle: Dr. First van Last",
+			priority:    8,
+			cultural:    []string{"western", "formal", "dutch", "german"},
 		},
 		{
 			name:        "three_part_name",
@@ -390,7 +461,7 @@ func ParseNameComponents(nameText string, pattern NamePattern) NameComponents {
 
 	// Parse based on pattern type
 	switch pattern.Name {
-	case "name_with_title", "name_with_multiple_titles":
+	case "name_with_title", "name_with_title_and_particle", "name_with_multiple_titles":
 		components = parseNameWithTitle(tokens, components)
 	case "name_with_suffix", "name_with_professional_suffix":
 		components = parseNameWithSuffix(tokens, components)

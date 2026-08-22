@@ -592,7 +592,7 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 // getPatternConfidenceBoost returns confidence boost based on pattern type
 func (v *Validator) getPatternConfidenceBoost(patternName string) float64 {
 	switch patternName {
-	case "name_with_title", "name_with_multiple_titles":
+	case "name_with_title", "name_with_title_and_particle", "name_with_multiple_titles":
 		return 10.0 // Titles indicate formal names
 	case "name_with_suffix":
 		return 8.0 // Suffixes are strong indicators
@@ -895,7 +895,7 @@ const unverifiedSurnameCeiling = 65.0
 // evidence of personhood on its own. A title or suffix does.
 func (v *Validator) hasExplicitNameMarker(patternName string) bool {
 	switch patternName {
-	case "name_with_title", "name_with_multiple_titles",
+	case "name_with_title", "name_with_title_and_particle", "name_with_multiple_titles",
 		"name_with_suffix", "name_with_professional_suffix":
 		return true
 	}
@@ -905,6 +905,7 @@ func (v *Validator) hasExplicitNameMarker(patternName string) bool {
 func (v *Validator) isFormalNamePattern(patternName string) bool {
 	formalPatterns := []string{
 		"name_with_title",
+		"name_with_title_and_particle",
 		"name_with_multiple_titles",
 		"name_with_suffix",
 		"name_with_professional_suffix",

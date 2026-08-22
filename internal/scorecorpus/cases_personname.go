@@ -178,6 +178,38 @@ var PersonNameCases = []Case{
 		Redactable: true,
 	},
 	{
+		Name:   "person_lowercase_particles_recovered",
+		Origin: "promoted out of quarantine 2026-08-22 by the #422 particle patterns; bands measured against the real CLI",
+		Rationale: "Was person_lowercase_particles_UNSUPPORTED. Every pattern required each name " +
+			"token to start with a capital, so a lowercase particle terminated the match and these " +
+			"names produced no candidate at all — never reported, therefore never redacted, a " +
+			"cleartext leak concentrated on non-Anglo names.\n" +
+			"Measured before and after, same fixture, same flags:\n" +
+			"  Ana de la Cruz  NONE -> 77   |   Carlos dos Santos  NONE -> 77\n" +
+			"  Jan van der Berg  NONE -> 77 |   Piet de Vries       NONE -> 77\n" +
+			"MEDIUM rather than HIGH is the ceiling working as designed, not a shortfall: the " +
+			"particle pattern is not a formal-name pattern, so it earns no title/suffix boost.\n" +
+			"The quarantine rationale predicted that a particle-aware regex would also light up " +
+			"the fp__eponym_technical_terms negatives below, and that it therefore needed a gate " +
+			"underneath it. It did light them up: \"Discussed von Neumann\" and \"Applied de " +
+			"Morgan\" both appeared, because the token after the particle is a genuine surname. " +
+			"The gate is requiresBothNamesKnown — for this pattern the GIVEN half must be a known " +
+			"name too, which is exactly the structure fp__latin_and_prose_particles named. Both " +
+			"negative cases are silent with these labels asserted.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Signed by Ana de la Cruz.\n" +
+			"Signed by Carlos dos Santos.\n" +
+			"Signed by Jan van der Berg.\n" +
+			"Signed by Piet de Vries.\n",
+		Labels: []Label{
+			{Line: 1, Value: "Ana de la Cruz", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+			{Line: 2, Value: "Carlos dos Santos", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+			{Line: 3, Value: "Jan van der Berg", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+			{Line: 4, Value: "Piet de Vries", Types: []string{"PERSON_NAME"}, MinBand: BandMedium},
+		},
+		Redactable: true,
+	},
+	{
 		Name:   "fp__eponym_technical_terms",
 		Origin: "authored 2026-08 for scorecorpus; behavior verified against the real CLI",
 		Rationale: "Scientific terms that ARE people's surnames: van der Waals, von Neumann, " +
@@ -219,29 +251,27 @@ var PersonNameCases = []Case{
 // changes a number and fails until explained.
 var PersonNameQuarantine = []Case{
 	{
-		Name:   "person_lowercase_particles_UNSUPPORTED",
-		Origin: "authored 2026-08 for scorecorpus; measured against the real CLI",
-		Rationale: "Surnames with a lowercase nobiliary particle are NOT detected: de la Cruz, " +
-			"dos Santos, van der Berg, von Mises, de Vries, van den Heuvel, al-Rashid, El-Sayed. " +
-			"Isolated to prove the particle is the sole cause — capitalising it works and the " +
-			"correct lowercase form does not:\n" +
-			"  \"Ana de la Cruz\" -> NONE   |   \"Ana De La Cruz\" -> 94   |   \"Ana Cruz\" -> 92\n" +
-			"Measured 0 of 4 Dutch/German, 1 of 4 Arabic, 0 of 3 Hispanic-with-particle. Roughly " +
-			"a quarter of Dutch surnames carry one. An undetected name is never redacted, so this " +
-			"is a cleartext leak concentrated on non-Anglo names.\n" +
-			"Quarantined rather than labelled because the fix is not a pattern change alone: a " +
-			"particle-aware regex also matches the eponym negatives above, so it needs the " +
-			"surname-anchored gate underneath it.\n" +
-			"As of 2026-08-19 this case owns the Dutch particle line exclusively: the surname " +
-			"data gap it used to share with person_locale_surnames_UNSUPPORTED is closed, and " +
-			"that case was promoted to person_locale_surnames_recovered. What remains here is " +
-			"purely the lowercase particle.",
+		Name:   "person_hyphenated_particle_UNSUPPORTED",
+		Origin: "narrowed from person_lowercase_particles_UNSUPPORTED 2026-08-22; measured against the real CLI",
+		Rationale: "What remains of the particle gap after #422: the particle attached to the " +
+			"surname by a HYPHEN rather than separated by a space — al-Rashid, El-Sayed, " +
+			"de-la-Cruz. The space-separated forms this case used to hold are now detected and " +
+			"were promoted to person_lowercase_particles_recovered.\n" +
+			"A different shape, not a shorter version of the same one: nameParticleRun joins the " +
+			"particle to the surname with nameSpace, and hyphenated_last_name requires a CAPITAL " +
+			"after the hyphen, so a lowercase hyphenated particle satisfies neither.\n" +
+			"Isolated by holding the surname constant at one the database carries, so the cause " +
+			"is the hyphen alone and not a data gap (measured 2026-08-22 against the real CLI):\n" +
+			"  \"Ana de la Cruz\" -> 77   |   \"Ana de-la-Cruz\" -> NONE   |   \"Ana Cruz\" -> 92\n" +
+			"  \"Jan van Berg\"   -> 77   |   \"Jan van-Berg\"   -> NONE   |   \"Jan Berg\"  -> 92\n" +
+			"The al-Rashid and El-Sayed lines below have BOTH causes: the hyphen shape above and " +
+			"a surname the list does not carry (\"Mohammed Rashid\" and \"Layla Sayed\" are also " +
+			"NONE), so they need the data fix of person_locale_surnames_recovered as well.",
 		Checks: []string{"PERSON_NAME"},
-		Input: "Signed by Ana de la Cruz.\n" +
-			"Signed by Carlos dos Santos.\n" +
-			"Signed by Jan van der Berg.\n" +
-			"Signed by Piet de Vries.\n" +
-			"Signed by Mohammed al-Rashid.\n",
+		Input: "Signed by Ana de-la-Cruz.\n" +
+			"Signed by Jan van-Berg.\n" +
+			"Signed by Mohammed al-Rashid.\n" +
+			"Signed by Layla El-Sayed.\n",
 		Redactable: true,
 	},
 }

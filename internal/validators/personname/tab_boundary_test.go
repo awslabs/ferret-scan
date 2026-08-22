@@ -183,21 +183,32 @@ func TestTabGateAppliesOnBothScoringPaths(t *testing.T) {
 	}
 }
 
-// TestRequiresBothNamesKnownIsScopedToTheTabPattern keeps the stricter bar from
-// spreading. CalculateConfidenceWithComponents documents why the general rule is
-// surname-only (both-known costs 30 recall points), so exactly one pattern may opt
-// in to both-known.
-func TestRequiresBothNamesKnownIsScopedToTheTabPattern(t *testing.T) {
-	pm := NewPatternManager()
+// TestBothNamesKnownBarIsAnExplicitInventory keeps the stricter bar from spreading.
+// CalculateConfidenceWithComponents documents why the general rule is surname-only
+// (both-known costs 30 recall points), so every pattern that opts in has to be listed
+// here with a reason in requiresBothNamesKnown — adding one silently fails this test.
+func TestBothNamesKnownBarIsAnExplicitInventory(t *testing.T) {
+	want := map[string]bool{
+		tabSeparatedNamePattern: true, // tokens are in different table columns
+		"name_with_particle":    true, // "Applied de Morgan" is prose, not a data subject
+	}
 
-	var strict []string
-	for _, p := range pm.GetPatterns() {
+	got := map[string]bool{}
+	for _, p := range NewPatternManager().GetPatterns() {
 		if requiresBothNamesKnown(p.Name) {
-			strict = append(strict, p.Name)
+			got[p.Name] = true
 		}
 	}
 
-	if len(strict) != 1 || strict[0] != tabSeparatedNamePattern {
-		t.Errorf("both-known bar must apply to %q alone, got %v", tabSeparatedNamePattern, strict)
+	for name := range want {
+		if !got[name] {
+			t.Errorf("%q should require both names known", name)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("%q newly requires both names known: add it to this inventory with "+
+				"a reason, or it silently costs recall", name)
+		}
 	}
 }
