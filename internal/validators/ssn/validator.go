@@ -392,7 +392,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				if _, seen := firstIndex[txt]; !seen {
 					firstIndex[txt] = loc[0]
 				}
-				if !isDecimalFractionTail(line, loc[0]) {
+				if !kwmatch.IsDecimalFractionTail(line, loc[0]) {
 					standalone[txt] = true
 				}
 				foundMatches = append(foundMatches, matchSpan{
@@ -1046,43 +1046,6 @@ func (v *Validator) isStrongHyphenatedSSN(match string) bool {
 		return false
 	}
 	return v.isValidAreaNumber(parts[0])
-}
-
-// isDecimalFractionTail reports whether the match starting at matchIndex is the fractional
-// tail of a decimal number rather than a standalone value.
-//
-// A digit, then '.', immediately before the match means the digits that follow the decimal
-// point have been taken as an identifier. Measured at main @ 0610b7e:
-//
-//	M0.5,1 C0.304262935,18 0.125262935,18.115   ->  2 x SSN HIGH 100
-//	0.304262935 alone                            ->  SSN LOW 50
-//	449874100  (a REAL unpunctuated SSN)         ->  SSN LOW 50
-//
-// So the false positive outranked the true positive by 50 points. The HIGH came from a
-// second mechanism -- comma-bearing path data is classified as CSV, which grants the
-// tabular context boost -- but the value should never have been a candidate at all.
-// SSN-only scan of 1,842 real .svg files: 678 findings, 616 of them HIGH.
-//
-// LOOKS BEHIND THE MATCH, and that is the whole safety argument. An earlier proposal
-// looked AHEAD, treating a trailing period as a decimal point, which deleted a labelled
-// SSN at the end of a sentence -- "Employee SSN: 130-07-5728." reported nothing -- and was
-// refuted for it. A sentence-terminal period is AFTER the match; a decimal point is
-// BEFORE it. Verified on the four rows that killed that attempt: each is preceded by a
-// space or '=', so none of them reaches this branch.
-//
-// Deliberately does NOT require the fraction to begin "00", even though that is what earns
-// the international-prefix boost in PHONE's equivalent guard: the digits after a decimal
-// point are not an identifier whatever they start with, and the LOW 50 form is a false
-// positive too.
-func isDecimalFractionTail(line string, matchIndex int) bool {
-	if matchIndex < 2 {
-		return false
-	}
-	if line[matchIndex-1] != '.' {
-		return false
-	}
-	d := line[matchIndex-2]
-	return d >= '0' && d <= '9'
 }
 
 func (v *Validator) isValidSSN(ssn string) bool {

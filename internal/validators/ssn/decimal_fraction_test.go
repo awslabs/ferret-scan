@@ -6,6 +6,8 @@ package ssn
 import (
 	"strings"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // The digits after a decimal point are not an SSN.
@@ -162,7 +164,7 @@ func TestIsDecimalFractionTail(t *testing.T) {
 			if idx < 0 {
 				t.Fatalf("test setup: %q does not contain %q", c.line, c.match)
 			}
-			if got := isDecimalFractionTail(c.line, idx); got != c.want {
+			if got := kwmatch.IsDecimalFractionTail(c.line, idx); got != c.want {
 				t.Errorf("isDecimalFractionTail(%q, %d) = %v, want %v", c.line, idx, got, c.want)
 			}
 		})
