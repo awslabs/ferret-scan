@@ -368,12 +368,32 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		}
 		var foundMatches []matchSpan
 		var firstIndex map[string]int
+
+		// standalone[txt] is true when at least ONE occurrence of txt on this line is not
+		// the fractional tail of a decimal number.
+		//
+		// Decided per OCCURRENCE and then reduced per text, because matchSpan.start is the
+		// FIRST occurrence's offset shared by every duplicate. Judging from that shared
+		// offset would let a decimal fraction earlier on the line delete a real SSN later
+		// on it: in "ratio 0.130075728 and SSN: 130075728" the first occurrence is the
+		// fraction, so an offset-keyed guard would suppress both — a cleartext leak, and
+		// the precise aliasing an earlier attempt at this fix was refuted for.
+		//
+		// A value is therefore only dropped when EVERY place it appears is a fraction
+		// tail. One standalone occurrence keeps the finding, which is the safe polarity:
+		// the cost of being wrong is a false positive, not a lost SSN.
+		var standalone map[string]bool
+
 		if len(idxMatches) > 0 {
 			firstIndex = make(map[string]int)
+			standalone = make(map[string]bool, len(idxMatches))
 			for _, loc := range idxMatches {
 				txt := line[loc[0]:loc[1]]
 				if _, seen := firstIndex[txt]; !seen {
 					firstIndex[txt] = loc[0]
+				}
+				if !isDecimalFractionTail(line, loc[0]) {
+					standalone[txt] = true
 				}
 				foundMatches = append(foundMatches, matchSpan{
 					text:  txt,
@@ -424,6 +444,15 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					lc.columnHeader = table.HeaderAt(lineBounds, ms.start)
 				}
 			}
+			// Drop a value that is only ever a decimal fraction on this line.
+			//
+			// standalone is nil for the synthesized concatenated-number candidates, which
+			// have no offsets; those are unaffected. A text absent from the map appeared
+			// only as a fraction tail.
+			if standalone != nil && ms.start >= 0 && !standalone[match] {
+				continue
+			}
+
 			// Clean the SSN for validation
 			cleanMatch := v.cleanSSN(match)
 
@@ -1017,6 +1046,43 @@ func (v *Validator) isStrongHyphenatedSSN(match string) bool {
 		return false
 	}
 	return v.isValidAreaNumber(parts[0])
+}
+
+// isDecimalFractionTail reports whether the match starting at matchIndex is the fractional
+// tail of a decimal number rather than a standalone value.
+//
+// A digit, then '.', immediately before the match means the digits that follow the decimal
+// point have been taken as an identifier. Measured at main @ 0610b7e:
+//
+//	M0.5,1 C0.304262935,18 0.125262935,18.115   ->  2 x SSN HIGH 100
+//	0.304262935 alone                            ->  SSN LOW 50
+//	449874100  (a REAL unpunctuated SSN)         ->  SSN LOW 50
+//
+// So the false positive outranked the true positive by 50 points. The HIGH came from a
+// second mechanism -- comma-bearing path data is classified as CSV, which grants the
+// tabular context boost -- but the value should never have been a candidate at all.
+// SSN-only scan of 1,842 real .svg files: 678 findings, 616 of them HIGH.
+//
+// LOOKS BEHIND THE MATCH, and that is the whole safety argument. An earlier proposal
+// looked AHEAD, treating a trailing period as a decimal point, which deleted a labelled
+// SSN at the end of a sentence -- "Employee SSN: 130-07-5728." reported nothing -- and was
+// refuted for it. A sentence-terminal period is AFTER the match; a decimal point is
+// BEFORE it. Verified on the four rows that killed that attempt: each is preceded by a
+// space or '=', so none of them reaches this branch.
+//
+// Deliberately does NOT require the fraction to begin "00", even though that is what earns
+// the international-prefix boost in PHONE's equivalent guard: the digits after a decimal
+// point are not an identifier whatever they start with, and the LOW 50 form is a false
+// positive too.
+func isDecimalFractionTail(line string, matchIndex int) bool {
+	if matchIndex < 2 {
+		return false
+	}
+	if line[matchIndex-1] != '.' {
+		return false
+	}
+	d := line[matchIndex-2]
+	return d >= '0' && d <= '9'
 }
 
 func (v *Validator) isValidSSN(ssn string) bool {
