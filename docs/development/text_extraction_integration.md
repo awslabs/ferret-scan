@@ -14,15 +14,18 @@ The text extraction preprocessors allow Ferret-scan to analyze the content of do
 
 1. **Preprocessor Interface** (`internal/preprocessors/preprocessor.go`)
    - Defines the `Preprocessor` interface for all preprocessors
-   - Provides `PreprocessorManager` for managing multiple preprocessors
+   - Defines the shared `ProcessedContent` model
+
+2. **File Router** (`internal/router/file_router.go`)
+   - Registers and coordinates multiple preprocessors
    - Handles file type detection and routing
 
-2. **Text Preprocessor** (`internal/preprocessors/text_preprocessor.go`)
+3. **Text Preprocessor** (`internal/preprocessors/text_preprocessor.go`)
    - Implements text extraction for PDF and Office documents
    - Uses existing text extraction libraries
    - Returns structured `ProcessedContent`
 
-3. **Updated Validator Interface** (`internal/detector/detector.go`)
+4. **Updated Validator Interface** (`internal/detector/detector.go`)
    - Added `ValidateContent()` method for processing extracted text
    - Maintains backward compatibility with existing `Validate()` method
 
