@@ -70,7 +70,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
@@ -87,7 +87,7 @@ jobs:
 
       - name: Log in to Amazon ECR Public
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
         with:
           registry-type: public
 
@@ -208,7 +208,7 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security tab
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           sarif_file: "trivy-results.sarif"
           category: "trivy-container-scan"
@@ -316,7 +316,7 @@ jobs:
           config: ".grype.yaml"
 
       - name: Upload Grype scan results
-        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           sarif_file: ${{ steps.scan-ghcr.outputs.sarif }}
           category: "grype-container-scan"
