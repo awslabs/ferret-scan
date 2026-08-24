@@ -159,6 +159,55 @@ func buildM4A(t *testing.T, dir string, value string) string {
 	return writeFixture(t, dir, "tagged.m4a", append(ftyp, moov...))
 }
 
+// buildM4AWithXMP writes the TWO-HOMES layout: the value in moov>udta>meta>ilst AND again in a
+// top-level XMP packet, carried in a uuid box whose user type is the Adobe XMP one.
+//
+// This is what a real file looks like after a metadata editor has touched it. Measured on a real
+// .m4a stripped with `exiftool -all=` and then given one tag: Artist, Title and Author each land in
+// BOTH homes, while Comment lands only in udta. Across 800 real ISO-BMFF files on a macOS host, 24
+// carried a top-level uuid[XMP] box and 14 carried moov/udta/XMP_ instead.
+//
+// Before the XMP span existed the udta copy was overwritten and this one was not, so the whole file
+// was refused by the residual check (#452) — correct, but it made three of the four common tags
+// unredactable.
+func buildM4AWithXMP(t *testing.T, dir string, value string) string {
+	t.Helper()
+
+	atom := func(name string, payload []byte) []byte {
+		out := make([]byte, 4)
+		binary.BigEndian.PutUint32(out, uint32(8+len(payload)))
+		out = append(out, []byte(name)...)
+		return append(out, payload...)
+	}
+
+	data := append([]byte{0, 0, 0, 1, 0, 0, 0, 0}, []byte(value)...)
+	ilst := atom("ilst", atom("\xa9nam", atom("data", data)))
+	moov := atom("moov", atom("udta", atom("meta", append([]byte{0, 0, 0, 0}, ilst...))))
+	ftyp := atom("ftyp", []byte("M4A isom"))
+
+	// The Adobe XMP user type, then the packet. Same value, second home.
+	userType := []byte{
+		0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8,
+		0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC,
+	}
+	packet := []byte(`<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>` +
+		`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF ` +
+		`xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">` +
+		`<rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/">` +
+		`<tiff:Artist>` + value + `</tiff:Artist>` +
+		`</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`)
+	uuid := atom("uuid", append(userType, packet...))
+
+	// A payload marker after the metadata, so the table's "audio data untouched" check applies here
+	// too rather than silently passing on a fixture with no payload.
+	mdat := atom("mdat", []byte{0x01, 0x02, 0x03, 0x04})
+
+	file := append(ftyp, moov...)
+	file = append(file, uuid...)
+	file = append(file, mdat...)
+	return writeFixture(t, dir, "tagged-xmp.m4a", file)
+}
+
 func sortedKeys(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -235,6 +284,14 @@ func TestReportedValuesRemovedFromEveryFormat(t *testing.T) {
 		{
 			name:    "m4a udta/ilst",
 			src:     buildM4A(t, dir, "Recording ref "+testSSN),
+			matches: []detector.Match{match(testSSN, "SSN")},
+		},
+		{
+			// The same value in TWO homes. Both must be overwritten: this file was REFUSED
+			// before the XMP span existed, because the residual check correctly saw the second
+			// copy still sitting there (#452).
+			name:    "m4a udta/ilst + XMP packet",
+			src:     buildM4AWithXMP(t, dir, "Recording ref "+testSSN),
 			matches: []detector.Match{match(testSSN, "SSN")},
 		},
 	}

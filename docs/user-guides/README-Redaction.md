@@ -146,6 +146,20 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > handled file: if a reported value cannot be located in the tag bytes, no output is
 > written and the run discloses it.
 >
+> **Note on XMP in MP4/M4A/MOV**: a metadata editor typically writes the same tag into **two**
+> homes — the QuickTime/iTunes atoms under `moov/udta`, and an XMP packet. Both are redacted.
+> Measured on a real `.m4a` stripped and then given a single tag: `Artist`, `Title` and `Author`
+> each land in both homes, while `Comment` lands only in `udta`. Because the redactor refuses when
+> any reported value remains, a file carrying one of the first three used to be refused outright
+> ([#452](https://github.com/awslabs/ferret-scan/issues/452)) — the `udta` copy was overwritten and
+> the XMP copy was not.
+>
+> The XMP packet is matched on the Adobe **user type** of its `uuid` box, not on the box type: `uuid`
+> is the container format's extension point and also carries vendor and protection payloads, which a
+> redactor must not rewrite. Across 800 real ISO-BMFF files, 24 carried a top-level XMP `uuid` box
+> and 14 carried an `XMP_` atom under `moov/udta` instead; the latter is covered already, because
+> `udta` is treated as one region.
+>
 > **Note on GPS in video**: a position is stored as binary fixed-point or as an ISO 6709
 > string (`+36.3506-082.6985+447.403/`), and reports render it as decimal degrees — so the
 > value never appears in the file as the text that was reported. Those payloads are
