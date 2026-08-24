@@ -368,12 +368,32 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		}
 		var foundMatches []matchSpan
 		var firstIndex map[string]int
+
+		// standalone[txt] is true when at least ONE occurrence of txt on this line is not
+		// the fractional tail of a decimal number.
+		//
+		// Decided per OCCURRENCE and then reduced per text, because matchSpan.start is the
+		// FIRST occurrence's offset shared by every duplicate. Judging from that shared
+		// offset would let a decimal fraction earlier on the line delete a real SSN later
+		// on it: in "ratio 0.130075728 and SSN: 130075728" the first occurrence is the
+		// fraction, so an offset-keyed guard would suppress both — a cleartext leak, and
+		// the precise aliasing an earlier attempt at this fix was refuted for.
+		//
+		// A value is therefore only dropped when EVERY place it appears is a fraction
+		// tail. One standalone occurrence keeps the finding, which is the safe polarity:
+		// the cost of being wrong is a false positive, not a lost SSN.
+		var standalone map[string]bool
+
 		if len(idxMatches) > 0 {
 			firstIndex = make(map[string]int)
+			standalone = make(map[string]bool, len(idxMatches))
 			for _, loc := range idxMatches {
 				txt := line[loc[0]:loc[1]]
 				if _, seen := firstIndex[txt]; !seen {
 					firstIndex[txt] = loc[0]
+				}
+				if !kwmatch.IsDecimalFractionTail(line, loc[0]) {
+					standalone[txt] = true
 				}
 				foundMatches = append(foundMatches, matchSpan{
 					text:  txt,
@@ -424,6 +444,15 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					lc.columnHeader = table.HeaderAt(lineBounds, ms.start)
 				}
 			}
+			// Drop a value that is only ever a decimal fraction on this line.
+			//
+			// standalone is nil for the synthesized concatenated-number candidates, which
+			// have no offsets; those are unaffected. A text absent from the map appeared
+			// only as a fraction tail.
+			if standalone != nil && ms.start >= 0 && !standalone[match] {
+				continue
+			}
+
 			// Clean the SSN for validation
 			cleanMatch := v.cleanSSN(match)
 
