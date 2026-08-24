@@ -216,7 +216,7 @@ func (r *VideoRedactor) RedactDocument(originalPath string, outputPath string, m
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 
-	if err := r.write(originalPath, outputPath, size, blocks, name); err != nil {
+	if err := r.write(originalPath, outputPath, size, blocks, matches, name); err != nil {
 		return nil, err
 	}
 
@@ -395,7 +395,7 @@ func verifyCoordinatesScrubbed(blocks []*tagBlock) error {
 // A copy plus fixed-length patches, rather than assembling a new file: the media stream is
 // copied straight through without being interpreted, so nothing this code gets wrong can move
 // a sample offset.
-func (r *VideoRedactor) write(originalPath, outputPath string, size int64, blocks []*tagBlock, name string) error {
+func (r *VideoRedactor) write(originalPath, outputPath string, size int64, blocks []*tagBlock, matches []detector.Match, name string) error {
 	if r.outputManager != nil {
 		if err := r.outputManager.EnsureDirectoryExists(outputPath); err != nil {
 			return fmt.Errorf("failed to ensure output directory: %w", err)
@@ -447,6 +447,25 @@ func (r *VideoRedactor) write(originalPath, outputPath string, size int64, block
 	// proves the plan was complete; this proves the plan is what landed on disk.
 	if err := verifyWritten(dst, blocks); err != nil {
 		return fail(fmt.Errorf("%s: %w", name, err))
+	}
+
+	// FAIL CLOSED on the WHOLE FILE, not just the parsed tag blocks.
+	//
+	// r.residual above searches only the blocks this redactor parsed, so a value living anywhere
+	// else is invisible to it. Measured on a real .mp4: exiftool writes Artist to BOTH
+	// moov/udta/meta/ilst/©ART/data AND an XMP packet, the block copy was overwritten, the XMP copy
+	// was not, and this function wrote the file and reported success with a reported SSN still in
+	// it (#449).
+	//
+	// Streamed in 1MB windows with an overlap, so this costs one extra sequential read of the
+	// output and a bounded buffer rather than holding the movie in memory.
+	if residual, err := tagmeta.ResidualInReader(dst, size, matches); err != nil {
+		return fail(fmt.Errorf("%s: %w", name, err))
+	} else if residual > 0 {
+		// name is not repeated here: the caller already prefixes it, and a doubled filename in a
+		// refusal reads as two different files.
+		return fail(fmt.Errorf("%d reported value(s) remain anywhere in the redacted file; refusing to write a file that would look redacted",
+			residual))
 	}
 
 	if err := dst.Close(); err != nil {

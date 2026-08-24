@@ -205,9 +205,14 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 	// or in an encoding the search did not try, and every one of those looks like a success
 	// from the mapping count alone. Verifying the OUTPUT is the only assertion that cannot be
 	// satisfied by a partial job.
-	if residual := tagmeta.Residual(modified, ranges, matches); residual > 0 {
-		return nil, fmt.Errorf("%d reported value(s) remain in the %s metadata of %s after redaction; refusing to write a file that would look redacted",
-			residual, format, filepath.Base(originalPath))
+	// ResidualAnywhere, not Residual: the latter searches only `ranges`, which are the spans this
+	// pass already rewrote, so a value surviving OUTSIDE them cannot be seen. Measured on a real
+	// .m4a whose Artist tag existed in two places — the copy inside the mapped udta span was
+	// overwritten, the copy at offset 11613 was not, and this check returned 0 and wrote a file
+	// still containing a reported credit card number while reporting success (#449).
+	if residual := tagmeta.ResidualAnywhere(modified, matches); residual > 0 {
+		return nil, fmt.Errorf("%d reported value(s) remain anywhere in %s after redaction; refusing to write a file that would look redacted",
+			residual, filepath.Base(originalPath))
 	}
 
 	if r.outputManager != nil {
