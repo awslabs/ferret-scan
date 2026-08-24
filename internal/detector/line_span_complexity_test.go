@@ -145,6 +145,37 @@ func timeAssign(t *testing.T, matches []Match, wantDistinct bool) time.Duration 
 	return elapsed
 }
 
+// bestAssign times AssignLineColumns over freshly built fixtures and returns the FASTEST run.
+//
+// Best-of-N, not a single sample, because this is a shared CI runner and the failure mode of a
+// ratio assertion is a spike in either term. A spike inflates a duration; it never deflates one, so
+// the minimum is the closest thing to the machine's actual cost and is the only summary statistic
+// that a scheduler hiccup cannot move in the direction that fails the build.
+//
+// Fixtures are rebuilt per attempt because timeAssign MUTATES its matches — it assigns the columns
+// it then asserts on — so reusing one slice would time an already-assigned run. mk is a thunk
+// rather than a (size, builder) pair so that every timing target here can use it whatever its
+// builder's arity: the first version of this helper took func(int) and so could only be applied to
+// one of the four tests, which left the other three on a single sample.
+//
+// That gap was not theoretical. TestAssignLineColumnsComplexityDistinctAndRepeated failed on a
+// macOS CI runner at base=40.67ms big=306.40ms against a 250ms ceiling, while the same commit
+// locally measured base=4.2-6.0ms big=18.8-23.5ms. The base being ~7x its local value says the
+// machine was loaded; the big term being ~13x says the load landed inside the big run. A spike in
+// one sample is precisely what best-of-N removes, and it is why all four targets now use it.
+func bestAssign(t *testing.T, mk func() []Match, wantDistinct bool) time.Duration {
+	t.Helper()
+	const attempts = 3
+	var best time.Duration
+	for i := 0; i < attempts; i++ {
+		d := timeAssign(t, mk(), wantDistinct)
+		if best == 0 || d < best {
+			best = d
+		}
+	}
+	return best
+}
+
 // TestAssignLineColumnsComplexityRepeatedValue: the cursor's own case must be linear.
 func TestAssignLineColumnsComplexityRepeatedValue(t *testing.T) {
 	if testing.Short() {
@@ -153,8 +184,8 @@ func TestAssignLineColumnsComplexityRepeatedValue(t *testing.T) {
 
 	const baseK, bigK = 2000, 8000 // 4x
 
-	tBase := timeAssign(t, buildRepeatedOnOneLine(baseK), true)
-	tBig := timeAssign(t, buildRepeatedOnOneLine(bigK), true)
+	tBase := bestAssign(t, func() []Match { return buildRepeatedOnOneLine(baseK) }, true)
+	tBig := bestAssign(t, func() []Match { return buildRepeatedOnOneLine(bigK) }, true)
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x input, ONE repeated value: %.1fx (base=%v big=%v) — the cursor advances past "+
@@ -174,10 +205,17 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 		t.Skip("column-assignment complexity guard skipped in -short mode")
 	}
 
-	const baseK, bigK = 2000, 8000 // 4x
+	// 8000/32000, not 2000/8000. The smaller pair put the BASE at half a millisecond, where
+	// scheduler noise is a large fraction of the measurement: across ten local runs on an idle
+	// machine the ratio ranged 3.6x to 6.9x, a 2.3x spread against an 8x threshold, and a loaded
+	// Windows CI runner produced 8.9x and failed the build on main itself.
+	//
+	// At this size the base is ~2ms and the same ten runs span 3.76x to 4.28x — a 0.5x spread. The
+	// signal did not change; the sample became large enough to see it. Measured, not guessed.
+	const baseK, bigK = 8000, 32000 // 4x
 
-	tBase := timeAssign(t, buildDistinctOnOneLine(baseK), true)
-	tBig := timeAssign(t, buildDistinctOnOneLine(bigK), true)
+	tBase := bestAssign(t, func() []Match { return buildDistinctOnOneLine(baseK) }, true)
+	tBig := bestAssign(t, func() []Match { return buildDistinctOnOneLine(bigK) }, true)
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x input, K DISTINCT values on one line: %.1fx (base=%v big=%v) — linear is 4x. "+
@@ -195,9 +233,10 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 	// 148ms, which is comfortably inside a 4s ceiling, so it passed for as long as the
 	// quadratic existed. A growth bound is what actually pins the shape.
 	//
-	// 8x rather than 4x because both the value COUNT and the line LENGTH grow with K here, and
-	// these samples are milliseconds where scheduler noise is a large fraction. A return to
-	// O(K x line) would show 16x.
+	// 8x rather than 4x because both the value COUNT and the line LENGTH grow with K here. A return
+	// to O(K x line) would show 16x, so with the measurement now stable at ~4.2x this sits roughly
+	// midway between the real cost and the regression it guards against — headroom on both sides
+	// rather than the 8.0-against-a-3.6-to-6.9-spread it had before.
 	const maxGrowth = 8.0
 	if tBase > 0 && ratio > maxGrowth {
 		t.Errorf("4x input cost %.1fx (base=%v big=%v), over %.0fx: the per-value line rescan is "+
@@ -230,8 +269,8 @@ func TestAssignLineColumnsComplexityManyLines(t *testing.T) {
 
 	const baseN, bigN = 5000, 20000 // 4x
 
-	tBase := timeAssign(t, build(baseN), false)
-	tBig := timeAssign(t, build(bigN), false)
+	tBase := bestAssign(t, func() []Match { return build(baseN) }, false)
+	tBig := bestAssign(t, func() []Match { return build(bigN) }, false)
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x input, one match per line across many lines: %.1fx (base=%v big=%v)",
@@ -295,8 +334,8 @@ func TestAssignLineColumnsComplexityDistinctAndRepeated(t *testing.T) {
 	// and the mutation survived.
 	const distinct = 40
 
-	tBase := timeAssign(t, build(distinct, 500), false)
-	tBig := timeAssign(t, build(distinct, 2000), false) // 4x the repeats
+	tBase := bestAssign(t, func() []Match { return build(distinct, 500) }, false)
+	tBig := bestAssign(t, func() []Match { return build(distinct, 2000) }, false) // 4x the repeats
 
 	ratio := float64(tBig) / float64(tBase)
 	t.Logf("4x the repeats of %d distinct values on one line: %.1fx (base=%v big=%v) — linear is 4x",
