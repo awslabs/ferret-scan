@@ -668,16 +668,16 @@ func TestSocialMediaValidator_ValidateDomain(t *testing.T) {
 	}
 }
 
-// --- Whitelist Pattern Tests ---
+// --- Allowlist Pattern Tests ---
 
 func TestSocialMediaValidator_IsWhitelistedMatch(t *testing.T) {
 	v := newConfiguredValidator()
 
-	// With no whitelist patterns, nothing should be whitelisted
-	t.Run("empty whitelist", func(t *testing.T) {
-		result := v.isWhitelistedMatch("https://twitter.com/user")
+	// With no allowlist patterns, nothing should be allowlisted
+	t.Run("empty allowlist", func(t *testing.T) {
+		result := v.isAllowlistedMatch("https://twitter.com/user")
 		if result {
-			t.Error("Expected no whitelist match with empty whitelist")
+			t.Error("Expected no allowlist match with empty allowlist")
 		}
 	})
 }

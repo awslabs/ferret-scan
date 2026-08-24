@@ -176,13 +176,36 @@ validators:
         - "developer"
         - "open source"
 
-    # False positive prevention
-    whitelist_patterns:
+    # False positive prevention. A match overlapping any of these is NOT reported.
+    allowlist_patterns:
       - "(?i)example\\.com"
       - "(?i)test\\.com"
       - "(?i)placeholder"
       - "(?i)demo"
 ```
+
+### allowlist_patterns
+
+A value overlapping an `allowlist_patterns` entry is **excluded from the report**, not
+scored down. It is an instruction rather than a heuristic, so it is applied as a veto
+before scoring.
+
+Matching is on byte SPANS, not on the reported value, and that difference matters in both
+directions:
+
+- An entry like `twitter\.com/companybrand` matches a *substring* of the reported value
+  `https://twitter.com/companybrand`, so the allowlisted span sits inside the finding.
+- An overlapping pattern from another platform can report a *fragment* of the same URL under
+  a different name — twitter's bare-handle pattern reports `@brandchannel` out of a YouTube
+  channel URL — so the finding sits inside the allowlisted span.
+
+Overlap covers both, and covers nothing else: a second profile elsewhere on the same line
+does not overlap the allowlisted span and is still reported.
+
+`whitelist_patterns` is accepted as a deprecated alias so existing configuration keeps
+working. If both keys are present, `allowlist_patterns` wins and the older key is ignored
+rather than merged — silently combining two lists would make the effective configuration
+depend on which key a reader noticed.
 
 ## Important Notes
 
@@ -247,7 +270,7 @@ redacted.
 ### Security Considerations
 - Social media detection is disabled by default
 - Only configure platforms you need to detect
-- Use whitelist patterns to reduce false positives
+- Use allowlist patterns to exclude known false positives
 - Consider privacy implications when scanning personal documents
 
 ## Usage Examples
@@ -282,7 +305,7 @@ ferret-scan --file document.pdf --checks SOCIAL_MEDIA --debug
 
 ### False positives
 1. Add negative keywords
-2. Use whitelist patterns
+2. Use allowlist patterns
 3. Refine regex patterns — give the pattern the platform's path prefix if it has one
 4. Check for email/social media conflicts
 
@@ -290,8 +313,12 @@ ferret-scan --file document.pdf --checks SOCIAL_MEDIA --debug
 
 The first path segment is not in the reserved tables for that platform. See
 [Platform system pages are not profiles](#platform-system-pages-are-not-profiles); the tables in
-`internal/validators/socialmedia/reserved_paths.go` are not exhaustive. A `whitelist_patterns`
-entry reduces the confidence of such a match but does not remove it.
+`internal/validators/socialmedia/reserved_paths.go` are not exhaustive. An
+[`allowlist_patterns`](#allowlist_patterns) entry removes such a match from the report.
+
+Before the fix for #429 it only reduced the confidence, and the reduction was invisible: the
+30-point penalty is applied to a raw total that exceeds 130 before the cap at 100, so an
+allowlisted URL and an ordinary one were both reported at HIGH 100.
 
 ### Email addresses detected as social media
 1. Remove email patterns from social media config
