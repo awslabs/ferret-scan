@@ -190,11 +190,65 @@ func SanitizeSuppressedMatches(suppressed []detector.SuppressedMatch, showMatch 
 
 // JSONResponse represents the top-level response structure for JSON/YAML output
 type JSONResponse struct {
-	Stats         *formatters.ScanStats      `json:"stats,omitempty" yaml:"stats,omitempty"`
-	Results       []JSONMatch                `json:"results" yaml:"results"`
+	Stats   *formatters.ScanStats `json:"stats,omitempty" yaml:"stats,omitempty"`
+	Results []JSONMatch           `json:"results" yaml:"results"`
+
+	// Unredacted lists files whose findings were reported but not redacted, so their
+	// values remain in cleartext.
+	//
+	// A LIST rather than only the stats counters, because a count tells a consumer
+	// that something is exposed without telling it what to do. The equivalent
+	// not-examined disclosure carries only a count today, which means a consumer must
+	// re-run in text format to learn which file — a worse contract that is not worth
+	// copying. Retrofitting a list there is tracked separately.
+	//
+	// omitempty, so every scan that redacted cleanly — and every scan that never
+	// asked for redaction — stays byte-identical.
+	Unredacted []JSONUnredacted `json:"unredacted,omitempty" yaml:"unredacted,omitempty"`
+
 	Suppressed    []detector.SuppressedMatch `json:"suppressed,omitempty" yaml:"suppressed,omitempty"`
 	Truncated     bool                       `json:"truncated,omitempty" yaml:"truncated,omitempty"`
 	TotalFindings int                        `json:"total_findings,omitempty" yaml:"total_findings,omitempty"`
+}
+
+// JSONUnredacted is one file whose reported values were left in cleartext.
+//
+// A distinct wire type rather than reusing formatters.UnredactedFile, whose Cause is
+// an int-backed enum: marshalling that directly would put an ORDINAL on the wire and
+// make the numbering an output contract, so inserting a cause later would silently
+// change every consumer's meaning. Cause is emitted as its label instead.
+type JSONUnredacted struct {
+	Path string `json:"path" yaml:"path"`
+	// Cause is the coarse, stable label ("no redactor for this file type").
+	Cause string `json:"cause" yaml:"cause"`
+	// Detail is the redactor's own explanation, useful for a human triaging.
+	Detail string `json:"detail,omitempty" yaml:"detail,omitempty"`
+	// ReportedValues is how many findings for this file remain in cleartext.
+	ReportedValues int `json:"reported_values" yaml:"reported_values"`
+}
+
+// convertUnredacted maps the structured disclosure onto the wire type, capped the same
+// way every machine format caps it.
+//
+// The cap is a denial-of-service bound on the CONSUMER, not on the disclosure: the
+// totals stay in stats.files_not_redacted and stats.values_not_redacted, which are
+// computed over the full set, so a truncated list can never make the report understate
+// the exposure.
+func convertUnredacted(files []formatters.UnredactedFile) []JSONUnredacted {
+	shown, _ := formatters.CapUnredacted(files)
+	if len(shown) == 0 {
+		return nil
+	}
+	out := make([]JSONUnredacted, 0, len(shown))
+	for _, f := range shown {
+		out = append(out, JSONUnredacted{
+			Path:           f.Path,
+			Cause:          f.Cause.String(),
+			Detail:         f.Detail,
+			ReportedValues: f.ReportedValues,
+		})
+	}
+	return out
 }
 
 // JSONMatch represents a single match in JSON/YAML format
@@ -416,7 +470,8 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 	}
 
 	resp := JSONResponse{
-		Results: jsonMatches,
+		Results:    jsonMatches,
+		Unredacted: convertUnredacted(options.Unredacted),
 		// Suppressed matches embed the raw finding, so route them through the
 		// same deny-by-default redaction as active results: without --show-match
 		// the value, metadata, and surrounding context are withheld.

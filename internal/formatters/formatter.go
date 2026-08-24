@@ -56,6 +56,37 @@ type FormatterOptions struct {
 	// legitimate: the golden harness constructs FormatterOptions without either.
 	NotExamined []NotExaminedFile
 
+	// UnredactedFooter is the text formatter's rendered block, appended inside the
+	// summary exactly as NotExaminedFooter is, and for the same reason: printed
+	// separately to stderr it rendered as a detached box, and a piped stdout ended
+	// with a frame closed by content the pipe never received.
+	//
+	// Text format only; structured formats carry the same information as data via
+	// Unredacted below.
+	UnredactedFooter string
+
+	// RedactionRequested records whether the run asked for redaction at all.
+	//
+	// Needed to distinguish three states a consumer must not conflate: redaction was
+	// not requested, it was requested and succeeded, and it was requested and refused.
+	// Without this a read-only scan and a fully redacted one look identical, so a
+	// consumer filtering for exposures would be told a scan that never redacted
+	// anything was clean.
+	RedactionRequested bool
+
+	// Unredacted is the STRUCTURED form of the redaction disclosure, for machine
+	// formats. Empty means nothing was left in cleartext — which includes the common
+	// case of a scan that never asked for redaction.
+	//
+	// Separate from ScanStats for the same reason NotExamined is: stats marshals
+	// directly to json/yaml, and an int-backed enum there would put an ordinal on the
+	// wire as a number and make it an output contract. The counts that belong in
+	// stats are already there (FilesNotRedacted, ValuesNotRedacted).
+	//
+	// Formatters must guard on len(Unredacted) > 0 AND treat a nil Stats as
+	// legitimate: the golden harness constructs FormatterOptions without either.
+	Unredacted []UnredactedFile
+
 	// FailOnIncomplete mirrors --fail-on-incomplete, which makes incomplete coverage
 	// a non-zero exit.
 	//
@@ -106,13 +137,32 @@ type ScanStats struct {
 	// summary over unexamined files is the same class of harm as a missed detection.
 	//
 	// omitempty so a scan with nothing to report stays byte-identical in JSON/YAML.
-	FilesNotExamined int     `json:"files_not_examined,omitempty" yaml:"files_not_examined,omitempty"`
-	TotalFindings    int     `json:"total_findings" yaml:"total_findings"`
-	High             int     `json:"high" yaml:"high"`
-	Medium           int     `json:"medium" yaml:"medium"`
-	Low              int     `json:"low" yaml:"low"`
-	Suppressed       int     `json:"suppressed" yaml:"suppressed"`
-	Duration         float64 `json:"duration_seconds" yaml:"duration_seconds"`
+	FilesNotExamined int `json:"files_not_examined,omitempty" yaml:"files_not_examined,omitempty"`
+
+	// FilesNotRedacted counts files whose findings were REPORTED but whose values
+	// were not redacted, so they remain in cleartext. Separate from
+	// FilesNotExamined because they are different facts about different stages: a
+	// file can be fully examined and unredacted, or partly examined and redacted
+	// fine. Merging them would tell a consumer that something went wrong without
+	// saying whether the remedy is to re-scan or to stop shipping the output.
+	//
+	// Only meaningful when redaction was requested; a scan without
+	// --enable-redaction leaves it zero.
+	//
+	// omitempty so a scan with nothing to report stays byte-identical in JSON/YAML.
+	FilesNotRedacted int `json:"files_not_redacted,omitempty" yaml:"files_not_redacted,omitempty"`
+
+	// ValuesNotRedacted counts the individual reported findings left in cleartext
+	// across those files. This is the number that sizes the exposure; the file count
+	// alone understates one file holding forty values.
+	ValuesNotRedacted int `json:"values_not_redacted,omitempty" yaml:"values_not_redacted,omitempty"`
+
+	TotalFindings int     `json:"total_findings" yaml:"total_findings"`
+	High          int     `json:"high" yaml:"high"`
+	Medium        int     `json:"medium" yaml:"medium"`
+	Low           int     `json:"low" yaml:"low"`
+	Suppressed    int     `json:"suppressed" yaml:"suppressed"`
+	Duration      float64 `json:"duration_seconds" yaml:"duration_seconds"`
 }
 
 // Formatter interface defines methods that all output formatters must implement

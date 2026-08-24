@@ -168,6 +168,7 @@ func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleMa
 	// unreadable files is the most dangerous document this tool can emit, so the
 	// disclosure must not sit behind a has-findings condition.
 	attachNotExamined(&run, options)
+	attachUnredacted(&run, options)
 
 	// Create the top-level SARIF report
 	report := &SARIFReport{

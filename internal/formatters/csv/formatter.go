@@ -62,24 +62,51 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		headers = []string{"File", "Issue", "Line", "Confidence"}
 	} else {
 		headers = []string{"Filename", "Type", "Confidence Level", "Confidence %", "Line Number", "Text"}
+		// The redaction disclosure, per FINDING rather than per file.
+		//
+		// CSV's grain is one row per finding, and every unredacted value HAS a row by
+		// construction — the disclosure counts reported values. So the per-row form is
+		// COMPLETE here, unlike the not-examined disclosure, where a file with no
+		// findings has no row to carry it and CSV therefore still says nothing. That
+		// asymmetry is deliberate and documented rather than papered over with a
+		// pseudo-row: a row that is not a finding breaks row counts and any grouping
+		// by Type.
+		//
+		// Present only when redaction was REQUESTED, which is the same convention this
+		// formatter already uses for --verbose adding Metadata: the header varies with
+		// the invocation, not with the data. A consumer runs a fixed command, so its
+		// header is stable; and a read-only scan is not made to carry two columns that
+		// could only ever say "n/a".
+		//
+		// Placed BEFORE the optional Metadata column so these two are always at fixed
+		// positions. Metadata is appended only when non-nil, so appending after it
+		// would put these fields at a position that varies with the row's content.
+		if options.RedactionRequested {
+			headers = append(headers, "Redacted", "Not Redacted Reason")
+		}
 		if options.Verbose {
 			headers = append(headers, "Metadata")
 		}
 	}
+
+	// Built once rather than per row: the per-finding columns below need a path lookup,
+	// and recomputing it inside the row builder would make the formatter quadratic in
+	// (findings x unredacted files) on exactly the input where both are large.
+	unredactedByPath := formatters.UnredactedPaths(options.Unredacted)
 
 	// Start with header row
 	csvRows := []string{strings.Join(headers, ",")}
 
 	// Process regular matches
 	for _, match := range filteredMatches {
-		row := f.createCSVRow(match, options, false)
+		row := f.createCSVRow(match, options, unredactedByPath, false)
 		csvRows = append(csvRows, row)
 	}
 
 	// Process suppressed matches if provided (skip in pre-commit mode for brevity)
 	if !options.PrecommitMode {
 		for _, suppressed := range suppressedMatches {
-			row := f.createCSVRow(suppressed.Match, options, true)
+			row := f.createCSVRow(suppressed.Match, options, unredactedByPath, true)
 			csvRows = append(csvRows, row)
 		}
 	}
@@ -88,7 +115,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 }
 
 // createCSVRow creates a CSV row for a match
-func (f *Formatter) createCSVRow(match detector.Match, options formatters.FormatterOptions, suppressed bool) string {
+func (f *Formatter) createCSVRow(match detector.Match, options formatters.FormatterOptions, unredactedByPath map[string]formatters.UnredactedFile, suppressed bool) string {
 	// Get confidence level using shared logic
 	confidenceLevel := shared.GetConfidenceLevel(match.Confidence)
 	if suppressed {
@@ -121,6 +148,17 @@ func (f *Formatter) createCSVRow(match detector.Match, options formatters.Format
 			fmt.Sprintf("%.1f", match.Confidence),
 			fmt.Sprintf("%d", match.LineNumber),
 			f.escapeCSVField(displayText),
+		}
+
+		// Whether THIS finding's value was written out redacted. Emitted only when
+		// redaction was requested, so the row width always matches the header.
+		if options.RedactionRequested {
+			redacted, reason := "true", ""
+			if uf, ok := unredactedByPath[match.Filename]; ok {
+				redacted = "false"
+				reason = uf.Cause.String()
+			}
+			row = append(row, f.escapeCSVField(redacted), f.escapeCSVField(reason))
 		}
 
 		// Add metadata if verbose mode is enabled. Run it through the shared
