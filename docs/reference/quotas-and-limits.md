@@ -25,6 +25,40 @@ A file over the limit is **not** silently dropped: if it is a type the tool coul
 processed, it is reported under `files_not_examined`, listed in the `NOT FULLY EXAMINED`
 block, and `--fail-on-incomplete` exits 3. See [Coverage Disclosure](../COVERAGE_DISCLOSURE.md).
 
+### Audio metadata bounds
+
+Audio metadata sits behind a declared length: a box size in `.m4a`, a chunk size in `.wav`, a block
+length in `.flac`, a synchsafe frame size in `.mp3`. Every one of those numbers is read **out of the
+file**, so it is chosen by whoever produced the file.
+
+Some of those lengths have a fixed ceiling:
+
+| Bound | Value | Applies to |
+|---|---|---|
+| `MaxID3v2Size` | 1MB | the whole ID3v2 tag in `.mp3` |
+| `MaxMetadataRead` | 1MB | one metadata read on the `.mp3` path |
+| string/text atom caps | 1KB / 10KB | `.m4a` tag atoms |
+
+The rest are bounded by **the file itself**: a declared length is clamped to the bytes actually
+remaining from the current offset before anything is allocated. That is the only bound in this area
+an attacker does not also write — bounding one declaration by another bounds nothing, since both come
+out of the same file.
+
+There is no configurable quota here and nothing is disclosed, because nothing is skipped: on a
+well-formed file the declared length already fits and the clamp changes nothing. Verified on 600 real
+audio files (548 `.m4a`, 50 `.wav`, 2 `.mp3`): report output byte-identical with and without the
+clamp.
+
+Before the clamp existed, a **52-byte** `.m4a` whose `mvhd` declared `0xFFFFFFFF` allocated 4096MB,
+and an **8-byte** `.flac` whose first metadata block declared `0xFFFFFF` allocated 16MB. A directory
+of six such `.m4a` files plus one real recording — 220KB of input — reached 4.03GB of resident memory;
+now 0.03GB.
+
+> One measurement caveat worth knowing when reproducing this class: Go does not zero a span it takes
+> fresh from the OS, so a **single** bomb reserves memory it never writes and peak RSS stays near
+> 30MB. The pages only become resident once the runtime reuses a dirty span and has to zero it. A
+> one-file RSS measurement will therefore look clean even when the allocation is happening.
+
 ### Video metadata bounds
 
 Video metadata lives in the `moov` box, which the standards allow anywhere in the file — ISO/IEC
