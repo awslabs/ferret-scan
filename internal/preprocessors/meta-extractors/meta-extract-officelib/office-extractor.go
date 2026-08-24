@@ -773,6 +773,12 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 	var tempFiles []string
 	var embeddedMedia []EmbeddedMedia
 
+	// One budget per container. This loop and ExtractEmbeddedMediaForProcessing each get their
+	// own, because they run at different times over the same archive and neither peak overlaps
+	// the other -- this one deletes its temp files before returning. The doubled decompression
+	// WORK is a separate inefficiency, measured and noted on #379, not addressed here.
+	budget := newExtractionBudget()
+
 	defer func() {
 		// Clean up temp files
 		for _, tempFile := range tempFiles {
@@ -806,7 +812,7 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 		}
 
 		// Extract media to temp file
-		tempFile, err := extractImageToTemp(file)
+		tempFile, err := extractImageToTemp(file, budget)
 		if err != nil {
 			// Silent HERE, deliberately, and not the same omission as the one #374 fixed.
 			//
@@ -845,8 +851,52 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 	return nil
 }
 
+// extractionBudget bounds the TOTAL bytes one container may materialise to temp, across all of its
+// embedded parts.
+//
+// MaxEmbeddedMediaSize bounds a single part; nothing bounded the sum. Measured at main @ 0610b7e on a
+// 1.43MB .docx holding 30 parts that each declare 49MB -- just under the per-part cap:
+//
+//	peak temp disk   1.44 GB
+//	peak RSS         0.27 GB   (this is a DISK exhaustion, not a memory one)
+//	wall             1.87s
+//	warnings         none, and the scan reported success
+//
+// 1.44GB is already 7x embedded.BudgetBytes, which existed as a declared constant that no production
+// code consulted -- only comments and a test asserting it was positive. With MaxDispatchedParts at
+// 512 the ceiling is about 25GB of temp from a ~25MB container.
+//
+// This is the "declared size bounds declared size" shape again: each part is checked against a cap,
+// and the caps compose to nothing. Bounding the AGGREGATE is the only check an attacker cannot
+// satisfy by splitting one large part into many admissible ones.
+type extractionBudget struct {
+	remaining int64
+}
+
+func newExtractionBudget() *extractionBudget {
+	return &extractionBudget{remaining: embedded.BudgetBytes}
+}
+
+// reserve claims n bytes, reporting whether the budget allows it.
+//
+// Charged AFTER the copy with the bytes actually written, not before with the declared size: a lying
+// declaration would otherwise exhaust the budget on parts that never materialise, turning an
+// over-claim into a denial of service against the rest of the document. The per-part LimitReader
+// already bounds any single copy, so the worst overshoot is one part's cap.
+func (b *extractionBudget) reserve(n int64) bool {
+	if b == nil {
+		return true
+	}
+	if n > b.remaining {
+		b.remaining = 0
+		return false
+	}
+	b.remaining -= n
+	return true
+}
+
 // extractImageToTemp extracts an image from ZIP to a temporary file
-func extractImageToTemp(file *zip.File) (string, error) {
+func extractImageToTemp(file *zip.File, budget *extractionBudget) (string, error) {
 	rc, err := file.Open()
 	if err != nil {
 		return "", err
@@ -901,6 +951,14 @@ func extractImageToTemp(file *zip.File) (string, error) {
 			MaxEmbeddedMediaSize)
 	}
 
+	// Charge the AGGREGATE budget with the bytes actually written. Over budget means the temp
+	// file is removed like any other refusal, so a bomb leaves nothing behind.
+	if !budget.reserve(n) {
+		os.Remove(tempFile.Name())
+		return "", fmt.Errorf("would exceed the %d-byte total embedded extraction budget for this document (%w)",
+			embedded.BudgetBytes, embedded.ErrBudgetExhausted)
+	}
+
 	return tempFile.Name(), nil
 }
 
@@ -937,6 +995,11 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []stri
 	var notExamined []string
 	refused := 0
 
+	// The aggregate budget for this container. Unlike the metadata loop, every refusal here is
+	// DISCLOSED through notExamined, so a document truncated by the budget says so rather than
+	// reporting a partial scan as complete.
+	budget := newExtractionBudget()
+
 	for _, file := range reader.File {
 		if !isEmbeddedPartPath(file.Name) {
 			continue
@@ -964,7 +1027,7 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []stri
 		}
 
 		// Extract media to temp file
-		tempFile, err := extractImageToTemp(file)
+		tempFile, err := extractImageToTemp(file, budget)
 		if err != nil {
 			// DISCLOSE rather than skip. Every error this can return means a part that the
 			// router was going to be asked about was not made available to it: the size
