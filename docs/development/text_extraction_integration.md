@@ -50,9 +50,6 @@ defaults:
 preprocessors:
   text_extraction:
     enabled: true
-    types:
-      - pdf
-      - office
 
 profiles:
   thorough:
@@ -74,13 +71,29 @@ ferret-scan --file document.pdf --enable-preprocessors=false
 ferret-scan --file documents/ --profile thorough --recursive
 ```
 
-### Verbose Output
+### Preprocessing Output
 
-When using `--verbose`, the tool will show preprocessing information:
+`--preprocess-only` (`-p`) prints each file's preprocessing status followed by the
+extracted text:
 
 ```
-Preprocessed document.pdf: extracted 1250 words, 7890 characters
+=== FILE: document.docx ===
+Processor: Text Extractor+office_metadata
+Status: Success
+Content: 19 words, 127 characters
+
+Quarterly report text with several words in it for extraction.
+
+--- office_metadata ---
+DocumentType: Word Document
 ```
+
+`Processor` is the `+`-joined list of preprocessors that actually ran, and each
+non-body section is introduced by a `--- name ---` header. The `Content` line
+gains a `, N pages` suffix when the extractor reports a page count.
+
+`--verbose` does not print preprocessing information — it prints match details
+and the scan summary.
 
 ## Integration Details
 
@@ -89,7 +102,8 @@ Preprocessed document.pdf: extracted 1250 words, 7890 characters
 1. **File Detection**: Check if file extension requires preprocessing
 2. **Preprocessing**: Extract text content using appropriate extractor
 3. **Validation**: Pass extracted text to validators using `ValidateContent()`
-4. **Fallback**: If preprocessing fails, fall back to regular file validation
+4. **Failure**: If extraction fails there is no file-reading validation to fall
+   back to; the failure is surfaced as an extraction error for that file
 
 ### Validator Updates
 
@@ -100,9 +114,8 @@ Validators operate exclusively on pre-extracted content:
 
 > The former file-reading `Validate(filePath string)` method was removed in v2
 > (gap 3.2): every implementation was a no-op stub that never read the file, so
-> production always went through `ValidateContent`. The step-4 "fallback to
-> regular file validation" above is likewise obsolete — there is no file-reading
-> validation path to fall back to; extraction feeds `ValidateContent` directly.
+> production always went through `ValidateContent`. Extraction feeds
+> `ValidateContent` directly.
 
 ### Performance Considerations
 
@@ -143,4 +156,5 @@ Validators operate exclusively on pre-extracted content:
 
 ### Debug Information
 
-Use `--verbose` to see preprocessing status and statistics for each file.
+Use `--preprocess-only` to see the preprocessing status and statistics for each
+file. `--verbose` covers match details and the scan summary, not preprocessing.
