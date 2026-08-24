@@ -50,6 +50,39 @@ Before this, the extractor stopped once the walk passed a 10MB **file offset** �
 bytes it skipped without reading — so a camera-default recording over about 10MB reported no metadata
 at all, at exit 0, with nothing under `files_not_examined`.
 
+### Embedded part bounds (Office containers)
+
+An OOXML container (`.docx`, `.xlsx`, `.pptx` and their macro-enabled forms) can hold arbitrarily
+many arbitrarily large parts under `media/` and `embeddings/`, all attacker-controlled and all
+cheap to declare. Four bounds apply, because each one leaves the others unbounded:
+
+| Bound | Value | Configurable | Disclosed when it bites |
+|---|---|---|---|
+| `MaxEmbeddedMediaSize` | 50MB per single embedded part | No | Yes |
+| `embedded.BudgetBytes` | 200MB of embedded bytes per container | No | Yes |
+| `maxEmbeddedParts` | 4,096 embedded parts per container | No | Yes |
+| `embedded.MaxDepth` | 3 levels of container-inside-container | No | Yes |
+
+The count bound exists because the other two do not imply it: an **empty** part charges nothing
+against the per-part cap or the byte budget, while still costing an inflate, a temp file and a
+routing decision. Measured on `.docx` files whose media entries hold an 8-byte PNG signature and
+nothing else, the cost is linear with a large per-part constant:
+
+| embedded parts | input size | before the cap | with the cap |
+|---|---|---|---|
+| 10,000 | 1.2MB | 9.0s, 120MB RSS | 3.6s, 72MB RSS |
+| 50,000 | 6.2MB | 43.8s, 352MB RSS | 3.6s, 76MB RSS |
+| 200,000 | 25.2MB | 184.3s, 1182MB RSS | 4.1s, 156MB RSS |
+
+4,096 comes from the real distribution: across 420 real Office documents the largest part count in
+any one file was 361 (next 201, 201, 198), the median 0 and the mean 7, so the cap sits about 11x
+above the largest legitimate file measured. Report output was byte-identical across all 420 with the
+cap in place.
+
+`embedded.BudgetBytes` and `MaxEmbeddedMediaSize` are **per container**, not per traversal — a
+nested tree grants a fresh allowance at each container, so the aggregate over a nest is not bounded
+by either number. `MaxDepth` bounds the depth factor; nothing bounds the fan-out factor.
+
 ## Processing and Performance Limits
 
 | Component | Limit | Type | Configurable | Notes |
