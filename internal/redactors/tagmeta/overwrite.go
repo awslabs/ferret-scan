@@ -48,6 +48,15 @@ type Region struct {
 	Start int
 	End   int
 	Label string // which container structure it came from, for the audit trail
+
+	// XMLText marks a region whose bytes are XML character data rather than the length-prefixed
+	// binary every other region holds.
+	//
+	// It exists because the raw-byte search this package performs is BLIND inside XML: a value
+	// may be entity-encoded there and is then simply not present as the bytes that were reported.
+	// A bool on the region rather than a string comparison at each use site, so a caller that
+	// forgets it fails closed at the type level instead of silently taking the binary path.
+	XMLText bool
 }
 
 // Occurrence is one span of the buffer to overwrite, with the bytes to write there.

@@ -125,6 +125,16 @@ var xmpUserType = []byte{
 // userTypeBytes is the length of the user type that opens every uuid box payload.
 const userTypeBytes = 16
 
+// LabelXMP marks a span whose payload is an XMP packet, i.e. XML TEXT rather than the
+// length-prefixed binary of every other span this package returns.
+//
+// Exported because that difference is load-bearing for a caller, not decorative. A value stored in
+// XML may be ENTITY-ENCODED — exiftool writes an apostrophe as `&#39;` — so a raw byte search for
+// the reported value finds nothing, and a caller whose write gate is a raw search will conclude the
+// packet is clean. Measured: `Patrick O'Connor` reported at 91, present raw in the ilst copy and as
+// `Patrick O&#39;Connor` in the packet.
+const LabelXMP = "MP4 XMP"
+
 // MetadataSpans walks the atom tree of a file and returns every descriptive-metadata payload
 // span: udta, and meta wherever it appears outside one.
 //
@@ -180,7 +190,7 @@ func MetadataSpans(r io.ReaderAt, size int64) ([]Span, error) {
 			// camera-vendor blobs, protection headers — and treating one of those as descriptive
 			// metadata is how a redactor corrupts a file it was asked to clean.
 			if start, ok := xmpPayloadStart(r, payloadStart, payloadEnd); ok {
-				out = append(out, Span{start, payloadEnd, "MP4 XMP"})
+				out = append(out, Span{start, payloadEnd, LabelXMP})
 			}
 		default:
 			return IsContainerAtom(name)

@@ -215,6 +215,19 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 			residual, filepath.Base(originalPath))
 	}
 
+	// And the same question asked of XML, where the check above is structurally blind.
+	//
+	// A value inside an XMP packet may be entity-encoded — exiftool writes an apostrophe as
+	// `&#39;` — so it is not present as the bytes that were reported and ResidualAnywhere cannot
+	// see it. Measured: a .m4a tagged `Patrick O'Connor` plus a card number was written with
+	// `Patrick O&#39;Connor` still in the packet at exit 0 and no warning, and exiftool read the
+	// name back out of the "redacted" file. Its own refusal message names the cause, because
+	// "remains anywhere" would send an operator looking for bytes that are genuinely absent.
+	if residual := tagmeta.ResidualEncoded(modified, ranges, matches); residual > 0 {
+		return nil, fmt.Errorf("%d reported value(s) remain in %s as XML-encoded text after redaction (e.g. an apostrophe written as &#39;), which a raw search cannot mask; refusing to write a file that would look redacted",
+			residual, filepath.Base(originalPath))
+	}
+
 	if r.outputManager != nil {
 		if err := r.outputManager.EnsureDirectoryExists(outputPath); err != nil {
 			return nil, fmt.Errorf("failed to ensure output directory: %w", err)
