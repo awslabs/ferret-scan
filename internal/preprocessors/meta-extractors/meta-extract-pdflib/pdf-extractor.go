@@ -75,7 +75,13 @@ func ExtractMetadata(filePath string) (*Metadata, error) {
 	// Extract metadata from the PDF
 	extractInfoDictionary(data, metadata)
 	if os.Getenv("FERRET_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] PDF Metadata: After info dictionary - Creator: '%s', Producer: '%s'\n", metadata.Creator, metadata.Producer)
+		// Lengths only. Creator and Producer are document metadata the METADATA validator
+		// reports as findings — a real PDF carried "Marcus Whitfield SSN 449-87-4100" in
+		// /Creator — so printing them raw writes the finding to stderr before the
+		// formatter ever gets to mask it. pdf_metadata_preprocessor.go already logs
+		// Producer this way; this site did not.
+		fmt.Fprintf(os.Stderr, "[DEBUG] PDF Metadata: After info dictionary - Creator: [HIDDEN] (len=%d), Producer: [HIDDEN] (len=%d)\n",
+			len(metadata.Creator), len(metadata.Producer))
 	}
 
 	// Try direct extraction for specific fields if they're still empty
@@ -485,7 +491,10 @@ func extractDirectField(data []byte, fieldName string) string {
 			value := string(matches[1])
 
 			if os.Getenv("FERRET_DEBUG") != "" {
-				fmt.Fprintf(os.Stderr, "[DEBUG] PDF Metadata: Pattern matched! Found value: '%s'\n", value)
+				// The capture is whatever the field held, so it is document content by
+				// definition. The field name and pattern above are safe to print and are
+				// what make the line useful for debugging; the value is not.
+				fmt.Fprintf(os.Stderr, "[DEBUG] PDF Metadata: Pattern matched for field '%s': [HIDDEN] (len=%d)\n", fieldName, len(value))
 			}
 
 			// If it's a hex string, decode it
