@@ -3,11 +3,7 @@
 
 package preprocessors
 
-import (
-	"path/filepath"
-
-	"github.com/awslabs/ferret-scan/v2/internal/observability"
-)
+import "github.com/awslabs/ferret-scan/v2/internal/observability"
 
 // ProcessedContent represents content that has been processed by a preprocessor
 type ProcessedContent struct {
@@ -238,79 +234,6 @@ type Preprocessor interface {
 
 	// SetObserver sets the observability component
 	SetObserver(observer observability.Observer)
-}
-
-// PreprocessorManager manages all available preprocessors
-type PreprocessorManager struct {
-	preprocessors []Preprocessor
-}
-
-// NewPreprocessorManager creates a new preprocessor manager
-func NewPreprocessorManager() *PreprocessorManager {
-	return &PreprocessorManager{
-		preprocessors: make([]Preprocessor, 0),
-	}
-}
-
-// RegisterPreprocessor adds a preprocessor to the manager
-func (pm *PreprocessorManager) RegisterPreprocessor(p Preprocessor) {
-	pm.preprocessors = append(pm.preprocessors, p)
-}
-
-// GetPreprocessor returns the appropriate preprocessor for a file, or nil if none found
-func (pm *PreprocessorManager) GetPreprocessor(filePath string) Preprocessor {
-	for _, p := range pm.preprocessors {
-		if p.CanProcess(filePath) {
-			return p
-		}
-	}
-	return nil
-}
-
-// ProcessFile processes a file with all appropriate preprocessors
-func (pm *PreprocessorManager) ProcessFile(filePath string) (*ProcessedContent, error) {
-	// Get all preprocessors that can handle this file
-	var availablePreprocessors []Preprocessor
-	for _, p := range pm.preprocessors {
-		if p.CanProcess(filePath) {
-			availablePreprocessors = append(availablePreprocessors, p)
-		}
-	}
-
-	if len(availablePreprocessors) == 0 {
-		// No preprocessor available, return original file content as-is
-		return &ProcessedContent{
-			OriginalPath:  filePath,
-			Filename:      filepath.Base(filePath),
-			Text:          "", // Will be read by validators directly
-			ProcessorType: "none",
-			Success:       true,
-		}, nil
-	}
-
-	// Use the first successful preprocessor (maintaining backward compatibility)
-	var lastError error
-	for _, preprocessor := range availablePreprocessors {
-		result, err := preprocessor.Process(filePath)
-		if err == nil && result != nil && result.Success {
-			return result, nil
-		}
-		lastError = err
-	}
-
-	// All preprocessors failed, return the last error
-	return &ProcessedContent{
-		OriginalPath:  filePath,
-		Filename:      filepath.Base(filePath),
-		ProcessorType: "failed",
-		Success:       false,
-		Error:         lastError,
-	}, lastError
-}
-
-// GetAvailablePreprocessors returns all registered preprocessors
-func (pm *PreprocessorManager) GetAvailablePreprocessors() []Preprocessor {
-	return pm.preprocessors
 }
 
 // AddPositionMapping adds a position mapping to the processed content
