@@ -119,8 +119,19 @@ func TestCopyrightHeuristicStillAppliesToOtherMetadataTypes(t *testing.T) {
 // TestClassificationIsBareMarkingRecognisesRealLabelSpellings.
 //
 // Real labels arrive dressed — bracketed, punctuated, slash-separated — and all of those
-// are the same statement. What must NOT count as bare is a value carrying content
-// alongside the label, because that content is what makes the property a disclosure.
+// are the same statement.
+//
+// The rationale here originally said that what must NOT count as bare is "a value carrying
+// content alongside the label". That was the rule when this test was written, and #320 replaced
+// it: harmless decoration ("- Draft", "FY25", "(Rev 3)", an org prefix) is content by that
+// definition, and treating it as a disclosure put thousands of ordinary labels into HIGH. The rule
+// is now about the SHAPE of what remains once the marking phrases are removed — see
+// classificationIsBareMarking and classification_decoration_test.go.
+//
+// Every assertion below still holds under the new rule, which is why they are unchanged. The
+// four notBare values each leave two or more words behind. The narrower consequence, recorded so
+// this comment does not overclaim: a ONE-word remainder now counts as bare, so
+// "confidential - nightjar" is bare here where it once was not.
 func TestClassificationIsBareMarkingRecognisesRealLabelSpellings(t *testing.T) {
 	bare := []string{
 		"confidential",
