@@ -43,28 +43,45 @@ import (
 // .docx embedding itself nine times, all nine levels were followed. On the write
 // side the redactor dispatches each embedded part to a redactor, which for an
 // OOXML part is the Office redactor again — the same unbounded recursion, plus a
-// decompression-bomb amplifier, because every level gets a fresh per-package
-// budget unless one is threaded through (see BudgetBytes).
+// decompression-bomb amplifier, because every container gets a fresh allowance
+// (BudgetBytes is per-container, not threaded — see the note there).
 //
 // Three is deep enough for the real cases (a workbook in a deck in a report) and
-// shallow enough that the amplification stays bounded.
+// shallow enough that DEPTH-driven amplification stays bounded. Depth is the only
+// axis this constant bounds; fan-out is not bounded here.
 //
 // Reaching the bound must be DISCLOSED, never skipped quietly. Refusing to
 // descend is incomplete coverage, and undisclosed incomplete coverage reads as a
 // clean result — which is the failure this whole area keeps reproducing.
 const MaxDepth = 3
 
-// BudgetBytes is the cumulative decompression budget for one top-level file and
-// everything nested inside it.
+// BudgetBytes is the decompression budget for ONE container's embedded parts.
 //
-// This is deliberately a WHOLE-TRAVERSAL budget, not a per-package one. A
-// per-package cap does not bound a nested bomb: each level would get its own
-// fresh allowance, so the worst case multiplies by the number of children at
-// every level rather than staying flat. With a per-package 200MB cap and a
-// package able to hold thousands of tiny entries, three levels of nesting is an
-// amplifier measured in terabytes. Threading one budget through the recursion
-// makes the total the same whether the bytes are in one file or spread across a
-// nested tree.
+// It is per-container, and the aggregate over a nested tree is NOT bounded by it.
+// This comment previously claimed the opposite — that the budget was threaded
+// through the recursion so the total stayed flat however the bytes were spread.
+// Nothing threads it. The only consumer is newExtractionBudget in the Office
+// extractor, which grants a fresh allowance on every call, and the recursion runs
+// in other packages (internal/redactors, internal/router) that materialise each
+// child as its own file and re-enter extraction on it.
+//
+// Measured by counting grants, one probe per newExtractionBudget call:
+//
+//	a flat .docx, 3 media parts        2 grants     400MB allowed
+//	3 levels of nesting                6 grants    1200MB allowed
+//	1 level, 8 sibling containers      18 grants    3600MB allowed  (a 9KB file)
+//
+// Two grants per container — the metadata loop and the processing loop each take
+// one — so the aggregate scales with the CONTAINER COUNT, not with the traversal.
+// MaxDepth bounds the depth factor; nothing bounds the fan-out factor, so the
+// third row above is reachable at depth 1.
+//
+// That per-container amplification is the shape a whole-traversal budget exists
+// to prevent, and correcting the comment does not fix it: threading one budget
+// would mean carrying it across those package boundaries, past an unexported
+// type. Tracked separately rather than asserted as done here — a comment claiming
+// a bound that the code does not implement is worse than no comment, because it
+// stops the next reader from looking.
 const BudgetBytes int64 = 200 * 1024 * 1024
 
 // ErrTooDeep reports that a container nests deeper than MaxDepth.
