@@ -6,6 +6,7 @@ package textextractofficetextlib
 import (
 	"archive/zip"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"io"
 	"os"
 	"path/filepath"
@@ -77,6 +78,12 @@ type TextContent struct {
 	// so a file whose body was skipped was indistinguishable from an empty one and
 	// the run looked clean. Callers surface this and count it as a coverage gap.
 	ExtractionWarning string
+
+	// ExtractionCause classifies ExtractionWarning. noteEmptyExtraction can mean two different
+	// things — a body part that was read and held nothing, or no body part in the archive at all —
+	// and only this function knows which. Left to a caller they collapse into one label, and the
+	// second is not a no-text case: nothing was read.
+	ExtractionCause coverage.Cause
 }
 
 // ExtractText extracts text from an Office document
@@ -142,11 +149,17 @@ func noteEmptyExtraction(content *TextContent, ext string) {
 		content.ExtractionWarning = fmt.Sprintf(
 			"no text extracted from %s: %d body part(s) were read but held no text",
 			ext, content.BodyParts)
+		// The body WAS read; it held nothing. An empty document is a real thing.
+		content.ExtractionCause = coverage.CauseNoText
 		return
 	}
 	content.ExtractionWarning = fmt.Sprintf(
 		"no text extracted from %s: no document body part was found in the archive, "+
 			"so document content was NOT scanned", ext)
+	// Nothing was read. The archive did not present a body part where its format says one lives, so
+	// this is a structural failure and not an empty document — reporting it as "no body text" tells
+	// an operator the pages were read and found blank, which is the opposite of what happened.
+	content.ExtractionCause = coverage.CauseUnparseable
 }
 
 // extractDocxText extracts text from a Word document

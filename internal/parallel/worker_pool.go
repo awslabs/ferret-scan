@@ -6,6 +6,7 @@ package parallel
 import (
 	"context"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"sync"
 	"time"
 
@@ -118,6 +119,15 @@ type Result struct {
 	// Nil when redaction was disabled, skipped (no matches) or succeeded.
 	RedactionError error
 
+	// ExtractionCause classifies ExtractionWarning, and FailureCause classifies Error.
+	//
+	// Both are stated by the producer rather than inferred downstream. Before this, the consumer
+	// recovered a cause by pattern-matching the prose, and measured against the real strings 8 of 14
+	// came back wrong — including a stat failure on ELOOP reported as "coverage cut short" and a
+	// worker panic reported the same way, when neither is a partial scan.
+	ExtractionCause coverage.Cause
+	FailureCause    coverage.Cause
+
 	// ExtractionWarning is a payload-free note that extraction succeeded but
 	// yielded suspiciously nothing — currently, a container whose format carries a
 	// document body from which no body text came out. Like the two errors above it
@@ -208,7 +218,9 @@ func (wp *WorkerPool) safeProcessJob(job *Job, workerID int) (result *Result) {
 		if r := recover(); r != nil {
 			result = &Result{
 				FilePath: job.FilePath,
-				Error:    fmt.Errorf("worker %d panic processing %s: %v", workerID, job.FilePath, r),
+				// A panic left the file unscanned. Not "cut short": nothing partial survived.
+				FailureCause: coverage.CauseUnparseable,
+				Error:        fmt.Errorf("worker %d panic processing %s: %v", workerID, job.FilePath, r),
 			}
 		}
 	}()
@@ -245,14 +257,29 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	var redactionErr error  // captured for Result.RedactionError; never folded into lastError
 	var processedContent *preprocessors.ProcessedContent
 
+	// failureCause classifies lastError, stated where the failure happens.
+	//
+	// Measured against the consumer's prose classifier, 6 of the 7 ways this function can fail were
+	// labelled "coverage cut short" — which asserts the file was PARTLY scanned. A stat failure on
+	// ELOOP, a missing router and a worker panic are none of them partial scans, and the operator's
+	// action differs for each.
+	var failureCause coverage.Cause
+
 	// Wrap file processing with resilience
 	processWithResilience := func(ctx context.Context) error {
 		if job.FileRouter == nil {
+			// Nothing about the file was learned; it was never opened.
+			failureCause = coverage.CauseUnreadable
 			return resilience.NewPermanentError("no file router available", nil)
 		}
 
 		processingCtx, err := job.FileRouter.CreateProcessingContext(job.FilePath, job.Config.Debug)
 		if err != nil {
+			// This is the stat: the file could not be inspected, so nothing about it is known.
+			// Stated rather than left to the errno TEXT, which is why ELOOP, EIO and ENAMETOOLONG
+			// were all reported as "coverage cut short" — the classifier only recognises
+			// "permission denied" and "no such file", so every other errno fell to its default.
+			failureCause = coverage.CauseUnreadable
 			return resilience.ClassifyError(err)
 		}
 
@@ -289,6 +316,8 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		}
 
 		if processedContent == nil {
+			// Every preprocessor declined or produced nothing usable: the bytes did not yield content.
+			failureCause = coverage.CauseUnparseable
 			return resilience.NewTransientError("no content processed", nil)
 		}
 
@@ -370,8 +399,10 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	}
 
 	var extractionWarning string
+	var extractionCause coverage.Cause
 	if processedContent != nil {
 		extractionWarning = processedContent.ExtractionWarning
+		extractionCause = processedContent.ExtractionCause
 	}
 
 	return &Result{
@@ -382,6 +413,8 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		ValidationError:   validationErr,
 		RedactionError:    redactionErr,
 		ExtractionWarning: extractionWarning,
+		ExtractionCause:   extractionCause,
+		FailureCause:      failureCause,
 		Duration:          duration,
 		RedactionResult:   redactionResult,
 		RedactedPath:      redactedPath,

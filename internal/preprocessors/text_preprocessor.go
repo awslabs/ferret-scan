@@ -5,6 +5,7 @@ package preprocessors
 
 import (
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"path/filepath"
 	"strings"
 
@@ -170,6 +171,11 @@ func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedConten
 		// carries its extractor's note across the error return. This is that same
 		// fix for the PDF branch. See #294.
 		content.ExtractionWarning = pdfExtractionWarning(filePath, err)
+		// The bytes did not parse. Measured before the cause was stated: this string begins "no text
+		// extracted from", so the consumer's substring list classified it as no-body-text — which
+		// tells an operator the document was read and found empty, when in fact it could not be read
+		// at all. The .docx branch below had the same shape.
+		content.ExtractionCause = coverage.CauseUnparseable
 		content.Error = fmt.Errorf("failed to extract text from PDF: %w", err)
 		return content, content.Error
 	}
@@ -190,6 +196,8 @@ func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedConten
 		content.ExtractionWarning = fmt.Sprintf(
 			"no text extracted from %s: the file parsed but held no document text, "+
 				"so page content was NOT scanned", filepath.Ext(filePath))
+		// Genuinely no body text: the file parsed. A scanned-image PDF lands here.
+		content.ExtractionCause = coverage.CauseNoText
 	}
 
 	content.Success = true
@@ -216,6 +224,12 @@ func (tp *TextPreprocessor) processOffice(filePath string, content *ProcessedCon
 		// body.
 		if officeContent != nil {
 			content.ExtractionWarning = officeContent.ExtractionWarning
+			// An error return means the archive's body could not be read, not that it was empty.
+			// The extractor's own cause wins when it set one.
+			content.ExtractionCause = officeContent.ExtractionCause
+			if !content.ExtractionCause.Known() {
+				content.ExtractionCause = coverage.CauseUnparseable
+			}
 		}
 		content.Error = fmt.Errorf("failed to extract text from Office document: %w", err)
 		return content, content.Error
@@ -230,6 +244,10 @@ func (tp *TextPreprocessor) processOffice(filePath string, content *ProcessedCon
 	content.LineCount = officeContent.LineCount
 	content.Paragraphs = officeContent.Paragraphs
 	content.ExtractionWarning = officeContent.ExtractionWarning
+	// PROPAGATED, not guessed. A first version set CauseNoText here whenever a warning existed, which
+	// re-created the bug one layer up: the extractor's warning means either "the body was read and
+	// held nothing" or "no body part was found at all", and only it can tell them apart.
+	content.ExtractionCause = officeContent.ExtractionCause
 	content.Success = true
 
 	// Enable position tracking for Office documents

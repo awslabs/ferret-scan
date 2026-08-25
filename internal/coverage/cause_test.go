@@ -91,3 +91,28 @@ func TestCauseStringsAreTheDocumentedOnes(t *testing.T) {
 		}
 	}
 }
+
+// TestReduceMatchesTheRuleItReplaces pins the combination rule, including the case that made it
+// necessary: two readers of one container disagreeing.
+func TestReduceMatchesTheRuleItReplaces(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   []Cause
+		want Cause
+	}{
+		{"nothing stated keeps the fallback reachable", nil, CauseUnset},
+		{"only unset values", []Cause{CauseUnset, CauseUnset}, CauseUnset},
+		{"a single cause is exact", []Cause{CauseNoText}, CauseNoText},
+		{"agreement is exact", []Cause{CauseNoText, CauseNoText}, CauseNoText},
+		{"unset alongside a real one is ignored", []Cause{CauseUnset, CauseUnparseable}, CauseUnparseable},
+		{"disagreement means partial", []Cause{CauseNoText, CauseCutShort}, CauseCutShort},
+		{"disagreement, neither being cut-short", []Cause{CauseNoText, CauseUnparseable}, CauseCutShort},
+		{"three-way disagreement", []Cause{CauseUnreadable, CauseNoText, CauseTooLarge}, CauseCutShort},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Reduce(tc.in); got != tc.want {
+				t.Errorf("Reduce(%v) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

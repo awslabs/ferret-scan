@@ -3,7 +3,10 @@
 
 package preprocessors
 
-import "github.com/awslabs/ferret-scan/v2/internal/observability"
+import (
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
+)
 
 // ProcessedContent represents content that has been processed by a preprocessor
 type ProcessedContent struct {
@@ -35,6 +38,22 @@ type ProcessedContent struct {
 	// is empty" used to be indistinguishable — both were Success with textLen 0 —
 	// which made a skipped document body look like a clean scan.
 	ExtractionWarning string
+
+	// ExtractionCause classifies ExtractionWarning, stated by whoever set it.
+	//
+	// This field exists because the warning is a MIXED channel: the same string field carries "the
+	// file parsed but held no document text", "no document body part was found" and "video metadata
+	// may be incomplete", which are three different causes with three different remedies. Downstream
+	// they all landed in a bucket named EmptyExtractionFiles and were reported as no-text.
+	//
+	// Measured by feeding the real producer strings to the consumer's classifier: 8 of 14 came back
+	// with a cause other than the one the producer meant. Six of those eight came from its default
+	// arm and two from a substring matching too eagerly, so the classification could not be fixed by
+	// editing patterns — the producer has to say.
+	//
+	// Zero value is coverage.CauseUnset, so an unset producer keeps the old prose-classified
+	// behaviour rather than acquiring a wrong cause silently.
+	ExtractionCause coverage.Cause
 
 	// Position mapping information for redaction
 	PositionMappings []PositionMapping `json:"position_mappings,omitempty"`

@@ -93,3 +93,36 @@ func (c Cause) String() string {
 // method rather than an `== CauseUnset` comparison at each call site so that adding a second
 // not-really-known value later is one edit instead of a search.
 func (c Cause) Known() bool { return c != CauseUnset }
+
+// Reduce combines the causes of several warnings about ONE file into the single cause a report shows.
+//
+// A container is read by more than one preprocessor — an .docx goes through office_text and
+// office_metadata — and each may warn for its own reason. The router joins their notes with "; ", and
+// before causes were typed the consumer inferred one cause from that joined string: it returned
+// no-body-text only when EVERY segment carried the no-body-text marker, and otherwise cut-short.
+//
+// This reproduces that rule with types instead of substrings:
+//
+//   - nothing stated            -> unset, so the caller keeps its prose fallback
+//   - one cause, or all agree   -> that cause, which is the common case and is exact
+//   - disagreement              -> CauseCutShort
+//
+// Cut-short is the right answer for a mixed set because it is the only member that describes a
+// PARTIAL result, and disagreement means exactly that: one reader got something, another did not. The
+// alternative — picking the first, or the most severe — would report one reader's experience as though
+// it were the file's.
+func Reduce(causes []Cause) Cause {
+	out := CauseUnset
+	for _, c := range causes {
+		if !c.Known() {
+			continue
+		}
+		switch {
+		case !out.Known():
+			out = c
+		case out != c:
+			return CauseCutShort
+		}
+	}
+	return out
+}

@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"io"
 	"os"
 	"path/filepath"
@@ -461,6 +462,7 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 	// text assembled so far, so it is maintained incrementally rather than by
 	// re-scanning the (potentially multi-megabyte) result.
 	var sections []preprocessors.ContentSection
+	var extractionCauses []coverage.Cause
 	sectionLine := 0
 
 	for _, pResult := range ordered {
@@ -478,6 +480,10 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 				warning = pResult.name + ": " + warning
 			}
 			extractionWarnings = append(extractionWarnings, warning)
+			// Carry the producer's cause alongside its note. Collecting them per preprocessor and
+			// reducing once is the only way the cause survives the join below: the segments become
+			// one string, and inferring a cause back out of that string is the guess this replaces.
+			extractionCauses = append(extractionCauses, pResult.result.ExtractionCause)
 		}
 		if pResult.err == nil && pResult.result != nil && pResult.result.Success && pResult.result.Text != "" {
 			if len(successfulProcessors) == 0 {
@@ -568,6 +574,7 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 			// office_metadata result, so the file reported Success with only
 			// metadata findings and nothing said the document body was missing.
 			ExtractionWarning: strings.Join(extractionWarnings, "; "),
+			ExtractionCause:   coverage.Reduce(extractionCauses),
 			// The out-of-band structure of Text. Set unconditionally on this
 			// success path so the content router never has to fall back to
 			// re-parsing the text for separators.

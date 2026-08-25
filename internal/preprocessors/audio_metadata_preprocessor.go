@@ -6,6 +6,7 @@ package preprocessors
 import (
 	"context"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"path/filepath"
 	"strings"
 	"time"
@@ -137,6 +138,10 @@ func (amp *AudioMetadataPreprocessor) processAudioMetadataWithRetry(filePath str
 	// genuinely clean file. See #312.
 	if content != nil && audioMeta.ExtractionWarning != "" {
 		content.ExtractionWarning = audioMeta.ExtractionWarning
+		// "audio metadata may be incomplete: ..." — the file WAS read and some metadata recovered, so
+		// this is partial coverage, not an absence of text. Reported as no-text it would tell an
+		// operator to expect nothing from the file when findings may already have come from it.
+		content.ExtractionCause = coverage.CauseCutShort
 	}
 	return content, nil
 }
