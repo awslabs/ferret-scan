@@ -213,6 +213,39 @@ type Result struct {
 	Findings         []Finding
 	Incomplete       bool // true if coverage was cut short (timeout, cancellation)
 	IncompleteReason string
+
+	// NotExamined lists, per file, why it was not fully examined.
+	//
+	// Incomplete and IncompleteReason above are a bool and one prose line for the whole run, which is
+	// all a caller had: enough to know something was missed, not enough to decide what to do about it.
+	// The CLI has distinguished six causes all along, in its own layer, so the library and the command
+	// disagreed about the same scan (#391).
+	NotExamined []NotExaminedFile
+}
+
+// NotExaminedFile is one file the scan did not fully examine.
+type NotExaminedFile struct {
+	// Path is the file.
+	Path string
+
+	// Cause is the coarse reason, as one of a fixed set of strings:
+	//
+	//	"cannot read"                            permissions, a vanished path, an I/O error
+	//	"cannot parse"                           the bytes do not match the type; no text recovered
+	//	"no body text (metadata still scanned)"  opened and parsed, no body text — metadata WAS scanned
+	//	                                         and may already have produced findings
+	//	"coverage cut short"                     a budget, size cap or timeout fired; partly scanned
+	//	"symlink not followed"                   a link the walk declined; scan the target directly
+	//	"file too large to scan"                 over the size limit, never opened
+	//
+	// A STRING rather than an enum because the taxonomy is documented for operators in
+	// docs/COVERAGE_DISCLOSURE.md and rendered identically by the CLI, so a caller comparing against
+	// what it reads in the terminal gets the same value. It is empty when no producer stated a cause,
+	// which a caller should treat as "unknown", not as any particular cause.
+	Cause string
+
+	// Detail is the specific, payload-free explanation — "permission denied", or which bound fired.
+	Detail string
 }
 
 // ScanText detects sensitive data in an in-memory string. It delegates directly
@@ -323,10 +356,19 @@ func mapResult(r *core.ScanResult) *Result {
 		}
 		findings = append(findings, f)
 	}
+	var notExamined []NotExaminedFile
+	for _, ne := range r.NotExamined {
+		cause := ""
+		if ne.Cause.Known() {
+			cause = ne.Cause.String()
+		}
+		notExamined = append(notExamined, NotExaminedFile{Path: ne.Path, Cause: cause, Detail: ne.Detail})
+	}
 	return &Result{
 		Findings:         findings,
 		Incomplete:       r.Incomplete,
 		IncompleteReason: r.IncompleteReason,
+		NotExamined:      notExamined,
 	}
 }
 
