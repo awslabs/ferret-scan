@@ -97,10 +97,21 @@ func ExtractExif(filePath string) (*ExifData, error) {
 		// So the two short-marker scans are gated to the container that DEFINES them, and the two
 		// long-marker scans keep running everywhere. This gate is new; before this change the whole
 		// block was unreachable for a file without EXIF, which is why the noise had never been seen.
+		// Only the JFIF comment scan is gated, and the gate is narrower than my first attempt for a
+		// measured reason. Both markers are 2 bytes, but only one of them false-fires in practice:
+		// across a 4,000-file real-image sample, gating extractIPTC as well cost 41 findings on TIFFs
+		// and one of them was REAL — exiftool confirms By-line "Jonathan Hess" on an Xcode .tiff that
+		// this tool reported at PERSON_NAME 92 and would have stopped reporting. IPTC lives in TIFF as
+		// well as JPEG, so gating it to JPEG discards a whole format's worth of genuine records to
+		// avoid a collision that did not occur.
+		//
+		// extractJFIFComment is different: its marker sits in front of a 2-byte LENGTH it then trusts,
+		// so a chance hit in compressed data yields a large payload rather than nothing. Measured on a
+		// 51,700-byte macOS icon it emitted 51KB of pixel data as a comment tag.
 		if isJPEG(rawData[:n]) {
-			extractIPTC(rawData[:n], result.Tags)
 			extractJFIFComment(rawData[:n], result.Tags)
 		}
+		extractIPTC(rawData[:n], result.Tags)
 		extractXMP(rawData[:n], result.Tags)
 		extractPhotoshopResources(rawData[:n], result.Tags)
 

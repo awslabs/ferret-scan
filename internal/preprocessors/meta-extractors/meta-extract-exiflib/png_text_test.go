@@ -319,16 +319,18 @@ func TestRawScansRunWithoutEXIF(t *testing.T) {
 	}
 }
 
-// TestShortMarkerScansDoNotRunOnAPNG is the false-positive guard, and it is the reason the previous
-// test's un-gating is safe.
+// TestJFIFCommentScanDoesNotRunOnAPNG is the false-positive guard, and it is the reason un-gating the
+// rest is safe.
 //
-// extractJFIFComment searches for the 2-byte JPEG comment marker 0xFFFE and extractIPTC for
-// {0x1C, 0x02}. In compressed data a given 2-byte sequence turns up about once every 64KB, so running
-// them over a PNG's IDAT finds noise and promotes it to a tag. Measured on a real 51,700-byte macOS
-// icon: extractJFIFComment emitted 51KB of pixel data as JFIF_Comment, and the validators reported
-// TWITTER at confidence 100 three times from handles that exist nowhere in the image. Across 1,200
-// real images that was 180 of 853 findings; with the gate it is 0.
-func TestShortMarkerScansDoNotRunOnAPNG(t *testing.T) {
+// extractJFIFComment searches for the 2-byte JPEG comment marker 0xFFFE and then trusts the 2-byte
+// LENGTH behind it, so a chance hit in compressed data yields a large payload rather than nothing.
+// Measured on a real 51,700-byte macOS icon: it emitted 51KB of pixel data as JFIF_Comment, and the
+// validators reported TWITTER at confidence 100 three times from handles that exist nowhere in the
+// image.
+//
+// extractIPTC shares the 2-byte-marker shape and is deliberately NOT gated — see
+// TestIPTCStillRunsOnNonJPEG. Gating both was my first attempt and it cost a real value.
+func TestJFIFCommentScanDoesNotRunOnAPNG(t *testing.T) {
 	dir := t.TempDir()
 
 	// A PNG whose IDAT is arbitrary bytes containing BOTH short markers, shaped so an UNGATED scan
@@ -337,10 +339,8 @@ func TestShortMarkerScansDoNotRunOnAPNG(t *testing.T) {
 	// produced nothing — so the mutation that un-gates the scans SURVIVED and the test looked like it
 	// was protecting something it was not. The length has to fit and the text has to be non-blank.
 	noisy := []byte{0x00, 0x11}
-	noisy = append(noisy, 0xFF, 0xFE, 0x00, 0x0A)       // JPEG comment marker, declaring 10 bytes
-	noisy = append(noisy, []byte("SSN 449-87")...)      // ... which fit, and are not blank
-	noisy = append(noisy, 0x1C, 0x02, 0x05, 0x00, 0x08) // IPTC marker, record type 5
-	noisy = append(noisy, []byte("headline")...)
+	noisy = append(noisy, 0xFF, 0xFE, 0x00, 0x0A)  // JPEG comment marker, declaring 10 bytes
+	noisy = append(noisy, []byte("SSN 449-87")...) // ... which fit, and are not blank
 	noisy = append(noisy, bytes.Repeat([]byte{0xAB, 0xCD}, 64)...)
 	png := append([]byte{}, pngSignature...)
 	ihdr := make([]byte, 13)
@@ -357,20 +357,22 @@ func TestShortMarkerScansDoNotRunOnAPNG(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Non-vacuity: the markers really are in the file, so a scan that ran would find them.
-	if !bytes.Contains(png, []byte{0xFF, 0xFE}) || !bytes.Contains(png, []byte{0x1C, 0x02}) {
-		t.Fatal("the fixture lacks the markers, so this test cannot detect an ungated scan")
+	// Non-vacuity: the marker really is in the file, AND the length behind it fits, so an ungated
+	// scan would produce a tag. A first version declared a 4096-byte comment inside a 200-byte file;
+	// the scan bounds-checked it away, produced nothing, and the test passed while protecting nothing.
+	if !bytes.Contains(png, []byte{0xFF, 0xFE, 0x00, 0x0A}) {
+		t.Fatal("the fixture lacks a JFIF marker with a fitting length, so an ungated scan would " +
+			"emit nothing and this test could not detect one")
 	}
 
 	data, err := ExtractExif(path)
 	if err != nil {
 		t.Fatalf("ExtractExif: %v", err)
 	}
-	for _, k := range []string{"JFIF_Comment", "IPTC_Caption", "IPTC_Headline", "IPTC_Byline"} {
-		if v, ok := data.Tags[k]; ok {
-			t.Errorf("%s = %q was produced from a PNG; that scan's marker is 2 bytes long and only "+
-				"means anything inside a JPEG", k, v[:min(len(v), 40)])
-		}
+	if v, ok := data.Tags["JFIF_Comment"]; ok {
+		t.Errorf("JFIF_Comment = %q was produced from a PNG. That scan reads a 2-byte marker and then "+
+			"TRUSTS the 2-byte length behind it, so a chance hit in compressed data yields a large "+
+			"payload rather than nothing.", v[:min(len(v), 40)])
 	}
 	// And the real PNG text must still be there, so the gate did not disable everything.
 	if data.Tags["PNG_Author"] != "real value" {
@@ -435,5 +437,50 @@ func TestHonestlyLargeChunkIsStillCapped(t *testing.T) {
 	if len(got) > maxPNGTextChunkBytes {
 		t.Errorf("recovered %d bytes from one honest chunk, cap is %d — the read follows the "+
 			"declaration rather than the bound", len(got), maxPNGTextChunkBytes)
+	}
+}
+
+// TestIPTCStillRunsOnNonJPEG pins the recall that gating too widely destroyed.
+//
+// My first attempt gated extractIPTC alongside the JFIF comment scan, on the reasoning that both use a
+// 2-byte marker. Measured over a 4,000-file real-image sample, that cost 41 findings on TIFFs — 40 of
+// them false positives worth losing, and one that was not: exiftool reports By-line "Jonathan Hess" on
+// /Applications/Xcode.app/.../ResizeN-S.tiff, which this tool reported at PERSON_NAME 92 and stopped
+// reporting.
+//
+// IPTC lives in TIFF as well as JPEG, and unlike the JFIF scan it validates what it finds: the record
+// type must be one of four known values and the payload must be printable, so a chance 1C 02 in
+// compressed data almost never yields a tag. Measured across 25,103 real PNGs it produced zero. So the
+// marker length is not the whole story — what the scan does AFTER matching is.
+func TestIPTCStillRunsOnNonJPEG(t *testing.T) {
+	dir := t.TempDir()
+
+	// A valid IPTC By-line record: 1C 02, record type 0x50, a 2-byte length, then the value.
+	const byline = "Jonathan Hess"
+	iptc := []byte{0x1C, 0x02, 0x50, 0x00, byte(len(byline))}
+	iptc = append(iptc, []byte(byline)...)
+
+	png := append([]byte{}, pngSignature...)
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], 1)
+	binary.BigEndian.PutUint32(ihdr[4:], 1)
+	ihdr[8], ihdr[9] = 8, 2
+	png = append(png, pngChunk("IHDR", ihdr)...)
+	png = append(png, pngChunk("iTXt", append([]byte("Sidecar\x00\x00\x00\x00\x00"), iptc...))...)
+	png = append(png, pngChunk("IDAT", []byte{0x78, 0x9C, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01})...)
+	png = append(png, pngChunk("IEND", nil)...)
+
+	path := filepath.Join(dir, "iptc.png")
+	if err := os.WriteFile(path, png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := ExtractExif(path)
+	if err != nil {
+		t.Fatalf("ExtractExif: %v", err)
+	}
+	if got := data.Tags["IPTC_Byline"]; got != byline {
+		t.Errorf("IPTC_Byline = %q, want %q. Gating this scan to JPEG discards every TIFF IPTC record, "+
+			"and at least one on this host is a real person's name.", got, byline)
 	}
 }
