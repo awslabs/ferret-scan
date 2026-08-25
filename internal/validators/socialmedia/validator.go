@@ -2835,6 +2835,16 @@ func (v *Validator) processLineForAllPatterns(line string, lineNum int, original
 					continue
 				}
 
+				// A bare "@token" that is language syntax rather than a handle. Vetoed here for the
+				// same measured reason as the allowlist directly above: the advisory path is worth 30
+				// points and these score 100, so the cap absorbs any penalty. Measured across 4,000
+				// real code and documentation files, 1,470 TWITTER findings were essentially all
+				// JSON-LD keywords, CSS at-rules and doc-comment tags. See handle_syntax.go for why
+				// each rule needs the syntactic POSITION and not just the word.
+				if isSyntaxNotAHandle(line, match, loc[0], loc[1]) {
+					continue
+				}
+
 				// Process match with optimized confidence calculation
 				processedMatch := v.processMatchOptimized(match, platform, patternIndex, line, lineLower, loc[0], lineNum, originalPath, contextExtractor)
 				if processedMatch != nil {
