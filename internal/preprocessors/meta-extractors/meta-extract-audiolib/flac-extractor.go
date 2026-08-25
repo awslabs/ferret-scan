@@ -88,9 +88,12 @@ func (e *FLACExtractor) parseMetadataBlocks(file *os.File, metadata *AudioMetada
 			Length:    uint32(headerBytes[1])<<16 | uint32(headerBytes[2])<<8 | uint32(headerBytes[3]),
 		}
 
-		// Read block data
-		blockData := make([]byte, header.Length)
-		if _, err := file.Read(blockData); err != nil {
+		// Read block data, clamped to the bytes the FILE holds rather than to header.Length.
+		// The length is 24 bits read out of the block header, so it tops out at 16MiB — smaller
+		// than the .m4a case but the same defect: an 8-byte .flac declaring 0xFFFFFF allocated
+		// 16MB (#457). Both block consumers below already bound their reads by len(data).
+		blockData, err := readDeclaredPayload(file, header.Length)
+		if err != nil {
 			return err
 		}
 

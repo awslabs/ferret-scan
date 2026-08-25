@@ -243,10 +243,18 @@ func (e *M4AExtractor) parseMvhdBox(file *os.File, size uint32, metadata *AudioM
 		return fmt.Errorf("mvhd box too small")
 	}
 
-	buffer := make([]byte, size)
-	_, err := file.Read(buffer)
+	// Clamped to the bytes the FILE holds, not to the declared size. `size` is a uint32 read out
+	// of the box header, so its maximum is 4GiB and its only previous guard was a floor (#457).
+	buffer, err := readDeclaredPayload(file, size)
 	if err != nil {
 		return err
+	}
+
+	// Every read below is bounded by what was ACTUALLY read rather than by `size`. The old code
+	// sized the buffer to the declaration and tolerated a short read, so an mvhd claiming more
+	// than the file holds parsed its zeroed tail as a real creation time and duration.
+	if len(buffer) < 1 {
+		return nil
 	}
 
 	// Parse version and flags (4 bytes)
@@ -255,8 +263,10 @@ func (e *M4AExtractor) parseMvhdBox(file *os.File, size uint32, metadata *AudioM
 	var creationTime, timeScale, duration uint32
 
 	if version == 0 {
-		// Version 0: 32-bit values
-		if size >= 24 {
+		// Version 0: 32-bit values. 24 rather than the 20 the field offsets below actually
+		// need, so the threshold still matches the `size < 24` floor above: this arm used to
+		// read `size >= 24`, which was dead because that floor had already returned.
+		if len(buffer) >= 24 {
 			creationTime = uint32(buffer[4])<<24 | uint32(buffer[5])<<16 | uint32(buffer[6])<<8 | uint32(buffer[7])
 			_ = uint32(buffer[8])<<24 | uint32(buffer[9])<<16 | uint32(buffer[10])<<8 | uint32(buffer[11]) // modificationTime (unused)
 			timeScale = uint32(buffer[12])<<24 | uint32(buffer[13])<<16 | uint32(buffer[14])<<8 | uint32(buffer[15])
