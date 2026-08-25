@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
+
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
@@ -86,6 +88,18 @@ func sortDiagnostics(d []FileDiagnostic) {
 type FileDiagnostic struct {
 	FilePath string `json:"file_path"`
 	Reason   string `json:"reason"`
+
+	// Cause is why the file was not examined, as the PRODUCER knew it.
+	//
+	// Reason stays: it is the specific detail an operator needs ("permission denied", "the moov box
+	// is N bytes and only the first 33554432 were parsed"). Cause is the coarse classification that
+	// every consumer previously recovered by pattern-matching that detail, which is how a size
+	// refusal came to be reported as an unsupported type and how a partly-scanned file came to be
+	// described as having no text at all.
+	//
+	// Zero value is CauseUnset, not CauseUnreadable, so a producer that has not been updated behaves
+	// exactly as before: the consumer falls back to classifying the prose.
+	Cause coverage.Cause `json:"cause,omitempty"`
 }
 
 // NewParallelProcessor creates a new parallel processor
@@ -160,6 +174,11 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 			incompleteFiles = append(incompleteFiles, FileDiagnostic{
 				FilePath: result.FilePath,
 				Reason:   result.ValidationError.Error(),
+				// Every reachable origin is a timeout, a cancellation, a validator budget or a
+				// recovered panic, so the file is genuinely PARTLY scanned. The consumer already
+				// hardcoded this for its own output; stating it here is what lets pkg/scan and the
+				// web UI see the same thing instead of each deriving it again.
+				Cause: coverage.CauseCutShort,
 			})
 		}
 		// Record a file whose findings could not be redacted. Handled the same
@@ -176,6 +195,10 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 			emptyExtractionFiles = append(emptyExtractionFiles, FileDiagnostic{
 				FilePath: result.FilePath,
 				Reason:   result.ExtractionWarning,
+				// The bucket's NAME is not the cause. This channel carries no-text, unparseable and
+				// cut-short warnings alike, which is why the cause travels from the extractor that
+				// set the warning rather than being inferred from the bucket or from the prose.
+				Cause: result.ExtractionCause,
 			})
 		}
 		if result.RedactionError != nil {
@@ -201,6 +224,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 			failedFiles = append(failedFiles, FileDiagnostic{
 				FilePath: result.FilePath,
 				Reason:   result.Error.Error(),
+				Cause:    result.FailureCause,
 			})
 			if pp.observer != nil {
 				pp.observer.LogOperation(observability.StandardObservabilityData{

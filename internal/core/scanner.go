@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"io"
 	"os"
 	"strings"
@@ -99,6 +100,21 @@ type ScanResult struct {
 	// than one did not complete.
 	Incomplete       bool
 	IncompleteReason string
+
+	// NotExamined lists, per file, WHY it was not fully examined.
+	//
+	// IncompleteReason above is one prose line for the whole run, which is all a library consumer had:
+	// it could tell that something was missed but not what kind of miss, so it could not decide
+	// whether to retry, to fix permissions, or to treat the result as partial (#391). The CLI has had
+	// six causes all along, derived in its own layer, which is why the two disagreed.
+	NotExamined []NotExaminedFile
+}
+
+// NotExaminedFile is one file that was not fully examined, with the cause its producer stated.
+type NotExaminedFile struct {
+	Path   string
+	Cause  coverage.Cause
+	Detail string
 }
 
 // resolveLogWriter returns the writer to use for observability output:
@@ -219,13 +235,8 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		}
 	} else if stats != nil && len(stats.EmptyExtractionFiles) > 0 {
 		incomplete = true
-		if len(stats.EmptyExtractionFiles) == 1 {
-			incompleteReason = fmt.Sprintf("no document text extracted from %s: %s",
-				stats.EmptyExtractionFiles[0].FilePath, stats.EmptyExtractionFiles[0].Reason)
-		} else {
-			incompleteReason = fmt.Sprintf("no document text extracted from %d of %d files",
-				len(stats.EmptyExtractionFiles), stats.TotalFiles)
-		}
+		incompleteReason = incompleteReasonFor(stats.EmptyExtractionFiles[0],
+			len(stats.EmptyExtractionFiles), stats.TotalFiles)
 	} else if stats != nil && len(stats.FailedFiles) > 0 {
 		// A file that could not be processed at all was never scanned, so the run
 		// is incomplete for the same reason an empty extraction is: the report says
@@ -249,7 +260,54 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		ProcessedFiles:    stats.ProcessedFiles,
 		Incomplete:        incomplete,
 		IncompleteReason:  incompleteReason,
+		NotExamined:       collectNotExamined(stats),
 	}, nil
+}
+
+// incompleteReasonFor renders the one-line reason for an empty-extraction record.
+//
+// The label comes from the CAUSE the producer stated, not from the name of the field the record was
+// read out of. That distinction is #432: EmptyExtractionFiles is a mixed channel carrying no-text,
+// unparseable and cut-short warnings alike, and stamping "no document text extracted from" on all of
+// them told an operator that a file whose body could not be PARSED had been read and found empty.
+//
+// When no cause was stated the historical wording is preserved exactly, so a producer this change has
+// not reached is described as it always was rather than being relabelled by omission.
+func incompleteReasonFor(fd parallel.FileDiagnostic, count, total int) string {
+	if count > 1 {
+		return fmt.Sprintf("%d of %d files were not fully examined", count, total)
+	}
+	label := "no document text extracted from"
+	if fd.Cause.Known() {
+		label = fd.Cause.String() + ":"
+	}
+	return fmt.Sprintf("%s %s: %s", label, fd.FilePath, fd.Reason)
+}
+
+// collectNotExamined flattens the three diagnostic channels into one per-file list.
+//
+// All three are reported, not just the one that won the IncompleteReason race above: that prose line
+// describes a single file (or a count), so a run with one unreadable file and forty partly-scanned ones
+// told a library consumer about one of them. The channels are walked in the same order the CLI merges
+// them, so the two surfaces cannot disagree about what was missed.
+//
+// UnredactedFiles is deliberately absent. It shares FileDiagnostic as a carrier but a redaction failure
+// is not a coverage loss — the file was scanned, and its findings are in Matches.
+func collectNotExamined(stats *parallel.ProcessingStats) []NotExaminedFile {
+	if stats == nil {
+		return nil
+	}
+	var out []NotExaminedFile
+	for _, group := range [][]parallel.FileDiagnostic{
+		stats.EmptyExtractionFiles,
+		stats.FailedFiles,
+		stats.IncompleteFiles,
+	} {
+		for _, fd := range group {
+			out = append(out, NotExaminedFile{Path: fd.FilePath, Cause: fd.Cause, Detail: fd.Reason})
+		}
+	}
+	return out
 }
 
 // ContentScanConfig holds configuration for an in-memory content scan.

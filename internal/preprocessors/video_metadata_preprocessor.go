@@ -4,6 +4,7 @@
 package preprocessors
 
 import (
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	meta_extract_videolib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/meta-extractors/meta-extract-videolib"
 )
@@ -76,6 +77,10 @@ func (vmp *VideoMetadataPreprocessor) processVideoMetadata(filePath string) (*Pr
 	// genuinely clean file, and unchanged even under --fail-on-incomplete (#398).
 	if content != nil && meta.ExtractionWarning != "" {
 		content.ExtractionWarning = meta.ExtractionWarning
+		// "video metadata may be incomplete: ..." — the file WAS read and some metadata recovered, so
+		// this is partial coverage, not an absence of text. Reported as no-text it would tell an
+		// operator to expect nothing from the file when findings may already have come from it.
+		content.ExtractionCause = coverage.CauseCutShort
 	}
 	return content, nil
 }

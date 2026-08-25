@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"io"
 	"os"
 	"path/filepath"
@@ -93,6 +94,35 @@ func (c unscannedCause) String() string {
 		return "file too large to scan"
 	default:
 		return "unknown"
+	}
+}
+
+// fromProducerCause maps a cause the PRODUCER stated onto the cmd-side enum, and reports whether it
+// said anything at all.
+//
+// Explicit rather than int(c), for a sharper reason than the existing note about the formatters enum:
+// these two enums have different ZERO VALUES. coverage.CauseUnset is 0 and causeUnreadable is 0, so a
+// numeric conversion would turn "the producer said nothing" into "the file could not be read" — an
+// assertion of a failure that did not happen, on every record not yet carrying a cause. The bool is
+// what keeps the prose fallback reachable for those.
+func fromProducerCause(c coverage.Cause) (unscannedCause, bool) {
+	switch c {
+	case coverage.CauseUnreadable:
+		return causeUnreadable, true
+	case coverage.CauseUnparseable:
+		return causeUnparseable, true
+	case coverage.CauseNoText:
+		return causeNoText, true
+	case coverage.CauseCutShort:
+		return causeCutShort, true
+	case coverage.CauseNotFollowed:
+		return causeNotFollowed, true
+	case coverage.CauseTooLarge:
+		return causeTooLarge, true
+	default:
+		// CauseUnset, or a member added to coverage.Cause and not mapped here. Both mean "do not
+		// trust this", so the caller classifies the prose exactly as it did before.
+		return causeCutShort, false
 	}
 }
 
@@ -348,10 +378,20 @@ func collectUnscanned(
 		if d == "" {
 			d = "no readable text found"
 		}
-		out = append(out, unscannedEntry{fd.FilePath, classifyExtractionWarning(fd.Reason), d})
+		// The producer's own classification wins. classifyExtractionWarning stays as the fallback for
+		// records that carry none: measured against the real strings, it labelled 8 of 14 differently
+		// from what the producer meant, so it is a guess of last resort rather than the answer.
+		cause, stated := fromProducerCause(fd.Cause)
+		if !stated {
+			cause = classifyExtractionWarning(fd.Reason)
+		}
+		out = append(out, unscannedEntry{fd.FilePath, cause, d})
 	}
 	for _, fd := range failed {
-		cause := classifyReason(fd.Reason)
+		cause, stated := fromProducerCause(fd.Cause)
+		if !stated {
+			cause = classifyReason(fd.Reason)
+		}
 		detail := humanizeReason(fd.FilePath, fd.Reason)
 		if cause == causeUnparseable && detail == "" {
 			// The internal reason ("all preprocessors failed for file: <path>") carries

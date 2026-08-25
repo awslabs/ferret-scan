@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"io"
 	"mime/multipart"
 	"net"
@@ -96,6 +97,85 @@ type ScanResponse struct {
 	// ignore unknown fields either way).
 	Incomplete       bool   `json:"incomplete,omitempty"`
 	IncompleteReason string `json:"incomplete_reason,omitempty"`
+
+	// NotExamined lists, per file, WHY it was not fully examined, using the same six causes the CLI
+	// prints. Incomplete and IncompleteReason above are a bool and one prose line naming a single file
+	// or a count, so an upload of forty files where three failed differently reported one of them
+	// (#417). omitempty, so a complete scan's JSON is unchanged.
+	NotExamined []notExaminedFile `json:"not_examined,omitempty"`
+}
+
+// notExaminedFile is one uploaded file that was not fully examined.
+//
+// Cause is a string for the same reason pkg/scan's is: these six spellings are documented for operators
+// and printed identically by the CLI, so a UI showing them agrees with the terminal. Empty means no
+// cause was stated, which the UI should present as unknown rather than guessing one.
+type notExaminedFile struct {
+	Path   string `json:"path"`
+	Cause  string `json:"cause,omitempty"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// routerRefusal builds the refusal for a file the router declined.
+//
+// Extracted for the same reason as oversizeRefusal: this path is not reachable from a multipart upload,
+// because an upload always lands in a readable regular temp file, so nothing in the request-level tests
+// can pin its cause and a mutation deleting it survived. A constructor can be asserted directly.
+//
+// The cause is "cannot read" rather than "cannot parse": the router declined before any preprocessor
+// looked at the bytes, so nothing is known about the content. Only the coverageGap-true half is ever
+// reported — a type nothing could have read is a benign skip and stays silent, exactly as on the CLI.
+func routerRefusal(displayName, reason string, processableType bool) *uploadRefusal {
+	return &uploadRefusal{
+		name:        displayName,
+		reason:      reason,
+		cause:       coverage.CauseUnreadable,
+		coverageGap: processableType,
+	}
+}
+
+// oversizeRefusal builds the refusal for an upload over the size limit.
+//
+// Extracted from its call site so the cause can be asserted without moving router.MaxFileSize bytes
+// through a multipart body — the existing oversize test skips for exactly that reason, which left this
+// refusal's cause unpinned. A mutation removing it survived the suite until this existed.
+func oversizeRefusal(displayName string) *uploadRefusal {
+	return &uploadRefusal{
+		name: displayName,
+		// Same wording as the CLI's causeTooLarge entry, so an operator comparing the two surfaces
+		// sees one reason rather than two.
+		reason:      fmt.Sprintf("file too large to scan (max size: %dMB)", router.MaxFileSize/(1024*1024)),
+		cause:       coverage.CauseTooLarge,
+		coverageGap: true,
+	}
+}
+
+// causesOf lifts the causes out of a scan's not-examined records.
+//
+// A tiny helper so the reduction reads as one expression at the call site; the alternative is a loop
+// inline in a function that is already about filename rewriting.
+func causesOf(files []core.NotExaminedFile) []coverage.Cause {
+	out := make([]coverage.Cause, 0, len(files))
+	for _, f := range files {
+		out = append(out, f.Cause)
+	}
+	return out
+}
+
+// notExaminedFrom converts the diagnostics into the response shape.
+func notExaminedFrom(diags []parallel.FileDiagnostic) []notExaminedFile {
+	out := make([]notExaminedFile, 0, len(diags))
+	for _, d := range diags {
+		cause := ""
+		if d.Cause.Known() {
+			cause = d.Cause.String()
+		}
+		out = append(out, notExaminedFile{Path: d.FilePath, Cause: cause, Detail: d.Reason})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // NewWebServerWithOptions creates a new web server instance with config and
@@ -511,6 +591,7 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 					incompleteFiles = append(incompleteFiles, parallel.FileDiagnostic{
 						FilePath: refusal.name,
 						Reason:   refusal.reason,
+						Cause:    refusal.cause,
 					})
 				}
 				continue
@@ -521,6 +602,11 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 			incompleteFiles = append(incompleteFiles, parallel.FileDiagnostic{
 				FilePath: displayName,
 				Reason:   "could not be scanned",
+				// Everything reaching here failed to open or failed to get a temp file, so nothing
+				// about the content is known. Stated rather than left blank: blank would send this
+				// through a prose classifier whose default is "coverage cut short", which claims the
+				// file was PARTLY scanned when it was not scanned at all.
+				Cause: coverage.CauseUnreadable,
 			})
 			continue
 		}
@@ -587,6 +673,7 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		Suppressed:       cliResponse.Suppressed,
 		Incomplete:       len(incompleteFiles) > 0,
 		IncompleteReason: incompleteReason,
+		NotExamined:      notExaminedFrom(incompleteFiles),
 	})
 }
 
@@ -636,8 +723,15 @@ const maxJSONRequestBytes = 1 << 20 // 1MB
 //
 // Either way it must not abort the batch: see handleScan.
 type uploadRefusal struct {
-	name        string
-	reason      string
+	name   string
+	reason string
+
+	// cause is the coarse classification, stated where the refusal happens.
+	//
+	// coverageGap above answers "must this be disclosed at all"; cause answers "as what". Without it
+	// the UI had a bool and a prose string where the CLI had six causes, so the two surfaces described
+	// the same upload differently (#417).
+	cause       coverage.Cause
 	coverageGap bool
 }
 
@@ -701,13 +795,7 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	}
 	if written > router.MaxFileSize {
 		// Named by displayName, never by the temp path — see the note in handleScan.
-		return nil, nil, 0, nil, &uploadRefusal{
-			name: displayName,
-			// Same wording as the CLI's causeTooLarge entry, so an operator comparing the two
-			// surfaces sees one reason rather than two.
-			reason:      fmt.Sprintf("file too large to scan (max size: %dMB)", router.MaxFileSize/(1024*1024)),
-			coverageGap: true,
-		}
+		return nil, nil, 0, nil, oversizeRefusal(displayName)
 	}
 
 	// Normalize the temporary file path for the current platform
@@ -722,13 +810,8 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	// a request failure, so ONE unsupported file in a batch discarded every other file's
 	// findings (#416). Asking the router directly gives back the distinction the CLI relies on.
 	if canProcess, reason := router.NewFileRouter(false).CanProcessFile(normalizedTempPath, true); !canProcess {
-		return nil, nil, 0, nil, &uploadRefusal{
-			name:   displayName,
-			reason: reason,
-			// A processable TYPE refused for some other cause is lost coverage; a type nothing
-			// could read is a benign skip. Same test discovery applies on the CLI side.
-			coverageGap: router.CanProcessType(normalizedTempPath, true),
-		}
+		return nil, nil, 0, nil, routerRefusal(displayName, reason,
+			router.CanProcessType(normalizedTempPath, true))
 	}
 
 	// Run full CLI scanning logic on this file with original filename
@@ -787,9 +870,22 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 	// operator uploaded). Non-empty only when this file's coverage was cut short.
 	var incomplete []parallel.FileDiagnostic
 	if result.Incomplete {
+		// The CAUSE comes from result.NotExamined, not from re-reading the prose line.
+		//
+		// This used to build the diagnostic from IncompleteReason alone, so the typed cause the scan
+		// had just determined was thrown away and the UI received English it could not classify.
+		// Measured before the fix: an upload of a .docx that is not a ZIP arrived with
+		// detail="cannot parse: …" and cause="" — the right answer was sitting in the string, past
+		// the point anything could use it.
+		//
+		// Only this file's records are consulted: ScanFile was called for one upload, so anything in
+		// the list belongs to it. The first stated cause wins, and several records disagreeing is the
+		// mixed case coverage.Reduce exists for.
+		cause := coverage.Reduce(causesOf(result.NotExamined))
 		incomplete = []parallel.FileDiagnostic{{
 			FilePath: ws.sanitizeFilenameForDisplay(originalFilename),
 			Reason:   ws.reasonWithoutTempPath(result.IncompleteReason, filePath, originalFilename),
+			Cause:    cause,
 		}}
 	}
 
