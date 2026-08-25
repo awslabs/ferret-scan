@@ -83,7 +83,7 @@ func TestCauseStringsAreTheDocumentedOnes(t *testing.T) {
 
 	for _, c := range []Cause{
 		CauseUnreadable, CauseUnparseable, CauseNoText,
-		CauseCutShort, CauseNotFollowed, CauseTooLarge,
+		CauseCutShort, CauseNotFollowed, CauseTooLarge, CauseNotRegular,
 	} {
 		if !strings.Contains(doc, c.String()) {
 			t.Errorf("cause %q is not in %s. Either the string was reworded without updating the "+

@@ -61,15 +61,24 @@ for records that carry none.
 | `coverage cut short` | a budget, size cap or timeout fired | **yes** — the file is partly scanned |
 | `symlink not followed` | a link that dangles, loops, names a directory or device, or resolves outside the scanned tree | the target was never read; scan it directly |
 | `file too large to scan` | over the size limit, so never opened — and of a type the tool WOULD have processed | no |
+| `not a regular file` | the directory entry is a named pipe, socket or device node, or on Windows a junction, mount point or other non-symlink reparse point | the entry was never opened; it is not readable content |
 
 The third and fourth never claim the file was unread. A `.docx` with an empty body but
 PII in its author field appears both as findings *and* in this list, and saying its
 contents were never read would contradict the same report.
 
-`symlink not followed` (#326) and `file too large to scan` (#324) were added to the code
-after this table was written and are documented here retroactively; both are deliberately
-distinct from `cannot read`, which would assert a failure that did not happen — for most
-of those files the bytes could have been read and the tool declined.
+`symlink not followed` (#326), `file too large to scan` (#324) and `not a regular file`
+(#485) were added to the code after this table was written and are documented here
+retroactively; all three are deliberately distinct from `cannot read`, which would assert
+a failure that did not happen — for most of those files the bytes could have been read and
+the tool declined.
+
+`not a regular file` is also distinct from `symlink not followed`, and the distinction is
+not pedantic: there is no link involved, the entry itself IS the pipe or device. Reporting
+it as a symlink would be a true disclosure under a false heading. Before #485 such an entry
+reached no counter at all — a directory holding one ordinary file and one named pipe
+reported `total_files: 1` and exit 0, byte-for-byte the same accounting as the same
+directory without the pipe, and `--fail-on-incomplete` also exited 0.
 
 An **unprocessable** type refused for size is not listed at all. It is a genuine skip: no
 finding was ever possible from it, so reporting lost coverage would be reporting a

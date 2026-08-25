@@ -88,6 +88,18 @@ func tooLargeReason() string {
 	return fmt.Sprintf("file too large (max size: %dMB)", maxScanSize/(1024*1024))
 }
 
+// notRegularReason names what a non-regular directory entry actually is.
+//
+// The kind is worth stating rather than just "not scanned": the operator's next step
+// differs. A named pipe or socket in a scanned tree is almost always incidental and can
+// be ignored; a Windows junction or mount point means a whole subtree was not traversed,
+// which is a coverage question. router.DescribeFileMode is the tool's single classifier
+// for this, reused rather than copied so the walk and the router cannot describe the
+// same object differently.
+func notRegularReason(m os.FileMode) string {
+	return fmt.Sprintf("not a regular file (%s)", router.DescribeFileMode(m))
+}
+
 // resolveIncompleteExitCode applies the --fail-on-incomplete policy on top of a
 // base exit code: when enabled and coverage was incomplete, an otherwise-clean
 // result (base 0) escalates to exitCodeIncompleteCoverage, but a non-zero base
@@ -3068,6 +3080,34 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					resolved: resolved,
 					reason:   reason,
 					disp:     d,
+				})
+			} else if !info.IsDir() {
+				// Not a regular file, not a symlink, not a directory: a named pipe, a
+				// socket, a device node, or on Windows a junction, mount point or other
+				// non-symlink reparse point.
+				//
+				// This is the SAME defect the symlink branch above was added to fix, one
+				// branch over. There was no else, so such an entry was dropped from
+				// filesToProcess, from SkippedFiles, and from every counter, with nothing
+				// printed. Measured: a directory holding one ordinary file and one named
+				// pipe reported total_files=1 and exit 0 — byte-for-byte the same
+				// accounting as the same directory WITHOUT the pipe, so the entry was
+				// indistinguishable from not existing. --fail-on-incomplete also exited 0.
+				// See #485.
+				//
+				// Deliberately not read, and that is the whole policy: reading a FIFO can
+				// block forever and opening a device node is not something a scanner should
+				// do. The fix is to DISCLOSE the decision rather than to act on the entry.
+				//
+				// The exhaustive partition is what keeps this correct as platforms change:
+				// os.FileMode.IsRegular() is true iff no type bit is set, so anything Go
+				// learns to report later lands here rather than being dropped, and
+				// describeFileMode names it — including ModeIrregular, which is what Go
+				// reports for a Windows junction.
+				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+					Path:   cleanWalkPath,
+					Reason: notRegularReason(info.Mode()),
+					Cause:  causeNotRegular,
 				})
 			}
 

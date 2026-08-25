@@ -237,6 +237,9 @@ type NotExaminedFile struct {
 	//	"coverage cut short"                     a budget, size cap or timeout fired; partly scanned
 	//	"symlink not followed"                   a link the walk declined; scan the target directly
 	//	"file too large to scan"                 over the size limit, never opened
+	//	"not a regular file"                     a named pipe, socket, device node, or a Windows
+	//	                                         junction/reparse point; the entry is not readable
+	//	                                         content and was not opened
 	//
 	// A STRING rather than an enum because the taxonomy is documented for operators in
 	// docs/COVERAGE_DISCLOSURE.md and rendered identically by the CLI, so a caller comparing against
