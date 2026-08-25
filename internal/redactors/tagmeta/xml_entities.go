@@ -5,9 +5,9 @@ package tagmeta
 
 import (
 	"bytes"
-	"strconv"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/xmlref"
 )
 
 // The raw-byte search everything else in this package performs is BLIND inside XML.
@@ -40,100 +40,13 @@ import (
 // Decoding is bounded and exact: it collapses every spelling to the one form the finding was
 // reported in.
 
-// decodeXMLEntities returns src with XML character and entity references resolved.
+// The decoder itself lives in internal/xmlref, a stdlib-only leaf.
 //
-// Deliberately NOT html.UnescapeString: that resolves the whole HTML named-entity table, so a
-// packet containing the literal text `&sect;` would decode to `§` and could make a value appear
-// that the XML never contained. This resolves exactly what XML 1.0 defines — the five predefined
-// entities plus numeric character references — and leaves anything else byte-for-byte alone.
-//
-// The result is for SEARCHING only. Offsets do not survive the transformation, so a caller must not
-// use a hit's position here to plan an overwrite; see ResidualEncoded's contract.
-func decodeXMLEntities(src []byte) []byte {
-	// Nothing to do, and by far the common case: no ampersand means no reference.
-	if !bytes.ContainsRune(src, '&') {
-		return src
-	}
-
-	out := make([]byte, 0, len(src))
-	for i := 0; i < len(src); {
-		if src[i] != '&' {
-			out = append(out, src[i])
-			i++
-			continue
-		}
-
-		// Scan forward over the bytes a reference body may contain, stopping at the terminator or
-		// at the first byte that cannot be part of one.
-		//
-		// Not a fixed-width window. A byte cap would be simpler and would silently FAIL TO DECODE a
-		// long-but-legal reference — `&#00000000039;` is a valid apostrophe — and a reference this
-		// gate does not decode is a value it does not see, which is the leak it exists to stop. The
-		// scan is linear anyway: every byte is examined at most twice, because a run that does not
-		// terminate in ';' ends at a byte that cannot appear in a reference, and `&&&&...` therefore
-		// costs one comparison per ampersand rather than a search to the end of the buffer.
-		j := i + 1
-		for j < len(src) && isReferenceByte(src[j]) {
-			j++
-		}
-		if j < len(src) && src[j] == ';' {
-			if decoded, ok := resolveReference(src[i+1 : j]); ok {
-				out = append(out, decoded...)
-				i = j + 1
-				continue
-			}
-		}
-		out = append(out, src[i])
-		i++
-	}
-	return out
-}
-
-// isReferenceByte reports whether b may appear between '&' and ';' in an XML reference.
-//
-// Deliberately narrow: '#' for a character reference, and alphanumerics for the digits of a numeric
-// one or the name of an entity. Anything else — a space, another '&', a '<' — ends the scan, which
-// is what keeps the walk linear on input that is mostly bare ampersands.
-func isReferenceByte(b byte) bool {
-	return b == '#' ||
-		(b >= '0' && b <= '9') ||
-		(b >= 'a' && b <= 'z') ||
-		(b >= 'A' && b <= 'Z')
-}
-
-// resolveReference decodes the body of one reference — what sits between '&' and ';'.
-func resolveReference(ref []byte) ([]byte, bool) {
-	switch string(ref) {
-	case "amp":
-		return []byte("&"), true
-	case "lt":
-		return []byte("<"), true
-	case "gt":
-		return []byte(">"), true
-	case "quot":
-		return []byte(`"`), true
-	case "apos":
-		return []byte("'"), true
-	}
-
-	if len(ref) < 2 || ref[0] != '#' {
-		return nil, false
-	}
-	digits, base := ref[1:], 10
-	if digits[0] == 'x' || digits[0] == 'X' {
-		digits, base = digits[1:], 16
-	}
-	if len(digits) == 0 {
-		return nil, false
-	}
-	// 32 bits is well past any valid code point and keeps a long digit run from overflowing.
-	cp, err := strconv.ParseUint(string(digits), base, 32)
-	if err != nil || cp > 0x10FFFF {
-		return nil, false
-	}
-	return []byte(string(rune(cp))), true
-}
-
+// It moved there when the Office embedded-part admission gate turned out to need exactly the
+// same answer (#475): that gate was skipping a part whose reported value was spelled with a
+// numeric character reference, judging it clean and leaving the value recoverable at exit 0.
+// Two copies of a codec that decides whether a value is PRESENT is how the two halves drift
+// apart, and drift here means one of them certifies a leak as clean.
 // ResidualEncoded counts reported values that survive inside an XML region in ENTITY-ENCODED form.
 //
 // This is the companion to ResidualAnywhere, not a replacement: that one catches a value present as
@@ -163,7 +76,7 @@ func ResidualEncoded(buf []byte, regions []Region, matches []detector.Match) int
 			if rg.Start < 0 || rg.End > len(buf) || rg.Start >= rg.End {
 				continue
 			}
-			decoded := decodeXMLEntities(buf[rg.Start:rg.End])
+			decoded := xmlref.Decode(buf[rg.Start:rg.End])
 			// A raw hit is ResidualAnywhere's job and is already counted there. Counting it
 			// again would double-report the same byte and inflate the number in the refusal
 			// message, which an operator reads as two distinct survivals.
