@@ -81,7 +81,12 @@ const (
 	maxOfficeEntryBytes = 50 * 1024 * 1024 // 50MB
 	// maxOfficeTotalBytes bounds the cumulative decompressed size across all
 	// entries in one document.
-	maxOfficeTotalBytes = 200 * 1024 * 1024 // 200MB
+	//
+	// Aliased to embedded.BudgetBytes rather than repeating the number: the read
+	// side charges the same 200MB against the same archive, and two independent
+	// literals would let the write side quietly diverge from the read side. Both
+	// are per-container — see BudgetBytes for what that does and does not bound.
+	maxOfficeTotalBytes = embedded.BudgetBytes
 )
 
 // String returns the string representation of the document type

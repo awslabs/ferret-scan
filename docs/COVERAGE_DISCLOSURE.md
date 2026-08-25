@@ -53,13 +53,20 @@ non-event.
 ### What `coverage cut short` covers inside a container
 
 A container is partly scanned when one of its parts could not be examined, and the
-container's own text was read normally. Three cases reach this cause:
+container's own text was read normally. Four cases reach this cause:
 
 | case | what the operator sees |
 |---|---|
 | an embedded part over the 50 MB embedded cap | `embedded part "attachment.docx" was not examined: declares N bytes, over the 52428800-byte embedded cap` |
 | an embedded part whose bytes could not be extracted | `embedded part "broken.jpg" was not examined: flate: corrupt input before offset 1` |
 | an embedded container past the nesting bound (3) | `embedded item "attachment.docx" was not examined: embedded container nesting limit reached` |
+| embedded parts past the 4096-part count cap | `195904 embedded part(s) beyond the 4096-part limit were not examined (container declares 200000)` |
+
+The count cap reports **one line for the whole overflow**, not one per part, and states the
+container's true total so the number is actionable — a count without the total cannot tell you
+whether to raise the cap or to distrust the document. It is deliberately a separate line from the
+per-part refusals above, because "never attempted" and "failed to read" send an operator to look
+in different places.
 
 The first two used to be **silent** (#374): the part was skipped, the container reported
 `No matches found` at exit 0, and `--fail-on-incomplete` also exited 0 — while the same

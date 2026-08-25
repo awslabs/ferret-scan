@@ -30,6 +30,35 @@ const (
 	// exhaust the temp filesystem (security finding MED-3). The XML readers in
 	// this file already cap at MaxXMLSize; media is larger but still bounded.
 	MaxEmbeddedMediaSize = 50 * 1024 * 1024 // 50MB max per embedded media file
+	// maxEmbeddedParts bounds how many embedded parts one container contributes, because
+	// neither existing cap bounds the COUNT. MaxEmbeddedMediaSize bounds one part and
+	// embedded.BudgetBytes bounds their total bytes; a part may be empty, so a container can
+	// declare unboundedly many while charging nothing against either.
+	//
+	// The cost is per-part and linear, not quadratic — measured at HEAD on .docx files whose
+	// media entries hold an 8-byte PNG signature and nothing else:
+	//
+	//	  1,000 parts    1.0s     50MB RSS      122KB input
+	//	 10,000 parts    9.0s    120MB RSS      1.2MB input
+	//	 50,000 parts   43.8s    352MB RSS      6.2MB input
+	//	200,000 parts  184.3s   1182MB RSS     25.2MB input
+	//
+	// About 0.9ms and 6KB of RSS per part, and a zip entry costs the attacker ~128 bytes, so
+	// 25MB of input buys three minutes of CPU and 1.2GB of memory. Linear is not safe by
+	// itself when the constant is this large relative to the input.
+	//
+	// 4096 comes from the real distribution, not from taste. Across 381 real Office documents
+	// on hand, the most embedded parts in any one file was 361 (next: 201, 201, 198, 83), the
+	// median was 0 and the mean 7. So the cap sits ~11x above the largest legitimate file
+	// measured and refuses nothing in that corpus, while cutting the 200,000-part case to
+	// about 3.7s.
+	//
+	// It deliberately does NOT bound the cost to something trivial: a legitimate 4096-part
+	// deck still costs seconds. Choosing a small cap to make the worst case fast would refuse
+	// real documents, and refusing coverage on a real document is the more expensive error —
+	// which is why every part past the cap is DISCLOSED with this cause named, never dropped
+	// quietly.
+	maxEmbeddedParts = 4096
 	// maxEmbeddedNotes bounds how many individually-named refusals one container can put
 	// into its disclosure, because that text goes on ONE line of stderr and into every
 	// machine format.
@@ -770,25 +799,42 @@ type EmbeddedMedia struct {
 
 // extractEmbeddedImages extracts embedded media files for further processing
 func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
-	var tempFiles []string
+	// Only the name and the media type are recorded, so this loop writes no files. It used to
+	// materialise every part to a temp file, use nothing but the path's existence, and delete
+	// the lot on return — so every embedded part in the document was inflated and written to
+	// disk twice per scan, once here and once in ExtractEmbeddedMediaForProcessing (#379).
+	// Measured: a .docx with two parts produced four temp files.
+	//
+	// The parts are still INFLATED here, to io.Discard, and that is not waste: the admission
+	// verdict is what decides membership below, and it depends on the actual byte count, on
+	// read errors and on the budget charge. Skipping the read would change EmbeddedMediaCount
+	// and the EmbeddedMedia_N_* indices — which are rendered into the text every validator
+	// scans, so it would change detection, not just cost. Measured on a document whose first
+	// part is over-cap: the count stays 2 and the survivor keeps index 0.
 	var embeddedMedia []EmbeddedMedia
 
 	// One budget per container. This loop and ExtractEmbeddedMediaForProcessing each get their
 	// own, because they run at different times over the same archive and neither peak overlaps
-	// the other -- this one deletes its temp files before returning. The doubled decompression
-	// WORK is a separate inefficiency, measured and noted on #379, not addressed here.
+	// the other. Note this is a PER-CONTAINER budget, not the whole-traversal one that
+	// embedded.BudgetBytes' own comment describes; see the note there.
 	budget := newExtractionBudget()
-
-	defer func() {
-		// Clean up temp files
-		for _, tempFile := range tempFiles {
-			os.Remove(tempFile)
-		}
-	}()
+	considered := 0
 
 	for _, file := range reader.File {
 		if !isEmbeddedPartPath(file.Name) {
 			continue
+		}
+
+		// The same count cap as ExtractEmbeddedMediaForProcessing, and it has to be the same
+		// number: this loop's verdict decides EmbeddedMediaCount and the EmbeddedMedia_N_*
+		// properties, that loop's decides what gets scanned. If one capped and the other did
+		// not, the metadata would advertise parts the scan never looked at, or the reverse.
+		//
+		// Here it can break rather than walk on. This loop discloses nothing (see below), so
+		// unlike the scanning loop it has no count to finish computing.
+		considered++
+		if considered > maxEmbeddedParts {
+			break
 		}
 
 		// Extract EVERY part under media/ or embeddings/, and let the ROUTER decide
@@ -811,14 +857,12 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 			mediaType = "unclassified"
 		}
 
-		// Extract media to temp file
-		tempFile, err := extractImageToTemp(file, budget)
-		if err != nil {
+		// Ask for the admission verdict without keeping the bytes.
+		if _, err := admitEmbeddedPart(file, budget, io.Discard); err != nil {
 			// Silent HERE, deliberately, and not the same omission as the one #374 fixed.
 			//
 			// This loop exists only to count the embedded parts and record their names as
-			// metadata properties; it deletes every temp file it makes (see the defer above).
-			// The loop that decides what actually gets SCANNED is
+			// metadata properties. The loop that decides what actually gets SCANNED is
 			// ExtractEmbeddedMediaForProcessing, which walks the same parts against the same
 			// cap and returns a note for each one it could not extract. Reporting the refusal
 			// here as well would put the same part on the operator's screen twice.
@@ -829,10 +873,8 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 			// disclosure.
 			continue
 		}
-		tempFiles = append(tempFiles, tempFile)
 
 		embeddedMedia = append(embeddedMedia, EmbeddedMedia{
-			TempFilePath: tempFile,
 			OriginalName: file.Name,
 			MediaType:    mediaType,
 		})
@@ -895,26 +937,75 @@ func (b *extractionBudget) reserve(n int64) bool {
 	return true
 }
 
-// extractImageToTemp extracts an image from ZIP to a temporary file
-func extractImageToTemp(file *zip.File, budget *extractionBudget) (string, error) {
-	rc, err := file.Open()
-	if err != nil {
-		return "", err
-	}
-	defer rc.Close()
-
-	// Reject before extracting when the entry declares a size over the cap.
+// admitEmbeddedPart applies the admission decision both extraction loops make, copying the
+// part's bytes to dst.
+//
+// Both loops must reach the SAME verdict about the same part, because the metadata loop's
+// verdict decides membership of EmbeddedMediaCount and the EmbeddedMedia_N_* properties, while
+// the scanning loop's decides what is examined and what is disclosed. Two copies of these four
+// checks would be free to drift, which is the divergence internal/embedded's package doc exists
+// to prevent — so they live here once, and the temp-writing form below is a wrapper around this.
+//
+// dst may be io.Discard when a caller needs the verdict but not the bytes. The bytes still have
+// to be inflated either way: the verdict depends on the ACTUAL length (a lying declared size is
+// caught mid-copy), on read errors, and on the aggregate budget charge.
+func admitEmbeddedPart(file *zip.File, budget *extractionBudget, dst io.Writer) (int64, error) {
+	// Refuse on the declared size before opening the entry, so a part that cannot be admitted
+	// costs no I/O and — in the temp-writing wrapper — no file.
+	//
+	// This is fractionally earlier than the original order, which opened the entry first. The
+	// only observable difference is for an entry that is BOTH corrupt and over-cap: it now
+	// reports the size refusal rather than the open error. That is the more informative of the
+	// two causes, and it is the cheaper path.
 	if file.UncompressedSize64 > MaxEmbeddedMediaSize {
 		// The part's NAME is deliberately absent from the message. The only caller that
 		// surfaces this error names the part's base name itself, and a scanned tree's
 		// internal paths should not be repeated into a report twice — see #367, which is
 		// open about exactly that. Sizes only.
+		return 0, fmt.Errorf("declares %d bytes, over the %d-byte embedded cap (possible decompression bomb)",
+			file.UncompressedSize64, MaxEmbeddedMediaSize)
+	}
+
+	rc, err := file.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer rc.Close()
+
+	// Bounded so a lying declared size cannot exhaust the destination. Read one byte past the
+	// cap so an over-cap entry is detectable.
+	n, err := io.Copy(dst, io.LimitReader(rc, MaxEmbeddedMediaSize+1))
+	if err != nil {
+		return n, err
+	}
+	if n > MaxEmbeddedMediaSize {
+		// Name omitted for the same reason as the declared-size refusal above.
+		return n, fmt.Errorf("exceeds the %d-byte embedded extraction cap while being read (possible decompression bomb)",
+			MaxEmbeddedMediaSize)
+	}
+
+	// Charge the AGGREGATE budget with the bytes actually written, not the declared size.
+	if !budget.reserve(n) {
+		return n, fmt.Errorf("would exceed the %d-byte total embedded extraction budget for this document (%w)",
+			embedded.BudgetBytes, embedded.ErrBudgetExhausted)
+	}
+
+	return n, nil
+}
+
+// extractImageToTemp admits a part and materialises it to a temporary file.
+//
+// Only the SCANNING loop needs this. The metadata loop calls admitEmbeddedPart with io.Discard,
+// because it needs the verdict and not the bytes.
+func extractImageToTemp(file *zip.File, budget *extractionBudget) (string, error) {
+	// Cheap refusals first, so a refused part creates no file. admitEmbeddedPart repeats the
+	// declared-size check — it has to, since it is also the entry point for the other loop —
+	// and repeating it here is what keeps os.CreateTemp off the refusal path.
+	if file.UncompressedSize64 > MaxEmbeddedMediaSize {
 		return "", fmt.Errorf("declares %d bytes, over the %d-byte embedded cap (possible decompression bomb)",
 			file.UncompressedSize64, MaxEmbeddedMediaSize)
 	}
 
-	// Create temp file.
-	//
 	// The extension comes from the ADMISSION TABLE, not from the entry name. A zip
 	// entry name is producer-controlled and this is a filesystem path, so the raw
 	// name must not reach it (BSC1: validate untrusted input against an allowlist
@@ -936,27 +1027,10 @@ func extractImageToTemp(file *zip.File, budget *extractionBudget) (string, error
 	}
 	defer tempFile.Close()
 
-	// Copy image data, bounded so a lying declared size can't exhaust the temp
-	// filesystem. Read one byte past the cap to detect an over-cap entry, then
-	// remove the partial temp file so no bomb fragment is left on disk (MED-3).
-	n, err := io.Copy(tempFile, io.LimitReader(rc, MaxEmbeddedMediaSize+1))
-	if err != nil {
+	// Any refusal removes the partial file, so a bomb leaves nothing on disk (MED-3).
+	if _, err := admitEmbeddedPart(file, budget, tempFile); err != nil {
 		os.Remove(tempFile.Name())
 		return "", err
-	}
-	if n > MaxEmbeddedMediaSize {
-		os.Remove(tempFile.Name())
-		// Name omitted for the same reason as the declared-size refusal above.
-		return "", fmt.Errorf("exceeds the %d-byte embedded extraction cap while being read (possible decompression bomb)",
-			MaxEmbeddedMediaSize)
-	}
-
-	// Charge the AGGREGATE budget with the bytes actually written. Over budget means the temp
-	// file is removed like any other refusal, so a bomb leaves nothing behind.
-	if !budget.reserve(n) {
-		os.Remove(tempFile.Name())
-		return "", fmt.Errorf("would exceed the %d-byte total embedded extraction budget for this document (%w)",
-			embedded.BudgetBytes, embedded.ErrBudgetExhausted)
 	}
 
 	return tempFile.Name(), nil
@@ -994,6 +1068,8 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []stri
 	var embeddedMedia []EmbeddedMedia
 	var notExamined []string
 	refused := 0
+	considered := 0
+	beyondCap := 0
 
 	// The aggregate budget for this container. Unlike the metadata loop, every refusal here is
 	// DISCLOSED through notExamined, so a document truncated by the budget says so rather than
@@ -1002,6 +1078,19 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []stri
 
 	for _, file := range reader.File {
 		if !isEmbeddedPartPath(file.Name) {
+			continue
+		}
+
+		// Past the count cap, keep WALKING but stop extracting.
+		//
+		// Breaking out would be cheaper and would make the disclosure a lie by omission: the
+		// note below states how many parts went unexamined, and that number is only knowable
+		// by finishing the walk. The remaining work is one string test per entry against a
+		// central directory the zip reader has already parsed, so the walk is not the cost
+		// this cap exists to bound — the inflate and the temp file are.
+		considered++
+		if considered > maxEmbeddedParts {
+			beyondCap++
 			continue
 		}
 
@@ -1058,6 +1147,16 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []stri
 	if refused > len(notExamined) {
 		notExamined = append(notExamined, fmt.Sprintf(
 			"and %d more embedded part(s) were not examined", refused-len(notExamined)))
+	}
+
+	// A separate line, and a separate counter from `refused`, because this is a different cause.
+	// Folding it into the extraction-failure total would tell an operator that 195,904 parts
+	// failed to read, when in fact they were never attempted — the same answer for the wrong
+	// reason, which is the harder kind of report to act on.
+	if beyondCap > 0 {
+		notExamined = append(notExamined, fmt.Sprintf(
+			"%d embedded part(s) beyond the %d-part limit were not examined (container declares %d)",
+			beyondCap, maxEmbeddedParts, considered))
 	}
 
 	return embeddedMedia, notExamined, nil
