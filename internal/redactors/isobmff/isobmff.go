@@ -104,10 +104,36 @@ func FindISO6709(b []byte) []byte { return iso6709.Find(b) }
 var (
 	udtaAtom = []byte("udta")
 	metaAtom = []byte("meta")
+	uuidAtom = []byte("uuid")
 	xyzAtom  = []byte("\xa9xyz")
 	lociAtom = []byte("loci")
 	dataAtom = []byte("data")
 )
+
+// xmpUserType identifies a uuid box that carries an XMP packet.
+//
+// Adobe XMP Specification Part 3, "Storage in Files", assigns this UUID for ISO base media and
+// QuickTime files. The bytes appear in the file in exactly this order, immediately after the atom
+// header. Confirmed against a real file rather than only read: exiftool writing a single Artist tag
+// to a stripped .m4a produced a top-level uuid box whose user type is
+// be7acfcb97a942e89c71999491e3afac, and exiftool -struct -G1 reports the value under [XMP-tiff].
+var xmpUserType = []byte{
+	0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8,
+	0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC,
+}
+
+// userTypeBytes is the length of the user type that opens every uuid box payload.
+const userTypeBytes = 16
+
+// LabelXMP marks a span whose payload is an XMP packet, i.e. XML TEXT rather than the
+// length-prefixed binary of every other span this package returns.
+//
+// Exported because that difference is load-bearing for a caller, not decorative. A value stored in
+// XML may be ENTITY-ENCODED — exiftool writes an apostrophe as `&#39;` — so a raw byte search for
+// the reported value finds nothing, and a caller whose write gate is a raw search will conclude the
+// packet is clean. Measured: `Patrick O'Connor` reported at 91, present raw in the ilst copy and as
+// `Patrick O&#39;Connor` in the packet.
+const LabelXMP = "MP4 XMP"
 
 // MetadataSpans walks the atom tree of a file and returns every descriptive-metadata payload
 // span: udta, and meta wherever it appears outside one.
@@ -149,6 +175,23 @@ func MetadataSpans(r io.ReaderAt, size int64) ([]Span, error) {
 			if payloadEnd > payloadStart {
 				out = append(out, Span{payloadStart, payloadEnd, "MP4 meta"})
 			}
+		case bytes.Equal(name, uuidAtom):
+			// An XMP packet, which is a THIRD home for the same tag values (#452).
+			//
+			// Measured on a real .m4a stripped with `exiftool -all=` and then given one tag:
+			// Artist, Title and Author each land in TWO places, moov/udta/meta/ilst AND an XMP
+			// packet, while Comment lands only in udta. Before this arm existed the udta copy was
+			// overwritten and the XMP copy was not, so after #451's whole-file verify the file was
+			// REFUSED — "2 reported value(s) remain anywhere in t_Artist.m4a after redaction".
+			// Honest, but three of the four common tags made a file unredactable.
+			//
+			// Matched on the USER TYPE, never on the box type. uuid is the container format's
+			// extension point and carries proprietary payloads too — sample-accurate timing,
+			// camera-vendor blobs, protection headers — and treating one of those as descriptive
+			// metadata is how a redactor corrupts a file it was asked to clean.
+			if start, ok := xmpPayloadStart(r, payloadStart, payloadEnd); ok {
+				out = append(out, Span{start, payloadEnd, LabelXMP})
+			}
 		default:
 			return IsContainerAtom(name)
 		}
@@ -158,6 +201,42 @@ func MetadataSpans(r io.ReaderAt, size int64) ([]Span, error) {
 		return false
 	})
 	return out, err
+}
+
+// xmpPayloadStart reports where an XMP packet begins inside a uuid box payload, and whether this
+// uuid box is an XMP one at all.
+//
+// The returned offset SKIPS the 16-byte user type. Two reasons, and the second is the one that
+// bites: the user type is not descriptive metadata and holds no reportable value, and every
+// consumer of a span may rewrite bytes inside it. The overwrite is same-length, so it cannot move
+// the box, but a replacement landing on the user type would leave a uuid box that no longer
+// declares itself as XMP — a file quietly altered in a way no reader could interpret. The box
+// header is outside the payload already and so is never at risk.
+//
+// A payload of exactly userTypeBytes is an empty packet and yields no span, which keeps
+// MetadataSpans' invariant that every returned span is non-empty.
+//
+// r is the same reader the walk is using. Reading here is safe because walk() already requires an
+// io.ReaderAt — random access, no shared cursor — and this reads a region walk() has already
+// bounded against the file's real end.
+func xmpPayloadStart(r io.ReaderAt, payloadStart, payloadEnd int64) (int64, bool) {
+	if payloadEnd-payloadStart <= userTypeBytes {
+		return 0, false
+	}
+
+	// A separate array on purpose: the walk's `name` aliases its own reused header buffer, so
+	// reading into that buffer would clobber the atom name mid-comparison.
+	var ut [userTypeBytes]byte
+	if _, err := r.ReadAt(ut[:], payloadStart); err != nil {
+		// Unreadable: treat as not-XMP rather than guessing. A span the caller cannot read is
+		// worse than no span, and the caller's own residual check still refuses the file if a
+		// reported value is sitting in it.
+		return 0, false
+	}
+	if !bytes.Equal(ut[:], xmpUserType) {
+		return 0, false
+	}
+	return payloadStart + userTypeBytes, true
 }
 
 // MetadataSpansIn is MetadataSpans over a buffer already in memory.

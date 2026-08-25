@@ -212,6 +212,10 @@ func (r *VideoRedactor) RedactDocument(originalPath string, outputPath string, m
 		return nil, fmt.Errorf("%d reported value(s) remain in the metadata of %s after redaction; refusing to write a file that would look redacted",
 			residual, name)
 	}
+	if residual := r.residualEncoded(blocks, matches); residual > 0 {
+		return nil, fmt.Errorf("%d reported value(s) remain in the metadata of %s as XML-encoded text after redaction (e.g. an apostrophe written as &#39;), which a raw search cannot mask; refusing to write a file that would look redacted",
+			residual, name)
+	}
 	if err := verifyCoordinatesScrubbed(blocks); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
@@ -287,12 +291,29 @@ func (r *VideoRedactor) scrubCoordinates(blocks []*tagBlock, matches []detector.
 
 	scrubbed := 0
 	for _, b := range blocks {
+		// NUL everywhere except inside XML, where NUL is not a legal character at all.
+		//
+		// Zeroes are right for a BINARY payload: '*' bytes are a valid fixed-point number
+		// (0x2A2A2A2A is 10794.66 degrees), so masking a ©xyz payload with them leaves something a
+		// reader still reports as a position. That reasoning does not carry into an XMP packet,
+		// where a coordinate is TEXT and is never read as fixed-point — and XML 1.0 forbids NUL
+		// outright, not even as a character reference, so zero-filling there produces a packet no
+		// conformant parser will accept. Measured: Coordinates() finds
+		// "+36.3506-082.6985+447.403/" inside an exif:GPSLocation element and returns a 26-byte
+		// span, which this loop then filled with NULs.
+		//
+		// So the position is still removed in both cases; only the byte differs, chosen so the
+		// container the value lived in survives being cleaned.
+		fill := byte(0)
+		if b.span.Label == isobmff.LabelXMP {
+			fill = '*'
+		}
 		for _, c := range b.coords {
 			if c.Start < 0 || c.End > int64(len(b.buf)) || c.Start >= c.End {
 				continue
 			}
 			for i := c.Start; i < c.End; i++ {
-				b.buf[i] = 0
+				b.buf[i] = fill
 			}
 			b.scrubbed = true
 			scrubbed++
@@ -350,8 +371,41 @@ func (r *VideoRedactor) residual(blocks []*tagBlock, matches []detector.Match) i
 	for _, m := range matches {
 		one := []detector.Match{m}
 		for _, b := range blocks {
-			region := []tagmeta.Region{{Start: 0, End: len(b.buf), Label: b.span.Label}}
-			if tagmeta.Residual(b.buf, region, one) > 0 {
+			if tagmeta.Residual(b.buf, blockRegion(b), one) > 0 {
+				residual++
+				break
+			}
+		}
+	}
+	return residual
+}
+
+// blockRegion describes one parsed tag block to tagmeta.
+//
+// XMLText is what tells tagmeta that a raw byte search is not sufficient here: an XMP packet is XML
+// character data, so a value in it may be entity-encoded and is then absent as the bytes that were
+// reported. See tagmeta.ResidualEncoded.
+func blockRegion(b *tagBlock) []tagmeta.Region {
+	return []tagmeta.Region{{
+		Start: 0, End: len(b.buf), Label: b.span.Label,
+		XMLText: b.span.Label == isobmff.LabelXMP,
+	}}
+}
+
+// residualEncoded is r.residual's counterpart for values the file spells differently from the way
+// they were reported.
+//
+// Separate from residual, and refused with its own message, because the two send an operator to
+// different places: "still present" means bytes to find, whereas this means the value is there in a
+// form no raw search can mask. Measured on the audio path, which has the same defect and the same
+// fix: a .m4a tagged `Patrick O'Connor` was written with `Patrick O&#39;Connor` still in the packet
+// at exit 0 with no warning, and exiftool read the name back out of the "redacted" file.
+func (r *VideoRedactor) residualEncoded(blocks []*tagBlock, matches []detector.Match) int {
+	residual := 0
+	for _, m := range matches {
+		one := []detector.Match{m}
+		for _, b := range blocks {
+			if tagmeta.ResidualEncoded(b.buf, blockRegion(b), one) > 0 {
 				residual++
 				break
 			}

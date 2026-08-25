@@ -201,7 +201,12 @@ func mp4MetadataRanges(buf []byte) []tagmeta.Region {
 		if sp.Start < 0 || sp.End > int64(len(buf)) || sp.Start >= sp.End {
 			continue
 		}
-		out = append(out, tagmeta.Region{Start: int(sp.Start), End: int(sp.End), Label: sp.Label})
+		out = append(out, tagmeta.Region{
+			Start: int(sp.Start), End: int(sp.End), Label: sp.Label,
+			// An XMP packet is XML character data, so a value in it may be entity-encoded and
+			// the raw search is blind to it. See tagmeta.ResidualEncoded.
+			XMLText: sp.Label == isobmff.LabelXMP,
+		})
 	}
 	return out
 }

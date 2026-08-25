@@ -394,3 +394,194 @@ func TestWalkVisitsFragmentedLayouts(t *testing.T) {
 		t.Errorf("span = %q, want %q", file[spans[0].Start:spans[0].End], tag)
 	}
 }
+
+// #452: an XMP packet is a THIRD home for the same tag values, and it was not mapped.
+//
+// Measured on a real .m4a stripped with `exiftool -all=` and then given one tag, and the layout
+// below is that file's:
+//
+//	Artist / Title / Author -> TWO occurrences: moov/udta/meta/ilst AND an XMP packet
+//	Comment                 -> ONE occurrence: udta only
+//
+//	ftyp  free  moov(udta(meta(ilst)))  free  uuid[be7acfcb…]  mdat
+//	                     ^ value here                ^ and here
+//
+// The uuid box is at TOP LEVEL, after moov and outside it. Before the XMP arm the udta copy was
+// overwritten and the XMP copy was not, so #451's whole-file verify refused the file:
+// "2 reported value(s) remain anywhere in t_Artist.m4a after redaction". Honest, but three of the
+// four common tags made a file unredactable. After the arm: written, zero residual, file size
+// unchanged, ffprobe duration identical, and the packet still parses as XML.
+
+// uuidBox builds a uuid box with the given 16-byte user type and payload.
+func uuidBox(userType []byte, payload []byte) []byte {
+	return atom("uuid", userType, payload)
+}
+
+// xmpPacket is a minimal but real-shaped XMP packet: exiftool writes the same wrapper.
+func xmpPacket(value string) []byte {
+	return []byte(`<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>` +
+		`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF ` +
+		`xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">` +
+		`<rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/">` +
+		`<tiff:Artist>` + value + `</tiff:Artist>` +
+		`</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`)
+}
+
+// TestXMPUUIDBoxIsMappedWithoutItsUserType pins the offsets, because a span that is merely wide
+// enough also removes the value and no redaction test could tell the difference.
+func TestXMPUUIDBoxIsMappedWithoutItsUserType(t *testing.T) {
+	packet := xmpPacket("card 4532-0151-1283-0366")
+	box := uuidBox(xmpUserType, packet)
+	moov := atom("moov", atom("udta", []byte("\xa9ARTcard 4532-0151-1283-0366")))
+
+	file := append(atom("ftyp", []byte("M4A isom")), moov...)
+	file = append(file, box...)
+	file = append(file, atom("mdat", bytes.Repeat([]byte{0xCD}, 64))...)
+
+	spans, err := MetadataSpansIn(file)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var xmp *Span
+	for i := range spans {
+		if spans[i].Label == "MP4 XMP" {
+			xmp = &spans[i]
+		}
+	}
+	if xmp == nil {
+		t.Fatalf("no MP4 XMP span; spans = %+v. The value in the packet is then never overwritten "+
+			"and the whole file is refused by the residual check.", spans)
+	}
+
+	packetAt := int64(bytes.Index(file, packet))
+	if xmp.Start != packetAt {
+		t.Errorf("span starts at %d, want %d — the packet payload, i.e. the byte after the 16-byte "+
+			"user type", xmp.Start, packetAt)
+	}
+	if xmp.End != packetAt+int64(len(packet)) {
+		t.Errorf("span ends at %d, want %d", xmp.End, packetAt+int64(len(packet)))
+	}
+
+	// The udta copy must still be mapped: the point is BOTH homes, not a swap.
+	if len(spans) < 2 {
+		t.Errorf("spans = %+v, want the udta span as well as the XMP one; a file carrying the "+
+			"value in both homes needs both overwritten", spans)
+	}
+}
+
+// TestUserTypeIsNeverInsideAMappedSpan is the structural guarantee, asserted independently of the
+// offsets above so it cannot pass by arithmetic coincidence.
+//
+// The overwrite is same-length and so cannot move the box, but a replacement landing on the user
+// type would leave a uuid box that no longer declares itself as XMP — a file altered in a way no
+// reader can interpret, and one no assertion about the VALUE would catch.
+func TestUserTypeIsNeverInsideAMappedSpan(t *testing.T) {
+	packet := xmpPacket("card 4532-0151-1283-0366")
+	box := uuidBox(xmpUserType, packet)
+	file := append(atom("ftyp", []byte("M4A isom")), box...)
+
+	spans, err := MetadataSpansIn(file)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	userTypeAt := int64(bytes.Index(file, xmpUserType))
+	if userTypeAt < 0 {
+		t.Fatal("the user type is not in the fixture, so this test proves nothing")
+	}
+	for _, sp := range spans {
+		for off := userTypeAt; off < userTypeAt+userTypeBytes; off++ {
+			if off >= sp.Start && off < sp.End {
+				t.Fatalf("user type byte at %d falls inside span [%d,%d); overwriting it would "+
+					"leave a uuid box that no longer identifies itself as XMP",
+					off, sp.Start, sp.End)
+			}
+		}
+	}
+}
+
+// TestNonXMPUUIDBoxIsNotMapped is the reason the match is on the user type and not on the box type.
+//
+// uuid is the container format's extension point: vendors put proprietary payloads there, and
+// so do protection schemes. Treating one as descriptive metadata means a redactor rewrites bytes
+// whose meaning it does not know, in a file it was asked to clean.
+func TestNonXMPUUIDBoxIsNotMapped(t *testing.T) {
+	// Same length, one byte different from the XMP type, so only the comparison can distinguish it.
+	other := append([]byte(nil), xmpUserType...)
+	other[15] ^= 0xFF
+
+	payload := []byte("card 4532-0151-1283-0366 inside a vendor blob")
+	file := append(atom("ftyp", []byte("M4A isom")), uuidBox(other, payload)...)
+
+	spans, err := MetadataSpansIn(file)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, sp := range spans {
+		if sp.Label == "MP4 XMP" {
+			t.Errorf("a uuid box with user type %x was mapped as XMP (span [%d,%d)); the match must "+
+				"be on the user type, not on the box type", other, sp.Start, sp.End)
+		}
+	}
+}
+
+// TestDegenerateUUIDPayloadYieldsNoSpan covers the two boundary payloads. Both must produce no
+// span rather than a panic or a zero-length one: MetadataSpans' invariant is that every span it
+// returns is non-empty and inside the file.
+func TestDegenerateUUIDPayloadYieldsNoSpan(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload []byte
+		userLen int
+	}{
+		{"payload shorter than the user type", nil, 9},
+		{"exactly the user type, empty packet", nil, userTypeBytes},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ut := xmpUserType[:tc.userLen]
+			file := append(atom("ftyp", []byte("M4A isom")), atom("uuid", ut, tc.payload)...)
+
+			spans, err := MetadataSpansIn(file)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, sp := range spans {
+				if sp.Label == "MP4 XMP" {
+					t.Errorf("got an XMP span [%d,%d) for a %d-byte uuid payload",
+						sp.Start, sp.End, tc.userLen+len(tc.payload))
+				}
+				if sp.Start >= sp.End {
+					t.Errorf("span [%d,%d) is empty, breaking the non-empty invariant", sp.Start, sp.End)
+				}
+			}
+		})
+	}
+}
+
+// TestXMPInsideUdtaIsNotMappedTwice keeps the "one contiguous region per tag block" property that
+// the udta and meta arms already rely on.
+//
+// A writer may place the packet under udta instead of at top level. udta is recorded whole and not
+// descended into, so that packet is already covered; recording it again would hand the caller two
+// overlapping regions for the same bytes.
+func TestXMPInsideUdtaIsNotMappedTwice(t *testing.T) {
+	packet := xmpPacket("card 4532-0151-1283-0366")
+	udta := atom("udta", uuidBox(xmpUserType, packet))
+	file := append(atom("ftyp", []byte("M4A isom")), atom("moov", udta)...)
+
+	spans, err := MetadataSpansIn(file)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(spans) != 1 || spans[0].Label != "MP4 udta" {
+		t.Fatalf("spans = %+v, want exactly one MP4 udta span covering the nested packet", spans)
+	}
+
+	// And it must genuinely cover the packet, or "not twice" would be hiding "not at all".
+	packetAt := int64(bytes.Index(file, packet))
+	if packetAt < spans[0].Start || packetAt+int64(len(packet)) > spans[0].End {
+		t.Errorf("the packet at [%d,%d) is not inside the udta span [%d,%d)",
+			packetAt, packetAt+int64(len(packet)), spans[0].Start, spans[0].End)
+	}
+}

@@ -159,6 +159,55 @@ func buildM4A(t *testing.T, dir string, value string) string {
 	return writeFixture(t, dir, "tagged.m4a", append(ftyp, moov...))
 }
 
+// buildM4AWithXMP writes the TWO-HOMES layout: the value in moov>udta>meta>ilst AND again in a
+// top-level XMP packet, carried in a uuid box whose user type is the Adobe XMP one.
+//
+// This is what a real file looks like after a metadata editor has touched it. Measured on a real
+// .m4a stripped with `exiftool -all=` and then given one tag: Artist, Title and Author each land in
+// BOTH homes, while Comment lands only in udta. Across 800 real ISO-BMFF files on a macOS host, 24
+// carried a top-level uuid[XMP] box and 14 carried moov/udta/XMP_ instead.
+//
+// Before the XMP span existed the udta copy was overwritten and this one was not, so the whole file
+// was refused by the residual check (#452) — correct, but it made three of the four common tags
+// unredactable.
+func buildM4AWithXMP(t *testing.T, dir string, value string) string {
+	t.Helper()
+
+	atom := func(name string, payload []byte) []byte {
+		out := make([]byte, 4)
+		binary.BigEndian.PutUint32(out, uint32(8+len(payload)))
+		out = append(out, []byte(name)...)
+		return append(out, payload...)
+	}
+
+	data := append([]byte{0, 0, 0, 1, 0, 0, 0, 0}, []byte(value)...)
+	ilst := atom("ilst", atom("\xa9nam", atom("data", data)))
+	moov := atom("moov", atom("udta", atom("meta", append([]byte{0, 0, 0, 0}, ilst...))))
+	ftyp := atom("ftyp", []byte("M4A isom"))
+
+	// The Adobe XMP user type, then the packet. Same value, second home.
+	userType := []byte{
+		0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8,
+		0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC,
+	}
+	packet := []byte(`<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>` +
+		`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF ` +
+		`xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">` +
+		`<rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/">` +
+		`<tiff:Artist>` + value + `</tiff:Artist>` +
+		`</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`)
+	uuid := atom("uuid", append(userType, packet...))
+
+	// A payload marker after the metadata, so the table's "audio data untouched" check applies here
+	// too rather than silently passing on a fixture with no payload.
+	mdat := atom("mdat", []byte{0x01, 0x02, 0x03, 0x04})
+
+	file := append(ftyp, moov...)
+	file = append(file, uuid...)
+	file = append(file, mdat...)
+	return writeFixture(t, dir, "tagged-xmp.m4a", file)
+}
+
 func sortedKeys(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -235,6 +284,14 @@ func TestReportedValuesRemovedFromEveryFormat(t *testing.T) {
 		{
 			name:    "m4a udta/ilst",
 			src:     buildM4A(t, dir, "Recording ref "+testSSN),
+			matches: []detector.Match{match(testSSN, "SSN")},
+		},
+		{
+			// The same value in TWO homes. Both must be overwritten: this file was REFUSED
+			// before the XMP span existed, because the residual check correctly saw the second
+			// copy still sitting there (#452).
+			name:    "m4a udta/ilst + XMP packet",
+			src:     buildM4AWithXMP(t, dir, "Recording ref "+testSSN),
 			matches: []detector.Match{match(testSSN, "SSN")},
 		},
 	}
@@ -534,4 +591,104 @@ func TestUTF16BETagTextIsRedacted(t *testing.T) {
 		t.Error("the UTF-16BE encoded phone number survived; ID3v2.4 allows this encoding and a " +
 			"little-endian-only search leaves it in cleartext")
 	}
+}
+
+// TestEscapedXMPValueIsRefusedNotWritten is the regression guard for a leak that mapping the XMP
+// packet OPENED.
+//
+// Sequence, all measured on a real .m4a tagged with exiftool (`-Artist=card 4532-...` and
+// `-Title=Patrick O'Connor`):
+//
+//	before the XMP span   rc=3  REFUSED  "2 reported value(s) remain anywhere"
+//	with the XMP span     rc=0  WROTE    `Patrick O&#39;Connor` still present   <- the regression
+//	with this gate        rc=3  REFUSED  "... as XML-encoded text ..."
+//
+// The card exists RAW in both the ilst copy and the packet, so before the span was mapped its
+// surviving packet copy refused the file — which incidentally also protected the apostrophe value.
+// Overwriting that copy removed the refusal and let the encoded one through. exiftool then read
+// `[XMP-dc] Title : Patrick O'Connor` out of the "redacted" file.
+//
+// So the assertion is a REFUSAL, not a removal: masking an encoded occurrence needs an offset-mapping
+// decoder, which is a larger change. Refusing is never worse than the behaviour this replaced.
+func TestEscapedXMPValueIsRefusedNotWritten(t *testing.T) {
+	dir := t.TempDir()
+	const name = "Patrick O'Connor"
+
+	src := buildM4AWithEscapedXMP(t, dir, name)
+
+	// Non-vacuity, both directions: the raw form must be present (so the ilst copy is real and
+	// gets masked) and the ENCODED form must be what sits in the packet.
+	raw, err := os.ReadFile(src) // #nosec G304 -- test temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(name)) {
+		t.Fatal("fixture lacks the raw value, so nothing would be masked and the test proves nothing")
+	}
+	if !bytes.Contains(raw, []byte("Patrick O&#39;Connor")) {
+		t.Fatal("fixture lacks the ENCODED value, so the gate under test is never exercised")
+	}
+
+	out := filepath.Join(dir, "redacted.m4a")
+	res, rerr := NewAudioRedactor(nil, nil).RedactDocument(
+		src, out, []detector.Match{match(name, "PERSON_NAME")}, redactors.RedactionFormatPreserving)
+
+	if rerr == nil {
+		// The failure this guards against: a written file that still holds the value.
+		written, readErr := os.ReadFile(out) // #nosec G304 -- test temp dir
+		if readErr == nil && bytes.Contains(written, []byte("Patrick O&#39;Connor")) {
+			t.Fatalf("redaction SUCCEEDED and the value survives as `Patrick O&#39;Connor`. A raw "+
+				"byte search cannot see an entity-encoded value, so the file looks redacted and is "+
+				"not — success=%v", res != nil && res.Success)
+		}
+		t.Fatalf("redaction succeeded where it must refuse: an encoded occurrence cannot be masked " +
+			"by a same-length raw overwrite")
+	}
+
+	// And the refusal has to name the cause. "Remains anywhere" would send an operator looking for
+	// bytes that are genuinely absent from the file.
+	if !strings.Contains(rerr.Error(), "XML-encoded") {
+		t.Errorf("refusal reads %q; it must name the encoding as the cause", rerr.Error())
+	}
+	if _, statErr := os.Stat(out); statErr == nil {
+		t.Error("a file was written despite the refusal; a refusal must leave no output behind")
+	}
+}
+
+// buildM4AWithEscapedXMP writes the two-homes layout with the packet copy ENTITY-ENCODED, which is
+// what exiftool actually produces for a value containing an apostrophe.
+func buildM4AWithEscapedXMP(t *testing.T, dir string, value string) string {
+	t.Helper()
+
+	atom := func(name string, payload []byte) []byte {
+		out := make([]byte, 4)
+		binary.BigEndian.PutUint32(out, uint32(8+len(payload)))
+		out = append(out, []byte(name)...)
+		return append(out, payload...)
+	}
+
+	// The ilst copy is raw: iTunes-style atoms are not XML and store the bytes as-is.
+	data := append([]byte{0, 0, 0, 1, 0, 0, 0, 0}, []byte(value)...)
+	ilst := atom("ilst", atom("\xa9nam", atom("data", data)))
+	moov := atom("moov", atom("udta", atom("meta", append([]byte{0, 0, 0, 0}, ilst...))))
+	ftyp := atom("ftyp", []byte("M4A isom"))
+
+	// The packet copy is encoded. &#39; rather than &apos; because that is the spelling exiftool
+	// writes, and it is the one a named-entity list does not contain.
+	encoded := strings.ReplaceAll(value, "'", "&#39;")
+	userType := []byte{
+		0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8,
+		0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC,
+	}
+	packet := []byte(`<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>` +
+		`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF ` +
+		`xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">` +
+		`<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">` +
+		`<dc:title>` + encoded + `</dc:title>` +
+		`</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`)
+
+	file := append(ftyp, moov...)
+	file = append(file, atom("uuid", append(userType, packet...))...)
+	file = append(file, atom("mdat", []byte{0x01, 0x02, 0x03, 0x04})...)
+	return writeFixture(t, dir, "escaped-xmp.m4a", file)
 }

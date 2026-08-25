@@ -412,3 +412,161 @@ func TestMemoryDoesNotScaleWithFileSize(t *testing.T) {
 			"walking the file is that a movie's size is not a memory cost", small, large)
 	}
 }
+
+// mp4WithXMP writes ftyp + moov(udta(children)) + a top-level XMP uuid box + mdat.
+//
+// A separate builder from mp4With because the packet sits OUTSIDE moov, at the top level, which is
+// where exiftool puts it: measured on real files, 24 of 800 ISO-BMFF files on a macOS host carry a
+// top-level uuid[XMP] box.
+func mp4WithXMP(t *testing.T, dir, filename, packetBody string, udtaChildren ...[]byte) string {
+	t.Helper()
+
+	userType := []byte{
+		0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8,
+		0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC,
+	}
+	packet := []byte(`<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>` +
+		`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF ` +
+		`xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">` +
+		`<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">` +
+		`<dc:title>` + packetBody + `</dc:title>` +
+		`</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`)
+
+	file := append(atom("ftyp", []byte("isomiso2mp41")),
+		atom("moov", atom("mvhd", make([]byte, 100)), atom("udta", udtaChildren...))...)
+	file = append(file, atom("uuid", userType, packet)...)
+	file = append(file, atom("mdat", bytes.Repeat([]byte{0xCD}, 512))...)
+
+	p := filepath.Join(dir, filename)
+	if err := os.WriteFile(p, file, 0o600); err != nil {
+		t.Fatalf("write %s: %v", filename, err)
+	}
+	return p
+}
+
+// TestXMPPacketCopyIsRedacted is the capability the XMP span exists for (#452).
+//
+// exiftool writes a tag into TWO homes — moov/udta/meta/ilst and an XMP packet — and before the
+// packet was mapped the udta copy was overwritten while the packet copy was not, so the whole file
+// was refused by the residual check.
+func TestXMPPacketCopyIsRedacted(t *testing.T) {
+	const value = "4532-0151-1283-0366"
+	dir := t.TempDir()
+	src := mp4WithXMP(t, dir, "two-homes.mp4", "card "+value, itunesTag("\xa9ART", "card "+value))
+
+	before := mustRead(t, src)
+	if n := bytes.Count(before, []byte(value)); n != 2 {
+		t.Fatalf("fixture holds the value %d time(s), want 2 (one per home) — otherwise this test "+
+			"does not exercise the two-homes case", n)
+	}
+
+	out, res, err := redact(t, src, []detector.Match{match("VISA", value)})
+	if err != nil {
+		t.Fatalf("redaction refused: %v — with the packet mapped, both copies are reachable", err)
+	}
+	if res == nil || !res.Success {
+		t.Fatal("redaction reported failure")
+	}
+	after := mustRead(t, out)
+	if bytes.Contains(after, []byte(value)) {
+		t.Errorf("the value survives in the redacted file; a reported value that cannot be removed " +
+			"is the same leak as an undetected one")
+	}
+	if len(after) != len(before) {
+		t.Errorf("file size changed %d -> %d; the overwrite must be same-length", len(before), len(after))
+	}
+}
+
+// TestEncodedXMPValueIsRefusedOnTheVideoPath guards the leak that mapping the packet OPENED.
+//
+// The packet is XML, so a value in it may be entity-encoded and is then absent as the bytes that
+// were reported. The raw residual check is structurally blind to that. Measured on a real .mp4
+// tagged with exiftool:
+//
+//	before the XMP span   rc=3  REFUSED  "1 reported value(s) remain anywhere"
+//	with the XMP span     rc=0  WROTE    `Patrick O&#39;Connor` still present   <- the regression
+//	with the gate         rc=3  REFUSED  "... as XML-encoded text ..."
+//
+// The udta copy is RAW, so it is masked normally; only the packet copy is encoded. Without the gate
+// the file is written and looks clean.
+func TestEncodedXMPValueIsRefusedOnTheVideoPath(t *testing.T) {
+	const name = "Patrick O'Connor"
+	dir := t.TempDir()
+	src := mp4WithXMP(t, dir, "encoded.mp4", "Patrick O&#39;Connor", itunesTag("\xa9nam", name))
+
+	before := mustRead(t, src)
+	if !bytes.Contains(before, []byte(name)) {
+		t.Fatal("fixture lacks the raw value, so the udta copy would not be masked")
+	}
+	if !bytes.Contains(before, []byte("Patrick O&#39;Connor")) {
+		t.Fatal("fixture lacks the ENCODED value, so the gate under test is never exercised")
+	}
+
+	out, _, err := redact(t, src, []detector.Match{match("PERSON_NAME", name)})
+	if err == nil {
+		written, readErr := os.ReadFile(out) // #nosec G304 -- test-controlled temp path
+		if readErr == nil && bytes.Contains(written, []byte("Patrick O&#39;Connor")) {
+			t.Fatal("redaction SUCCEEDED and the value survives as `Patrick O&#39;Connor`; the file " +
+				"looks redacted and is not")
+		}
+		t.Fatal("redaction succeeded where it must refuse: an encoded occurrence cannot be masked by " +
+			"a same-length raw overwrite")
+	}
+	if !strings.Contains(err.Error(), "XML-encoded") {
+		t.Errorf("refusal reads %q; it must name the encoding as the cause, or an operator goes "+
+			"looking for bytes that are genuinely absent", err.Error())
+	}
+}
+
+// TestCoordinateInXMPIsMaskedWithoutBreakingTheXML covers the second consequence of mapping the
+// packet: the coordinate scrub now reaches XML character data.
+//
+// isobmff.Coordinates matches an ISO 6709 string by SHAPE wherever it appears, so it finds one
+// inside an exif:GPSLocation element and returns a 26-byte span. The scrub fills a coordinate
+// payload with NUL, which is correct for a binary ©xyz atom — '*' bytes are a valid fixed-point
+// number — but XML 1.0 forbids NUL entirely, so zero-filling there produced a packet no conformant
+// parser accepts.
+//
+// Both properties are asserted, because either alone is satisfiable by the wrong fix: the position
+// must be GONE, and the packet must still be parseable.
+func TestCoordinateInXMPIsMaskedWithoutBreakingTheXML(t *testing.T) {
+	const pos = "+36.3506-082.6985+447.403/"
+	dir := t.TempDir()
+
+	// The position lives in the XMP packet AND in a ©xyz atom, so the reported value is located in
+	// the binary home (which is what makes the scrub run at all) and the packet copy is collateral.
+	src := mp4WithXMP(t, dir, "gps.mp4",
+		`<exif:GPSLocation>`+pos+`</exif:GPSLocation>`,
+		atom("\xa9xyz", []byte(pos)))
+
+	before := mustRead(t, src)
+	if n := bytes.Count(before, []byte(pos)); n != 2 {
+		t.Fatalf("fixture holds the position %d time(s), want 2", n)
+	}
+
+	out, _, err := redact(t, src, []detector.Match{match("GPS", "36.350600, -82.698500")})
+	if err != nil {
+		t.Fatalf("redaction refused: %v", err)
+	}
+	after := mustRead(t, out)
+
+	if bytes.Contains(after, []byte(pos)) {
+		t.Error("the ISO 6709 position survives in the redacted file")
+	}
+
+	// Locate the packet in the output and assert it is still valid XML. A NUL anywhere in it is
+	// enough to make it invalid, and is the specific corruption this guards.
+	start := bytes.Index(after, []byte("<?xpacket"))
+	end := bytes.Index(after, []byte(`<?xpacket end="w"?>`))
+	if start < 0 || end < 0 {
+		t.Fatal("the XMP packet is not in the output, so this test proves nothing")
+	}
+	packet := after[start : end+len(`<?xpacket end="w"?>`)]
+	if i := bytes.IndexByte(packet, 0); i >= 0 {
+		t.Errorf("a NUL byte was written into the XMP packet at offset %d of it; XML 1.0 forbids NUL, "+
+			"so the packet is no longer parseable", i)
+	}
+	if !bytes.Contains(packet, []byte("<exif:GPSLocation>")) {
+		t.Error("the element structure around the coordinate was destroyed; only the value may change")
+	}
+}
