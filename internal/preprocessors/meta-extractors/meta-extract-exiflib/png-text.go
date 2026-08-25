@@ -110,6 +110,11 @@ func extractPNGText(r io.ReaderAt, size int64, tags map[string]string) (exifPayl
 				break
 			}
 			key, text, ok := parsePNGText(kind, payload)
+			if ok {
+				// Before the caps, so the budget counts what is actually scanned, and so a
+				// truncation can never cut a `%XX` sequence in half.
+				text = decodePercentEncoded(text)
+			}
 			if ok && total < maxPNGTextTotalBytes {
 				if len(text) > maxPNGTextTotalBytes-total {
 					text = text[:maxPNGTextTotalBytes-total]
@@ -243,4 +248,119 @@ func isASCII(b []byte) bool {
 // thing that happens, and the bytes are what the scan will actually be reading.
 func isJPEG(b []byte) bool {
 	return len(b) >= 2 && b[0] == 0xFF && b[1] == 0xD8
+}
+
+// decodePercentEncoded resolves a percent-encoded chunk payload, and returns s unchanged when it is
+// not one.
+//
+// A tool that stores a document inside a PNG text chunk commonly percent-encodes it. draw.io does:
+// it writes the diagram source into a `tEXt` chunk keyed `mxfile`, run through
+// encodeURIComponent. Scanning that as-is costs recall AND precision at the same time, which is
+// unusual and is why decoding is the right fix rather than a trade:
+//
+//	stored in the chunk : Employee%20SSN%20449-87-4100     -> 0 findings
+//	the same value      : Employee SSN 449-87-4100         -> SSN
+//
+// `%20` leaves characters glued to the value so no pattern matches, and only reported findings reach
+// the redactor, so that is a silent miss. In the other direction, the encoded form is itself a
+// false-positive generator: measured across 12 real draw.io PNGs on a macOS host, one 1.44MB payload
+// produced 426 findings -- 425 RECOVERY_CODES at MEDIUM 65/75 from percent-encoded XML fragments
+// (`%3C`, `%22`, hex-ish runs) read as codes, plus INTELLECTUAL_PROPERTY at HIGH. Those sit in the
+// DEFAULT view, not the LOW band, so they crowd triage. Decoding removes that family because it is
+// made of encoding artefacts, and reveals the hidden values at the same time.
+//
+// # Why the gate is "holds a valid escape", and not the keyword or `%3C`
+//
+// Three candidate gates were MEASURED across 5,989 real PNGs on this host, 1,645 of which carry a text
+// chunk. Only 18 text chunks contain a `%` at all:
+//
+//	keyword                    has %3C     raw len   decoded len   changed by a lenient decode
+//	mxfile  (x16)              yes         various   ~25% smaller  YES
+//	XML:com.adobe.xmp (x2)     no          15544     15544         NO
+//
+// The narrowest gate -- keyword `mxfile` -- is keyed on one vendor's name and would not cover the next
+// tool that does this. The middle gate -- the presence of `%3C`/`%3E`, an encoded '<' or '>' -- was the
+// first version of this function, and it is wrong for a reason the measurement above does not show:
+// it is derived from the XML population, so it misses a payload that is percent-encoded WITHOUT
+// containing markup. `Employee%20SSN%20449-87-4100` is the exact recall example this issue was filed
+// about, and a `%3C` gate leaves it encoded and therefore unreported.
+//
+// The wide gate -- does the text hold at least one VALID `%XX` escape -- fixes that, and the
+// measurement says it is free: the two Adobe XMP packets are the only real chunks it newly considers,
+// and a lenient decode leaves them **byte-identical**, because their `%` is not followed by two hex
+// digits. So on real data the wide gate decodes exactly the 16 chunks that should be decoded.
+//
+// The residual risk is stated rather than hidden: prose containing a percent followed by two hex-ish
+// characters -- "50%2B off" -> "50+ off" -- would be altered. Nothing like it appears in 5,989 real
+// files, and the trade is deliberate: a mangled metadata string costs at most a false positive or a
+// miss in ONE chunk, whereas not decoding costs a silent miss of PII, and only reported findings reach
+// the redactor.
+//
+// # Why this is lenient rather than url.PathUnescape
+//
+// PathUnescape fails the WHOLE string on one malformed escape, and a payload that is only partly
+// encoded -- `%3C` markup beside a literal "100% width" -- would then stay entirely encoded, turning
+// a precision fix into a recall miss. This resolves every valid `%XX` and passes anything else through
+// byte-for-byte, the same contract internal/xmlref uses for the same reason. `+` is deliberately NOT
+// treated as a space: that is form encoding, not percent encoding, and a diagram's text may contain a
+// literal plus.
+//
+// Decoding strictly SHRINKS the payload (three bytes become one), so it introduces no expansion bound
+// to worry about, unlike the zlib paths above.
+func decodePercentEncoded(s string) string {
+	if !hasPercentEscape(s) {
+		return s
+	}
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); {
+		if s[i] == '%' && i+2 < len(s) {
+			hi, hiOK := unhex(s[i+1])
+			lo, loOK := unhex(s[i+2])
+			if hiOK && loOK {
+				out = append(out, hi<<4|lo)
+				i += 3
+				continue
+			}
+		}
+		out = append(out, s[i])
+		i++
+	}
+	return string(out)
+}
+
+// hasPercentEscape reports whether s holds at least one valid `%XX` escape.
+//
+// This is exactly the question "would decoding change anything", answered in a single pass with no
+// allocation, so a chunk that is not percent-encoded never pays for a copy. Keeping the gate and the
+// decoder in agreement is the point: a gate that admitted more than the decoder resolves would copy
+// for nothing, and one that admitted less would leave a value encoded and unseen.
+//
+// Both hex cases are accepted because encoders differ: Go's url.QueryEscape emits upper case, and some
+// JavaScript and Python paths emit lower.
+func hasPercentEscape(s string) bool {
+	for i := 0; i+2 < len(s); i++ {
+		if s[i] != '%' {
+			continue
+		}
+		if _, ok := unhex(s[i+1]); !ok {
+			continue
+		}
+		if _, ok := unhex(s[i+2]); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// unhex decodes one hexadecimal digit.
+func unhex(c byte) (byte, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0', true
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10, true
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10, true
+	}
+	return 0, false
 }
