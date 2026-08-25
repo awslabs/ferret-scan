@@ -86,12 +86,45 @@ why the reader inflates. Recovered text is capped at **1 MB per chunk** and **4 
 509 KB PNG can declare a `zTXt` that inflates to 512 MB (1029x), so an unbounded read would be a
 decompression bomb the scanner handed itself.
 
-Two scans are deliberately confined to JPEG: `extractIPTC` searches for the 2-byte sequence
-`1C 02` and the JFIF comment scan for the 2-byte marker `FF FE`. A given 2-byte sequence turns up
-about once every 64 KB of compressed data, so over a PNG's pixel data they find noise rather than
-metadata — measured on a 51,700-byte macOS icon, the JFIF scan emitted 51 KB of pixel bytes as a
-comment tag and the validators then reported `TWITTER` at confidence 100 from handles present nowhere
-in the image. The XMP and Photoshop scans use 9- and 13-byte markers and run everywhere.
+**One** scan is deliberately confined to JPEG: the JFIF comment scan, which looks for the 2-byte
+marker `FF FE`. A given 2-byte sequence turns up about once every 64 KB of compressed data, so over a
+PNG's pixel data it finds noise rather than metadata — measured on a 51,700-byte macOS icon it emitted
+51 KB of pixel bytes as a comment tag, and the validators then reported `TWITTER` at confidence 100
+from handles present nowhere in the image.
+
+`extractIPTC` shares that 2-byte-marker shape (`1C 02`) and is deliberately **not** gated. Gating it
+too was a first attempt that cost real recall: across a 4,000-file real-image sample it lost 41 TIFF
+findings, 40 of them false positives worth losing but one genuine — `exiftool` reports By-line
+`Jonathan Hess` on an Xcode `.tiff` that this tool reported at `PERSON_NAME` 92. Unlike the JFIF scan,
+IPTC *validates what it matches*: the record type must be one of four values and the payload
+printable. So marker length alone was the wrong discriminator; what the scan does after matching is.
+The XMP and Photoshop scans use 9- and 13-byte markers and also run everywhere.
+
+### Percent-encoded chunk payloads
+
+A tool that stores a document inside a text chunk commonly percent-encodes it — draw.io writes the
+diagram source into a `tEXt` chunk keyed `mxfile`, run through `encodeURIComponent`. Scanning that
+as-is cost recall and precision at once, so a payload holding at least one valid `%XX` escape is
+decoded before scanning ([#481](https://github.com/awslabs/ferret-scan/issues/481)):
+
+```
+stored in the chunk : Employee%20SSN%20449-87-4100     -> 0 findings
+after decoding      : Employee SSN 449-87-4100         -> SSN
+```
+
+`%20` glues characters to the value so no pattern matches it. In the other direction the encoded form
+generated false positives, because percent-encoded markup (`%3C`, `%22`) reads as codes. Measured on
+2,500 real PNGs: **526 findings → 130**, where all 425 removed were `RECOVERY_CODES` in the MEDIUM
+band and none were HIGH, while 6 genuine `IP_ADDRESS` findings at HIGH became reachable for the first
+time (dotted quads inside decoded network diagrams). 22 new LOW/MEDIUM `PHONE` false positives on a
+bare six-digit run came with them.
+
+A chunk value may legitimately contain a percent sign, so the decode is gated on the text holding a
+*valid* escape, and the decoder is lenient — it resolves every valid `%XX` and leaves anything else
+byte-for-byte alone, so one malformed escape cannot cost the whole payload. `+` is not treated as a
+space; that is form encoding. Decoding runs after inflation, so it reaches a compressed `zTXt`
+payload, and before the size caps, so the budget counts the text that is actually scanned rather than
+its encoded form.
 
 **Example Sensitive Data Detected**:
 ```
