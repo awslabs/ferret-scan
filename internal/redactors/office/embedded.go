@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/embedded"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/xmlref"
 )
 
 // embeddedChild is a file found inside this document, held for redaction in its
@@ -273,16 +274,49 @@ func scanForValues(content []byte, values [][]byte, depth int, stopAtFirst bool,
 	var found []string
 	seen := make(map[string]struct{}, len(values))
 
+	// The part's bytes as they are, plus -- only when they could hold an XML character
+	// reference -- the same bytes with references resolved.
+	//
+	// Without the second view this scan is BLIND to a value the part spells differently
+	// from the way it was reported, and because the caller uses "nothing found" as
+	// permission to SKIP the part, that blindness is a leak rather than a missed
+	// optimisation. Measured on a .docx carrying word/embeddings/inner.docx whose
+	// document.xml held `Patient SSN 449-87-410&#48;`: reported as one SSN finding, then
+	// skipped here, and the value came back out of the "redacted" file via ElementTree at
+	// exit 0 with no warning. The same value spelled plainly, and the same escaped value at
+	// TOP level, both redacted correctly -- so the redactor was always capable and this gate
+	// was the whole defect (#475).
+	//
+	// Decoding rather than enumerating spellings, for the reason internal/xmlref documents:
+	// '&' introduces character references, so any character at any offset can be respelled
+	// in decimal or hex with arbitrary leading zeros, and the spellings are combinatorial.
+	// embedded.XMLEscapeVariants still contributes the five predefined entities to the value
+	// set, which covers the opposite direction -- a value REPORTED in its escaped form.
+	//
+	// Cost: one decode per part, not per value, so the work stays linear in part size. The
+	// length test is what keeps a part with no reference from being scanned twice, and
+	// xmlref.Decode returns its input unchanged, without copying, when there is no '&' at
+	// all -- which is the overwhelming majority of embedded parts, since most are binary.
+	// Any successful decode strictly shortens the buffer, a reference being at least four
+	// bytes, so a length change is a sound test for "something was resolved".
+	views := [][]byte{content}
+	if decoded := xmlref.Decode(content); len(decoded) != len(content) {
+		views = append(views, decoded)
+	}
+
 	for _, v := range values {
 		if _, dup := seen[string(v)]; dup {
 			continue
 		}
-		if bytes.Contains(content, v) {
-			seen[string(v)] = struct{}{}
-			found = append(found, string(v))
-			if stopAtFirst {
-				return found
+		for _, view := range views {
+			if bytes.Contains(view, v) {
+				seen[string(v)] = struct{}{}
+				found = append(found, string(v))
+				break
 			}
+		}
+		if stopAtFirst && len(found) > 0 {
+			return found
 		}
 	}
 
