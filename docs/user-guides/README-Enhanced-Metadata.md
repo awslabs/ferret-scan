@@ -70,6 +70,28 @@ When using the `--debug` flag, you'll see file type filtering decisions:
 - **Device Information**: Camera make/model, serial numbers, device IDs
 - **Creator Information**: Artist, creator, copyright holder
 - **Technical Data**: Software paths, user comments, EXIF data
+- **PNG text chunks**: `tEXt`, `zTXt` and `iTXt`, reported under `PNG_<keyword>` keys, plus a real
+  EXIF block carried in an `eXIf` chunk
+
+**Sources, and why more than one matters**: EXIF is one source, not the only one. A PNG normally has
+no EXIF at all and keeps its descriptive text in chunks; a JPEG may carry XMP with no EXIF block.
+Both were previously reported clean, because extraction stopped as soon as the EXIF decode failed
+([#456](https://github.com/awslabs/ferret-scan/issues/456)). Measured: a 210-byte PNG with an SSN in
+`tEXt`, a phone in `iTXt` and a card in a **compressed** `zTXt` gave 0 findings, and a 426-byte JPEG
+with only an XMP packet gave 0. A missing EXIF block is now recorded rather than fatal, so XMP, IPTC,
+a JFIF comment, Photoshop resources and PNG chunks are all consulted.
+
+`zTXt` and `iTXt` may be zlib-compressed, which is why a byte scan could never have found them and
+why the reader inflates. Recovered text is capped at **1 MB per chunk** and **4 MB per image**: a
+509 KB PNG can declare a `zTXt` that inflates to 512 MB (1029x), so an unbounded read would be a
+decompression bomb the scanner handed itself.
+
+Two scans are deliberately confined to JPEG: `extractIPTC` searches for the 2-byte sequence
+`1C 02` and the JFIF comment scan for the 2-byte marker `FF FE`. A given 2-byte sequence turns up
+about once every 64 KB of compressed data, so over a PNG's pixel data they find noise rather than
+metadata — measured on a 51,700-byte macOS icon, the JFIF scan emitted 51 KB of pixel bytes as a
+comment tag and the validators then reported `TWITTER` at confidence 100 from handles present nowhere
+in the image. The XMP and Photoshop scans use 9- and 13-byte markers and run everywhere.
 
 **Example Sensitive Data Detected**:
 ```

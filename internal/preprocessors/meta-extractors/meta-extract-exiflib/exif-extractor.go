@@ -6,6 +6,7 @@ package metaextractexiflib
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -43,37 +44,114 @@ func ExtractExif(filePath string) (*ExifData, error) {
 	}
 	defer f.Close()
 
-	// Decode EXIF data
-	x, err := exif.Decode(f)
-	if err != nil {
-		return nil, fmt.Errorf("no EXIF data found: %v", err)
-	}
-
-	// Create result structure
 	result := &ExifData{
 		FilePath: filePath,
 		Tags:     make(map[string]string),
 	}
 
-	// Create a custom walker to extract all available tags
-	walker := &exifWalker{tags: result.Tags}
-	x.Walk(walker)
+	// EXIF is ONE source of image metadata, and its absence is not the absence of metadata.
+	//
+	// This used to return here the moment exif.Decode failed, which made every source below
+	// unreachable for any image without EXIF — including the four raw scans that were already
+	// written and already worked. Measured (#456): a 426-byte JPEG carrying an XMP APP1 and no Exif
+	// APP1 produced 0 findings, while calling the existing extractXMP on those same bytes returns
+	// `XMP_Creator = Employee SSN 449-87-4100`. The code to catch that value was present and simply
+	// never ran. A PNG, which keeps its text in chunks and normally has no EXIF at all, was skipped
+	// the same way.
+	//
+	// So a decode failure is now recorded rather than fatal, and the error is only returned at the
+	// end if nothing else found anything either — which keeps the contract the caller depends on for
+	// genuinely empty or invalid files. See extractImageMetadataWithFallback, which branches on this
+	// message.
+	x, exifErr := exif.Decode(f)
+	if exifErr == nil {
+		walker := &exifWalker{tags: result.Tags}
+		x.Walk(walker)
+	}
 
 	// Extract IPTC, XMP, and other metadata from raw file data
-	f.Seek(0, 0)
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("error rewinding file: %v", err)
+	}
 	rawData := make([]byte, 1024*1024) // Read first 1MB
 	n, _ := f.Read(rawData)
 	if n > 0 {
+		// Two of these four are safe to run over ANY bytes and two are not, and the discriminator is
+		// the length of the marker they search for.
+		//
+		// extractIPTC looks for the 2-byte sequence {0x1C, 0x02} and extractJFIFComment for the
+		// 2-byte JPEG comment marker 0xFFFE. In compressed data a given 2-byte sequence appears about
+		// once every 64KB, so running them over a PNG's IDAT does not find metadata, it finds noise —
+		// and the noise becomes a tag, which becomes scannable text. Measured on
+		// /System/Library/CoreServices/Dock.app/Contents/Resources/url@2x.png, a 51,700-byte icon:
+		// extractJFIFComment emitted 51KB of compressed pixel data as JFIF_Comment, and the
+		// validators then reported TWITTER at confidence 100 three times over from handles like
+		// "@aE" and "@wVKt" that exist nowhere in the image's metadata. Across 1,200 real images that
+		// accounted for 180 of 853 findings.
+		//
+		// extractXMP searches for "<?xpacket" (9 bytes) and extractPhotoshopResources for
+		// "Photoshop 3.0" (13 bytes). Those cannot plausibly collide, and XMP in particular is worth
+		// running everywhere: a PNG carries it in an iTXt chunk, which is exactly where this found the
+		// value that #456 is about.
+		//
+		// So the two short-marker scans are gated to the container that DEFINES them, and the two
+		// long-marker scans keep running everywhere. This gate is new; before this change the whole
+		// block was unreachable for a file without EXIF, which is why the noise had never been seen.
+		// Only the JFIF comment scan is gated, and the gate is narrower than my first attempt for a
+		// measured reason. Both markers are 2 bytes, but only one of them false-fires in practice:
+		// across a 4,000-file real-image sample, gating extractIPTC as well cost 41 findings on TIFFs
+		// and one of them was REAL — exiftool confirms By-line "Jonathan Hess" on an Xcode .tiff that
+		// this tool reported at PERSON_NAME 92 and would have stopped reporting. IPTC lives in TIFF as
+		// well as JPEG, so gating it to JPEG discards a whole format's worth of genuine records to
+		// avoid a collision that did not occur.
+		//
+		// extractJFIFComment is different: its marker sits in front of a 2-byte LENGTH it then trusts,
+		// so a chance hit in compressed data yields a large payload rather than nothing. Measured on a
+		// 51,700-byte macOS icon it emitted 51KB of pixel data as a comment tag.
+		if isJPEG(rawData[:n]) {
+			extractJFIFComment(rawData[:n], result.Tags)
+		}
 		extractIPTC(rawData[:n], result.Tags)
 		extractXMP(rawData[:n], result.Tags)
-		extractJFIFComment(rawData[:n], result.Tags)
 		extractPhotoshopResources(rawData[:n], result.Tags)
+
+		// PNG text lives in chunks, which no byte scan can reach: zTXt is deflated. Dispatched on
+		// the SIGNATURE rather than the extension, because an extension is the producer's claim.
+		if IsPNG(rawData[:n]) {
+			size := int64(0)
+			if st, serr := f.Stat(); serr == nil {
+				size = st.Size()
+			}
+			if payload := extractPNGText(f, size, result.Tags); len(payload) > 0 && x == nil {
+				// A PNG may carry a real EXIF block in an eXIf chunk, which is the same TIFF stream
+				// the decoder above already reads — it just never sees it, because exif.Decode looks
+				// for a JPEG APP1 marker. Only consulted when the file-level decode found nothing,
+				// so a JPEG's own EXIF is never overridden.
+				if px, perr := exif.Decode(bytes.NewReader(payload)); perr == nil {
+					px.Walk(&exifWalker{tags: result.Tags})
+					x = px
+				}
+			}
+		}
 	}
+
+	// Whether anything but the filesystem facts below was found. Counted HERE, before those are
+	// added, because FileSize and FileModTime are always present and would make the count useless.
+	foundMetadata := len(result.Tags) > 0
 
 	// Extract file system metadata
 	if stat, err := os.Stat(filePath); err == nil {
 		result.Tags["FileSize"] = fmt.Sprintf("%d bytes", stat.Size())
 		result.Tags["FileModTime"] = stat.ModTime().Format("2006:01:02 15:04:05")
+	}
+
+	if x == nil {
+		// No EXIF at all. Return what the other sources found, or the original decode error if they
+		// found nothing — which is the message extractImageMetadataWithFallback branches on.
+		if !foundMetadata {
+			return nil, fmt.Errorf("no EXIF data found: %v", exifErr)
+		}
+		return result, nil
 	}
 
 	// Calculate GPS coordinates
