@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
+
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
@@ -86,6 +88,18 @@ func sortDiagnostics(d []FileDiagnostic) {
 type FileDiagnostic struct {
 	FilePath string `json:"file_path"`
 	Reason   string `json:"reason"`
+
+	// Cause is why the file was not examined, as the PRODUCER knew it.
+	//
+	// Reason stays: it is the specific detail an operator needs ("permission denied", "the moov box
+	// is N bytes and only the first 33554432 were parsed"). Cause is the coarse classification that
+	// every consumer previously recovered by pattern-matching that detail, which is how a size
+	// refusal came to be reported as an unsupported type and how a partly-scanned file came to be
+	// described as having no text at all.
+	//
+	// Zero value is CauseUnset, not CauseUnreadable, so a producer that has not been updated behaves
+	// exactly as before: the consumer falls back to classifying the prose.
+	Cause coverage.Cause `json:"cause,omitempty"`
 }
 
 // NewParallelProcessor creates a new parallel processor
