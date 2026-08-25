@@ -26,6 +26,31 @@ one `.docx` whose body could not be extracted, the in-band signal on **stdout** 
 The human-readable report was always produced for the machine formats — it went to
 **stderr**, which pipelines routinely discard.
 
+### The library and the web UI
+
+Two consumers derived their own, poorer view of the same taxonomy, so the same scan was described
+differently depending on where you read it:
+
+| consumer | before | now |
+|---|---|---|
+| `pkg/scan` | `Incomplete bool` + one prose line | `Result.NotExamined[]` with `{Path, Cause, Detail}` ([#391](https://github.com/awslabs/ferret-scan/issues/391)) |
+| web UI `/scan` | `incomplete` + `incomplete_reason` | `not_examined[]` with `{path, cause, detail}` ([#417](https://github.com/awslabs/ferret-scan/issues/417)) |
+
+`Cause` is one of the six strings in the table below, spelled **identically** to what the CLI prints, so
+a phrase carried from the browser or a library caller into a grep over CI logs matches. It is empty when
+no producer stated a cause, which a consumer should present as unknown rather than guessing one — the
+prose classifier it would otherwise fall back to defaults to `coverage cut short`, which claims a file
+was partly scanned when it may not have been read at all.
+
+Both fields are omitted when a scan is complete, so a clean scan's output is unchanged.
+
+Why they diverged in the first place: a coverage-loss record carried only prose, and each consumer
+recovered the cause by pattern-matching English. Measured against the real producer strings, **8 of 14**
+came back with a cause other than the one the producer meant — six of them from a classifier's default
+arm. The producer now states the cause ([#432](https://github.com/awslabs/ferret-scan/issues/432),
+[#412](https://github.com/awslabs/ferret-scan/issues/412)) and the classifiers remain only as a fallback
+for records that carry none.
+
 ## The six causes
 
 | cause | meaning | were findings possible? |
