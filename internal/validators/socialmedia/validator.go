@@ -5029,17 +5029,36 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 
 	usernameLower := strings.ToLower(username)
 	for _, pattern := range docPatterns {
-		if usernameLower == pattern {
-			// The annotation keyword comes from the tool-owned docPatterns list
-			// above, not from the document, so naming it discloses nothing. The
-			// match and the line must still be masked (BSC4).
-			if v.observer != nil && v.observer.Debug() != nil {
-				v.observer.Debug().LogDetail("socialmedia",
-					fmt.Sprintf("Filtered documentation annotation %q: handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
-						pattern, len(match), len(line)))
-			}
-			return true
+		if usernameLower != pattern {
+			continue
 		}
+		// The word alone is not evidence. Every one of these 34 is also a plausible
+		// account name, and without a position check this branch suppressed the handle
+		// in EVERY file type and every context -- including unambiguous prose, where a
+		// bare "@author" can only be somebody's account (#484).
+		//
+		// Measured before this gate, two prose lines per word in a .txt file:
+		// 0 of 16 reported, while four identically-shaped controls whose names are not
+		// on the list reported 4 of 4. A suppressed finding is a cleartext leak, because
+		// only reported findings reach the redactor, and the suppression was silent --
+		// "No matches found.", exit 0, and no redacted file at all.
+		//
+		// A recall hunt confirmed the cost is real rather than theoretical: `@yields`,
+		// one of the words a proposed extension to this list would have added, is a
+		// GitHub account credited in the `debug` package's CHANGELOG in the same
+		// credit-line shape as roughly twenty other real handles in that same file.
+		if !isAtAnnotationPosition(line, matchOffset) {
+			continue
+		}
+		// The annotation keyword comes from the tool-owned docPatterns list
+		// above, not from the document, so naming it discloses nothing. The
+		// match and the line must still be masked (BSC4).
+		if v.observer != nil && v.observer.Debug() != nil {
+			v.observer.Debug().LogDetail("socialmedia",
+				fmt.Sprintf("Filtered documentation annotation %q: handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",
+					pattern, len(match), len(line)))
+		}
+		return true
 	}
 
 	// Code comment context (// @something or /* @something).
