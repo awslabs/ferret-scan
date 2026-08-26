@@ -73,6 +73,14 @@ const (
 	// An UNPROCESSABLE type refused for size gets no entry here at all; it is a
 	// genuine skip, because no finding was ever possible from it.
 	causeTooLarge
+	// causeNotRegular is a directory entry that is not a regular file: a named pipe, a
+	// socket, a device node, or on Windows a junction, mount point or other
+	// non-symlink reparse point.
+	//
+	// Distinct from causeNotFollowed, which is about a LINK the walk declined — here
+	// there is no link, the entry IS the object, and rendering "symlink not followed"
+	// for a FIFO would be a true disclosure under a false heading. See #485.
+	causeNotRegular
 )
 
 func (c unscannedCause) String() string {
@@ -92,6 +100,8 @@ func (c unscannedCause) String() string {
 		return "symlink not followed"
 	case causeTooLarge:
 		return "file too large to scan"
+	case causeNotRegular:
+		return "not a regular file"
 	default:
 		return "unknown"
 	}
@@ -119,6 +129,8 @@ func fromProducerCause(c coverage.Cause) (unscannedCause, bool) {
 		return causeNotFollowed, true
 	case coverage.CauseTooLarge:
 		return causeTooLarge, true
+	case coverage.CauseNotRegular:
+		return causeNotRegular, true
 	default:
 		// CauseUnset, or a member added to coverage.Cause and not mapped here. Both mean "do not
 		// trust this", so the caller classifies the prose exactly as it did before.
@@ -169,6 +181,8 @@ func toFormatterNotExamined(entries []unscannedEntry) []formatters.NotExaminedFi
 			cause = formatters.NotExaminedNotFollowed
 		case causeTooLarge:
 			cause = formatters.NotExaminedTooLarge
+		case causeNotRegular:
+			cause = formatters.NotExaminedNotRegular
 		default:
 			cause = formatters.NotExaminedUnreadable
 		}

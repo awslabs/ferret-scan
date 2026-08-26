@@ -26,11 +26,15 @@ package coverage
 //   - pkg/scan gave a library consumer one bool and a prose string where the CLI had six causes
 //     (#391), and the web UI re-derived its own partial view of the same thing (#417).
 //
-// The taxonomy itself is not new and is not changed here. These are the same six causes
+// The taxonomy started as the same six causes
 // cmd/unscanned_report.go already defined, with the same user-facing strings — those strings are a
 // tested contract (`cannot read` alone is asserted in ten test files) and a documented one. What
-// changes is WHERE a cause comes from: the producer states it, instead of every consumer guessing it
-// back out of English.
+// changed first was WHERE a cause comes from: the producer states it, instead of every consumer
+// guessing it back out of English.
+//
+// A seventh, CauseNotRegular, was added for #485: a non-regular directory entry was dropped from the
+// walk with no record at all, so a directory holding a named pipe was indistinguishable from one
+// without it.
 
 // Cause is why a file was not examined, as the producer of the record knew it.
 type Cause int
@@ -61,6 +65,16 @@ const (
 	// otherwise have processed. An unprocessable type refused for size is a genuine skip and gets no
 	// record at all.
 	CauseTooLarge
+	// CauseNotRegular: the directory entry itself is not a regular file — a named pipe, a socket, a
+	// device node, or on Windows a junction, mount point or other non-symlink reparse point.
+	//
+	// Distinct from CauseNotFollowed, which is about a LINK the walk declined: here there is no link,
+	// the entry IS the object. Reusing that cause would render "symlink not followed" for a FIFO, and
+	// a true disclosure under a false heading is only half a fix. Distinct from CauseUnreadable for
+	// the reason CauseNotFollowed is: the bytes were not unreadable, the tool declined to read them.
+	//
+	// Appended rather than inserted so the existing values keep their numbers.
+	CauseNotRegular
 )
 
 // String renders the cause as the operator sees it.
@@ -82,6 +96,8 @@ func (c Cause) String() string {
 		return "symlink not followed"
 	case CauseTooLarge:
 		return "file too large to scan"
+	case CauseNotRegular:
+		return "not a regular file"
 	default:
 		return "unknown"
 	}

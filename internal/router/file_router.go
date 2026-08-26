@@ -143,7 +143,7 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) 
 	// has already vetted, so each of the seven no longer needs its own copy of the
 	// rule — only one of them ever had one.
 	if !info.Mode().IsRegular() {
-		return false, fmt.Sprintf("%s: not a regular file (%s)", ReasonUnreadable, describeFileMode(info.Mode()))
+		return false, fmt.Sprintf("%s: not a regular file (%s)", ReasonUnreadable, DescribeFileMode(info.Mode()))
 	}
 
 	if info.Size() > MaxFileSize {
@@ -216,11 +216,19 @@ func CanProcessType(filePath string, enablePreprocessors bool) bool {
 	return isText
 }
 
-// describeFileMode names the non-regular kind a path turned out to be, so the skip
+// DescribeFileMode names the non-regular kind a path turned out to be, so the skip
 // reason tells the user what they actually pointed at rather than only that it was
 // rejected. Directories are included because a caller can hand a directory path to a
 // single-file scan.
-func describeFileMode(m os.FileMode) string {
+//
+// Exported because the directory WALK needs the same words for the same decision
+// (#485). It previously dropped a non-regular entry with no record at all, and giving
+// cmd its own copy of this switch is how the two would drift into describing the same
+// object differently. The partition is exhaustive by construction rather than by
+// enumeration: os.FileMode.IsRegular() is true iff no type bit is set, so an object type
+// Go learns to report later reaches the default arm and is NAMED rather than dropped --
+// which is also what handles a Windows junction, reported as ModeIrregular.
+func DescribeFileMode(m os.FileMode) string {
 	switch {
 	case m.IsDir():
 		return "directory"

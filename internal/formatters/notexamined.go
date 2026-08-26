@@ -89,6 +89,17 @@ const (
 	// Its type WAS one the tool would have processed; an unprocessable type refused
 	// for size is not reported at all, because nobody expected a finding from it.
 	NotExaminedTooLarge
+
+	// NotExaminedNotRegular — the directory entry is not a regular file: a named pipe,
+	// a socket, a device node, or on Windows a junction, mount point or other
+	// non-symlink reparse point.
+	//
+	// Mapped here explicitly rather than left to the default arm. The comment on
+	// NotExaminedNotFollowed above records what happens otherwise: that cause existed
+	// on the cmd side since #326 but was never mapped here, so every machine format
+	// said "cannot read" for a refused symlink while the text report said "symlink not
+	// followed". This is the same trap one cause later. See #485.
+	NotExaminedNotRegular
 )
 
 // String returns the operator-facing cause label.
@@ -114,6 +125,8 @@ func (c NotExaminedCause) String() string {
 		return "symlink not followed"
 	case NotExaminedTooLarge:
 		return "file too large to scan"
+	case NotExaminedNotRegular:
+		return "not a regular file"
 	default:
 		return "unknown"
 	}
