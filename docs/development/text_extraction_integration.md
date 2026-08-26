@@ -32,7 +32,7 @@ The text extraction preprocessors allow Ferret-scan to analyze the content of do
 ### Supported File Types
 
 - **PDF Documents**: `.pdf`
-- **Microsoft Office**: `.docx`, `.xlsx`, `.pptx`
+- **Microsoft Office**: `.docx`, `.xlsx`, `.pptx`, and the macro-enabled forms `.docm`, `.xlsm`, `.pptm`
 - **OpenDocument**: `.odt`, `.ods`, `.odp`
 
 ## Configuration

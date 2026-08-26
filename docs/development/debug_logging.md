@@ -117,7 +117,7 @@ When debug mode is enabled, you'll see detailed information about:
 
 ### 2. Preprocessor Registration
 ```
-[DEBUG] Text extraction preprocessor registered for extensions: [.pdf .docx .xlsx .pptx .odt .ods .odp]
+[DEBUG] Text extraction preprocessor registered for extensions: [.pdf .docx .xlsx .pptx .docm .xlsm .pptm .odt .ods .odp]
 ```
 
 ### 3. File Processing Flow
@@ -265,8 +265,8 @@ The debug output shows how many matches each validator found, helping you unders
 If you see `Should preprocess: false` for files you expect to be preprocessed:
 1. Check that `enable_preprocessors: true` in your config
 2. Verify the file extension is supported:
-   - **Documents (Text Extraction)**: PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP
-   - **Documents (Metadata Extraction)**: PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP
+   - **Documents (Text Extraction)**: PDF, DOCX, XLSX, PPTX, DOCM, XLSM, PPTM, ODT, ODS, ODP
+   - **Documents (Metadata Extraction)**: PDF, DOCX, XLSX, PPTX, DOCM, XLSM, PPTM, ODT, ODS, ODP
    - **Images (Metadata Extraction)**: JPG, JPEG, TIFF, TIF, PNG, GIF, BMP, WEBP
 3. For document text extraction: Ensure the text extraction preprocessor is enabled in your config
 4. For metadata extraction: The metadata preprocessor is automatically enabled when preprocessors are enabled

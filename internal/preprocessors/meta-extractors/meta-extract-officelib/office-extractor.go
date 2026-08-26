@@ -311,6 +311,17 @@ func ExtractMetadata(filePath string) (*Metadata, error) {
 	case ".pptx":
 		metadata.MimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 		return extractOfficeOpenXMLMetadata(filePath, metadata)
+	// Macro-enabled OOXML: the same container and the same docProps parts, so the same
+	// reader. Only the declared MIME type differs (#497).
+	case ".docm":
+		metadata.MimeType = "application/vnd.ms-word.document.macroEnabled.12"
+		return extractOfficeOpenXMLMetadata(filePath, metadata)
+	case ".xlsm":
+		metadata.MimeType = "application/vnd.ms-excel.sheet.macroEnabled.12"
+		return extractOfficeOpenXMLMetadata(filePath, metadata)
+	case ".pptm":
+		metadata.MimeType = "application/vnd.ms-powerpoint.presentation.macroEnabled.12"
+		return extractOfficeOpenXMLMetadata(filePath, metadata)
 	case ".doc":
 		metadata.MimeType = "application/msword"
 		return extractLegacyOfficeMetadataOnly(filePath, metadata)
@@ -439,11 +450,11 @@ func extractOfficeOpenXMLMetadata(filePath string, metadata *Metadata) (*Metadat
 	// Extract document-specific metadata
 	ext := strings.ToLower(filepath.Ext(filePath))
 	switch ext {
-	case ".docx":
+	case ".docx", ".docm":
 		extractWordMetadata(reader, metadata)
-	case ".xlsx":
+	case ".xlsx", ".xlsm":
 		extractExcelMetadata(reader, metadata)
-	case ".pptx":
+	case ".pptx", ".pptm":
 		extractPowerPointMetadata(reader, metadata)
 	}
 

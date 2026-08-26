@@ -133,7 +133,13 @@ func (or *OfficeRedactor) GetName() string {
 
 // GetSupportedTypes returns the file types this redactor can handle
 func (or *OfficeRedactor) GetSupportedTypes() []string {
-	return []string{"docx", ".docx", "xlsx", ".xlsx", "pptx", ".pptx"}
+	// The macro-enabled forms are included because redactors/manager.go already routes
+	// them here, and this list disagreeing with that routing is how a caller was told a
+	// type was unsupported by the very redactor it had been handed to (#497).
+	return []string{
+		"docx", ".docx", "xlsx", ".xlsx", "pptx", ".pptx",
+		"docm", ".docm", "xlsm", ".xlsm", "pptm", ".pptm",
+	}
 }
 
 // GetSupportedStrategies returns the redaction strategies this redactor supports
@@ -285,11 +291,11 @@ func (or *OfficeRedactor) detectDocumentType(filePath string) (OfficeDocumentTyp
 	// First, try to detect by file extension
 	ext := strings.ToLower(filepath.Ext(filePath))
 	switch ext {
-	case ".docx":
+	case ".docx", ".docm":
 		return DocumentTypeDOCX, nil
-	case ".xlsx":
+	case ".xlsx", ".xlsm":
 		return DocumentTypeXLSX, nil
-	case ".pptx":
+	case ".pptx", ".pptm":
 		return DocumentTypePPTX, nil
 	}
 

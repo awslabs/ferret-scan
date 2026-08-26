@@ -78,7 +78,7 @@ If you prefer to run the components separately:
 
 The web UI supports the same file types as the CLI version:
 - **Text files**: .txt, .log, .csv, .json, .xml, .yaml, .yml, .ini, .conf, .config, .cfg, .properties, .env
-- **Documents**: PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), OpenDocument (.odt, .ods, .odp)
+- **Documents**: PDF, Word (.docx, .docm), Excel (.xlsx, .xlsm), PowerPoint (.pptx, .pptm), OpenDocument (.odt, .ods, .odp)
 - **Images**: JPEG, PNG, GIF, BMP, TIFF, WebP (metadata extraction)
 - **Audio**: MP3, WAV, M4A, FLAC, OGG (metadata extraction)
 - **Video**: MP4, MOV, AVI, MKV, WMV (metadata extraction)
