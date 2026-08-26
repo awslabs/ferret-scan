@@ -11,8 +11,7 @@ This document provides a comprehensive reference for all file size limits, proce
 | **Web UI Upload** | 100MB | No | Per-file decompression-bomb guard (`internal/web/server.go`); folder uploads have no count limit |
 | **CLI, every file type** | 100MB | No | `router.MaxFileSize`. File discovery derives its own limit from that same constant, so the two gates cannot disagree |
 | **Text Files** | 100MB | No | Plaintext preprocessor limit |
-| **Text Extraction** | 10MB | No | Per-entry `io.LimitReader` during document preprocessing |
-| **Theoretical Maximum** | ~214GB | No | Int32 overflow protection |
+| **Text Extraction** | 10MB | No | Per-entry `io.LimitReader` during document preprocessing (`officelib.MaxXMLSize`) |
 
 **100MB is the effective limit for every file type, including audio and video.** Some
 extractors carry a higher ceiling of their own — the video metadata extractor and the media
@@ -119,35 +118,80 @@ by either number. `MaxDepth` bounds the depth factor; nothing bounds the fan-out
 
 ## Processing and Performance Limits
 
-| Component | Limit | Type | Configurable | Notes |
-|-----------|-------|------|--------------|-------|
-| **Maximum Workers** | 32 | Performance | Yes | Regardless of CPU count |
-| **Minimum Workers** | 2 | Performance | Yes | Always maintained |
-| **Memory Threshold** | 1GB | Performance | Yes | Memory pressure detection |
-| **Large File Threshold** | 250MB | Performance | Yes | Reduces worker count |
-| **Small File Threshold** | 10MB | Performance | Yes | Allows more workers |
-| **Chunk Size** | 10MB | Performance | Yes | Streaming processor default |
-| **Chunk Overlap** | 1KB | Performance | Yes | Between chunks |
+| Component | Limit | Configurable | Notes |
+|-----------|-------|--------------|-------|
+| **File workers** | `min(NumCPU, 8)` | No | `parallel.FileWorkers()`. Derived from the CPU count; the 8 is `parallel.MaxFileWorkers` |
+| **Concurrent validator invocations** | `GOMAXPROCS` | Via the `GOMAXPROCS` environment variable | `execguard.DefaultLimiter`, sized once at process start. Deliberately *not* capped at 8: the worker pool bounds I/O breadth, this bounds CPU-bound validation depth |
+| **Live extracted bytes** | no cap by default | Yes — `--max-live-bytes` | Bounds total extracted content held across concurrently scanned files. Off unless the flag is given |
+| **XML parse time, per Office part** | 30s | No | `officelib.XMLParseTimeout` |
+
+There is **no adaptive worker scaling**: the pool size is fixed for the life of the process, no
+limit reacts to memory pressure or to file size, and no scan is chunked. The worker count has no
+flag, config key or environment-variable input — the only performance lever an operator has is
+`--max-live-bytes`, and the only way to change the rest is to edit the constants and rebuild.
+
+> **Corrected 2026-08.** Every row of this table previously described the adaptive pool that
+> `internal/parallel/resource_monitor.go` and `internal/preprocessors/streaming_processor.go`
+> configured — Maximum Workers 32, Minimum Workers 2, a 1GB memory-pressure threshold, 250MB/10MB
+> file-size worker scaling, and a 10MB/1KB chunk size and overlap, all marked configurable. That
+> stack was never wired into any entry point and was deleted as dead code (`8cf13a6`, `00547f7`),
+> and its memory-pressure signal was mathematically unreachable even before removal. The rows
+> dated from the project's first commit, so this table never described shipped behaviour.
+> `parallel.MaxFileWorkers` is now named rather than an inline literal, and a test reads this
+> document, so the number above cannot drift from the code again.
 
 ## Common Error Messages
 
-| Error Message | Cause | Solution |
-|---------------|-------|----------|
-| `File too large: ... bytes (max: 104857600 bytes)` | Web UI / CLI file > 100 MB | Reduce file size or split into chunks |
-| `File too large (max: 100MB)` | CLI file exceeds the 100MB limit | Split the file, or extract the metadata-bearing part and scan that |
-| `File too large: chunk offset exceeds int32 maximum` | File exceeds ~214GB | Split file into smaller parts |
-| `System under memory pressure` | Insufficient memory | Reduce worker count or batch size |
+Four surfaces refuse an oversize file, each with its own wording. All four mean the same thing —
+the file is over `router.MaxFileSize` (100MB) — so the wording tells you *which gate* stopped it,
+not which limit it hit.
+
+| Error Message | Emitted by | Solution |
+|---------------|------------|----------|
+| `file too large (max size: 100MB)` | CLI file discovery (`cmd/main.go`) | Split the file, or extract the metadata-bearing part and scan that |
+| `File too large (max: 100MB)` | The file router (`internal/router/file_router.go`) | As above |
+| `file too large to scan (max size: 100MB)` | Web UI upload (`internal/web/server.go`) | As above |
+| `file too large: <n> bytes (max: 104857600 bytes)` | Plain-text preprocessor (`internal/preprocessors/plaintext_preprocessor.go`) | As above |
+| `XML content too large: <n> bytes (max: 10485760)` | An Office XML part over `officelib.MaxXMLSize` | Nothing to configure; the part itself is too large |
+
+A refusal is disclosed, not silent: the file is reported under `files_not_examined` as
+`file too large to scan`, and `--fail-on-incomplete` exits 3. See
+[Coverage Disclosure](../COVERAGE_DISCLOSURE.md).
+
+> **Corrected 2026-08.** This table previously listed two errors the tool cannot emit:
+> `File too large: chunk offset exceeds int32 maximum` ("File exceeds ~214GB") and
+> `System under memory pressure` ("Solution: Reduce worker count or batch size"). Neither string
+> has ever existed in the code — the first appears only in this document, in every commit since
+> the first; the second belonged to the deleted `IsMemoryPressure()`. The advice attached to them
+> was unfollowable, since worker count is not adjustable and nothing is chunked. The remaining
+> rows were also misattributed: the `104857600` message is the plain-text preprocessor's, not the
+> web UI's, and the web UI's own wording was absent.
 
 ## Configuration
 
 The file size limits above are compile-time constants; there is no flag, config key or
 environment variable that changes them. Raising one means editing `router.MaxFileSize`, which
-every gate derives from.
+every gate derives from. The same is true of the worker count and every other row in the
+performance table.
+
+Two runtime levers exist, and they are the only two:
 
 ```bash
+# Bound total extracted content held in memory across concurrently scanned files.
+# The only memory control; there is no cap unless you pass this.
+ferret-scan --max-live-bytes 256MB --file ./tree
+
+# Bound concurrent validator work (execguard.DefaultLimiter is sized from this at startup).
+# Does not change the file worker pool, which is min(NumCPU, 8) either way.
+GOMAXPROCS=2 ferret-scan --file ./tree
+
 # Enable debug logging
 export FERRET_DEBUG=1
 ```
+
+There is no `performance:` section in the configuration file. Config keys such as `max_workers`,
+`worker_memory_limit`, `cache_size` or `max_file_size` do not exist; supplying one produces
+`Warning: unknown config key "performance" — ignored (check for a typo)` and changes nothing.
 
 ## Best Practices
 
@@ -156,4 +200,4 @@ export FERRET_DEBUG=1
 | **Large Images** | Reduce resolution before processing |
 | **Large PDFs** | Split into smaller files |
 | **Many Small Files** | Use batch processing for efficiency |
-| **Memory Issues** | Reduce worker count or process fewer files simultaneously |
+| **Memory Issues** | Pass `--max-live-bytes` (e.g. `256MB`), or scan fewer files per invocation. The worker count itself cannot be reduced |

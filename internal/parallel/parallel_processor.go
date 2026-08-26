@@ -102,15 +102,38 @@ type FileDiagnostic struct {
 	Cause coverage.Cause `json:"cause,omitempty"`
 }
 
+// MaxFileWorkers caps the file-level worker pool regardless of how many CPUs the host has, to
+// avoid resource exhaustion: each worker fans out one goroutine per document validator, so the
+// live goroutine count is workers × validators (see execguard.DefaultLimiter, which bounds the
+// second factor).
+//
+// Named rather than inline because docs/reference/quotas-and-limits.md publishes this number to
+// operators sizing a scan, and TestDocumentedWorkerCapMatchesTheCode reads both. The previous
+// inline literal drifted from that document undetected for the project's whole history — the
+// table there described a 32-worker adaptive pool that was deleted in 8cf13a6 as dead code.
+const MaxFileWorkers = 8
+
+// FileWorkers returns the size of the file-level worker pool on this host: NumCPU, capped at
+// MaxFileWorkers. It is derived from the CPU count and has no flag, config key or environment
+// variable input.
+func FileWorkers() int {
+	return cappedWorkers(runtime.NumCPU())
+}
+
+// cappedWorkers is the pool-size arithmetic, separated from runtime.NumCPU() so it can be checked
+// at CPU counts this host does not have — the interesting values are either side of the cap, and a
+// developer machine only ever exercises one of them. See TestCappedWorkersMatchesTheFormerInlineCap.
+func cappedWorkers(numCPU int) int {
+	if numCPU < MaxFileWorkers {
+		return numCPU
+	}
+	return MaxFileWorkers
+}
+
 // NewParallelProcessor creates a new parallel processor
 func NewParallelProcessor(observer observability.Observer) *ParallelProcessor {
-	workers := runtime.NumCPU()
-	if workers > 8 {
-		workers = 8 // Cap at 8 workers to avoid resource exhaustion
-	}
-
 	return &ParallelProcessor{
-		workerPool: NewWorkerPool(workers, observer),
+		workerPool: NewWorkerPool(FileWorkers(), observer),
 		observer:   observer,
 	}
 }
