@@ -341,27 +341,50 @@ func TestAssignLineColumnsComplexityDistinctAndRepeated(t *testing.T) {
 	t.Logf("4x the repeats of %d distinct values on one line: %.1fx (base=%v big=%v) — linear is 4x",
 		distinct, ratio, tBase, tBig)
 
-	// The ABSOLUTE time of the big case is asserted, not the growth ratio, because it is the far
-	// cleaner signal. Measured over five runs each, with and without the pointer:
+	// The scale-free GROWTH RATIO is the discriminator here, and the absolute time is only a
+	// catastrophe net. An earlier version of this comment argued the opposite — that the absolute
+	// figure was "the far cleaner signal" and the ratio was "exactly where scheduler noise lives"
+	// — and set the ceiling at 250ms, ~10x above what this host measured. A windows-latest runner
+	// then failed it at 307ms while the ratio read 5.7x, correctly reporting the code as linear.
+	// The ceiling was not measuring the algorithm, it was measuring the runner.
 	//
-	//   with:     base 4.7-6.7ms   big 22.7-25.2ms   ratio 3.6-5.1x
-	//   without:  base 34-40ms     big 422-465ms     ratio ~11-12x
+	// That is the general problem with an absolute wall-clock bound on shared CI: it cannot be
+	// both slow-machine-safe and fast-machine-sensitive. A regression costs ~423ms on this host,
+	// so a ceiling loose enough for a 12x-slower runner (>3.7s) would no longer catch it there.
+	// The ratio has no such conflict, because both halves of it are measured on the same machine
+	// in the same run.
 	//
-	// So the big case separates by ~18x while the ratio separates by only ~2.5x — and a ratio of two
-	// millisecond samples is exactly where scheduler noise lives. The ceiling below sits ~10x above
-	// the observed big case, so a runner an order of magnitude slower than this one still passes,
-	// while the quadratic hand-out (440ms) does not.
+	// Re-derived at HEAD by replacing `p := next[text]` with `p := 0` in resolveByIndex, which is
+	// exactly the regression described below:
 	//
-	// The ratio is still asserted, loosely, because it is scale-free and so catches a machine that is
-	// uniformly slow enough to hide the ceiling.
-	const repeatBigCeiling = 250 * time.Millisecond
-	if tBig > repeatBigCeiling {
-		t.Errorf("resolving %d repeats of %d distinct values took %v (> %v): hand-out is walking "+
-			"each value's occurrence list from the start instead of carrying a pointer into it, "+
-			"which is O(repeats^2) per value", 2000, distinct, tBig, repeatBigCeiling)
-	}
-	const maxGrowth = 8.0
+	//	                       base       big     ratio
+	//	with the pointer      ~4.0ms   ~19.0ms   4.6-4.9x   (3 runs, this host)
+	//	                     ~3.9ms   ~21.0ms   5.2-5.9x   (3 runs, GOMAXPROCS=1, a loaded runner)
+	//	                     54.1ms    307.2ms       5.7x   (windows-latest CI, the false failure)
+	//	without it            29.3ms    423.0ms  13.6-14.4x
+	//
+	// 9x rather than 8x because it splits the two populations evenly: 9.0/5.9 = 1.53x headroom
+	// above the worst correct reading, 13.6/9.0 = 1.51x below the best regressed one. At 8x the
+	// headroom above 5.9x was only 1.36x, and 5.9x came from the constrained-CPU run — the case
+	// most like the runner that flaked.
+	//
+	// bestAssign takes the best of three attempts for each half, which is what keeps the
+	// numerator and denominator comparable.
+	const maxGrowth = 9.0
 	if tBase > 0 && ratio > maxGrowth {
-		t.Errorf("4x the repeats cost %.1fx (base=%v big=%v), over %.0fx", ratio, tBase, tBig, maxGrowth)
+		t.Errorf("4x the repeats cost %.1fx (base=%v big=%v), over %.0fx: hand-out is walking "+
+			"each value's occurrence list from the start instead of carrying a pointer into it, "+
+			"which is O(repeats^2) per value", ratio, tBase, tBig, maxGrowth)
+	}
+
+	// Catastrophe net, in line with columnsAbsoluteCeiling and with every other complexity guard
+	// in this repo (all 2-20s). This is deliberately NOT tuned close to the observed cost: at
+	// 250ms it was the only sub-second wall-clock ceiling in the tree, and it was the one that
+	// flaked. Its job is to fail loudly if the cost becomes absurd on any machine, not to
+	// discriminate linear from quadratic — the ratio above does that.
+	if tBig > columnsAbsoluteCeiling {
+		t.Errorf("resolving %d repeats of %d distinct values took %v (> %v) — far beyond any "+
+			"plausible runner, so this is a complexity change and not a slow machine",
+			2000, distinct, tBig, columnsAbsoluteCeiling)
 	}
 }
