@@ -42,8 +42,14 @@ import (
 //     ResolveLineSpans now indexes a dense line in ONE pass instead, keyed on value
 //     LENGTH rather than on value, so the cost no longer carries a factor of K (#388).
 //
-// Two claims that used to sit here were wrong, and correcting them is why the ratio below
-// is now ASSERTED rather than logged:
+// Two claims that used to sit here were wrong, and correcting them is why a growth bound is
+// asserted at all rather than merely logged:
+//
+// (Which growth bound has since changed. The many-distinct-values guard now asserts cost against the
+// MATCH COUNT at a fixed line length — the axis resolveByIndex documents independence from — because
+// the original pair grew the count and the line together, leaving only a 4x window between correct
+// and regressed that a Windows runner's constant factors exceeded twice. That pair's ratio is still
+// logged; see TestAssignLineColumnsComplexityDistinctValues for both populations.)
 //
 //   - "Making it linear needs a multi-pattern single pass over the line, not a tweak, and
 //     per-validator execution budgets already bound pathological single-line input." The
@@ -104,6 +110,51 @@ func buildRepeatedOnOneLine(k int) []Match {
 	for i := 0; i < k; i++ {
 		out = append(out, Match{
 			Text:       v,
+			Type:       "SSN",
+			LineNumber: 1,
+			Context:    ContextInfo{FullLine: line},
+		})
+	}
+	return out
+}
+
+// buildDistinctSubsetOnFixedLine builds a line holding lineValues distinct values and returns
+// matchCount of them, spread evenly across the line rather than taken from its head.
+//
+// This is the fixture that isolates the ONE axis resolveByIndex claims independence from. Its doc
+// comment states the property outright — "The cost is therefore independent of how MANY values there
+// are, which is the term that made rescanning quadratic" — so holding the line fixed and varying only
+// the match count measures exactly that claim, and nothing else.
+//
+// buildDistinctOnOneLine, by contrast, grows the value count AND the line length together, so the
+// correct cost grows 4x for 4x input and the regression shows 16x. A 4x-wide window is not enough on
+// a shared runner: see the measurements on TestAssignLineColumnsComplexityDistinctValues.
+//
+// Spread rather than head-first because resolveByRescan carries a per-value cursor that starts at
+// zero, so a head-first subset would sit in the cheapest part of the line and understate the
+// regression. Every match must also still be PRESENT on the line, or timeAssign's non-vacuity floor
+// fails and the timing means nothing.
+func buildDistinctSubsetOnFixedLine(lineValues, matchCount int) []Match {
+	var sb strings.Builder
+	sb.Grow(lineValues * 20)
+	vals := make([]string, 0, lineValues)
+	for i := 0; i < lineValues; i++ {
+		v := fmt.Sprintf("%03d-%02d-%04d", 400+(i/8100)%500, 10+(i/90)%90, 1000+i%9000)
+		vals = append(vals, v)
+		sb.WriteString("SSN ")
+		sb.WriteString(v)
+		sb.WriteString(" ")
+	}
+	line := sb.String()
+
+	stride := lineValues / matchCount
+	if stride < 1 {
+		stride = 1
+	}
+	out := make([]Match, 0, matchCount)
+	for i := 0; i < lineValues && len(out) < matchCount; i += stride {
+		out = append(out, Match{
+			Text:       vals[i],
 			Type:       "SSN",
 			LineNumber: 1,
 			Context:    ContextInfo{FullLine: line},
@@ -227,22 +278,101 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 			"over the line", bigK, tBig, columnsAbsoluteCeiling)
 	}
 
-	// ASSERTED now, where it used to be logged only.
+	// The growth ratio of THIS pair is logged and no longer asserted. Asserting it was tried twice
+	// and failed twice on CI against correct code:
 	//
-	// The ceiling above cannot catch this shape returning: at K=8000 the old quadratic cost
-	// 148ms, which is comfortably inside a 4s ceiling, so it passed for as long as the
-	// quadratic existed. A growth bound is what actually pins the shape.
+	//	         base       big     ratio
+	//	audit host, 6 runs      2.2-2.5ms   9.3-10.4ms   3.7-4.6x
+	//	GOMAXPROCS=1, 4 runs    2.3-2.9ms  10.0-12.1ms   4.0-4.3x
+	//	windows-latest CI       40.67ms      ~362ms          8.9x   <- failed an 8.0 limit
+	//	windows-latest CI       12.05ms     116.64ms         9.7x   <- failed it again
+	//	regressed (measured)   141.1ms      2.184s          15.5x
 	//
-	// 8x rather than 4x because both the value COUNT and the line LENGTH grow with K here. A return
-	// to O(K x line) would show 16x, so with the measurement now stable at ~4.2x this sits roughly
-	// midway between the real cost and the regression it guards against — headroom on both sides
-	// rather than the 8.0-against-a-3.6-to-6.9-spread it had before.
-	const maxGrowth = 8.0
-	if tBase > 0 && ratio > maxGrowth {
-		t.Errorf("4x input cost %.1fx (base=%v big=%v), over %.0fx: the per-value line rescan is "+
-			"back. Each distinct value scanning from the line start is O(K x line length), which "+
-			"measured 8.14s of a 9.64s scan on a 1.14MB line before #388",
-			ratio, tBase, tBig, maxGrowth)
+	// The first failure was answered by growing the sample from 2000/8000 to 8000/32000, on the
+	// theory that the base was too small to measure. That did stabilise the LOCAL spread to
+	// 3.76x-4.28x — and the guard then failed again at 9.7x, so the theory was wrong. Windows is not
+	// noisy around 4x here; it sits systematically at 9-10x, because the big case degrades
+	// disproportionately there (base 4.8x slower than this host, big 12x slower). A threshold BELOW
+	// its own correct population cannot be rescued by better sampling.
+	//
+	// The structural reason this ratio is a poor instrument: buildDistinctOnOneLine grows the value
+	// count AND the line length together, so correct is 4x and the regression is 16x. A 4x-wide
+	// window has to absorb every machine's constant-factor differences, and Windows' exceeds it.
+	//
+	// And the mechanism behind that, which also explains why the resize made things WORSE rather than
+	// better: the base term walks a 128KB line and the big term a 512KB one, so the two terms have
+	// DIFFERENT cache and TLB footprints. A machine with a smaller cache inflates the ratio itself,
+	// because only the big term falls out of cache. Growing the fixture 4x doubled that footprint
+	// asymmetry, which is why a change intended to stabilise the measurement moved the Windows
+	// reading from 8.9x to 9.7x. No sampling statistic can remove a systematic offset of that kind.
+	//
+	// The assertion that replaces it is below, and it does not have that problem: both of its terms
+	// measure the SAME string, so the footprint is identical and a uniformly slower machine cancels.
+	if tBase > 0 {
+		t.Logf("(growth of this pair is informational: measured 3.7x-4.6x correct here, 8.9x and "+
+			"9.7x on windows-latest, 15.5x regressed — see the comment above for why it is not "+
+			"asserted; ratio this run %.1fx)", ratio)
+	}
+
+	// The REAL discriminator: cost must be independent of the match COUNT at a fixed line length.
+	//
+	// That is resolveByIndex's own documented claim — "The cost is therefore independent of how MANY
+	// values there are, which is the term that made rescanning quadratic" — so it is the property
+	// worth pinning, and measuring it directly puts the correct population at ~1.0x where a
+	// uniformly slower machine cancels out instead of shifting the answer.
+	//
+	// Measured on the audit host by forcing useIndex to return false, which restores the per-value
+	// rescan (the exact O(K x line length) shape #388 removed):
+	//
+	//	                                base        big       ratio
+	//	correct, 5 runs                9.4-10.2ms  11.0-12.3ms  1.08-1.26x
+	//	correct, GOMAXPROCS=1, 3 runs  8.8-9.8ms   11.2-12.6ms  1.18-1.32x
+	//	regressed, 2 runs              405-423ms   1.63-1.66s   3.92-4.03x
+	//
+	// So 2.2 sits 1.67x above the worst correct reading and 1.78x below the best regressed one —
+	// balanced, and both margins wider than anything a retuned version of the old ratio could buy
+	// (12.5 between 9.7x and 15.5x gives only 1.29x and 1.24x).
+	//
+	// The absolute figures separate by 41x at the SAME match count (10ms against 415ms), which is
+	// the sanity check that this pair really is measuring the regression and not sampling noise.
+	const lineValues = 96000
+	const subsetBase, subsetBig = 2000, 8000 // 4x the matches, identical line
+
+	fBase := bestAssign(t, func() []Match { return buildDistinctSubsetOnFixedLine(lineValues, subsetBase) }, true)
+	fBig := bestAssign(t, func() []Match { return buildDistinctSubsetOnFixedLine(lineValues, subsetBig) }, true)
+
+	fRatio := float64(fBig) / float64(fBase)
+	t.Logf("fixed %d-value line, matches %d -> %d (4x): %.2fx (base=%v big=%v) — independent of the "+
+		"match count is ~1.0x; the per-value rescan measures ~4.0x", lineValues, subsetBase, subsetBig,
+		fRatio, fBase, fBig)
+
+	const maxCountGrowth = 2.2
+	if fBase > 0 && fRatio > maxCountGrowth {
+		t.Errorf("4x the MATCHES on an unchanged line cost %.2fx (base=%v big=%v), over %.1fx: "+
+			"resolveByIndex's cost is supposed to be independent of how many values there are, so "+
+			"this says each value is scanning the line again — O(K x line length), which measured "+
+			"8.14s of a 9.64s scan on a 1.14MB line before #388",
+			fRatio, fBase, fBig, maxCountGrowth)
+	}
+
+	// A second live assertion on the same fixture, deliberately NOT tuned close to the observation.
+	//
+	// The regressed big term is 1.63-1.66s against a correct 11.0-12.6ms — a 130x absolute gap — so an
+	// absolute bound is unusually informative here, and unlike the ratio it survives the ratio itself
+	// being defeated by some future constant-factor surprise. Two independent live assertions is the
+	// point; the old shape had one live and one decorative.
+	//
+	// 1s, not the 100ms that the measured gap would justify. 100ms buys 7.9x below and 16.3x above on
+	// THIS host, which looks better on paper — and is exactly the mistake this whole test is a
+	// correction of. Windows ran the old big term 12x slower than this host; 12 x 12.6ms is 151ms, so
+	// a 100ms ceiling would fail there on correct code. 1s tolerates a runner 79x slower than this one
+	// while still sitting 1.63x under the regression, which is the trade an absolute bound on a shared
+	// runner has to make.
+	const bigAbsoluteCeiling = 1 * time.Second
+	if fBig > bigAbsoluteCeiling {
+		t.Errorf("resolving %d matches on a fixed %d-value line took %v (> %v) — %v on the audit "+
+			"host, and the per-value rescan measured 1.63-1.66s, so this is a complexity change and "+
+			"not a slow machine", subsetBig, lineValues, fBig, bigAbsoluteCeiling, "11.0-12.6ms")
 	}
 }
 
@@ -341,27 +471,50 @@ func TestAssignLineColumnsComplexityDistinctAndRepeated(t *testing.T) {
 	t.Logf("4x the repeats of %d distinct values on one line: %.1fx (base=%v big=%v) — linear is 4x",
 		distinct, ratio, tBase, tBig)
 
-	// The ABSOLUTE time of the big case is asserted, not the growth ratio, because it is the far
-	// cleaner signal. Measured over five runs each, with and without the pointer:
+	// The scale-free GROWTH RATIO is the discriminator here, and the absolute time is only a
+	// catastrophe net. An earlier version of this comment argued the opposite — that the absolute
+	// figure was "the far cleaner signal" and the ratio was "exactly where scheduler noise lives"
+	// — and set the ceiling at 250ms, ~10x above what this host measured. A windows-latest runner
+	// then failed it at 307ms while the ratio read 5.7x, correctly reporting the code as linear.
+	// The ceiling was not measuring the algorithm, it was measuring the runner.
 	//
-	//   with:     base 4.7-6.7ms   big 22.7-25.2ms   ratio 3.6-5.1x
-	//   without:  base 34-40ms     big 422-465ms     ratio ~11-12x
+	// That is the general problem with an absolute wall-clock bound on shared CI: it cannot be
+	// both slow-machine-safe and fast-machine-sensitive. A regression costs ~423ms on this host,
+	// so a ceiling loose enough for a 12x-slower runner (>3.7s) would no longer catch it there.
+	// The ratio has no such conflict, because both halves of it are measured on the same machine
+	// in the same run.
 	//
-	// So the big case separates by ~18x while the ratio separates by only ~2.5x — and a ratio of two
-	// millisecond samples is exactly where scheduler noise lives. The ceiling below sits ~10x above
-	// the observed big case, so a runner an order of magnitude slower than this one still passes,
-	// while the quadratic hand-out (440ms) does not.
+	// Re-derived at HEAD by replacing `p := next[text]` with `p := 0` in resolveByIndex, which is
+	// exactly the regression described below:
 	//
-	// The ratio is still asserted, loosely, because it is scale-free and so catches a machine that is
-	// uniformly slow enough to hide the ceiling.
-	const repeatBigCeiling = 250 * time.Millisecond
-	if tBig > repeatBigCeiling {
-		t.Errorf("resolving %d repeats of %d distinct values took %v (> %v): hand-out is walking "+
-			"each value's occurrence list from the start instead of carrying a pointer into it, "+
-			"which is O(repeats^2) per value", 2000, distinct, tBig, repeatBigCeiling)
-	}
-	const maxGrowth = 8.0
+	//	                       base       big     ratio
+	//	with the pointer      ~4.0ms   ~19.0ms   4.6-4.9x   (3 runs, this host)
+	//	                     ~3.9ms   ~21.0ms   5.2-5.9x   (3 runs, GOMAXPROCS=1, a loaded runner)
+	//	                     54.1ms    307.2ms       5.7x   (windows-latest CI, the false failure)
+	//	without it            29.3ms    423.0ms  13.6-14.4x
+	//
+	// 9x rather than 8x because it splits the two populations evenly: 9.0/5.9 = 1.53x headroom
+	// above the worst correct reading, 13.6/9.0 = 1.51x below the best regressed one. At 8x the
+	// headroom above 5.9x was only 1.36x, and 5.9x came from the constrained-CPU run — the case
+	// most like the runner that flaked.
+	//
+	// bestAssign takes the best of three attempts for each half, which is what keeps the
+	// numerator and denominator comparable.
+	const maxGrowth = 9.0
 	if tBase > 0 && ratio > maxGrowth {
-		t.Errorf("4x the repeats cost %.1fx (base=%v big=%v), over %.0fx", ratio, tBase, tBig, maxGrowth)
+		t.Errorf("4x the repeats cost %.1fx (base=%v big=%v), over %.0fx: hand-out is walking "+
+			"each value's occurrence list from the start instead of carrying a pointer into it, "+
+			"which is O(repeats^2) per value", ratio, tBase, tBig, maxGrowth)
+	}
+
+	// Catastrophe net, in line with columnsAbsoluteCeiling and with every other complexity guard
+	// in this repo (all 2-20s). This is deliberately NOT tuned close to the observed cost: at
+	// 250ms it was the only sub-second wall-clock ceiling in the tree, and it was the one that
+	// flaked. Its job is to fail loudly if the cost becomes absurd on any machine, not to
+	// discriminate linear from quadratic — the ratio above does that.
+	if tBig > columnsAbsoluteCeiling {
+		t.Errorf("resolving %d repeats of %d distinct values took %v (> %v) — far beyond any "+
+			"plausible runner, so this is a complexity change and not a slow machine",
+			2000, distinct, tBig, columnsAbsoluteCeiling)
 	}
 }
