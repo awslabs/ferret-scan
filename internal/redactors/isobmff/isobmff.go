@@ -103,6 +103,13 @@ func FindISO6709(b []byte) []byte { return iso6709.Find(b) }
 
 var (
 	udtaAtom = []byte("udta")
+	// xmpAtom is the QuickTime home for an XMP packet: moov/udta/XMP_.
+	//
+	// Adobe's XMP Specification Part 3 prescribes this for QuickTime, and it is what exiftool
+	// writes for a .mov. It is the MAJORITY layout: a census over 1,178 real ISO-BMFF files on a
+	// macOS host found 90 carrying moov/udta/XMP_ against 24 carrying the top-level uuid[XMP] box
+	// that #477 mapped, and none carrying both (#499).
+	xmpAtom  = []byte("XMP_")
 	metaAtom = []byte("meta")
 	uuidAtom = []byte("uuid")
 	xyzAtom  = []byte("\xa9xyz")
@@ -169,7 +176,7 @@ func MetadataSpans(r io.ReaderAt, size int64) ([]Span, error) {
 			// value to redact, and every caller has to special-case it; the invariant worth
 			// having is that a returned span is non-empty and inside the file.
 			if payloadEnd > payloadStart {
-				out = append(out, Span{payloadStart, payloadEnd, "MP4 udta"})
+				out = append(out, udtaSpans(r, payloadStart, payloadEnd)...)
 			}
 		case bytes.Equal(name, metaAtom):
 			if payloadEnd > payloadStart {
@@ -503,4 +510,99 @@ func walk(r io.ReaderAt, start, end int64, depth int, budget *int, visit func(na
 		pos = payloadEnd
 	}
 	return nil
+}
+
+// udtaSpans returns the spans covering one udta payload, carving out an XMP_ child if there is one.
+//
+// # Why the payload cannot stay a single opaque span
+//
+// A udta payload was recorded as one region labelled "MP4 udta", and every consumer treats a span's
+// label as the answer to "is this XML character data" -- video.blockRegion sets
+// XMLText: span.Label == LabelXMP. So an XMP packet living at moov/udta/XMP_ was inside a region that
+// said "not XML", which made tagmeta.ResidualEncoded structurally blind to it. That check exists
+// precisely because XML permits `&apos;`, `&#39;`, `&#x27;` and so on without limit, so a raw byte
+// search cannot see an entity-encoded value.
+//
+// MEASURED on a real Apple-shipped .mov (/System/Library, 4.9MB, a 17,450-byte XMP_ packet) tagged
+// with `exiftool -Title="Patrick O'Connor" -Artist="Marcus Whitfield"`. exiftool writes the value to
+// BOTH homes, raw in ilst and entity-encoded in the packet, and the scanner detects it from the ilst
+// copy. Redacting with the udta payload as one opaque span:
+//
+//	raw "Patrick O'Connor" in the redacted copy       0   <- the ilst copy was masked
+//	encoded Patrick O&#39;Connor in the redacted copy  1   <- SURVIVED
+//	exiftool on the "redacted" file                   Title : Patrick O'Connor
+//
+// at exit 0 with no warning. That is the same leak #477 fixed for the uuid layout, in the layout that
+// is nearly four times more common.
+//
+// # Why the payload is SPLIT rather than double-recorded
+//
+// Recording the XMP child as an extra span while keeping the whole-payload span would make two spans
+// cover the same bytes, and each span becomes an independent block that the caller reads, modifies and
+// writes back -- so one would clobber the other. The split keeps the existing invariant that spans do
+// not overlap.
+//
+// # Why the sibling atoms are NOT flagged as XML
+//
+// udta holds binary children too, and running an entity decoder over them could resolve bytes that
+// merely look like `&#NN;` into a value the file never contained -- inventing a residual and refusing
+// a clean file. So only the XMP_ payload carries LabelXMP; everything else in the payload keeps the
+// "MP4 udta" label and its raw-byte treatment.
+//
+// The XMP_ atom's own 8-byte header is covered by neither span. It is not descriptive metadata, and
+// leaving it out means a same-length overwrite can never damage the atom's size or type.
+func udtaSpans(r io.ReaderAt, payloadStart, payloadEnd int64) []Span {
+	atomStart, packetStart, atomEnd, ok := findXMPChild(r, payloadStart, payloadEnd)
+	if !ok {
+		return []Span{{payloadStart, payloadEnd, "MP4 udta"}}
+	}
+
+	var out []Span
+	if atomStart > payloadStart {
+		out = append(out, Span{payloadStart, atomStart, "MP4 udta"})
+	}
+	if atomEnd > packetStart {
+		out = append(out, Span{packetStart, atomEnd, LabelXMP})
+	}
+	if payloadEnd > atomEnd {
+		out = append(out, Span{atomEnd, payloadEnd, "MP4 udta"})
+	}
+	return out
+}
+
+// findXMPChild locates an XMP_ atom among a udta payload's immediate children.
+//
+// Returns the atom's start, the start of its payload, and its end. Only the FIRST is reported: a
+// second XMP_ in one udta is not a shape any writer produces, and guessing which one is authoritative
+// is worse than treating the rest as opaque udta bytes, which is what the trailing span does.
+//
+// Deliberately a flat child walk rather than a recursive one. The children of udta are string boxes
+// and XMP_; descending further would re-open the double-recording problem this function exists to
+// avoid, and would find nothing new.
+func findXMPChild(r io.ReaderAt, payloadStart, payloadEnd int64) (atomStart, packetStart, atomEnd int64, ok bool) {
+	var hdr [headerBytes]byte
+	for pos := payloadStart; pos+headerBytes <= payloadEnd; {
+		if _, err := r.ReadAt(hdr[:], pos); err != nil {
+			return 0, 0, 0, false // unreadable: treat the payload as opaque rather than guess
+		}
+		size := int64(binary.BigEndian.Uint32(hdr[0:4]))
+
+		// A child that does not declare a sane size cannot be walked past, and guessing a stride
+		// is how a walk desynchronises and reads a length out of the middle of a value. Give up and
+		// let the caller keep the whole payload as one opaque span.
+		if size < headerBytes || pos+size > payloadEnd {
+			return 0, 0, 0, false
+		}
+
+		if bytes.Equal(hdr[4:8], xmpAtom) {
+			// An empty packet yields no span, which keeps MetadataSpans' invariant that every
+			// returned span is non-empty.
+			if pos+headerBytes >= pos+size {
+				return 0, 0, 0, false
+			}
+			return pos, pos + headerBytes, pos + size, true
+		}
+		pos += size
+	}
+	return 0, 0, 0, false
 }
