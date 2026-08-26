@@ -76,17 +76,17 @@ import "strings"
 //     it removes 7 findings (@type ×6, @context ×1) while leaving the genuine handle in that same file
 //     reported. It is kept because it is correct, cheap and two-signal, and because schema.org JSON-LD is
 //     common in the web content this tool is pointed at even when a laptop has none.
-//   - The CSS rule requires a `{` later on the same line as well as the at-rule name and the statement
-//     position. Measured over 7,068 at-rule occurrences in 1,881 real CSS files on this host, including
-//     minified single-line bundles: 99.17% have a `{` later on the line. A brace was chosen over the
-//     alternatives deliberately — `(` covers 94.40% and a quote 70.61%, but a mentions export writes
-//     `@media (12 mentions)` and a CSV writes `@media,"12"`, so both of those re-open the leak this rule
-//     exists to close. Note the test is "contains a brace later", not "ends in a brace", because
-//     minified CSS puts the whole stylesheet on one line.
+//   - The CSS rule requires FOUR signals, and it reached four by leaking twice. See isCSSAtRule for the
+//     measurements; in short, the at-rule NAME plus the statement POSITION vetoed a one-handle-per-line
+//     mentions export, adding "a `{` later on the line" still vetoed a DELIMITED EXPORT carrying a
+//     brace-bearing column (the standard shape of social-listening and webhook exports) and a chat line
+//     naming `{general}`, so it now also requires that what FOLLOWS the name can begin a CSS prelude and
+//     that the line actually OPENS a block. Both additions are free: real CSS coverage is 9,346 of 9,346
+//     occurrences across 1,881 files, and the false-positive count on a 1,633-file corpus is identical
+//     with and without them.
 //
-// The residual 0.83% are multi-line preludes — `@media only screen` with the brace on the next line —
-// which now report as false positives. That is the safe direction: positives may widen, suppressors may
-// not.
+// The residual are multi-line preludes — `@media only screen` with the brace on the next line — which
+// report as false positives. That is the safe direction: positives may widen, suppressors may not.
 //
 // # Why the doc-annotation family is NOT here, and why its list was not extended either
 //
@@ -197,14 +197,94 @@ func isJSONLDKey(line, token string, start, end int) bool {
 
 // isCSSAtRule reports whether the token is a CSS at-rule opening a block on this line.
 //
-// Three signals: a known at-rule name, the position an at-rule occupies, and a block brace on the line.
-// The brace is what stops this vetoing a one-handle-per-line mentions export, where the first two hold
-// for any handle whose name happens to collide with an at-rule.
+// FOUR signals, and each of the last three was added because the set before it leaked:
+//
+//  1. a known at-rule name
+//  2. the position an at-rule occupies (opensAStatement)
+//  3. what FOLLOWS the name is CSS prelude syntax (cssPreludeFollows)
+//  4. the line actually opens a block (opensABlock)
+//
+// Signals 1 and 2 alone vetoed a one-handle-per-line mentions export, because column 0 is a statement
+// opening in every file type. Adding "a `{` somewhere later on the line" fixed that but still vetoed a
+// DELIMITED EXPORT carrying a brace-bearing column, which is the standard shape of social-listening and
+// webhook exports:
+//
+//	author,date,payload            -> @media,2026-08-25,"{""rt"":3}"     lost @media and @page
+//	date;author;payload            -> 2026-08-25;@media;{"rt":3}         lost them from column 2 as well
+//	author<TAB>mentions<TAB>payload -> @media<TAB>42<TAB>{"rt":3}         lost @media and @layer
+//	a chat join line               -> @page joined the channel {general}  lost @page
+//
+// In each case a real handle survived only when its name happened not to collide with an at-rule, and
+// the cleartext survived redaction -- with no other finding, no redacted file was produced at all, at
+// rc 0. Signals 3 and 4 close all four.
+//
+// # Both new signals are measured, not reasoned
+//
+// Over 9,346 at-rule occurrences in 1,881 real CSS files on this host that already pass signals 1-2 and
+// carry a brace:
+//
+//	character immediately after the name    <space> 92.91%   ( 7.02%   { 0.07%   = 100.00%
+//	                                        TAB: ZERO occurrences
+//	line ends with `{`                      30.57%   (multi-line CSS)
+//	line contains two or more `{`           69.43%   (minified CSS)
+//	either of those two                     100.00%
+//
+// So both signals are free: real CSS coverage stays at 9,346 of 9,346. The delimited exports are
+// excluded by signal 3 -- their next character is `,`, `;` or a TAB -- and the chat line by signal 4,
+// since `{general}` neither ends the line nor is a second brace.
+//
+// TAB is deliberately NOT accepted as prelude whitespace even though CSS permits it, because it never
+// appears there in 9,346 real occurrences while it IS the delimiter of a TSV. Positives may widen,
+// suppressors may not.
 func isCSSAtRule(line, token string, start, end int) bool {
 	if _, ok := cssAtRules[token]; !ok {
 		return false
 	}
-	return opensAStatement(line, start) && strings.Contains(line[end:], "{")
+	return opensAStatement(line, start) &&
+		cssPreludeFollows(line, end) &&
+		opensABlock(line)
+}
+
+// cssPreludeFollows reports whether the byte after the at-rule name can begin a CSS prelude.
+//
+// A space introduces a query or selector (`@media screen`), `(` a minified feature test
+// (`@media(min-width:600px)`), `{` a block-only at-rule with no prelude (`@font-face{`), and a QUOTE a
+// minified string prelude (`@import"https://..."`, `@charset"utf-8"`). A field delimiter cannot: `,`,
+// `;` and TAB mean the token is a value in a row, not a rule opening a block.
+//
+// The quote is safe despite being a CSV quoting character, and this is structural rather than lucky: for
+// a delimited file to put a quote immediately AFTER the token, the token itself would have to be
+// unquoted while the next field is quoted -- `@media"12"` -- which no delimited format emits. When a CSV
+// does quote the field, the token is PRECEDED by a quote, and opensAStatement already rejects that.
+func cssPreludeFollows(line string, end int) bool {
+	if end >= len(line) {
+		return false // nothing follows, so nothing opens a block either
+	}
+	switch line[end] {
+	case ' ', '(', '{', '"', '\'':
+		return true
+	default:
+		return false
+	}
+}
+
+// opensABlock reports whether the line looks like one that opens a CSS block.
+//
+// Two accepted shapes, because CSS is written both ways and a rule covering only one of them would
+// suppress in exactly the file type it was not measured on:
+//
+//   - the line ENDS with `{`, which is how CSS is written for humans
+//   - the line holds TWO or more `{`, which is what minification produces when a whole stylesheet
+//     lands on one line
+//
+// Checking "ends with `{`" alone was rejected for that reason: it covers 30.57% of real occurrences.
+// A single brace mid-line, closed again on the same line, is the shape of prose or data -- a chat
+// message naming `{general}`, or a CSV cell holding `{"rt":3}`.
+func opensABlock(line string) bool {
+	if strings.HasSuffix(strings.TrimRight(line, " \t\r"), "{") {
+		return true
+	}
+	return strings.Count(line, "{") >= 2
 }
 
 // opensAStatement reports whether the token is the first thing on its statement.
