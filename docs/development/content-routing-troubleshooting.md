@@ -2,6 +2,19 @@
 
 [← Back to Documentation Index](../README.md)
 
+> **⚠️ Most of the commands and configuration in this guide do not work.** Audited against the
+> binary and the config schema in 2026-08: of the 31 config keys shown below, **29 do not exist**
+> (only `enabled` and `window` do), and of the 17 `--debug-*` / `--profile-*` / `--dry-run`-style
+> flags shown, **all 17 are absent** — the binary has 39 flags and none of those are among them.
+> Supplying a section such as `parallel_processing:` or `content_router:` prints
+> `Warning: unknown config key ... — ignored (check for a typo)` and changes nothing.
+>
+> The architectural description of the content router and dual-path validation is still useful;
+> the diagnostic *procedures* are not followable. `--debug` and `FERRET_DEBUG=1` are real; treat
+> everything else here as unverified. Tracked for rewrite or removal in
+> [#503](https://github.com/awslabs/ferret-scan/issues/503); for the limits that are real, see
+> [Quotas and Limits](../reference/quotas-and-limits.md).
+
 ## Overview
 
 This troubleshooting guide provides comprehensive solutions for issues related to the Content Router and dual-path validation system in Ferret Scan. It covers common problems, diagnostic procedures, and resolution strategies for the enhanced metadata processing architecture.

@@ -124,8 +124,13 @@ defaults:
 preprocessors:
   text_extraction:
     enabled: true
-    max_file_size: 10485760  # 10MB
 ```
+
+The 10MB per-part extraction limit is a compile-time constant (`officelib.MaxXMLSize`), not a
+config key. An earlier version of this example showed `max_file_size: 10485760` under
+`text_extraction`; that key does not exist, and supplying it prints
+`Warning: unknown config key "max_file_size" — ignored (check for a typo)`. See
+[Quotas and Limits](../reference/quotas-and-limits.md).
 
 ### Profile-Based Processing
 
