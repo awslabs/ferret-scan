@@ -58,6 +58,28 @@ func (rim *RedactionAuditLogManager) CreateAuditLog(documentID, originalPath, re
 		auditLog.SetOriginalFileHash(hash)
 	}
 
+	// And for the redacted document, which is the artifact anyone downstream actually consumes.
+	//
+	// SetRedactedFileHash existed and had NO callers, so redacted_file_hash was empty in every audit
+	// log ever written, for every redactor and every file type. The log therefore attested to the
+	// input and to a list of replacements, but nothing tied it to the bytes that were produced —
+	// which is the one thing a compliance reader needs it for.
+	//
+	// This is the right point despite the field's history: the caller is
+	// RedactionManager.AddRedactionResult, which the worker pool invokes only AFTER the redactor has
+	// returned successfully, so the output file is already on disk. Verified rather than assumed —
+	// see TestRedactedFileHashIsSetAndVerifiable, which recomputes the digest with an independent
+	// sha256 over the written file and compares.
+	//
+	// When the file cannot be hashed the field is left EMPTY and omitted from the JSON rather than
+	// written as "": a redactor may legitimately decline to write an output (the Office redactor
+	// refuses a partial redaction; an unregistered type produces none), and a consumer must be able
+	// to tell "no artifact to attest to" from "an artifact whose digest is the empty string". A
+	// sha256 is never legitimately empty, so absent is unambiguous.
+	if hash := HashFile(redactedPath); hash != "" {
+		auditLog.SetRedactedFileHash(hash)
+	}
+
 	// Store the audit log
 	rim.auditLogs[documentID] = auditLog
 	rim.filePaths[originalPath] = documentID
