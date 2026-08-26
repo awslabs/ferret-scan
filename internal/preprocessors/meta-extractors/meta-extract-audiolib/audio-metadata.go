@@ -176,3 +176,37 @@ func (am *AudioMetadata) ToProcessedContent() string {
 
 	return content.String()
 }
+
+// noteTruncatedComments records that a FLAC VORBIS_COMMENT block declared more than it held.
+//
+// A method rather than an assignment at each site so the wording exists once, and so the
+// first-warning-wins rule is not restated three times. It mirrors the WAV path, which says the same
+// thing about a WAV INFO field (#423) -- the two containers have the same defect shape, and an
+// operator should not have to learn two vocabularies for it.
+//
+// Payload-free by construction (BSC4): it names the STRUCTURE, never the field, its keyword or its
+// value. A warning that quoted the field would put the value it is warning about into the log.
+func (m *AudioMetadata) noteTruncatedComments() {
+	if m == nil || m.ExtractionWarning != "" {
+		return
+	}
+	m.ExtractionWarning = "audio metadata may be incomplete: a FLAC VORBIS_COMMENT field declares " +
+		"more data than its block holds, so it was read only to the end of the block and any later " +
+		"field in that block was not read"
+}
+
+// noteTruncatedBlock records that a FLAC metadata block held fewer bytes than its header declared.
+//
+// Distinct from noteTruncatedComments, which is about a FIELD over-declaring inside a block that is
+// itself complete -- a tagger bug rather than a truncated file. The remedies differ: a short block
+// means the file is cut short or corrupt, while a short field means one tag is unreliable.
+//
+// Payload-free (BSC4): names the structure, never a field name or value.
+func (m *AudioMetadata) noteTruncatedBlock() {
+	if m == nil || m.ExtractionWarning != "" {
+		return
+	}
+	m.ExtractionWarning = "audio metadata may be incomplete: a FLAC metadata block holds fewer " +
+		"bytes than its header declares, so the file is truncated or corrupt and any metadata in or " +
+		"after that block was not fully read"
+}
