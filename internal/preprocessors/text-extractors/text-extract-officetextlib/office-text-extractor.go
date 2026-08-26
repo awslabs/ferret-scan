@@ -102,13 +102,16 @@ func ExtractText(filePath string) (*TextContent, error) {
 	// Determine file type based on extension
 	ext := strings.ToLower(filepath.Ext(filePath))
 	switch ext {
-	case ".docx":
+	// The macro-enabled forms share each part layout with their plain counterpart -- the
+	// difference is the content type and a vbaProject.bin -- so they dispatch to the same
+	// reader rather than to a copy of it (#497).
+	case ".docx", ".docm":
 		content.Format = "Word Document"
 		content, err = extractDocxText(filePath, content)
-	case ".xlsx":
+	case ".xlsx", ".xlsm":
 		content.Format = "Excel Spreadsheet"
 		content, err = extractXlsxText(filePath, content)
-	case ".pptx":
+	case ".pptx", ".pptm":
 		content.Format = "PowerPoint Presentation"
 		content, err = extractPptxText(filePath, content)
 	case ".odt":

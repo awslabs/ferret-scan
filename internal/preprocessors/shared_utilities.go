@@ -117,6 +117,15 @@ func NewFileExtensionValidator() *FileExtensionValidator {
 			".docx": true,
 			".xlsx": true,
 			".pptx": true,
+			// Macro-enabled OOXML. Absent from this map, the router's isBinaryDocument
+			// -- which derives from IsOfficeFile here -- said no, so .docm/.xlsm/.pptm
+			// were never routed to a preprocessor at all: 0 findings at exit 0 for
+			// content an identically-built .docx reports (#497). They are the same ZIP
+			// container with a different content type plus a vbaProject.bin, so the
+			// existing readers handle them unchanged.
+			".docm": true,
+			".xlsm": true,
+			".pptm": true,
 			".odt":  true,
 			".ods":  true,
 			".odp":  true,

@@ -181,7 +181,7 @@ Determines if a file type can contain meaningful metadata that should be process
 **Supported File Types:**
 ```go
 // Returns true for these file types:
-Office Documents: .docx, .doc, .xlsx, .xls, .pptx, .ppt, .odt, .ods, .odp
+Office Documents: .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp
 PDF Documents:    .pdf
 Image Files:      .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp, .heic, .heif, .raw, .cr2, .nef, .arw
 Video Files:      .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv
@@ -205,7 +205,7 @@ Returns the specific metadata type for preprocessor-aware validation routing.
 - Supports confidence scoring adjustments based on metadata source type
 
 **Return Values:**
-- `"office_metadata"`: Office documents (.docx, .xlsx, .pptx, etc.)
+- `"office_metadata"`: Office documents (.docx, .docm, .xlsx, .xlsm, .pptx, .pptm, etc.)
 - `"document_metadata"`: PDF documents (.pdf)
 - `"image_metadata"`: Image files (.jpg, .png, .gif, etc.)
 - `"video_metadata"`: Video files (.mp4, .mov, .avi, etc.)

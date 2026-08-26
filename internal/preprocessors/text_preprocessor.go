@@ -28,6 +28,7 @@ func NewTextPreprocessor() *TextPreprocessor {
 		supportedExtensions: []string{
 			".pdf",
 			".docx", ".xlsx", ".pptx",
+			".docm", ".xlsm", ".pptm",
 			".odt", ".ods", ".odp",
 		},
 	}
@@ -87,7 +88,7 @@ func (tp *TextPreprocessor) Process(filePath string) (*ProcessedContent, error) 
 	switch ext {
 	case ".pdf":
 		result, err = tp.processPDF(filePath, content)
-	case ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp":
+	case ".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm", ".odt", ".ods", ".odp":
 		result, err = tp.processOffice(filePath, content)
 	default:
 		err = fmt.Errorf("unsupported file extension: %s", ext)
