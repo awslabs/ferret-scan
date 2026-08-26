@@ -651,9 +651,19 @@ The system implements sophisticated file type filtering to optimize performance 
 **Metadata-Capable Files** (processed by metadata validators):
 - **Office Documents**: .docx, .doc, .xlsx, .xls, .pptx, .ppt, .odt, .ods, .odp
 - **PDF Documents**: .pdf
-- **Image Files**: .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp, .heic, .heif, .raw, .cr2, .nef, .arw
-- **Video Files**: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv
-- **Audio Files**: .mp3, .flac, .wav, .ogg, .m4a, .aac, .wma, .opus
+- **Image Files**: .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp
+- **Video Files**: .mp4, .m4v, .mov, .3gp, .3g2
+- **Audio Files**: .mp3, .flac, .wav, .m4a
+
+> **Corrected 2026-08.** These three lists over-claimed by sixteen extensions. Video named
+> `.avi .mkv .wmv .flv .webm .ogv`, images `.heic .heif .raw .cr2 .nef .arw`, and audio
+> `.ogg .aac .wma .opus` — none of which any preprocessor handles. They route to a clean
+> "unsupported type" skip, which `router.TestExtensionRouting_UnsupportedTypesSkipped` asserts,
+> so the effect of listing them here was to tell a reader that a file the tool declines to open
+> is covered. The lists above are the four maps in
+> `internal/preprocessors/shared_utilities.go`, which is what `CanContainMetadata()` reads.
+> `.3g2` was missing and `.3gp` was listed while nothing scanned it; both are now genuinely
+> supported.
 
 **Non-Metadata Files** (skip metadata validation):
 - **Plain Text**: .txt, .md, .log, .csv

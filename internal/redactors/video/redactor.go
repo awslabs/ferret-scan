@@ -100,13 +100,21 @@ func (r *VideoRedactor) GetComponentName() string { return "video_metadata_redac
 // each form in different code paths.
 //
 // .mkv and .webm are absent deliberately. They are EBML, not atom-based, and nothing scans them
-// today — the file-extension validator admits exactly these three — so claiming them here would
-// register a redactor for a file type that never reaches it.
+// today, so claiming them here would register a redactor for a file type that never reaches it.
+//
+// .3gp/.3g2 are present for the same rule read the other way. They are the ISO base media container
+// with a 3GPP brand — this redactor's atom walk already handles them unchanged — and the
+// file-extension validator now admits them, so a value found in one reaches this point. Before they
+// were registered, a .3gp with an SSN in its 3GPP dscp box was reported and then disclosed as
+// `no redactor registered for file type: .3gp`, leaving the value in cleartext. The rule this list
+// follows is "claim exactly what the extension validator admits and this walk understands".
 func (r *VideoRedactor) GetSupportedTypes() []string {
 	return []string{
 		"mp4", ".mp4",
 		"m4v", ".m4v",
 		"mov", ".mov",
+		"3gp", ".3gp",
+		"3g2", ".3g2",
 	}
 }
 

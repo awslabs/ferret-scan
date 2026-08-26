@@ -138,6 +138,14 @@ func NewFileExtensionValidator() *FileExtensionValidator {
 			".mp4": true,
 			".m4v": true,
 			".mov": true,
+			// The same ISO base media container as .mp4 with a 3GPP brand. Their absence here was a
+			// SILENT miss, not a refusal: a .3gp carrying an SSN in its description reported
+			// "No matches found." at exit 0 and disclosed nothing even under --fail-on-incomplete,
+			// so the value was neither reported nor redacted. Much older phone and MMS footage is
+			// still this format. See videoContainerExtensions in meta-extract-videolib, which this
+			// has to agree with for the file to reach the extractor at all.
+			".3gp": true,
+			".3g2": true,
 		},
 	}
 }

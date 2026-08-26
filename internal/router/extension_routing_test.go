@@ -76,6 +76,11 @@ func TestExtensionRouting_SupportedTypesUnchanged(t *testing.T) {
 		".gif": "image_metadata", ".tiff": "image_metadata", ".tif": "image_metadata",
 		".bmp": "image_metadata", ".webp": "image_metadata",
 		".mp4": "video_metadata", ".mov": "video_metadata", ".m4v": "video_metadata",
+		// The same ISO base media container with a 3GPP brand. Previously in the skipped set
+		// below, which was accurate but was recording a GAP as intent: a .3gp carrying an SSN in
+		// its 3GPP dscp box reported "No matches found." at exit 0 and disclosed nothing, so the
+		// value was neither reported nor redacted.
+		".3gp": "video_metadata", ".3g2": "video_metadata",
 		".mp3": "audio_metadata", ".flac": "audio_metadata", ".wav": "audio_metadata", ".m4a": "audio_metadata",
 	}
 	for ext, mt := range want {
@@ -98,7 +103,9 @@ func TestExtensionRouting_UnsupportedTypesSkipped(t *testing.T) {
 		// the supported set above — this test's contract is "handled by no
 		// preprocessor", not "legacy".
 		".heic", ".heif", ".raw", ".cr2", ".nef", ".arw",
-		".avi", ".mkv", ".wmv", ".flv", ".webm", ".3gp", ".ogv",
+		// .3gp/.3g2 were here and have moved to the supported set above, now that the 3GPP asset
+		// boxes are read. The rest genuinely have no preprocessor.
+		".avi", ".mkv", ".wmv", ".flv", ".webm", ".ogv",
 		".ogg", ".aac", ".wma", ".opus",
 	}
 	for _, ext := range skipped {

@@ -66,6 +66,22 @@ type VideoMetadata struct {
 	// Additional properties
 	Properties map[string]string
 
+	// decodedAppleKeys records which com.apple.quicktime.* keys were read properly out of a
+	// keys/ilst pair, so searchAppleMetadataInData's raw text scrape can stand down for those.
+	//
+	// Unexported and deliberately NOT a property: the marker must not itself become emitted content.
+	// An earlier version used the presence of the emitted QuickTime_* property as the signal, which
+	// forced every decoded value to be written twice — once as its typed field and once as a
+	// property — and ToProcessedContent emits both, so one value in the file produced TWO findings.
+	decodedAppleKeys map[string]bool
+
+	// assetKeyCounts is how many properties each 3GPP asset field has already taken, so a unique
+	// key is a counter increment rather than a scan for the first free number.
+	//
+	// Unexported, like decodedAppleKeys, because it is bookkeeping and must not become emitted
+	// content. The probing version it replaces was quadratic — see uniqueAssetKey.
+	assetKeyCounts map[string]int
+
 	// ExtractionWarning is a payload-free note that extraction finished but covered less than the
 	// whole file, so a value may be missing. It carries box types, byte offsets and limit
 	// constants only — never a metadata value, and never matched text.
@@ -119,6 +135,25 @@ const (
 	ProcessingTimeout = 30 * time.Second // 30 second timeout
 )
 
+// videoContainerExtensions is the single list of containers this extractor reads, so CanProcessVideo
+// and GetSupportedVideoFormats cannot disagree — they were two independent literals.
+//
+// `.3gp` and `.3g2` are the same ISO base media container as `.mp4` with a different brand, and were
+// absent from both. The consequence was not a refusal but a SILENT one: a `.3gp` carrying an SSN in
+// its description reported `No matches found.` at exit 0, and `--fail-on-incomplete` also exited 0
+// with nothing in the not-examined block, so the value was neither reported nor redacted and nothing
+// said so. Verified with a real ffmpeg-written file that exiftool reads the value out of.
+//
+// The extension list is what admits a file this far; the parse itself is brand-agnostic, which is why
+// adding the two entries is sufficient rather than a starting point.
+var videoContainerExtensions = map[string]bool{
+	".mp4": true,
+	".m4v": true,
+	".mov": true,
+	".3gp": true,
+	".3g2": true,
+}
+
 // errDeclaredOverrun marks a box whose declared size runs past the real end of the file.
 //
 // Its own sentinel because it is the one header error worth recovering from: the bytes up to the
@@ -168,6 +203,10 @@ func ExtractVideoMetadataWithContext(ctx context.Context, filePath string) (*Vid
 		metadata.MimeType = "video/mp4"
 	case ".mov":
 		metadata.MimeType = "video/quicktime"
+	case ".3gp":
+		metadata.MimeType = "video/3gpp"
+	case ".3g2":
+		metadata.MimeType = "video/3gpp2"
 	default:
 		metadata.MimeType = "video/unknown"
 	}
@@ -373,6 +412,14 @@ func parseFtypBox(data []byte, metadata *VideoMetadata) error {
 		metadata.Codec = "QuickTime"
 	case "M4V ":
 		metadata.Codec = "iTunes Video"
+	case "3gp4", "3gp5", "3gp6", "3gp7", "3gp8", "3gp9", "3gr6", "3gs6", "3ge6", "3gg6":
+		// The 3GPP brands. ffmpeg writes 3gp4 for .3gp; the rest are the release and profile
+		// variants defined in 3GPP TS 26.244, listed from the spec rather than from what one
+		// fixture happened to contain.
+		metadata.Codec = "3GPP"
+	case "3g2a", "3g2b", "3g2c":
+		// 3GPP2, per 3GPP2 C.S0050.
+		metadata.Codec = "3GPP2"
 	default:
 		metadata.Codec = majorBrand
 	}
@@ -401,20 +448,20 @@ func parseMoovBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
-
-		// The second half of this guard is what the eight sibling walkers already carry, and
-		// moov was the one that did not: a child declaring more bytes than the box holds sliced
-		// out of range. `[moov > mvhd declaring 64 with 8 bytes present]` panicked with
-		// "slice bounds out of range [:64] with capacity 32" — caught by the router's recover()
-		// so the process survived, but video metadata extraction was abandoned and its findings
-		// lost (#377).
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		// readChildHeader carries the bounds check this walker used to spell out inline — a child
+		// declaring more bytes than the box holds sliced out of range, and `[moov > mvhd declaring
+		// 64 with 8 bytes present]` panicked with "slice bounds out of range [:64] with capacity
+		// 32", caught by the router's recover() so the process survived but video metadata
+		// extraction was abandoned and its findings lost (#377). It also honours the two special
+		// size words, which this walker did not: a largesize or size-0 udta at moov level was
+		// silently skipped, and a comment carried in one produced no finding.
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
 
 		switch boxType {
 		case "mvhd":
@@ -454,6 +501,17 @@ func parseMoovBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
 				// per-file timeout times the file count (#377). Six walkers shared the pattern;
 				// the issue named one.
+				_ = err
+			}
+		case "meta":
+			// A moov-level meta, which had no case here at all: parseMetaBoxWithContext was
+			// reachable only from parseUdtaBoxWithContext, so `moov > meta` was never visited. That
+			// is where Apple writes its keys/ilst pair — measured on a real macOS recording, see
+			// apple-keys.go — so on those files the descriptive metadata was unreachable before any
+			// question of decoding the index mapping arose.
+			err := parseMetaBoxWithContext(ctx, boxData, metadata)
+			if err != nil {
+				// Non-fatal, and not `continue`, for the reason given on the arms above.
 				_ = err
 			}
 		}
@@ -566,14 +624,24 @@ func parseUdtaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := canonicalBoxType(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The WHOLE box, so the `offset += int(size)` at the foot of this loop still steps over a
+		// 64-bit largesize header's extra eight bytes rather than landing inside the payload.
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
+
+		// 3GPP asset boxes first: their payload layout differs from the QuickTime string boxes the
+		// switch below parses, so routing one into parseStringBox reads its version and flags as a
+		// text length. Claiming them here keeps the two layouts from being confused. Returns false
+		// for every non-3GPP type, so the switch is reached unchanged for everything else.
+		if apply3GPPAsset(boxType, boxData, metadata) {
+			offset += int(size)
+			continue
+		}
 
 		switch boxType {
 		case "meta":
@@ -667,8 +735,17 @@ func parseMetaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 		return fmt.Errorf("meta box too small")
 	}
 
-	// Skip version and flags
-	offset := 4
+	// Where the children start: 0 for QuickTime, 4 for an ISO 14496-12 FullBox. This was an
+	// unconditional 4, which made a QuickTime meta read its first child's type as that child's size
+	// and abandon the box — see the comment in apple-keys.go for the measurement.
+	start := metaChildOffset(data)
+
+	// keys is read in a first pass, because ilst items reference it by index and a writer is not
+	// obliged to put keys first. Two passes over a handful of children costs nothing and removes an
+	// ordering assumption that would fail silently.
+	keys := findKeysTable(ctx, data, start)
+
+	offset := start
 
 	for offset < len(data) {
 		// Check context for cancellation
@@ -682,17 +759,18 @@ func parseMetaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The WHOLE box, so the `offset += int(size)` at the foot of this loop still steps over a
+		// 64-bit largesize header's extra eight bytes rather than landing inside the payload.
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
 
 		if boxType == "ilst" {
-			err := parseIlstBoxWithContext(ctx, boxData, metadata)
+			err := parseIlstBoxWithContext(ctx, boxData, metadata, keys)
 			if err != nil {
 				// Non-fatal: this child is unreadable, the rest of the box is not. Deliberately
 				// NOT `continue` — that skipped the `offset += int(size)` at the foot of the
@@ -712,8 +790,41 @@ func parseMetaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 	return nil
 }
 
-// parseIlstBoxWithContext parses the iTunes-style metadata list with context
-func parseIlstBoxWithContext(ctx context.Context, data []byte, metadata *VideoMetadata) error {
+// findKeysTable walks a meta box's children for a keys table and decodes it.
+//
+// Separate from the main walk so the caller can do it before reading any ilst, and returns nil when
+// there is no keys box — which is the ordinary iTunes-style case where item types are four-character
+// codes and no index mapping is needed.
+func findKeysTable(ctx context.Context, data []byte, start int) map[uint32]metaKeyEntry {
+	offset := start
+	for offset < len(data) {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		if offset+BoxHeaderSize > len(data) {
+			return nil
+		}
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
+			return nil
+		}
+		if boxType == "keys" {
+			return parseKeysBox(data[payloadStart:payloadEnd])
+		}
+		offset = payloadEnd
+	}
+	return nil
+}
+
+// parseIlstBoxWithContext parses the iTunes-style metadata list with context.
+//
+// keys is the index -> name table from a sibling keys box, or nil when there is none. Apple numbers
+// its ilst items instead of naming them, so without that table an item's type word is four bytes of
+// binary and the value it carries cannot be attributed to a field.
+func parseIlstBoxWithContext(ctx context.Context, data []byte, metadata *VideoMetadata, keys map[uint32]metaKeyEntry) error {
 	offset := 0
 
 	for offset < len(data) {
@@ -728,14 +839,45 @@ func parseIlstBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := canonicalBoxType(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The type word sits at offset+4 whichever header form is in use, so the raw bytes the index
+		// lookup below needs are read directly rather than returned by readChildHeader.
+		rawType := data[offset+4 : offset+8]
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
+
+		// A keys-indexed item: the type word is the 1-based index of its key, not a code.
+		//
+		// This branch always consumes the item, and that is the point. The switch below ends in a
+		// default arm gated on isFourCC, which is only a length test — an index type is four bytes
+		// wide and passes it — so falling through stored the value under a key made of raw bytes.
+		// Caught by the real-file test, which found a property literally named "\x00\x00\x00\x01"
+		// holding the binary payload of com.apple.quicktime.pixeldensity.
+		if !isPrintableBoxType(rawType) {
+			index := binary.BigEndian.Uint32(rawType)
+			// appleDataValue rather than parseItunesTag: it honours the data box's own type
+			// indicator, so a binary payload is not stringified into the text the validators scan.
+			value := appleDataValue(boxData)
+
+			if entry, ok := keys[index]; ok && applyAppleKeyValue(entry, value, metadata) {
+				offset += int(size)
+				continue
+			}
+
+			// No keys table, or no such index in it. The value is still text worth scanning, so it
+			// is kept under a readable synthetic key rather than dropped — dropping it is a
+			// SUPPRESSOR and an unreported value cannot be redacted. What is NOT kept is the raw
+			// type as a key.
+			if value != "" {
+				metadata.Properties[fmt.Sprintf("QuickTimeItem_%d", index)] = value
+			}
+			offset += int(size)
+			continue
+		}
 
 		// Parse iTunes metadata tags
 		value := parseItunesTag(boxData)
@@ -787,14 +929,15 @@ func parseItunesTag(data []byte) string {
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The WHOLE box, so the `offset += int(size)` at the foot of this loop still steps over a
+		// 64-bit largesize header's extra eight bytes rather than landing inside the payload.
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
 
 		if boxType == "data" && len(boxData) >= 8 {
 			// Skip type and locale (8 bytes)
@@ -976,6 +1119,10 @@ func parseDate(dateStr string) (time.Time, error) {
 	formats := []string{
 		"2006-01-02T15:04:05Z",
 		"2006-01-02T15:04:05-07:00",
+		// Apple writes com.apple.quicktime.creationdate with no colon in the zone offset —
+		// "2025-06-16T19:12:48-0700" read off a real macOS recording. Without this layout the
+		// value parsed as nothing and CreatedDate stayed zero.
+		"2006-01-02T15:04:05-0700",
 		"2006-01-02 15:04:05",
 		"2006-01-02",
 		"2006",
@@ -993,12 +1140,7 @@ func parseDate(dateStr string) (time.Time, error) {
 // CanProcessVideo checks if the file can be processed as a video
 func CanProcessVideo(filePath string) bool {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	supportedExtensions := map[string]bool{
-		".mp4": true,
-		".m4v": true,
-		".mov": true,
-	}
-	return supportedExtensions[ext]
+	return videoContainerExtensions[ext]
 }
 
 // parseTrakBoxWithContext parses track boxes to extract video technical details with context
@@ -1017,14 +1159,15 @@ func parseTrakBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The WHOLE box, so the `offset += int(size)` at the foot of this loop still steps over a
+		// 64-bit largesize header's extra eight bytes rather than landing inside the payload.
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
 
 		switch boxType {
 		case "tkhd":
@@ -1051,6 +1194,25 @@ func parseTrakBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 				// walker — so a directory of tiny files was a CPU amplifier bounded only by the
 				// per-file timeout times the file count (#377). Six walkers shared the pattern;
 				// the issue named one.
+				_ = err
+			}
+		case "udta":
+			// A per-track user-data box. QuickTime allows udta at both movie and track level, and
+			// only the movie level was read, so a ©cmt or ©des written per track was invisible to
+			// the scan and therefore never redacted either. Real files carry it: a macOS system
+			// recording on the host that reproduced this has `moov > trak > udta`.
+			err := parseUdtaBoxWithContext(ctx, boxData, metadata)
+			if err != nil {
+				// Non-fatal, and not `continue`, for the reason given on the arms above.
+				_ = err
+			}
+		case "meta":
+			// The same reasoning as udta: a track-level meta carries the keys/ilst pair on some
+			// writers, including the real recording quoted in apple-keys.go, whose first trak holds
+			// its own meta > keys/ilst.
+			err := parseMetaBoxWithContext(ctx, boxData, metadata)
+			if err != nil {
+				// Non-fatal, and not `continue`, for the reason given on the arms above.
 				_ = err
 			}
 		}
@@ -1113,14 +1275,15 @@ func parseMdiaBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The WHOLE box, so the `offset += int(size)` at the foot of this loop still steps over a
+		// 64-bit largesize header's extra eight bytes rather than landing inside the payload.
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
 
 		switch boxType {
 		case "minf":
@@ -1160,14 +1323,15 @@ func parseMinfBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The WHOLE box, so the `offset += int(size)` at the foot of this loop still steps over a
+		// 64-bit largesize header's extra eight bytes rather than landing inside the payload.
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
 
 		switch boxType {
 		case "stbl":
@@ -1207,14 +1371,15 @@ func parseStblBoxWithContext(ctx context.Context, data []byte, metadata *VideoMe
 			break
 		}
 
-		size := binary.BigEndian.Uint32(data[offset : offset+4])
-		boxType := string(data[offset+4 : offset+8])
-
-		if size < BoxHeaderSize || offset+int(size) > len(data) {
+		boxType, payloadStart, payloadEnd, ok := readChildHeader(data, offset)
+		if !ok {
 			break
 		}
+		// The WHOLE box, so the `offset += int(size)` at the foot of this loop still steps over a
+		// 64-bit largesize header's extra eight bytes rather than landing inside the payload.
+		size := payloadEnd - offset
 
-		boxData := data[offset+BoxHeaderSize : offset+int(size)]
+		boxData := data[payloadStart:payloadEnd]
 
 		switch boxType {
 		case "stsd":
@@ -1375,7 +1540,12 @@ func (vm *VideoMetadata) ToProcessedContent() string {
 
 // GetSupportedVideoFormats returns the list of supported video formats
 func GetSupportedVideoFormats() []string {
-	return []string{".mp4", ".m4v", ".mov"}
+	formats := make([]string, 0, len(videoContainerExtensions))
+	for ext := range videoContainerExtensions {
+		formats = append(formats, ext)
+	}
+	sort.Strings(formats) // map order is random; a advertised-format list must be stable
+	return formats
 }
 
 // OptimizedVideoReader provides optimized reading for video files
@@ -1662,6 +1832,20 @@ func searchAppleMetadataInData(data string, metadata *VideoMetadata) {
 
 	// Search for each metadata key
 	for metadataKey, propertyName := range appleMetadataKeys {
+		// Skip anything the keys/ilst table already answered properly.
+		//
+		// This scrape reads the bytes FOLLOWING a key name, and inside a keys table what follows a
+		// key name is the next key's name — so on an Apple file it produced field names as values,
+		// shifted by one entry (see apple-keys.go). Now that the table is decoded, its answer is
+		// authoritative and this fallback must not append a contradicting one: emitting both left
+		// the reader with `CameraMake: Apple` and `CameraMake_Apple: m.apple.quicktime.model` side
+		// by side, and fed the garbage to the validators as well.
+		//
+		// Keyed on the property the table writes for the same key, so the two paths cannot disagree
+		// about which key they are talking about.
+		if metadata.decodedAppleKeys[metadataKey] {
+			continue
+		}
 		if strings.Contains(data, metadataKey) {
 			if idx := strings.Index(data, metadataKey); idx >= 0 {
 				// Extract the metadata value

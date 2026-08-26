@@ -96,7 +96,7 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 | Images | `.jpg` `.jpeg` `.png` | EXIF metadata removal only, by decode + re-encode; images over 64M pixels are refused |
 | Other images | `.tiff` `.gif` `.bmp` `.webp` | ⚠️ Not redactable — **no output file is written** and the run says so |
 | Audio | `.mp3` `.wav` `.m4a` `.flac` | Same-length in-place overwrite of tag metadata |
-| Video | `.mp4` `.m4v` `.mov` | Same-length in-place overwrite of tag metadata; GPS payload zeroed |
+| Video | `.mp4` `.m4v` `.mov` `.3gp` `.3g2` | Same-length in-place overwrite of tag metadata; GPS payload zeroed |
 | PDF | `.pdf` | ⚠️ Not redactable — **no output file is written** and the run says so |
 
 > **Note on plain text**: selection follows the same content sniff the scanner uses, so
