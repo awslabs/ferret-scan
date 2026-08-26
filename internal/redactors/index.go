@@ -31,11 +31,22 @@ type RedactionAuditLog struct {
 	// RedactedPath is the path to the redacted document
 	RedactedPath string `json:"redacted_path"`
 
-	// OriginalFileHash is a hash of the original document for integrity verification
-	OriginalFileHash string `json:"original_file_hash"`
+	// OriginalFileHash is a sha256 of the original document, for integrity verification.
+	//
+	// Omitted when it could not be computed (an unreadable input), for the same reason as
+	// RedactedFileHash below.
+	OriginalFileHash string `json:"original_file_hash,omitempty"`
 
-	// RedactedFileHash is a hash of the redacted document for integrity verification
-	RedactedFileHash string `json:"redacted_file_hash"`
+	// RedactedFileHash is a sha256 of the redacted document, for integrity verification.
+	//
+	// Omitted rather than written as "" when there is no digest to report. Until this was populated
+	// the field was present and empty in EVERY audit log — SetRedactedFileHash had no callers — and a
+	// declared-but-always-empty field is worse than an absent one: a consumer cannot tell "not
+	// computed" from "computed as the empty string". A sha256 is never legitimately empty, so absent
+	// now means exactly one thing: no redacted artifact existed to attest to. That happens for real —
+	// the Office redactor refuses to write a partial redaction, and an unregistered file type
+	// produces no output — and in both cases the run says so on stderr.
+	RedactedFileHash string `json:"redacted_file_hash,omitempty"`
 
 	// RedactionSummary contains summary statistics about the redaction
 	RedactionSummary RedactionSummary `json:"redaction_summary"`
