@@ -277,3 +277,129 @@ func TestVetoIsActuallyWiredIntoTheValidator(t *testing.T) {
 			"matches=%+v", matches)
 	}
 }
+
+// The CSS rule needed FOUR signals, and it got there by leaking twice.
+//
+// Name + position vetoed a one-handle-per-line mentions export (covered above). Adding "a `{` later on
+// the line" still vetoed a DELIMITED EXPORT carrying a brace-bearing column — the standard shape of a
+// social-listening or webhook export — and a chat join line. Measured against the pre-#483 binary:
+//
+//	author,date,payload              @media,2026-08-25,"{""rt"":3}"      lost @media and @page
+//	date;author;payload              2026-08-25;@media;{"rt":3}          lost them from column 2 too
+//	author<TAB>mentions<TAB>payload  @media<TAB>42<TAB>{"rt":3}          lost @media and @layer
+//	a chat join line                 @page joined the channel {general}  lost @page
+//
+// In each, a real handle survived only when its name happened not to collide with an at-rule, and the
+// cleartext survived redaction — with no other finding, no redacted file was produced at all, at rc 0.
+//
+// Both new signals are FREE, measured over 9,346 real at-rule occurrences in 1,881 CSS files that
+// already pass the earlier signals:
+//
+//	byte immediately after the name   <space> 92.91%   ( 7.02%   { 0.07%   = 100.00%; TAB never
+//	line ends with `{`                30.57%   (CSS written for humans)
+//	line has two or more `{`          69.43%   (minified)
+//	either                            100.00%
+//
+// And on the 1,633-file corpus the false-positive count is IDENTICAL with and without them.
+
+// TestDelimitedExportsAreNotCSS is the reported regression, one case per delimiter.
+func TestDelimitedExportsAreNotCSS(t *testing.T) {
+	for _, tc := range []struct{ name, line, token string }{
+		{"comma-delimited, quoted json column", `@media,2026-08-25,"{""rt"":3}"`, "@media"},
+		{"semicolon-delimited, handle in column 2", `2026-08-25;@media;{"rt":3}`, "@media"},
+		{"tab-separated", "@media\t42\t{\"rt\":3}", "@media"},
+		{"tab-separated, second row token", "@layer\t7\t{\"rt\":1}", "@layer"},
+		{"chat join line naming a channel", `@page joined the channel {general}`, "@page"},
+		{"prose with a brace later", `follow @media for updates, see {docs}`, "@media"},
+
+		// The cases where cssPreludeFollows is the ONLY signal standing between the row and a veto.
+		//
+		// A first version of this table had none of them: every delimited fixture carried a SINGLE
+		// brace, so opensABlock already rejected it, and a mutation deleting the prelude check
+		// SURVIVED the whole suite. Two brace-bearing columns, or a row ending in a brace, are what
+		// reach the region that check actually governs.
+		{"two json columns, comma", `@media,{"rt":3},{"likes":9}`, "@media"},
+		{"two json columns, tab", "@media\t{\"a\":1}\t{\"b\":2}", "@media"},
+		{"two json columns, semicolon", `@layer;{"a":1};{"b":2}`, "@layer"},
+		{"row that ends in a brace", `@media,payload,{`, "@media"},
+		{"row ending in a brace, tab", "@page\t42\t{", "@page"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, e := spanOf(t, tc.line, tc.token)
+			if isSyntaxNotAHandle(tc.line, tc.token, s, e) {
+				t.Errorf("%q in %q was vetoed as CSS. It is a data row or prose, the handle is real, "+
+					"and only reported findings reach the redactor.", tc.token, tc.line)
+			}
+		})
+	}
+}
+
+// TestCSSPreludeSignalAcceptsWhatRealCSSWrites is the direction that must not break.
+//
+// 100% of 9,346 real occurrences are covered by space, `(` or `{`; the quote forms are legal minified
+// CSS and were added after a single real file — `@import"https://..."` in a minified Apple stylesheet —
+// showed up as the only false positive the first version of this signal caused.
+func TestCSSPreludeSignalAcceptsWhatRealCSSWrites(t *testing.T) {
+	for _, tc := range []struct{ name, line, token string }{
+		{"space then a query", `@media screen and (min-width: 700px) {`, "@media"},
+		{"minified paren", `@media(min-width:600px){a{color:red}}`, "@media"},
+		{"minified string prelude", `@import"https://example.com/f.css";a{color:red}b{color:blue}`, "@import"},
+		{"charset with a quote", `@charset"utf-8";a{color:red}b{color:blue}`, "@charset"},
+		{"block-only at-rule, brace flush", `@keyframes spin{from{top:0}}`, "@keyframes"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, e := spanOf(t, tc.line, tc.token)
+			if !isSyntaxNotAHandle(tc.line, tc.token, s, e) {
+				t.Errorf("%q in %q was NOT recognised as CSS, so a real at-rule reports as a handle",
+					tc.token, tc.line)
+			}
+		})
+	}
+}
+
+// TestAQuoteAfterTheNameIsSafeBecauseOfThePositionCheck pins why accepting a quote does not re-open the
+// CSV case, structurally rather than by luck.
+//
+// For a delimited file to put a quote immediately AFTER the token, the token would have to be unquoted
+// while the next field is quoted — which no delimited format emits. When a CSV does quote the field, the
+// token is PRECEDED by a quote, and opensAStatement rejects that.
+func TestAQuoteAfterTheNameIsSafeBecauseOfThePositionCheck(t *testing.T) {
+	quoted := `"@media","12"`
+	s, e := spanOf(t, quoted, "@media")
+	if isSyntaxNotAHandle(quoted, "@media", s, e) {
+		t.Error(`"@media","12" was vetoed. A quoted CSV field puts the quote BEFORE the token, which ` +
+			"opensAStatement must reject — that is what makes accepting a trailing quote safe.")
+	}
+}
+
+// TestOpensABlockNeedsMoreThanOneBraceMidLine pins the fourth signal, both shapes.
+func TestOpensABlockNeedsMoreThanOneBraceMidLine(t *testing.T) {
+	if !opensABlock(`@media print {`) {
+		t.Error("a line ending in `{` opens a block")
+	}
+	if !opensABlock(`@media print {   `) {
+		t.Error("trailing whitespace after `{` must not matter")
+	}
+	if !opensABlock(`a{color:red}@media print{b{color:blue}}`) {
+		t.Error("minified CSS puts many braces on one line and must still count")
+	}
+	if opensABlock(`@page joined the channel {general}`) {
+		t.Error("one brace opened and closed mid-line is prose or data, not a CSS block. Checking only " +
+			"\"ends with a brace\" would have covered just 30.57% of real CSS, which is why both shapes " +
+			"are accepted and a single mid-line pair is not.")
+	}
+}
+
+// TestTabIsNotPreludeWhitespace records a deliberate, measured choice.
+//
+// CSS permits a tab after an at-rule name, but it never appears there in 9,346 real occurrences, while a
+// tab IS the delimiter of a TSV. Positives may widen, suppressors may not.
+func TestTabIsNotPreludeWhitespace(t *testing.T) {
+	if cssPreludeFollows("@media\tscreen {", len("@media")) {
+		t.Error("a TAB was accepted as prelude whitespace. It never occurs there in real CSS and it is " +
+			"the delimiter of a TSV, so accepting it re-opens the export leak.")
+	}
+	if !cssPreludeFollows("@media screen {", len("@media")) {
+		t.Error("a space must be accepted")
+	}
+}
