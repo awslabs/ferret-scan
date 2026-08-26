@@ -298,7 +298,16 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 	// The structural reason this ratio is a poor instrument: buildDistinctOnOneLine grows the value
 	// count AND the line length together, so correct is 4x and the regression is 16x. A 4x-wide
 	// window has to absorb every machine's constant-factor differences, and Windows' exceeds it.
-	// The assertion that replaces it is below, and it does not have that problem.
+	//
+	// And the mechanism behind that, which also explains why the resize made things WORSE rather than
+	// better: the base term walks a 128KB line and the big term a 512KB one, so the two terms have
+	// DIFFERENT cache and TLB footprints. A machine with a smaller cache inflates the ratio itself,
+	// because only the big term falls out of cache. Growing the fixture 4x doubled that footprint
+	// asymmetry, which is why a change intended to stabilise the measurement moved the Windows
+	// reading from 8.9x to 9.7x. No sampling statistic can remove a systematic offset of that kind.
+	//
+	// The assertion that replaces it is below, and it does not have that problem: both of its terms
+	// measure the SAME string, so the footprint is identical and a uniformly slower machine cancels.
 	if tBase > 0 {
 		t.Logf("(growth of this pair is informational: measured 3.7x-4.6x correct here, 8.9x and "+
 			"9.7x on windows-latest, 15.5x regressed — see the comment above for why it is not "+
@@ -344,6 +353,26 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 			"this says each value is scanning the line again — O(K x line length), which measured "+
 			"8.14s of a 9.64s scan on a 1.14MB line before #388",
 			fRatio, fBase, fBig, maxCountGrowth)
+	}
+
+	// A second live assertion on the same fixture, deliberately NOT tuned close to the observation.
+	//
+	// The regressed big term is 1.63-1.66s against a correct 11.0-12.6ms — a 130x absolute gap — so an
+	// absolute bound is unusually informative here, and unlike the ratio it survives the ratio itself
+	// being defeated by some future constant-factor surprise. Two independent live assertions is the
+	// point; the old shape had one live and one decorative.
+	//
+	// 1s, not the 100ms that the measured gap would justify. 100ms buys 7.9x below and 16.3x above on
+	// THIS host, which looks better on paper — and is exactly the mistake this whole test is a
+	// correction of. Windows ran the old big term 12x slower than this host; 12 x 12.6ms is 151ms, so
+	// a 100ms ceiling would fail there on correct code. 1s tolerates a runner 79x slower than this one
+	// while still sitting 1.63x under the regression, which is the trade an absolute bound on a shared
+	// runner has to make.
+	const bigAbsoluteCeiling = 1 * time.Second
+	if fBig > bigAbsoluteCeiling {
+		t.Errorf("resolving %d matches on a fixed %d-value line took %v (> %v) — %v on the audit "+
+			"host, and the per-value rescan measured 1.63-1.66s, so this is a complexity change and "+
+			"not a slow machine", subsetBig, lineValues, fBig, bigAbsoluteCeiling, "11.0-12.6ms")
 	}
 }
 
