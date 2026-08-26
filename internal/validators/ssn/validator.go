@@ -5,6 +5,7 @@ package ssn
 
 import (
 	stdctx "context"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -336,7 +337,33 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
-	isDocx := strings.Contains(originalPath, ".docx")
+	// Whether this file's text extraction can GLUE two adjacent numeric fields into one digit run,
+	// which is the only condition under which findSSNsInConcatenatedNumbers has anything real to find.
+	//
+	// Was `strings.Contains(originalPath, ".docx")`, which was wrong in BOTH directions (#460):
+	// too loose, because any path containing that substring qualified -- `sheet.docx.csv`, a directory
+	// named `docx-exports/`, `report.docx.bak` -- and too narrow in a way that turned out not to
+	// matter, for a reason worth recording rather than guessing at.
+	//
+	// MEASURED, two adjacent fields each holding a bare 9-digit number, read back with
+	// --preprocess-only:
+	//
+	//	.docx  two <w:r> runs        -> "449874100130075728"    GLUED
+	//	.pptx  two <a:r> runs        -> "449874100 130075728"   space
+	//	.xlsx  two adjacent cells    -> "449874100	130075728"  tab
+	//
+	// So the Word run path is the only extractor here that produces the shape. The issue's premise
+	// that "`.xlsx` extraction concatenates cells by construction" does not hold for this codebase --
+	// it separates them -- so widening to spreadsheets would add reach the rule cannot use.
+	//
+	// And widening to EVERYTHING was measured and rejected outright. Forcing the gate on:
+	//
+	//	3,000 real text/code/doc files (22MB)   145 -> 147 findings   (+2, both LOW, both false)
+	//	one 125KB log, 2,000 18-digit runs        0 -> 3,114 findings
+	//
+	// An 18-digit run is ordinary in a log (an id pair, an epoch pair), and `couldBeSSN` on both
+	// halves is far too weak to carry that load on its own.
+	isConcatenatingExtractor := gluesAdjacentFields(originalPath)
 
 	// Recognise a delimited table ONCE per document, so each match can be resolved
 	// to the header cell naming its column.
@@ -403,7 +430,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		}
 
 		// For preprocessed content, also look for SSN patterns in concatenated number sequences
-		if len(foundMatches) == 0 && isDocx {
+		if len(foundMatches) == 0 && isConcatenatingExtractor {
 			// This handles cases where text extraction concatenates SSNs with other data.
 			// These synthesized candidates have no real offset on the line; mark with
 			// start = -1 so the context window falls back to strings.Index (the prior
@@ -1401,4 +1428,28 @@ func (v *Validator) couldBeSSN(candidate string) bool {
 	}
 
 	return true
+}
+
+// wordRunExtensions are the file types whose text extraction concatenates adjacent runs with no
+// separator, which is the shape findSSNsInConcatenatedNumbers exists to read.
+//
+// Word only, and measured rather than assumed -- see the comment at the call site. `.docm` is the
+// macro-enabled form of the same format and the same extractor, so it belongs here for the same reason
+// `.docx` does; it is admitted to the pipeline by #497.
+//
+// Deliberately NOT `.xlsx`/`.pptx`: their extractors insert a tab and a space respectively, so an
+// 18-digit run cannot arise there from field adjacency, and admitting them would widen the rule's reach
+// without giving it anything to find. Deliberately not the legacy `.doc` either: whether its OLE
+// extraction glues has not been measured, and a gate is the wrong place to guess.
+var wordRunExtensions = map[string]bool{
+	".docx": true,
+	".docm": true,
+}
+
+// gluesAdjacentFields reports whether a path's TYPE is one whose extraction can glue numeric fields.
+//
+// filepath.Ext rather than strings.Contains, which is the whole point: `sheet.docx.csv` is a CSV and
+// must not take this path, and a directory named `docx-exports/` must not put every file under it on it.
+func gluesAdjacentFields(originalPath string) bool {
+	return wordRunExtensions[strings.ToLower(filepath.Ext(originalPath))]
 }
