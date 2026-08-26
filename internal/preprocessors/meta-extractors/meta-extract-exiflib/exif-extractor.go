@@ -276,20 +276,80 @@ func extractXMPField(xmpData, pattern, fieldName string, tags map[string]string)
 	}
 }
 
-// extractJFIFComment extracts JFIF comment segments
+// extractJFIFComment extracts the JPEG COM segment, by WALKING the segment chain.
+//
+// The previous version scanned every byte position for the pair 0xFF 0xFE and trusted the two bytes
+// behind it as a length. A given byte pair turns up about once every 64KB of compressed data, so on a
+// real JPEG that finds noise, and the noise is then handed to the validators as document text.
+//
+// Measured on an Apple-shipped asset,
+// /Applications/Numbers.app/Contents/SharedSupport/DocumentResources/50/9f5178abe0a74d6f0a905b2974c7c7a203b965.jpeg
+// (139,103 bytes): the file has NO COM segment and NO Exif APP1, and exactly one 0xFFFE in it -- at
+// offset 557, inside the Display P3 ICC profile carried in APP2, which spans bytes 2 to 566. It
+// declares 59,392 bytes, so 59KB of ICC tail, quantisation tables and entropy-coded scan were emitted
+// as JFIF_Comment. Extracted text went 210 -> 59,599 characters and the validators reported FIVE
+// SOCIAL_MEDIA TWITTER findings at HIGH 100/91 -- @hf, @K_pIa, @am, @E4, @L_ -- for handles present
+// nowhere in the file.
+//
+// The consequence is not a cosmetic false positive. Those findings drive the image redactor, which
+// decodes and re-encodes the picture, so a "redacted" copy was written for a file holding nothing:
+// 139,103 -> 95,213 bytes, 418,816 of 487,080 decoded pixel bytes different (85.99%, max channel delta
+// 60), and the ICC profile GONE. A lossy redactor must act on "this part holds a reported value", and
+// here the reported value was an artefact of this reader. Before #480 the branch was unreachable for an
+// image without Exif, which is why the defect surfaced when that returned-early behaviour was fixed.
+//
+// Walking is the fix rather than a tighter length check, because no check on the length can tell a
+// marker from two bytes that merely look like one. A COM segment is a COM segment only if the chain
+// leads to it.
 func extractJFIFComment(data []byte, tags map[string]string) {
-	// Look for JPEG comment marker (0xFFFE)
-	for i := 0; i < len(data)-4; i++ {
-		if data[i] == 0xFF && data[i+1] == 0xFE {
-			length := int(data[i+2])<<8 | int(data[i+3])
-			if i+4+length <= len(data) && length > 0 {
-				comment := string(data[i+4 : i+4+length])
-				if strings.TrimSpace(comment) != "" {
-					tags["JFIF_Comment"] = comment
-					break
-				}
+	// Every JPEG starts with SOI. Without it this is not a segment chain and there is nothing to walk.
+	if len(data) < 4 || data[0] != 0xFF || data[1] != 0xD8 {
+		return
+	}
+
+	for i := 2; i+1 < len(data); {
+		if data[i] != 0xFF {
+			return // not positioned on a marker: the chain is broken, so stop rather than guess
+		}
+		marker := data[i+1]
+
+		switch {
+		case marker == 0xFF:
+			// Fill bytes are legal before a marker; skip one and re-examine.
+			i++
+			continue
+		case marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7):
+			// TEM and the restart markers carry no payload and no length.
+			i += 2
+			continue
+		case marker == 0xD9:
+			return // EOI
+		}
+
+		if i+3 >= len(data) {
+			return
+		}
+		// A segment length INCLUDES its own two bytes, so the payload is length-2 bytes long.
+		length := int(data[i+2])<<8 | int(data[i+3])
+		if length < 2 || i+2+length > len(data) {
+			return // truncated or nonsensical: stop rather than read past the segment
+		}
+
+		if marker == 0xFE {
+			comment := string(data[i+4 : i+2+length])
+			if strings.TrimSpace(comment) != "" {
+				tags["JFIF_Comment"] = comment
+				return
 			}
 		}
+
+		if marker == 0xDA {
+			// SOS. Entropy-coded data follows, in which 0xFF bytes are stuffed rather than
+			// markers, so nothing beyond here is addressable by walking -- and that is exactly
+			// the region the old byte scan was reading.
+			return
+		}
+		i += 2 + length
 	}
 }
 

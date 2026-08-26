@@ -95,6 +95,24 @@ func extractPNGText(r io.ReaderAt, size int64, tags map[string]string) (exifPayl
 		case "IEND":
 			return exifPayload
 		case "tEXt", "zTXt", "iTXt", "eXIf":
+			// The total budget is consulted FIRST, before this chunk is read or inflated.
+			//
+			// It used to be consulted after parsePNGText, which bounded the WORK by
+			// maxPNGChunks * maxPNGTextChunkBytes -- 65,536 x 1MB, i.e. 64GB of decompression --
+			// rather than by the 4MB of text actually kept. Both caps existed and were individually
+			// correct; they simply did not compose in that order. Measured on a valid 69.4MB PNG of
+			// 65,535 legal zTXt chunks each inflating to exactly the 1MB per-chunk cap: 81.27s and
+			// 135MB RSS, against 0.09s and 30MB before this reader existed, and reported at rc 0 as
+			// a fully scanned clean file. 2,000 chunks already cost 7.95s.
+			//
+			// eXIf is exempt because it is not text, does not draw on this budget, and is the one
+			// chunk whose loss would be a coverage regression rather than a saving. Skipping is a
+			// `break` out of the SWITCH, not the loop, so the walk continues header-only and cheaply
+			// to find a later eXIf.
+			if kind != "eXIf" && total >= maxPNGTextTotalBytes {
+				break
+			}
+
 			want := declared
 			if want > maxPNGTextChunkBytes {
 				want = maxPNGTextChunkBytes
@@ -109,13 +127,13 @@ func extractPNGText(r io.ReaderAt, size int64, tags map[string]string) (exifPayl
 				exifPayload = payload
 				break
 			}
+
 			key, text, ok := parsePNGText(kind, payload)
 			if ok {
-				// Before the caps, so the budget counts what is actually scanned, and so a
+				// After inflation but before the cap below, so the budget counts what is actually
+				// scanned -- an encoded payload is up to three times its decoded size -- and so a
 				// truncation can never cut a `%XX` sequence in half.
 				text = decodePercentEncoded(text)
-			}
-			if ok && total < maxPNGTextTotalBytes {
 				if len(text) > maxPNGTextTotalBytes-total {
 					text = text[:maxPNGTextTotalBytes-total]
 				}
