@@ -341,18 +341,14 @@ func (dpc *DefaultPositionCorrelator) extractTextAtPosition(pos redactors.TextPo
 
 // tryExactMatch attempts exact text matching
 func (dpc *DefaultPositionCorrelator) tryExactMatch(extractedPos redactors.TextPosition, targetText, originalText, documentType string) *PositionCorrelation {
-	index := strings.Index(originalText, targetText)
-	if index == -1 {
+	// Search the match's OWN LINE first. See searchScope: resolving document-wide
+	// returns the first occurrence anywhere, which is the wrong one whenever the
+	// value occurs more than once — and that wrong offset reached the redactor as a
+	// cleartext leak (#519).
+	index, matchCount, ok := exactMatchInScope(extractedPos, targetText, originalText)
+	if !ok {
 		return nil
 	}
-
-	// Occurrence count of this match's text in the document, computed ONCE.
-	// It was previously computed twice per correlated match — once here for
-	// metadata and once inside calculateExactMatchConfidence — and each
-	// strings.Count scans the whole document, so a document with m matches paid
-	// 2*m full scans. That was the dominant term in the quadratic redaction
-	// cost measured before this change.
-	matchCount := strings.Count(originalText, targetText)
 
 	// Calculate document position
 	docPos := dpc.calculateDocumentPosition(index, len(targetText), originalText, documentType)
@@ -375,12 +371,95 @@ func (dpc *DefaultPositionCorrelator) tryExactMatch(extractedPos redactors.TextP
 	}
 }
 
+// searchScope returns the byte range of originalText that a match reported on
+// extractedPos.Line should be resolved within, and whether that range is usable.
+//
+// # Why resolution must be scoped to the line
+//
+// This function exists because both matchers below used to resolve with a
+// document-wide search and therefore always returned the FIRST occurrence of the
+// value, whatever line it was reported on. When a value occurs more than once that
+// answer is wrong, and the wrong answer reached the redactor: a PHONE reported at
+// HIGH 100 on line 2 was resolved to an occurrence on line 1, so line 2 was never
+// rewritten and the reported value shipped in the "redacted" output in cleartext at
+// exit 0 (#519).
+//
+// The line number is the one piece of information that disambiguates the
+// occurrences, and it was already being passed in and ignored.
+//
+// Scoping is also strictly CHEAPER, which is worth stating because a correctness fix
+// that cost performance would be a trade. Resolving document-wide took two whole
+// passes per match — one strings.Index plus one strings.Count — so a document with m
+// matches paid 2m passes. Locating the line is one pass, and the Index and Count that
+// follow run over one line rather than the document.
+//
+// ok is false when the line cannot be located, which is not an error: a bounded or
+// consolidated match, or line-number drift from an extractor, leaves a match whose
+// recorded line does not contain its text. Callers fall back to the document-wide
+// search in that case, so such a match is still located and still redacted exactly as
+// before — the same policy PlainTextRedactor.findMatchPosition already documents.
+func searchScope(extractedPos redactors.TextPosition, originalText string) (start, end int, ok bool) {
+	if extractedPos.Line < 1 {
+		return 0, 0, false
+	}
+	start = 0
+	for line := 1; line < extractedPos.Line; line++ {
+		nl := strings.IndexByte(originalText[start:], '\n')
+		if nl < 0 {
+			return 0, 0, false
+		}
+		start += nl + 1
+	}
+	end = len(originalText)
+	if nl := strings.IndexByte(originalText[start:], '\n'); nl >= 0 {
+		end = start + nl
+	}
+	return start, end, true
+}
+
+// exactMatchInScope resolves targetText to a document offset, preferring the line it
+// was reported on, and returns the occurrence count within whichever scope answered.
+//
+// The count feeds exactMatchConfidence, and counting within the scope that produced
+// the offset is the point: a value occurring once on its own line is unambiguously
+// located there however many times it appears elsewhere in the document, so it earns
+// the unique-match confidence rather than being de-rated for copies that were never
+// candidates.
+func exactMatchInScope(extractedPos redactors.TextPosition, targetText, originalText string) (index, matchCount int, ok bool) {
+	if start, end, scoped := searchScope(extractedPos, originalText); scoped {
+		if i := strings.Index(originalText[start:end], targetText); i >= 0 {
+			return start + i, strings.Count(originalText[start:end], targetText), true
+		}
+	}
+
+	// The reported line does not hold the text; fall back to the document.
+	index = strings.Index(originalText, targetText)
+	if index == -1 {
+		return 0, 0, false
+	}
+	return index, strings.Count(originalText, targetText), true
+}
+
 // tryFuzzyMatch attempts fuzzy text matching
 func (dpc *DefaultPositionCorrelator) tryFuzzyMatch(extractedPos redactors.TextPosition, targetText, originalText, documentType string) *PositionCorrelation {
-	bestMatch := dpc.findBestFuzzyMatch(targetText, originalText)
+	// Scoped to the reported line for the same reason as the exact matcher, and this
+	// path is the one that actually shipped the leak in #519: for a value occurring
+	// twice, exactMatchConfidence correctly de-rated it to 0.7125 and the caller's 0.8
+	// gate rejected it — but calculateFuzzyMatchConfidence returns 0.8*1.0 = 0.8 for an
+	// edit distance of 0, which clears a `>=` 0.8 gate by exactly nothing and admitted
+	// the same document-wide offset the exact path had just refused.
+	searchText, offset := originalText, 0
+	if start, end, scoped := searchScope(extractedPos, originalText); scoped {
+		if strings.Contains(originalText[start:end], targetText) {
+			searchText, offset = originalText[start:end], start
+		}
+	}
+
+	bestMatch := dpc.findBestFuzzyMatch(targetText, searchText)
 	if bestMatch == nil {
 		return nil
 	}
+	bestMatch.Index += offset
 
 	// Calculate document position
 	docPos := dpc.calculateDocumentPosition(bestMatch.Index, len(bestMatch.Text), originalText, documentType)
