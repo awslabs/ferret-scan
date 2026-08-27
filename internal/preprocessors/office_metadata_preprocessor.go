@@ -5,9 +5,11 @@ package preprocessors
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/awslabs/ferret-scan/v2/internal/embedded"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	meta_extract_officelib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/meta-extractors/meta-extract-officelib"
 )
@@ -183,8 +185,34 @@ func (omp *OfficeMetadataPreprocessor) formatOfficeMetadata(meta *meta_extract_o
 // processEmbeddedMedia processes embedded media through router integration,
 // returning the text to append and the out-of-band sections describing it.
 func (omp *OfficeMetadataPreprocessor) processEmbeddedMedia(filePath string) (string, []ContentSection, []string) {
+	// Refuse BEFORE materialising anything, when the router could not descend anyway.
+	//
+	// MaxEmbeddedDepth is enforced in ProcessEmbedded, which runs only after every part
+	// has been inflated and written to a temp file — so at the bound the deepest level's
+	// bytes were written and then immediately thrown away. On the 4-level fixture that
+	// was the single largest contributor to the 720MB of temp a 205KB document produced.
+	// Asking first costs one map lookup.
+	//
+	// Disclosed once for the container rather than once per part: the parts have not been
+	// enumerated yet, and naming them would mean doing the work this guard exists to
+	// avoid. It reaches the same ExtractionWarning channel, so --fail-on-incomplete still
+	// sees it.
+	if omp.router != nil && omp.router.EmbeddedDepthOf(filePath) >= embedded.MaxDepth {
+		return "", nil, []string{fmt.Sprintf(
+			"embedded parts of %q were not examined: container nesting limit (%d) reached",
+			filepath.Base(filePath), embedded.MaxDepth)}
+	}
+
+	// The whole-traversal budget this file belongs to, nil at top level only if the
+	// router is absent. Every part materialised below is charged against it, so a
+	// container that fans out into sixty children cannot draw sixty fresh allowances.
+	var traversal *embedded.Budget
+	if omp.router != nil {
+		traversal = omp.router.EmbeddedBudget(filePath)
+	}
+
 	// Extract embedded media for processing
-	embeddedMedia, notExamined, err := meta_extract_officelib.ExtractEmbeddedMediaForProcessing(filePath)
+	embeddedMedia, notExamined, err := meta_extract_officelib.ExtractEmbeddedMediaForProcessing(filePath, traversal)
 	if err != nil {
 		// The only error here is "this file is not a ZIP", and processOfficeMetadata has
 		// already called ExtractMetadata on the same path, which opens the same archive and

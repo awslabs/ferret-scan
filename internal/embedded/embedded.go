@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // MaxDepth bounds how deep container-inside-container traversal goes, counting
@@ -55,33 +56,34 @@ import (
 // clean result — which is the failure this whole area keeps reproducing.
 const MaxDepth = 3
 
-// BudgetBytes is the decompression budget for ONE container's embedded parts.
+// BudgetBytes is the decompression budget for embedded parts.
 //
-// It is per-container, and the aggregate over a nested tree is NOT bounded by it.
-// This comment previously claimed the opposite — that the budget was threaded
-// through the recursion so the total stayed flat however the bytes were spread.
-// Nothing threads it. The only consumer is newExtractionBudget in the Office
-// extractor, which grants a fresh allowance on every call, and the recursion runs
-// in other packages (internal/redactors, internal/router) that materialise each
-// child as its own file and re-enter extraction on it.
+// It bounds TWO different things, and the distinction is the whole point of #474:
 //
-// Measured by counting grants, one probe per newExtractionBudget call:
+//   - per container, the bytes one container may inflate while deciding what it
+//     holds. Enforced by the Office extractor's own unexported budget.
+//   - per TOP-LEVEL FILE, the bytes the whole traversal may MATERIALISE, however
+//     those bytes are spread across nesting and fan-out. Enforced by Budget below,
+//     created once per top-level file and inherited by every descendant.
 //
-//	a flat .docx, 3 media parts        2 grants     400MB allowed
-//	3 levels of nesting                6 grants    1200MB allowed
-//	1 level, 8 sibling containers      18 grants    3600MB allowed  (a 9KB file)
+// The second bound did not exist, and this comment used to say so. What it cost,
+// measured on a real LibreOffice-authored .docx:
 //
-// Two grants per container — the metadata loop and the processing loop each take
-// one — so the aggregate scales with the CONTAINER COUNT, not with the traversal.
-// MaxDepth bounds the depth factor; nothing bounds the fan-out factor, so the
-// third row above is reachable at depth 1.
+//	4 levels of nesting, 205KB in     8 grants    720MB written to temp
+//	  the same, with --enable-redaction            peak RSS 1,353MiB
+//	1 level, 64 sibling containers, 367KB in    130 grants   11,531MB written
 //
-// That per-container amplification is the shape a whole-traversal budget exists
-// to prevent, and correcting the comment does not fix it: threading one budget
-// would mean carrying it across those package boundaries, past an unexported
-// type. Tracked separately rather than asserted as done here — a comment claiming
-// a bound that the code does not implement is worse than no comment, because it
-// stops the next reader from looking.
+// The last row is a 32,947x write amplification from a third of a megabyte, at
+// exit 0, with nothing on stderr. MaxDepth bounded the depth factor and nothing
+// bounded fan-out, so that row is reachable at depth 1 and at 1.6% of
+// maxEmbeddedParts. Each container drew its own fresh 200MB allowance because
+// newExtractionBudget granted one per call and the recursion runs in other
+// packages (internal/router, internal/redactors) that materialise each child as
+// its own file and re-enter extraction on it.
+//
+// A single container already refused and disclosed correctly; only the aggregate
+// was unbounded. That is the "declared size bounds declared size" shape one level
+// up: every individual check passes and the checks compose to nothing.
 const BudgetBytes int64 = 200 * 1024 * 1024
 
 // ErrTooDeep reports that a container nests deeper than MaxDepth.
@@ -97,6 +99,131 @@ var ErrTooDeep = errors.New("embedded container nesting limit reached")
 // known part was skipped, budget-exhausted means the file is a probable
 // decompression bomb. Both leave content unexamined and both must be surfaced.
 var ErrBudgetExhausted = errors.New("embedded container decompression budget exhausted")
+
+// Budget bounds the bytes ONE TOP-LEVEL FILE may materialise across its entire
+// embedded traversal.
+//
+// # Why it must be per top-level file, and not narrower or wider
+//
+// Narrower — per container — is what BudgetBytes' comment describes and is not
+// enough: the aggregate scales with container COUNT, so splitting one refused
+// container into sixty admissible ones defeats it.
+//
+// Wider — a package-level counter shared by the whole scan — would be worse than
+// the bug. Files are scanned by a parallel worker pool, so a shared budget makes
+// WHICH parts get examined depend on worker interleaving: the findings and the
+// disclosure would both differ run to run, and a large file early in a directory
+// would make later files report clean. Detection must not depend on scheduling.
+// Per top-level file is the widest scope that is still deterministic, and it is
+// released when that file finishes so the next file starts whole.
+//
+// A Budget is created by the router for each top-level file and handed to every
+// descendant of it, so the sum below is over the real traversal rather than over
+// one container.
+type Budget struct {
+	// Guarded because a Budget outlives one call and is reachable from anywhere in
+	// one file's traversal. Today that traversal is sequential, so the lock is never
+	// contended; it is here so that parallelising the part loop later cannot turn a
+	// resource bound into a data race.
+	mu        sync.Mutex
+	remaining int64
+	limit     int64
+
+	// exhausted latches once a reservation has been refused.
+	//
+	// A flag rather than zeroing remaining, because reservations are RELEASED when a part
+	// turns out to be smaller than it declared. Zeroing would let a refund resurrect a
+	// traversal that had already been refused, and then whether a part was examined would
+	// depend on the ORDER parts appear in the archive — which the producer chooses. Latching
+	// keeps the refusal order-independent while leaving the accounting intact.
+	exhausted bool
+}
+
+// NewBudget returns a whole-traversal budget of BudgetBytes.
+func NewBudget() *Budget {
+	return &Budget{remaining: BudgetBytes, limit: BudgetBytes}
+}
+
+// Reserve claims n bytes, reporting whether the traversal may still afford them.
+//
+// A nil Budget always allows, so a caller that has not been given one behaves
+// exactly as it did before this bound existed. That matters for the direct callers
+// of the extractor's exported functions, which have no router to ask.
+//
+// Charged with bytes ACTUALLY written rather than a declared size, for the same
+// reason the per-container budget is: an over-claim would otherwise let one lying
+// part deny coverage to the rest of the document.
+func (b *Budget) Reserve(n int64) bool {
+	if b == nil {
+		return true
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.exhausted || n > b.remaining {
+		b.exhausted = true
+		return false
+	}
+	b.remaining -= n
+	return true
+}
+
+// Exhausted reports whether this traversal has already refused a part.
+//
+// Callers use it to skip work they know will be refused, so an exhausted traversal costs
+// nothing per remaining part rather than one refusal each.
+func (b *Budget) Exhausted() bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.exhausted
+}
+
+// Release returns an unspent reservation.
+//
+// The traversal is reserved on a part's DECLARED size, before any bytes are written, so that an
+// exhausted traversal refuses a part without materialising it — refusing AFTER the copy bounds
+// what gets scanned but not what gets written, which is most of the harm. The declared size is
+// producer-controlled, so whatever it over-claimed is handed back here as soon as the real length
+// is known. That is what keeps a lying declaration from denying coverage to the rest of the
+// document, which is the hazard post-copy charging exists to avoid.
+//
+// Never raises the allowance above its limit: a release without a matching reservation would
+// otherwise mint budget.
+func (b *Budget) Release(n int64) {
+	if b == nil || n <= 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.remaining += n
+	if b.remaining > b.limit {
+		b.remaining = b.limit
+	}
+}
+
+// Limit reports the budget this traversal started with, for the refusal message.
+func (b *Budget) Limit() int64 {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.limit
+}
+
+// Remaining reports the unspent allowance. Used by tests to prove the charge
+// actually happened, since a budget that is threaded but never charged looks
+// identical to a fixed one from the outside.
+func (b *Budget) Remaining() int64 {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.remaining
+}
 
 // kindByExt maps a lower-cased extension to the class of embedded file it is.
 //

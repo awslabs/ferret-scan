@@ -87,12 +87,13 @@ at all, at exit 0, with nothing under `files_not_examined`.
 
 An OOXML container (`.docx`, `.xlsx`, `.pptx` and their macro-enabled forms) can hold arbitrarily
 many arbitrarily large parts under `media/` and `embeddings/`, all attacker-controlled and all
-cheap to declare. Four bounds apply, because each one leaves the others unbounded:
+cheap to declare. Five bounds apply, because each one leaves the others unbounded:
 
 | Bound | Value | Configurable | Disclosed when it bites |
 |---|---|---|---|
 | `MaxEmbeddedMediaSize` | 50MB per single embedded part | No | Yes |
-| `embedded.BudgetBytes` | 200MB of embedded bytes per container | No | Yes |
+| `embedded.BudgetBytes` (per container) | 200MB of embedded bytes one container may inflate | No | Yes |
+| `embedded.Budget` (per top-level file) | 200MB of embedded bytes the whole traversal may **materialise** | No | Yes |
 | `maxEmbeddedParts` | 4,096 embedded parts per container | No | Yes |
 | `embedded.MaxDepth` | 3 levels of container-inside-container | No | Yes |
 
@@ -112,9 +113,39 @@ any one file was 361 (next 201, 201, 198), the median 0 and the mean 7, so the c
 above the largest legitimate file measured. Report output was byte-identical across all 420 with the
 cap in place.
 
-`embedded.BudgetBytes` and `MaxEmbeddedMediaSize` are **per container**, not per traversal — a
-nested tree grants a fresh allowance at each container, so the aggregate over a nest is not bounded
-by either number. `MaxDepth` bounds the depth factor; nothing bounds the fan-out factor.
+#### Per container and per traversal are two different bounds
+
+`MaxEmbeddedMediaSize` and the per-container form of `embedded.BudgetBytes` bound **one container**.
+On their own that is not enough, because the aggregate then scales with the number of containers:
+every child was materialised as its own file and re-entered extraction, drawing a fresh 200MB
+allowance. `MaxDepth` bounded the depth factor and nothing bounded fan-out, so splitting one refused
+container into sixty admissible ones defeated the budget entirely.
+
+`embedded.Budget` closes that. It is created once per **top-level file**, inherited by every
+descendant of it, and released when that file finishes — per-file rather than process-wide, because
+files are scanned by a parallel worker pool and a shared counter would make *which* parts get
+examined depend on worker interleaving. Measured before and after, on `.docx` fixtures built from a
+real document (bytes written to temp during one scan):
+
+| fixture | input | before | after |
+|---|---|---|---|
+| 4 levels of nesting | 198KB | 180MB, silent | 135MB, disclosed |
+| 16 sibling containers | 642KB | 713MB, silent | 180MB, disclosed |
+| 64 sibling containers | 2.4MB | **2,733MB**, silent | **141MB**, disclosed |
+
+The "before" column grows linearly with container count; the "after" column is flat and under
+`BudgetBytes`. Findings were **identical** in every row — the refusals fall on decompression-bomb
+padding, not on content — and across 381 real Office documents (147 of them carrying embedded parts,
+2,625 parts materialised) the two binaries reported the same 6,844 findings with no refusals at all.
+
+Two details decide whether this bound works:
+
+- It is reserved on a part's **declared** size *before* any bytes are written, and trued up to the
+  real length afterwards. Charging after the copy bounds what gets *scanned* but not what gets
+  *written* — measured, all 16 parts of the fan-out fixture still wrote their 45MB before being
+  correctly refused. A bound that fires after the cost is paid is not a bound.
+- `MaxDepth` is consulted **before** parts are materialised, not only in the router afterwards.
+  Otherwise the deepest level's bytes are written to temp and immediately discarded.
 
 ## Processing and Performance Limits
 

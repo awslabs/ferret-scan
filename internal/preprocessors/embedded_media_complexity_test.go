@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/embedded"
 )
 
 // ProcessEmbeddedMedia assembles the combined embedded-media text, and that assembly must
@@ -57,6 +59,12 @@ func (r *builderProbeRouter) ProcessEmbedded(childPath, _ string) (*ProcessedCon
 }
 
 func (r *builderProbeRouter) CanProcessFile(string, bool) (bool, string) { return true, "" }
+
+// This probe measures assembly cost and materialises nothing, so it has no traversal budget to
+// hand out and sits at the top level. Both are the nil/zero answers a router gives for an
+// untracked path, which is the behaviour the production code must tolerate.
+func (r *builderProbeRouter) EmbeddedBudget(string) *embedded.Budget { return nil }
+func (r *builderProbeRouter) EmbeddedDepthOf(string) int             { return 0 }
 
 // buildEmbeddedParts creates n real temp files and the EmbeddedMedia entries naming them.
 //

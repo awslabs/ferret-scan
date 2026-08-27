@@ -150,7 +150,7 @@ func TestOverCapEmbeddedPartIsReportedNotSkipped(t *testing.T) {
 	control := outerDocx(t, dir, "outer_small.docx", small)
 	oversize := outerDocx(t, dir, "outer_big.docx", big)
 
-	media, notExamined, err := ExtractEmbeddedMediaForProcessing(control)
+	media, notExamined, err := ExtractEmbeddedMediaForProcessing(control, nil)
 	if err != nil {
 		t.Fatalf("control: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestOverCapEmbeddedPartIsReportedNotSkipped(t *testing.T) {
 			notExamined)
 	}
 
-	media, notExamined, err = ExtractEmbeddedMediaForProcessing(oversize)
+	media, notExamined, err = ExtractEmbeddedMediaForProcessing(oversize, nil)
 	if err != nil {
 		t.Fatalf("oversize: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestUnreadableEmbeddedPartIsAlsoReported(t *testing.T) {
 		t.Fatalf("rewrite: %v", err)
 	}
 
-	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path)
+	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path, nil)
 	CleanupEmbeddedMedia(media)
 	if err != nil {
 		// The whole archive failed to open, which is a different disclosure path (the file
@@ -309,7 +309,7 @@ func TestMoreRefusalsThanTheNoteCapAreCountedNotDropped(t *testing.T) {
 		t.Fatalf("close file: %v", err)
 	}
 
-	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path)
+	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path, nil)
 	CleanupEmbeddedMedia(media)
 	if err != nil {
 		t.Fatalf("extract: %v", err)

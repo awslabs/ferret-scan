@@ -43,6 +43,18 @@ type FileRouter struct {
 	// currently being processed rather than growing across a directory scan.
 	embeddedDepthMu sync.Mutex
 	embeddedDepth   map[string]int
+
+	// traversalBudget records the whole-traversal byte budget each in-flight file
+	// belongs to, keyed the same way embeddedDepth is.
+	//
+	// It lives beside the depth for the same reason and rides on the same fact: a
+	// path identifies one in-flight file, because the top level's paths are distinct
+	// and every embedded part is materialised under a freshly named temp file. The
+	// TOP-LEVEL file creates the entry and releases it when it finishes; a child
+	// inherits its parent's Budget rather than making one, which is what turns a
+	// per-container allowance into a per-file one. See #474.
+	traversalBudgetMu sync.Mutex
+	traversalBudget   map[string]*embedded.Budget
 }
 
 // MaxEmbeddedDepth bounds how deep the router follows containers inside containers.
@@ -278,7 +290,74 @@ func (fr *FileRouter) ProcessEmbedded(childPath, parentPath string) (*preprocess
 	// Removed when this child finishes, so the map tracks only in-flight files.
 	defer fr.clearDepth(childPath)
 
+	// Inherit the parent's whole-traversal budget, so every descendant of one
+	// top-level file draws from a single allowance.
+	//
+	// Nil when the parent is not tracked — a test calling ProcessEmbedded directly,
+	// for instance. That degrades to the old per-container behaviour rather than
+	// failing, and processFileInternal will not manufacture a second budget for a
+	// child, because a child's bytes have already been charged by whoever extracted
+	// it. Giving it a fresh one is exactly the amplification being removed.
+	fr.setBudget(childPath, fr.budgetOf(parentPath))
+	defer fr.clearBudget(childPath)
+
 	return fr.ProcessFile(childPath, nil)
+}
+
+// EmbeddedBudget returns the whole-traversal budget the given in-flight file belongs
+// to, or nil if it is not tracked.
+//
+// The preprocessor asks for this by its OWN path — the argument its Process received
+// — exactly as it passes that path to ProcessEmbedded. That keeps the budget off the
+// Preprocessor interface, which one shared instance across concurrent workers could
+// not carry anyway.
+func (fr *FileRouter) EmbeddedBudget(path string) *embedded.Budget {
+	return fr.budgetOf(path)
+}
+
+// EmbeddedDepthOf reports how deep an in-flight file sits inside containers.
+//
+// Exposed so a preprocessor can decline to MATERIALISE parts it already knows the
+// router will refuse to descend into. MaxEmbeddedDepth is enforced in
+// ProcessEmbedded, which runs only after each part has been written to temp, so the
+// deepest level's bytes were inflated, written and then thrown away. Asking first
+// turns that into no I/O at all.
+func (fr *FileRouter) EmbeddedDepthOf(path string) int {
+	return fr.depthOf(path)
+}
+
+func (fr *FileRouter) budgetOf(path string) *embedded.Budget {
+	fr.traversalBudgetMu.Lock()
+	defer fr.traversalBudgetMu.Unlock()
+	return fr.traversalBudget[path]
+}
+
+// setBudget associates a path with a traversal budget. A nil budget is recorded as
+// an explicit entry, so budgetOf cannot tell "absent" from "known to be untracked" —
+// which is what stops processFileInternal handing a child a fresh allowance.
+func (fr *FileRouter) setBudget(path string, b *embedded.Budget) {
+	fr.traversalBudgetMu.Lock()
+	defer fr.traversalBudgetMu.Unlock()
+	if fr.traversalBudget == nil {
+		fr.traversalBudget = make(map[string]*embedded.Budget)
+	}
+	fr.traversalBudget[path] = b
+}
+
+func (fr *FileRouter) hasBudgetEntry(path string) bool {
+	fr.traversalBudgetMu.Lock()
+	defer fr.traversalBudgetMu.Unlock()
+	_, ok := fr.traversalBudget[path]
+	return ok
+}
+
+// clearBudget releases the entry. Without this a directory scan would accumulate one
+// entry per file, and — far worse — a re-scanned path would inherit an EXHAUSTED
+// budget and report clean.
+func (fr *FileRouter) clearBudget(path string) {
+	fr.traversalBudgetMu.Lock()
+	defer fr.traversalBudgetMu.Unlock()
+	delete(fr.traversalBudget, path)
 }
 
 // depthOf reports how deep a path sits inside containers. Absent = top level.
@@ -314,6 +393,19 @@ func (fr *FileRouter) ProcessFile(filePath string, config interface{}) (*preproc
 
 // processFileInternal is the actual implementation
 func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingContext) (*preprocessors.ProcessedContent, error) {
+	// A TOP-LEVEL file opens a whole-traversal budget and closes it again when it
+	// finishes; everything nested inside draws from that one allowance.
+	//
+	// The test for "top level" is the absence of an entry: ProcessEmbedded records one
+	// for every child before routing it, so only a file that arrived here directly has
+	// none. Releasing it on the way out is what keeps the bound per-file — a budget
+	// that survived the file would make the SECOND file in a directory scan report
+	// clean because the first one spent the allowance.
+	if !fr.hasBudgetEntry(filePath) {
+		fr.setBudget(filePath, embedded.NewBudget())
+		defer fr.clearBudget(filePath)
+	}
+
 	// Use standardized observability
 	finishTiming := fr.observer.StartTiming("router", "file_evaluation", config.FilePath)
 	defer finishTiming(true, map[string]interface{}{
