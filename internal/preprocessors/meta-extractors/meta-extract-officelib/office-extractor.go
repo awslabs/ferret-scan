@@ -322,6 +322,19 @@ func ExtractMetadata(filePath string) (*Metadata, error) {
 	case ".pptm":
 		metadata.MimeType = "application/vnd.ms-powerpoint.presentation.macroEnabled.12"
 		return extractOfficeOpenXMLMetadata(filePath, metadata)
+	// ODF. These were already in officeExtensions, so IsOfficeFile claimed them and the office
+	// metadata preprocessor was selected — and then this switch fell through to "unsupported file
+	// format", the preprocessor returned that error, and the router silently moved on to the text
+	// extractor. meta.xml was never read on any ODF document. See odf-extractor.go (#498).
+	case ".odt":
+		metadata.MimeType = "application/vnd.oasis.opendocument.text"
+		return extractODFMetadata(filePath, metadata)
+	case ".ods":
+		metadata.MimeType = "application/vnd.oasis.opendocument.spreadsheet"
+		return extractODFMetadata(filePath, metadata)
+	case ".odp":
+		metadata.MimeType = "application/vnd.oasis.opendocument.presentation"
+		return extractODFMetadata(filePath, metadata)
 	case ".doc":
 		metadata.MimeType = "application/msword"
 		return extractLegacyOfficeMetadataOnly(filePath, metadata)
