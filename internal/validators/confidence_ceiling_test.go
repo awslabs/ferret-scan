@@ -4,9 +4,11 @@
 package validators
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/ipaddress"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/secrets"
 )
 
@@ -93,4 +95,59 @@ func TestCeilingKeyMatchesTheSecretsValidator(t *testing.T) {
 			"findings it protects go back to being promoted by document context.",
 			ConfidenceCeilingKey, secrets.ConfidenceCeilingKey)
 	}
+}
+
+// TestTheIPAddressValidatorsCeilingReachesTheBridge closes the loop for #513.
+//
+// The ipaddress validator caps a context-free dotted quad at 75 because a software version
+// is structurally identical to a routable address. That cap was applied to a local variable
+// and nowhere else, so the document-context adjustment undid it: measured on ten real .odt
+// documents carrying a byte-identical LibreOffice generator string, eight reported HIGH 95
+// and two MEDIUM 75, the difference being body text the match has nothing to do with.
+//
+// This drives the validator for real rather than comparing two constants, so it fails both
+// if the key drifts and if the validator stops publishing it. TestCeilingKeyMatchesThe-
+// SecretsValidator cannot cover ipaddress, whose key is unexported.
+func TestTheIPAddressValidatorsCeilingReachesTheBridge(t *testing.T) {
+	matches, err := ipaddress.NewValidator().ValidateContent(
+		"Application: LibreOffice/24.8.4.2$MacOSX_AARCH64", "probe.txt")
+	if err != nil {
+		t.Fatalf("ValidateContent: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("got %d matches, want 1 for the generator string", len(matches))
+	}
+
+	m := matches[0]
+	if _, ok := m.Metadata[ConfidenceCeilingKey]; !ok {
+		t.Fatalf("the capped match carries no %q the bridge can read.\nIts metadata keys: %v\n"+
+			"If the validator spells the key differently the ceiling is silently ignored and "+
+			"the version goes back to being promoted to HIGH by document context (#513).",
+			ConfidenceCeilingKey, metadataKeys(m.Metadata))
+	}
+
+	// Now do what the bridge does: add the document-level adjustment, then clamp.
+	// +20 is the adjustment measured on the real .odt documents.
+	before := m.Confidence
+	m.Confidence += 20
+	clampToCeiling(&m)
+
+	if m.Confidence != before {
+		t.Errorf("after a +20 document adjustment and the clamp, confidence = %v, want %v.\n"+
+			"This is the exact sequence that reported a LibreOffice version string at HIGH 95.",
+			m.Confidence, before)
+	}
+	if m.Confidence >= 90 {
+		t.Errorf("confidence = %v, which is HIGH; a value the validator declared ambiguous "+
+			"must not reach HIGH on document-level evidence", m.Confidence)
+	}
+}
+
+func metadataKeys(meta map[string]any) []string {
+	keys := make([]string, 0, len(meta))
+	for k := range meta {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

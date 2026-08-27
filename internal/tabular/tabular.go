@@ -20,6 +20,19 @@
 // cleartext. Header-row-plus-data-row is the normal shape of a CSV export, so this
 // is not an edge case.
 //
+// The same newline-bounded label search shapes CONFIDENCE, not only emission, so the
+// ipaddress validator uses this package too. A dotted quad with no IP keyword on its
+// own line is held below HIGH as ambiguous, and in a CloudTrail-style export the only
+// label is the column header: measured on one real export, 4,549 genuine public
+// addresses in a "Source IP address" column, not one with a keyword on its own row.
+//
+//	Server address: 52.94.236.248        -> HIGH
+//	Source IP address \n 52.94.236.248   -> capped at 75, ambiguous
+//
+// That caller only ever ADDS a corroborating signal; there is no "header contradicts"
+// arm, since suppressing an address on the strength of a column name would be
+// suppression chosen by whoever wrote the file.
+//
 // Design constraints that shaped the API:
 //
 //   - No file re-reads. internal/detector's multi-line ExtractContext already
