@@ -43,7 +43,7 @@ flowchart TD
 The system identifies files that can contain meaningful metadata using the FileRouter's `CanContainMetadata()` method:
 
 #### Office Documents (`office_metadata`)
-- **Extensions**: .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp
+- **Extensions**: .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp, .ott, .ots, .otp
 - **Metadata Sources**: Document properties, author information, creation/modification dates, comments
 - **Validation Focus**: Creator names, company information, personal comments, copyright data
 
