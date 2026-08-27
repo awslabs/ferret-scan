@@ -161,6 +161,31 @@ limit reacts to memory pressure or to file size, and no scan is chunked. The wor
 flag, config key or environment-variable input — the only performance lever an operator has is
 `--max-live-bytes`, and the only way to change the rest is to edit the constants and rebuild.
 
+### Output bounds
+
+| Bound | Value | Configurable | Applies to |
+|---|---|---|---|
+| `shared.ContextSnippetCap` | 1024 bytes of source line per finding | No | `sarif`, `gitlab-sast` — the only formats that embed the line |
+| `--limit` | 200 findings displayed | Yes — `--limit 0` for all | every format |
+
+The SARIF and gitlab-sast formatters embed the finding's source line once **per finding** when
+`--show-match` is set, so on a document whose content sits on ONE long line the report is quadratic
+in findings × line length. Measured on a single 258KB line with 8,000 findings:
+
+| | sarif output | wall |
+|---|---|---|
+| unbounded | **4,143,145,063 B** | 24.16s |
+| capped at 1024 B | 35,168,967 B | 1.01s |
+
+That is 4.1GB from a 258KB input. The growth per doubling of findings was 8.7× unbounded and 2.3×
+capped — quadratic against linear. `json` was never affected, because it does not embed the line.
+
+A line within the cap is emitted **unchanged**, which covers 61.2% of findings measured across
+57,790 findings in 1,009 real files (median line 647 bytes). Beyond it the snippet is a window
+**centred on the match**, with `...` marking each trimmed edge so a consumer can always tell a
+fragment from a whole line. This bounds display only — the finding's own text, line number and
+offsets are untouched, so nothing about detection or redaction depends on it.
+
 > **Corrected 2026-08.** Every row of this table previously described the adaptive pool that
 > `internal/parallel/resource_monitor.go` and `internal/preprocessors/streaming_processor.go`
 > configured — Maximum Workers 32, Minimum Workers 2, a 1GB memory-pressure threshold, 250MB/10MB

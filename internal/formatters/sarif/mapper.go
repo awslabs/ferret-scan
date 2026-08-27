@@ -176,10 +176,15 @@ func (m *VulnerabilityMapper) buildRegion(match detector.Match, options formatte
 		region.StartLine = 1
 	}
 
-	// Add snippet if ShowMatch is enabled and we have the full line
+	// Add snippet if ShowMatch is enabled and we have the full line.
+	//
+	// BOUNDED: the line is embedded once per finding, so a document whose content sits on
+	// one long line made this report quadratic in findings x line length — 4.8MB to 1.54GB
+	// on a real 892KB export. A line within the cap is passed through unchanged, which is
+	// 91.4% of real findings. See shared.ContextSnippetCap and #521.
 	if options.ShowMatch && match.Context.FullLine != "" {
 		region.Snippet = &SARIFSnippet{
-			Text: match.Context.FullLine,
+			Text: shared.BoundedContextSnippet(match.Context.FullLine, match.Text),
 		}
 	}
 
@@ -227,7 +232,9 @@ func (m *VulnerabilityMapper) buildContextRegion(match detector.Match) *SARIFReg
 		contextText.WriteString("\n")
 	}
 	if match.Context.FullLine != "" {
-		contextText.WriteString(match.Context.FullLine)
+		// Bounded for the same reason as the region snippet above: this text is also
+		// emitted per finding. See shared.ContextSnippetCap.
+		contextText.WriteString(shared.BoundedContextSnippet(match.Context.FullLine, match.Text))
 	}
 	if match.Context.AfterText != "" {
 		contextText.WriteString("\n")
