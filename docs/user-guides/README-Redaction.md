@@ -225,6 +225,8 @@ When `--redaction-audit-log` is specified, a JSON file is written with details o
 ```json
 {
   "document_id": "sample.csv",
+  "original_file_hash": "29ee9f67da87f7c8284a0c2cda4c78f51184aaeda87e6023be9abf01819dcbf9",
+  "redacted_file_hash": "7d3f1a0c5b9e2d84f61ac0e7b2358d94ee1c0f6ab84d2379ce50b8a1f3c47e02",
   "redactions": [
     {
       "data_type": "CREDIT_CARD",
@@ -235,6 +237,18 @@ When `--redaction-audit-log` is specified, a JSON file is written with details o
   ]
 }
 ```
+
+The two hashes let a reviewer confirm the log describes the artifact in front of them rather than
+some other run. **They are never equal for a file the log reports as redacted** — a replacement
+byte-identical to the bytes it replaces is not a redaction, so it is recorded under its own cause and
+does not appear in `redactions`.
+
+That distinction is not hypothetical. Re-scanning a redacted file is a normal way to verify a
+redaction, and `format_preserving` masks a generic secret with a run of `*` of the same length — so a
+value that was *already* a run of `*` used to be "redacted" into itself, producing an output identical
+to its input, a `redactions` entry, and two equal hashes. The mask is no longer reported as a secret
+in the first place (it cannot contain one), and the identity replacement is refused as a second,
+independent guard.
 
 ## Examples
 
