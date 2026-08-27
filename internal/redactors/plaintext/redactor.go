@@ -346,6 +346,30 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			}
 		}
 
+		// A replacement identical to the bytes it replaces is not a redaction.
+		//
+		// Recorded as its own event and NOT added to the redaction map, because counting it would
+		// attest to work that did not happen. The case that prompted this: a run of asterisks —
+		// this tool's own output — was reported as API_KEY_OR_SECRET, and
+		// replacement.FormatPreserving's default arm returns strings.Repeat("*", len(original)),
+		// so the "redacted" copy came back byte-identical to its input with Success true at rc 0
+		// and an audit log whose original_file_hash and redacted_file_hash were EQUAL. See #522.
+		//
+		// The reported value is not left exposed by skipping: it is already indistinguishable from
+		// the mask, which is why the replacement is a no-op. This is a truthfulness guard, not a
+		// coverage one — and it is deliberately kept even though #522's detection half makes the
+		// known trigger unreachable, so the next value type that masks to itself cannot quietly
+		// re-enter the audit trail as a redaction.
+		if replacement == redactedText[startPos:endPos] {
+			ptr.logEvent("replacement_identical_to_original", false, map[string]interface{}{
+				"match_type":   match.Type,
+				"match_line":   match.LineNumber,
+				"match_length": len(match.Text),
+				"strategy":     strategy.String(),
+			})
+			continue
+		}
+
 		// Replace the text
 		redactedText = redactedText[:startPos] + replacement + redactedText[endPos:]
 

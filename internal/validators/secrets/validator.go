@@ -873,10 +873,26 @@ func compileUnquotedPatterns() []*regexp.Regexp {
 //   - all digits, which is a phone number, port, timestamp or id rather than a secret.
 //   - digits and hyphens only, which is a date or a formatted number.
 //   - UUID shape, which identifies a thing rather than authenticating one.
+//   - entirely mask characters, which is this tool's OWN redacted output rather than a secret.
 //
 // A genuinely all-lowercase short secret is rejected, and that is a deliberate, stated cost.
 func plausibleUnquotedSecret(v string) bool {
 	if len(v) < 8 {
+		return false
+	}
+
+	// Already-masked output. `AWS_SECRET_ACCESS_KEY=****...` is what this tool WRITES, and
+	// re-scanning a redacted file is a normal thing to do — it is how you verify a redaction.
+	// Reported at MEDIUM 75, that run of asterisks then drove format_preserving to replace it with
+	// a run of asterisks of the same length, so the "redacted" copy came back byte-identical to its
+	// input with Success true at rc 0, and the audit log recorded equal original and redacted file
+	// hashes. See #522.
+	//
+	// Safe as a veto rather than a confidence ceiling, unlike unlabelledHexIdentifierCap above,
+	// because it is VALUE-INTRINSIC: a value containing nothing but mask characters carries no
+	// secret, so an author cannot use it to hide one. The relabelling attack that rules out a
+	// negative list of field names has no analogue here — there is nothing to relabel.
+	if isAllMaskCharacters(v) {
 		return false
 	}
 
@@ -917,6 +933,27 @@ var (
 	uuidLikeValue   = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 	digitsAndDashes = regexp.MustCompile(`^[0-9-]+$`)
 )
+
+// isAllMaskCharacters reports whether a value consists ONLY of the character this tool masks with.
+//
+// Scoped to '*' alone, deliberately. That is the only mask byte anything in this repo emits —
+// replacement.FormatPreserving and the legacy OLE redactor's maskByte — so it is the only one whose
+// presence here is evidence of the tool's own output rather than of the document's content.
+//
+// Widening it to 'X' or '#' would start rejecting values a person could plausibly have chosen, and a
+// suppressor that rejects a real secret is worse than the false positive it removes. ENTIRELY, not
+// "contains": a real credential with asterisks in it stays reported, which has its own test.
+func isAllMaskCharacters(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] != '*' {
+			return false
+		}
+	}
+	return true
+}
 
 func (v *Validator) findKeywordSecrets(line string) []candidate {
 	// Early exit: skip lines that clearly don't contain secrets
