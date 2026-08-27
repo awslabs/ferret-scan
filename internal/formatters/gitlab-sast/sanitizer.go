@@ -12,6 +12,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
 )
 
 // DataSanitizer handles sanitization of sensitive data for GitLab security reports
@@ -70,7 +71,12 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 	// surrounding line entirely unless ShowMatch, so no unrecognized PII leaks.
 	if match.Context.FullLine != "" {
 		if showMatch {
-			description.WriteString(fmt.Sprintf("\n**Context:**\n```\n%s\n```\n", match.Context.FullLine))
+			// BOUNDED: this line is embedded once per finding, so a single-long-line
+			// document made the report quadratic — 3.0MB to 771MB on a real 892KB export.
+			// A line within the cap passes through unchanged. See
+			// shared.ContextSnippetCap and #521.
+			description.WriteString(fmt.Sprintf("\n**Context:**\n```\n%s\n```\n",
+				shared.BoundedContextSnippet(match.Context.FullLine, match.Text)))
 		} else {
 			description.WriteString("\n**Context:** [HIDDEN] (use --show-match to include the surrounding line)\n")
 		}
