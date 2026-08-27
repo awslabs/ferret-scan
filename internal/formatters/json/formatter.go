@@ -64,11 +64,11 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		return "", nil
 	}
 
-	return f.formatJSONWithSuppressed(filteredMatches, suppressedMatches, options), nil
+	return f.formatJSONWithSuppressed(filteredMatches, suppressedMatches, options)
 }
 
 // formatJSONWithSuppressed formats matches and suppressed findings as JSON using shared structures
-func (f *Formatter) formatJSONWithSuppressed(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) string {
+func (f *Formatter) formatJSONWithSuppressed(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) (string, error) {
 	// Use shared conversion logic
 	response := shared.ConvertMatchesToJSONFormat(matches, suppressedMatches, options)
 
@@ -83,10 +83,17 @@ func (f *Formatter) formatJSONWithSuppressed(matches []detector.Match, suppresse
 	}
 
 	if err != nil {
-		return fmt.Sprintf("Error formatting JSON: %v", err)
+		// RETURNED, not stringified into the output. This used to hand the error text back as
+		// the document: stdout received `Error formatting JSON: ...` where the report should
+		// have been, and the process exited 0. Measured, one non-finite metadata value turned
+		// 57,786 findings across 1,009 files into 52 bytes with a green exit code, so a CI job
+		// piping this to a file saw no findings and passed. The Formatter interface has always
+		// returned an error and main.go has always exited 1 on it; only this function declined
+		// to use the channel. See #520.
+		return "", fmt.Errorf("formatting JSON: %w", err)
 	}
 
-	return string(jsonData)
+	return string(jsonData), nil
 }
 
 // Register the formatter during package initialization

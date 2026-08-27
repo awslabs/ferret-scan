@@ -4,6 +4,7 @@
 package shared
 
 import (
+	"math"
 	"sort"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -130,6 +131,18 @@ var safeMetadataKeys = map[string]bool{
 //     (deny-by-default). Every other key — including any new/unknown one — is
 //     withheld so raw values can never leak.
 //
+// A value that cannot be serialized at all is dropped, whatever the ShowMatch
+// setting. encoding/json refuses to marshal a non-finite float and fails the WHOLE
+// document, not the offending field, so one diagnostic percentage could void an
+// entire report: measured, a `+Inf` confidence_boost_percentage turned 57,786
+// findings across 1,009 files into a 52-byte error string. Metadata here is
+// diagnostic, so dropping the field is strictly better than losing the findings —
+// and the encoder cannot be asked to be lenient per-field. See #520.
+//
+// Note this is only reachable with ShowMatch=true, because the allowlist above
+// happens to exclude the affected keys — which is why the defect looked
+// flag-specific rather than general.
+//
 // Returns nil when nothing remains, so callers can omit an empty map.
 func SanitizeMetadata(meta map[string]interface{}, matchText string, showMatch bool) map[string]interface{} {
 	if len(meta) == 0 {
@@ -146,12 +159,41 @@ func SanitizeMetadata(meta map[string]interface{}, matchText string, showMatch b
 		if !showMatch && !safeMetadataKeys[k] {
 			continue
 		}
+		if !serializableNumber(v) {
+			continue
+		}
 		out[k] = v
 	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+// serializableNumber reports whether a metadata value can be marshalled.
+//
+// Only the numeric kinds are checked, because a non-finite float is the one value
+// encoding/json rejects that this codebase can actually produce — a division by a
+// zero confidence. Both float widths and the []float64 that carries
+// original_confidences are covered; anything else is passed through untouched
+// rather than being second-guessed by a whitelist of types.
+func serializableNumber(v interface{}) bool {
+	switch n := v.(type) {
+	case float64:
+		return !math.IsInf(n, 0) && !math.IsNaN(n)
+	case float32:
+		f := float64(n)
+		return !math.IsInf(f, 0) && !math.IsNaN(f)
+	case []float64:
+		for _, f := range n {
+			if math.IsInf(f, 0) || math.IsNaN(f) {
+				return false
+			}
+		}
+		return true
+	default:
+		return true
+	}
 }
 
 // SanitizeSuppressedMatches returns suppressed matches that are safe to

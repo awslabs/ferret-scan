@@ -2366,7 +2366,7 @@ func (v *Validator) reconstructLegalNotice(matches []detector.Match) detector.Ma
 		"consolidated_count":          len(matches), // Keep for backward compatibility
 		"original_confidences":        originalConfidences,
 		"confidence_boost":            confidenceBoost,
-		"confidence_boost_percentage": (confidenceBoost / primaryMatch.Confidence) * 100,
+		"confidence_boost_percentage": boostPercentage(confidenceBoost, primaryMatch.Confidence),
 
 		// Enhanced legal notice classification
 		"legal_notice_type":     legalNoticeType,
@@ -2496,6 +2496,29 @@ func (v *Validator) findPrimaryMatchIndex(matches []detector.Match, primaryMatch
 // getCurrentTimestamp returns current timestamp for reconstruction tracking
 func (v *Validator) getCurrentTimestamp() string {
 	return fmt.Sprintf("%d", time.Now().Unix())
+}
+
+// boostPercentage expresses a confidence boost as a percentage of the base confidence,
+// yielding 0 when there is no base to be a percentage OF.
+//
+// Without the guard this was `(boost / base) * 100` and produced `+Inf` for a zero base
+// (or `NaN` when the boost was zero too). encoding/json refuses to marshal either and
+// fails the WHOLE document rather than the field, so one diagnostic percentage voided an
+// entire report: measured, 57,786 findings across 1,009 files became a 52-byte error
+// string on stdout, at exit 0. See #520.
+//
+// Zero is the right answer rather than an omission: the single-match arm of
+// reconstructLegalNotice already sets this key to a literal 0.0, so the safe value was
+// already in this file and only the consolidated arm divided.
+//
+// The social-media validator has the identical guard for the identical expression; the
+// two are separate packages with no shared numeric helper, so the duplication is
+// deliberate and each has its own test.
+func boostPercentage(boost, base float64) float64 {
+	if base == 0 {
+		return 0
+	}
+	return (boost / base) * 100
 }
 
 // findPrimaryMatch identifies the most comprehensive or highest confidence match

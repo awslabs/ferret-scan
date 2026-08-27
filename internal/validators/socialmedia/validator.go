@@ -4568,6 +4568,24 @@ func (v *Validator) reconstructSocialMediaClusterWithFallback(matches []detector
 }
 
 // reconstructSocialMediaCluster combines related matches into a single comprehensive finding
+// boostPercentage expresses a confidence boost as a percentage of the base confidence,
+// yielding 0 when there is no base to be a percentage OF.
+//
+// Without the guard this was `(boost / base) * 100` and produced `+Inf` for a zero base
+// (or `NaN` when the boost was zero too). encoding/json refuses to marshal either and
+// fails the WHOLE document rather than the field, so one diagnostic percentage voided an
+// entire report at exit 0. See #520.
+//
+// The intellectual-property validator has the identical guard for the identical
+// expression; the two are separate packages with no shared numeric helper, so the
+// duplication is deliberate and each has its own test.
+func boostPercentage(boost, base float64) float64 {
+	if base == 0 {
+		return 0
+	}
+	return (boost / base) * 100
+}
+
 func (v *Validator) reconstructSocialMediaCluster(matches []detector.Match) (detector.Match, error) {
 	if len(matches) == 0 {
 		return detector.Match{}, fmt.Errorf("no matches to reconstruct")
@@ -4611,7 +4629,7 @@ func (v *Validator) reconstructSocialMediaCluster(matches []detector.Match) (det
 		"original_match_count":        len(matches),
 		"original_confidences":        originalConfidences,
 		"confidence_boost":            confidenceBoost,
-		"confidence_boost_percentage": (confidenceBoost / primaryMatch.Confidence) * 100,
+		"confidence_boost_percentage": boostPercentage(confidenceBoost, primaryMatch.Confidence),
 
 		// Clustering analysis results
 		"cluster_type":          analysis.ClusterType,

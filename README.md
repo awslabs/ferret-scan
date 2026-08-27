@@ -273,6 +273,25 @@ This is an architecture the public API enables; ferret-scan itself ships the CLI
 
 ---
 
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | The scan ran. **Findings do not change the exit code** — they are reported in the output. |
+| `1` | The run failed: bad arguments, an unreadable config, an output file that cannot be written, or a report that could not be formatted. Nothing usable was produced. |
+| `2` | There were no files to process. |
+| `3` | `--fail-on-incomplete` only: the run completed but did not fully do what was asked — a file was not fully scanned, or findings were reported and not redacted. See [Coverage disclosure](docs/COVERAGE_DISCLOSURE.md). |
+
+Pre-commit mode (`--pre-commit-mode`) maps findings onto the exit code instead, so a
+commit can be blocked; `3` still overrides a `0` there.
+
+The distinction that matters for CI: **`0` means the tool worked, not that the file was
+clean.** Parse the output for findings, and treat `1` as "this report is not
+trustworthy" — a formatting failure now exits `1` rather than writing the error where the
+document should be.
+
+---
+
 ## Security posture
 
 - **Values hidden by default.** Findings never include matched text unless you pass `--show-match` (CLI) or opt into `Result.FindingsWithMatchText()` (library).
