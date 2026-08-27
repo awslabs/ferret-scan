@@ -471,11 +471,16 @@ func extractOfficeOpenXMLMetadata(filePath string, metadata *Metadata) (*Metadat
 		extractPowerPointMetadata(reader, metadata)
 	}
 
-	// Extract embedded images
-	if err := extractEmbeddedImages(reader, metadata); err != nil {
-		// Log error but don't fail the entire extraction
-		metadata.Properties["ImageExtractionError"] = err.Error()
-	}
+	// Record the embedded parts this container holds. Cannot fail; see its doc comment.
+	//
+	// This used to be guarded by `if err != nil { metadata.Properties["ImageExtractionError"] =
+	// err.Error() }`, which was unreachable AND wrong in two ways had it ever run. Properties is
+	// rendered wholesale into the text the validators scan, so a diagnostic string there is
+	// scanned as though it were document content: measured on a build with the arm forced, a
+	// document went from 11 findings to 13, the extra ones matching the diagnostic rather than
+	// anything in the file. And a message that names a temp path would have put that path in the
+	// report. A diagnostic belongs in the disclosure channel, not in the scanned text.
+	extractEmbeddedImages(reader, metadata)
 
 	return metadata, nil
 }
@@ -821,8 +826,16 @@ type EmbeddedMedia struct {
 	MediaType    string // "image", "audio", etc.
 }
 
-// extractEmbeddedImages extracts embedded media files for further processing
-func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
+// extractEmbeddedImages records the embedded parts a container holds, on the Metadata.
+//
+// Returns nothing. It used to return an error that it never produced — the body had exactly one
+// return statement, `return nil` — so the caller's `if err != nil` arm was unreachable. That is
+// worth removing rather than leaving armed: a channel that cannot carry anything reads, to the next
+// person, as a channel that has been handled, and this file has already shipped one silent-discard
+// bug for that exact reason (#374, #404). A part that cannot be admitted is disclosed by the loop
+// below through notExamined, which is a real channel; total success is now stated in the signature
+// instead of being implied by a return the compiler could not check.
+func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) {
 	// Only the name and the media type are recorded, so this loop writes no files. It used to
 	// materialise every part to a temp file, use nothing but the path's existence, and delete
 	// the lot on return — so every embedded part in the document was inflated and written to
@@ -837,11 +850,16 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 	// part is over-cap: the count stays 2 and the survivor keeps index 0.
 	var embeddedMedia []EmbeddedMedia
 
-	// One budget per container. This loop and ExtractEmbeddedMediaForProcessing each get their
-	// own, because they run at different times over the same archive and neither peak overlaps
-	// the other. Note this is a PER-CONTAINER budget, not the whole-traversal one that
-	// embedded.BudgetBytes' own comment describes; see the note there.
-	budget := newExtractionBudget()
+	// One PER-CONTAINER budget, and deliberately NOT charged against the whole-traversal one.
+	//
+	// This loop writes nothing — every part goes to io.Discard — so it materialises no bytes for
+	// the traversal bound to bound. Charging it anyway would spend the traversal's allowance
+	// twice over on the same parts (measured at exactly 2x the bytes ever written) and, because
+	// this loop's verdict decides membership of EmbeddedMediaCount and the EmbeddedMedia_N_*
+	// properties that the validators scan, the parts the writing loop then had to refuse would
+	// change DETECTION and not merely cost. The traversal bound covers bytes that persist and
+	// re-enter the router; this one covers inflate work.
+	budget := newExtractionBudget(nil)
 	considered := 0
 
 	for _, file := range reader.File {
@@ -913,8 +931,6 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 			metadata.Properties[fmt.Sprintf("EmbeddedMedia_%d_Name", i)] = media.OriginalName
 		}
 	}
-
-	return nil
 }
 
 // extractionBudget bounds the TOTAL bytes one container may materialise to temp, across all of its
@@ -937,28 +953,77 @@ func extractEmbeddedImages(reader *zip.ReadCloser, metadata *Metadata) error {
 // satisfy by splitting one large part into many admissible ones.
 type extractionBudget struct {
 	remaining int64
+
+	// traversal is the budget shared by every container in ONE top-level file's tree, or
+	// nil for a loop that materialises nothing. Set only for the temp-writing loop: see the
+	// note at its construction for why charging the io.Discard loop too would cut detection.
+	traversal *embedded.Budget
 }
 
-func newExtractionBudget() *extractionBudget {
-	return &extractionBudget{remaining: embedded.BudgetBytes}
+func newExtractionBudget(traversal *embedded.Budget) *extractionBudget {
+	return &extractionBudget{remaining: embedded.BudgetBytes, traversal: traversal}
 }
 
-// reserve claims n bytes, reporting whether the budget allows it.
+// reserveTraversal claims a part's DECLARED size against the whole-traversal budget, before any
+// of its bytes are written.
 //
-// Charged AFTER the copy with the bytes actually written, not before with the declared size: a lying
-// declaration would otherwise exhaust the budget on parts that never materialise, turning an
-// over-claim into a denial of service against the rest of the document. The per-part LimitReader
-// already bounds any single copy, so the worst overshoot is one part's cap.
-func (b *extractionBudget) reserve(n int64) bool {
+// # Why this one is charged before the copy when the per-container one is charged after
+//
+// Charging after the copy bounds what gets SCANNED but not what gets WRITTEN, and the writing is
+// most of the harm. Measured with the traversal charged post-copy on a 642KB document holding 16
+// heavy children: 12 of the 16 parts were correctly refused and disclosed, and all 16 had already
+// written their 45MB to temp — 659MB of disk from a two-thirds-of-a-megabyte file, with the bound
+// working exactly as designed. A bound that fires after the cost has been paid is not a bound.
+//
+// Reserving up front makes the refusal free: once the traversal latches exhausted, every later
+// part in every later container is refused without opening the entry. Total written is then
+// BudgetBytes plus at most the single part that straddles the boundary.
+//
+// The declared size is producer-controlled, which is the objection to using it — an over-claim
+// could exhaust the budget on parts that never materialise. settleTraversal answers that by
+// handing back the difference as soon as the real length is known, before the next part is
+// considered. It is already bounded by MaxEmbeddedMediaSize, checked by the caller above.
+func (b *extractionBudget) reserveTraversal(declared int64) error {
+	if b == nil || b.traversal == nil {
+		return nil
+	}
+	if !b.traversal.Reserve(declared) {
+		return fmt.Errorf("would exceed the %d-byte embedded extraction budget for this file and everything nested inside it (%w)",
+			b.traversal.Limit(), embedded.ErrBudgetExhausted)
+	}
+	return nil
+}
+
+// settleTraversal corrects a reservation to the bytes actually written.
+//
+// Called on every path out of the copy, including the error paths: a part whose entry would not
+// open, or whose read failed, must not leave its declared size spent. Leaking a reservation would
+// let a document full of corrupt entries deny coverage to its own valid ones.
+func (b *extractionBudget) settleTraversal(declared, actual int64) {
+	if b == nil || b.traversal == nil {
+		return
+	}
+	b.traversal.Release(declared - actual)
+}
+
+// reserveContainer charges this container's own allowance with the bytes actually written.
+//
+// Charged AFTER the copy, not before with the declared size: a lying declaration would otherwise
+// exhaust the budget on parts that never materialise, turning an over-claim into a denial of
+// service against the rest of the document. The per-part LimitReader already bounds any single
+// copy, so the worst overshoot is one part's cap. Unlike the traversal above, this budget is
+// discarded when the container is done, so an overshoot cannot accumulate.
+func (b *extractionBudget) reserveContainer(n int64) error {
 	if b == nil {
-		return true
+		return nil
 	}
 	if n > b.remaining {
 		b.remaining = 0
-		return false
+		return fmt.Errorf("would exceed the %d-byte total embedded extraction budget for this document (%w)",
+			embedded.BudgetBytes, embedded.ErrBudgetExhausted)
 	}
 	b.remaining -= n
-	return true
+	return nil
 }
 
 // admitEmbeddedPart applies the admission decision both extraction loops make, copying the
@@ -990,6 +1055,17 @@ func admitEmbeddedPart(file *zip.File, budget *extractionBudget, dst io.Writer) 
 			file.UncompressedSize64, MaxEmbeddedMediaSize)
 	}
 
+	// Claim the whole-traversal allowance BEFORE writing anything, so an exhausted traversal
+	// costs no I/O and no disk. See reserveTraversal: charging it after the copy left every part
+	// written before being refused.
+	declared := int64(file.UncompressedSize64)
+	if err := budget.reserveTraversal(declared); err != nil {
+		return 0, err
+	}
+	// Corrected to the real length on every path out, including the failures below.
+	written := int64(0)
+	defer func() { budget.settleTraversal(declared, written) }()
+
 	rc, err := file.Open()
 	if err != nil {
 		return 0, err
@@ -999,6 +1075,7 @@ func admitEmbeddedPart(file *zip.File, budget *extractionBudget, dst io.Writer) 
 	// Bounded so a lying declared size cannot exhaust the destination. Read one byte past the
 	// cap so an over-cap entry is detectable.
 	n, err := io.Copy(dst, io.LimitReader(rc, MaxEmbeddedMediaSize+1))
+	written = n
 	if err != nil {
 		return n, err
 	}
@@ -1008,10 +1085,9 @@ func admitEmbeddedPart(file *zip.File, budget *extractionBudget, dst io.Writer) 
 			MaxEmbeddedMediaSize)
 	}
 
-	// Charge the AGGREGATE budget with the bytes actually written, not the declared size.
-	if !budget.reserve(n) {
-		return n, fmt.Errorf("would exceed the %d-byte total embedded extraction budget for this document (%w)",
-			embedded.BudgetBytes, embedded.ErrBudgetExhausted)
+	// Charge this container's own allowance with the bytes actually written.
+	if err := budget.reserveContainer(n); err != nil {
+		return n, err
 	}
 
 	return n, nil
@@ -1081,7 +1157,11 @@ func extractImageToTemp(file *zip.File, budget *extractionBudget) (string, error
 //
 // Payload-free by construction: a note names the part's BASE name and the reason, never a
 // path and never any bytes from the part. It reaches stderr and every machine format.
-func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []string, error) {
+// traversal bounds the bytes the WHOLE tree this container belongs to may materialise, and may
+// be nil. The router owns it and hands the same one to every descendant of a top-level file; nil
+// means "no traversal bound", which is how a direct caller with no router behaves — the same
+// behaviour as before the bound existed. See #474.
+func ExtractEmbeddedMediaForProcessing(filePath string, traversal *embedded.Budget) ([]EmbeddedMedia, []string, error) {
 	// Open the file as a ZIP archive
 	reader, err := zip.OpenReader(filePath)
 	if err != nil {
@@ -1095,10 +1175,19 @@ func ExtractEmbeddedMediaForProcessing(filePath string) ([]EmbeddedMedia, []stri
 	considered := 0
 	beyondCap := 0
 
-	// The aggregate budget for this container. Unlike the metadata loop, every refusal here is
-	// DISCLOSED through notExamined, so a document truncated by the budget says so rather than
-	// reporting a partial scan as complete.
-	budget := newExtractionBudget()
+	// The aggregate budget for this container, charging the whole-traversal budget as well.
+	// Unlike the metadata loop, every refusal here is DISCLOSED through notExamined, so a
+	// document truncated by either budget says so rather than reporting a partial scan as
+	// complete.
+	//
+	// This is the loop that WRITES, and it is the only one that charges the traversal. The
+	// metadata loop below inflates the same parts to io.Discard, so charging both against one
+	// allowance would halve effective coverage — and because the metadata loop's verdict decides
+	// membership of EmbeddedMediaCount and the EmbeddedMedia_N_* properties, which the validators
+	// scan, that would change DETECTION rather than only cost. Measured: charging both put the
+	// aggregate at exactly 2x the bytes ever written. The traversal budget bounds bytes that
+	// PERSIST and re-enter the router; the per-container budget bounds inflate work.
+	budget := newExtractionBudget(traversal)
 
 	for _, file := range reader.File {
 		if !isEmbeddedPartPath(file.Name) {

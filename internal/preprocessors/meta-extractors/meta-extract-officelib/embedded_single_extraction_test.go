@@ -116,8 +116,8 @@ func TestAdmissionVerdictIsSharedByBothForms(t *testing.T) {
 		}
 
 		// Each form gets its own budget, so the comparison is of the VERDICT only.
-		_, discardErr := admitEmbeddedPart(f, newExtractionBudget(), io.Discard)
-		tempPath, tempErr := extractImageToTemp(f, newExtractionBudget())
+		_, discardErr := admitEmbeddedPart(f, newExtractionBudget(nil), io.Discard)
+		tempPath, tempErr := extractImageToTemp(f, newExtractionBudget(nil))
 		if tempPath != "" {
 			_ = os.Remove(tempPath)
 		}
@@ -191,7 +191,7 @@ func TestOverCapPartCreatesNoTempFile(t *testing.T) {
 			continue
 		}
 		checked++
-		_, err := extractImageToTemp(f, newExtractionBudget())
+		_, err := extractImageToTemp(f, newExtractionBudget(nil))
 		if err == nil {
 			t.Fatalf("%s was admitted; it declares %d bytes, over the %d-byte cap",
 				f.Name, f.UncompressedSize64, MaxEmbeddedMediaSize)

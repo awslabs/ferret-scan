@@ -46,6 +46,24 @@ type RouterInterface interface {
 	// text fallback -- extends embedded coverage for free instead of leaving a
 	// second list to maintain.
 	CanProcessFile(filePath string, enablePreprocessors bool) (bool, string)
+
+	// EmbeddedBudget returns the whole-traversal byte budget the given in-flight file
+	// belongs to, or nil when it is not tracked.
+	//
+	// Here for the same reason ProcessEmbedded is: the budget has to be owned by the
+	// router, because a preprocessor instance is shared across concurrent workers and
+	// Process takes no context. The preprocessor asks by its OWN path, the argument its
+	// Process received.
+	//
+	// A nil return must behave exactly as no budget did before it existed — direct
+	// callers of the extractors have no router to ask, and a bound that fails closed
+	// for them would turn a resource fix into a coverage loss.
+	EmbeddedBudget(path string) *embedded.Budget
+
+	// EmbeddedDepthOf reports how deep an in-flight file sits inside containers, so a
+	// preprocessor can decline to materialise parts ProcessEmbedded is certain to
+	// refuse. See FileRouter.EmbeddedDepthOf.
+	EmbeddedDepthOf(path string) int
 }
 
 // ErrEmbeddedTooDeep is returned by RouterInterface.ProcessEmbedded when a container
@@ -322,7 +340,26 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 				"embedded item %q was not examined: %v", filepath.Base(media.OriginalName), perr))
 			continue
 		}
-		if perr == nil && processed != nil && processed.Success {
+		if perr != nil {
+			// DISCLOSE. Without this arm an embedded part that reached the router and FAILED
+			// fell off the loop body with nothing appended, so a container holding a corrupt
+			// part was byte-for-byte indistinguishable from one holding no part at all:
+			// measured, same finding count, exit 0, exit 0 again under --fail-on-incomplete,
+			// zero bytes of stderr — while the part survived the redactor unchanged, with its
+			// cleartext, because nothing reported it. See #404.
+			//
+			// perr is deliberately NOT interpolated, unlike the too-deep arm above. Its text
+			// is "all preprocessors failed for file: /var/folders/.../office_embedded_4107861223.docx"
+			// — a TEMP PATH, which breaks the payload-free rule this area holds to, and whose
+			// random suffix would put fresh nondeterminism into stderr, into every machine
+			// format and into any golden file that captured it. The too-deep arm is safe only
+			// because ErrTooDeep's own message is already base-named.
+			warnings = append(warnings, fmt.Sprintf(
+				"embedded item %q was not examined: it could not be processed",
+				filepath.Base(media.OriginalName)))
+			continue
+		}
+		if processed != nil && processed.Success {
 			// Carry the CHILD's own warning up.
 			//
 			// Without this the disclosure dies one level below where it is needed. The
@@ -382,7 +419,56 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		}
 	}
 
-	return result.String(), sections, warnings
+	return result.String(), sections, collapseDuplicateWarnings(warnings)
+}
+
+// maxDistinctEmbeddedWarnings bounds how many DISTINCT disclosure lines one container contributes.
+//
+// The extractor already caps notes per container, and that was enough while a refusal could only
+// come from one container. A whole-traversal budget changes the shape: sixty sibling containers each
+// refusing one part produce sixty separate notes, and the operator sees the same sentence sixty
+// times. Measured on a 2.4MB fan-out fixture before this: one 12,000-character warning line, the
+// same 200 characters repeated 60 times.
+const maxDistinctEmbeddedWarnings = 20
+
+// collapseDuplicateWarnings folds byte-identical disclosures into one line with a count.
+//
+// Order of FIRST appearance is preserved rather than sorted or grouped, for two reasons: it is the
+// order the parts were walked, so the line still corresponds to the document; and this string
+// reaches stderr, every machine format and any golden file, so a run-to-run reordering would be
+// nondeterminism in output.
+//
+// Collapsing rather than truncating: the count is the part an operator acts on. "the same refusal,
+// 60 times" and "one refusal" call for different responses, and dropping the 59 would report the
+// second when the first is true.
+func collapseDuplicateWarnings(warnings []string) []string {
+	if len(warnings) < 2 {
+		return warnings
+	}
+
+	counts := make(map[string]int, len(warnings))
+	order := make([]string, 0, len(warnings))
+	for _, w := range warnings {
+		if _, seen := counts[w]; !seen {
+			order = append(order, w)
+		}
+		counts[w]++
+	}
+
+	out := make([]string, 0, len(order))
+	for _, w := range order {
+		if len(out) >= maxDistinctEmbeddedWarnings {
+			out = append(out, fmt.Sprintf("and %d further distinct disclosure(s) not shown",
+				len(order)-len(out)))
+			break
+		}
+		if n := counts[w]; n > 1 {
+			out = append(out, fmt.Sprintf("%s (x%d)", w, n))
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 // EmbeddedMedia represents embedded media extracted from documents

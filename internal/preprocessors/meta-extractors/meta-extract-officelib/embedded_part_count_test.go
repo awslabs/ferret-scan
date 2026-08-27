@@ -39,7 +39,7 @@ func TestPartsBeyondTheCapAreDisclosedWithTheirOwnCause(t *testing.T) {
 	const over = 12
 	docx := buildDocxWithParts(t, maxEmbeddedParts+over, 8)
 
-	media, notExamined, err := ExtractEmbeddedMediaForProcessing(docx)
+	media, notExamined, err := ExtractEmbeddedMediaForProcessing(docx, nil)
 	if err != nil {
 		t.Fatalf("ExtractEmbeddedMediaForProcessing: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestTheWalkFinishesSoTheDisclosedCountIsTrue(t *testing.T) {
 	for _, over := range []int{1, 37} {
 		t.Run(fmt.Sprintf("over_%d", over), func(t *testing.T) {
 			docx := buildDocxWithParts(t, maxEmbeddedParts+over, 8)
-			media, notExamined, err := ExtractEmbeddedMediaForProcessing(docx)
+			media, notExamined, err := ExtractEmbeddedMediaForProcessing(docx, nil)
 			if err != nil {
 				t.Fatalf("ExtractEmbeddedMediaForProcessing: %v", err)
 			}
@@ -109,7 +109,7 @@ func TestTheWalkFinishesSoTheDisclosedCountIsTrue(t *testing.T) {
 func TestAtTheCapNothingIsRefused(t *testing.T) {
 	docx := buildDocxWithParts(t, maxEmbeddedParts, 8)
 
-	media, notExamined, err := ExtractEmbeddedMediaForProcessing(docx)
+	media, notExamined, err := ExtractEmbeddedMediaForProcessing(docx, nil)
 	if err != nil {
 		t.Fatalf("ExtractEmbeddedMediaForProcessing: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestBothLoopsCapAtTheSameCount(t *testing.T) {
 	}
 	metaCount := countProperty(t, md)
 
-	media, _, err := ExtractEmbeddedMediaForProcessing(docx)
+	media, _, err := ExtractEmbeddedMediaForProcessing(docx, nil)
 	if err != nil {
 		t.Fatalf("ExtractEmbeddedMediaForProcessing: %v", err)
 	}

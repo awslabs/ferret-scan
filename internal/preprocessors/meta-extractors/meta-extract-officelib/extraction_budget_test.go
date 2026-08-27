@@ -38,7 +38,7 @@ func TestAggregateExtractionBudgetIsEnforced(t *testing.T) {
 
 	path := buildDocxWithParts(t, parts, per)
 
-	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path)
+	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path, nil)
 	if err != nil {
 		t.Fatalf("ExtractEmbeddedMediaForProcessing: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestOrdinaryDocumentIsUnaffectedByTheBudget(t *testing.T) {
 	const parts, per = 6, 32 * 1024
 	path := buildDocxWithParts(t, parts, per)
 
-	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path)
+	media, notExamined, err := ExtractEmbeddedMediaForProcessing(path, nil)
 	if err != nil {
 		t.Fatalf("ExtractEmbeddedMediaForProcessing: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestBudgetIsPerContainerNotGlobal(t *testing.T) {
 	first := buildDocxWithParts(t, parts, per)
 	second := buildDocxWithParts(t, 4, 32*1024)
 
-	m1, _, err := ExtractEmbeddedMediaForProcessing(first)
+	m1, _, err := ExtractEmbeddedMediaForProcessing(first, nil)
 	if err != nil {
 		t.Fatalf("first: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestBudgetIsPerContainerNotGlobal(t *testing.T) {
 		_ = os.Remove(m.TempFilePath)
 	}
 
-	m2, notExamined, err := ExtractEmbeddedMediaForProcessing(second)
+	m2, notExamined, err := ExtractEmbeddedMediaForProcessing(second, nil)
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}

@@ -87,14 +87,29 @@ non-event.
 ### What `coverage cut short` covers inside a container
 
 A container is partly scanned when one of its parts could not be examined, and the
-container's own text was read normally. Four cases reach this cause:
+container's own text was read normally. Seven cases reach this cause:
 
 | case | what the operator sees |
 |---|---|
 | an embedded part over the 50 MB embedded cap | `embedded part "attachment.docx" was not examined: declares N bytes, over the 52428800-byte embedded cap` |
 | an embedded part whose bytes could not be extracted | `embedded part "broken.jpg" was not examined: flate: corrupt input before offset 1` |
 | an embedded container past the nesting bound (3) | `embedded item "attachment.docx" was not examined: embedded container nesting limit reached` |
+| **a container already AT the nesting bound, before its parts are read** | `embedded parts of "attachment.docx" were not examined: container nesting limit (3) reached` |
 | embedded parts past the 4096-part count cap | `195904 embedded part(s) beyond the 4096-part limit were not examined (container declares 200000)` |
+| the 200 MB **per-container** byte budget | `embedded part "big.bin" was not examined: would exceed the 209715200-byte total embedded extraction budget for this document` |
+| the 200 MB **whole-traversal** byte budget (#474) | `embedded part "big.bin" was not examined: would exceed the 209715200-byte embedded extraction budget for this file and everything nested inside it` |
+
+The two byte budgets are worded differently on purpose. "This document holds too much" and "this
+document plus everything nested inside it holds too much" send an operator to different places: the
+first points at one container, the second at a fan-out or a nest. Both wrap
+`embedded.ErrBudgetExhausted`, so a caller branching on the sentinel sees them alike.
+
+Identical disclosures are **collapsed with a count** — `... (x60)` — rather than repeated. A
+whole-traversal budget means many sibling containers can each refuse a part for the same reason;
+before collapsing, one fan-out fixture produced a single 12,000-character warning line that was the
+same 200 characters sixty times over. The count is the part an operator acts on, so it is kept rather
+than truncated, and first-appearance order is preserved because this string reaches every output
+format.
 
 The count cap reports **one line for the whole overflow**, not one per part, and states the
 container's true total so the number is actionable — a count without the total cannot tell you
@@ -107,6 +122,19 @@ The first two used to be **silent** (#374): the part was skipped, the container 
 inner document under the cap reported its SSN at HIGH 100. All three are now `coverage cut
 short` rather than `no body text`, because the container's body text *was* read: claiming
 otherwise describes a failure that did not happen.
+
+A part that reached the router and **failed to be processed** was silent for the same reason
+(#404) — the success arm had no `else`, so the part fell off the loop with nothing recorded.
+Measured on a real `.docx` carrying one corrupt embedded part: byte-for-byte the same report as a
+document carrying *no* embedded part at all, exit 0, exit 0 again under `--fail-on-incomplete`, and
+not one byte of disclosure. It is now `embedded item "attach.docx" was not examined: it could not be
+processed`, which raises `--fail-on-incomplete` to 3.
+
+That message deliberately does **not** quote the underlying error. The real text is
+`all preprocessors failed for file: /var/folders/.../office_embedded_4107861223.docx` — a temp path,
+which breaks the payload-free rule this document describes, and whose random suffix would put a
+fresh value into stderr and every machine format on every run. The nesting-bound line above can
+quote its sentinel only because that sentinel's own message is already base-named.
 
 An embedded part of a type nothing can read stays silent on purpose. A line on stderr for
 every decorative `.emf` in every slide deck trains operators to ignore the warnings that
