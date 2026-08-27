@@ -53,20 +53,23 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		return "", nil
 	}
 
-	return f.formatYAMLWithSuppressed(filteredMatches, suppressedMatches, options), nil
+	return f.formatYAMLWithSuppressed(filteredMatches, suppressedMatches, options)
 }
 
 // formatYAMLWithSuppressed formats matches and suppressed findings as YAML using shared structures
-func (f *Formatter) formatYAMLWithSuppressed(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) string {
+func (f *Formatter) formatYAMLWithSuppressed(matches []detector.Match, suppressedMatches []detector.SuppressedMatch, options formatters.FormatterOptions) (string, error) {
 	// Use shared conversion logic - IDENTICAL to JSON formatter
 	response := shared.ConvertMatchesToJSONFormat(matches, suppressedMatches, options)
 
 	yamlData, err := yaml.Marshal(response)
 	if err != nil {
-		return fmt.Sprintf("Error formatting YAML: %v", err)
+		// Returned rather than stringified into the output, for the reason the JSON formatter
+		// documents at length: an error placed where the document belongs is indistinguishable
+		// from a report, and the process exited 0. See #520.
+		return "", fmt.Errorf("formatting YAML: %w", err)
 	}
 
-	return string(yamlData)
+	return string(yamlData), nil
 }
 
 // Register the formatter during package initialization
