@@ -99,7 +99,12 @@ func (or *OfficeRedactor) redactEmbeddedParts(
 		// container is refused rather than written. Scanning it is still worth it --
 		// the finding gets reported either way -- and failing loudly is the honest end
 		// state when the value cannot be removed.
-		if embedded.ResidueInspectable(child.name) && !partHoldsValue(child.content, values, 0) {
+		// ContentInspectable rather than ResidueInspectable: for a zip-backed type the
+		// "nothing found means holds nothing" reading rests on the scan being able to
+		// INFLATE the archive, and an unopenable part silently breaks that premise. Such a
+		// part takes the opaque path instead — always dispatched, and refused rather than
+		// written if no redactor can rewrite it. See embedded.ContentInspectable and #517.
+		if embedded.ContentInspectable(child.name, child.content) && !partHoldsValue(child.content, values, 0) {
 			continue
 		}
 
