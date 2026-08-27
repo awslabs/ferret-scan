@@ -6,11 +6,15 @@ package audiolib
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/isobmff"
+	"github.com/awslabs/ferret-scan/v2/internal/xmpmeta"
 )
 
 // M4AExtractor handles M4A (MPEG-4 Audio) file metadata extraction
@@ -61,6 +65,13 @@ func (e *M4AExtractor) ExtractMetadataWithContext(ctx context.Context, filePath 
 	if err != nil {
 		return nil, NewAudioProcessingError(filePath, "tag_extraction", "failed to parse M4A container", err)
 	}
+
+	// XMP, which the walk above structurally cannot reach. parseM4AContainer's switch handles moov,
+	// ftyp and mdat and seeks past everything else, and the metadata walk starts INSIDE moov — so a
+	// top-level uuid box carrying an XMP packet is outside it entirely. exiftool writing an XMP tag
+	// to an .m4a produces exactly that box, so a value living only in XMP was reported clean at
+	// exit 0 (#478).
+	applyXMPMetadata(file, fileInfo.Size(), metadata)
 
 	// If no title was found in metadata, use filename as fallback (common for voice recordings)
 	if metadata.Title == "" {
@@ -778,3 +789,73 @@ func (e *M4AExtractor) isPrintableBoxType(boxType string) bool {
 // Ensure M4AExtractor implements the required interfaces
 var _ AudioMetadataExtractor = (*M4AExtractor)(nil)
 var _ AudioMetadataExtractorWithContext = (*M4AExtractor)(nil)
+
+// applyXMPMetadata reads every XMP packet in an ISO base media container and records its fields.
+//
+// The packet is located by internal/redactors/isobmff, which the redaction side already uses for the
+// same purpose — a second copy of "where is the XMP" is how the read and write sides come to
+// disagree. Its content is decoded by internal/xmpmeta.
+//
+// Supplementary metadata, so a corrupt packet must not cost the caller the mvhd/udta/ilst values
+// already gathered. It must not fail silently and leave no trace either, so an unreadable packet
+// notes the extractor's existing payload-free warning.
+func applyXMPMetadata(r io.ReaderAt, size int64, metadata *AudioMetadata) {
+	spans, err := isobmff.MetadataSpans(r, size)
+	if err != nil {
+		return
+	}
+	if metadata.Properties == nil {
+		metadata.Properties = make(map[string]string)
+	}
+
+	packets := 0
+	for _, sp := range spans {
+		if sp.Label != isobmff.LabelXMP {
+			continue
+		}
+		length := sp.End - sp.Start
+		if length <= 0 {
+			continue
+		}
+		if length > xmpmeta.MaxPacketBytes {
+			metadata.noteTruncatedXMP()
+			length = xmpmeta.MaxPacketBytes
+		}
+
+		buf := make([]byte, length)
+		if _, err := io.ReadFull(io.NewSectionReader(r, sp.Start, length), buf); err != nil {
+			metadata.noteTruncatedXMP()
+			continue
+		}
+
+		fields, cutShort := xmpmeta.Fields(buf)
+		if cutShort {
+			metadata.noteTruncatedXMP()
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		packets++
+		for _, f := range fields {
+			// Keyed XMP_* so a packet-supplied property cannot overwrite a value read from the atom
+			// tree, and collisions are suffixed rather than overwritten so a repeated property or a
+			// second packet keeps every value. No packet index: mutation testing showed that branch
+			// could not change the outcome, because the collision loop already preserves both.
+			key := "XMP_" + f.Name
+			if existing, taken := metadata.Properties[key]; taken {
+				if existing == f.Value {
+					continue
+				}
+				for i := 2; ; i++ {
+					alt := fmt.Sprintf("%s_%d", key, i)
+					if _, dup := metadata.Properties[alt]; !dup {
+						metadata.Properties[alt] = f.Value
+						break
+					}
+				}
+				continue
+			}
+			metadata.Properties[key] = f.Value
+		}
+	}
+}

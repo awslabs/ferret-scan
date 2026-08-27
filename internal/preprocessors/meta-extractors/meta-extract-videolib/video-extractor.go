@@ -26,6 +26,7 @@ import (
 	// like is exactly the defect being fixed here (#399). Its home under internal/redactors is
 	// historical; moving it somewhere neutral is a separate, purely mechanical change.
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/isobmff"
+	"github.com/awslabs/ferret-scan/v2/internal/xmpmeta"
 )
 
 // VideoMetadata represents extracted video file metadata
@@ -1753,7 +1754,102 @@ func parseMP4ContainerOptimized(ctx context.Context, reader *OptimizedVideoReade
 		noteTruncation(metadata,
 			"video metadata may be incomplete: no moov box was found in the file")
 	}
+
+	// XMP is the one metadata store this walk cannot reach from its own switch. It sits either in a
+	// top-level uuid box — outside moov entirely, so the moov arm never sees it — or in
+	// moov/udta/XMP_, whose payload is an XML packet rather than the atom tree the udta walker
+	// understands. Both were stepped over by the default arm's arithmetic, so a value living ONLY in
+	// XMP was reported clean at exit 0 (#478).
+	//
+	// isobmff already locates both, for the redaction side (#452/#477 and #499). Reusing it here is
+	// the point: the two sides must agree about where a packet is, and a second copy of that
+	// knowledge is how they drift.
+	applyXMPMetadata(reader.file, reader.fileSize, metadata)
+
 	return nil
+}
+
+// applyXMPMetadata reads every XMP packet in the container and records its fields.
+//
+// Failure is silent by design at this layer: XMP is supplementary, and a corrupt packet must not
+// cost the caller the mvhd, udta and trak metadata already gathered. What it must not do is fail
+// silently AND leave no trace — so an unreadable packet notes a truncation warning, which is the
+// same disclosure the rest of this extractor uses.
+func applyXMPMetadata(r io.ReaderAt, size int64, metadata *VideoMetadata) {
+	spans, err := isobmff.MetadataSpans(r, size)
+	if err != nil {
+		return
+	}
+
+	packets := 0
+	for _, sp := range spans {
+		if sp.Label != isobmff.LabelXMP {
+			continue
+		}
+		length := sp.End - sp.Start
+		if length <= 0 || length > xmpmeta.MaxPacketBytes {
+			if length > xmpmeta.MaxPacketBytes {
+				noteTruncation(metadata, fmt.Sprintf(
+					"XMP packet is %d bytes and only the first %d were parsed", length, xmpmeta.MaxPacketBytes))
+				length = xmpmeta.MaxPacketBytes
+			} else {
+				continue
+			}
+		}
+
+		buf := make([]byte, length)
+		if _, err := io.ReadFull(io.NewSectionReader(r, sp.Start, length), buf); err != nil {
+			noteTruncation(metadata, "an XMP packet could not be read in full")
+			continue
+		}
+
+		fields, cutShort := xmpmeta.Fields(buf)
+		if cutShort {
+			noteTruncation(metadata, fmt.Sprintf(
+				"an XMP packet contributed only its first %d values", xmpmeta.MaxFields))
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		packets++
+		recordXMPFields(fields, metadata)
+	}
+}
+
+// recordXMPFields writes the packet's fields into Properties.
+//
+// Keyed "XMP_<Name>" so a reader can see where a value came from, and so an XMP property named
+// Author or Template cannot overwrite a field read from the atom tree — the packet is written by
+// whoever produced the file, and a name collision is otherwise a way to hide an atom-tree value.
+//
+// The collision loop below is what preserves every value: a repeated property, a second packet in the
+// same container, or an rdf:li sequence all land on the same key and are suffixed rather than
+// overwritten. Silently keeping one of N is the same class of loss as not reading it at all —
+// measured elsewhere in this repo as 7,999 discarded values hiding behind a flat finding count.
+//
+// An earlier version also prefixed the key with a packet INDEX. Mutation testing showed that branch
+// could not change the outcome: the collision loop already keeps both packets' values, so the index
+// only altered key spelling. It was removed rather than left looking like a guard.
+func recordXMPFields(fields []xmpmeta.Field, metadata *VideoMetadata) {
+	for _, f := range fields {
+		key := "XMP_" + f.Name
+		if existing, taken := metadata.Properties[key]; taken {
+			if existing == f.Value {
+				continue // the same value twice is not two values
+			}
+			// An XMP property may legitimately repeat (rdf:li in a Seq/Bag, or the same property on
+			// several rdf:Description elements). Keep both; the validators scan values, not keys.
+			for i := 2; ; i++ {
+				alt := fmt.Sprintf("%s_%d", key, i)
+				if _, dup := metadata.Properties[alt]; !dup {
+					metadata.Properties[alt] = f.Value
+					break
+				}
+			}
+			continue
+		}
+		metadata.Properties[key] = f.Value
+	}
 }
 
 // Helper functions for enhanced metadata extraction

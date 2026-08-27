@@ -177,6 +177,16 @@ func (am *AudioMetadata) ToProcessedContent() string {
 	return content.String()
 }
 
+// noteTruncatedXMP records that an XMP packet could not be read in full.
+//
+// First-warning-wins and payload-free, like the other notes here: it carries the fact that coverage
+// was lost, never any part of the packet.
+func (m *AudioMetadata) noteTruncatedXMP() {
+	if m.ExtractionWarning == "" {
+		m.ExtractionWarning = "audio metadata may be incomplete: an XMP packet could not be read in full"
+	}
+}
+
 // noteTruncatedComments records that a FLAC VORBIS_COMMENT block declared more than it held.
 //
 // A method rather than an assignment at each site so the wording exists once, and so the
