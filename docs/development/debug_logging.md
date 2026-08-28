@@ -117,7 +117,7 @@ When debug mode is enabled, you'll see detailed information about:
 
 ### 2. Preprocessor Registration
 ```
-[DEBUG] Text extraction preprocessor registered for extensions: [.pdf .docx .xlsx .pptx .docm .xlsm .pptm .odt .ods .odp]
+[DEBUG] Text extraction preprocessor registered for extensions: [.pdf .docx .xlsx .pptx .docm .xlsm .pptm .odt .ods .odp .ott .ots .otp]
 ```
 
 ### 3. File Processing Flow
