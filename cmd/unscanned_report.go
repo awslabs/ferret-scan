@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/awslabs/ferret-scan/v2/internal/coverage"
+	"github.com/awslabs/ferret-scan/v2/internal/displaytext"
 	"io"
 	"os"
 	"path/filepath"
@@ -533,12 +534,41 @@ func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int,
 		return true
 	}
 
+	// Control bytes in a scanned filename are escaped before the path is displayed.
+	//
+	// This block is the disclosure channel — the one that says a file was NOT scanned — and it
+	// is written raw to stderr for every --format, so it is the single emitter behind the leak
+	// in json, yaml, csv, junit, gitlab-sast and sarif alike. A name containing "\x1b[2K\r"
+	// makes a terminal blank this line and return to its start, so the row reporting an
+	// unscanned file disappears while the summary still counts it. #534 escaped the FINDINGS
+	// table and this channel was missed; #529 and #540 have since added messages to it.
+	//
+	// Sanitized HERE rather than at each Fprintf below, because the width calculation has to
+	// measure the string that is actually printed — escaping after measuring would misalign the
+	// detail column by 3 bytes per escaped byte.
+	//
+	// Detail is escaped too: it is assembled from preprocessor and redactor errors that quote
+	// an embedded part's name, which is chosen by whoever built the container.
+	type displayEntry struct {
+		cause  unscannedCause
+		path   string
+		detail string
+	}
+	display := make([]displayEntry, 0, len(entries))
+	for _, e := range entries {
+		display = append(display, displayEntry{
+			cause:  e.Cause,
+			path:   displaytext.SanitizeDisplayText(e.Path),
+			detail: displaytext.SanitizeDisplayText(e.Detail),
+		})
+	}
+
 	// Longest path in this run, so the detail column lines up without a fixed
 	// width that truncates or over-pads.
 	width := 0
-	for _, e := range entries {
-		if len(e.Path) > width {
-			width = len(e.Path)
+	for _, e := range display {
+		if len(e.path) > width {
+			width = len(e.path)
 		}
 	}
 	if width > 60 {
@@ -546,12 +576,12 @@ func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int,
 	}
 
 	var lastCause unscannedCause = -1
-	for _, e := range entries {
-		if e.Cause != lastCause {
-			fmt.Fprintf(w, "  %s (%d)\n", e.Cause, count[e.Cause])
-			lastCause = e.Cause
+	for _, e := range display {
+		if e.cause != lastCause {
+			fmt.Fprintf(w, "  %s (%d)\n", e.cause, count[e.cause])
+			lastCause = e.cause
 		}
-		fmt.Fprintf(w, "    %-*s  %s\n", width, e.Path, e.Detail)
+		fmt.Fprintf(w, "    %-*s  %s\n", width, e.path, e.detail)
 	}
 
 	hint()

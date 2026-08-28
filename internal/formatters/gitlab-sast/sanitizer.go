@@ -5,6 +5,7 @@ package gitlabsast
 
 import (
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/displaytext"
 	"regexp"
 	"sort"
 	"strings"
@@ -54,7 +55,7 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 
 	// Add location context
 	description.WriteString(fmt.Sprintf("**Location:** %s (line %d)\n",
-		shared.SanitizeDisplayText(match.Filename), match.LineNumber))
+		displaytext.SanitizeDisplayText(match.Filename), match.LineNumber))
 
 	// Add confidence information
 	confidenceLevel := s.GetConfidenceLevel(match.Confidence)
@@ -77,7 +78,7 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 			// A line within the cap passes through unchanged. See
 			// shared.ContextSnippetCap and #521.
 			snippet := shared.BoundedContextSnippet(match.Context.FullLine, match.Text)
-			fence := shared.MarkdownFenceFor(snippet)
+			fence := displaytext.MarkdownFenceFor(snippet)
 			description.WriteString(fmt.Sprintf("\n**Context:**\n%s\n%s\n%s\n",
 				fence, snippet, fence))
 		} else {
@@ -93,7 +94,7 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 		// back to the matched value itself so every validator honors --show-match,
 		// while the deny-by-default branch (no --show-match) still emits nothing
 		// here.
-		fence := shared.MarkdownFenceFor(match.Text)
+		fence := displaytext.MarkdownFenceFor(match.Text)
 		description.WriteString(fmt.Sprintf("\n**Matched value:**\n%s\n%s\n%s\n",
 			fence, match.Text, fence))
 	}

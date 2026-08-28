@@ -5,6 +5,7 @@ package text
 
 import (
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/displaytext"
 	"io"
 	"sort"
 	"strings"
@@ -520,7 +521,7 @@ func (f *Formatter) appendSummaryLine(w io.Writer, match detector.Match, confide
 	// Sanitized BEFORE colouring: colour wraps the string, so escaping afterwards would
 	// have to reach inside ferret's own ANSI. The filename is borrowed from the scanned
 	// tree, so its control bytes are attacker input at a display sink (#381).
-	filename := shared.SanitizeDisplayText(f.getSmartFilename(match.Filename, allMatches))
+	filename := displaytext.SanitizeDisplayText(f.getSmartFilename(match.Filename, allMatches))
 	filenameStr := filename
 	if !options.NoColor {
 		filenameStr = f.colors["white"].Sprint(filename)
@@ -549,15 +550,21 @@ func (f *Formatter) appendDetailedMatch(w io.Writer, match detector.Match, confi
 	// Match text with filename and line number. The value is shown only when
 	// ShowMatch is set; verbose detail must not expose a hidden secret.
 	shownText := displayMatchText(match, options)
+	// Sanitized ONCE, before the branch, and that is the point: the two arms disagreed. The
+	// NoColor arm escaped the filename and the coloured arm printed it raw, so `--verbose`
+	// leaked control bytes on the DEFAULT invocation and was clean only when the operator
+	// happened to pass --no-color. Measured: 1 raw ESC byte on stdout with colour, 0 without.
+	// Deriving both arms from one value is what stops the next edit reintroducing the asymmetry.
+	safeName := displaytext.SanitizeDisplayText(match.Filename)
 	if !options.NoColor {
 		f.colors["cyan"].Fprintf(w, "Match found in ")
-		f.colors["white"].Fprintf(w, "%s", match.Filename)
+		f.colors["white"].Fprintf(w, "%s", safeName)
 		f.colors["cyan"].Fprintf(w, " on ")
 		f.colors["magenta"].Fprintf(w, "line %d", match.LineNumber)
 		f.colors["cyan"].Fprintf(w, ": %s\n", shownText)
 	} else {
 		fmt.Fprintf(w, "Match found in %s on line %d: %s\n",
-			shared.SanitizeDisplayText(match.Filename), match.LineNumber, shownText)
+			safeName, match.LineNumber, shownText)
 	}
 
 	// Type
@@ -776,14 +783,18 @@ func (f *Formatter) appendDetailedSuppressedMatch(w io.Writer, suppressed detect
 
 	// Match text with filename and line number. Shown only when ShowMatch is set.
 	shownText := displayMatchText(match, options)
+	// Both arms printed the filename raw here — unlike the detail path above, where only the
+	// coloured arm did. A suppressed finding is displayed from the same borrowed path as any
+	// other, so it needs the same escaping.
+	safeName := displaytext.SanitizeDisplayText(match.Filename)
 	if !options.NoColor {
 		f.colors["cyan"].Fprintf(w, "Suppressed match found in ")
-		f.colors["white"].Fprintf(w, "%s", match.Filename)
+		f.colors["white"].Fprintf(w, "%s", safeName)
 		f.colors["cyan"].Fprintf(w, " on ")
 		f.colors["magenta"].Fprintf(w, "line %d", match.LineNumber)
 		f.colors["cyan"].Fprintf(w, ": %s\n", shownText)
 	} else {
-		fmt.Fprintf(w, "Suppressed match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
+		fmt.Fprintf(w, "Suppressed match found in %s on line %d: %s\n", safeName, match.LineNumber, shownText)
 	}
 
 	// Suppression info
@@ -994,7 +1005,7 @@ func (f *Formatter) formatPrecommitOutput(matches []detector.Match, suppressedMa
 
 		if len(issueParts) > 0 {
 			fmt.Fprintf(&builder, "%s: %s confidence issues found\n",
-				shared.SanitizeDisplayText(f.getSmartFilename(filename, matches)),
+				displaytext.SanitizeDisplayText(f.getSmartFilename(filename, matches)),
 				strings.Join(issueParts, ", "))
 
 			// Add specific issue details for actionable guidance

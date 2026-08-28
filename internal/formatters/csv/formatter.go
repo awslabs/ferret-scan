@@ -6,6 +6,7 @@ package csv
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/displaytext"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -239,7 +240,7 @@ func (f *Formatter) escapeCSVField(field string) string {
 	// trigger, so it cannot create one. The orders differ on a tab/CR/LF-prefixed field,
 	// where running the guard first adds a leading quote that is no longer needed once the
 	// prefix is an escape sequence. Neither order is unsafe, so no ordering claim is made.
-	field = shared.SanitizeDisplayText(field)
+	field = displaytext.SanitizeDisplayText(field)
 
 	// Prevent CSV injection by sanitizing formula characters
 	field = f.sanitizeFormulaInjection(field)

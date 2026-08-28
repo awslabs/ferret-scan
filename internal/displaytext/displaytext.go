@@ -1,7 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-package shared
+// Package displaytext escapes borrowed text before it reaches a display sink.
+//
+// A LEAF package, deliberately: it imports nothing from this repository. That is the whole
+// reason it exists separately from internal/formatters/shared, where these functions used to
+// live. shared imports internal/formatters, so internal/formatters could not import shared
+// back — which left the coverage/redaction disclosure emitters in internal/formatters and cmd
+// with no way to reach the escaping at all, and that is exactly where the control bytes were
+// still landing (#544). Escaping "at every sink" is only possible if every sink can import the
+// escaper.
+//
+// Keep it dependency-free. Anything added here that imports another internal package
+// reintroduces the cycle for some future emitter.
+package displaytext
 
 import (
 	"strings"

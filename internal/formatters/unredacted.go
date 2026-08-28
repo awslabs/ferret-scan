@@ -5,6 +5,7 @@ package formatters
 
 import (
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/displaytext"
 	"sort"
 	"strings"
 )
@@ -365,7 +366,7 @@ func RenderBlock(files []UnredactedFile, totalFiles int, failOnIncomplete, inclu
 		c := UnredactedCause(ci)
 		fmt.Fprintf(&w, "  %s (%d)\n", c, len(byCause[c]))
 		for _, f := range examples[c] {
-			fmt.Fprintf(&w, "    %s  %d value(s) in cleartext\n", f.Path, f.ReportedValues)
+			fmt.Fprintf(&w, "    %s  %d value(s) in cleartext\n", displaytext.SanitizeDisplayText(f.Path), f.ReportedValues)
 			shown++
 		}
 	}

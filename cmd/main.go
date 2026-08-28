@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/displaytext"
 	"io"
 	"io/fs"
 	"net"
@@ -567,15 +568,21 @@ func processPreprocessOnly(supportedFiles []string, fileRouter *router.FileRoute
 			fmt.Println()
 		}
 
-		// Print file header
-		fmt.Printf("=== FILE: %s ===\n", filePath)
+		// Print file header.
+		//
+		// --preprocess-only writes straight to stdout with no formatter in the way, so the
+		// path lands on the terminal unfiltered. Measured before this: 1 raw ESC byte from a
+		// filename containing "\x1b[2K\r", which blanks the header line naming the file whose
+		// extracted text follows — so the output attributes one file's content to another.
+		safePath := displaytext.SanitizeDisplayText(filePath)
+		fmt.Printf("=== FILE: %s ===\n", safePath)
 
 		// Enhanced file access error handling
 		if _, err := os.Stat(filePath); err != nil {
 			if os.IsNotExist(err) {
-				fmt.Printf("Status: Error - File not found: %s\n", filePath)
+				fmt.Printf("Status: Error - File not found: %s\n", safePath)
 			} else if os.IsPermission(err) {
-				fmt.Printf("Status: Error - Permission denied: %s\n", filePath)
+				fmt.Printf("Status: Error - Permission denied: %s\n", safePath)
 			} else {
 				fmt.Printf("Status: Error - File access error: %v\n", err)
 			}
@@ -817,7 +824,10 @@ func writeUnredactedFilesWarning(w io.Writer, unredactedFiles []parallel.FileDia
 	fmt.Fprintf(w, "WARNING: redaction incomplete — %d of %d file(s) have findings but no redacted copy was written; the original values remain in cleartext:\n",
 		len(unredactedFiles), totalFiles)
 	for _, fd := range unredactedFiles {
-		fmt.Fprintf(w, "  %s: %s\n", fd.FilePath, fd.Reason)
+		// Path AND reason: the reason is a redactor error that quotes the offending
+		// embedded part's name (#529), which is chosen by whoever built the container.
+		fmt.Fprintf(w, "  %s: %s\n",
+			displaytext.SanitizeDisplayText(fd.FilePath), displaytext.SanitizeDisplayText(fd.Reason))
 	}
 	return true
 }
