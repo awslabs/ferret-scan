@@ -4,6 +4,8 @@
 package goldencorpus
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -400,9 +402,19 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 				// output rather than reconstructable only from a failure.
 				t.Logf("%s: 4x input took %.2fx longer (base=%v big=%v)%s",
 					tgt.name, ratio, tBase, tBig, raceNote())
+
+				// A single pair of wall-clock readings is not enough to fail on. Re-measure
+				// and use the MEDIAN before reporting a regression — see
+				// medianGrowthRatio for the measurements behind this.
 				if ratio > maxGrowthRatio {
-					t.Errorf("%s: 4x input took %.1fx longer (base=%v big=%v) — superlinear growth suggests an O(n^2) regression",
-						tgt.name, ratio, tBase, tBig)
+					confirmed, samples := medianGrowthRatio(t, tgt.new, baseLine, bigLine, ratio)
+					t.Logf("%s: first reading %.2fx exceeded %.1f; re-measured median %.2fx over %d pairs%s",
+						tgt.name, ratio, maxGrowthRatio, confirmed, len(samples), raceNote())
+					if confirmed > maxGrowthRatio {
+						t.Errorf("%s: 4x input took %.1fx longer (median of %d paired readings, "+
+							"first %.1fx, samples %v) — superlinear growth suggests an O(n^2) regression",
+							tgt.name, confirmed, len(samples), ratio, formatRatios(samples))
+					}
 				}
 			}
 		})
@@ -437,4 +449,80 @@ func buildComplexityInput(unit string, gen func(int) string, reps int) string {
 		sb.WriteString(gen(i))
 	}
 	return sb.String()
+}
+
+// confirmationPairs is how many FRESH base/big pairs medianGrowthRatio measures when the
+// first reading exceeds maxGrowthRatio.
+//
+// 7, and the first reading is deliberately NOT one of them — see medianGrowthRatio. An odd
+// count so the median is a real sample, and 7 rather than 5 because a first version using 5
+// (with the suspect reading included) still landed its median on an outlier: measured
+// [9.68x 4.02x 14.18x 3.85x 15.64x] on linear code, median 9.68x, a false failure.
+const confirmationPairs = 7
+
+// medianGrowthRatio re-measures the growth ratio and returns the MEDIAN, plus every sample.
+//
+// It runs ONLY when the first reading already exceeded the threshold, so the happy path pays
+// nothing: an unregressed validator on an idle machine is measured exactly once, as before.
+//
+// Why re-measure at all. The single-shot ratio is not a stable statistic under load, and #546
+// is the proof: 5 of the readings this guard produced on CORRECT code sat in (8.0, 12.0] —
+// dob 8.60x under -race, medicalid 9.68x — every one of which passes at the old 12.0 threshold
+// and none of which is a defect. Measured here on the four flakiest targets at load average
+// 160 on 14 CPUs, 24 trials per statistic:
+//
+//	statistic                        spread        worst high   worst low
+//	single pair (what this replaces) 1.20 - 6.82x    6.82x        1.20x
+//	min of independent mins          2.87 - 6.07x    6.07x        2.87x
+//	MEDIAN of paired readings        3.58 - 6.03x    6.03x        3.58x
+//
+// Why the MEDIAN and not the minimum, which would look safer still. Contention does not only
+// inflate the big term: when it inflates the BASE instead, the ratio goes DOWN — single-shot
+// produced 1.20x and 1.78x on linear code in the same run. A minimum would therefore be
+// biased toward passing and could mask a genuine quadratic whose base reading was unlucky.
+// The median is robust in both directions, which is the property needed here.
+//
+// Why not simply raise the threshold. The window is narrow at both ends: a reproduced
+// quadratic reads 15.4-15.6x plain but only 12.4-12.7x under -race, so the bound must stay
+// well below 12.4, while contended correct code reached 9.68x. There is no single number with
+// margin on both sides — 8.0 has 1.55x below the -race quadratic and, with this statistic,
+// 1.33x above the worst contended reading. Fixing the MEASUREMENT is what buys the margin
+// that no threshold could.
+//
+// Pairs are measured adjacently in time so both halves see the same load regime; interleaving
+// is what makes the per-pair ratio meaningful rather than comparing across load conditions.
+// newV is passed rather than the whole target because complexityTargets is an anonymous
+// struct slice with no named type; the helper needs only a fresh validator per reading.
+func medianGrowthRatio(t *testing.T, newV func() validatorUnderTest, baseLine, bigLine string, first float64) (float64, []float64) {
+	t.Helper()
+
+	// The first reading is the TRIGGER, not evidence. It is here only because it exceeded the
+	// threshold, so including it in the median hands the suspect sample a vote — which is how a
+	// first version of this produced median 9.68x from [9.68x 4.02x 14.18x 3.85x 15.64x] and
+	// failed linear code. Fresh pairs only.
+	_ = first
+
+	var samples []float64
+	for len(samples) < confirmationPairs {
+		tb, _ := timeValidate(t, newV(), baseLine)
+		tg, _ := timeValidate(t, newV(), bigLine)
+		if tb <= 0 {
+			continue
+		}
+		samples = append(samples, float64(tg)/float64(tb))
+	}
+
+	sorted := make([]float64, len(samples))
+	copy(sorted, samples)
+	sort.Float64s(sorted)
+	return sorted[len(sorted)/2], samples
+}
+
+// formatRatios renders ratios for a failure message at the precision that matters.
+func formatRatios(rs []float64) string {
+	parts := make([]string, 0, len(rs))
+	for _, r := range rs {
+		parts = append(parts, fmt.Sprintf("%.2fx", r))
+	}
+	return "[" + strings.Join(parts, " ") + "]"
 }
