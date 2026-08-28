@@ -42,7 +42,7 @@ func (fr *FileRouter) CanContainMetadata(filePath string) bool {
 
 | Category | Extensions | Metadata Sources |
 |----------|------------|------------------|
-| **Office Documents** | .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp | Document properties, author info, comments, creation dates |
+| **Office Documents** | .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp, .ott, .ots, .otp | Document properties, author info, comments, creation dates |
 | **PDF Documents** | .pdf | XMP metadata, document properties, creation tools |
 | **Image Files** | .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp, .heic, .heif, .raw, .cr2, .nef, .arw | EXIF data, GPS coordinates, camera info, device IDs |
 | **Video Files** | .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv | Video metadata, recording info, device data, location data |
@@ -90,7 +90,7 @@ func (fr *FileRouter) GetMetadataType(filePath string) string {
 
 | Return Value | File Extensions | Preprocessor Focus |
 |--------------|-----------------|-------------------|
-| `"office_metadata"` | .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp | Document properties, author info, comments |
+| `"office_metadata"` | .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp, .ott, .ots, .otp | Document properties, author info, comments |
 | `"document_metadata"` | .pdf | PDF metadata, XMP data, creation tools |
 | `"image_metadata"` | .jpg, .jpeg, .png, .gif, .bmp, .tiff, .tif, .webp, .heic, .heif, .raw, .cr2, .nef, .arw | EXIF data, GPS coordinates, camera info |
 | `"video_metadata"` | .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv | Video metadata, recording info, device data |

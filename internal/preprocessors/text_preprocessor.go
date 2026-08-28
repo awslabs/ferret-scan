@@ -30,6 +30,8 @@ func NewTextPreprocessor() *TextPreprocessor {
 			".docx", ".xlsx", ".pptx",
 			".docm", ".xlsm", ".pptm",
 			".odt", ".ods", ".odp",
+			// ODF templates: the same packages with a template media type (#528).
+			".ott", ".ots", ".otp",
 		},
 	}
 }
@@ -88,7 +90,8 @@ func (tp *TextPreprocessor) Process(filePath string) (*ProcessedContent, error) 
 	switch ext {
 	case ".pdf":
 		result, err = tp.processPDF(filePath, content)
-	case ".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm", ".odt", ".ods", ".odp":
+	case ".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm",
+		".odt", ".ods", ".odp", ".ott", ".ots", ".otp":
 		result, err = tp.processOffice(filePath, content)
 	default:
 		err = fmt.Errorf("unsupported file extension: %s", ext)
