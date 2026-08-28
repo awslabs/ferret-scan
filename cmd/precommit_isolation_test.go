@@ -21,16 +21,25 @@ import (
 // machine artifact gets zero bytes rather than a parse error, and the failure names the test's
 // own subject rather than the environment.
 //
-// This list has now gone stale twice, each time producing a windows-only CI failure whose cause
-// had nothing to do with the failing test:
+// This list went stale twice, each time producing a windows-only CI failure whose cause had
+// nothing to do with the failing test:
 //
 //	#351  scrubbed nothing, so GIT_EXEC_PATH (always set by Git Bash) forced text output
 //	#354  scrubbed GIT_EXEC_PATH but missed MSYSTEM, so quiet mode emptied two artifacts
 //
 // Both times the CI step ran under C:\Program Files\Git\bin\bash.EXE, which sets MSYSTEM,
-// MINGW_PREFIX and GIT_EXEC_PATH. Reproduced locally by forcing the platform branch on: with
-// MSYSTEM set, an all-inputs-refused scan wrote a 0-byte --output file where a clean
-// environment wrote 264 bytes.
+// MINGW_PREFIX and GIT_EXEC_PATH.
+//
+// #353 removed that class at the root: the detector no longer treats MSYSTEM, MINGW_PREFIX,
+// GIT_EXEC_PATH, GITHUB_DESKTOP or "a git repo containing a pre-commit hook file" as pre-commit
+// signals, because none of them indicates a hook INVOCATION. So the list is shorter and the
+// remaining names are set by pre-commit itself or name a hook directly.
+//
+// This file is kept, and matters as much as before, for two reasons. The precise triggers still
+// exist and a test meaning to exercise ordinary CLI behaviour must still scrub them. And the
+// reverse-direction check below is what forced this list to be updated in step with the detector
+// when those five were removed, rather than leaving five dead names behind — which is exactly the
+// drift that caused the two failures above, in the other direction.
 //
 // TestPrecommitTriggerListIsComplete below keeps the list honest by deriving it from the
 // detector's own source, so a trigger added there fails here instead of on one runner.
@@ -42,16 +51,20 @@ var precommitTriggerEnv = []string{
 	"PRE_COMMIT",
 	"_PRE_COMMIT_RUNNING",
 	"PRE_COMMIT_HOME",
-	// Batch/hook context indicators.
+	// Hook-context indicators, cross-platform since #353.
 	"PRE_COMMIT_HOOK",
 	"GIT_HOOK_TYPE",
-	// Git Bash / MSYS, which is how most people run this tool on Windows. These are the ones
-	// that make detection fire without anyone opting in.
-	"MSYSTEM",
-	"MINGW_PREFIX",
-	"GIT_EXEC_PATH",
-	"GITHUB_DESKTOP",
+	// The explicit opt-out. Scrubbed so a developer who exports it does not silently disable
+	// the detection these tests are about — the tests that WANT the opt-out set it themselves.
+	"FERRET_PRECOMMIT",
 }
+
+// MSYSTEM, MINGW_PREFIX, GIT_EXEC_PATH and GITHUB_DESKTOP used to be on the list above and are
+// gone because the detector no longer reads them (#353). They were the ones that made detection
+// fire without anyone opting in: Git Bash always sets MSYSTEM, so on Windows the usual shell was
+// treated as a hook. The reverse-direction check at the bottom of
+// TestPrecommitTriggerListMatchesTheDetector is what forced this list to be updated with the
+// detector rather than drifting from it.
 
 // precommitFreeEnv returns the current environment with every pre-commit trigger emptied.
 //
@@ -60,10 +73,10 @@ var precommitTriggerEnv = []string{
 // overrides an inherited value on every platform, including Windows where the names are
 // case-insensitive.
 //
-// Callers must ALSO run the binary with a working directory outside any git repository. Two
-// detection paths shell out to `git rev-parse --git-dir` and look for a pre-commit hook beside
-// it, and this package's own directory is a repository that has one. No environment variable
-// can switch that off.
+// Since #353 the detector reads ONLY environment variables, so emptying them is sufficient. It
+// previously also shelled out to `git rev-parse --git-dir` and looked for a pre-commit hook file
+// beside it, which meant a caller had to run from outside any git repository as well — a
+// requirement that was easy to forget and produced Windows-only failures when it was.
 func precommitFreeEnv() []string {
 	env := os.Environ()
 	for _, k := range precommitTriggerEnv {
@@ -100,6 +113,11 @@ func TestPrecommitTriggerListIsComplete(t *testing.T) {
 		// because this guard found it on its first run — a case-insensitive name that a
 		// hand-written [A-Z_]+ grep of the detector had silently skipped.
 		"PSModulePath": "tunes BatchSize after the mode is already decided",
+		// MSYSTEM was a DETECTION trigger until #353 — Git Bash always sets it, which is what
+		// made the usual Windows shell look like a hook. It is now read only by
+		// applyWindowsConfigOptimizations, so it can no longer decide the mode, and it belongs
+		// in this map for the same reason PSModulePath does.
+		"MSYSTEM": "tunes BatchSize after the mode is already decided (was a trigger before #353)",
 		// COMSPEC is a trigger only in combination with PRE_COMMIT_HOOK or GIT_HOOK_TYPE, both
 		// of which ARE scrubbed, so the combination cannot fire. It is left alone on purpose:
 		// it is a core Windows variable and blanking it could affect anything the tool shells

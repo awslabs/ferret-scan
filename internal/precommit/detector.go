@@ -5,8 +5,6 @@ package precommit
 
 import (
 	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -71,6 +69,12 @@ func (pd *PrecommitDetector) GetSuggestedProfile() string {
 
 // detectEnvironment checks for pre-commit environment indicators
 func (pd *PrecommitDetector) detectEnvironment() {
+	// An explicit opt-out wins over every signal below.
+	if precommitOptOut() {
+		pd.isPrecommitEnv = false
+		return
+	}
+
 	// Primary detection: PRE_COMMIT environment variable
 	if os.Getenv("PRE_COMMIT") != "" {
 		pd.isPrecommitEnv = true
@@ -89,15 +93,37 @@ func (pd *PrecommitDetector) detectEnvironment() {
 		return
 	}
 
-	// Windows-specific detection: Check for Git Bash or Windows Git environment
-	if runtime.GOOS == "windows" {
-		if pd.detectWindowsGitEnvironment() {
-			pd.isPrecommitEnv = true
-			return
-		}
+	// Hook-specific detection, cross-platform.
+	//
+	// PRE_COMMIT_HOOK and GIT_HOOK_TYPE name a hook INVOCATION, so unlike the signals
+	// removed below they mean what this detector is asking. They were previously reachable
+	// only on Windows and only when COMSPEC named cmd.exe, which made the same hook behave
+	// differently depending on the shell that ran it.
+	if os.Getenv("PRE_COMMIT_HOOK") != "" || os.Getenv("GIT_HOOK_TYPE") != "" {
+		pd.isPrecommitEnv = true
+		return
 	}
 
 	pd.isPrecommitEnv = false
+}
+
+// precommitOptOut reports whether the operator has explicitly said this is not a pre-commit run.
+//
+// Detection changes quiet mode, colour and exit-code semantics, and there was no way to decline
+// it: FERRET_PRECOMMIT_BATCH_SIZE, FERRET_PRECOMMIT_EXIT_ON and FERRET_PRECOMMIT_EXIT_ON_FIRST
+// could tune the behaviour but nothing could switch it off (#353). A caller inside a genuine hook
+// who wants ordinary output now has a way to ask for it.
+//
+// Accepts the values Go's strconv.ParseBool rejects a run for: "0", "false", "f", "FALSE", "F".
+// Anything else, including an empty value, leaves detection alone — so setting the variable to "1"
+// is not a way to force pre-commit mode on; --pre-commit-mode already does that explicitly.
+func precommitOptOut() bool {
+	v := os.Getenv("FERRET_PRECOMMIT")
+	if v == "" {
+		return false
+	}
+	b, err := strconv.ParseBool(v)
+	return err == nil && !b
 }
 
 // generateOptimizedConfig creates optimized settings for pre-commit environment
@@ -187,79 +213,30 @@ func (pd *PrecommitConfig) ShouldExitOnFindings(confidenceLevel string) bool {
 	}
 }
 
-// detectWindowsGitEnvironment checks for Windows-specific Git and pre-commit indicators
-func (pd *PrecommitDetector) detectWindowsGitEnvironment() bool {
-	// Check for Git Bash environment variables
-	if os.Getenv("MSYSTEM") != "" || os.Getenv("MINGW_PREFIX") != "" {
-		return true
-	}
-
-	// Check for Windows Git environment variables
-	if os.Getenv("GIT_EXEC_PATH") != "" {
-		return true
-	}
-
-	// Check for PowerShell Git environment (GitHub Desktop, etc.)
-	if os.Getenv("GITHUB_DESKTOP") != "" {
-		return true
-	}
-
-	// Check for Windows-specific pre-commit indicators
-	if os.Getenv("COMSPEC") != "" {
-		// Check if we're running in a batch script context that might be pre-commit
-		if strings.Contains(strings.ToLower(os.Getenv("COMSPEC")), "cmd.exe") {
-			// Look for pre-commit related environment variables that might be set by batch scripts
-			if os.Getenv("PRE_COMMIT_HOOK") != "" || os.Getenv("GIT_HOOK_TYPE") != "" {
-				return true
-			}
-		}
-	}
-
-	// Check if Git is available and we're in a Git repository
-	if pd.isInGitRepository() {
-		// Additional check for pre-commit hooks directory
-		if pd.hasPrecommitHooks() {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isInGitRepository checks if the current directory is within a Git repository
-func (pd *PrecommitDetector) isInGitRepository() bool {
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
-	err := cmd.Run()
-	return err == nil
-}
-
-// hasPrecommitHooks checks if pre-commit hooks are installed in the current Git repository
-func (pd *PrecommitDetector) hasPrecommitHooks() bool {
-	// Try to find .git directory
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
-	output, err := cmd.Output()
-	if err != nil {
-		return false
-	}
-
-	gitDir := strings.TrimSpace(string(output))
-	hooksDir := filepath.Join(gitDir, "hooks")
-
-	// Check for pre-commit hook file
-	precommitHook := filepath.Join(hooksDir, "pre-commit")
-	if runtime.GOOS == "windows" {
-		// On Windows, also check for .bat extension
-		if _, err := os.Stat(precommitHook + ".bat"); err == nil {
-			return true
-		}
-	}
-
-	if _, err := os.Stat(precommitHook); err == nil {
-		return true
-	}
-
-	return false
-}
+// detectWindowsGitEnvironment has been removed (#353).
+//
+// It ran only on Windows and treated a Git ENVIRONMENT as a hook INVOCATION. Each of these
+// independently returned true, and the first is the one that mattered: Git Bash always sets
+// MSYSTEM, so every Windows developer running ferret-scan from the usual shell was silently
+// treated as being inside a pre-commit hook.
+//
+//	MSYSTEM, MINGW_PREFIX            set by Git Bash, always
+//	GIT_EXEC_PATH                    set by Git whenever git runs a subprocess
+//	GITHUB_DESKTOP                   set by GitHub Desktop
+//	cwd is a git repo AND has a
+//	  .git/hooks/pre-commit file     true for anyone working in a repo that uses pre-commit,
+//	                                 whether or not a hook is running — and Windows-only, so
+//	                                 the same repository behaved differently per platform
+//
+// Detection then set QuietMode, NoColor, Format "text" and ExitOnFindings "high", so an
+// ordinary scan lost its colour, was forced to text and acquired hook exit-code semantics.
+// #351 fixed the format half by letting an explicit --format win; the rest is fixed here by
+// not making the inference in the first place.
+//
+// PRE_COMMIT_HOOK and GIT_HOOK_TYPE survive, in detectEnvironment and on every platform,
+// because they name a hook invocation rather than a Git installation. The cross-platform
+// PRE_COMMIT / _PRE_COMMIT_RUNNING / PRE_COMMIT_HOME are set by pre-commit itself and were
+// always the precise signals.
 
 // A BLOCKING FINDING OUTRANKS A PROCESSING ERROR.
 //
@@ -325,3 +302,10 @@ func GetWindowsExitCode(hasFindings bool, hasErrors bool, confidenceLevel string
 func GetExitCode(hasFindings bool, hasErrors bool, confidenceLevel string, config *PrecommitConfig) int {
 	return exitCodeFor(hasFindings, hasErrors, confidenceLevel, config)
 }
+
+// isInGitRepository and hasPrecommitHooks were removed with detectWindowsGitEnvironment (#353).
+//
+// Together they formed its last condition — "the working directory is a git repository AND it has
+// a pre-commit hook file" — which is true for anyone working inside a repo that uses pre-commit,
+// running or not. They also shelled out to `git rev-parse --git-dir` on every scan to answer a
+// question that no longer needs asking.

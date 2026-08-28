@@ -6,6 +6,7 @@ package formatters_test
 import (
 	"encoding/json"
 	"encoding/xml"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -365,7 +366,26 @@ func TestCompleteScanIsByteIdentical(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Format: %v", err)
 			}
-			if withNil != withEmpty {
+			// Compared with the scan timestamps normalised, because gitlab-sast embeds
+			// start_time and end_time at ONE-SECOND resolution and this test formats twice.
+			// Two consecutive calls that happen to straddle a second boundary differ in exactly
+			// those two lines, which failed on ubuntu-latest CI against correct code. Proved by
+			// forcing the straddle: the diff was
+			//
+			//	-   "start_time": "2026-08-28T08:22:10",
+			//	+   "start_time": "2026-08-28T08:22:11",
+			//	-   "end_time":   "2026-08-28T08:22:10",
+			//	+   "end_time":   "2026-08-28T08:22:11",
+			//
+			// and nothing else. The formatter is right to carry a real timestamp — the GitLab
+			// schema requires one — and this test's claim is that the NotExamined disclosure is
+			// ADDITIVE, which a clock has no bearing on. So the clock is normalised rather than
+			// the formatter changed.
+			//
+			// gitlab-sast is the only formatter that embeds a time field; json, yaml, csv, sarif
+			// and junit emit none, so the other byte-comparison tests in this package are not
+			// exposed to this.
+			if normaliseScanTimes(withNil) != normaliseScanTimes(withEmpty) {
 				t.Error("a nil and an empty NotExamined produced different output; both mean " +
 					"every file was examined")
 			}
@@ -465,4 +485,14 @@ func TestCSVStaysOutOfBand(t *testing.T) {
 				"format; in band it corrupts the grammar or fakes a finding.", marker)
 		}
 	}
+}
+
+// scanTimeField matches the gitlab-sast scan timestamps, which are the only clock-derived values
+// any formatter emits.
+var scanTimeField = regexp.MustCompile(`"(start_time|end_time)":\s*"[^"]*"`)
+
+// normaliseScanTimes replaces those timestamps with a placeholder so two formats of the same input
+// can be compared for equality. See the note in TestCompleteScanIsByteIdentical.
+func normaliseScanTimes(s string) string {
+	return scanTimeField.ReplaceAllString(s, `"$1": "<normalised>"`)
 }

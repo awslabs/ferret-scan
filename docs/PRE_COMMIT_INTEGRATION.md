@@ -178,6 +178,36 @@ repos:
 | `FERRET_PRECOMMIT_BATCH_SIZE` | Number (1-100) | `50` | Files processed per batch |
 | `FERRET_PRECOMMIT_EXIT_ON` | `high`, `medium`, `low`, `none` | `high` | When to block commits |
 | `FERRET_PRECOMMIT_EXIT_ON_FIRST` | `true`, `false` | `false` | Exit on first finding |
+| `FERRET_PRECOMMIT` | `0`, `false`, `f` | unset | **Opt out** of pre-commit mode entirely, even inside a real hook |
+
+### How pre-commit mode is detected
+
+Pre-commit mode is inferred from the environment, and it is not cosmetic: it forces quiet output,
+disables colour, and applies pre-commit exit-code semantics. These are the only signals:
+
+| Signal | Set by |
+|---|---|
+| `PRE_COMMIT` | pre-commit itself |
+| `_PRE_COMMIT_RUNNING` | pre-commit itself (some versions) |
+| `PRE_COMMIT_HOME` | pre-commit itself |
+| `PRE_COMMIT_HOOK` | a hook invocation |
+| `GIT_HOOK_TYPE` | a hook invocation |
+
+`--pre-commit-mode` forces it on regardless, and `FERRET_PRECOMMIT=0` forces it off — the flag wins
+over the variable, being the more specific request.
+
+**An explicit flag outranks the inference.** `--format`, `--quiet` and `--no-color` are respected
+when you pass them; the pre-commit values are defaults for when you do not. And an `--output` file
+you asked for is always written, even on a clean run where the console output is deliberately
+silent.
+
+> **Changed in this release.** Detection previously also treated `MSYSTEM`, `MINGW_PREFIX`,
+> `GIT_EXEC_PATH`, `GITHUB_DESKTOP`, and "the working directory is a git repository containing a
+> pre-commit hook file" as pre-commit signals — on Windows only. None of those indicates a hook
+> *invocation*: Git Bash always sets `MSYSTEM`, so running ferret-scan from the usual Windows shell
+> was silently treated as running inside a hook, which reshaped ordinary scans and made the same
+> repository behave differently per platform. They have been removed
+> ([#353](https://github.com/awslabs/ferret-scan/issues/353)).
 
 ## Team Configurations
 

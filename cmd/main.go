@@ -1255,11 +1255,18 @@ func main() {
 	// Apply additional pre-commit optimizations to final config
 	if precommitConfig != nil {
 
-		// Override configuration with pre-commit optimizations
-		if precommitConfig.QuietMode {
+		// Override configuration with pre-commit optimizations.
+		//
+		// Guarded the same way as Format below, and for the same reason: these are DEFAULTS
+		// for a pre-commit run, not decisions that outrank the operator. Applied
+		// unconditionally, `--quiet=false` and `--no-color=false` were silently discarded by
+		// an inference nobody opted into — and on Windows that inference fired from Git Bash
+		// (#353). With no flag given the pre-commit default still applies, which is the
+		// behaviour it exists to provide.
+		if precommitConfig.QuietMode && !isFlagSet("quiet") {
 			setBoolFlag(quiet, true)
 		}
-		if precommitConfig.NoColor {
+		if precommitConfig.NoColor && !isFlagSet("no-color") {
 			finalConfig.noColor = true
 		}
 		// An explicitly requested format outranks an auto-detected default.
@@ -1813,7 +1820,10 @@ func main() {
 		NoColor:         finalConfig.noColor,
 		ShowMatch:       finalConfig.showMatch,
 		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
-		Limit:           *limitFlag,
+		// An explicitly requested artifact is written even when pre-commit mode would
+		// otherwise stay silent. See FormatterOptions.OutputToFile (#353).
+		OutputToFile: *outputFile != "",
+		Limit:        *limitFlag,
 	}
 
 	// Process all files using parallel processing
