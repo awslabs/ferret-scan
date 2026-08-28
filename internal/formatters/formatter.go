@@ -20,6 +20,24 @@ type FormatterOptions struct {
 	ShowMatch       bool            // Whether to display the actual matched text
 	PrecommitMode   bool            // Whether to use pre-commit optimized output
 
+	// OutputToFile is true when the caller directed output to a path with --output.
+	//
+	// Pre-commit mode returns an EMPTY document when there is nothing to report, which is
+	// deliberate noise reduction on a developer's every commit — it has its own out-of-band
+	// signalling in the exit code and on stderr. That reasoning holds for a terminal and not
+	// for a file the caller named: with --output the caller asked for a machine artifact and
+	// received a 0-byte file that no parser accepts.
+	//
+	// Measured before this field existed, on a clean tree with --format json --output r.json:
+	//
+	//	ordinary run    237 bytes, valid JSON, results: []
+	//	PRE_COMMIT=1      0 bytes, JSONDecodeError
+	//
+	// Same shape as the bug #351 fixed for --format: an explicit request silently discarded by
+	// an inference the caller never opted into. Quiet mode governs console chatter, not whether
+	// a requested artifact exists (#353).
+	OutputToFile bool
+
 	// Limit caps how many findings are included in the output. 0 = unlimited.
 	// When the total exceeds Limit, a footer indicates how many were omitted.
 	Limit int

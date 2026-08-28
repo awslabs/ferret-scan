@@ -60,7 +60,8 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// deliberate noise reduction on a developer's every commit. It has its own
 	// out-of-band signalling (exit code + stderr), so it is not relying on this
 	// artifact for the disclosure.
-	if len(filteredMatches) == 0 && len(suppressedMatches) == 0 && options.PrecommitMode {
+	if len(filteredMatches) == 0 && len(suppressedMatches) == 0 && options.PrecommitMode &&
+		!options.OutputToFile {
 		return "", nil
 	}
 

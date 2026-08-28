@@ -52,7 +52,8 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	filteredMatches, _, _ = shared.ApplyLimit(filteredMatches, options)
 
 	// In pre-commit mode, return empty string if no matches to reduce noise
-	if options.PrecommitMode && len(filteredMatches) == 0 && len(suppressedMatches) == 0 {
+	if options.PrecommitMode && !options.OutputToFile &&
+		len(filteredMatches) == 0 && len(suppressedMatches) == 0 {
 		return "", nil
 	}
 
