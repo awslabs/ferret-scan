@@ -87,7 +87,7 @@ var SSNCases = []Case{
 			{Line: 2, Value: "130-07-5728", Types: []string{"SSN"}, MinBand: BandHigh},
 			{Line: 3, Value: "214-89-6712", Types: []string{"SSN"}, MinBand: BandHigh},
 		},
-		Redactable: false,
+		Redactable: true,
 	},
 	{
 		Name:      "c05_semicolon_eu",
@@ -447,7 +447,7 @@ var SSNCases = []Case{
 			{Line: 1, Value: "130-07-5728", Types: []string{"SSN"}, MinBand: BandHigh},
 			{Line: 2, Value: "214-89-6712", Types: []string{"SSN"}, MinBand: BandHigh},
 		},
-		Redactable: false,
+		Redactable: true,
 	},
 	{
 		Name:      "c46_pipe_no_header",
@@ -833,7 +833,7 @@ var SSNCases = []Case{
 		Labels: []Label{
 			{Line: 3, Value: "130-07-5728", Types: []string{"SSN"}, MinBand: BandHigh},
 		},
-		Redactable: false,
+		Redactable: true,
 	},
 	{
 		Name:      "s10_xml",
@@ -857,7 +857,7 @@ var SSNCases = []Case{
 		Labels: []Label{
 			{Line: 1, Value: "130-07-5728", Types: []string{"SSN"}, MinBand: BandHigh},
 		},
-		Redactable: false,
+		Redactable: true,
 	},
 	{
 		Name:      "s12_ini",

@@ -92,12 +92,6 @@ func TestUnscannedFilesAreNotReportedClean(t *testing.T) {
 					// The correct outcome. Nothing to assert beyond "no false alarm".
 					return
 				}
-				if c.KnownFalseAlarm {
-					t.Logf("KNOWN DEFECT (not yet fixed): %s is reported as not-scanned, but a "+
-						"0-byte file contains no sensitive data and 'scanned, clean' is the "+
-						"correct answer. err=%v incomplete=%v", c.Name, scanErr, res != nil && res.Incomplete)
-					return
-				}
 				t.Errorf("%s is genuinely clean but was reported as not-scanned "+
 					"(err=%v, incomplete=%v). False alarms turn the warning that matters "+
 					"into noise operators filter out.", c.Name, scanErr, res != nil && res.Incomplete)
@@ -123,15 +117,25 @@ func TestUnscannedFilesAreNotReportedClean(t *testing.T) {
 // EXECUTABLE layer, which is what a CI pipeline actually consumes.
 //
 // The library test above proves the information exists. This one asks the harder
-// question: can an operator SEE it? Measured on main, and this test records that
-// answer rather than asserting a behaviour that does not exist yet:
+// question: can an operator SEE it?
 //
-//	rc=0 and `[]` on stdout for all three failure modes — a JSON-parsing CI job
-//	cannot distinguish "nothing found" from "never looked".
+// Measured at HEAD, for both files that cannot be read:
 //
-// --fail-on-incomplete raises rc to 3, but it is opt-in and does not change the
-// JSON. Once the reporting change lands, the t.Logf lines below become t.Errorf and
-// this test starts gating the fix.
+//	stdout is an OBJECT carrying stats.files_not_examined = 1, results = []
+//	rc = 0, plus a NOT FULLY EXAMINED block on stderr
+//
+// So machine output CAN now distinguish "nothing found" from "never looked", and this
+// test asserts it. The prose here previously said the opposite — "rc=0 and `[]` on
+// stdout for all three failure modes ... cannot distinguish" — which was true when it
+// was written and stopped being true in 33b1f44 (#316). Stale prose in a test is worse
+// than none: these are the sentences that get quoted, and a reader could reasonably
+// re-file the fixed issue (#385).
+//
+// One caveat that is still accurate: stdout carries the COUNT, not the file list.
+// Per-file detail remains stderr-only. The count is enough to tell the two situations
+// apart, which is what the removed branch claimed was impossible.
+//
+// rc is still 0 here; --fail-on-incomplete raises it to 3 and remains opt-in.
 func TestUnscannedFilesAreNotReportedCleanByTheCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds a binary; skipped under -short")
@@ -191,14 +195,38 @@ func TestUnscannedFilesAreNotReportedCleanByTheCLI(t *testing.T) {
 					c.Name, len(got.stdout), len(got.stderr))
 			}
 
-			// The machine-readable half. Recorded, not yet gated: today an empty
-			// results array is the whole story a JSON consumer receives.
-			var results []json.RawMessage
-			if err := json.Unmarshal([]byte(got.stdout), &results); err == nil && len(results) == 0 {
-				t.Logf("KNOWN GAP (not yet fixed): %s emitted `[]` with rc=%d — a JSON "+
-					"consumer cannot tell 'nothing found' from 'never looked'. The upcoming "+
-					"reporting change adds an out-of-band 'unscanned' key; when it lands, "+
-					"this becomes an assertion.", c.Name, got.code)
+			// The machine-readable half, now GATED rather than narrated.
+			//
+			// This branch used to be a t.Logf under `json.Unmarshal(stdout, &results) == nil
+			// && len(results) == 0`, recording that a JSON consumer could not tell "nothing
+			// found" from "never looked" and promising "when it lands, this becomes an
+			// assertion". It landed in 33b1f44 (#316, "always emit stats in json and yaml"),
+			// after which stdout is an OBJECT and unmarshalling it into a []json.RawMessage
+			// errors — so the branch could never run again. Live one week, dead five (#385).
+			//
+			// This is what its own comment promised: assert the disclosure instead of
+			// describing its absence. It passes at HEAD and would have failed before 33b1f44,
+			// so it gates the behaviour rather than narrating a gap.
+			var report struct {
+				Stats struct {
+					FilesNotExamined int `json:"files_not_examined"`
+				} `json:"stats"`
+				Results []json.RawMessage `json:"results"`
+			}
+			if err := json.Unmarshal([]byte(got.stdout), &report); err != nil {
+				t.Fatalf("%s: stdout is not the JSON report this test depends on: %v\nstdout: %s",
+					c.Name, err, got.stdout)
+			}
+			if len(report.Results) != 0 {
+				t.Errorf("%s: expected no findings from a file that could not be read, got %d",
+					c.Name, len(report.Results))
+			}
+			if report.Stats.FilesNotExamined < 1 {
+				t.Errorf("%s: stats.files_not_examined = %d, want >= 1.\n"+
+					"An empty results array is what a CLEAN scan produces too, so the count is "+
+					"the only thing in machine output that separates 'nothing found' from "+
+					"'never looked'.\nstdout: %s",
+					c.Name, report.Stats.FilesNotExamined, got.stdout)
 			}
 		})
 	}

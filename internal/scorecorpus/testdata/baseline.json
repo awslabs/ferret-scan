@@ -150,14 +150,14 @@
   "sink": {
     "format_preserving": {
       "whole_leak": 0,
-      "residue4": 829
+      "residue4": 859
     },
     "simple": {
       "whole_leak": 0,
       "residue4": 0
     }
   },
-  "sink_labels": 196,
+  "sink_labels": 202,
   "suppression": {
     "cases": 62,
     "targeted": 62,
