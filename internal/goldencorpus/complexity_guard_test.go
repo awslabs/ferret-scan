@@ -271,6 +271,49 @@ var complexityTargets = []struct {
 // TestValidatorComplexityIsSubQuadratic checks that doubling input size does not
 // roughly quadruple runtime for any validator. It measures at two sizes and
 // asserts the growth ratio stays well under the quadratic expectation.
+// maxGrowthRatio is the growth-ratio limit for a 4x input step. Linear is ~4x, quadratic ~16x.
+//
+// 8.0, measured. It replaces 12.0, and the comment above the absolute ceiling used to justify
+// that number by asserting "-race inflates both measurements equally, so the growth factor is
+// preserved". That is false (#509).
+//
+// Measured on the dob target by defeating its line-global keyword hoist
+// (internal/validators/dob/validator.go, the fix its own comment at :157-167 describes), which
+// restores a genuine O(n^2):
+//
+//	                       base       big      ratio
+//	quadratic, no -race   ~99ms     ~1.54s    15.4-15.6x
+//	quadratic, -race     ~138ms     ~1.72s    12.4-12.7x
+//
+// -race inflates the BASE 1.39x and the big term only 1.11x, so the ratio COMPRESSES ~1.24x.
+// Against 12.0 that left 1.03x of headroom over the very defect this guard exists to catch:
+// all four runs failed, but by 0.4-0.7x. The same compression was measured independently on the
+// detector's line-span guard (7.3x -> 5.6x), so it is a property of the instrumentation and not
+// of one target. CI runs this suite with -race, so that is the configuration that matters.
+//
+// The correct-code population, 144 readings over all 18 targets and three configurations:
+//
+//	plain                54 readings   2.97-4.55x
+//	-race                54 readings   3.59-4.68x
+//	-race GOMAXPROCS=1   36 readings   3.22-4.58x
+//
+// So 8.0 clears every margin this repo aims for, in both configurations:
+//
+//	              below   above
+//	plain         1.76x   1.93x
+//	-race         1.71x   1.55x
+//
+// against 12.0's 2.56x below and 1.03x above. No -race conditional is needed: one number does
+// better in both configurations than 12.0 did in either.
+//
+// #509 reported correct readings up to 8.29x on cloudresources under GOMAXPROCS=1, which would
+// leave no room at 8.0. That did NOT reproduce here in 144 readings — the worst anywhere was
+// 4.68x, and cloudresources specifically read 4.00-4.20x. Recorded because it is the one figure
+// behind this number I could not confirm: if a runner does produce 8x on correct code, the ratio
+// is logged on every run now, so the evidence will be in the output rather than inferred from a
+// failure.
+const maxGrowthRatio = 8.0
+
 func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 	if testing.Short() {
 		t.Skip("complexity guard skipped in -short mode")
@@ -329,10 +372,12 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 			// O(n^2) regression.
 			//
 			// The RATIO check below is the assertion that actually detects quadratic
-			// behaviour, and it is unaffected: -race inflates both measurements
-			// equally, so the growth factor is preserved. Keeping a tight ceiling for
-			// normal runs preserves its value as a backstop against a pathological
-			// absolute blow-up.
+			// behaviour. It is NOT unaffected by -race, which is what this comment
+			// claimed until #509 measured it: -race inflates the base term more than the
+			// big one (1.39x against 1.11x on a reproduced dob quadratic), so the growth
+			// factor COMPRESSES by about 1.24x. maxGrowthRatio accounts for that. Keeping
+			// a tight ceiling for normal runs preserves its value as a backstop against a
+			// pathological absolute blow-up.
 			ceiling := tgt.threshold
 			if raceDetectorEnabled {
 				ceiling *= raceCeilingMultiplier
@@ -349,7 +394,13 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 			// measure; below 2ms the ratio is dominated by noise.
 			if tBase > 2*time.Millisecond {
 				ratio := float64(tBig) / float64(tBase)
-				if ratio > 12.0 {
+				// Logged on every run, not only on failure. This guard governs 18 targets from
+				// one threshold, and the margin between the correct and regressed populations is
+				// the thinnest in the repo (#509) — so the readings need to be visible in CI
+				// output rather than reconstructable only from a failure.
+				t.Logf("%s: 4x input took %.2fx longer (base=%v big=%v)%s",
+					tgt.name, ratio, tBase, tBig, raceNote())
+				if ratio > maxGrowthRatio {
 					t.Errorf("%s: 4x input took %.1fx longer (base=%v big=%v) — superlinear growth suggests an O(n^2) regression",
 						tgt.name, ratio, tBase, tBig)
 				}

@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 // writeFormFieldDocx builds a .docx whose body is n form-field runs, each
@@ -144,19 +144,41 @@ func TestFormFieldExtractionComplexity(t *testing.T) {
 	basePath := writeFormFieldDocx(t, dir, baseN)
 	bigPath := writeFormFieldDocx(t, dir, bigN)
 
-	extract := func(path string) (time.Duration, int) {
+	// Instrument: bytes ALLOCATED, not wall clock.
+	//
+	// The regression this guard exists for is a per-match strings.Replace loop, and every
+	// iteration of it copies the whole document — so the defect's signature is allocation,
+	// and allocation is deterministic in a way a shared CI runner's clock is not. Measured
+	// over three runs each on this fixture:
+	//
+	//	                   base        big        ratio
+	//	one-pass         3.19MB     12.36MB    3.87-3.88x
+	//	per-match loop  72.89MB   1095.75MB   15.03-15.03x
+	//
+	// The correct population spans 0.01x. The wall-clock version of this assertion spanned
+	// 2.89-4.43x, and 4.02-4.65x under GOMAXPROCS=1 — constraining the CPU alone ate half the
+	// headroom against the same 8.0 threshold.
+	//
+	// This is the instrument change that fixed embedded_media_complexity_test.go in c16909e
+	// (#361) after a 6.4x-against-6.0 failure on CORRECT code, and that guard has not flaked
+	// since. It works here for the same reason: the defect copies bytes. It would NOT work for
+	// a pure step-count regression — re-scanning a string the caller already owns has no
+	// allocation signature at all — so this is not a general substitute for the clock.
+	extract := func(path string) (uint64, int) {
 		t.Helper()
-		start := time.Now()
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
 		tc, err := ExtractText(path)
-		elapsed := time.Since(start)
+		runtime.ReadMemStats(&after)
 		if err != nil {
 			t.Fatalf("extract %s: %v", path, err)
 		}
-		return elapsed, strings.Count(tc.Text, "[FORM_INSTR:")
+		return after.TotalAlloc - before.TotalAlloc, strings.Count(tc.Text, "[FORM_INSTR:")
 	}
 
-	tBase, nBase := extract(basePath)
-	tBig, nBig := extract(bigPath)
+	aBase, nBase := extract(basePath)
+	aBig, nBig := extract(bigPath)
 
 	// NON-VACUITY. Both assertions below are ratios, and both pass trivially if
 	// extraction returns nothing or stops finding fields as input grows. Assert
@@ -170,16 +192,33 @@ func TestFormFieldExtractionComplexity(t *testing.T) {
 			"scaling with input makes a growth ratio meaningless", nBig, bigN)
 	}
 
-	// Growth: 4x input under linear scaling is ~4x time; under quadratic ~16x.
-	// The pre-fix code measured ~9-10x for this 4x step. 8x leaves generous room
-	// for constant factors, GC and a loaded CI runner while still failing on a
-	// return to per-match rescanning. Only meaningful once the base time is
-	// large enough to measure.
-	if tBase > 2*time.Millisecond {
-		if ratio := float64(tBig) / float64(tBase); ratio > 8.0 {
-			t.Errorf("4x more form fields took %.1fx longer to extract (base=%v big=%v) — "+
-				"superlinear growth means each match is being rewritten by re-scanning the "+
-				"whole document again", ratio, tBase, tBig)
-		}
+	// Growth: 4x input under linear scaling allocates ~4x; a per-match rescan allocates ~15x.
+	//
+	// 8.0 sits between the two measured populations with a ~2x margin on each side —
+	// 8.0/3.88 = 2.06x below, 15.03/8.0 = 1.88x above — and is the same number the wall-clock
+	// version used, so the threshold's meaning is unchanged even though its instrument is not.
+	//
+	// No "is the base large enough to measure" guard is needed any more. That existed because a
+	// sub-millisecond base made the clock's resolution a large fraction of the reading; a 3MB
+	// base is measured exactly.
+	ratio := float64(aBig) / float64(aBase)
+	t.Logf("4x more form fields allocated %.2fx more (base=%.2fMB big=%.2fMB, limit %.1fx%s)",
+		ratio, float64(aBase)/1e6, float64(aBig)/1e6, maxAllocGrowth, raceAllocNote())
+
+	if ratio > maxAllocGrowth {
+		t.Errorf("4x more form fields allocated %.2fx more (base=%.2fMB big=%.2fMB, limit %.1fx%s) — "+
+			"superlinear allocation means each match is being rewritten by re-scanning and "+
+			"re-copying the whole document again",
+			ratio, float64(aBase)/1e6, float64(aBig)/1e6, maxAllocGrowth, raceAllocNote())
+	}
+
+	// Absolute floor, as a second and independent signal: a regression that somehow kept its
+	// growth ratio under the limit would still be caught here. Both this and the limit above are
+	// declared in the race_alloc_*_test.go pair, because the race detector's own bookkeeping is
+	// a large near-constant addend to both terms — see the measurements there.
+	if aBase > baseAllocCeiling {
+		t.Errorf("extracting %d form fields allocated %.2fMB (> %dMB%s) — one pass over the "+
+			"document should not need a multiple of its size",
+			baseN, float64(aBase)/1e6, baseAllocCeiling>>20, raceAllocNote())
 	}
 }
