@@ -93,6 +93,7 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 | Excel | `.xlsx` | Shared strings + cell values inside ZIP |
 | PowerPoint | `.pptx` | Text elements inside ZIP |
 | Legacy Office | `.doc` `.xls` `.ppt` | Same-length in-place overwrite of stream bytes |
+| OpenDocument | `.odt` `.ods` `.odp` and the `.ott` `.ots` `.otp` templates | `content.xml` / `meta.xml` / `styles.xml` element replacement inside ZIP; `mimetype` is rewritten first and uncompressed (ODF 1.2 §3.3) |
 | Images | `.jpg` `.jpeg` `.png` | EXIF metadata removal only, by decode + re-encode; images over 64M pixels are refused |
 | Other images | `.tiff` `.gif` `.bmp` `.webp` | ⚠️ Not redactable — **no output file is written** and the run says so |
 | Audio | `.mp3` `.wav` `.m4a` `.flac` | Same-length in-place overwrite of tag metadata |

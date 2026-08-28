@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -68,6 +69,16 @@ const (
 	DocumentTypeXLSX
 	// DocumentTypePPTX represents a PowerPoint presentation
 	DocumentTypePPTX
+	// DocumentTypeODF represents an OpenDocument package — .odt/.ods/.odp and their
+	// .ott/.ots/.otp template forms.
+	//
+	// ONE type for all six, unlike the OOXML side which needs three, because ODF puts
+	// body text in `content.xml` and metadata in `meta.xml` whatever the document is:
+	// a spreadsheet cell is `<table:table-cell><text:p>` and a slide's text is
+	// `<draw:frame><text:p>`, so the same part names and the same element vocabulary
+	// cover text, spreadsheet and presentation. OOXML by contrast renames both the
+	// parts (word/ vs xl/ vs ppt/) and the text element (w:t vs t/v vs a:t).
+	DocumentTypeODF
 )
 
 // Decompression-bomb bounds for extractOfficeContent. An Office file is a ZIP,
@@ -98,6 +109,8 @@ func (dt OfficeDocumentType) String() string {
 		return "xlsx"
 	case DocumentTypePPTX:
 		return "pptx"
+	case DocumentTypeODF:
+		return "odf"
 	default:
 		return "unknown"
 	}
@@ -139,6 +152,12 @@ func (or *OfficeRedactor) GetSupportedTypes() []string {
 	return []string{
 		"docx", ".docx", "xlsx", ".xlsx", "pptx", ".pptx",
 		"docm", ".docm", "xlsm", ".xlsm", "pptm", ".pptm",
+		// OpenDocument, including the template forms. Every ODF finding used to be
+		// reported and then left in cleartext — "no redactor registered for file type:
+		// .odt" — which is a disclosed leak, not a silent one, but a leak (#514). The
+		// scanner reads all six (#515, #528), so all six are claimed here.
+		"odt", ".odt", "ods", ".ods", "odp", ".odp",
+		"ott", ".ott", "ots", ".ots", "otp", ".otp",
 	}
 }
 
@@ -303,6 +322,11 @@ func (or *OfficeRedactor) detectDocumentType(filePath string) (OfficeDocumentTyp
 		return DocumentTypeXLSX, nil
 	case ".pptx", ".pptm":
 		return DocumentTypePPTX, nil
+	case ".odt", ".ods", ".odp", ".ott", ".ots", ".otp":
+		// All six share one type — see DocumentTypeODF. The template forms are here
+		// because the scanner reads them (#528) and every value it reports from one is
+		// in the same two parts as a non-template package.
+		return DocumentTypeODF, nil
 	}
 
 	// If extension is not conclusive, examine ZIP contents
@@ -311,6 +335,27 @@ func (or *OfficeRedactor) detectDocumentType(filePath string) (OfficeDocumentTyp
 		return DocumentTypeUnknown, fmt.Errorf("failed to open ZIP file: %w", err)
 	}
 	defer reader.Close()
+
+	// ODF declares its type in a `mimetype` entry rather than in [Content_Types].xml, so
+	// it is checked in the same pass. ODF 1.2 §3.3 requires that entry to be first and
+	// STORED, which is what makes a byte sniff of an ODF package work at all.
+	for _, file := range reader.File {
+		if file.Name != "mimetype" {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			continue
+		}
+		content, err := io.ReadAll(io.LimitReader(rc, 256))
+		_ = rc.Close()
+		if err != nil {
+			continue
+		}
+		if strings.HasPrefix(string(content), "application/vnd.oasis.opendocument.") {
+			return DocumentTypeODF, nil
+		}
+	}
 
 	// Look for content types file
 	for _, file := range reader.File {
@@ -581,6 +626,26 @@ func (or *OfficeRedactor) isTextContainingFile(fileName string, docType OfficeDo
 			strings.HasPrefix(name, "ppt/slidelayouts/") ||
 			strings.HasPrefix(name, "ppt/slidemasters/")
 
+	case DocumentTypeODF:
+		// OpenDocument keeps everything in a flat set of parts at the package root,
+		// the same set for text, spreadsheet and presentation:
+		//
+		//	content.xml  body text -- paragraphs, headings, spans, table cells
+		//	meta.xml     the Dublin Core and meta: properties #515 made reportable
+		//	styles.xml   master-page headers and footers, which carry running text
+		//
+		// styles.xml is included because an ODF header or footer lives there rather
+		// than in a part of its own; the OOXML arm reaches the equivalent through its
+		// "header"/"footer" name match. Omitting it would leave a value reported from a
+		// running header in cleartext -- and because parentPartResidue then refuses the
+		// write, the visible symptom would be a file that can never be redacted rather
+		// than a quiet leak.
+		//
+		// settings.xml is deliberately NOT included: it holds view state and
+		// configuration, the extractor reports nothing from it, and rewriting it risks
+		// breaking a document for no recall gain.
+		return name == "content.xml" || name == "meta.xml" || name == "styles.xml"
+
 	default:
 		return false
 	}
@@ -763,9 +828,68 @@ func (or *OfficeRedactor) isTextElement(path []string, docType OfficeDocumentTyp
 		// PowerPoint text elements: a:t (text)
 		return lastElement == "t"
 
+	case DocumentTypeODF:
+		return odfValueElements[lastElement]
+
 	default:
 		return false
 	}
+}
+
+// odfValueElements are the ODF local names whose character data is a value rather than
+// structure, across content.xml, meta.xml and styles.xml.
+//
+// Local names only: the decoder strips prefixes, so this is "p" not "text:p" and
+// "initial-creator" not "meta:initial-creator". That is what makes it namespace-agnostic,
+// and it is the same choice the ODF metadata extractor made for meta.xml.
+//
+// Every metadata name here is taken from odfMeta in
+// meta-extractors/meta-extract-officelib/odf-extractor.go rather than from the ODF spec
+// directly. The redactor must cover exactly what the SCANNER reports: a name the extractor
+// never reads produces no finding and needs no rewrite, while a name it reads and this map
+// omits becomes a reported value the redactor cannot remove — which parentPartResidue turns
+// into a refusal to write. Keeping the two lists derived from the same source is what stops
+// that drift.
+var odfValueElements = map[string]bool{
+	// content.xml / styles.xml body text.
+	//
+	// "p" carries essentially all ODF prose, including inside a spreadsheet cell
+	// (table:table-cell > text:p) and a slide (draw:frame > draw:text-box > text:p), which
+	// is why one entry covers all three document kinds. "span" is inline formatting inside
+	// a paragraph, "h" a heading, "a" a hyperlink's display text.
+	"p":    true,
+	"span": true,
+	"h":    true,
+	"a":    true,
+
+	// meta.xml properties. The two identity fields are ODF's inverse of OOXML's --
+	// meta:initial-creator is the author and dc:creator the last editor (ODF 1.2 §4.3.2).
+	"initial-creator": true,
+	"creator":         true,
+	"title":           true,
+	"subject":         true,
+	"description":     true,
+	"language":        true,
+	"keyword":         true,
+	"generator":       true,
+	"printed-by":      true,
+
+	// meta:user-defined, ODF's analogue of docProps/custom.xml, where matter numbers,
+	// client names and case references end up. Its value is character data; its name is an
+	// attribute and is not a value to redact.
+	"user-defined": true,
+
+	// Deliberately absent, matching the OOXML arm's reasoning: the date and counter fields
+	// (creation-date, date, print-date, editing-cycles, editing-duration) carry no free
+	// text and no PII, and rewriting a date would corrupt the document for no gain.
+	//
+	// Also absent: meta:template. Its value is an xlink:href ATTRIBUTE, not character data,
+	// so no chardata rule can reach it — this walker only rewrites character data. A
+	// reported template path therefore survives into parentPartResidue and the write is
+	// REFUSED with the value named, rather than a copy being written with the path still in
+	// it. That is the disclosed outcome, not the silent one, and it is the same trade the
+	// OOXML arm makes for values it cannot locate. Tracked separately rather than bodged
+	// here, because attribute rewriting is a change to the walker, not to this table.
 }
 
 // extractAttributes extracts attributes from an XML start element
@@ -1474,7 +1598,42 @@ func (or *OfficeRedactor) repackageOfficeDocument(contents *OfficeZipContents, o
 	// [Content_Types].xml out of the first slot that OPC requires it to occupy.
 	for _, fileName := range contents.orderedNames() {
 		content := contents.Files[fileName]
-		fileWriter, err := zipWriter.Create(fileName)
+
+		// ODF 1.2 §3.3: the `mimetype` entry must be FIRST in the package, stored
+		// UNCOMPRESSED, and readable by a byte sniff at a fixed offset. zipWriter.Create
+		// satisfies none of that — it deflates, and it streams.
+		//
+		// Order is already right for free: orderedNames replays the source package's own
+		// entry order, and a conforming producer wrote mimetype first.
+		//
+		// CreateRaw, not CreateHeader, and that distinction is the whole fix. Go's zip
+		// writer streams, so both Create and CreateHeader set general-purpose bit 3 and
+		// defer the CRC and the sizes to a trailing DATA DESCRIPTOR, leaving zeros in the
+		// local header. CreateRaw takes the CRC and both sizes up front and emits no
+		// descriptor. Measured on the local header of the first entry:
+		//
+		//	CreateHeader   flag=0x0008  crc=00000000  csize=0   usize=0   -> LibreOffice REFUSES
+		//	CreateRaw      flag=0x0000  crc=0c32c65e  csize=39  usize=39  -> opens
+		//
+		// LibreOffice is the oracle here, and nothing cheaper substitutes for it: with the
+		// descriptor form, `file(1)` still said "OpenDocument Text", zip.testzip() passed,
+		// and content.xml/meta.xml both parsed as XML — yet `soffice --convert-to txt`
+		// answered "source file could not be loaded". Isolated by rebuilding the same parts
+		// with python: mimetype-STORED-plus-deflated-rest opened, and so did a package
+		// carrying BOTH redacted parts, which is what ruled out the compression mix and the
+		// rewritten XML and left the container as the only candidate.
+		var fileWriter io.Writer
+		if fileName == "mimetype" {
+			fileWriter, err = zipWriter.CreateRaw(&zip.FileHeader{
+				Name:               fileName,
+				Method:             zip.Store,
+				CRC32:              crc32.ChecksumIEEE(content),
+				CompressedSize64:   uint64(len(content)),
+				UncompressedSize64: uint64(len(content)),
+			})
+		} else {
+			fileWriter, err = zipWriter.Create(fileName)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to create ZIP entry for %s: %w", fileName, err)
 		}
