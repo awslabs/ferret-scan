@@ -649,7 +649,7 @@ Throughout the architecture, resilience patterns are embedded at multiple levels
 The system implements sophisticated file type filtering to optimize performance and accuracy. The FileRouter's `CanContainMetadata()` method categorizes files into two groups:
 
 **Metadata-Capable Files** (processed by metadata validators):
-- **Office Documents**: .docx, .doc, .xlsx, .xls, .pptx, .ppt, .odt, .ods, .odp
+- **Office Documents**: .docx, .doc, .xlsx, .xls, .pptx, .ppt, .odt, .ods, .odp, .ott, .ots, .otp
 - **PDF Documents**: .pdf
 - **Image Files**: .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp
 - **Video Files**: .mp4, .m4v, .mov, .3gp, .3g2

@@ -335,6 +335,19 @@ func ExtractMetadata(filePath string) (*Metadata, error) {
 	case ".odp":
 		metadata.MimeType = "application/vnd.oasis.opendocument.presentation"
 		return extractODFMetadata(filePath, metadata)
+	// ODF TEMPLATES. The same packages with a template media type (ODF 1.3 §3.3), so the same
+	// reader. Registering them only in officeExtensions would repeat the .3gp mistake -- claimed
+	// by the router and then unhandled here, which returns "unsupported file format" and looks
+	// exactly like a clean file (#528).
+	case ".ott":
+		metadata.MimeType = "application/vnd.oasis.opendocument.text-template"
+		return extractODFMetadata(filePath, metadata)
+	case ".ots":
+		metadata.MimeType = "application/vnd.oasis.opendocument.spreadsheet-template"
+		return extractODFMetadata(filePath, metadata)
+	case ".otp":
+		metadata.MimeType = "application/vnd.oasis.opendocument.presentation-template"
+		return extractODFMetadata(filePath, metadata)
 	case ".doc":
 		metadata.MimeType = "application/msword"
 		return extractLegacyOfficeMetadataOnly(filePath, metadata)

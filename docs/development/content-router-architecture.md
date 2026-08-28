@@ -181,7 +181,7 @@ Determines if a file type can contain meaningful metadata that should be process
 **Supported File Types:**
 ```go
 // Returns true for these file types:
-Office Documents: .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp
+Office Documents: .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp, .ott, .ots, .otp
 PDF Documents:    .pdf
 Image Files:      .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp, .heic, .heif, .raw, .cr2, .nef, .arw
 Video Files:      .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv
