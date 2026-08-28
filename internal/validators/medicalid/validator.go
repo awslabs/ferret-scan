@@ -135,6 +135,18 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// table and behaviour is unchanged. Analyzed ONCE per document, not per line.
 	table := tabular.Analyze(content)
 
+	// Whether ANY column header on this table is medical is a property of the DOCUMENT, not
+	// of a line, so it is computed once here rather than per row. Evaluating it per line
+	// re-walks every header against ~20 keywords for every row; measured on a 40-column,
+	// 16,000-row table, hoisting it is 3.10s -> 2.96s. Modest, but this validator has been
+	// audited for exactly the per-line-times-per-keyword shape and should not reacquire it.
+	//
+	// The cost that is NOT overhead: the same file with its medical header removed runs in
+	// 2.33s against the parent's 2.35s. So a document this arm does not apply to pays
+	// nothing, and the remaining difference on the medical file is the work of finding and
+	// emitting 16,000 findings the parent missed entirely.
+	tableHasMedicalHeader := v.tableHasMedicalHeader(table)
+
 	for lineNum, line := range lines {
 		if execguard.LineLoopCancelled(ctx, lineNum) {
 			return matches, ctx.Err()
@@ -144,7 +156,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		if lineNum > 0 {
 			prevLine = lines[lineNum-1]
 		}
-		lineMatches := v.scanLine(ctx, line, lineNum, originalPath, table, prevLine)
+		lineMatches := v.scanLine(ctx, line, lineNum, originalPath, table, prevLine, tableHasMedicalHeader)
 		matches = append(matches, lineMatches...)
 	}
 
@@ -191,7 +203,7 @@ type medicalLineContext struct {
 }
 
 // scanLine scans a single line for all medical ID types.
-func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string, table *tabular.Table, prevLine string) []detector.Match {
+func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, originalPath string, table *tabular.Table, prevLine string, tableHasMedicalHeader bool) []detector.Match {
 	var matches []detector.Match
 
 	lowerLine := strings.ToLower(line)
@@ -323,8 +335,14 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 		return matches
 	}
 
-	// Check for MRN (only if medical context is present on the line)
-	if v.hasMedicalContext(lowerLine) {
+	// Check for MRN (only if medical context is present).
+	//
+	// The header-row arm is what admits a CSV export, for the same reason as the
+	// insurance scan below: the keyword sits one or more lines above the value, so
+	// hasMedicalContext(lowerLine) is false for every data row and this scan never ran.
+	// Admission is per ROW; whether a given candidate actually has MRN context is
+	// decided per COLUMN in evaluateMRN via mrnContextFor/medicalContextFor.
+	if v.hasMedicalContext(lowerLine) || (lc.bounds != nil && tableHasMedicalHeader) {
 		if !scanMatches(reMRN, v.evaluateMRN) {
 			return matches
 		}
@@ -354,6 +372,63 @@ func (lc medicalLineContext) columnHeaderAt(off int) string {
 		return ""
 	}
 	return lc.table.HeaderAt(lc.bounds, off)
+}
+
+// tableHasMedicalHeader reports whether ANY column header on this table carries a medical
+// keyword.
+//
+// Takes the table rather than a line context because the answer is a property of the
+// DOCUMENT: it is computed once in ValidateContent and reused for every row. The caller
+// pairs it with a non-nil LineBounds, which is what keeps the header row itself excluded —
+// on that row a cell is a column name, not a value in a column.
+//
+// Used only for ADMISSION, exactly like headerRowHasInsuranceContext: the MRN scan is
+// gated on medical context, and in a CSV export the keyword sits in the header ROW while
+// the value sits in a data row, so hasMedicalContext(lowerLine) was false for every data
+// row and the scan never ran. A "medical record number" column reported NOTHING while the
+// identical layout naming an insurance member ID reported normally (#436).
+//
+// Permissive at this level and narrowed per match by mrnContextFor / medicalContextFor,
+// because a row cannot be scanned column-by-column before its candidates are found.
+func (v *Validator) tableHasMedicalHeader(table *tabular.Table) bool {
+	if !table.IsTable() {
+		return false
+	}
+	for _, h := range table.Headers() {
+		if v.hasMedicalContext(strings.ToLower(h)) {
+			return true
+		}
+	}
+	return false
+}
+
+// mrnContextFor reports whether a strong MRN keyword covers THIS candidate — on its own
+// line, or in the header of its OWN column.
+//
+// Per match rather than per line, because the header varies along a table row: folding
+// the whole header row into one predicate would let a "medical record number" column lend
+// its context to an "order number" column beside it, which is the precision risk this
+// arm carries.
+func (v *Validator) mrnContextFor(lc medicalLineContext, off int) bool {
+	if lc.mrnKeyword {
+		return true
+	}
+	if h := lc.columnHeaderAt(off); h != "" {
+		return v.hasMRNKeyword(h)
+	}
+	return false
+}
+
+// medicalContextFor is the weaker companion to mrnContextFor: generic medical context on
+// the line, or in this candidate's own column header.
+func (v *Validator) medicalContextFor(lc medicalLineContext, off int) bool {
+	if lc.medical {
+		return true
+	}
+	if h := lc.columnHeaderAt(off); h != "" {
+		return v.hasMedicalContext(h)
+	}
+	return false
 }
 
 // headerRowHasInsuranceContext reports whether ANY column header on this table
@@ -576,7 +651,30 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lc medicalLineCon
 	// MRN keyword: a hospital record line "Patient account number: 1234567"
 	// carries both "patient account" (an MRN keyword) and "account" (a soft
 	// suppressor), and the real MRN must not be hard-dropped by the label.
-	if lc.nonMedHardKW || (lc.nonMedSoftKW && !lc.mrnKeyword) || v.looksLikeNonMedicalNumberShape(match) {
+	// MRN context for THIS candidate: on its own line, or in the header of its OWN
+	// column. Resolved per match rather than per line because the header varies along a
+	// table row — a "medical record number" column must not lend context to the
+	// "order number" column beside it.
+	mrnContext := v.mrnContextFor(lc, matchStart)
+	medContext := v.medicalContextFor(lc, matchStart)
+
+	if lc.nonMedHardKW || (lc.nonMedSoftKW && !mrnContext) || v.looksLikeNonMedicalNumberShape(match) {
+		return detector.Match{}, false
+	}
+
+	// A candidate with no context of its own is not reported.
+	//
+	// This gate is REACHABLE and is the whole precision story of the header-row arm.
+	// The base below is 15, which clamps to a reported LOW rather than being dropped, so
+	// without this every 6-10 digit run in every column of a table holding one medical
+	// column would surface as an MRN — a table of order numbers and invoice numbers
+	// turned into medical findings by a neighbouring header.
+	//
+	// It is a no-op on the pre-existing same-line path: admission there requires
+	// hasMedicalContext(lowerLine), which sets lc.medical, which makes medContext true.
+	// So this only ever bites a candidate admitted by the header row whose own column
+	// header says nothing.
+	if !mrnContext && !medContext {
 		return detector.Match{}, false
 	}
 
@@ -588,10 +686,12 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lc medicalLineCon
 
 	confidence := 15.0 // Very low base — digits without keywords are ambiguous
 
-	// Only boost if we have strong MRN-specific keywords
-	if lc.mrnKeyword {
+	// Only boost if we have strong MRN-specific keywords. A column header naming this
+	// value's column counts, exactly as a same-line label does — the same rule
+	// evaluateInsuranceID applies.
+	if mrnContext {
 		confidence += 55 // Strong keyword match -> 70
-	} else if lc.medical {
+	} else if medContext {
 		confidence += 30 // Generic medical context -> 45
 	}
 

@@ -179,12 +179,23 @@ Medical IDs are high-sensitivity (HIPAA), so precision matters enormously — a 
 
 MRN detection is the most conservative: it's just 6-10 digits, which matches almost anything. Without "medical record", "mrn", "patient", or "hospital" on the same line, it's completely suppressed. The idea: if you're scanning a medical document, MRNs will have nearby medical vocabulary. If you're scanning code, they won't.
 
+**"On the same line" is not literal for a delimited table.** In a CSV or TSV export the label lives in the header *row* and the value in a data row, which is the normal shape for this data — so "same line" alone reported nothing for an entire file family, while the identical layout naming an insurance member ID reported normally ([#436](https://github.com/awslabs/ferret-scan/issues/436)). A match is now also resolved to the header cell naming **its own column**, via `internal/tabular`.
+
+Two properties of that arm are worth knowing, because they are what keep it from being a false-positive source:
+
+- It is decided **per column, not per row**. A table holding one medical column does not make its neighbours medical: an `order number` / `invoice number` / `zip code` column beside a `medical record number` column is not reported.
+- It only ever **adds** context. There is no "this header contradicts" rule, because suppressing a medical identifier on the strength of a column name would be suppression chosen by whoever wrote the file.
+
+Column names are matched as real systems write them — `PATIENT` (Synthea), `PAT_MRN_ID` (Epic Clarity), `MRN` (Cerner), `patient_identifier`. Generic surrogate keys are deliberately **not** matched: the OMOP CDM's `person_id` is not treated as medical context, since a column of that name appears in countless non-clinical schemas and admitting it would make every one of them medical.
+
 ### Confidence curve
 - NPI (Luhn valid + "provider" keyword): 90
 - NPI (Luhn valid, no keyword): 60 (structural proof alone)
 - DEA (checksum valid + "pharmacy"): 85
 - DEA (checksum valid, no keyword): 55
-- MRN (digits + "medical record"): 75
+- MRN (digits + "medical record" on the line): 75
+- MRN (digits in a column whose header says "mrn"/"medical record number"): 70
+- MRN (digits in a column whose header is generically medical, e.g. "patient"): 45
 - MRN (digits alone): 15 (suppressed)
 - Insurance ID + "member id": 70
 - Medicare MBI (format valid + "medicare"): 80
