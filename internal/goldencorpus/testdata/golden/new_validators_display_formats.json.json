@@ -47,6 +47,11 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
+        "validation_checks": {
+          "no_negative_context": true,
+          "not_false_positive": true,
+          "street_type_suffix": true
+        },
         "validation_path": "document"
       },
       "text": "123 42nd Street",
@@ -169,6 +174,11 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
+        "validation_checks": {
+          "no_negative_context": true,
+          "not_false_positive": true,
+          "street_type_suffix": true
+        },
         "validation_path": "document"
       },
       "text": "1234 US Highway 61",
@@ -196,6 +206,11 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
+        "validation_checks": {
+          "no_negative_context": true,
+          "not_false_positive": true,
+          "street_type_suffix": true
+        },
         "validation_path": "document"
       },
       "text": "742 evergreen terrace",
@@ -222,6 +237,12 @@
           "PersonalData": 0,
           "Production": 0,
           "TestData": 0
+        },
+        "validation_checks": {
+          "mod97_checksum": true,
+          "valid_characters": true,
+          "valid_country": true,
+          "valid_length": true
         },
         "validation_path": "document"
       },

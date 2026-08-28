@@ -46,6 +46,11 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
+        "validation_checks": {
+          "no_negative_context": true,
+          "not_false_positive": true,
+          "street_type_suffix": true
+        },
         "validation_path": "document"
       },
       "text": "123 O'Brien St",
@@ -98,6 +103,11 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
+        "validation_checks": {
+          "no_negative_context": true,
+          "not_false_positive": true,
+          "street_type_suffix": true
+        },
         "validation_path": "document"
       },
       "text": "456 King-Smith Rd",

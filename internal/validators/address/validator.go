@@ -470,6 +470,21 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Metadata: map[string]any{
 					"source":        "preprocessed_content",
 					"original_file": originalPath,
+					// Without these, --explain rendered "Flagged as a US street address.
+					// (confidence 100%, high)" and nothing else — no mention of the
+					// street-type suffix requirement that is this validator's primary
+					// false-positive defence, and the single most useful thing to tell a
+					// reviewer looking at a number-plus-words match (#363).
+					//
+					// Both values were already decided above: the street pattern only matches
+					// with a recognised street-type suffix, and isFalsePositive was consulted
+					// as a `continue` gate. Recording, not scoring — and metadata is not a
+					// suppression-hash input, so existing rules keep matching.
+					"validation_checks": map[string]bool{
+						"street_type_suffix":  true,
+						"not_false_positive":  true,
+						"no_negative_context": !lineHasNegative,
+					},
 				},
 			})
 		}
@@ -523,7 +538,22 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					Metadata: map[string]any{
 						"source":        "preprocessed_content",
 						"original_file": originalPath,
-						"case_relaxed":  true,
+						// Without these, --explain rendered "Flagged as a US street address.
+						// (confidence 100%, high)" and nothing else — no mention of the
+						// street-type suffix requirement that is this validator's primary
+						// false-positive defence, and the single most useful thing to tell a
+						// reviewer looking at a number-plus-words match (#363).
+						//
+						// Both values were already decided above: the street pattern only matches
+						// with a recognised street-type suffix, and isFalsePositive was consulted
+						// as a `continue` gate. Recording, not scoring — and metadata is not a
+						// suppression-hash input, so existing rules keep matching.
+						"validation_checks": map[string]bool{
+							"street_type_suffix":  true,
+							"not_false_positive":  true,
+							"no_negative_context": !lineHasNegative,
+						},
+						"case_relaxed": true,
 					},
 				})
 			}
@@ -583,6 +613,21 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Metadata: map[string]any{
 					"source":        "preprocessed_content",
 					"original_file": originalPath,
+					// Without these, --explain rendered "Flagged as a US street address.
+					// (confidence 100%, high)" and nothing else — no mention of the
+					// street-type suffix requirement that is this validator's primary
+					// false-positive defence, and the single most useful thing to tell a
+					// reviewer looking at a number-plus-words match (#363).
+					//
+					// Both values were already decided above: the street pattern only matches
+					// with a recognised street-type suffix, and isFalsePositive was consulted
+					// as a `continue` gate. Recording, not scoring — and metadata is not a
+					// suppression-hash input, so existing rules keep matching.
+					"validation_checks": map[string]bool{
+						"street_type_suffix":  true,
+						"not_false_positive":  true,
+						"no_negative_context": !lineHasNegative,
+					},
 				},
 			})
 		}

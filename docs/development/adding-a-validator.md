@@ -157,6 +157,32 @@ Must show:
 **Critical:** populate `match.Metadata["validation_checks"]` in your validator so
 the explain system can synthesize a rationale.
 
+This instruction was already here and four validators diverged from it anyway
+([#363](https://github.com/awslabs/ferret-scan/issues/363)) — `physical_address`, `bank_account`,
+`cloud_resources` and one dedicated path inside `secrets` set no checks, so `--explain` restated
+the type and a confidence the reviewer had already seen: *"Flagged as an AWS ARN. (confidence 55%,
+low)"*. It is now enforced by `TestEveryValidatorRecordsWhatItChecked` in
+`internal/validators/explain_rationale_test.go`, which drives every validator from a fixture and
+fails if one records nothing. **Add your validator to that table** rather than only reading this
+paragraph.
+
+Two conventions the synthesizer depends on:
+
+- **Name a "this looks like test data" check with one of the spellings in `testCheckKeys`**
+  (`internal/explain/synthesizer.go`) — `not_test`, `not_test_number`, `not_test_email`,
+  `not_test_ip`, `not_test_data`, `not_example`, `not_published_test_secret`. A key in that list
+  feeds the verdict *and* is kept out of the "it passed ..." prose. A new spelling outside it is
+  silently ignored by the verdict and leaks into user-facing prose as a raw key name — which is
+  the other half of #363.
+- **Record only what the validator already decided.** The checks are display data: they are not
+  inputs to confidence, and they are not inputs to the suppression hash (that reads type,
+  confidence, line, filename, offsets and the hashed text). Computing something new here to
+  report it would change scoring by the back door.
+
+If your finding type is an acronym, add it to `typeDisplays` in the same file, with the article
+spelled out — the default renders `SSN` as *"a ssn"*, because the article is otherwise chosen by
+spelling rather than by how the letters are said.
+
 ---
 
 ## 8. Verify redaction

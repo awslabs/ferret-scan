@@ -21,6 +21,11 @@ results:
             PersonalData: 0
             Production: 0
             TestData: 0.125
+        validation_checks:
+            mod97_checksum: true
+            valid_characters: true
+            valid_country: true
+            valid_length: true
         validation_path: document
     - text: 1EG4-TE5-MK73
       line_number: 7

@@ -42,6 +42,10 @@ results:
             Production: 0
             TestData: 0
         source: preprocessed_content
+        validation_checks:
+            no_negative_context: true
+            not_false_positive: true
+            street_type_suffix: true
         validation_path: document
     - text: Rural Route 3 Box 88
       line_number: 2
@@ -86,6 +90,10 @@ results:
             Production: 0
             TestData: 0
         source: preprocessed_content
+        validation_checks:
+            no_negative_context: true
+            not_false_positive: true
+            street_type_suffix: true
         validation_path: document
     - text: D12345678901234
       line_number: 5

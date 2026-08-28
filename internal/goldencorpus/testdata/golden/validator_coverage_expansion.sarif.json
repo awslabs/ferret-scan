@@ -105,6 +105,11 @@
                 "TestData": 0
               },
               "source": "preprocessed_content",
+              "validation_checks": {
+                "no_negative_context": true,
+                "not_false_positive": true,
+                "street_type_suffix": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -217,6 +222,11 @@
                 "TestData": 0
               },
               "source": "preprocessed_content",
+              "validation_checks": {
+                "no_negative_context": true,
+                "not_false_positive": true,
+                "street_type_suffix": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [

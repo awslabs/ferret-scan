@@ -50,6 +50,12 @@
                 "Production": 0,
                 "TestData": 0.1
               },
+              "validation_checks": {
+                "mod97_checksum": true,
+                "valid_characters": true,
+                "valid_country": true,
+                "valid_length": true
+              },
               "validation_path": "document"
             },
             "validator": "bank_account"
