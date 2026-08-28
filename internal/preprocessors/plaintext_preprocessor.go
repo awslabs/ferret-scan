@@ -180,6 +180,7 @@ var containerExtensions = map[string]bool{
 	".docm": true, ".xlsm": true, ".pptm": true,
 	".doc": true, ".xls": true, ".ppt": true,
 	".odt": true, ".ods": true, ".odp": true,
+	".ott": true, ".ots": true, ".otp": true,
 	".pdf": true,
 }
 
