@@ -31,7 +31,7 @@ The enhanced metadata validator automatically determines which files can contain
 The metadata validator automatically processes these file types that can contain meaningful metadata:
 
 - **Images**: .jpg, .jpeg, .png, .gif, .tiff, .tif, .bmp, .webp, .heic, .heif, .raw, .cr2, .nef, .arw
-- **Documents**: .pdf, .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp
+- **Documents**: .pdf, .docx, .docm, .doc, .xlsx, .xlsm, .xls, .pptx, .pptm, .ppt, .odt, .ods, .odp, .ott, .ots, .otp
 - **Audio**: .mp3, .flac, .wav, .ogg, .m4a, .aac, .wma, .opus
 - **Video**: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v, .3gp, .ogv
 

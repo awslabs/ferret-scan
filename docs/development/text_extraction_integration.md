@@ -33,7 +33,7 @@ The text extraction preprocessors allow Ferret-scan to analyze the content of do
 
 - **PDF Documents**: `.pdf`
 - **Microsoft Office**: `.docx`, `.xlsx`, `.pptx`, and the macro-enabled forms `.docm`, `.xlsm`, `.pptm`
-- **OpenDocument**: `.odt`, `.ods`, `.odp`
+- **OpenDocument**: `.odt`, `.ods`, `.odp` — and their templates `.ott`, `.ots`, `.otp`, which are the same packages with a template media type
 
 ## Configuration
 
