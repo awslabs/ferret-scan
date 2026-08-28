@@ -714,7 +714,48 @@ func (v *Validator) buildMetadata(match, resourceType string, factors []string) 
 			metadata["service"] = service
 		}
 	}
+
+	// --explain narrates Metadata["validation_checks"], and this validator set none — so a
+	// 55% LOW ARN, precisely the finding a reviewer has to make a judgement call on, explained
+	// as "Flagged as an AWS ARN. (confidence 55%, low)" and nothing more (#363).
+	//
+	// Derived from the factors scoreMatch already produced rather than recomputed, so this
+	// records a decision instead of making one: no confidence changes, and metadata is not an
+	// input to the suppression hash. buildMetadata is the single funnel for every provider, so
+	// all eight resource types are covered at once.
+	//
+	// not_test_data is spelled to match the key the explain layer already consults for a test
+	// signal, so a resource sitting in test context now reports that judgement rather than
+	// leaving it buried in a confidence_factors string nothing parses.
+	metadata["validation_checks"] = checksFromFactors(factors)
+
 	return metadata
+}
+
+// checksFromFactors turns scoreMatch's factor list into the boolean checks --explain renders.
+//
+// The factor strings are the scoring record ("valid_account_id:+10"), and each is a yes/no
+// judgement underneath. Reading them here leaves scoreMatch's signature and behaviour
+// untouched; the alternative was threading a second return value through several callers.
+func checksFromFactors(factors []string) map[string]bool {
+	has := func(name string) bool {
+		for _, f := range factors {
+			if strings.HasPrefix(f, name+":") {
+				return true
+			}
+		}
+		return false
+	}
+	return map[string]bool{
+		// Reaching buildMetadata means a provider pattern matched, which is a hard gate.
+		"valid_format": true,
+		// Length is one check rather than two: "short_match" and "long_match" are the two
+		// ways of failing the same judgement, and a reviewer reading "reasonable length:
+		// false" learns what they need either way.
+		"reasonable_length": !has("short_match") && !has("long_match"),
+		"valid_account_id":  has("valid_account_id"),
+		"not_test_data":     !has("test_context"),
+	}
 }
 
 // ---------------------------------------------------------------------------

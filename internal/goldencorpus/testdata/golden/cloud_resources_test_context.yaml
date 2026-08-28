@@ -25,6 +25,11 @@ results:
             Production: 0
             TestData: 0.125
         service: iam
+        validation_checks:
+            not_test_data: true
+            reasonable_length: true
+            valid_account_id: true
+            valid_format: true
         validation_path: document
     - text: arn:aws:iam::123456789012:role/PaymentsAdmin
       line_number: 2
@@ -53,4 +58,9 @@ results:
             Production: 0
             TestData: 0.125
         service: iam
+        validation_checks:
+            not_test_data: false
+            reasonable_length: true
+            valid_account_id: true
+            valid_format: true
         validation_path: document

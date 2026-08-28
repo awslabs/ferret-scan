@@ -43,6 +43,10 @@ results:
             Production: 0
             TestData: 0
         source: preprocessed_content
+        validation_checks:
+            no_negative_context: true
+            not_false_positive: true
+            street_type_suffix: true
         validation_path: document
     - text: 3/14/87
       line_number: 4
@@ -146,6 +150,10 @@ results:
             Production: 0
             TestData: 0
         source: preprocessed_content
+        validation_checks:
+            no_negative_context: true
+            not_false_positive: true
+            street_type_suffix: true
         validation_path: document
     - text: 742 evergreen terrace
       line_number: 8
@@ -169,6 +177,10 @@ results:
             Production: 0
             TestData: 0
         source: preprocessed_content
+        validation_checks:
+            no_negative_context: true
+            not_false_positive: true
+            street_type_suffix: true
         validation_path: document
     - text: DE89 3704 0044 0532 0130 00
       line_number: 2
@@ -192,6 +204,11 @@ results:
             PersonalData: 0
             Production: 0
             TestData: 0
+        validation_checks:
+            mod97_checksum: true
+            valid_characters: true
+            valid_country: true
+            valid_length: true
         validation_path: document
     - text: D123-4567-8901
       line_number: 3

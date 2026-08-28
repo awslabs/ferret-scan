@@ -1485,7 +1485,18 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 		}
 
 		confidence := 90.0 // context-gated + shape + entropy: strong evidence
-		if reAWSSecretKeyName.MatchString(line) && reAKIAAnywhere.MatchString(prevLine+nextLine) {
+		// Both signals are captured into variables so they can be RECORDED as validation
+		// checks below, not only consumed by the score.
+		//
+		// The pairing regex is evaluated unconditionally, where the original expression
+		// short-circuited it behind the label check. That is deliberate: recording
+		// "paired_access_key_id: false" for a value whose pairing was never examined would be
+		// a false statement in user-facing output, and the two conditions are independent —
+		// an AKIA can sit beside an unlabelled secret. The cost is one regex over two lines,
+		// negligible next to the Shannon-entropy computation that already gated this point.
+		labeledKeyName := reAWSSecretKeyName.MatchString(line)
+		pairedAccessKeyID := reAKIAAnywhere.MatchString(prevLine + nextLine)
+		if labeledKeyName && pairedAccessKeyID {
 			confidence = 95.0 // labeled AND paired with an access key ID
 		}
 		// A literal "EXAMPLE" embedded in the value is near-proof of an AWS
@@ -1514,6 +1525,27 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 					"source":           "preprocessed_content",
 					"secret_type":      "AWS_SECRET_ACCESS_KEY",
 					"example_embedded": exampleEmbedded,
+					// This dedicated AWS-secret path set no validation_checks, so --explain
+					// had nothing to narrate: a 75% MEDIUM secret — exactly the finding a
+					// reviewer needs help judging — explained as "Flagged as an AWS secret
+					// access key. (confidence 75%, medium)" and nothing more (#363). The
+					// package's OTHER emit sites do record checks; this one was missed.
+					//
+					// Every value below was already computed above, so this records rather
+					// than decides: no confidence changes, and metadata is not a suppression
+					// hash input.
+					//
+					// not_test_data is spelled to match the key the explain layer already
+					// consults for a test signal, so an EXAMPLE-embedded placeholder now
+					// reports its own test judgement instead of hiding it in a metadata field
+					// nothing reads.
+					"validation_checks": map[string]bool{
+						"valid_shape":          true, // charset and length gate above
+						"entropy":              true, // above v.base64Limit
+						"labeled_key_name":     labeledKeyName,
+						"paired_access_key_id": pairedAccessKeyID,
+						"not_test_data":        !exampleEmbedded,
+					},
 				},
 				// The line is already an input to the confidence above (the
 				// reAWSSecretKeyName gate), so recording it is inert for scoring

@@ -55,6 +55,12 @@
                 "TestData": 0.1
               },
               "service": "iam",
+              "validation_checks": {
+                "not_test_data": true,
+                "reasonable_length": true,
+                "valid_account_id": true,
+                "valid_format": true
+              },
               "validation_path": "document"
             },
             "validator": "cloud_resources"
@@ -115,6 +121,12 @@
                 "TestData": 0.1
               },
               "service": "iam",
+              "validation_checks": {
+                "not_test_data": false,
+                "reasonable_length": true,
+                "valid_account_id": true,
+                "valid_format": true
+              },
               "validation_path": "document"
             },
             "validator": "cloud_resources"

@@ -107,6 +107,11 @@
                 "TestData": 0
               },
               "source": "preprocessed_content",
+              "validation_checks": {
+                "no_negative_context": true,
+                "not_false_positive": true,
+                "street_type_suffix": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -355,6 +360,11 @@
                 "TestData": 0
               },
               "source": "preprocessed_content",
+              "validation_checks": {
+                "no_negative_context": true,
+                "not_false_positive": true,
+                "street_type_suffix": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -413,6 +423,11 @@
                 "TestData": 0
               },
               "source": "preprocessed_content",
+              "validation_checks": {
+                "no_negative_context": true,
+                "not_false_positive": true,
+                "street_type_suffix": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -469,6 +484,12 @@
                 "PersonalData": 0,
                 "Production": 0,
                 "TestData": 0
+              },
+              "validation_checks": {
+                "mod97_checksum": true,
+                "valid_characters": true,
+                "valid_country": true,
+                "valid_length": true
               },
               "validation_path": "document"
             },

@@ -21,6 +21,12 @@
           "Production": 0,
           "TestData": 0.125
         },
+        "validation_checks": {
+          "mod97_checksum": true,
+          "valid_characters": true,
+          "valid_country": true,
+          "valid_length": true
+        },
         "validation_path": "document"
       },
       "text": "DE89 3704 0044 0532 0130 00",

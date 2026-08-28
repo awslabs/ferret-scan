@@ -367,6 +367,23 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 			Metadata: map[string]any{
 				"country":        candidate[:2],
 				"context_impact": contextImpact,
+				// Every check below was already decided by the isValidIBAN gate above; this
+				// records the results so --explain can narrate them. Without it the
+				// explanation collapsed to "Flagged as an IBAN; nearby context raised
+				// confidence by 15%" — restating the type and a number the reviewer had
+				// already been shown, with no mention of the mod-97 proof that is the whole
+				// reason this finding is trustworthy (#363).
+				//
+				// Recording only, never scoring: isValidIBAN is a hard gate, so all three are
+				// necessarily true here and adding them changes no confidence. Metadata is not
+				// an input to the suppression hash either (that reads type, confidence, line,
+				// filename, offsets and the hashed text), so existing rules keep matching.
+				"validation_checks": map[string]bool{
+					"valid_country":    true,
+					"valid_length":     true,
+					"mod97_checksum":   true,
+					"valid_characters": true,
+				},
 			},
 		})
 	}
@@ -405,6 +422,15 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 				"country":        normalized[:2],
 				"context_impact": lc.keywordImpact,
 				"normalized":     normalized,
+				// Same four checks as the compact-form pass above, and for the same reason:
+				// this pass applies the identical isValidIBAN gate to the normalized value.
+				// Recording only; no score or hash input changes.
+				"validation_checks": map[string]bool{
+					"valid_country":    true,
+					"valid_length":     true,
+					"mod97_checksum":   true,
+					"valid_characters": true,
+				},
 			},
 		})
 	}
