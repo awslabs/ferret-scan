@@ -517,7 +517,10 @@ func (f *Formatter) appendSummaryLine(w io.Writer, match detector.Match, confide
 	matchStr := matchText
 
 	// Format filename with smart path display
-	filename := f.getSmartFilename(match.Filename, allMatches)
+	// Sanitized BEFORE colouring: colour wraps the string, so escaping afterwards would
+	// have to reach inside ferret's own ANSI. The filename is borrowed from the scanned
+	// tree, so its control bytes are attacker input at a display sink (#381).
+	filename := shared.SanitizeDisplayText(f.getSmartFilename(match.Filename, allMatches))
 	filenameStr := filename
 	if !options.NoColor {
 		filenameStr = f.colors["white"].Sprint(filename)
@@ -553,7 +556,8 @@ func (f *Formatter) appendDetailedMatch(w io.Writer, match detector.Match, confi
 		f.colors["magenta"].Fprintf(w, "line %d", match.LineNumber)
 		f.colors["cyan"].Fprintf(w, ": %s\n", shownText)
 	} else {
-		fmt.Fprintf(w, "Match found in %s on line %d: %s\n", match.Filename, match.LineNumber, shownText)
+		fmt.Fprintf(w, "Match found in %s on line %d: %s\n",
+			shared.SanitizeDisplayText(match.Filename), match.LineNumber, shownText)
 	}
 
 	// Type
@@ -990,7 +994,7 @@ func (f *Formatter) formatPrecommitOutput(matches []detector.Match, suppressedMa
 
 		if len(issueParts) > 0 {
 			fmt.Fprintf(&builder, "%s: %s confidence issues found\n",
-				f.getSmartFilename(filename, matches),
+				shared.SanitizeDisplayText(f.getSmartFilename(filename, matches)),
 				strings.Join(issueParts, ", "))
 
 			// Add specific issue details for actionable guidance

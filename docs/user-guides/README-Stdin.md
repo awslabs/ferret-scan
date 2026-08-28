@@ -217,7 +217,10 @@ echo "$INPUT" | ferret-scan --stdin --enable-redaction \
 Recommended flags for production gateway use:
 
 - `--quiet` — suppress human-readable progress prose so stderr stays parseable.
-- `--no-color` — strip ANSI codes so log sinks render cleanly.
+- `--no-color` — strip ANSI codes so log sinks render cleanly. This governs ferret's own
+  styling only; ANSI arriving from the scanned tree (a filename containing escape bytes)
+  is escaped to a visible `\xNN` form either way, so a log sink cannot be driven by a
+  crafted filename regardless of this flag.
 - `--enable-redaction` — make redacted content the primary stdout output.
 - `--format json` (or `yaml`/`sarif`) + `--output <file>` — capture structured findings without interleaving them with the redacted stream.
 - Avoid `--debug` — verbose validator-internal logging that adds latency and noise.
