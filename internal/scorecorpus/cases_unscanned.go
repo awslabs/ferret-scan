@@ -14,21 +14,27 @@ package scorecorpus
 // same harm by a different route: a CI job merges the change believing the file was
 // checked.
 //
-// Measured on main before these cases existed, one file per mode:
+// Measured at HEAD, one file per mode:
 //
-//	noperm.txt     rc=0  json=[]   (permission denied)
-//	corrupt.docx   rc=0  json=[]   (not a valid zip)
-//	empty.csv      rc=0  json=[]   (0 bytes)
+//	noperm.txt     rc=0  stats.files_not_examined=1  results=[]  (permission denied)
+//	corrupt.docx   rc=0  stats.files_not_examined=1  results=[]  (not a valid zip)
+//	empty.csv      rc=0  no files_not_examined count  results=[]  (0 bytes: correctly clean)
 //
-// All three print a warning on stderr and are counted toward
-// --fail-on-incomplete, so the information exists. What is missing is that the
-// MACHINE-READABLE output says nothing at all: `[]` is indistinguishable from a
-// clean scan, and rc is 0 unless the operator already knew to pass an opt-in flag.
+// All of them print a warning on stderr, and the two real failures are counted toward
+// --fail-on-incomplete. Machine output now carries the COUNT as well, so `results: []`
+// alone is no longer the whole story a JSON consumer receives.
 //
-// These cases pin today's library-level behaviour so the upcoming error-reporting
-// change can be measured rather than asserted. They exist BEFORE that change on
-// purpose: a fix to a silent-failure class needs a gate that would have caught the
-// silence, otherwise the same class returns unnoticed.
+// This block previously read "rc=0 json=[]" for all three plus "the MACHINE-READABLE output
+// says nothing at all". That was accurate when written and stopped being so in 33b1f44
+// (#316, always emit stats in json and yaml). It is corrected rather than deleted because
+// these are the sentences that get quoted, and prose that UNDERSTATES today's disclosure
+// invites re-filing an issue that is already fixed (#385).
+//
+// One caveat still holds: stdout carries the count, not the file list. Per-file detail is
+// stderr-only.
+//
+// These cases exist to gate a silent-failure class: a fix to that class needs a test that
+// would have caught the silence, or the same class returns unnoticed.
 type UnscannedCase struct {
 	// Name is the subtest name.
 	Name string
@@ -59,21 +65,17 @@ type UnscannedCase struct {
 	// empty one sets Incomplete).
 	MustNotBeReportedClean bool
 
-	// IsGenuinelyClean marks a file that is NOT a failure and must therefore be
-	// scanned normally: today an empty file is reported as "could not be
-	// processed... any sensitive data in them was NOT detected", which is a false
-	// alarm. A 0-byte file contains no sensitive data; saying otherwise trains
-	// operators to ignore the warning that matters.
+	// IsGenuinelyClean marks a file that is NOT a failure and must therefore be scanned
+	// normally. A 0-byte file contains no sensitive data, so "scanned, clean" is the correct
+	// answer; reporting it as unexamined trains operators to ignore the warning that matters.
 	//
-	// Set true for exactly that case, so the upcoming fix has a witness. Until it
-	// lands, KnownFalseAlarm below records that the current behaviour is wrong.
+	// This once had a companion KnownFalseAlarm field, because an empty file WAS reported as
+	// not-scanned and the case was committed with a witness for the then-unfixed behaviour. The
+	// behaviour was fixed and the field became unreachable: the test branch reading it could not
+	// run, and the flag was left set to true on a case that no longer false-alarms. Both are
+	// removed (#385). Measured at HEAD, a 0-byte file emits no files_not_examined count at all,
+	// which is the correct answer.
 	IsGenuinelyClean bool
-
-	// KnownFalseAlarm records that today's behaviour contradicts
-	// IsGenuinelyClean. It is the honest way to commit a case whose CORRECT
-	// outcome is known but not yet implemented, without either a permanently
-	// failing test or a test that asserts the bug is right.
-	KnownFalseAlarm bool
 }
 
 // UnscannedCases are the inputs the tool cannot examine.
@@ -116,7 +118,6 @@ var UnscannedCases = []UnscannedCase{
 		Build:            func() []byte { return nil },
 		Checks:           []string{"SSN"},
 		IsGenuinelyClean: true,
-		KnownFalseAlarm:  true,
 	},
 	{
 		Name:   "control_readable_file_scans_cleanly",

@@ -91,8 +91,22 @@ type Case struct {
 	Labels []Label
 	// Negative marks a case where nothing should be reported.
 	Negative bool
-	// Redactable is false for file types with no registered redactor (.tsv,
-	// .html, .sql). The sink metric skips them rather than recording a fake leak.
+	// Redactable is false for a file type with no registered redactor, so the sink metric
+	// skips it rather than recording a fake leak.
+	//
+	// NO CASE SETS THIS FALSE TODAY, and the doc used to name .tsv, .html and .sql as though
+	// they were permanently unredactable. They are not: PR #359 (2a0e96c) made
+	// GetRedactorForFile fall back to the same preprocessors.LooksLikeText sniff the router
+	// uses to admit a file, so scan admission and redact admission agree by construction and
+	// any file whose bytes are text gets a redactor. The four cases carrying this flag were
+	// therefore excluded from the sink gate for a reason that had stopped being true (#315).
+	//
+	// The field is kept rather than deleted because the capability boundary is real — .odt /
+	// .ods / .odp still have no redactor (#514), and a PDF fixture would need this too. It is
+	// no longer allowed to be silently true-by-accident:
+	// TestTheSinkGateCoversEveryLabelledCase asserts the skip list is empty, so marking a case
+	// unredactable is a deliberate act that has to be justified rather than a default that
+	// quietly removes it from the leak gate.
 	Redactable bool
 }
 
