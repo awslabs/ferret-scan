@@ -102,6 +102,46 @@ can be megabytes and a file can be tens of thousands of near-identical rows. A h
   the delta is your change and not machine noise. Never benchmark in `/tmp` on macOS —
   the reaper deletes the binary mid-run and yields fake 0.00s readings; build under
   the repo or home dir.
+- **A guard that names a defect must be shown to detect it.** Install the regression the
+  guard exists for and confirm it FAILS. Two guards in `line_span_complexity_test.go` named
+  the line-id memo in their failure messages and neither could fire — one costs 17.6ms with
+  the memo destroyed against a 4-second ceiling, and the other's fixture puts one match per
+  line, so the memo condition never holds and the correct and regressed paths are identical
+  ([#509](https://github.com/awslabs/ferret-scan/issues/509)). Record BOTH margins:
+  threshold ÷ worst *correct* reading, and best *regressed* reading ÷ threshold. Aim for
+  1.5x on each; a guard whose above-margin is 1.03x is one runner away from silence.
+- **`-race` does not preserve a growth ratio.** It inflates the base term more than the big
+  one, so the ratio COMPRESSES — measured 15.5x → 12.5x on a reproduced dob quadratic
+  (base 1.39x, big 1.11x) and 7.3x → 5.6x independently on the detector's line-span guard.
+  CI runs with `-race`, so a ratio threshold has to be chosen against `-race` readings, not
+  local ones. Raising an absolute ceiling for `-race` while leaving the ratio alone is the
+  mistake this repo made.
+- **Sampling answers variance; it cannot answer bias.** Two sampling fixes (a 4x bigger
+  fixture *and* best-of-3) still left a guard reading 9.7x on Windows against 5.24x locally,
+  because the fixture grew bytes and match count together so only the big term fell out of
+  cache. One instrument change — wall clock to **allocated bytes** — has not flaked since.
+  Allocation substitutes for the clock **only when the defect copies bytes**: a per-match
+  `strings.Replace` loop allocates 15.03x against a one-pass 3.87x, deterministic to 0.01x.
+  A pure step-count regression, re-scanning a string the caller already owns, has no
+  allocation signature at all — for those, use a fixture whose CORRECT population sits near
+  1.0x by growing one axis while holding the other fixed, and verify the two populations do
+  not overlap before trusting it.
+- **A ratio between two terms is only stable while one of them dominates.** A guard comparing
+  "index the line once" (equal in both arms) against "look up per match" (4x in the big arm) reads
+  ~1.0x while the index term dominates and climbs toward 4x — the REGRESSED value — on a machine
+  where the per-match term is relatively dearer. It failed on `ubuntu-latest` against correct code
+  at 2.90x where the local reading was 1.30x. The fix is to make the dominant term dominate by
+  more (3x longer line, 4x fewer matches took correct to 1.00x), not to retune the threshold:
+  between 2.90x correct and 3.90x regressed no threshold has a usable margin. Check what the ratio
+  is a ratio OF before trusting a local reading of it.
+- **Allocation is not neutral to `-race` either.** The detector's own bookkeeping is a large
+  roughly CONSTANT addend — measured ~55MB on a base term of 3MB and ~61MB on a big term of
+  12MB — so it swamps the small end and compresses an allocation ratio from 3.91x to 1.26x.
+  That is the opposite direction from timing, where `-race` inflates the base more, and it is
+  why the rule is *measure the instrument under `-race`*, not *prefer allocation*. Declare
+  the thresholds in a `//go:build race` / `!race` pair (the repo has several) so the guard
+  stays LIVE under `-race` instead of being skipped there — a guard that only runs locally is
+  the thing being fixed, not the fix.
 - **Profile, don't guess** (`-cpuprofile` + `go tool pprof -top`) when a number
   surprises you.
 - A measured regression is a blocker unless it is the unavoidable cost of correct
