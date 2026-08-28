@@ -21,7 +21,7 @@ The preprocess-only mode (`--preprocess-only` or `-p`) allows you to extract and
 ### Document Files
 - **PDF Documents**: `.pdf` (text extraction, not OCR)
 - **Microsoft Office**: `.docx`, `.xlsx`, `.pptx`
-- **OpenDocument**: `.odt`, `.ods`, `.odp`
+- **OpenDocument**: `.odt`, `.ods`, `.odp` — and their templates `.ott`, `.ots`, `.otp`
 
 ### Image Files (Metadata Only)
 - **JPEG Images**: `.jpg`, `.jpeg` (EXIF metadata extraction)

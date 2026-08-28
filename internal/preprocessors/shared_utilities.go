@@ -129,6 +129,18 @@ func NewFileExtensionValidator() *FileExtensionValidator {
 			".odt":  true,
 			".ods":  true,
 			".odp":  true,
+			// ODF TEMPLATES. Absent from this map, a template was refused as an
+			// unsupported type before any preprocessor was consulted, so its meta.xml
+			// was never read -- while the identical value in a .odt is reported. ODF 1.3
+			// §3.3 gives templates their own media types, but the package layout,
+			// including meta.xml, is unchanged, so the existing ODF reader handles them
+			// as-is. Measured on 6 real .ott files: 6 of 6 carry meta.xml, holding
+			// meta:initial-creator, dc:creator and dc:title -- a CV template with its
+			// author's name reported 0 findings (#528). Same shape as the .docm/.xlsm/
+			// .pptm omission above.
+			".ott": true,
+			".ots": true,
+			".otp": true,
 			// Legacy OLE compound-file formats. Absent from this map, the router
 			// rejected them at CanProcessFile ("no files to preprocess") before any
 			// preprocessor was consulted, so nothing in a .doc was ever scanned --

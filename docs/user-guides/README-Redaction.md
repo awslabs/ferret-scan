@@ -99,6 +99,27 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 | Video | `.mp4` `.m4v` `.mov` `.3gp` `.3g2` | Same-length in-place overwrite of tag metadata; GPS payload zeroed |
 | PDF | `.pdf` | ⚠️ Not redactable — **no output file is written** and the run says so |
 
+> **Note on embedded parts**: an OOXML container may carry other documents, images, audio or
+> legacy Office files under `word/media/` or `word/embeddings/`. Each is dispatched to the
+> redactor for its own type and written back at the same entry name, and the container is
+> **refused** — no output file — if any part that could hold a reported value cannot be shown
+> free of it. Two shapes reach that refusal, and they are different:
+>
+> - the part **still contains** a reported value after its redactor ran, or no redactor claims
+>   its type (an embedded `.pdf`, which is never redactable);
+> - the part **could not be inspected at all**. A part named `.docx`/`.xlsx`/`.pptx` stores its
+>   text compressed, so establishing that a value is absent requires opening the archive. When
+>   the bytes are not a readable archive — a truncated or corrupt attachment — that cannot be
+>   done, and "nothing found" would mean only "we could not look"
+>   ([#517](https://github.com/awslabs/ferret-scan/issues/517)). Such a part is handed to a
+>   redactor anyway rather than skipped, exactly as an embedded PDF is, and the container is
+>   refused if the redactor cannot rewrite it.
+>
+> A part that IS readable and holds none of the reported values is deliberately left untouched
+> and does not block the container: every redactor here is lossy — the image redactor decodes
+> and re-encodes, dropping metadata — so running one over a part that was never implicated
+> would degrade content for no reason.
+>
 > **Note on plain text**: selection follows the same content sniff the scanner uses, so
 > whatever ferret-scan is willing to read as text it is willing to write back as text —
 > extension or no extension. A `.env` holding a live credential is redacted exactly like
