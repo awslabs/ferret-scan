@@ -452,14 +452,36 @@ func TestAssignLineColumnsComplexityDistinctValues(t *testing.T) {
 	//	correct, GOMAXPROCS=1, 3 runs  8.8-9.8ms   11.2-12.6ms  1.18-1.32x
 	//	regressed, 2 runs              405-423ms   1.63-1.66s   3.92-4.03x
 	//
-	// So 2.2 sits 1.67x above the worst correct reading and 1.78x below the best regressed one —
-	// balanced, and both margins wider than anything a retuned version of the old ratio could buy
-	// (12.5 between 9.7x and 15.5x gives only 1.29x and 1.24x).
-	//
 	// The absolute figures separate by 41x at the SAME match count (10ms against 415ms), which is
 	// the sanity check that this pair really is measuring the regression and not sampling noise.
-	const lineValues = 96000
-	const subsetBase, subsetBig = 2000, 8000 // 4x the matches, identical line
+	//
+	// THE FIXTURE WAS RESIZED after this guard failed on ubuntu-latest CI against correct code,
+	// reading 2.90x (base=25.15ms big=73.06ms) where the audit host reads 1.08-1.32x. It was a
+	// 96000-value line with the matches going 2000 -> 8000.
+	//
+	// The cause is not noise and not a slow machine as such. This ratio compares two terms —
+	// indexing the line ONCE, which is the same work in both arms, and the per-match lookup, which
+	// is 4x more work in the big arm. Correct code sits near 1.0x only while the index term
+	// dominates. On a machine where the per-match term is relatively dearer, the same correct code
+	// climbs toward 4x, which is the regressed reading. Locally the old fixture put the per-match
+	// term at roughly a tenth of the total; on that runner it was nearer two thirds.
+	//
+	// So the fix is to make the index term dominate by more, not to retune the threshold — 2.90x
+	// correct against 3.90x regressed leaves no threshold with a usable margin on either side.
+	// Measured over four sizes, correct against regressed (useIndex forced to return false):
+	//
+	//	line     matches         correct   regressed
+	//	 96000   2000 -> 8000     1.30x      3.93x     <- the one that failed
+	//	 96000    500 -> 2000     1.15x      4.28x
+	//	300000    500 -> 2000     1.05x      3.90x     <- chosen
+	//	300000    250 -> 1000     1.09x      4.04x
+	//
+	// A 3x longer line with 4x fewer matches takes correct from 1.30x to 1.05x while the
+	// regression stays at 3.90x, so 2.2 now sits 2.10x above the correct reading and 1.77x below
+	// the regressed one — the below-margin more than doubles, and the headroom against the
+	// machine-dependence that caused the failure grows with it.
+	const lineValues = 300000
+	const subsetBase, subsetBig = 500, 2000 // 4x the matches, identical line
 
 	fBase := bestAssign(t, func() []Match { return buildDistinctSubsetOnFixedLine(lineValues, subsetBase) }, true)
 	fBig := bestAssign(t, func() []Match { return buildDistinctSubsetOnFixedLine(lineValues, subsetBig) }, true)

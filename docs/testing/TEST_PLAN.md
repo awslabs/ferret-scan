@@ -126,6 +126,14 @@ can be megabytes and a file can be tens of thousands of near-identical rows. A h
   allocation signature at all — for those, use a fixture whose CORRECT population sits near
   1.0x by growing one axis while holding the other fixed, and verify the two populations do
   not overlap before trusting it.
+- **A ratio between two terms is only stable while one of them dominates.** A guard comparing
+  "index the line once" (equal in both arms) against "look up per match" (4x in the big arm) reads
+  ~1.0x while the index term dominates and climbs toward 4x — the REGRESSED value — on a machine
+  where the per-match term is relatively dearer. It failed on `ubuntu-latest` against correct code
+  at 2.90x where the local reading was 1.30x. The fix is to make the dominant term dominate by
+  more (3x longer line, 4x fewer matches took correct to 1.00x), not to retune the threshold:
+  between 2.90x correct and 3.90x regressed no threshold has a usable margin. Check what the ratio
+  is a ratio OF before trusting a local reading of it.
 - **Allocation is not neutral to `-race` either.** The detector's own bookkeeping is a large
   roughly CONSTANT addend — measured ~55MB on a base term of 3MB and ~61MB on a big term of
   12MB — so it swamps the small end and compresses an allocation ratio from 3.91x to 1.26x.
