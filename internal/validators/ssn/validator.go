@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
@@ -141,6 +142,168 @@ func (v *Validator) headerContradicts(header string) bool {
 func (v *Validator) headerSupports(header string) bool {
 	for _, kw := range v.positiveKeywords {
 		if containsKeyword(header, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// identifierHeaderSuffixes are the trailing tokens that make a column header the NAME
+// OF AN IDENTIFIER for something.
+//
+// A header is an identifier column if its last token is one of these. That is a
+// structural test on the header's shape, not a vocabulary lookup, which is the whole
+// point: the negative list can only demote a qualifier somebody thought to add.
+var identifierHeaderSuffixes = map[string]bool{
+	"id": true, "ids": true, "identifier": true,
+	"no": true, "num": true, "number": true,
+	"code": true, "key": true, "ref": true, "reference": true,
+}
+
+// headerNamesAnotherIdentifier reports whether a column header has the SHAPE of an
+// identifier column for something that is not a person's SSN.
+//
+// This is the second arm of the header cap, and it exists because the first arm —
+// headerContradicts — can only fire on a fixed ~45-word negative list. A header naming a
+// DIFFERENT identifier that nobody added to that list got no demotion at all, so a whole
+// column of business IDs was reported at HIGH. Measured on 500-row CSVs of SSN-shaped
+// values, one column each:
+//
+//	header             before        after
+//	tracking_number    500 @ 55      unchanged  (already on the negative list)
+//	permit_number      500 @ 55      unchanged  (already on the negative list)
+//	parcel_id          500 @ 100     500 @ 55
+//	meter_number       498 @ 100     498 @ 55
+//	record_id          495 @ 100     495 @ 55   (undashed \d{9}, swept in by the pattern)
+//	ssn                500 @ 100     unchanged  (headerSupports wins)
+//	employee_id        500 @ 100     unchanged  (headerSupports wins)
+//
+// The QUALIFIER is consulted, and a first version of this that ignored it was wrong.
+// Measuring one column per header showed the omission produced exactly the inconsistency
+// this issue is about — the same concept judged differently by its suffix:
+//
+//	employee_id      100      employee_number   55   <- same thing, two spellings
+//
+// So the qualifier is tested against the positive vocabulary as a PREFIX: a header
+// qualifies as SSN-adjacent when some positive keyword begins with it. "employee" opens
+// "employee id" and "employee record", so employee_number now matches employee_id at 100.
+// "tax" opens "tax id", so tax_number holds. "record" opens nothing ("employee record"
+// begins with "employee"), so record_id is still capped, which is one of the reported
+// cases. Prefix rather than substring for that reason: substring matching would let
+// record_id off via "employee record" and lose the defect.
+//
+// This CAPS, it never vetoes: contradictingHeaderCap is 55, so the value stays REPORTED
+// and therefore still reaches the redactor. Nothing leaves the sink — what changes is
+// whether a column of parcel numbers occupies the default review surface and fails a
+// HIGH-gated pre-commit hook.
+//
+// Residual, measured and stated rather than hidden: member_number, member_id and
+// patient_id are capped. That is deliberate — a membership or patient identifier is
+// normally exactly that, and the medical-identifier validator is what claims those
+// columns. Each is still reported at 55 and still redacted, so the only change is which
+// review surface it lands on.
+func (v *Validator) headerNamesAnotherIdentifier(header string) bool {
+	// Split on non-alphanumerics: real exports use parcel_id, "Parcel ID" and parcel-id
+	// interchangeably.
+	fields := strings.FieldsFunc(header, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	if len(fields) < 2 {
+		// A bare "id" or "number" column names no particular thing, so it is not evidence
+		// EITHER way and must not be capped on shape alone — that is a column an export
+		// may well use for an SSN.
+		return false
+	}
+	if !identifierHeaderSuffixes[strings.ToLower(fields[len(fields)-1])] {
+		return false
+	}
+
+	qualifier := strings.ToLower(strings.Join(fields[:len(fields)-1], " "))
+	return !v.qualifierIsSSNAdjacent(qualifier)
+}
+
+// identityQualifiers are qualifiers naming an identity DOCUMENT or a PERSON, so a column
+// called "<qualifier>_id" is a plausible home for a person's SSN and must not be capped.
+//
+// The distinction this encodes is person-qualified versus thing-qualified. A parcel, a
+// meter, an asset and a shipment are not people, so an identifier for one is not a
+// plausible SSN; a member, a participant and an employee are, and US benefits and payroll
+// exports really do key on the SSN itself.
+//
+// The list is not invented, and two earlier versions of it were wrong in opposite
+// directions — both caught by tests already in the tree rather than by review:
+//
+//   - Ignoring the qualifier demoted employee_number while employee_id stayed at 100, the
+//     same concept split by its suffix.
+//   - Excluding "member" and "participant" on the theory that they belong to the medical
+//     validator contradicted the scorecorpus, which labels c19_honest_member_id and
+//     c20_honest_participant_id BandHigh with the rationale "Real-world layout that must
+//     not hide an SSN from the redactor". The corpus is the authority on that question.
+//
+// The abbreviations are here because no positive keyword spells them out, and
+// TestSupportingHeaderIsUnaffected already requires govt_id, sin, nino, socsec and
+// personnummer to stay HIGH.
+var identityQualifiers = map[string]bool{
+	// Identity documents, including the non-US ones the corpus and tests already name.
+	"ssn": true, "sin": true, "nino": true, "socsec": true, "personnummer": true,
+	"codice fiscale": true, "tin": true, "ein": true, "itin": true, "nid": true,
+	"govt": true, "government": true, "national": true, "federal": true,
+	"tax": true, "taxpayer": true, "social": true, "social security": true,
+	"national insurance": true, "social insurance": true,
+
+	// Words naming a PERSON. A column identifying a person is where an SSN legitimately
+	// lives; this is the half that separates member_id from parcel_id.
+	"employee": true, "personnel": true, "payroll": true, "personal": true,
+	"member": true, "participant": true, "patient": true, "beneficiary": true,
+	"subscriber": true, "enrollee": true, "dependent": true, "retiree": true,
+	"applicant": true, "student": true, "customer": true, "client": true,
+	"individual": true, "person": true, "worker": true, "staff": true,
+}
+
+// genericIdentifierTokens are the words that name an identifier and nothing else.
+//
+// A qualifier made only of these — "id" in id_number, "no" in no_id — names no particular
+// thing, so there is no evidence to demote on, exactly as for a bare "id" column. The
+// scorecorpus labels c17_honest_id_number BandHigh for this reason.
+var genericIdentifierTokens = map[string]bool{
+	"id": true, "ids": true, "identifier": true, "no": true,
+	"num": true, "number": true, "code": true, "key": true, "ref": true, "reference": true,
+}
+
+// qualifierIsSSNAdjacent reports whether a header's qualifier names something a person's
+// SSN could legitimately be filed under.
+//
+// Two sources, so the rule follows the vocabulary instead of freezing a copy of it:
+//
+//  1. the identityQualifiers set above, for abbreviations and non-US documents;
+//  2. any positive keyword this qualifier OPENS — "employee" opens "employee id", "tax"
+//     opens "tax id" — so a keyword added to positiveKeywords later is honoured here
+//     without a second edit.
+//
+// Prefix on a word boundary rather than substring, and that choice is load-bearing:
+// substring matching would let "record" through via "employee record" and lose record_id,
+// which is one of the reported cases.
+func (v *Validator) qualifierIsSSNAdjacent(qualifier string) bool {
+	if qualifier == "" {
+		return false
+	}
+	if identityQualifiers[qualifier] {
+		return true
+	}
+	// A qualifier made only of identifier words names nothing in particular — "id" in
+	// id_number — so it is no more evidence than a bare "id" column.
+	allGeneric := true
+	for _, tok := range strings.Fields(qualifier) {
+		if !genericIdentifierTokens[tok] {
+			allGeneric = false
+			break
+		}
+	}
+	if allGeneric {
+		return true
+	}
+	for _, kw := range v.positiveKeywords {
+		if kw == qualifier || strings.HasPrefix(kw, qualifier+" ") {
 			return true
 		}
 	}
@@ -601,8 +764,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// headerSupports is checked too, so a header carrying BOTH signals is
 				// never demoted: a column that says "ssn" must win over a coincidental
 				// negative token.
-				capByHeader = lc.columnHeader != "" &&
-					v.headerContradicts(lc.columnHeader) && !v.headerSupports(lc.columnHeader)
+				// Two arms, and headerSupports gates both: a header that names an SSN wins
+				// outright. The first arm is the negative vocabulary; the second is the
+				// header's SHAPE, which is what catches an identifier column nobody added
+				// to that list — parcel_id, meter_number, record_id (#389).
+				capByHeader = lc.columnHeader != "" && !v.headerSupports(lc.columnHeader) &&
+					(v.headerContradicts(lc.columnHeader) ||
+						v.headerNamesAnotherIdentifier(lc.columnHeader))
 				if capByHeader && confidence > contradictingHeaderCap {
 					confidence = contradictingHeaderCap
 				}
