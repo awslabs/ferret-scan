@@ -226,6 +226,20 @@ func (f *Formatter) getSmartFilename(fullPath string) string {
 
 // escapeCSVField properly escapes a field for CSV format and prevents CSV injection
 func (f *Formatter) escapeCSVField(field string) string {
+	// Escape control bytes. A filename comes from the scanned tree, and RFC 4180 quoting
+	// passes a control byte straight through — it sits happily inside the quotes — so a csv
+	// report of a directory containing a name like "quarterly-report.txt\x1b[2K\r" loses
+	// that row when the report is read in a terminal, which is at least as common as
+	// opening it in a spreadsheet (#381).
+	//
+	// Placed before sanitizeFormulaInjection for readability only; the two are independent.
+	// A mutation swapping them survived, and enumerating the cases confirms why: escaping
+	// can only ever produce a field beginning with a backslash, which is not a formula
+	// trigger, so it cannot create one. The orders differ on a tab/CR/LF-prefixed field,
+	// where running the guard first adds a leading quote that is no longer needed once the
+	// prefix is an escape sequence. Neither order is unsafe, so no ordering claim is made.
+	field = shared.SanitizeDisplayText(field)
+
 	// Prevent CSV injection by sanitizing formula characters
 	field = f.sanitizeFormulaInjection(field)
 

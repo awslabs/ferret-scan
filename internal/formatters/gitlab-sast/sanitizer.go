@@ -53,7 +53,8 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 	description.WriteString(fmt.Sprintf("Ferret Scan detected %s in this file.\n\n", strings.ToLower(checkTypeDescription)))
 
 	// Add location context
-	description.WriteString(fmt.Sprintf("**Location:** %s (line %d)\n", match.Filename, match.LineNumber))
+	description.WriteString(fmt.Sprintf("**Location:** %s (line %d)\n",
+		shared.SanitizeDisplayText(match.Filename), match.LineNumber))
 
 	// Add confidence information
 	confidenceLevel := s.GetConfidenceLevel(match.Confidence)
@@ -75,8 +76,10 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 			// document made the report quadratic — 3.0MB to 771MB on a real 892KB export.
 			// A line within the cap passes through unchanged. See
 			// shared.ContextSnippetCap and #521.
-			description.WriteString(fmt.Sprintf("\n**Context:**\n```\n%s\n```\n",
-				shared.BoundedContextSnippet(match.Context.FullLine, match.Text)))
+			snippet := shared.BoundedContextSnippet(match.Context.FullLine, match.Text)
+			fence := shared.MarkdownFenceFor(snippet)
+			description.WriteString(fmt.Sprintf("\n**Context:**\n%s\n%s\n%s\n",
+				fence, snippet, fence))
 		} else {
 			description.WriteString("\n**Context:** [HIDDEN] (use --show-match to include the surrounding line)\n")
 		}
@@ -90,7 +93,9 @@ func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool
 		// back to the matched value itself so every validator honors --show-match,
 		// while the deny-by-default branch (no --show-match) still emits nothing
 		// here.
-		description.WriteString(fmt.Sprintf("\n**Matched value:**\n```\n%s\n```\n", match.Text))
+		fence := shared.MarkdownFenceFor(match.Text)
+		description.WriteString(fmt.Sprintf("\n**Matched value:**\n%s\n%s\n%s\n",
+			fence, match.Text, fence))
 	}
 
 	// Add metadata information if available
