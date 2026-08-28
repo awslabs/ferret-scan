@@ -788,6 +788,23 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	//
 	// Reading ONE byte past the limit is what makes the difference detectable: if the copy
 	// reaches maxFileSize+1 the input was larger than we may scan.
+	//
+	// Deliberately the FLAT ceiling and not router.MaxSizeForPath, which admits a video
+	// container up to 500MB on the CLI path (#410). The two surfaces differ because their
+	// costs differ: the CLI reads a file the operator already has on disk, and for a video
+	// that read is bounded and seeking, so admitting 500MB costs no new resource. This path
+	// MATERIALIZES the bytes — it copies the upload into a temp file before anything reads
+	// it — so the same allowance would let one unauthenticated request write 500MB of temp
+	// disk, chosen by an attacker-supplied filename, and the server binds to a port that
+	// --bind can expose beyond loopback.
+	//
+	// The divergence is safe in the direction that matters: this path refuses MORE than the
+	// CLI, and it discloses the refusal as a coverage gap (oversizeRefusal below), so a
+	// large video is reported as not examined rather than silently truncated. That is the
+	// opposite of #415, where this path was the permissive one and quietly scanned a
+	// fragment. Raising it would mean bounding attacker-supplied bytes by an
+	// attacker-supplied name, so it needs a compensating control — an upload quota or a
+	// streaming scan that never lands the file — not just a bigger number here.
 	limitedReader := io.LimitReader(file, router.MaxFileSize+1)
 	written, err := io.Copy(tempFile, limitedReader)
 	if err != nil {

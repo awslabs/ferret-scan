@@ -87,7 +87,7 @@ flowchart TD
     %% Processing
     FileDiscovery["🔍 File Discovery<br/>getFilesToProcess()<br/>• Glob expansion<br/>• Directory traversal<br/>• Recursive scanning"]
 
-    FileFilter["🚫 File Filter<br/>Size limits ≤100MB<br/>Type support validation<br/>Permission checks"]
+    FileFilter["🚫 File Filter<br/>Size limits ≤100MB (video ≤500MB)<br/>Type support validation<br/>Permission checks"]
 
     CanProcessCheck["✅ CanProcessFile()<br/>• Text file detection<br/>• Binary document check<br/>• Preprocessor availability"]
 
@@ -610,7 +610,7 @@ The Ferret-scan architecture represents a sophisticated, pipeline-based approach
 
 The data processing journey begins with the **Input Processing & Configuration Resolution** stage, where the system intelligently merges multiple configuration sources (CLI arguments, YAML files, profiles) to create a unified configuration. This stage demonstrates the system's flexibility in supporting different deployment scenarios, from simple command-line usage to complex enterprise configurations with profile-based settings.
 
-Files then flow through **File Discovery & Filtering**, where the system applies size constraints (≤100MB), validates file types, and determines processing capabilities. This early filtering prevents resource waste and ensures only processable files enter the pipeline, demonstrating defensive design principles.
+Files then flow through **File Discovery & Filtering**, where the system applies size constraints (≤100MB, or ≤500MB for a video container), validates file types, and determines processing capabilities. This early filtering prevents resource waste and ensures only processable files enter the pipeline, demonstrating defensive design principles.
 
 ### **Parallel Architecture & Performance**
 
@@ -682,7 +682,7 @@ The modular design enables easy extension through pluggable preprocessors, valid
 
 Several architectural decisions reflect deep consideration of real-world usage patterns:
 
-- **File size limits (100MB) and worker caps (8)** provide predictable resource usage in enterprise environments
+- **File size limits (100MB, 500MB for video) and worker caps (8)** provide predictable resource usage in enterprise environments
 - **Session-only cross-validator correlation** provides immediate insights without persistent storage requirements
 
 This architecture successfully balances the competing demands of accuracy, performance, maintainability, and extensibility, creating a robust platform for sensitive data detection that can adapt to diverse organizational needs while maintaining high performance and reliability standards.

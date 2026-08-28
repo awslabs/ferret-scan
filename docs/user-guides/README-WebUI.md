@@ -89,11 +89,18 @@ The web UI supports the same file types as the CLI version:
 - **Local Processing**: Files are processed locally on your machine - no data is sent to external servers
 - **Temporary Storage**: Files are temporarily stored during scanning and automatically deleted
 - **Memory Scrubbing**: Secure memory handling for sensitive data
-- **Upload Limits**: Maximum file upload size is 100 MB per file (decompression-bomb guard),
-  the same limit the CLI applies. A file over the limit is **refused and reported**, not
-  truncated: the response carries `incomplete: true` with `file too large to scan` as the
-  reason, so a partial scan is never presented as a complete one. Request bodies on the JSON
-  endpoints (`/export`, `/suppressions/*`) are capped at 1 MB.
+- **Upload Limits**: Maximum file upload size is 100 MB per file (decompression-bomb guard).
+  A file over the limit is **refused and reported**, not truncated: the response carries
+  `incomplete: true` with `file too large to scan` as the reason, so a partial scan is never
+  presented as a complete one. Request bodies on the JSON endpoints (`/export`,
+  `/suppressions/*`) are capped at 1 MB.
+
+  This is **stricter than the CLI for video**, which admits `.mp4` `.m4v` `.mov` `.3gp` `.3g2`
+  up to 500 MB. The difference is deliberate: the CLI reads a file the operator already has,
+  and for a video that read is bounded and seeking, whereas an upload is *copied into a temp
+  file* before anything reads it — so the larger allowance would let one request write 500 MB
+  of temp disk, chosen by the filename it supplied. To scan a video between 100 MB and 500 MB,
+  use the CLI: `ferret-scan --file clip.mov`.
 - **No Data Retention**: Scan results are displayed in browser only, not stored permanently
 - **Audit Trail**: Comprehensive logging for compliance requirements
 
@@ -152,7 +159,9 @@ The web UI includes a comprehensive suppression management system:
 **File upload fails**:
 
 - Check that the file is under 100 MB. Over that, the file is refused and the response says so
-  (`incomplete: true`, reason `file too large to scan`) — split the file and scan the parts
+  (`incomplete: true`, reason `file too large to scan`) — split the file and scan the parts.
+  For a **video** between 100 MB and 500 MB, scan it with the CLI instead
+  (`ferret-scan --file clip.mov`), which admits video containers up to 500 MB
 - Ensure the file type is supported by Ferret Scan. A file the tool cannot scan does **not** fail
   the upload: it is skipped, and the other files in the same drop are still scanned and reported
 - Try uploading files one at a time if multiple uploads fail

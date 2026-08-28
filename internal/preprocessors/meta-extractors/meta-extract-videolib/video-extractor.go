@@ -105,8 +105,15 @@ func noteTruncation(metadata *VideoMetadata, note string) {
 
 // Constants for MP4 parsing
 const (
-	// MaxFileSize is the extractor's own ceiling. It sits above the router's 100MB gate, which
-	// refuses the file first, so it is effectively unreachable on the CLI path.
+	// MaxFileSize is the extractor's own ceiling, and it is now REACHABLE: the router admits a
+	// video container up to the same 500MB via router.MaxSizeForPath, so this is the value that
+	// actually decides the largest video the tool will read (#410). It was unreachable for as
+	// long as it existed, because the router's flat 100MB gate refused the file first.
+	//
+	// router.MaxVideoFileSize must not exceed this. TestRouterVideoCeilingMatchesTheExtractor
+	// in internal/router pins the two together; a router ceiling above this one would admit
+	// files this extractor then refuses, which is a refusal from the wrong layer with a
+	// message naming the wrong number.
 	MaxFileSize   = 500 * 1024 * 1024 // 500MB limit
 	BoxHeaderSize = 8                 // 4 bytes size + 4 bytes type
 
@@ -116,10 +123,16 @@ const (
 	// MaxMoovParse bounds the ONE allocation this extractor makes: the moov payload it parses.
 	// Memory is therefore O(min(|moov|, MaxMoovParse)) and independent of the file's size.
 	//
-	// 32MB is measured headroom rather than a guess. The router refuses anything over 100MB before
-	// extraction runs, and a real moov is a fraction of its file — 0.14%, 0.27% and 0.39% across
-	// the videos on the machine this was written on — so a 100MB file's moov is a few hundred
-	// kilobytes. A moov beyond this is clamped and DISCLOSED, never silently truncated.
+	// 32MB is measured headroom rather than a guess, and the headroom was RE-MEASURED when the
+	// router began admitting videos up to 500MB (#410) — the old note reasoned from a 100MB
+	// ceiling that no longer holds. Across five real files on the machine this was written on
+	// (macOS wallpaper and aerial .mov, GarageBand lesson media, 150MB–453MB) the moov is
+	// 0.184%–0.222% of its file, the largest being 990,540 bytes inside a 453MB file. At the
+	// worst fraction observed, a full 500MB file implies a ~1.1MB moov, so this bound keeps
+	// roughly 28x margin. A moov beyond it is clamped and DISCLOSED, never silently truncated.
+	//
+	// Note this is what makes the 500MB video ceiling safe: peak RSS measured 29MB for a 453MB
+	// file, flat in file size, because the mdat is seeked past and never read.
 	MaxMoovParse = 32 * 1024 * 1024
 
 	// MaxTopLevelBoxes bounds the walk's work so a file made of millions of tiny boxes cannot turn

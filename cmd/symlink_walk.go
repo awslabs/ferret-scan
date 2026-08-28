@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // Symlink handling for directory walks.
@@ -68,7 +70,15 @@ const (
 // resolved is the absolute target path, returned so the caller can deduplicate against
 // files it has already queued. reason is human-facing and payload-free: it names the
 // condition, never file contents.
-func classifySymlink(linkPath, scanRoot string, sizeLimit int64) (d symlinkDisposition, resolved, reason string) {
+//
+// The size limit is derived from the RESOLVED TARGET rather than passed in, because the
+// limit is per type and only the target's name carries the type: the walk hands `resolved`
+// to the scanner, so the target's extension is what decides both how many bytes we admit
+// and which preprocessor reads them. Passing a single number in was the same defect this
+// function exists to fix, one level up — a 200MB video named directly on the command line
+// was scanned while the same file reached through a symlink was refused, because the caller
+// could only supply the flat ceiling (#326, #410).
+func classifySymlink(linkPath, scanRoot string) (d symlinkDisposition, resolved, reason string) {
 	// EvalSymlinks resolves the whole chain and returns an error for a dangling link or
 	// a loop (ELOOP), which is why loop protection needs no separate counter here.
 	target, err := filepath.EvalSymlinks(linkPath)
@@ -97,7 +107,7 @@ func classifySymlink(linkPath, scanRoot string, sizeLimit int64) (d symlinkDispo
 		// these for the same reason.
 		return symlinkDisclose, absTarget, "symlink target is not a regular file"
 	}
-	if sizeLimit > 0 && info.Size() > sizeLimit {
+	if sizeLimit := router.MaxSizeForPath(absTarget); info.Size() > sizeLimit {
 		return symlinkDisclose, absTarget,
 			fmt.Sprintf("symlink target is too large (%d bytes, limit %d)", info.Size(), sizeLimit)
 	}

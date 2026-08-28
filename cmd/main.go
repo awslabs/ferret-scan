@@ -54,8 +54,8 @@ import (
 // process) — so CI can tell degraded coverage apart from a genuinely clean scan.
 const exitCodeIncompleteCoverage = 3
 
-// maxScanSize is the largest file discovery will admit, and it is deliberately
-// router.MaxFileSize rather than a number of its own.
+// maxScanSizeFor is the largest file discovery will admit for a given path, and it is
+// deliberately router.MaxSizeForPath rather than a number of its own.
 //
 // These two gates used to be independent, and they drifted. Discovery allowed 500MB for
 // .mp3/.wav/.m4a/.flac while the router refused everything over 100MB — and the router's
@@ -78,14 +78,19 @@ const exitCodeIncompleteCoverage = 3
 //
 // Deriving discovery's limit from the router's constant is the fix for the CLASS rather than
 // the instance: one number cannot disagree with itself. Raising the ceiling later belongs in
-// router.MaxFileSize, where every gate that consults it moves together.
-const maxScanSize = router.MaxFileSize
+// router.MaxSizeForPath, where every gate that consults it moves together — which is where the
+// video ceiling now lives (#410).
+func maxScanSizeFor(path string) int64 { return router.MaxSizeForPath(path) }
 
 // tooLargeReason is the operator-facing wording for a size refusal, built from the same
-// constant that did the refusing so the number in the message cannot drift from the number
+// limit that did the refusing so the number in the message cannot drift from the number
 // that produced it. Four call sites used to spell it out by hand.
-func tooLargeReason() string {
-	return fmt.Sprintf("file too large (max size: %dMB)", maxScanSize/(1024*1024))
+//
+// It takes the path because the limit is per type: a refused 600MB video has to say 500MB,
+// not the 100MB that applies to everything else, or the operator is told to shrink a file
+// below a threshold it already cleared.
+func tooLargeReason(path string) string {
+	return fmt.Sprintf("file too large (max size: %dMB)", maxScanSizeFor(path)/(1024*1024))
 }
 
 // notRegularReason names what a non-regular directory entry actually is.
@@ -1078,7 +1083,7 @@ func main() {
 	// IP sub-type control flag
 	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
 	validatorBudget := flag.String("validator-budget", "", "Per-validator time budget as NAME=DURATION pairs. DURATION takes any Go duration unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. Default: no budget.")
-	maxLiveBytes := flag.String("max-live-bytes", "", "Cap total extracted content held in memory across concurrently scanned files, e.g. '256MB' or '1GB' (units: B, KB, MB, GB; bare number = bytes). Bounds peak memory on constrained hosts (e.g. Lambda) so many large files cannot multiply memory. Default: no cap (bounded only by the 100MB per-file limit × worker count).")
+	maxLiveBytes := flag.String("max-live-bytes", "", "Cap total extracted content held in memory across concurrently scanned files, e.g. '256MB' or '1GB' (units: B, KB, MB, GB; bare number = bytes). Bounds peak memory on constrained hosts (e.g. Lambda) so many large files cannot multiply memory. Default: no cap (bounded only by the per-file size limit × worker count — 100MB, or 500MB for a video container, though a video's peak is set by its metadata rather than its length).")
 
 	// Web server flags
 	webMode := flag.Bool("web", false, "Start web server mode instead of CLI scanning")
@@ -2697,7 +2702,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			return nil, fmt.Errorf("path does not exist or is not accessible: %w", err)
 		}
 		if info.Mode().IsRegular() {
-			if info.Size() <= maxScanSize {
+			if info.Size() <= maxScanSizeFor(inputPath) {
 				// Check if file is excluded
 				if isExcluded(inputPath, excludePatterns) {
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
@@ -2722,7 +2727,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// whether the tool could have processed its type at all — see
 			// router.CanProcessType. An unprocessable type is a genuine skip; a
 			// processable one was expected to produce a result and did not.
-			reason := tooLargeReason()
+			reason := tooLargeReason(inputPath)
 			if router.CanProcessType(inputPath, enablePreprocessors) {
 				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 					Path:   inputPath,
@@ -2838,7 +2843,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					continue // Skip gitignored files
 				}
 
-				if info.Size() <= maxScanSize {
+				if info.Size() <= maxScanSizeFor(cleanMatch) {
 					filesToProcess = append(filesToProcess, cleanMatch)
 				} else if router.CanProcessType(cleanMatch, enablePreprocessors) {
 					// A processable type refused for size is a coverage LOSS, so it has
@@ -2850,7 +2855,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					// CI discards.
 					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 						Path:   cleanMatch,
-						Reason: tooLargeReason(),
+						Reason: tooLargeReason(cleanMatch),
 						Cause:  causeTooLarge,
 					})
 				} else {
@@ -2859,7 +2864,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					// denominator.
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
 						Path:   cleanMatch,
-						Reason: tooLargeReason(),
+						Reason: tooLargeReason(cleanMatch),
 						Silent: true,
 					})
 				}
@@ -2889,18 +2894,42 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 	if fileInfo.Mode().IsRegular() {
 		// A file refused for size — see the identical decision on the glob path above
 		// and router.CanProcessType.
-		if fileInfo.Size() > maxScanSize {
-			reason := tooLargeReason()
-			if router.CanProcessType(inputPath, enablePreprocessors) {
+		//
+		// Every decision here is made on cleanPath, not on inputPath. This branch was the
+		// only one in the block that used the raw argument, and the rest of it — isExcluded,
+		// the ignore matcher, and the path actually appended to FilesToProcess — has always
+		// used cleanPath. That mattered once this gate became type-aware, because the two
+		// differ exactly when Clean removes something, and the reachable case is a trailing
+		// slash: os.Stat("clip.mp4/") fails with ENOTDIR, which is what sends a directly
+		// named file down THIS path instead of the literal-filename branch above, while
+		// filepath.Ext("clip.mp4/") is "" because the base name after the last separator is
+		// empty. So the raw argument reports no extension at all.
+		//
+		// Two consequences, both measured. The size limit fell back to 100MB for a video
+		// (`limit(raw)=100MB` vs `limit(clean)=500MB`), so this fix would not have applied to
+		// `--file clip.mp4/`.
+		//
+		// And the CLASSIFICATION was wrong for a binary type, which is older than this change.
+		// CanProcessType answers from the extension for a binary document and otherwise sniffs
+		// the content, so an empty extension sends a .mp4 or .pdf down the text-sniffing arm,
+		// where it reads as binary and comes back false. The refusal was then recorded in
+		// SkippedFiles with Silent: true — no files_not_examined entry, and
+		// --fail-on-incomplete exiting 0 for a file the tool never opened. That is the #355
+		// shape reached by a different route. A .txt is unaffected either way, because
+		// sniffing its content gives the same answer with or without the slash; measuring only
+		// a text fixture is what made a first version of this note claim more than was true.
+		if fileInfo.Size() > maxScanSizeFor(cleanPath) {
+			reason := tooLargeReason(cleanPath)
+			if router.CanProcessType(cleanPath, enablePreprocessors) {
 				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
-					Path:   inputPath,
+					Path:   cleanPath,
 					Reason: reason,
 					Cause:  causeTooLarge,
 				})
 				return result, nil
 			}
 			result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
-				Path:   inputPath,
+				Path:   cleanPath,
 				Reason: reason,
 				Silent: true,
 			})
@@ -3037,7 +3066,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// Only add regular files
 			if info.Mode().IsRegular() {
 				// Check file size
-				if info.Size() <= maxScanSize {
+				if info.Size() <= maxScanSizeFor(cleanWalkPath) {
 					filesToProcess = append(filesToProcess, cleanWalkPath)
 				} else if router.CanProcessType(cleanWalkPath, enablePreprocessors) {
 					// Processable type refused for size: a coverage loss, so it must reach
@@ -3045,14 +3074,14 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 					// stderr line that CI discards. See the glob path above.
 					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
 						Path:   cleanWalkPath,
-						Reason: tooLargeReason(),
+						Reason: tooLargeReason(cleanWalkPath),
 						Cause:  causeTooLarge,
 					})
 				} else {
 					// Unprocessable at any size: a genuine skip.
 					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
 						Path:   cleanWalkPath,
-						Reason: tooLargeReason(),
+						Reason: tooLargeReason(cleanWalkPath),
 						Silent: true,
 					})
 				}
@@ -3074,7 +3103,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				// Collected rather than decided here: whether to follow depends on
 				// whether the target is also reachable as a real file in this same
 				// walk, which is not known until the walk ends.
-				d, resolved, reason := classifySymlink(cleanWalkPath, cleanPath, maxScanSize)
+				d, resolved, reason := classifySymlink(cleanWalkPath, cleanPath)
 				symlinkCands = append(symlinkCands, symlinkCandidate{
 					linkPath: cleanWalkPath,
 					resolved: resolved,

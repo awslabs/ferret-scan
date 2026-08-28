@@ -227,7 +227,10 @@ Exit codes follow `--pre-commit-mode` semantics when set: non-zero on findings a
 ## Limitations
 
 - **Plaintext only**: stdin content is never run through the PDF/Office/image preprocessors. Use `--file` for binary documents.
-- **Max size**: 100 MB (matches the file-mode `MaxFileSize`). Larger inputs are rejected with a clear error.
+- **Max size**: 100 MB (`router.MaxFileSize`). Larger inputs are rejected with a clear error.
+  File mode is type-aware and admits a video container up to 500 MB; stdin deliberately is not,
+  because the only name available here is the `--stdin-name` label the caller invents, and stdin
+  rejects binary content anyway — so it could never scan a video regardless of the limit.
 - **No redaction audit log**: `--redaction-audit-log <path>` is silently ignored with a stderr notice. Audit logs require the on-disk index manager. Scan a file if you need them.
 - **No directory walk**: `--recursive`, `--exclude`, and `--respect-gitignore` don't apply (no filesystem to walk).
 - **No PDF/Office redaction**: only the plaintext redactor runs against stdin content.
