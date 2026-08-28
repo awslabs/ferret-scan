@@ -313,7 +313,7 @@ func TestSymlinkDisclosureCarriesItsCause(t *testing.T) {
 		t.Skipf("cannot create symlinks here: %v", err)
 	}
 
-	d, resolved, reason := classifySymlink(link, root, 100*1024*1024)
+	d, resolved, reason := classifySymlink(link, root)
 	if d != symlinkDisclose {
 		t.Fatalf("fixture: disposition = %v, want symlinkDisclose", d)
 	}
@@ -464,7 +464,19 @@ func TestOversizeAudioNamedDirectlyIsUnexamined(t *testing.T) {
 	for _, ext := range []string{".mp3", ".wav", ".m4a", ".flac"} {
 		t.Run(ext, func(t *testing.T) {
 			dir := t.TempDir()
-			big := audioFile(t, filepath.Join(dir, "recording"+ext), maxScanSize+1)
+			big := filepath.Join(dir, "recording"+ext)
+
+			// Audio must NOT have acquired the video exemption (#410). Asserted before the
+			// fixture is built, because if it ever did, the flat-ceiling fixture below would
+			// simply be under the limit and every assertion in this test would invert its
+			// meaning while still passing.
+			if got := maxScanSizeFor(big); got != router.MaxFileSize {
+				t.Fatalf("maxScanSizeFor(%s) = %d, want the flat %d. Audio was measured to gain "+
+					"NOTHING from a raised ceiling — three gates downstream cap it at 100MB — so "+
+					"an allowance here only moves the miss into a bucket that never reaches "+
+					"--fail-on-incomplete, which is #355 all over again", ext, got, router.MaxFileSize)
+			}
+			big = audioFile(t, big, router.MaxFileSize+1)
 
 			res, err := getFilesToProcess(big, false, nil, nil, true)
 			if err != nil {
@@ -474,7 +486,7 @@ func TestOversizeAudioNamedDirectlyIsUnexamined(t *testing.T) {
 			if len(res.FilesToProcess) != 0 {
 				t.Errorf("FilesToProcess = %v, want empty: the router refuses this file at "+
 					"%dMB, so admitting it here only moves the miss to a bucket that does not "+
-					"reach --fail-on-incomplete", res.FilesToProcess, maxScanSize/(1024*1024))
+					"reach --fail-on-incomplete", res.FilesToProcess, router.MaxFileSize/(1024*1024))
 			}
 			if len(res.UnexaminedFiles) != 1 {
 				t.Fatalf("UnexaminedFiles = %v, want the oversize recording: a processable type "+
@@ -517,13 +529,25 @@ func TestUnderLimitAudioNamedDirectlyIsScanned(t *testing.T) {
 // They were independent numbers and they drifted, which is the whole of #355. This compares
 // the two VALUES, so it fails the moment either side moves without the other — the failure
 // mode that produced the bug. It cannot see how each is spelled, so it would not notice
-// maxScanSize being rewritten as its own literal while the numbers still match; the
-// derivation is what makes that harmless, and the comment on maxScanSize is what asks a
+// maxScanSizeFor being rewritten as its own literal while the numbers still match; the
+// derivation is what makes that harmless, and the comment on maxScanSizeFor is what asks a
 // future editor to keep it.
+//
+// Now checked per TYPE rather than once, because the limit became type-aware (#410): a single
+// comparison would only have covered whichever type the test happened to name, and the
+// interesting case is precisely the one where the two sides could disagree about the
+// EXEMPTION rather than about the flat number.
 func TestDiscoveryLimitIsTheRouterLimit(t *testing.T) {
-	if maxScanSize != router.MaxFileSize {
-		t.Errorf("maxScanSize = %d, router.MaxFileSize = %d: discovery must admit exactly what "+
-			"the router accepts, or a file admitted here is refused there and the refusal is "+
-			"filed as an unsupported type", maxScanSize, router.MaxFileSize)
+	for _, name := range []string{
+		"movie.mp4", "clip.mov", "clip.m4v", "phone.3gp", "phone.3g2", // exempt
+		"MOVIE.MP4", "Clip.MOV", // exempt, and the test is case-insensitive
+		"notes.txt", "book.pdf", "sheet.xlsx", "recording.wav", "song.mp3",
+		"photo.jpg", "archive.zip", "noextension",
+	} {
+		if got, want := maxScanSizeFor(name), router.MaxSizeForPath(name); got != want {
+			t.Errorf("maxScanSizeFor(%q) = %d, router.MaxSizeForPath = %d: discovery must admit "+
+				"exactly what the router accepts, or a file admitted here is refused there and "+
+				"the refusal is filed as an unsupported type", name, got, want)
+		}
 	}
 }

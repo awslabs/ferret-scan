@@ -9,16 +9,33 @@ This document provides a comprehensive reference for all file size limits, proce
 | Component | Limit | Configurable | Notes |
 |-----------|-------|--------------|-------|
 | **Web UI Upload** | 100MB | No | Per-file decompression-bomb guard (`internal/web/server.go`); folder uploads have no count limit |
-| **CLI, every file type** | 100MB | No | `router.MaxFileSize`. File discovery derives its own limit from that same constant, so the two gates cannot disagree |
+| **CLI, video containers** | 500MB | No | `router.MaxVideoFileSize`, for `.mp4` `.m4v` `.mov` `.3gp` `.3g2` |
+| **CLI, every other file type** | 100MB | No | `router.MaxFileSize`. File discovery derives its limit from `router.MaxSizeForPath`, so the two gates cannot disagree |
 | **Text Files** | 100MB | No | Plaintext preprocessor limit |
 | **Text Extraction** | 10MB | No | Per-entry `io.LimitReader` during document preprocessing (`officelib.MaxXMLSize`) |
 
-**100MB is the effective limit for every file type, including audio and video.** Some
-extractors carry a higher ceiling of their own — the video metadata extractor and the media
-resource manager both name 500MB — but every file passes the 100MB CLI gate first, so those
-ceilings are never reached. Audio is capped at 100MB three more times over, by the audio
-extractor and by the media resource manager, so raising the CLI gate alone would not scan a
-larger recording.
+**100MB is the effective limit for every file type except video, which is 500MB.**
+
+Video is the one exemption, and it exists because the file's size was never what bounded the
+work: the extractor parses the `moov` box and seeks past the media data, so its memory is
+`O(min(|moov|, 32MB))` and independent of the file's length. Measured peak RSS is **29MB for a
+453MB file**, flat across the range. The video metadata extractor and the media resource manager
+had both named 500MB since they were written, and neither ceiling was reachable — every file met
+the flat 100MB gate first and was refused there, so the tool declined to scan files it was fully
+capable of scanning.
+
+**Audio is deliberately not exempt.** It is capped at 100MB three more times over, by the audio
+extractor and by the media resource manager, so raising the front gate alone would not scan a
+larger recording — measured on 150MB and 450MB files, it yielded zero additional findings. An
+allowance there would only change which counter recorded the miss.
+
+Two paths keep the flat 100MB ceiling on purpose:
+
+- **`--stdin`** has no filename to take a type from (`--stdin-name` is a label the caller
+  invents), and it refuses binary content outright, so it can never scan a video regardless.
+- **Web UI uploads** *materialize* the bytes into a temp file before anything reads them, so the
+  video allowance would let one request write 500MB of temp disk chosen by an attacker-supplied
+  filename. This path refuses *more* than the CLI and discloses the refusal as a coverage gap.
 
 A file over the limit is **not** silently dropped: if it is a type the tool could have
 processed, it is reported under `files_not_examined`, listed in the `NOT FULLY EXAMINED`
@@ -198,15 +215,17 @@ offsets are untouched, so nothing about detection or redaction depends on it.
 
 ## Common Error Messages
 
-Four surfaces refuse an oversize file, each with its own wording. All four mean the same thing —
-the file is over `router.MaxFileSize` (100MB) — so the wording tells you *which gate* stopped it,
-not which limit it hit.
+Four surfaces refuse an oversize file, each with its own wording, so the wording tells you *which
+gate* stopped it. The two CLI-side messages name the limit that actually refused the file — 500MB
+for a video container, 100MB otherwise — so a refused 600MB video reads `max size: 500MB` and not
+the 100MB it already cleared.
 
 | Error Message | Emitted by | Solution |
 |---------------|------------|----------|
-| `file too large (max size: 100MB)` | CLI file discovery (`cmd/main.go`) | Split the file, or extract the metadata-bearing part and scan that |
-| `File too large (max: 100MB)` | The file router (`internal/router/file_router.go`) | As above |
-| `file too large to scan (max size: 100MB)` | Web UI upload (`internal/web/server.go`) | As above |
+| `file too large (max size: 500MB)` | CLI file discovery, for a video container | Split the file, or extract the metadata-bearing part and scan that |
+| `file too large (max size: 100MB)` | CLI file discovery (`cmd/main.go`), every other type | As above |
+| `File too large (max: 100MB)` / `(max: 500MB)` | The file router (`internal/router/file_router.go`) | As above |
+| `file too large to scan (max size: 100MB)` | Web UI upload (`internal/web/server.go`) — always 100MB, including video | As above, or scan the file with the CLI, which admits video up to 500MB |
 | `file too large: <n> bytes (max: 104857600 bytes)` | Plain-text preprocessor (`internal/preprocessors/plaintext_preprocessor.go`) | As above |
 | `XML content too large: <n> bytes (max: 10485760)` | An Office XML part over `officelib.MaxXMLSize` | Nothing to configure; the part itself is too large |
 
@@ -226,9 +245,15 @@ A refusal is disclosed, not silent: the file is reported under `files_not_examin
 ## Configuration
 
 The file size limits above are compile-time constants; there is no flag, config key or
-environment variable that changes them. Raising one means editing `router.MaxFileSize`, which
-every gate derives from. The same is true of the worker count and every other row in the
-performance table.
+environment variable that changes them. Raising one means editing `router.MaxFileSize` or
+`router.MaxVideoFileSize`, which every gate derives from through `router.MaxSizeForPath`. The
+same is true of the worker count and every other row in the performance table.
+
+A per-type ceiling has to be justified per type, not just raised: the question is whether the
+file's size is what bounds the work. It is for anything held in memory to be parsed, and it is
+not for a container the extractor seeks through. Raising the video ceiling also means keeping
+`router.MaxVideoFileSize` at or below the extractor's own `MaxFileSize`, or a file is admitted at
+one layer and refused at a deeper one whose message names a limit the operator never saw.
 
 Two runtime levers exist, and they are the only two:
 

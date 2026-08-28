@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // A symlink in a scanned directory must be scanned or DISCLOSED, never dropped.
@@ -28,7 +30,10 @@ import (
 // depending on how the path was spelled. cmd/main.go's exitCodeIncompleteCoverage comment
 // also promises exit 3 for a dangling symlink; it delivered 0. See #326.
 
-const symlinkSizeLimit = 100 * 1024 * 1024
+// symlinkSizeLimit is the ceiling the oversize fixture below has to exceed. Derived from
+// the router rather than written out, so it follows the gate it is testing; the fixture is
+// a .bin, so the flat ceiling is the one that applies to it.
+const symlinkSizeLimit = router.MaxFileSize
 
 // linkTo creates dir/name -> target and returns the link path.
 func linkTo(t *testing.T, dir, name, target string) string {
@@ -56,7 +61,7 @@ func TestClassifySymlinkFollowsInTreeRegularFile(t *testing.T) {
 	target := writeFileAt(t, filepath.Join(root, "sub", "doc.txt"), "SSN: 452-11-9384\n")
 	link := linkTo(t, root, "link.txt", target)
 
-	d, resolved, reason := classifySymlink(link, root, symlinkSizeLimit)
+	d, resolved, reason := classifySymlink(link, root)
 	if d != symlinkFollow {
 		t.Errorf("disposition = %v, want symlinkFollow (%q). A link to a regular file inside "+
 			"the scanned tree must be scanned — the single-file path already does, so "+
@@ -148,7 +153,7 @@ func TestClassifySymlinkDisclosesEveryRefusal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			link := tc.build()
-			d, _, reason := classifySymlink(link, root, symlinkSizeLimit)
+			d, _, reason := classifySymlink(link, root)
 			if d != symlinkDisclose {
 				t.Fatalf("disposition = %v, want symlinkDisclose. Dropping it silently is the "+
 					"bug: the entry reaches no counter and nothing is printed.", d)
@@ -221,7 +226,7 @@ func TestResolveSymlinkCandidatesDeduplicatesAgainstRealFiles(t *testing.T) {
 	real1 := writeFileAt(t, filepath.Join(root, "doc.txt"), "SSN: 452-11-9384\n")
 	link := linkTo(t, root, "link.txt", real1)
 
-	d, resolved, _ := classifySymlink(link, root, symlinkSizeLimit)
+	d, resolved, _ := classifySymlink(link, root)
 	if d != symlinkFollow {
 		t.Fatalf("fixture: expected the link to be followable, got %v", d)
 	}
@@ -250,7 +255,7 @@ func TestResolveSymlinkCandidatesQueuesAnOtherwiseUnreachableTarget(t *testing.T
 	target := writeFileAt(t, filepath.Join(root, "sub", "deep.txt"), "Card: 4111111111111111\n")
 	link := linkTo(t, root, "link.txt", target)
 
-	d, resolved, _ := classifySymlink(link, root, symlinkSizeLimit)
+	d, resolved, _ := classifySymlink(link, root)
 	follow, disclose := resolveSymlinkCandidates(
 		[]symlinkCandidate{{linkPath: link, resolved: resolved, disp: d}},
 		[]string{filepath.Join(root, "other.txt")}, // target NOT queued
@@ -274,8 +279,8 @@ func TestResolveSymlinkCandidatesIsOrderIndependent(t *testing.T) {
 	l1 := linkTo(t, root, "l1.txt", real1)
 	l2 := linkTo(t, root, "l2.txt", real1)
 
-	d1, r1, _ := classifySymlink(l1, root, symlinkSizeLimit)
-	d2, r2, _ := classifySymlink(l2, root, symlinkSizeLimit)
+	d1, r1, _ := classifySymlink(l1, root)
+	d2, r2, _ := classifySymlink(l2, root)
 	c1 := symlinkCandidate{linkPath: l1, resolved: r1, disp: d1}
 	c2 := symlinkCandidate{linkPath: l2, resolved: r2, disp: d2}
 

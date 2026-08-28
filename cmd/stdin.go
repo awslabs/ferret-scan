@@ -68,6 +68,14 @@ func runStdinScan(in stdinScanInputs) int {
 
 	// Read stdin with a hard cap matching the file-mode size limit. We read
 	// MaxFileSize+1 so we can distinguish "exactly at limit" from "over limit".
+	//
+	// Deliberately the flat ceiling and NOT router.MaxSizeForPath, which raises the limit
+	// for a video container (#410). Two reasons, either sufficient: there is no path here
+	// to take a type from — --stdin-name is a synthetic label the caller chooses, so
+	// honouring it would let `--stdin-name x.mp4` pick the limit — and this path cannot
+	// scan a video anyway, because the NUL-byte check below refuses binary content a few
+	// lines further on. A raised ceiling here would buy nothing except a larger buffer
+	// before the same refusal.
 	limit := router.MaxFileSize
 	raw, err := io.ReadAll(io.LimitReader(os.Stdin, limit+1))
 	if err != nil {

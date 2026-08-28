@@ -78,8 +78,73 @@ type FileRouter struct {
 // one constant makes the drift impossible instead of merely detected.
 const MaxEmbeddedDepth = embedded.MaxDepth
 
-// MaxFileSize is the default maximum file size the router will process (100 MB).
+// MaxFileSize is the ceiling for a file whose whole content is read (100 MB).
+//
+// It is the default for every type, and the right default: a preprocessor that has to
+// hold a document in memory to make sense of it — an Office ZIP, a PDF, a plaintext file
+// — costs memory proportional to the file, so the size of the input IS the bound on the
+// work. MaxSizeForPath is what exempts the one family where that is not true.
 const MaxFileSize = int64(100 * 1024 * 1024)
+
+// MaxVideoFileSize is the ceiling for a video container (500 MB).
+//
+// A video is the one type this tool reads WITHOUT holding it: the extractor parses the
+// `moov` box and seeks past `mdat`, so its memory is O(min(|moov|, MaxMoovParse)) and
+// independent of the file's length. Both downstream video gates have said 500 MB since
+// they were written — meta-extract-videolib.MaxFileSize and
+// preprocessors.DefaultResourceLimits().MaxVideoFileSize — and neither was reachable,
+// because every file met the flat 100 MB gate first and was refused there (#410).
+//
+// Measured on real files rather than assumed, scanning each with the gate raised:
+//
+//	file                                       size      peak RSS   wall
+//	macOS "Tahoe Day.mov" wallpaper            162 MB    29.0 MB    1.12s
+//	GarageBand "Piano Lesson 1" media          150 MB    28.8 MB    0.37s
+//	macOS aerial wallpaper .mov                453 MB    29.5 MB    0.39s
+//
+// Peak RSS is FLAT in file size — 29 MB for a 453 MB file — which is what makes this
+// exemption safe rather than merely useful. A gate exists to bound resource use, and for
+// this type the file's size was never what bounded it. Compare the 162 MB case, whose
+// `moov` sits LAST at byte 169,820,847: the extractor still reaches it, so admitting the
+// file is not vacuous.
+//
+// Deliberately NOT extended to audio. Discovery once allowed 500 MB for .mp3/.wav/.m4a/
+// .flac and it bought nothing: audio metadata is capped at 100 MB by three more gates
+// downstream, and measured on 150 MB and 450 MB files, raising the ceiling alone yielded
+// zero additional findings. That allowance only decided which counter recorded the miss,
+// which is the bug #355 fixed by REMOVING it. Video is the opposite case: here the
+// downstream ceilings are already 500 MB and it is only the front gate that refuses.
+const MaxVideoFileSize = int64(500 * 1024 * 1024)
+
+// videoSizeClass answers "is this path a video container", and is the SAME answer the
+// routing decision uses — preprocessors.VideoMetadataPreprocessor.CanProcess consults
+// this type too.
+//
+// A package-level value rather than a per-call constructor: MaxSizeForPath is called once
+// per discovered file, and NewFileExtensionValidator builds five maps, so constructing one
+// per call would put five allocations on every entry of a directory walk.
+// TestMaxSizeForPathDoesNotAllocate pins that.
+var videoSizeClass = preprocessors.NewFileExtensionValidator()
+
+// MaxSizeForPath returns the largest size the tool will admit for path.
+//
+// One function rather than a constant per gate, because this repository has twice shipped
+// a bug caused by two size gates disagreeing: discovery once allowed 500 MB where the
+// router allowed 100 MB, and the router's refusal landed in the counter that names an
+// unsupported TYPE, so a file the tool never opened was reported as a clean scan (#355).
+// Every gate consults this, so the numbers cannot drift apart.
+//
+// The extension is the whole test, and it decides only how many bytes we are willing to
+// admit — never how the file is parsed. A .mp4 that is not really a video is admitted at
+// 500 MB and then read by the same extractor as before, which rejects it on its box
+// structure. So the worst a misleading extension buys is a bounded read of a file the
+// operator already has, and never a different parse.
+func MaxSizeForPath(path string) int64 {
+	if videoSizeClass.IsVideoFile(path) {
+		return MaxVideoFileSize
+	}
+	return MaxFileSize
+}
 
 // NewFileRouter creates a new file router
 func NewFileRouter(debug bool) *FileRouter {
@@ -158,8 +223,11 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) 
 		return false, fmt.Sprintf("%s: not a regular file (%s)", ReasonUnreadable, DescribeFileMode(info.Mode()))
 	}
 
-	if info.Size() > MaxFileSize {
-		return false, fmt.Sprintf("File too large (max: %dMB)", MaxFileSize/(1024*1024))
+	// The limit is per TYPE, and the message is built from the same value that refused,
+	// so the number an operator reads cannot disagree with the number that stopped the
+	// file. See MaxSizeForPath.
+	if limit := MaxSizeForPath(filePath); info.Size() > limit {
+		return false, fmt.Sprintf("File too large (max: %dMB)", limit/(1024*1024))
 	}
 
 	// Binary documents require preprocessors
