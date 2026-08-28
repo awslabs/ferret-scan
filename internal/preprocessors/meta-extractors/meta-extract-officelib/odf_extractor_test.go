@@ -16,6 +16,11 @@ var odfMimetypeFor = map[string]string{
 	".odt": "application/vnd.oasis.opendocument.text",
 	".ods": "application/vnd.oasis.opendocument.spreadsheet",
 	".odp": "application/vnd.oasis.opendocument.presentation",
+	// Templates. ODF 1.3 §3.3 gives them their own media types; the package layout,
+	// including meta.xml, is identical, which is why one reader serves both (#528).
+	".ott": "application/vnd.oasis.opendocument.text-template",
+	".ots": "application/vnd.oasis.opendocument.spreadsheet-template",
+	".otp": "application/vnd.oasis.opendocument.presentation-template",
 }
 
 // writeODFFixture builds a spec-shaped ODF package on disk and returns its path.

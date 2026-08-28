@@ -12,6 +12,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
@@ -22,6 +23,34 @@ var (
 	rePortSuffix = regexp.MustCompile(`^:\d{1,5}\b`)
 	reCIDRSuffix = regexp.MustCompile(`^/\d{1,2}\b`)
 )
+
+// ambiguousShapeCap is the confidence a context-free dotted quad (or full-form
+// IPv6) is held to, and the ceiling published with it.
+//
+// 75 sits below the HIGH boundary of 90, so an ambiguous value surfaces as MEDIUM
+// rather than competing with a corroborated address for attention.
+const ambiguousShapeCap = 75.0
+
+// confidenceCeilingKey is the Match.Metadata key a validator sets to declare a hard
+// upper bound on a finding's confidence.
+//
+// Assigning to the local `confidence` variable bounds only what this validator
+// returns. Confidence is RAISED again downstream: the dual-path bridge adds a
+// document-level context adjustment to every match a validator produced, and a
+// cross-path correlation boost after that. Neither knows anything about the
+// individual value, which is the whole point of the cap here — so a cap that is not
+// also published as a ceiling does not survive.
+//
+// Measured: a LibreOffice generator string ("LibreOffice/24.8.4.2$MacOSX_AARCH64")
+// was capped to 75 here and reported at HIGH 95, the +20 coming from a document-level
+// classification of the file as "CSV"/Production. On ten real .odt documents carrying
+// a byte-identical generator, eight were promoted to HIGH and two were not — the
+// difference being body text the match has nothing to do with.
+//
+// The string must match validators.ConfidenceCeilingKey. It is duplicated rather than
+// imported because internal/validators imports this package, so depending on it here
+// would be a cycle — the same reason the ssn and secrets validators duplicate it.
+const confidenceCeilingKey = "confidence_ceiling"
 
 // ipContainsKeyword reports whether text contains keyword as a whole word,
 // case-insensitively. Whole-word matching avoids "ip"/"nat" firing inside
@@ -240,6 +269,25 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
+	// Recognise a delimited table ONCE per document, so a match can be resolved to
+	// the header cell naming its column.
+	//
+	// The cap-escape below is a keyword search over the match's own LINE, and in a
+	// CSV export the label lives in the header ROW while the value lives in a data
+	// row — so a column headed "sourceIPAddress" contributes nothing and every
+	// address in it is treated as context-free. That is the exact gap
+	// internal/tabular was built to close; its package doc describes the same shape
+	// for the label-gated validators.
+	//
+	// Measured: a CloudTrail-style CSV export, 4,549 genuine public addresses in a
+	// sourceIPAddress column, not one of which has an IP keyword on its own row.
+	//
+	// tabular.Analyze is conservative by construction — >=3 fields, header cells
+	// that look like column names, and >=80% of sampled rows agreeing on the field
+	// count. Ragged rows or a comma-rich sentence yield a non-table, which leaves
+	// every score exactly as it was.
+	table := tabular.Analyze(content)
+
 	// Process each pattern type
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
@@ -286,6 +334,17 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// line number, and emission order is unchanged (first pattern to produce
 		// a given cleaned IP on a line wins, exactly as before).
 		seenOnLine := make(map[string]struct{})
+
+		// Field offsets for THIS line, computed once and reused for every match on
+		// it, so resolving a match to its column stays a binary search rather than a
+		// per-match rescan. This validator has been audited for exactly the
+		// O(matches x lineLength) shape and must not reacquire it. Nil when the
+		// document is not tabular, and on the header row itself, where a cell is a
+		// column name rather than a value.
+		var lineBounds *tabular.LineBounds
+		if table.IsTable() && lineNum != table.HeaderLine() {
+			lineBounds = table.Bounds(line)
+		}
 
 		for _, pattern := range v.patterns {
 			if pattern.version == "IPv6" {
@@ -364,11 +423,35 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// surface as MEDIUM unless an IP keyword or structural signal
 				// (port, CIDR) is present. A compressed IPv6 (contains "::") is
 				// unambiguous and is left untouched.
+				//
+				// The cap has to be PUBLISHED as well as applied: the bridge raises
+				// confidence again after this returns, from a document-level
+				// classification that knows nothing about this value. See
+				// confidenceCeilingKey.
 				ambiguousShape := pattern.version == "IPv4" ||
 					(pattern.name == "IPv6_Full" && !strings.Contains(match, "::"))
-				if ambiguousShape && confidence >= 90 &&
-					!v.hasIPContextSignalAt(lineHasPositiveKeyword, line, matchEnd) {
-					confidence = 75
+
+				// Signals that clear the cap, and they are not equally strong.
+				//
+				// A port/CIDR suffix is welded to the value, so nothing overrides it.
+				// The keyword signals are labels: one is line-global (any "http" on
+				// the line), one is this match's column header. Both lose to the
+				// product-token shape, which reads the bytes immediately around the
+				// value and says it is a version.
+				//
+				// With productVersion false and a non-tabular document this reduces
+				// exactly to hasIPContextSignalAt, so ordinary content is unchanged.
+				productVersion := pattern.version == "IPv4" &&
+					isProductVersionAt(line, matchIndex)
+				keywordSignal := lineHasPositiveKeyword ||
+					v.headerNamesIP(table, lineBounds, matchIndex)
+				clearsCap := hasStructuralSuffixAt(line, matchEnd) ||
+					(keywordSignal && !productVersion)
+
+				capped := false
+				if ambiguousShape && confidence >= 90 && !clearsCap {
+					confidence = ambiguousShapeCap
+					capped = true
 				}
 
 				// Ensure confidence stays within bounds
@@ -399,6 +482,22 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// Record this cleaned IP so later patterns on the same line dedup.
 				seenOnLine[cleanForDedup] = struct{}{}
 
+				meta := map[string]any{
+					"version":           ipInfo["version"],
+					"type":              ipInfo["type"],
+					"pattern_name":      ipInfo["pattern_name"],
+					"is_private":        ipInfo["is_private"],
+					"is_reserved":       ipInfo["is_reserved"],
+					"clean_ip":          ipInfo["clean_ip"],
+					"validation_checks": checks,
+					"context_impact":    contextInfo.ConfidenceImpact,
+					"source":            "preprocessed_content",
+					"original_file":     originalPath,
+				}
+				if capped {
+					meta[confidenceCeilingKey] = ambiguousShapeCap
+				}
+
 				matches = append(matches, detector.Match{
 					Text:       match,
 					LineNumber: lineNum + 1, // 1-based line numbering
@@ -407,18 +506,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					Filename:   originalPath,
 					Validator:  "ipaddress",
 					Context:    contextInfo,
-					Metadata: map[string]any{
-						"version":           ipInfo["version"],
-						"type":              ipInfo["type"],
-						"pattern_name":      ipInfo["pattern_name"],
-						"is_private":        ipInfo["is_private"],
-						"is_reserved":       ipInfo["is_reserved"],
-						"clean_ip":          ipInfo["clean_ip"],
-						"validation_checks": checks,
-						"context_impact":    contextInfo.ConfidenceImpact,
-						"source":            "preprocessed_content",
-						"original_file":     originalPath,
-					},
+					Metadata:   meta,
 				})
 			}
 		}
@@ -866,6 +954,75 @@ func (v *Validator) hasIPContextSignalAt(lineHasPositiveKeyword bool, line strin
 	if lineHasPositiveKeyword {
 		return true
 	}
+	return hasStructuralSuffixAt(line, matchEnd)
+}
+
+// headerNamesIP reports whether the column header naming this match's column carries
+// an IP keyword.
+//
+// This is the same keyword set the line search uses, applied to the one label a CSV
+// data row actually has. It only ever ADDS a corroborating signal — a header that says
+// nothing leaves the score exactly where it was — so it cannot hide a finding.
+//
+// The header is a label, and a label is chosen by whoever wrote the file, so it does
+// not outrank the product-token shape. It does outrank nothing else: there is no
+// "header contradicts" arm here, because suppressing an address on the strength of a
+// column name would be attacker-controlled suppression.
+func (v *Validator) headerNamesIP(t *tabular.Table, b *tabular.LineBounds, off int) bool {
+	if b == nil {
+		return false
+	}
+	header := t.HeaderAt(b, off)
+	if header == "" {
+		return false
+	}
+	for _, kw := range v.positiveKeywords {
+		if ipContainsKeyword(header, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// isProductVersionAt reports whether the match sits in the product-token position —
+// a product name, a '/', then the version.
+//
+// RFC 9110 §10.1.5 defines that shape exactly: `product = token ["/" product-version]`.
+// A four-part product-version is structurally identical to a dotted quad, so
+// "Chrome/138.0.0.0", "LibreOffice/24.8.4.2$MacOSX_AARCH64" and "Product/1.2.3.4-build"
+// all parse as routable addresses.
+//
+// The discriminator is asymmetric and needs to be: the character before the '/' must be
+// a LETTER. That is what separates a product token from a URL authority, where the quad
+// is preceded by "//" and is a genuine address:
+//
+//	LibreOffice/24.8.4.2     -> 'e' before the '/'  -> a version
+//	http://52.94.236.248     -> '/' before the '/'  -> an address, left alone
+//
+// Measured over 2,188 real files: 2 occurrences of the product-token shape (both Chrome
+// User-Agent versions) and 10 of the URL-authority shape (all genuine addresses,
+// including public ones). A rule that treated any preceding '/' as a version would have
+// demoted all 10.
+//
+// This is why the shape matters rather than a word list: the existing cap-escape is
+// LINE-GLOBAL — one "http" or "server" anywhere on the line lifts the value to HIGH — so
+// a User-Agent logged next to a URL scored HIGH 92 on a version number. The shape is
+// value-adjacent, so it is the stronger of the two signals and takes precedence.
+func isProductVersionAt(line string, matchIndex int) bool {
+	if matchIndex < 2 || line[matchIndex-1] != '/' {
+		return false
+	}
+	c := line[matchIndex-2]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// hasStructuralSuffixAt reports whether a port (":8080") or CIDR ("/24") suffix is
+// attached to the match.
+//
+// Unlike the keyword signal this is value-adjacent, so it is NOT overridden by the
+// product-token shape: ":8080" or "/24" welded to the value corroborates an address as
+// directly as the shape contradicts it.
+func hasStructuralSuffixAt(line string, matchEnd int) bool {
 	if matchEnd <= len(line) {
 		// Both suffix patterns are ^-anchored and match at most a few bytes
 		// (":" + up to 5 digits, or "/" + up to 2 digits). Cap the slice to a

@@ -66,7 +66,7 @@ The floors below which a candidate is silently dropped, plus the score-independe
 | EMAIL | `<=0` (`validator.go:351-356`) | format validation | clean email exactly 100 HIGH; **machine addresses capped 85 MEDIUM** (`:344-346`) |
 | PHONE | `<=0` (`validator.go:401-410`) | <7 digits etc. as −70 penalty (soft) | labeled 100 HIGH; the −20 no-keyword penalty is the classic MEDIUM strander |
 | SSN | `<=0` (`validator.go:401-408`); survivors effectively start 85 | **invalid area/group/serial hard-dropped** before scoring | keyword-adjacent 100 HIGH; **decoys deliberately parked 55–80** by negative keywords |
-| IP_ADDRESS | `<=0` (`validator.go:404`) | parse failure | keyword-adjacent 100 HIGH; **ambiguity cap parks context-free dotted-quads at exactly 75** |
+| IP_ADDRESS | `<=0` (`validator.go:404`) | parse failure | keyword-adjacent 100 HIGH; **ambiguity cap parks context-free dotted-quads at exactly 75**, now published as a `confidence_ceiling` so the document-level boost cannot cross it (#513) |
 | DATE_OF_BIRTH | `<=0` (`validator.go:216-218`) | structural date validation | labeled DOB exactly 90 — **cannot exceed 90**; weak keywords strand 70–85 |
 | DRIVERS_LICENSE | `<=0` (keyword-gated scan) | requires a license keyword to scan at all | prefixed 95 HIGH; keyword-only 65–85 MEDIUM |
 | MEDICAL_ID | `<=0` across all five sub-evaluators | **NPI Luhn-80840**, DEA checksum, MBI format | labeled DEA/NPI 90–100 HIGH; MRN base 15 rarely surfaces alone |
@@ -147,6 +147,11 @@ one shared core function called from the orchestration sites. Consequences accep
    *deliberately parked noise* must be excluded from receiving boosts (they may still *provide*
    corroboration): start with **SSN (decoys parked 55–80), SECRETS (M24 entropy cap 51–55),
    IP_ADDRESS (ambiguity cap exactly 75 — a +15 boost lands exactly at 90 HIGH: a cliff)**.
+   The IP_ADDRESS cliff has since been closed the way item 6 below prescribes rather than by an
+   eligibility list: the cap is published as a `confidence_ceiling` and the bridge clamps to it,
+   so no downstream boost can cross 75 (#513). That went unnoticed for as long as it did because
+   the boost is *document-level* — ten real `.odt` files carrying a byte-identical generator
+   string split eight HIGH / two MEDIUM purely on their body text.
    This mirrors the never-enable list from the reranker benchmark (SSN/ADDRESS/SECRETS).
    PHYSICAL_ADDRESS is high-risk as a *receiver* (residential-suffix prose FPs at 50–58 live in
    exactly the resume/letter documents that carry real email/phone within 5 lines).
