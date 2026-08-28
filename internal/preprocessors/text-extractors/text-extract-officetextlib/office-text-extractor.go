@@ -114,6 +114,8 @@ func ExtractText(filePath string) (*TextContent, error) {
 	case ".pptx", ".pptm":
 		content.Format = "PowerPoint Presentation"
 		content, err = extractPptxText(filePath, content)
+	// A template is the same package as its document form, so it reads identically. Its
+	// Format is named separately because that string reaches the report (#528).
 	case ".odt":
 		content.Format = "OpenDocument Text"
 		content, err = extractOdtText(filePath, content)
@@ -122,6 +124,15 @@ func ExtractText(filePath string) (*TextContent, error) {
 		content, err = extractOdsText(filePath, content)
 	case ".odp":
 		content.Format = "OpenDocument Presentation"
+		content, err = extractOdpText(filePath, content)
+	case ".ott":
+		content.Format = "OpenDocument Text Template"
+		content, err = extractOdtText(filePath, content)
+	case ".ots":
+		content.Format = "OpenDocument Spreadsheet Template"
+		content, err = extractOdsText(filePath, content)
+	case ".otp":
+		content.Format = "OpenDocument Presentation Template"
 		content, err = extractOdpText(filePath, content)
 	default:
 		return nil, fmt.Errorf("unsupported file format: %s", ext)

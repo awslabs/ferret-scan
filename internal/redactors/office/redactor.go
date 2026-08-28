@@ -239,8 +239,14 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 	// embedded image that merely fails to decode, holding nothing, does not stop the
 	// container from being written.
 	if len(unredacted) > 0 {
+		// "could not be shown free of reported values" rather than "still contain reported
+		// values". Both cases end here and only one of them is the latter: a part that could
+		// not be INSPECTED holds no value we know of, precisely because we could not look —
+		// see embedded.ContentInspectable. Claiming it contains a reported value would be a
+		// true refusal under a false heading, and the per-part reason beside it already says
+		// which case each one is.
 		return nil, fmt.Errorf(
-			"refusing to write %s: %d embedded part(s) still contain reported values: %s",
+			"refusing to write %s: %d embedded part(s) could not be shown free of reported values: %s",
 			filepath.Base(outputPath), len(unredacted), embeddedFailureSummary(unredacted))
 	}
 

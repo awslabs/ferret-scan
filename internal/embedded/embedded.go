@@ -28,6 +28,8 @@
 package embedded
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
 	"path/filepath"
 	"sort"
@@ -363,8 +365,57 @@ var opaqueExts = map[string]bool{
 	".pdf": true,
 }
 
+// zipBackedExts are the admitted extensions whose content is stored INSIDE a zip
+// archive, so that inspecting such a part's bytes requires the archive to open.
+//
+// Only the OOXML forms qualify among the admitted types. Images, audio and legacy OLE
+// store their text uncompressed and are readable as a flat byte range; PDF is compressed
+// but is handled by opaqueExts, which is a stronger statement.
+var zipBackedExts = map[string]bool{
+	".docx": true, ".xlsx": true, ".pptx": true,
+}
+
+// ContentInspectable reports whether a part's bytes can ACTUALLY be inspected, given
+// the bytes.
+//
+// ResidueInspectable answers the same question from the name alone, and for a zip-backed
+// type its answer rests on a premise: that the residue scan can inflate the archive's
+// members. When the archive will not open, that premise fails — the scan reads only the
+// compressed bytes, finds nothing, and the caller reads "nothing found" as "holds none of
+// the reported values". So an unopenable OOXML part is not inspectable, whatever its
+// extension says, and must be treated the way PDF is: always dispatched, and refused
+// rather than written if no redactor can rewrite it.
+//
+// Measured on a real .docx carrying word/embeddings/attach.docx whose bytes begin with the
+// zip magic but are not a readable archive: the scan could not parse it, so the value
+// inside was never REPORTED, so it was absent from the redaction value set, so the residue
+// scan was not looking for it, so the part was skipped and copied through verbatim — a
+// "redacted" document shipping cleartext at exit 0. The scan disclosed the part as not
+// examined (#404) and the write side had no way to act on it. See #517.
+//
+// A part whose extension is not zip-backed is unaffected: the answer collapses to
+// ResidueInspectable, so nothing else changes shape.
+func ContentInspectable(name string, content []byte) bool {
+	if !ResidueInspectable(name) {
+		return false
+	}
+	if !zipBackedExts[strings.ToLower(filepath.Ext(name))] {
+		return true
+	}
+	// An empty or truncated part cannot be an archive either, and zip.NewReader is the
+	// same reader the residue scan uses, so this asks exactly the question the scan's
+	// premise depends on.
+	if _, err := zip.NewReader(bytes.NewReader(content), int64(len(content))); err != nil {
+		return false
+	}
+	return true
+}
+
 // ResidueInspectable reports whether scanning a part's raw bytes for a value is a
 // sound test for that value's ABSENCE.
+//
+// Judged from the NAME alone. For a zip-backed type the answer is conditional on the
+// archive opening — see ContentInspectable, which callers holding the bytes should prefer.
 //
 // False means "we cannot see inside this", which makes the part always-dispatched
 // rather than always-skipped. Getting that polarity backwards is how a value inside a
