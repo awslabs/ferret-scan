@@ -73,11 +73,14 @@ ferret-scan --file "C:\path\to\scan" --profile my-debug-profile
 
 ### Environment Variables
 
+`FERRET_DEBUG` is the only debug environment variable. There is no `FERRET_VERBOSE` — it is not read
+anywhere in the codebase and setting it changes nothing (measured: byte-identical output with and
+without it, while `--verbose` more than doubles it). Use the `--verbose` flag.
+
 **Unix/Linux/macOS:**
 ```bash
 # Enable debug mode via environment variable
 export FERRET_DEBUG=1
-export FERRET_VERBOSE=1
 ./ferret-scan --file /path/to/scan
 ```
 
@@ -85,7 +88,6 @@ export FERRET_VERBOSE=1
 ```cmd
 REM Enable debug mode via environment variable
 set FERRET_DEBUG=1
-set FERRET_VERBOSE=1
 ferret-scan --file "C:\path\to\scan"
 ```
 
@@ -93,13 +95,60 @@ ferret-scan --file "C:\path\to\scan"
 ```powershell
 # Enable debug mode via environment variable
 $env:FERRET_DEBUG = "1"
-$env:FERRET_VERBOSE = "1"
 ferret-scan --file "C:\path\to\scan"
 
 # Make permanent for current user
 [Environment]::SetEnvironmentVariable("FERRET_DEBUG", "1", "User")
-[Environment]::SetEnvironmentVariable("FERRET_VERBOSE", "1", "User")
 ```
+
+#### Two things about `FERRET_DEBUG` that will bite you
+
+**Any non-empty value enables it, including `0`.** The check is
+`os.Getenv("FERRET_DEBUG") != ""`, so `FERRET_DEBUG=0` and `FERRET_DEBUG=false` both turn debug
+**on**. To turn it off, unset it (`unset FERRET_DEBUG`) rather than setting it to a falsey value.
+
+**It does not cover every component.** The variable is read while the configuration is being
+resolved, which is *after* the file router, the content router and the dual-path bridge have already
+been constructed with debug off — so their records never appear. `--debug` is applied earlier and
+covers everything. Measured on one `.txt` file, counting distinct `component` values:
+
+| lever | components that emit records |
+|---|---|
+| neither | *(none)* |
+| `FERRET_DEBUG=1` | `router`, `email_validator` |
+| `--debug` | `router`, `content_router`, `enhanced_validator_bridge`, `document_validator_bridge`, `email_validator` |
+
+So for anything about **content routing or the dual validation paths, use `--debug`** — the env var
+will show you a scan that looks like it never routed anything. `--debug` and `FERRET_DEBUG=1` are not
+interchangeable, and the difference is exactly the subsystem people most often need to inspect.
+
+### The shape of a debug record
+
+Most debug output is one JSON object per operation, on a single line, keyed `component` /
+`operation` / `success` with a free-form `metadata` map:
+
+```
+{"component":"content_router","operation":"route_content","request_id":"req-...","file_path":"...","success":true,"metadata":{"declared_sections":2,"document_body_length":16,"metadata_items":1,"processor_type":"Text Extractor+office_metadata"}}
+{"component":"enhanced_validator_bridge","operation":"process_content","request_id":"req-...","file_path":"...","success":true,"metadata":{"document_matches":1,"fallback_used":false,"metadata_matches":1,"processing_time":0,"routing_success":true,"total_matches":2}}
+```
+
+Because each record is one line of JSON, `grep` by component is the practical way to read it:
+
+```bash
+# Did content routing separate the document, and into how many sections?
+ferret-scan --file report.docx --debug 2>&1 | grep content_router
+
+# Did either validation path fail and fall back?
+ferret-scan --file report.docx --debug 2>&1 | grep -E 'fallback|routing_success'
+```
+
+Interleaved with the JSON are plain indented lines in the form `→ <label>: <detail>`, which are not
+JSON and will not parse — for example `→ fallback: Using legacy content aggregation`. Filter with
+`grep '{'` if you want only the structured records.
+
+There is no configurable log level, no `logging:` config section and no structured-logging toggle;
+debug is on or off. See [Content Router Architecture](content-router-architecture.md) for what the
+routing fields mean.
 
 ## What Debug Logging Shows
 

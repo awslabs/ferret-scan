@@ -287,7 +287,6 @@ diff -u old_results.json new_results.json
 #### Enable Detailed Logging
 ```bash
 export FERRET_DEBUG=1
-export FERRET_VERBOSE=1
 ./ferret-scan --file test.pdf --debug --verbose
 ```
 

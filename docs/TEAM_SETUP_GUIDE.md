@@ -262,7 +262,6 @@ Enable debug output for troubleshooting:
 # In .pre-commit-config.yaml
 env:
   FERRET_DEBUG: "1"
-  FERRET_VERBOSE: "1"
 ```
 
 ## Team Training

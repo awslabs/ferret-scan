@@ -512,6 +512,6 @@ The enhanced metadata validation system provides automatic migration:
 - **Source**: [github.com/awslabs/ferret-scan](https://github.com/awslabs/ferret-scan)
 
 ### Troubleshooting
-- [Content Routing Troubleshooting](../development/content-routing-troubleshooting.md)
+- [Enhanced Processing Sequence](../development/enhanced-processing-sequence.md)
 - [Debug Logging Guide](../development/debug_logging.md)
 - [Testing Guide](../testing/TESTING.md)

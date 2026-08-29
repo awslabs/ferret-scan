@@ -429,4 +429,4 @@ For more information about the enhanced metadata processing architecture, see:
 - [Content Router Architecture](content-router-architecture.md)
 - [Preprocessor-Aware Validation](preprocessor-aware-validation.md)
 - [Enhanced Processing Sequence](enhanced-processing-sequence.md)
-- [Content Routing Troubleshooting](content-routing-troubleshooting.md)
+- [Enhanced Processing Sequence](enhanced-processing-sequence.md)
