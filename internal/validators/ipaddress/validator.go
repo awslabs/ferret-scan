@@ -448,10 +448,21 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				clearsCap := hasStructuralSuffixAt(line, matchEnd) ||
 					(keywordSignal && !productVersion)
 
-				capped := false
-				if ambiguousShape && confidence >= 90 && !clearsCap {
+				// capEligible is a property of the VALUE, not of its current score: an
+				// ambiguous shape with no signal clearing it must never be reported above
+				// ambiguousShapeCap, whatever a later stage adds.
+				//
+				// Splitting eligibility from application is the fix for #545. Both used to be
+				// the one `confidence >= 90` test, so the ceiling was published only for values
+				// that ALREADY exceeded it — and the dual-path bridge adds a document-level
+				// adjustment after this validator returns, which could then carry a 75 past the
+				// bound with nothing left to clamp it. That is precisely the failure mode
+				// confidenceCeilingKey's own comment describes ("validator 55, CLI 75"),
+				// reintroduced one level up by withholding the bound in exactly the cases that
+				// had not yet crossed it.
+				capEligible := ambiguousShape && !clearsCap
+				if capEligible && confidence > ambiguousShapeCap {
 					confidence = ambiguousShapeCap
-					capped = true
 				}
 
 				// Ensure confidence stays within bounds
@@ -494,7 +505,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					"source":            "preprocessed_content",
 					"original_file":     originalPath,
 				}
-				if capped {
+				if capEligible {
 					meta[confidenceCeilingKey] = ambiguousShapeCap
 				}
 
