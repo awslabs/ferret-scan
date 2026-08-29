@@ -20,6 +20,12 @@ results:
             Production: 0
             TestData: 0.125
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: X9876543210
       line_number: 2
@@ -42,6 +48,12 @@ results:
             Production: 0
             TestData: 0.125
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: W1122009988
       line_number: 3
@@ -64,6 +76,12 @@ results:
             Production: 0
             TestData: 0.125
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: X5556667778
       line_number: 4
@@ -86,6 +104,12 @@ results:
             Production: 0
             TestData: 0.125
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: W3344556677
       line_number: 5
@@ -108,6 +132,12 @@ results:
             Production: 0
             TestData: 0.125
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: W9998887776
       line_number: 6
@@ -130,4 +160,10 @@ results:
             Production: 0
             TestData: 0.125
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document

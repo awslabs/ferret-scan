@@ -86,6 +86,12 @@ results:
             Production: 0
             TestData: 0
         subtype: MRN
+        validation_checks:
+            medical_context: true
+            mrn_label: true
+            not_an_npi: true
+            not_other_number_type: true
+            not_test_data: true
         validation_path: document
     - text: "490154203237518"
       line_number: 4

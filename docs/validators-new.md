@@ -188,6 +188,40 @@ Two properties of that arm are worth knowing, because they are what keep it from
 
 Column names are matched as real systems write them — `PATIENT` (Synthea), `PAT_MRN_ID` (Epic Clarity), `MRN` (Cerner), `patient_identifier`. Generic surrogate keys are deliberately **not** matched: the OMOP CDM's `person_id` is not treated as medical context, since a column of that name appears in countless non-clinical schemas and admitting it would make every one of them medical.
 
+### What `--explain` says it checked
+
+Every finding carries `Metadata["validation_checks"]`, and `--explain` turns it into the sentence a
+reviewer reads. Which checks are recorded depends on the subtype, because the subtypes do not have
+the same evidence available — an MBI has no check digit, so its format *is* the structural proof:
+
+| Subtype | Structural check | Context check | Exclusions recorded |
+|---|---|---|---|
+| `NPI` | `npi_checksum` (always true — a failure is not emitted) | `provider_context` | `not_phone_context` |
+| `DEA_NUMBER` | `dea_checksum` (always true) | `prescriber_context` | — |
+| `MEDICARE_MBI` | `mbi_format` (always true) | `medicare_context` | — |
+| `MRN` | `mrn_label` | `medical_context` | `not_an_npi`, `not_other_number_type` |
+| `INSURANCE_MEMBER_ID` | `letters_and_digits` | `insurance_label` | `not_other_id_shape`, `not_a_more_specific_id` |
+
+All five also record `not_test_data`, which is what drives the `likely_test` verdict rather than the
+prose — the rationale reports that concept in its own words instead of naming the check.
+
+Two rules govern what may appear here, and both are honesty rules rather than style:
+
+- **Only decisions the validator already made.** A check reported `true` that was never actually
+  tested is a false statement to whoever is reading the output to decide whether to redact. This is
+  why `MEDICARE_MBI` records `mbi_format` and not `npi_checksum`: there is no check digit in an MBI
+  to verify.
+- **A check that cannot vary carries no information, so it must be labelled as such.** The three
+  checksum-style entries are always `true` at the point of emission because a value that fails them
+  is discarded earlier — they tell the reader *which* proof was applied. The context and exclusion
+  entries genuinely vary per finding, and a test asserts they do; recording one as a constant would
+  read identically in the output while meaning nothing.
+
+Before this, medicalid was the one validator that recorded nothing, so its rationale named no check
+at all — "Flagged as an NPI; nearby context raised confidence by 20%" — even though the CMS check
+digit had in fact been verified ([#537](https://github.com/awslabs/ferret-scan/issues/537)). The
+phone-context exclusion described two principles below was likewise invisible in the output.
+
 ### Confidence curve
 - NPI (Luhn valid + "provider" keyword): 90
 - NPI (Luhn valid, no keyword): 60 (structural proof alone)

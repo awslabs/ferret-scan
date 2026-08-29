@@ -49,6 +49,13 @@
                 "TestData": 0.1
               },
               "subtype": "INSURANCE_MEMBER_ID",
+              "validation_checks": {
+                "insurance_label": true,
+                "letters_and_digits": true,
+                "not_a_more_specific_id": true,
+                "not_other_id_shape": true,
+                "not_test_data": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -105,6 +112,13 @@
                 "TestData": 0.1
               },
               "subtype": "INSURANCE_MEMBER_ID",
+              "validation_checks": {
+                "insurance_label": true,
+                "letters_and_digits": true,
+                "not_a_more_specific_id": true,
+                "not_other_id_shape": true,
+                "not_test_data": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -161,6 +175,13 @@
                 "TestData": 0.1
               },
               "subtype": "INSURANCE_MEMBER_ID",
+              "validation_checks": {
+                "insurance_label": true,
+                "letters_and_digits": true,
+                "not_a_more_specific_id": true,
+                "not_other_id_shape": true,
+                "not_test_data": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -217,6 +238,13 @@
                 "TestData": 0.1
               },
               "subtype": "INSURANCE_MEMBER_ID",
+              "validation_checks": {
+                "insurance_label": true,
+                "letters_and_digits": true,
+                "not_a_more_specific_id": true,
+                "not_other_id_shape": true,
+                "not_test_data": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -273,6 +301,13 @@
                 "TestData": 0.1
               },
               "subtype": "INSURANCE_MEMBER_ID",
+              "validation_checks": {
+                "insurance_label": true,
+                "letters_and_digits": true,
+                "not_a_more_specific_id": true,
+                "not_other_id_shape": true,
+                "not_test_data": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
@@ -329,6 +364,13 @@
                 "TestData": 0.1
               },
               "subtype": "INSURANCE_MEMBER_ID",
+              "validation_checks": {
+                "insurance_label": true,
+                "letters_and_digits": true,
+                "not_a_more_specific_id": true,
+                "not_other_id_shape": true,
+                "not_test_data": true
+              },
               "validation_path": "document"
             },
             "positiveKeywords": [
