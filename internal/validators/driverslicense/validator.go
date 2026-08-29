@@ -120,6 +120,18 @@ func NewValidator() *Validator {
 			"identification card", "operator", "driver's license",
 			"drivers license", "driver license", "dl number",
 			"license number", "licence number",
+			// The three-word forms exist for ONE reason: kwmatch matches a keyword's
+			// concatenation as a whole WORD, so a camelCase field name is only found when some
+			// keyword's words concatenate to exactly that word. "drivers license" gives
+			// "driverslicense" and matched `driversLicense`, but appending "Number" makes the
+			// word "driverslicensenumber" and no keyword reached it — measured 0 findings for
+			// `driversLicenseNumber: D1234567` on both the same line and the cross-line window,
+			// while the spaced, snake_case and apostrophe spellings of the same label all
+			// reported at 85-95 (#438). camelCase is the default key style of JSON, REST
+			// payloads and ORM exports, and a licence that is not reported is never redacted.
+			"drivers license number", "drivers licence number",
+			"driver license number", "driver licence number",
+			"driving license number", "driver's license number",
 		},
 		negativeKeywords: []string{
 			"ssn", "social security", "phone", "account", "serial",
