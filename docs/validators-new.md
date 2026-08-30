@@ -145,12 +145,38 @@ Addresses are notoriously hard because "number + words" occurs everywhere (code 
 ### Why this context design
 DL number formats are **maximally ambiguous** — they overlap with SSNs (9 digits), phone numbers (10 digits), and generic alphanumeric IDs. A California DL ("D1234567") looks like any letter+digit combination. Without strong keyword anchoring, this validator would fire on every 7-9 digit number in every document. The trade-off: real DL numbers without nearby "driver"/"DL"/"DMV" text will be missed — but that's acceptable because the FP rate of unanchored detection would make the tool unusable.
 
+### The label boost does not depend on the writing convention
+
+A licence label standing in the **label position** — the text before the line's first `:`, `#` or `=` — earns the label boost (+75, taking a finding from the base of 20 to 95), and it earns the same boost however that label is spelled. It did not always: the boost was awarded by matching eleven exact substrings (`drivers license:`, `dl:`, `license number:`, …), every one of which carries a literal space and colon, so the same label written any other way fell through to the generic keyword arm at +45/+55. Measured, one label per line, the identical value:
+
+| label | before | after |
+|---|---|---|
+| `drivers license:` | 95 HIGH | 95 HIGH |
+| `Drivers License:` | 95 HIGH | 95 HIGH |
+| `drivers_license:` | 75 MEDIUM | **95 HIGH** |
+| `drivers-license:` | 75 MEDIUM | **95 HIGH** |
+| `driversLicense:` | 65 MEDIUM | **95 HIGH** |
+| `DriversLicense:` | 65 MEDIUM | **95 HIGH** |
+| `dlNumber:` | 65 MEDIUM | **95 HIGH** |
+
+camelCase and snake_case are the default key styles of JSON, REST payloads and ORM exports, so the two conventions that lost were the two a machine-generated export uses — and a consumer gated on HIGH saw the spaced form while missing the rest ([#553](https://github.com/awslabs/ferret-scan/issues/553)). Note that the **column-header** path was already convention-insensitive: the same label as a CSV header scored 100 for every spelling both before and after. It was the inline label that lagged behind it.
+
+Two properties keep this from being a confidence giveaway, and both are asserted by tests:
+
+- **The label must occupy the label position.** This is *narrower* than the substring list it supplements: `D1234567: issued under a drivers license` does not earn the boost, because there the licence words follow the separator and are therefore the value, not the label.
+- **A label is short.** The label position is bounded at 64 bytes, so a sentence that happens to mention a licence and end in a colon cannot occupy it. Without that bound the separator requirement — which is the whole reason prose is excluded — would be defeated by any prose ending in a colon.
+
+Bare `license` is deliberately **not** one of the labels that earns the boost: it could be a software, fishing, or gun licence. `Software license:` and `Fishing license:` are unchanged, as is `"license": "MIT"` in a package manifest.
+
 ### Confidence curve
-- "Driver's License: D1234567" → 95
-- "DL: D1234567" → 90
-- "License: D1234567" (bare "license") → 40 (could be software)
-- "D1234567" with no context → 20 (too ambiguous)
-- "Reference: D1234567" → 0 (negative keyword suppresses)
+
+Measured against the binary rather than transcribed — three of the five rows previously published here were wrong, and had been independent of any recent change:
+
+- `Driver's License: D1234567` → 95 (any convention of the label; see above)
+- `DL: D1234567` → 95 (was documented as 90)
+- `License: D1234567` (bare "license") → 65 (was documented as 40)
+- `D1234567` with no context → **not reported at all** (was documented as 20). The positive-keyword gate refuses a candidate with no DL vocabulary on the line, which is what the design note above describes; there is no low-confidence finding to see.
+- `Reference: D1234567` → 0 (negative keyword suppresses)
 
 ---
 
