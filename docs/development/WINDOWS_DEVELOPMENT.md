@@ -374,7 +374,7 @@ $env:FERRET_DEBUG = "1"
 $env:FERRET_LOG_LEVEL = "debug"
 
 # Run with debug output
-.\ferret-scan.exe scan . --debug --verbose
+.\ferret-scan.exe --file . --debug --verbose
 
 # Debug specific components
 $env:FERRET_DEBUG_PLATFORM = "1"
@@ -412,7 +412,7 @@ $env:FERRET_DEBUG = "1"
 $env:FERRET_LOG_FILE = "debug.log"
 
 # Run with logging
-.\ferret-scan.exe scan . --debug 2>&1 | Tee-Object debug-output.txt
+.\ferret-scan.exe --file . --debug 2>&1 | Tee-Object debug-output.txt
 
 # Analyze logs
 Select-String -Path "debug-output.txt" -Pattern "ERROR|WARN"
@@ -765,7 +765,7 @@ jobs:
       run: |
         .\ferret-scan.exe --version
         echo "Test content" | Out-File test.txt
-        .\ferret-scan.exe scan test.txt
+        .\ferret-scan.exe --file test.txt
 ```
 
 ### Local CI Simulation

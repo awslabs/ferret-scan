@@ -284,7 +284,7 @@ COPY ferret-scan-windows-amd64.exe C:/ferret-scan.exe
 RUN powershell -Command \
     C:/ferret-scan.exe --version; \
     echo 'Test content' | Out-File test.txt; \
-    C:/ferret-scan.exe scan test.txt
+    C:/ferret-scan.exe --file test.txt
 ```
 
 ```bash
