@@ -959,6 +959,19 @@ var prefixLabels = []string{
 	"driver's licence", "drivers licence", "driver licence",
 	"license number", "licence number", "license no", "licence no",
 	"dl number", "dl",
+	// The three-word forms are here for composition, and they are a no-op on their own. A keyword's
+	// concatenation must equal the WHOLE word, so the label position "driverslicensenumber" is NOT
+	// matched by "drivers license" — the trailing "number" makes it a different word. Without these
+	// entries a camelCase three-word label would be detected but band-demoted, which is the very
+	// defect this function fixes.
+	//
+	// On this branch alone they change nothing measurable, because `driversLicenseNumber:` produces no
+	// finding at all to boost until the vocabulary gains the three-word positives (#438/#554). Adding
+	// them cannot widen anything either: a label position containing "drivers license number"
+	// necessarily contains "drivers license", which is already above.
+	"drivers license number", "drivers licence number",
+	"driver license number", "driver licence number",
+	"driving license number", "driver's license number",
 }
 
 // valueSeparators end a field label. A labelled field is `<label><sep><value>`, and the separator is
