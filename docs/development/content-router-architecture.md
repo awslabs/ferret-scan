@@ -62,15 +62,34 @@ func NewContentRouterWithFileRouter(fileRouter *FileRouter) *ContentRouter
 
 #### Content Separation Logic
 
-The Content Router uses file type aware routing with pattern-based separation:
+The Content Router uses file type aware routing over structure **declared by the producer**:
 
 1. **File Type Detection**: Uses FileRouter's `CanContainMetadata()` to determine if file supports metadata
 2. **Early Skip for Plain Text**: If file cannot contain metadata, returns empty metadata array and full document body
-3. **Section Identification**: For metadata-capable files, looks for metadata section markers (e.g., `--- image_metadata ---`)
-4. **Content Extraction**: Extracts content between section markers
-5. **Preprocessor Type Detection**: Maps section markers to preprocessor types using `GetMetadataType()`
+3. **Section Identification**: For metadata-capable files, reads `ProcessedContent.Sections`, which the file
+   router populated in the same loop that concatenated the extractors' output
+4. **Content Extraction**: Uses each `ContentSection`'s declared offsets; the section text is never re-parsed
+   out of the document body
+5. **Preprocessor Type Detection**: `preprocessors.ClassifySection` maps the **preprocessor's own
+   `GetName()`** — a constant in this repo — to a section kind, by exact match on a closed set
 6. **Document Body Assembly**: Combines non-metadata content into document body
 7. **Context Preservation**: Maintains preprocessor information for each metadata section
+
+> **Not markers in the text.** Routing does **not** look for `--- image_metadata ---` and does not
+> extract content between markers. It used to, and that was removed: the file router flattens every
+> extractor's output into `Text` with literal `\n\n--- name ---\n` separators, and re-parsing that text
+> to recover which bytes came from which extractor let the *document author* choose the structure. A
+> paragraph typed as `--- office_metadata ---` became a section boundary and moved the rest of the
+> document onto the metadata path, which runs a single field-name scanner instead of the full validator
+> set — so findings were **deleted, not relabelled**, and an unreported finding is never redacted. The
+> source calls this in-band signalling, "the same class of defect as SQL injection"
+> (`internal/preprocessors/preprocessor.go`).
+>
+> The `--- name ---` separators are still present in `Text` and still visible in `--preprocess-only`
+> output, so they remain a useful *display* cue — but they are not what routing reads. An empty
+> `Sections` means "no structure was declared", which consumers must treat as "all of `Text` is document
+> body": the fail-closed direction, since the document path runs every validator. See
+> [Enhanced Processing Sequence §3.3](enhanced-processing-sequence.md) for the classifier itself.
 
 #### Supported Preprocessor Types
 
@@ -565,30 +584,49 @@ The enhanced architecture is designed for seamless migration:
 
 ### Debug Commands
 
+There is one debug lever, `--debug`. Component-specific debug flags do not exist.
+
 ```bash
-# Enable debug logging for content routing
-ferret-scan --file document.pdf --debug-content-routing
+# Everything below is one flag: --debug turns on structured records for every component.
+ferret-scan --file document.pdf --debug
 
-# Enable metadata validator debug mode
-ferret-scan --file document.pdf --debug-metadata-validation
+# Content routing only
+ferret-scan --file document.pdf --debug 2>&1 | grep content_router
 
-# Performance profiling mode
-ferret-scan --file document.pdf --profile-performance
-
-# Fallback to legacy behavior for comparison
-ferret-scan --file document.pdf --legacy-validation
+# The dual-path bridge, including any fallback
+ferret-scan --file document.pdf --debug 2>&1 | grep enhanced_validator_bridge
 ```
+
+`FERRET_DEBUG` also enables debug mode, but **not for this subsystem** — it is read after the router
+and the bridge are constructed, so it does not produce their records. See
+[Debug Logging](debug_logging.md) for the measured component coverage of each lever.
 
 ### Log Analysis
 
-Key log entries to monitor:
+Debug output is one JSON object per operation, keyed `component` / `operation` / `success`, with a
+free-form `metadata` map. There is no severity prefix and no `key=value` text format. Verbatim, for a
+`.docx`:
 
 ```
-INFO  content_router: Successfully routed content (doc_body=1234 chars, metadata_sections=3)
-WARN  content_router_fallback: Falling back to legacy content aggregation (error=parsing_failed)
-INFO  metadata_validator: Processing image_metadata (fields=5, confidence_boost=0.6)
-ERROR enhanced_bridge: Metadata validation failed, continuing with document validators only
+{"component":"router","operation":"file_evaluation","request_id":"req-...","file_path":"...","success":true,"metadata":{"file_ext":".docx","file_size":1024}}
+{"component":"content_router","operation":"route_content","request_id":"req-...","file_path":"...","success":true,"metadata":{"declared_sections":2,"document_body_length":16,"metadata_items":1,"processor_type":"Text Extractor+office_metadata"}}
+{"component":"enhanced_validator_bridge","operation":"process_content","request_id":"req-...","file_path":"...","success":true,"metadata":{"document_matches":1,"fallback_used":false,"metadata_matches":1,"processing_time":0,"routing_success":true,"total_matches":2}}
 ```
+
+Three of those fields answer the questions this document exists for:
+
+- **`declared_sections`** confirms the declared-not-parsed design above — it counts entries in
+  `ProcessedContent.Sections`, not markers found in text. `processor_type` is the `+`-joined list of the
+  producers that declared them.
+- **`routing_success`** is whether the content router separated the content at all.
+- **`fallback_used`** is whether `processContentLegacy` ran. It is `false` on a healthy scan; see
+  [Error Recovery](#error-handling-and-recovery) for what makes it `true`.
+
+The full set of components that emit records is in [Debug Logging](debug_logging.md).
+
+Interleaved with the JSON are plain indented debug lines, `→ <label>: <detail>` — for example
+`→ fallback: Using legacy content aggregation` when the dual path fails and
+`processContentLegacy` takes over.
 
 ## Future Enhancements
 

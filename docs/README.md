@@ -41,7 +41,6 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - [🆕 Content Router Architecture](development/content-router-architecture.md) - Enhanced content routing and dual-path validation
 - [🆕 Preprocessor-Aware Validation](development/preprocessor-aware-validation.md) - Validation rules and confidence scoring
 - [🆕 Enhanced Processing Sequence](development/enhanced-processing-sequence.md) - Updated processing flow with content routing
-- [🆕 Content Routing Troubleshooting](development/content-routing-troubleshooting.md) - Troubleshooting guide for enhanced architecture
 - [🆕 Context Analysis Integration](development/context-analysis-integration.md) - Context engine integration and data flow
 - [🆕 Enhanced Metadata Validation](development/enhanced-metadata-validation.md) - Preprocessor-aware metadata validation guide
 - [🆕 FileRouter Metadata Capabilities](development/file-router-metadata-capabilities.md) - File type detection and metadata capability methods
