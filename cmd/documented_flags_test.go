@@ -62,9 +62,6 @@ var flagToken = regexp.MustCompile(`--([a-zA-Z0-9][a-zA-Z0-9-]*)`)
 // TestKnownFlagGapsAreStillGapsSoTheListCannotRot. That is what stops this list from outliving the
 // problem and quietly exempting a file forever.
 var knownGaps = map[string]string{
-	// 10 absent flags (--test-component, --test-routing, --health-check, --diagnostic-report, ...).
-	// A 525-line near-duplicate of the guide #503 deleted, and not linked from any index.
-	"docs/troubleshooting/enhanced-architecture-runbook.md": "#555",
 	// --dry-run
 	"docs/development/file-router-metadata-capabilities.md": "#555",
 	// --file-list, on `ferret-scan scan` lines which are themselves wrong (no such subcommand)
