@@ -14,7 +14,7 @@
 # against the 1.26.5 stdlib and both flagged by Trivy on main; it also carries the
 # earlier 1.26.5 fixes for CVE-2026-39822 (os symlink root escape) and CVE-2026-42505
 # (crypto/tls ECH privacy leak). Keep in sync with .go-version.
-FROM public.ecr.aws/docker/library/golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS builder
+FROM public.ecr.aws/docker/library/golang:1.27.0-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc AS builder
 
 # Install minimal build dependencies
 # Add ca-certificates back if you uncomment the COPY line below
