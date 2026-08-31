@@ -49,7 +49,7 @@ docker run -p 8080:8080 ferret-scan
 docker run -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
 
 # Custom port
-docker run -p 3000:8080 -e PORT=8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
+docker run -p 3000:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
 ```
 
 ### CLI Mode
