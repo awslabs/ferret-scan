@@ -212,6 +212,105 @@ Consequences for the reranker:
 - **Any new argmax over a map needs an explicit tie-break.** The co-occurrence scorer will rank
   candidate boosts; ranking with a strict `>` over a map reintroduces exactly this bug.
 
+## 7c. Reserved, documentation and test values: suppress vs demote (added 2026-08-31, #364)
+
+Before this section the treatment of a reserved or documentation value varied per validator with
+no stated reason: the voided SSN `078-05-1120` was dropped, NANP `555-01xx` and the RFC 6238 OTP
+seed were capped at LOW 15, the Visa test card landed at 15 by arithmetic accident, and the AWS
+documentation access key reported **84% MEDIUM**. Same class of value, four outcomes. The rule
+below is what the shipped code already does, written down so a new validator has something to
+follow.
+
+**Three treatments, and the predicate that selects one.** Read them in order; the first that
+applies wins.
+
+| # | Treatment | Predicate | Precedent |
+|---|---|---|---|
+| **T1** | **Drop (N1 — never emitted)** | A numbering or registration authority has withheld **this exact value** from assignment, so it identifies nobody, now or later — *and* the value has no fixture footprint that needs redacting. | `ssn.isTestSSN` (`123-45-6789`, `078-05-1120`); `ipaddress` RFC 5737 TEST-NET ranges |
+| **T2** | **Ceiling at 15, published as `Metadata["confidence_ceiling"]`** | The value is **published as a placeholder** by a standard, a registration authority or a vendor's own documentation, but nothing withholds it from being real — *or* T1's predicate holds while the value still needs to be redacted. | `phone.reservedFictionalCeiling` (NANP `555-01xx`); `otp.publishedSecretCeiling` (RFC 4226/6238 seeds); `creditcard` test cards; `secrets.awsDocPlaceholderCeiling` (`AKIAIOSFODNN7EXAMPLE`, `wJalr…CYEXAMPLEKEY`) |
+| **T3** | **Leave reported at full confidence** | The value is a **vendor test-mode credential**. `sk_test_…` authenticates against Stripe's test environment: it can be abused and it discloses account structure. "test" in a vendor prefix is a product tier, not a fiction. | `secrets.isStripeAPIKey` — unchanged on purpose |
+
+**Why 15 and not 85.** 15 is the top of LOW. At 85 the value still appears under
+`--confidence medium,high`, which is the pre-commit filter this repo itself uses — i.e. it stays
+exactly the finding the complaint was about. Four validators now agree on 15; a fifth number
+would recreate the divergence.
+
+**Why T2 is the default and T1 the exception.** Only reported findings reach the redactor
+(§4, "Redaction — NOT band-gated anywhere"), so a drop removes the value from the redaction path
+as well as from the report. Measured on the two AWS placeholders: `AKIAIOSFODNN7EXAMPLE` is a
+live finding in **39** golden files and `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` in **16**,
+because a reserved placeholder is the responsible value to commit to a public repo. Dropping them
+would have left both in the cleartext of a "redacted" document. The ceiling moved only `conf=`
+labels — **not one redacted byte changed** in any redaction golden. So: measure the fixture
+footprint before choosing T1 over T2.
+
+**A ceiling must be PUBLISHED, not just applied.** Confidence is raised in at least three places
+after a validator scores a value, so a locally clamped variable does not hold:
+
+1. `mergeBySpanKeepStrongest` (secrets) keeps the **max** confidence across detection paths —
+   inside the validator. Measured: `wJalr…CYEXAMPLEKEY` was capped to 65 in `findAWSSecretKeys`
+   and `ValidateContent` still returned 75.
+2. The bridge's document-context adjustment and cross-path correlation boost (§5).
+
+The generic mechanism is `Metadata["confidence_ceiling"]` (a **`float64`**; any other type is
+ignored) plus `clampToCeiling` in `internal/validators/dual_path_bridge.go`. Note the bridge clamp
+runs on the **bridge path only** — `pkg/redact` and any embedder calling `ValidateContent`
+directly bypass it, so a validator that raises confidence internally must also clamp at its own
+boundary (`secrets.clampToPublishedCeiling`).
+
+**The predicate must not be attacker-reachable.** Anything that makes a finding quieter is an
+evasion surface, and this repo has already recorded the shape once (TM-11: context-keyword padding
+driving a checksum-valid secret to zero). A value-marker rule is only admissible where the
+attacker cannot put the marker there. The AWS rule qualifies because both credential types have an
+exact-length gate: appending `EXAMPLE` to a real 20-char `AKIA` key makes it 27, which
+`isAWSAccessKey` rejects, and `reAWSSecretCandidate`'s trailing `($|[^A-Za-z0-9/+=])` means
+`<real40>EXAMPLE` produces no 40-char capture at all. The same rule is deliberately **not**
+applied to the generic `API_KEY_OR_SECRET` type, which has no length gate.
+
+**Every such change ships with a same-shape control.** A fix that demotes real values alongside
+placeholders is worse than the bug, because the finding still appears and the scan still looks
+like it worked. Prove a randomly generated value of the identical shape keeps its exact
+pre-change confidence.
+
+### Deliberately out of scope: documentation-example IBANs
+
+`#364` asks for "the ISO 13616 example IBAN" to be suppressed and names
+`GB29NWBK60161331926819`. **There is no such value**, which is why this class gets no rule rather
+than a half-rule. Measured 2026-08-31:
+
+- ISO 13616 registers **formats**, not values. Neither the standard nor the Wikipedia articles
+  that cite it attribute any IBAN to it; `GB82 WEST 1234 5698 7654 32` is Wikipedia's own
+  fictitious worked example for the check-digit algorithm.
+- The registration authority (ISO 13616-2) publishes one **sample per country**, and the current
+  GB sample is `GB33BUKB20201555555555`. Neither `GB29NWBK60161331926819` nor
+  `GB82WEST12345698765432` appears in that set at all — nor do `DE89370400440532013000`,
+  `NL91ABNA0417164300` and the rest of this repo's own IBAN fixtures.
+- That sample set changes between registry releases, so it is not a stable denylist either.
+
+So T1 is unavailable (nothing withholds these values) and T2 has no citable predicate — only an
+enumerated list of folklore values, which would demote three famous IBANs while leaving the other
+six in `bankaccount`'s own suite at 100% HIGH: a fifth inconsistency, not a fix. `bankaccount`
+also carries `intrinsicValueFloor` specifically so context cannot erase a mod-97-valid IBAN, so a
+context-based rule is ruled out too.
+
+For anyone revisiting this: the **cost** is low and was measured, so cost is not the objection.
+Capping `GB29NWBK60161331926819` and `GB82WEST12345698765432` at 15 breaks exactly **one** test
+(`TestBankAccountValidator_IBAN_IntrinsicValueFloor`, which asserts the second value scores high
+with no negative context) and **zero** golden files — not the dozen a previous review estimated.
+The objection is that no authority reserves an IBAN value, so any list is arbitrary. If the
+registry sample set is ever vendored with its release number, T2 becomes available for it.
+
+Also left alone, and not defects: `CREDIT_CARD` `4111…`/`4242…` at 15 and `EMAIL`
+`test@example.com` at 8 / `jane@example.org` at 48 already sit in LOW, which T2 is satisfied by.
+Non-NANP fictional phone ranges (Ofcom `07700 900xxx`, AU `0491 570 xxx`) are unimplemented T2
+candidates; `phone.isReservedFictionalNumber` says so in a comment rather than implying the check
+is exhaustive.
+
+**One consequence to state loudly.** Confidence is folded into the suppression hash at `%.2f`
+(§4, hazard 1). Any retreatment under this section orphans every existing user suppression rule
+for that finding, which then resurfaces. That is a real migration cost and belongs in the PR body,
+not in a footnote.
+
 ## 8. What this unblocks
 
 The cross-validator reranker plan (proximity-gated co-occurrence, ~5-line window, +8..+12) can
