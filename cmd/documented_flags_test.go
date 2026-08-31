@@ -62,8 +62,6 @@ var flagToken = regexp.MustCompile(`--([a-zA-Z0-9][a-zA-Z0-9-]*)`)
 // TestKnownFlagGapsAreStillGapsSoTheListCannotRot. That is what stops this list from outliving the
 // problem and quietly exempting a file forever.
 var knownGaps = map[string]string{
-	// --dry-run
-	"docs/development/file-router-metadata-capabilities.md": "#555",
 	// --file-list, on `ferret-scan scan` lines which are themselves wrong (no such subcommand)
 	"docs/user-guides/README-Windows-Usage.md": "#556",
 	// --continue-on-error, same

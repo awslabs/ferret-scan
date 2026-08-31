@@ -151,18 +151,31 @@ The file type filtering provides measurable performance improvements:
 
 ### Debug Logging
 
-Both methods provide comprehensive debug logging when debug mode is enabled:
+The routing decision each method produces is visible under `--debug`, in the
+`content_router`/`route_content` record. Captured verbatim from a directory holding one
+metadata-capable file and one that is not:
 
 ```bash
-# Enable debug logging
-ferret-scan --file document.pdf --debug
-
-# Example debug output
-[DEBUG] file_type_detection: File: document.pdf, Extension: .pdf, CanContainMetadata: true
-[DEBUG] metadata_type_detection: File: document.pdf, Extension: .pdf, MetadataType: document_metadata
-[DEBUG] file_type_detection: File: script.py, Extension: .py, CanContainMetadata: false
-[DEBUG] metadata_type_detection: File: script.py, Extension: .py, MetadataType: none
+ferret-scan --file mixed/ --recursive --debug
 ```
+
+```json
+{"component":"content_router","operation":"route_content","file_path":"mixed/script.py","success":true,"metadata":{"document_body_length":18,"file_extension":".py","metadata_items":0,"metadata_skipped":true,"reason":"file_type_no_metadata"}}
+{"component":"content_router","operation":"route_content","file_path":"mixed/report.docx","success":true,"metadata":{"declared_sections":2,"document_body_length":25,"metadata_items":1,"processor_type":"Text Extractor+office_metadata"}}
+```
+
+`metadata_skipped: true` with `reason: file_type_no_metadata` is `CanContainMetadata`
+returning false; the absence of those two fields, together with `metadata_items` and a
+`processor_type` naming a metadata extractor, is it returning true. (`request_id` is
+present on the real records and omitted above only because it varies per run.)
+
+> **`CanContainMetadata` and `GetMetadataType` do not log anything themselves.** Both
+> guard their `LogDetail` calls on `fr.observer.Debug() != nil`, and a `FileRouter`'s
+> observer comes from `observability.NewStandardObserver`, which never populates
+> `DebugObserver` — `NewFileRouter(true)` raises the observability *level* but leaves
+> that field nil, and `FileRouter` exposes no setter for it. Measured: `--debug` emits
+> zero `file_type_detection` and zero `metadata_type_detection` lines. Read the
+> `content_router` record above instead of grepping for those two tokens.
 
 ### Observability Integration
 
@@ -320,12 +333,19 @@ The architecture supports future extensions:
 # Enable file type detection debugging
 ferret-scan --file document.pdf --debug
 
-# Test file type detection on multiple files
-ferret-scan --file "*.pdf" --debug --dry-run
+# Show what each file's preprocessor extracted, without running validators.
+# --file takes a glob, so this covers several files in one run.
+ferret-scan --file "*.pdf" --debug --preprocess-only
 
-# Profile performance improvements
-ferret-scan --file large_codebase/ --recursive --profile
+# Report per-stage timings for a directory scan
+ferret-scan --file large_codebase/ --recursive --debug
 ```
+
+The last command's timings come from the `Parallel processing: N files, M matches, W
+workers, Xms` line and the `process_content completed (Xms)` step records. There is no
+CPU or heap profiling flag; `--profile` is unrelated — it selects a named profile from
+the configuration file and **requires a value** (`--profile debug`). Given without one it
+exits 2 with `flag needs an argument: -profile`.
 
 ---
 
