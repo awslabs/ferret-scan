@@ -40,15 +40,11 @@ The GitLab CI/CD pipeline includes the following stages:
 
 ### Environment Variables
 
-The pipeline uses these environment variables (automatically set):
-
-```yaml
-variables:
-  FERRET_TEST_MODE: "true"          # Enable AWS mocking
-  AWS_ACCESS_KEY_ID: "test-key"     # Mock AWS credentials
-  AWS_SECRET_ACCESS_KEY: "test-secret"
-  AWS_REGION: "us-east-1"
-```
+`.gitlab-ci.yml` sets none of these. It declares `GO_VERSION`, `GO_DOCKER_IMAGE`, the
+Kubernetes resource limits, `AUTO_VERSION_ENABLED` and the license-scanning variables,
+and contains no `AWS_*` variable at all. `FERRET_TEST_MODE` is set by the `Makefile` and
+`scripts/run-tests.sh` when they invoke `go test`, not by the pipeline — and it enables
+no AWS mocking: it is read only by `tests/helpers`, and no production code reads it.
 
 ### Caching
 
@@ -206,10 +202,8 @@ GitLab Duo can help with:
 
 ### Running Tests Locally
 ```bash
-# Set up test environment
-export FERRET_TEST_MODE=true
-
-# Run the same tests as CI
+# Run the same tests as CI. The Makefile targets set FERRET_TEST_MODE themselves;
+# exporting it by hand changes nothing, because no production code reads it.
 make test-unit
 make test-integration
 make test-race

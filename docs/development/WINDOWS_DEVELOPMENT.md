@@ -78,8 +78,8 @@ $GoPath = [Environment]::GetEnvironmentVariable("GOPATH", "User")
 $CurrentPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 [Environment]::SetEnvironmentVariable("PATH", "$CurrentPath;$GoPath\bin", "User")
 
-# Set development-specific variables
-[Environment]::SetEnvironmentVariable("FERRET_DEV_MODE", "1", "User")
+# Set development-specific variables. FERRET_DEBUG is the only one the binary reads;
+# there is no FERRET_DEV_MODE.
 [Environment]::SetEnvironmentVariable("FERRET_DEBUG", "1", "User")
 ```
 
@@ -159,10 +159,9 @@ Create `.vscode/launch.json`:
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/main.go",
-            "args": ["scan", ".", "--debug"],
+            "args": ["--file", ".", "--recursive", "--debug"],
             "env": {
-                "FERRET_DEBUG": "1",
-                "FERRET_TEST_MODE": "1"
+                "FERRET_DEBUG": "1"
             },
             "console": "integratedTerminal"
         },
@@ -323,6 +322,12 @@ go tool cover -html=coverage.out -o coverage.html
 ```
 
 ### Windows-Specific Testing
+
+`FERRET_TEST_MODE` marks a process as running under the integration tests. It is set by
+the `Makefile`, `scripts/run-tests.sh` and `tests/helpers`, and read only by
+`tests/helpers` — **no production code reads it**, so setting it does not change how
+`ferret-scan` behaves. Set it to match how CI runs the tests, not to switch anything on.
+
 ```powershell
 # Set Windows test environment
 $env:FERRET_TEST_MODE = "1"
@@ -371,15 +376,14 @@ platform:
 ```powershell
 # Enable debug mode
 $env:FERRET_DEBUG = "1"
-$env:FERRET_LOG_LEVEL = "debug"
 
 # Run with debug output
 .\ferret-scan.exe --file . --debug --verbose
-
-# Debug specific components
-$env:FERRET_DEBUG_PLATFORM = "1"
-$env:FERRET_DEBUG_PATHS = "1"
 ```
+
+Debug output is all-or-nothing: there is no log level and no per-component switch.
+`FERRET_LOG_LEVEL`, `FERRET_DEBUG_PLATFORM` and `FERRET_DEBUG_PATHS` are read nowhere.
+To narrow the output, filter it — `Select-String -Pattern "platform|paths"`.
 
 ### Using Delve Debugger
 ```powershell
@@ -406,10 +410,12 @@ Use the launch configurations in `.vscode/launch.json` to debug:
 4. **Inspect Variables**: Hover over variables or use Debug Console
 
 ### Logging and Diagnostics
+The binary has no file logger — there is no `FERRET_LOG_FILE`, and nothing writes a
+`*.log`. Redirect the stream instead:
+
 ```powershell
 # Enable comprehensive logging
 $env:FERRET_DEBUG = "1"
-$env:FERRET_LOG_FILE = "debug.log"
 
 # Run with logging
 .\ferret-scan.exe --file . --debug 2>&1 | Tee-Object debug-output.txt
