@@ -291,7 +291,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			headerImpact[h] = imp
 			return imp
 		}
-		linePositiveKeywords := v.findKeywordsOnLine(line, v.positiveKeywords)
+		// Positives use the label-flexible matcher so a camelCase or snake_case label is REPORTED as
+		// supporting evidence; negatives keep the strict one, because widening a suppressor silences
+		// real values. See findLabelsOnLine.
+		linePositiveKeywords := v.findLabelsOnLine(line, v.positiveKeywords)
 		lineNegativeKeywords := v.findKeywordsOnLine(line, v.negativeKeywords)
 
 		// emit scores one candidate and appends a match if it survives. text is
@@ -841,7 +844,8 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 		strings.Contains(lower, "driver's license:") || strings.Contains(lower, "drivers license:") ||
 		strings.Contains(lower, "driver license:") || strings.Contains(lower, "license number:") ||
 		strings.Contains(lower, "licence number:") || strings.Contains(lower, "license no:") ||
-		strings.Contains(lower, "license no.") {
+		strings.Contains(lower, "license no.") ||
+		v.labelledFieldPrefix(lower) {
 		impact += 75 // prefix pattern -> base 20 + 75 = 95
 	} else {
 		// Check for positive keywords (moderate signal)
@@ -957,4 +961,114 @@ func isSequentialDigits(s string) bool {
 		}
 	}
 	return ascending || descending
+}
+
+// prefixLabels are the labels that, standing in the LABEL POSITION of a field, identify the value
+// beside them as a driver's licence number. They are the same concepts as the literal substrings in
+// AnalyzeContext, expressed once each instead of once per spelling.
+var prefixLabels = []string{
+	"driver's license", "drivers license", "driver license",
+	"driver's licence", "drivers licence", "driver licence",
+	"license number", "licence number", "license no", "licence no",
+	"dl number", "dl",
+	// The three-word forms are here for composition, and they are a no-op on their own. A keyword's
+	// concatenation must equal the WHOLE word, so the label position "driverslicensenumber" is NOT
+	// matched by "drivers license" — the trailing "number" makes it a different word. Without these
+	// entries a camelCase three-word label would be detected but band-demoted, which is the very
+	// defect this function fixes.
+	//
+	// On this branch alone they change nothing measurable, because `driversLicenseNumber:` produces no
+	// finding at all to boost until the vocabulary gains the three-word positives (#438/#554). Adding
+	// them cannot widen anything either: a label position containing "drivers license number"
+	// necessarily contains "drivers license", which is already above.
+	"drivers license number", "drivers licence number",
+	"driver license number", "driver licence number",
+	"driving license number", "driver's license number",
+}
+
+// valueSeparators end a field label. A labelled field is `<label><sep><value>`, and the separator is
+// what distinguishes a label from prose: "please renew your drivers license soon" contains the label
+// words but no separator, and must not earn the label boost.
+const valueSeparators = ":#="
+
+// labelledFieldPrefix reports whether the text before this line's first value separator is a
+// driver's-licence label.
+//
+// # Why this exists
+//
+// The literal list in AnalyzeContext awards the label boost (+75, taking a finding from 20 to 95) by
+// matching exact substrings such as "drivers license:". Those literals carry a space and a colon, so
+// the SAME label written in any other convention could not match and fell through to the generic
+// keyword arm at +45/+55. Measured at HEAD, one label per line, identical value:
+//
+//	drivers license: D1234567      95 HIGH
+//	Drivers License: D1234567      95 HIGH
+//	drivers_license: D1234567      75 MEDIUM
+//	driversLicense: D1234567       65 MEDIUM
+//	DriversLicense: D1234567       65 MEDIUM
+//
+// Three bands for one label, decided by the writing convention of whoever produced the file rather
+// than by the evidence. camelCase and snake_case are the default key styles of JSON, REST payloads
+// and ORM exports, so the two conventions that lose are the two a machine-generated export uses. A
+// consumer gated on HIGH sees the spaced form and not the others (#553).
+//
+// # The rule
+//
+// This is deliberately NOT a wider substring search. It is narrower than the literals in one
+// important way and wider in another:
+//
+//   - **Narrower:** the label must occupy the label POSITION — the text before the first `:`, `#` or
+//     `=`. The literal list is a raw strings.Contains over the whole line, so it fires on a licence
+//     label appearing anywhere, including after the value.
+//   - **Wider:** the label is matched with kwmatch.ContainsLabel, so its spaces may match zero
+//     separators and every convention of the same label counts.
+//
+// The separator requirement is what keeps prose out, and it is the same requirement the literals
+// already encoded by ending in ':'. It is added as an EXTRA way to earn the boost rather than a
+// replacement, so no line that scored 95 before can stop doing so.
+func (v *Validator) labelledFieldPrefix(lowerLine string) bool {
+	cut := strings.IndexAny(lowerLine, valueSeparators)
+	if cut <= 0 {
+		return false
+	}
+	label := lowerLine[:cut]
+
+	// A label is short. Without this a whole paragraph ending in a colon would be searched, which
+	// would readmit the prose the separator requirement exists to exclude.
+	if len(label) > maxLabelPrefixLen {
+		return false
+	}
+	for _, kw := range prefixLabels {
+		if containsLabel(label, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// maxLabelPrefixLen bounds the label position. Field labels are short; a long run of text before a
+// colon is a sentence, not a label.
+const maxLabelPrefixLen = 64
+
+// findLabelsOnLine returns which of the given keywords label a value on the line, matching each
+// convention of the keyword.
+//
+// Separate from findKeywordsOnLine because that function is called with BOTH vocabularies, and the
+// two directions are not symmetric: a positive keyword may reach further because doing so can only
+// add evidence, while widening a suppressor silences real values. So the positive call site uses
+// this and the negative call site keeps the strict matcher.
+//
+// What this fixes is reporting rather than scoring. Confidence comes from AnalyzeContext, which
+// already used the label-flexible matcher; Context.PositiveKeywords is consumed only by the
+// formatters — the text report's "Supporting keywords:" line and SARIF's positiveKeywords property.
+// For a camelCase label both were EMPTY, so a reviewer was shown a finding with no stated supporting
+// evidence even though the validator had matched a label to raise its confidence (#553).
+func (v *Validator) findLabelsOnLine(line string, keywords []string) []string {
+	var found []string
+	for _, kw := range keywords {
+		if containsLabel(line, kw) {
+			found = append(found, kw)
+		}
+	}
+	return found
 }
