@@ -235,14 +235,12 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan Security Check
-        entry: ferret-scan-precommit
+        entry: ferret-scan --pre-commit-mode --confidence high,medium --checks all
         language: system
         files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
         exclude: '^(test_|_test\.|spec_|_spec\.)'
         env:
-          FERRET_CONFIDENCE: "high,medium"
-          FERRET_CHECKS: "all"
-          FERRET_FAIL_ON: "high"
+          FERRET_PRECOMMIT_EXIT_ON: "high"
 EOF
 
 # Install hooks

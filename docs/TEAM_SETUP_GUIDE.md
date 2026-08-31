@@ -104,6 +104,10 @@ profiles:
 
 ## Pre-commit Hook Strategies
 
+Which findings are looked for, and at which confidence, are **command-line flags**. The
+only environment variable that changes what the hook does to your commit is
+`FERRET_PRECOMMIT_EXIT_ON`.
+
 ### Strategy 1: Strict Security (Recommended for Production)
 ```yaml
 # .pre-commit-config.yaml
@@ -111,30 +115,41 @@ repos:
   - repo: local
     hooks:
       - id: ferret-scan
-        entry: scripts/enhanced-pre-commit-wrapper.sh
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium --checks all
         language: system
         files: '\.(py|js|ts|go|java|json|yaml|yml|env)$'
         env:
-          FERRET_CONFIDENCE: "high,medium"
-          FERRET_CHECKS: "all"
-          FERRET_FAIL_ON: "high"  # Block only on high confidence
+          FERRET_PRECOMMIT_EXIT_ON: "high"  # Block only on high confidence
 ```
 
 ### Strategy 2: Balanced Approach (Good for Most Teams)
+
+Same as Strategy 1, applied to a wider set of files. `high` is the default value of
+`FERRET_PRECOMMIT_EXIT_ON`, so the `env:` block can be omitted entirely:
+
 ```yaml
-env:
-  FERRET_CONFIDENCE: "high,medium"
-  FERRET_CHECKS: "all"
-  FERRET_FAIL_ON: "high"
+      - id: ferret-scan
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high,medium --checks all
+        language: system
 ```
 
 ### Strategy 3: Advisory Mode (Learning/Adoption Phase)
 ```yaml
-env:
-  FERRET_CONFIDENCE: "high"
-  FERRET_CHECKS: "all"
-  FERRET_FAIL_ON: "none"  # Never block commits
+      - id: ferret-scan
+        entry: ./bin/ferret-scan --pre-commit-mode --confidence high --checks all
+        language: system
+        env:
+          FERRET_PRECOMMIT_EXIT_ON: "none"  # Report, never block
 ```
+
+`none` is the only value that genuinely stops the hook failing. Accepted values are
+`high`, `medium`, `low` and `none`; anything else is ignored and the default `high`
+stands.
+
+> **The report still ends with "High confidence issues found - commit blocked for
+> security." even under `none`.** That line is unconditional; the exit code is what
+> pre-commit acts on, and with `FERRET_PRECOMMIT_EXIT_ON=none` it is 0, so the commit
+> proceeds. Measured on a file with one HIGH finding: `none` exits 0, `high` exits 1.
 
 ## GitHub Actions Integration
 
@@ -199,12 +214,12 @@ suppressions:
 
 ### Phase 1: Introduction (Week 1)
 - Set up configuration files
-- Deploy in advisory mode (`FERRET_FAIL_ON: "none"`)
+- Deploy in advisory mode (`FERRET_PRECOMMIT_EXIT_ON: "none"`)
 - Let team see what sensitive data looks like
 - Generate suppressions for existing false positives
 
 ### Phase 2: Gradual Enforcement (Week 2-3)
-- Switch to balanced mode (`FERRET_FAIL_ON: "high"`)
+- Switch to balanced mode (`FERRET_PRECOMMIT_EXIT_ON: "high"`)
 - Block only high-confidence findings
 - Train team on bypass procedures (`git commit --no-verify`)
 - Refine suppressions based on feedback
@@ -224,10 +239,9 @@ suppressions:
 # Generate suppressions for existing code
 ferret-scan --file . --recursive --generate-suppressions
 
-# Or reduce sensitivity
-# In .pre-commit-config.yaml:
-env:
-  FERRET_CONFIDENCE: "high"  # Only high confidence
+# Or reduce sensitivity: in .pre-commit-config.yaml, narrow the entry's
+# --confidence flag (there is no FERRET_CONFIDENCE variable)
+#   entry: ./bin/ferret-scan --pre-commit-mode --confidence high
 ```
 
 **2. "Scans are too slow"**
