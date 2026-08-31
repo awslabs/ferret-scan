@@ -51,6 +51,7 @@ package tabular
 import (
 	"sort"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -221,7 +222,13 @@ func Analyze(content string) *Table {
 
 	headers := make([]string, want)
 	for i, c := range cells {
-		headers[i] = strings.ToLower(strings.Trim(strings.TrimSpace(c), `"`))
+		// NormalizeHeader runs BEFORE ToLower, and that order is the whole point. Lower-casing
+		// first destroys the case transitions a camelCase header is made of, so
+		// "sourceIPAddress" became "sourceipaddress" — one unbroken token that no whole-word
+		// keyword lookup can see into. Every validator that consults a header does so with a
+		// whole-word lookup, so the header a JSON-derived export writes was invisible to all of
+		// them while the spaced and underscored spellings of the same column worked (#548).
+		headers[i] = strings.ToLower(NormalizeHeader(strings.Trim(strings.TrimSpace(c), `"`)))
 	}
 	return &Table{delimiter: delim, headers: headers, headerLine: headerIdx, ok: true}
 }
@@ -321,4 +328,65 @@ func splitFields(s string, d byte) []string {
 
 func isLetter(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+// NormalizeHeader inserts word boundaries into a camelCase or PascalCase header so a
+// keyword lookup can find the words inside it.
+//
+// Headers are stored lower-cased, and THAT is what hides a camelCase header rather than the
+// whole-word lookup on its own: lower-casing "sourceIPAddress" yields "sourceipaddress", one
+// unbroken token with no case transitions left for anything to split on. So this must run
+// BEFORE ToLower — see the call site in Analyze. Measured with HeaderAt directly:
+//
+//	"Source IP address" -> "source ip address"   found
+//	"sourceIPAddress"   -> "sourceipaddress"     NOT found
+//
+// Whole-word matching is right in itself — it stops "ip" matching inside "equipment". The
+// defect is that the boundaries were destroyed before the lookup ran:
+//
+//	"Source IP address"   -> found: the words are already separated
+//	"source_ip_address"   -> found: '_' is treated as a boundary
+//	"sourceIPAddress"     -> NOT found before this
+//	"SourceIpAddress"     -> NOT found before this
+//
+// Measured on a 3-row CSV of genuine public addresses, one column, differing only in how the
+// header is spelled: the spaced and underscored forms reported 100 HIGH, the two camel forms
+// 75 MEDIUM. A gate filtering on HIGH saw 3 findings or 0 depending on which convention the
+// export used (#548). Real CloudTrail writes the spaced form; anything derived from the JSON
+// field name writes the camel form.
+//
+// The rule is the conventional one, and the second clause is what makes acronyms work:
+//
+//   - a boundary before an upper-case rune that follows a lower-case rune or a digit
+//     ("sourceIP" -> "source IP");
+//   - a boundary before the LAST upper-case rune of a run when a lower-case rune follows it
+//     ("IPAddress" -> "IP Address"), because that rune starts the next word rather than
+//     ending the acronym.
+//
+// Anything already separated is returned unchanged, so the spaced and underscored forms pay
+// nothing and cannot be altered by this.
+func NormalizeHeader(header string) string {
+	if header == "" {
+		return header
+	}
+
+	runes := []rune(header)
+	var b strings.Builder
+	b.Grow(len(header) + 8)
+
+	for i, r := range runes {
+		if i > 0 && unicode.IsUpper(r) {
+			prev := runes[i-1]
+			// "sourceIP" / "ip4Address": a case or digit-to-upper transition.
+			lowerToUpper := unicode.IsLower(prev) || unicode.IsDigit(prev)
+			// "IPAddress": inside an upper run, and the NEXT rune is lower-case, so this
+			// rune begins a new word.
+			runToWord := unicode.IsUpper(prev) && i+1 < len(runes) && unicode.IsLower(runes[i+1])
+			if lowerToUpper || runToWord {
+				b.WriteByte(' ')
+			}
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
