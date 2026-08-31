@@ -179,7 +179,7 @@ jobs:
 
       - name: Generate SBOM
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:${{ steps.meta.outputs.version }}
           format: spdx-json
@@ -208,7 +208,7 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security tab
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: "trivy-results.sarif"
           category: "trivy-container-scan"
@@ -306,7 +306,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Grype vulnerability scanner on GHCR
-        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         id: scan-ghcr
         with:
           image: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:latest
@@ -316,7 +316,7 @@ jobs:
           config: ".grype.yaml"
 
       - name: Upload Grype scan results
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: ${{ steps.scan-ghcr.outputs.sarif }}
           category: "grype-container-scan"
