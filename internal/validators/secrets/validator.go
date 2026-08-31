@@ -147,6 +147,94 @@ func unlabelledHexIdentifierCap(secretType, match, line string) float64 {
 	return unlabelledHexIdentifierCeiling
 }
 
+// awsDocPlaceholderCeiling is the highest confidence an AWS documentation
+// placeholder credential may carry: 15, the top of LOW.
+//
+// 15 rather than a value of its own because three validators already agreed on it
+// for the same class of value — creditcard's known test cards, phone's
+// reservedFictionalCeiling (NANP 555-01xx) and otp's publishedSecretCeiling (the
+// RFC 6238 seeds). Picking a fourth number would recreate the per-validator
+// divergence #364 is about. Low enough that the CI filter this repo's own
+// pre-commit hook uses (--confidence medium,high) never shows it; high enough that
+// the finding still exists, so the value is still redacted.
+const awsDocPlaceholderCeiling = 15.0
+
+// awsDocPlaceholderMarker is the literal AWS embeds in the credential values it
+// publishes in its documentation — AKIAIOSFODNN7EXAMPLE and
+// wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY are the two canonical ones. Compared
+// against the upper-cased value, matching the check this file already applied to
+// the secret half.
+const awsDocPlaceholderMarker = "EXAMPLE"
+
+// awsDocPlaceholderCap returns the ceiling for an AWS credential whose OWN BYTES
+// carry AWS's documentation-placeholder marker, or 0 when no ceiling applies.
+//
+// A ceiling and not a drop. Only reported findings reach the redactor, so dropping
+// these would leave AKIAIOSFODNN7EXAMPLE in the cleartext of a "redacted"
+// document — and it is a live finding in 39 of this repo's own golden files
+// precisely because a reserved placeholder is the responsible value to commit.
+// Nor is it standards-RESERVED: AKIAIOSFODNN7EXAMPLE sits inside the valid
+// AKIA[0-9A-Z]{16} keyspace and no authority has withheld it from issue, so
+// "cannot be real" is not available as a justification. Vendor documentation
+// placeholder => demote; authority-withheld value => drop. See
+// docs/proposals/CONFIDENCE_CONTRACT.md §9.
+//
+// Restricted to the two AWS credential types on purpose, and this is the load-
+// bearing part of the design. "Value contains EXAMPLE" is only safe where the
+// attacker cannot put it there:
+//
+//   - AWS_ACCESS_KEY is AKIA plus exactly 16 chars from [0-9A-Z] (isAWSAccessKey).
+//     Appending EXAMPLE to a real key makes it 27 chars, which the length gate
+//     rejects outright — so the marker can only be present in a key AWS itself
+//     issued that way, a ~3e-10 event over the 10 candidate offsets.
+//   - AWS_SECRET_ACCESS_KEY is the 40-char capture of reAWSSecretCandidate, whose
+//     trailing `($|[^A-Za-z0-9/+=])` means <real40>EXAMPLE yields no 40-char
+//     window at all. The marker cannot coexist with a full real secret in one
+//     capture.
+//
+// The generic API_KEY_OR_SECRET type is deliberately NOT included: it has no
+// length gate, so `token = <real secret>EXAMPLE` would be attacker-controlled
+// suppression — the failure mode unlabelledHexIdentifierCap's comment above
+// describes. A documentation placeholder of a type this function does not name
+// keeps its full confidence; that is the accepted side of the trade.
+// clampToPublishedCeiling enforces a match's own ConfidenceCeilingKey at this
+// validator's boundary, so the number it reports never exceeds the bound it publishes
+// in the same metadata map.
+//
+// Deliberately duplicates what the dual-path bridge's clampToCeiling does, because the
+// two guard different seams. The bridge's copy exists for the adjustments applied AFTER
+// a validator returns (document context, cross-path correlation) and only runs on the
+// bridge path. This copy exists for a raise applied INSIDE the validator
+// (mergeBySpanKeepStrongest keeps the max confidence across detection paths) and runs
+// for every caller, including pkg/redact and any embedder of ValidateContent.
+//
+// A clamp, never an assignment: it can only lower a score, so it can never resurrect a
+// finding that scoring had already driven below a threshold. A non-positive or
+// wrong-typed ceiling is ignored rather than treated as zero, matching the bridge —
+// clamping to 0 would erase the confidence and could drop the finding from the report,
+// which per the sink rule stops it being redacted.
+func clampToPublishedCeiling(match *detector.Match) {
+	ceiling, ok := match.Metadata[ConfidenceCeilingKey].(float64)
+	if !ok || ceiling <= 0 {
+		return
+	}
+	if match.Confidence > ceiling {
+		match.Confidence = ceiling
+	}
+}
+
+func awsDocPlaceholderCap(secretType, match string) float64 {
+	switch secretType {
+	case "AWS_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY":
+	default:
+		return 0
+	}
+	if !strings.Contains(strings.ToUpper(strings.Trim(match, `"'`)), awsDocPlaceholderMarker) {
+		return 0
+	}
+	return awsDocPlaceholderCeiling
+}
+
 // mergeBySpanKeepStrongest folds src into dst, treating findings that cover the
 // identical byte span as one secret discovered twice: a quoted 40-char AWS
 // secret is matched both by the context-gated AWS path (AWS_SECRET_ACCESS_KEY)
@@ -549,7 +637,20 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		lineResults = mergeBySpanKeepStrongest(lineResults, v.findAWSSecretKeys(line, prevLine, nextLine, lineNum, originalPath))
 
 		for _, r := range lineResults {
-			matches = append(matches, r.match)
+			m := r.match
+			// The merge above RAISES confidence (it keeps the max across paths), so it
+			// runs after every emit site and can undo a cap an emit site applied. That
+			// is not hypothetical: the documented AWS secret
+			// wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY was capped to 15 in
+			// findAWSSecretKeys and this loop still handed out 75, because the generic
+			// entropy path claimed the same span and scored it higher.
+			//
+			// The bridge also clamps, but only on the bridge path — pkg/redact and any
+			// embedder calling ValidateContent directly never reach it, so a ceiling
+			// enforced only there leaves this validator's own API reporting a number it
+			// simultaneously declares impossible.
+			clampToPublishedCeiling(&m)
+			matches = append(matches, m)
 		}
 	}
 
@@ -1502,12 +1603,55 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 		// A literal "EXAMPLE" embedded in the value is near-proof of an AWS
 		// documentation placeholder (wJalr...CYEXAMPLEKEY and friends): real
 		// secrets are random base64, where a 7-char literal is a ~1-in-10^9
-		// event. Demote below HIGH but keep it visible/redactable — mirroring
-		// how the AKIA...EXAMPLE access-key ID stays detected rather than
-		// being value-denylisted.
-		exampleEmbedded := strings.Contains(strings.ToUpper(candidate), "EXAMPLE")
-		if exampleEmbedded && confidence > 65 {
-			confidence = 65
+		// event. Demote but keep it visible/redactable — mirroring how the
+		// AKIA...EXAMPLE access-key ID stays detected rather than being
+		// value-denylisted.
+		//
+		// Two things changed here for #364. The bound moved from a local 65 to the
+		// shared awsDocPlaceholderCeiling (15, top of LOW) so this validator agrees
+		// with creditcard/phone/otp instead of inventing its own number. And the
+		// bound is PUBLISHED, because clamping locally did not hold: measured,
+		// wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY was capped to 65 right here and
+		// still reported at 75 — mergeBySpanKeepStrongest takes the max of this
+		// path and the generic entropy path, and the bridge then adds document
+		// context, both after this line runs. The bridge honours the published
+		// ceiling (clampToCeiling) after every raise, which is the only place the
+		// cap can actually be made to stick.
+		placeholderCeiling := awsDocPlaceholderCap("AWS_SECRET_ACCESS_KEY", candidate)
+		exampleEmbedded := placeholderCeiling > 0
+		if exampleEmbedded && confidence > placeholderCeiling {
+			confidence = placeholderCeiling
+		}
+
+		meta := map[string]any{
+			"detection_method": "aws_secret_context",
+			"source":           "preprocessed_content",
+			"secret_type":      "AWS_SECRET_ACCESS_KEY",
+			"example_embedded": exampleEmbedded,
+			// This dedicated AWS-secret path set no validation_checks, so --explain
+			// had nothing to narrate: a 75% MEDIUM secret — exactly the finding a
+			// reviewer needs help judging — explained as "Flagged as an AWS secret
+			// access key. (confidence 75%, medium)" and nothing more (#363). The
+			// package's OTHER emit sites do record checks; this one was missed.
+			//
+			// Every value below was already computed above, so this records rather
+			// than decides: no confidence changes, and metadata is not a suppression
+			// hash input.
+			//
+			// not_test_data is spelled to match the key the explain layer already
+			// consults for a test signal, so an EXAMPLE-embedded placeholder now
+			// reports its own test judgement instead of hiding it in a metadata field
+			// nothing reads.
+			"validation_checks": map[string]bool{
+				"valid_shape":          true, // charset and length gate above
+				"entropy":              true, // above v.base64Limit
+				"labeled_key_name":     labeledKeyName,
+				"paired_access_key_id": pairedAccessKeyID,
+				"not_test_data":        !exampleEmbedded,
+			},
+		}
+		if placeholderCeiling > 0 {
+			meta[ConfidenceCeilingKey] = placeholderCeiling
 		}
 
 		results = append(results, spannedMatch{
@@ -1520,33 +1664,7 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 				Confidence: confidence,
 				Filename:   originalPath,
 				Validator:  "secrets",
-				Metadata: map[string]any{
-					"detection_method": "aws_secret_context",
-					"source":           "preprocessed_content",
-					"secret_type":      "AWS_SECRET_ACCESS_KEY",
-					"example_embedded": exampleEmbedded,
-					// This dedicated AWS-secret path set no validation_checks, so --explain
-					// had nothing to narrate: a 75% MEDIUM secret — exactly the finding a
-					// reviewer needs help judging — explained as "Flagged as an AWS secret
-					// access key. (confidence 75%, medium)" and nothing more (#363). The
-					// package's OTHER emit sites do record checks; this one was missed.
-					//
-					// Every value below was already computed above, so this records rather
-					// than decides: no confidence changes, and metadata is not a suppression
-					// hash input.
-					//
-					// not_test_data is spelled to match the key the explain layer already
-					// consults for a test signal, so an EXAMPLE-embedded placeholder now
-					// reports its own test judgement instead of hiding it in a metadata field
-					// nothing reads.
-					"validation_checks": map[string]bool{
-						"valid_shape":          true, // charset and length gate above
-						"entropy":              true, // above v.base64Limit
-						"labeled_key_name":     labeledKeyName,
-						"paired_access_key_id": pairedAccessKeyID,
-						"not_test_data":        !exampleEmbedded,
-					},
-				},
+				Metadata:   meta,
 				// The line is already an input to the confidence above (the
 				// reAWSSecretKeyName gate), so recording it is inert for scoring
 				// and only preserves what a reviewer needs to judge the finding.
@@ -1785,7 +1903,29 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 			// bridge's downstream context and cross-path adjustments must respect.
 			// Clamping here alone would not hold: those adjustments are applied after
 			// the validator returns and took one such value from 55 to 80.
-			if ceiling := unlabelledHexIdentifierCap(secretType, match, line); ceiling > 0 {
+			//
+			// An AWS documentation placeholder gets one for the same reason: measured
+			// on AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE, this path's own score is 94
+			// and the reported result was 84 — a downstream adjustment, not a clamp,
+			// so a locally-applied cap would have been lifted straight back.
+			//
+			// The lowest applicable ceiling wins. The two cannot both fire today
+			// (one requires genericSecretType, the other excludes it), but selecting
+			// the minimum keeps that from becoming a silent precedence bug if a third
+			// ceiling is added, and keeps the PUBLISHED bound equal to the applied one.
+			ceiling := unlabelledHexIdentifierCap(secretType, match, line)
+			if c := awsDocPlaceholderCap(secretType, match); c > 0 {
+				if ceiling == 0 || c < ceiling {
+					ceiling = c
+				}
+				// Record the judgement, do not just act on it. not_test_data is the key
+				// the explain layer consults for a test signal, and without it a capped
+				// placeholder explained as "uncertain" while the validator knew exactly
+				// why it had demoted the value — the disclosure half of #363/#364. The
+				// AWS-secret path at findAWSSecretKeys already spells it this way.
+				checks["not_test_data"] = false
+			}
+			if ceiling > 0 {
 				meta[ConfidenceCeilingKey] = ceiling
 				if confidence > ceiling {
 					confidence = ceiling
