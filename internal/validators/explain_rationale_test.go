@@ -74,6 +74,14 @@ func rationaleCases() []rationaleCase {
 		{"cloud_resources", cloudresources.NewValidator().ValidateContent,
 			"arn:aws:s3:::my-production-bucket-name\n", "valid_format"},
 
+		// The fifth, added by #537. It was missed by #363 for an understandable reason: its
+		// sentence was not EMPTY ("Flagged as an NPI; nearby context raised confidence by
+		// 20%"), so it did not read as "no rationale at all" — it just never named a check.
+		// npi_checksum is the one that matters: a reviewer deciding whether a 10-digit number
+		// is a provider identifier wants to be told the CMS check digit verified.
+		{"medical_id", medicalid.NewValidator().ValidateContent,
+			"NPI: 1234567893 for the provider\n", "npi_checksum"},
+
 		// The others, so this is a floor for the whole set rather than a patch for four. Each
 		// already recorded checks before this change; listing them is what stops a future
 		// refactor from quietly dropping one.
@@ -188,39 +196,5 @@ func TestEveryValidatorProducesARationaleSentence(t *testing.T) {
 					"already shown.", best)
 			}
 		})
-	}
-}
-
-// TestMedicalIDIsAKnownRemainingGap records a fifth case found while fixing the four, and why it
-// is NOT fixed here.
-//
-// medicalid records no validation_checks on any of its five subtypes, so an NPI — which carries a
-// real CMS-Luhn-80840 check digit, exactly the kind of proof a reviewer wants — explains as
-// "Flagged as an NPI; nearby context raised confidence by 20%". The issue did not name it,
-// probably because that context clause makes the sentence look non-empty.
-//
-// It is left alone deliberately: internal/validators/medicalid/validator.go is modified by an
-// open pull request (#532), and editing the same file here would conflict. Filed separately.
-//
-// This test asserts the CURRENT state so the exclusion is visible rather than looking like an
-// oversight, and so whoever fixes it is told to move the case into rationaleCases above. It fails
-// loudly when medicalid starts recording checks, which is the intended trigger.
-func TestMedicalIDIsAKnownRemainingGap(t *testing.T) {
-	const content = "NPI: 1234567893 for the provider\n"
-	matches, err := medicalid.NewValidator().ValidateContent(content, "fixture.txt")
-	if err != nil {
-		t.Fatalf("ValidateContent: %v", err)
-	}
-	if len(matches) == 0 {
-		t.Skip("the NPI fixture no longer produces a finding; nothing to record")
-	}
-	for _, m := range matches {
-		if raw, present := m.Metadata["validation_checks"]; present {
-			if checks, ok := raw.(map[string]bool); ok && len(checks) > 0 {
-				t.Fatalf("medicalid now records validation_checks (%v) — the deliberate exclusion "+
-					"below is obsolete.\nMove a medical_id case into rationaleCases() and delete "+
-					"this test.", checks)
-			}
-		}
 	}
 }

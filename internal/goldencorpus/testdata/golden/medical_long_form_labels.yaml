@@ -20,6 +20,10 @@ results:
             Production: 0
             TestData: 0
         subtype: MBI
+        validation_checks:
+            mbi_format: true
+            medicare_context: true
+            not_test_data: true
         validation_path: document
     - text: X9876543210
       line_number: 2
@@ -42,6 +46,12 @@ results:
             Production: 0
             TestData: 0
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: W1122009988
       line_number: 6
@@ -64,6 +74,12 @@ results:
             Production: 0
             TestData: 0
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: "4472901"
       line_number: 4
@@ -86,6 +102,12 @@ results:
             Production: 0
             TestData: 0
         subtype: MRN
+        validation_checks:
+            medical_context: true
+            mrn_label: true
+            not_an_npi: true
+            not_other_number_type: true
+            not_test_data: true
         validation_path: document
     - text: W1234567801
       line_number: 1
@@ -108,6 +130,12 @@ results:
             Production: 0
             TestData: 0
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document
     - text: P5551234567
       line_number: 5
@@ -130,4 +158,10 @@ results:
             Production: 0
             TestData: 0
         subtype: INSURANCE_MEMBER_ID
+        validation_checks:
+            insurance_label: true
+            letters_and_digits: true
+            not_a_more_specific_id: true
+            not_other_id_shape: true
+            not_test_data: true
         validation_path: document

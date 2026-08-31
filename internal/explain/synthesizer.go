@@ -468,6 +468,42 @@ func humanizeCheck(check string) string {
 		return "vendor-prefix validation"
 	case "prefix":
 		return "the prefix check"
+	case "npi_checksum":
+		// The CMS NPI check digit: Luhn over "80840" + the 10-digit NPI. Named for what it
+		// is rather than left to the fallback, which would render "the npi checksum check" —
+		// a doubled noun with a lower-cased acronym (#537).
+		return "the CMS NPI check digit"
+	case "dea_checksum":
+		return "the DEA check digit"
+	case "mbi_format":
+		// Deliberately "format", not "checksum": an MBI has no check digit, and claiming one
+		// would tell a reviewer a proof exists that does not.
+		return "the Medicare MBI positional format"
+	case "medicare_context":
+		// The fallback would render "the medicare context check", lower-casing a proper noun in
+		// the same sentence that spells "Medicare MBI" correctly.
+		return "the Medicare context check"
+
+	// The negative and shape checks below need explicit prose because the fallback renders a
+	// key as "the <words> check", which for a negated name produces "it passed the not phone
+	// context check" — clumsy enough that a reviewer has to stop and parse it. Naming them as
+	// EXCLUSIONS reads correctly in the "it passed ..." frame the caller builds (#537).
+	case "not_phone_context":
+		return "the phone-context exclusion"
+	case "not_an_npi":
+		return "the NPI-overlap exclusion"
+	case "not_other_number_type":
+		return "the other-number-type exclusion"
+	case "not_a_more_specific_id":
+		return "the more-specific-identifier exclusion"
+	case "not_other_id_shape":
+		return "the other-identifier-shape exclusion"
+	case "letters_and_digits":
+		return "the letters-and-digits shape check"
+	case "mrn_label":
+		return "the medical-record-number label check"
+	case "insurance_label":
+		return "the insurance label check"
 	}
 	return "the " + strings.ReplaceAll(check, "_", " ") + " check"
 }

@@ -21,6 +21,11 @@
           "TestData": 0
         },
         "subtype": "MBI",
+        "validation_checks": {
+          "mbi_format": true,
+          "medicare_context": true,
+          "not_test_data": true
+        },
         "validation_path": "document"
       },
       "text": "1EG4-TE5-MK73",

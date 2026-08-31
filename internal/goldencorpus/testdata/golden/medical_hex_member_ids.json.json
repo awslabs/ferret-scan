@@ -23,6 +23,11 @@
           "TestData": 0
         },
         "subtype": "DEA",
+        "validation_checks": {
+          "dea_checksum": true,
+          "not_test_data": true,
+          "prescriber_context": true
+        },
         "validation_path": "document"
       },
       "text": "AB1234563",
@@ -49,6 +54,13 @@
           "TestData": 0
         },
         "subtype": "INSURANCE_MEMBER_ID",
+        "validation_checks": {
+          "insurance_label": true,
+          "letters_and_digits": true,
+          "not_a_more_specific_id": true,
+          "not_other_id_shape": true,
+          "not_test_data": true
+        },
         "validation_path": "document"
       },
       "text": "E1122334455",
@@ -75,6 +87,13 @@
           "TestData": 0
         },
         "subtype": "INSURANCE_MEMBER_ID",
+        "validation_checks": {
+          "insurance_label": true,
+          "letters_and_digits": true,
+          "not_a_more_specific_id": true,
+          "not_other_id_shape": true,
+          "not_test_data": true
+        },
         "validation_path": "document"
       },
       "text": "ABCDEF123456",
@@ -101,6 +120,13 @@
           "TestData": 0
         },
         "subtype": "INSURANCE_MEMBER_ID",
+        "validation_checks": {
+          "insurance_label": true,
+          "letters_and_digits": true,
+          "not_a_more_specific_id": true,
+          "not_other_id_shape": true,
+          "not_test_data": true
+        },
         "validation_path": "document"
       },
       "text": "BEEF1234567",
@@ -127,6 +153,13 @@
           "TestData": 0
         },
         "subtype": "INSURANCE_MEMBER_ID",
+        "validation_checks": {
+          "insurance_label": true,
+          "letters_and_digits": true,
+          "not_a_more_specific_id": true,
+          "not_other_id_shape": true,
+          "not_test_data": true
+        },
         "validation_path": "document"
       },
       "text": "1234567890AB",
@@ -153,6 +186,13 @@
           "TestData": 0
         },
         "subtype": "INSURANCE_MEMBER_ID",
+        "validation_checks": {
+          "insurance_label": true,
+          "letters_and_digits": true,
+          "not_a_more_specific_id": true,
+          "not_other_id_shape": true,
+          "not_test_data": true
+        },
         "validation_path": "document"
       },
       "text": "55DEADBEEF12",

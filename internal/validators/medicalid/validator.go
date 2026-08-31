@@ -196,6 +196,16 @@ type medicalLineContext struct {
 	// real MRN in hospital records ("Patient account number: 1234567"); it
 	// suppresses only when NO strong MRN keyword is present, so a labelled MRN
 	// is not hard-dropped.
+	// testData marks a line carrying a test/placeholder indicator. It is the SAME
+	// strongNegativeKeywords list analyzeContext already scores on (-25 each, with a
+	// guarantee the net impact stays negative), surfaced as a boolean so it can be recorded
+	// in validation_checks. Not a new judgement: the validator already made it, it was
+	// simply folded into a number and unavailable to --explain.
+	//
+	// Kept on the line context rather than recomputed per match because that is where every
+	// other line-level predicate lives, and because the keyword scan is per line.
+	testData bool
+
 	nonMedHardKW bool
 	nonMedSoftKW bool
 	nonInsKW     bool // nonInsuranceKeywordPresent (different NUMBER TYPE; always suppresses)
@@ -278,6 +288,10 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 		// suppress it: "Invoice number" above an unrelated line would otherwise silence a
 		// real member ID sitting on that line. Asymmetric on purpose — the sink rule makes
 		// a wrong suppression costlier than a wrong admission.
+		// Reads lowerLine, not ctxLine: a "test" label on the line ABOVE should not mark this
+		// line's value as test data, matching the asymmetry the suppressors below describe.
+		testData: v.strongNegativePresent(lowerLine),
+
 		nonMedHardKW: v.nonMedicalHardKeywordPresent(lowerLine),
 		nonMedSoftKW: v.nonMedicalSoftKeywordPresent(lowerLine),
 		nonInsKW:     v.nonInsuranceKeywordPresent(lowerLine),
@@ -541,6 +555,18 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 			"subtype":        "NPI",
 			"luhn_valid":     true,
 			"context_impact": contextImpact,
+			// Every entry records a decision made ABOVE, never a new computation (#537).
+			// npi_checksum and not_phone_context are true by construction: failing either
+			// returns early, so a match that exists passed both. They are recorded anyway
+			// because a reviewer deciding whether a 10-digit number is a provider ID wants
+			// to be told the CMS check digit verified — that is the single most useful fact
+			// available, and it was computed and then discarded.
+			"validation_checks": map[string]bool{
+				"npi_checksum":      true,
+				"not_phone_context": true,
+				"provider_context":  lc.provider,
+				"not_test_data":     !lc.testData,
+			},
 		},
 	}, true
 }
@@ -583,6 +609,11 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lc medicalLineCon
 			"context_impact":    contextImpact,
 			"registrant_type":   string(match[0]),
 			"last_name_initial": string(match[1]),
+			"validation_checks": map[string]bool{
+				"dea_checksum":       true,
+				"prescriber_context": lc.dea,
+				"not_test_data":      !lc.testData,
+			},
 		},
 	}, true
 }
@@ -615,6 +646,15 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lc medicalLineCon
 		Metadata: map[string]any{
 			"subtype":        "MBI",
 			"context_impact": contextImpact,
+			// An MBI has no checksum, so the positional format IS the structural evidence:
+			// reMBI matched, either upstream in scanLine or in evaluateDashedMBI after the
+			// dashes were stripped. Recorded as a format check rather than a checksum so the
+			// prose does not claim a proof the format cannot give.
+			"validation_checks": map[string]bool{
+				"mbi_format":       true,
+				"medicare_context": lc.medicare,
+				"not_test_data":    !lc.testData,
+			},
 		},
 	}, true
 }
@@ -714,6 +754,18 @@ func (v *Validator) evaluateMRN(match, line, lowerLine string, lc medicalLineCon
 		Metadata: map[string]any{
 			"subtype":        "MRN",
 			"context_impact": contextImpact,
+			// mrn_label and medical_context genuinely VARY and are the whole precision story
+			// of this subtype — 70 with its own label, 45 on generic medical context. The two
+			// negative checks are true by construction (each returns early) but say the useful
+			// thing: this run was not a phone/SSN/zip shape, and it is not better explained as
+			// an NPI.
+			"validation_checks": map[string]bool{
+				"mrn_label":             mrnContext,
+				"medical_context":       medContext,
+				"not_other_number_type": true,
+				"not_an_npi":            true,
+				"not_test_data":         !lc.testData,
+			},
 		},
 	}, true
 }
@@ -795,6 +847,17 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lc medica
 		Metadata: map[string]any{
 			"subtype":        "INSURANCE_MEMBER_ID",
 			"context_impact": contextImpact,
+			// not_a_more_specific_id records the three vetoes above as one fact: the value
+			// does not pass a DEA or NPI checksum and is not MBI-shaped, so no more specific
+			// subtype claims it. Reported as one check rather than three because that is the
+			// single decision a reviewer cares about.
+			"validation_checks": map[string]bool{
+				"letters_and_digits":     true,
+				"insurance_label":        insContext,
+				"not_other_id_shape":     true,
+				"not_a_more_specific_id": true,
+				"not_test_data":          !lc.testData,
+			},
 		},
 	}, true
 }
@@ -834,6 +897,19 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 // findings heavily regardless of positive context.
 var strongNegativeKeywords = []string{
 	"test", "example", "sample", "placeholder", "fake", "mock", "demo",
+}
+
+// strongNegativePresent reports whether the line carries a test/placeholder indicator.
+//
+// Reads strongNegativeKeywords, the same list analyzeContext scores on, so the boolean and the
+// score can never disagree about whether a line looks like test data.
+func (v *Validator) strongNegativePresent(lowerLine string) bool {
+	for _, kw := range strongNegativeKeywords {
+		if containsKeyword(lowerLine, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // analyzeContext performs keyword-based context scoring.

@@ -49,4 +49,8 @@ results:
             Production: 0
             TestData: 0.125
         subtype: MBI
+        validation_checks:
+            mbi_format: true
+            medicare_context: false
+            not_test_data: true
         validation_path: document
