@@ -15,8 +15,8 @@ Ferret Scan follows standard Windows command-line conventions:
 ferret-scan <command> [options]
 
 # Common examples
-ferret-scan scan C:\path\to\scan
-ferret-scan web --port 8080
+ferret-scan --file C:\path\to\scan
+ferret-scan --web --port 8080
 ferret-scan --help
 ```
 
@@ -26,20 +26,20 @@ Ferret Scan supports all Windows path formats:
 
 ```powershell
 # Absolute paths with drive letters
-ferret-scan scan "C:\Users\Username\Documents"
-ferret-scan scan "D:\Projects\MyApp"
+ferret-scan --file "C:\Users\Username\Documents"
+ferret-scan --file "D:\Projects\MyApp"
 
 # UNC paths (network shares)
-ferret-scan scan "\\server\share\documents"
-ferret-scan scan "\\192.168.1.100\shared\files"
+ferret-scan --file "\\server\share\documents"
+ferret-scan --file "\\192.168.1.100\shared\files"
 
 # Relative paths
-ferret-scan scan ".\current\directory"
-ferret-scan scan "..\parent\directory"
+ferret-scan --file ".\current\directory"
+ferret-scan --file "..\parent\directory"
 
 # Environment variable expansion
-ferret-scan scan "$env:USERPROFILE\Documents"
-ferret-scan scan "$env:APPDATA\MyApp\data"
+ferret-scan --file "$env:USERPROFILE\Documents"
+ferret-scan --file "$env:APPDATA\MyApp\data"
 ```
 
 ### Command Prompt vs PowerShell
@@ -47,22 +47,22 @@ ferret-scan scan "$env:APPDATA\MyApp\data"
 #### Command Prompt (cmd.exe)
 ```batch
 REM Use Windows-style environment variables
-ferret-scan scan "%USERPROFILE%\Documents"
-ferret-scan scan "%APPDATA%\MyApp"
+ferret-scan --file "%USERPROFILE%\Documents"
+ferret-scan --file "%APPDATA%\MyApp"
 
 REM Escape special characters with quotes
-ferret-scan scan "C:\Program Files\MyApp"
+ferret-scan --file "C:\Program Files\MyApp"
 ```
 
 #### PowerShell (Recommended)
 ```powershell
 # Use PowerShell environment variables
-ferret-scan scan "$env:USERPROFILE\Documents"
-ferret-scan scan "$env:APPDATA\MyApp"
+ferret-scan --file "$env:USERPROFILE\Documents"
+ferret-scan --file "$env:APPDATA\MyApp"
 
 # PowerShell supports both forward and back slashes
-ferret-scan scan "C:/Users/Username/Documents"
-ferret-scan scan "C:\Users\Username\Documents"
+ferret-scan --file "C:/Users/Username/Documents"
+ferret-scan --file "C:\Users\Username\Documents"
 ```
 
 ## Common Usage Patterns
@@ -72,22 +72,22 @@ ferret-scan scan "C:\Users\Username\Documents"
 #### Scan User Documents
 ```powershell
 # Scan user's Documents folder
-ferret-scan scan "$env:USERPROFILE\Documents" --recursive --format json
+ferret-scan --file "$env:USERPROFILE\Documents" --recursive --format json
 
 # Scan specific document types
-ferret-scan scan "$env:USERPROFILE\Documents" --recursive --format text | Where-Object { $_ -match "\.(docx?|pdf|xlsx?)$" }
+ferret-scan --file "$env:USERPROFILE\Documents" --recursive --format text | Where-Object { $_ -match "\.(docx?|pdf|xlsx?)$" }
 
 # Scan with specific checks
-ferret-scan scan "$env:USERPROFILE\Documents" --checks CREDIT_CARD,SSN,EMAIL --confidence high
+ferret-scan --file "$env:USERPROFILE\Documents" --checks CREDIT_CARD,SSN,EMAIL --confidence high
 ```
 
 #### Scan Downloads Directory
 ```powershell
 # Quick scan of Downloads
-ferret-scan scan "$env:USERPROFILE\Downloads" --format json --output downloads-scan.json
+ferret-scan --file "$env:USERPROFILE\Downloads" --format json --output downloads-scan.json
 
 # Scan with preprocessors for document analysis
-ferret-scan scan "$env:USERPROFILE\Downloads" --enable-preprocessors --format text
+ferret-scan --file "$env:USERPROFILE\Downloads" --enable-preprocessors --format text
 ```
 
 ### Development Workflows
@@ -96,22 +96,22 @@ ferret-scan scan "$env:USERPROFILE\Downloads" --enable-preprocessors --format te
 ```powershell
 # Scan current project
 cd C:\Projects\MyApp
-ferret-scan scan . --recursive --format gitlab-sast --output security-report.json
+ferret-scan --file . --recursive --format gitlab-sast --output security-report.json
 
 # Exclude common development directories
-ferret-scan scan . --recursive --format json | Where-Object { $_.filename -notmatch "(node_modules|\.git|bin|obj)" }
+ferret-scan --file . --recursive --format json | Where-Object { $_.filename -notmatch "(node_modules|\.git|bin|obj)" }
 
 # Pre-commit scanning
-ferret-scan scan . --pre-commit-mode --format text
+ferret-scan --file . --pre-commit-mode --format text
 ```
 
 #### Source Code Analysis
 ```powershell
 # Scan source files only
-ferret-scan scan "C:\Projects\MyApp\src" --recursive --checks SECRETS,IP_ADDRESS --format json
+ferret-scan --file "C:\Projects\MyApp\src" --recursive --checks SECRETS,IP_ADDRESS --format json
 
 # Scan configuration files
-ferret-scan scan "C:\Projects\MyApp" --recursive --format text | Where-Object { $_.filename -match "\.(config|json|yaml|xml)$" }
+ferret-scan --file "C:\Projects\MyApp" --recursive --format text | Where-Object { $_.filename -match "\.(config|json|yaml|xml)$" }
 ```
 
 ### Enterprise Scenarios
@@ -122,26 +122,26 @@ ferret-scan scan "C:\Projects\MyApp" --recursive --format text | Where-Object { 
 net use \\fileserver\documents /user:domain\username
 
 # Scan network share
-ferret-scan scan "\\fileserver\documents" --recursive --format json --output network-scan.json
+ferret-scan --file "\\fileserver\documents" --recursive --format json --output network-scan.json
 
 # Batch scan multiple shares
 $Shares = @("\\server1\share1", "\\server2\share2", "\\server3\share3")
 foreach ($share in $Shares) {
     $outputFile = "scan-$(($share -replace '\\', '-').Trim('-')).json"
-    ferret-scan scan $share --format json --output $outputFile
+    ferret-scan --file $share --format json --output $outputFile
 }
 ```
 
 #### System Directory Analysis
 ```powershell
 # Scan system directories (requires Administrator)
-ferret-scan scan "C:\Windows\System32\config" --format json --confidence high
+ferret-scan --file "C:\Windows\System32\config" --format json --confidence high
 
 # Scan program files for embedded secrets
-ferret-scan scan "C:\Program Files" --checks SECRETS --recursive --format text
+ferret-scan --file "C:\Program Files" --checks SECRETS --recursive --format text
 
 # Scan temporary directories
-ferret-scan scan "$env:TEMP" --recursive --format json --output temp-scan.json
+ferret-scan --file "$env:TEMP" --recursive --format json --output temp-scan.json
 ```
 
 ## PowerShell Integration
@@ -189,7 +189,7 @@ function Invoke-BatchScan {
         $outputFile = Join-Path $OutputDir "scan-$safeName.json"
 
         Write-Host "Scanning: $path" -ForegroundColor Green
-        ferret-scan scan $path --format $Format --output $outputFile
+        ferret-scan --file $path --format $Format --output $outputFile
     }
 }
 
@@ -204,7 +204,7 @@ function Scan-Files {
     process {
         foreach ($file in $Files) {
             if (Test-Path $file) {
-                ferret-scan scan $file --format $Format
+                ferret-scan --file $file --format $Format
             }
         }
     }
@@ -222,17 +222,17 @@ Set-Alias -Name bscan -Value Invoke-BatchScan
 # Scan files from pipeline
 Get-ChildItem "C:\Documents" -Recurse -File |
     Where-Object { $_.Extension -in @('.txt', '.doc', '.docx', '.pdf') } |
-    ForEach-Object { ferret-scan scan $_.FullName --format json }
+    ForEach-Object { ferret-scan --file $_.FullName --format json }
 
 # Process scan results
-ferret-scan scan "C:\Data" --format json |
+ferret-scan --file "C:\Data" --format json |
     ConvertFrom-Json |
     Where-Object { $_.confidence_level -eq "HIGH" } |
     Group-Object type |
     Sort-Object Count -Descending
 
 # Export results to CSV
-ferret-scan scan "C:\Documents" --format json |
+ferret-scan --file "C:\Documents" --format json |
     ConvertFrom-Json |
     Export-Csv -Path "scan-results.csv" -NoTypeInformation
 ```
@@ -245,7 +245,7 @@ $Directories = Get-ChildItem "C:\Data" -Directory
 $Jobs = foreach ($dir in $Directories) {
     Start-Job -ScriptBlock {
         param($path)
-        & ferret-scan scan $path --format json
+        & ferret-scan --file $path --format json
     } -ArgumentList $dir.FullName
 }
 
@@ -324,15 +324,15 @@ validators:
 
 ```powershell
 # Use specific profiles
-ferret-scan scan "C:\Documents" --profile windows-quick
-ferret-scan scan "C:\Projects" --profile windows-comprehensive
-ferret-scan scan "C:\Data" --profile windows-enterprise
+ferret-scan --file "C:\Documents" --profile windows-quick
+ferret-scan --file "C:\Projects" --profile windows-comprehensive
+ferret-scan --file "C:\Data" --profile windows-enterprise
 
 # List available profiles
 ferret-scan --list-profiles --config "$env:APPDATA\ferret-scan\config.yaml"
 
 # Override profile settings
-ferret-scan scan "C:\Data" --profile windows-quick --format json --confidence high
+ferret-scan --file "C:\Data" --profile windows-quick --format json --confidence high
 ```
 
 ### Environment-Specific Configurations
@@ -357,7 +357,7 @@ profiles:
 $DevConfig | Out-File "$env:APPDATA\ferret-scan\dev-config.yaml" -Encoding UTF8
 
 # Use development configuration
-ferret-scan scan "C:\Projects" --config "$env:APPDATA\ferret-scan\dev-config.yaml"
+ferret-scan --file "C:\Projects" --config "$env:APPDATA\ferret-scan\dev-config.yaml"
 ```
 
 ## Web UI Usage
@@ -366,16 +366,16 @@ ferret-scan scan "C:\Projects" --config "$env:APPDATA\ferret-scan\dev-config.yam
 
 ```powershell
 # Start web UI on default port (8080)
-ferret-scan web
+ferret-scan --web
 
 # Start on custom port
-ferret-scan web --port 9000
+ferret-scan --web --port 9000
 
 # Start in background
 Start-Process ferret-scan -ArgumentList "web", "--port", "8080" -WindowStyle Hidden
 
 # Start with specific configuration
-ferret-scan web --port 8080 --config "$env:APPDATA\ferret-scan\config.yaml"
+ferret-scan --web --port 8080 --config "$env:APPDATA\ferret-scan\config.yaml"
 ```
 
 ### Accessing the Web UI
@@ -431,7 +431,7 @@ foreach ($dir in $ScanDirs) {
         $outputFile = Join-Path $OutputDir "$dirName-scan.json"
 
         Write-Host "Scanning: $dir" -ForegroundColor Green
-        ferret-scan scan $dir --recursive --format json --output $outputFile
+        ferret-scan --file $dir --recursive --format json --output $outputFile
 
         Write-Host "Results saved to: $outputFile" -ForegroundColor Cyan
     } else {
@@ -471,7 +471,7 @@ function New-SecurityReport {
             Write-Host "Scanning $name`: $path" -ForegroundColor Green
 
             # Run scan
-            ferret-scan scan $path --recursive --format json --output $outputFile
+            ferret-scan --file $path --recursive --format json --output $outputFile
 
             # Parse results for summary
             if (Test-Path $outputFile) {
@@ -569,7 +569,7 @@ $TaskDescription = "Daily Ferret Scan security check"
 # Define the action
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument @"
 -WindowStyle Hidden -Command "& {
-    ferret-scan scan 'C:\Data' --recursive --format json --output 'C:\Reports\daily-scan-$(Get-Date -Format yyyy-MM-dd).json'
+    ferret-scan --file 'C:\Data' --recursive --format json --output 'C:\Reports\daily-scan-$(Get-Date -Format yyyy-MM-dd).json'
     if ($LASTEXITCODE -ne 0) {
         Write-EventLog -LogName Application -Source 'Ferret Scan' -EventId 1001 -EntryType Error -Message 'Daily scan failed'
     }
@@ -604,7 +604,7 @@ function Write-ScanEvent {
 }
 
 # Example usage
-$ScanResults = ferret-scan scan "C:\Data" --format json | ConvertFrom-Json
+$ScanResults = ferret-scan --file "C:\Data" --format json | ConvertFrom-Json
 $HighRiskCount = ($ScanResults | Where-Object { $_.confidence_level -eq "HIGH" }).Count
 
 if ($HighRiskCount -gt 0) {
@@ -625,7 +625,7 @@ Set-ItemProperty -Path $RegPath -Name "Icon" -Value "C:\Program Files\ferret-sca
 
 $CommandPath = "$RegPath\command"
 New-Item -Path $CommandPath -Force
-Set-ItemProperty -Path $CommandPath -Name "(Default)" -Value 'powershell.exe -Command "ferret-scan scan \"%1\" --format text | Out-GridView -Title \"Ferret Scan Results\""'
+Set-ItemProperty -Path $CommandPath -Name "(Default)" -Value 'powershell.exe -Command "ferret-scan --file \"%1\" --format text | Out-GridView -Title \"Ferret Scan Results\""'
 ```
 
 ## Performance Optimization
@@ -634,17 +634,17 @@ Set-ItemProperty -Path $CommandPath -Name "(Default)" -Value 'powershell.exe -Co
 
 ```powershell
 # Fast scanning for specific data types
-ferret-scan scan "C:\Data" --checks CREDIT_CARD,SSN --confidence high --format json
+ferret-scan --file "C:\Data" --checks CREDIT_CARD,SSN --confidence high --format json
 
 # Disable preprocessors for faster scanning
-ferret-scan scan "C:\Data" --enable-preprocessors=false --format text
+ferret-scan --file "C:\Data" --enable-preprocessors=false --format text
 
 # Parallel scanning of multiple directories
 $Directories = @("C:\Dir1", "C:\Dir2", "C:\Dir3")
 $Jobs = foreach ($dir in $Directories) {
     Start-Job -ScriptBlock {
         param($path)
-        ferret-scan scan $path --format json
+        ferret-scan --file $path --format json
     } -ArgumentList $dir
 }
 
@@ -681,7 +681,7 @@ function Invoke-BatchScan {
         $TempFile = [System.IO.Path]::GetTempFileName()
         $TempList | Out-File $TempFile
 
-        ferret-scan scan --file-list $TempFile --format json
+        ferret-scan --file-list $TempFile --format json
         Remove-Item $TempFile
 
         # Brief pause between batches
@@ -700,11 +700,11 @@ function Invoke-BatchScan {
 New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
 
 # Use UNC format for long paths
-ferret-scan scan "\\?\C:\Very\Long\Path\That\Exceeds\260\Characters"
+ferret-scan --file "\\?\C:\Very\Long\Path\That\Exceeds\260\Characters"
 
 # Handle special characters in paths
 $PathWithSpaces = "C:\Program Files\My App\Data"
-ferret-scan scan "`"$PathWithSpaces`"" --format json
+ferret-scan --file "`"$PathWithSpaces`"" --format json
 ```
 
 ### Permission Issues
@@ -716,12 +716,12 @@ $IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIde
 if (-not $IsAdmin) {
     Write-Warning "Some system directories may require Administrator privileges"
     # Restart as Administrator if needed
-    Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "ferret-scan scan C:\Windows --format json"
+    Start-Process PowerShell -Verb RunAs -ArgumentList "-Command", "ferret-scan --file C:\Windows --format json"
 }
 
 # Handle access denied errors gracefully
 try {
-    ferret-scan scan "C:\System Volume Information" --format json
+    ferret-scan --file "C:\System Volume Information" --format json
 } catch {
     Write-Warning "Access denied to system directory: $($_.Exception.Message)"
 }
@@ -748,7 +748,7 @@ function Test-NetworkPath {
 $NetworkPaths = @("\\server1\share1", "\\server2\share2")
 foreach ($path in $NetworkPaths) {
     if (Test-NetworkPath $path) {
-        ferret-scan scan $path --format json --output "network-scan-$(Split-Path $path -Leaf).json"
+        ferret-scan --file $path --format json --output "network-scan-$(Split-Path $path -Leaf).json"
     }
 }
 ```
@@ -841,7 +841,7 @@ function New-ComplianceReport {
     $ComplianceResults = @()
 
     foreach ($path in $ScanPaths) {
-        $ScanResults = ferret-scan scan $path --format json | ConvertFrom-Json
+        $ScanResults = ferret-scan --file $path --format json | ConvertFrom-Json
 
         # Analyze results for compliance violations
         $CreditCardFindings = $ScanResults | Where-Object { $_.type -eq "CREDIT_CARD" -and $_.confidence_level -eq "HIGH" }

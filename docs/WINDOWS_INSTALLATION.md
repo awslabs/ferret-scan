@@ -251,7 +251,7 @@ function Scan-Files {
 
     process {
         foreach ($file in $Files) {
-            ferret-scan scan $file --format $Format
+            ferret-scan --file $file --format $Format
         }
     }
 }
@@ -300,7 +300,7 @@ For repositories without pre-commit framework:
 @echo off
 REM .git\hooks\pre-commit.bat
 echo Running Ferret Scan pre-commit check...
-ferret-scan scan . --pre-commit-mode --format text
+ferret-scan --file . --pre-commit-mode --format text
 if %ERRORLEVEL% neq 0 (
     echo Sensitive data detected! Commit blocked.
     exit /b 1
@@ -331,18 +331,18 @@ ferret-scan --version
 ferret-scan --help
 
 # Test configuration loading
-ferret-scan scan --help
+ferret-scan --help
 
 # Test with sample file
 echo "Test credit card: 4111-1111-1111-1111" | Out-File test.txt
-ferret-scan scan test.txt
+ferret-scan --file test.txt
 Remove-Item test.txt
 ```
 
 ### Performance Testing
 ```powershell
 # Test scanning performance
-Measure-Command { ferret-scan scan $env:USERPROFILE\Documents --format json }
+Measure-Command { ferret-scan --file $env:USERPROFILE\Documents --format json }
 
 # Test web UI startup
 Start-Process -NoNewWindow ferret-scan -ArgumentList "web", "--port", "8080"
@@ -353,13 +353,13 @@ Stop-Process -Name "ferret-scan" -Force
 ### Configuration Testing
 ```powershell
 # Test configuration file loading
-ferret-scan scan . --config "$env:APPDATA\ferret-scan\config.yaml" --format json
+ferret-scan --file . --config "$env:APPDATA\ferret-scan\config.yaml" --format json
 
 # Test profile usage
-ferret-scan scan . --profile windows-dev --format json
+ferret-scan --file . --profile windows-dev --format json
 
 # Test Windows-specific paths
-ferret-scan scan "C:\Windows\System32\drivers\etc" --format text
+ferret-scan --file "C:\Windows\System32\drivers\etc" --format text
 ```
 
 ## Troubleshooting
@@ -410,7 +410,7 @@ Write-Host "Config directory: $env:APPDATA\ferret-scan"
 Test-Path "$env:APPDATA\ferret-scan"
 
 # Check configuration file syntax
-ferret-scan scan . --config "$env:APPDATA\ferret-scan\config.yaml" --debug
+ferret-scan --file . --config "$env:APPDATA\ferret-scan\config.yaml" --debug
 
 # Reset to default configuration
 Copy-Item "$InstallDir\config.yaml" -Destination "$env:APPDATA\ferret-scan\config.yaml" -Force

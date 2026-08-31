@@ -121,14 +121,14 @@ New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name
 #### Use UNC Path Format
 ```powershell
 # Convert long paths to UNC format
-ferret-scan scan "\\?\C:\very\long\path\to\directory"
+ferret-scan --file "\\?\C:\very\long\path\to\directory"
 ```
 
 #### Use Shorter Working Directory
 ```powershell
 # Change to a shorter base directory
 cd C:\
-ferret-scan scan ".\long\path\relative\to\current\directory"
+ferret-scan --file ".\long\path\relative\to\current\directory"
 ```
 
 ### Issue: "Access to the path is denied" during scanning
@@ -145,13 +145,13 @@ ferret-scan scan ".\long\path\relative\to\current\directory"
 Start-Process PowerShell -Verb RunAs
 
 # Then run ferret-scan
-ferret-scan scan "C:\Windows\System32"
+ferret-scan --file "C:\Windows\System32"
 ```
 
 #### Skip Inaccessible Files
 ```powershell
 # Use error handling to continue on access errors
-ferret-scan scan "C:\Windows" --continue-on-error
+ferret-scan --file "C:\Windows" --continue-on-error
 ```
 
 #### Check File Permissions
@@ -224,7 +224,7 @@ foreach ($dir in $ConfigDirs) {
 #### Validate Configuration File
 ```powershell
 # Test configuration file syntax
-ferret-scan scan . --config "$env:APPDATA\ferret-scan\config.yaml" --debug
+ferret-scan --file . --config "$env:APPDATA\ferret-scan\config.yaml" --debug
 
 # Use online YAML validator or PowerShell module
 # Install-Module powershell-yaml
@@ -253,10 +253,10 @@ Copy-Item "$InstallDir\config.yaml" -Destination "$ConfigDir\config.yaml" -Force
 #### Use PowerShell Environment Variables
 ```powershell
 # Instead of %APPDATA%, use $env:APPDATA in PowerShell
-ferret-scan scan "$env:USERPROFILE\Documents"
+ferret-scan --file "$env:USERPROFILE\Documents"
 
 # Or use cmd-style expansion
-cmd /c "ferret-scan scan %USERPROFILE%\Documents"
+cmd /c "ferret-scan --file %USERPROFILE%\Documents"
 ```
 
 #### Update Configuration File
@@ -283,13 +283,13 @@ platform:
 #### Optimize Scanning Parameters
 ```powershell
 # Reduce confidence levels to scan faster
-ferret-scan scan . --confidence high --format json
+ferret-scan --file . --confidence high --format json
 
 # Disable preprocessors for faster scanning
-ferret-scan scan . --enable-preprocessors=false
+ferret-scan --file . --enable-preprocessors=false
 
 # Scan specific file types only
-ferret-scan scan . --checks CREDIT_CARD,SSN --format text
+ferret-scan --file . --checks CREDIT_CARD,SSN --format text
 ```
 
 #### Exclude Large Directories
@@ -329,7 +329,7 @@ Get-Process ferret-scan | Select-Object Name, CPU, WorkingSet, VirtualMemorySize
 # Scan directories in smaller batches
 $Directories = Get-ChildItem "C:\LargeDirectory" -Directory
 foreach ($dir in $Directories) {
-    ferret-scan scan $dir.FullName --format json --output "results_$($dir.Name).json"
+    ferret-scan --file $dir.FullName --format json --output "results_$($dir.Name).json"
     Start-Sleep 1  # Brief pause between scans
 }
 ```
@@ -359,7 +359,7 @@ Get-WmiObject -Class Win32_PageFileUsage | Select-Object Name, AllocatedBaseSize
 Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue
 
 # Use alternative port
-ferret-scan web --port 8081
+ferret-scan --web --port 8081
 ```
 
 #### Check Windows Firewall
@@ -397,16 +397,16 @@ Invoke-WebRequest -Uri "http://localhost:8080" -UseBasicParsing
 New-PSDrive -Name "Z" -PSProvider FileSystem -Root "\\server\share" -Credential (Get-Credential)
 
 # Scan mapped drive
-ferret-scan scan "Z:\" --recursive
+ferret-scan --file "Z:\" --recursive
 ```
 
 #### Use Full UNC Paths
 ```powershell
 # Ensure proper UNC path format
-ferret-scan scan "\\server\share\directory" --format json
+ferret-scan --file "\\server\share\directory" --format json
 
 # Use IP address if DNS resolution fails
-ferret-scan scan "\\192.168.1.100\share\directory"
+ferret-scan --file "\\192.168.1.100\share\directory"
 ```
 
 #### Authenticate to Network Resource
@@ -429,8 +429,8 @@ net use \\server\share /user:domain\username password
 #### Use Consistent Case
 ```powershell
 # Windows is case-insensitive, but be consistent
-ferret-scan scan "C:\Users\Username\Documents"  # Preferred
-# Instead of: ferret-scan scan "c:\users\username\documents"
+ferret-scan --file "C:\Users\Username\Documents"  # Preferred
+# Instead of: ferret-scan --file "c:\users\username\documents"
 ```
 
 #### Check File System Type
@@ -465,7 +465,7 @@ Get-Content ".git\hooks\pre-commit"
 .\.git\hooks\pre-commit
 
 # Or test ferret-scan pre-commit mode
-ferret-scan scan . --pre-commit-mode
+ferret-scan --file . --pre-commit-mode
 ```
 
 #### Fix Hook Permissions
@@ -531,7 +531,7 @@ $DiagInfo | Format-Table -AutoSize
 ```powershell
 # Enable debug logging
 $env:FERRET_DEBUG = "1"
-ferret-scan scan . --debug --output debug-output.json 2>&1 | Tee-Object debug-log.txt
+ferret-scan --file . --debug --output debug-output.json 2>&1 | Tee-Object debug-log.txt
 
 # Collect Windows Event Logs
 Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='ferret-scan'} -MaxEvents 50 -ErrorAction SilentlyContinue
