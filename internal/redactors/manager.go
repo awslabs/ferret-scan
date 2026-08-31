@@ -401,6 +401,10 @@ var containerRedactorExtensions = map[string]struct{}{
 	".docx": {}, ".xlsx": {}, ".pptx": {},
 	".docm": {}, ".xlsm": {}, ".pptm": {},
 	".doc": {}, ".xls": {}, ".ppt": {},
+	// OpenDocument is a ZIP container too, so a file merely NAMED .odt must fall back to
+	// the text redactor rather than reaching the office redactor and failing there (#514).
+	".odt": {}, ".ods": {}, ".odp": {},
+	".ott": {}, ".ots": {}, ".otp": {},
 }
 
 // hasContainerSignature reports whether a file begins with the ZIP (OOXML) or OLE
