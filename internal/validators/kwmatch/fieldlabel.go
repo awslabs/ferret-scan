@@ -115,12 +115,22 @@ func LooksLikeFieldLabel(line string, keywords []string) bool {
 // non-label vocabulary even though "member id" is a keyword — the bug this fixes.
 //
 // The concatenated spelling counts because it is the same label written the way a JSON key or an ORM
-// field is: "memberid" for "member id", "driverslicensenumber" for "driver's license number". Without
+// field is: "memberid" for "member id", "driverslicensenumber" for "drivers license number". Without
 // it, a line consisting of exactly that one token has no qualifying word at all and is rejected as
 // non-label vocabulary (#409).
 //
+// An APOSTROPHE is kept by the split below, so it is part of a word here rather than a separator, and
+// the concatenation of "driver's license number" is "driver'slicensenumber" — NOT
+// "driverslicensenumber", which this comment claimed until #438. That claim mattered: it made the
+// camelCase gap look already-closed, and the gap was real (measured 0 findings for
+// `driversLicenseNumber: D1234567`). Note the asymmetry with isWordByte, which treats an apostrophe
+// as a word BOUNDARY — so a bare "driver" whole-word-matches inside "driver'slicensenumber" but not
+// inside "driverslicensenumber". Both behaviours are load-bearing for existing callers; what is not
+// safe is documenting one and relying on the other. The fix for #438 was a vocabulary one: a
+// three-word keyword whose words concatenate to the field name the exports actually write.
+//
 // Only the FULL concatenation, deliberately. Accepting an arbitrary run of a keyword's words would
-// admit "licensenumber" from "driver's license number", and this loop is the false-positive gate that
+// admit "licensenumber" from "drivers license number", and this loop is the false-positive gate that
 // keeps a non-label line from opening a cross-line window, so the narrowest widening that closes the
 // gap is the right one.
 //

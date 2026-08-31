@@ -137,10 +137,30 @@ Addresses are notoriously hard because "number + words" occurs everywhere (code 
 | `DRIVERS_LICENSE` | State-specific formats for top 10 US states | CA: 1 letter + 7 digits; TX: 8 digits; FL: 1 letter + 12 digits; NY: 9 digits; PA: 8 digits; IL: 1 letter + 11 digits; OH: 2 letters + 6 digits; GA: 9 digits; NC: 1-12 digits; MI: 1 letter + 12 digits |
 
 ### Context system — THE MOST KEYWORD-DEPENDENT VALIDATOR
-- **Positive keywords** (+30 to +50): `driver`, `license`, `licence`, `dl`, `dmv`, `motor vehicle`, `driving`, `permit`, `state id`, `identification card`, `operator`
+- **Positive keywords** (+30 to +50): `driver`, `license`, `licence`, `dl`, `dmv`, `motor vehicle`, `driving`, `permit`, `state id`, `identification card`, `operator`, `driver's license`, `drivers license`, `driver license`, `dl number`, `license number`, `licence number`
 - **Negative keywords** (-20 to -35): `ssn`, `social security`, `phone`, `account`, `serial`, `order`, `invoice`, `reference`, `tracking`, `confirmation`
 - **Domain disambiguation** (post-adversarial fix): the word "license" alone is insufficient — it could be a software license, fishing license, gun license. The validator now requires **"driver" OR "dl" OR "dmv" OR "motor vehicle"** as a strong anchor, not just "license."
 - **UUID/GUID exclusion**: patterns that match UUID format are rejected
+- **Three-word forms for camelCase field names**: `drivers license number`, `drivers licence number`, `driver license number`, `driver licence number`, `driving license number`, `driver's license number`. These are not redundant with the shorter keywords, and the reason is worth knowing before editing this list.
+
+`internal/validators/kwmatch` lets a keyword's spaces match **zero** separators, so a keyword also finds the concatenated and camelCase spellings of itself — but the concatenation must equal the **whole word**. `drivers license` yields `driverslicense` and did find `driversLicense`; append `Number` and the word becomes `driverslicensenumber`, which no two-word keyword can reach. Measured at HEAD, one label per line, with no state name present:
+
+| label | findings |
+|---|---|
+| `driversLicenseNumber:` | **0** |
+| `driverslicensenumber:` | **0** |
+| `drivers_license_number:` | 1 @ 85 |
+| `Drivers License Number:` | 1 @ 95 |
+| `driver's license number:` | 1 @ 95 |
+| `driversLicense:` | 1 @ 65 |
+
+camelCase is the default key style of JSON, REST payloads and ORM exports, and the cross-line window (a label alone on the line above its value) had the identical gap. A licence that is not reported is never handed to the redactor: on a realistic JSON export carrying two licences, the scan found **0 findings and wrote no redacted file at all**, leaving both in cleartext ([#438](https://github.com/awslabs/ferret-scan/issues/438)).
+
+That issue was filed against the **apostrophe** in `driver's license`, on the theory that it blocked the camelCase match. That premise is wrong, and it is worth recording because it is an easy trap: the apostrophe spellings already worked, the two failing spellings contain no apostrophe, and making the apostrophe optional in the matcher — measured — changed nothing at all, because the vocabulary still had no three-word keyword to concatenate. So the fix is vocabulary, and the shared matcher's apostrophe handling is deliberately untouched.
+
+**Adding a positive keyword here is safe in one direction only.** It can add findings and never remove one, which is why this widening needed no suppressor review; the same edit to `negativeKeywords` would be a suppression change and is governed by the opposite rule. Measured on 901 real files from this host (401 licence-dense documents, 500 JSON/JS files): **0 findings gained, 0 lost** — the additions are specific enough not to fire on ordinary text — and the like-for-like scan cost of six more keywords is **1.02x**, inside the run-to-run noise of the measurement itself.
+
+One consequence to be aware of: the concatenated spellings land at **65 (MEDIUM)** where the spaced spelling reaches 95, because `findKeywordsOnLine` — which counts keywords for **scoring** — uses the strict matcher, while `lineHasPositiveKeyword` — which opens the **gate** — uses the label-flexible one. So a camelCase label opens the gate but earns no context credit. Redaction still covers the finding (it acts on reported findings regardless of the display filter), but a report gated on `--confidence high` shows it as clean. That asymmetry is tracked separately; it cannot be fixed by widening `findKeywordsOnLine`, because that function is called with `negativeKeywords` too.
 
 ### Why this context design
 DL number formats are **maximally ambiguous** — they overlap with SSNs (9 digits), phone numbers (10 digits), and generic alphanumeric IDs. A California DL ("D1234567") looks like any letter+digit combination. Without strong keyword anchoring, this validator would fire on every 7-9 digit number in every document. The trade-off: real DL numbers without nearby "driver"/"DL"/"DMV" text will be missed — but that's acceptable because the FP rate of unanchored detection would make the tool unusable.

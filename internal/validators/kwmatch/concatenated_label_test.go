@@ -110,29 +110,54 @@ func TestOnlyTheWholeKeywordConcatenationCounts(t *testing.T) {
 	}
 }
 
-// A keyword containing an APOSTROPHE is a known, separate gap, and it is pinned here so the boundary
-// of this change is explicit rather than accidental.
+// An APOSTROPHE in a keyword is part of a word here, not a separator, so "driver's license number"
+// concatenates to "driver'slicensenumber". That asymmetry with isWordByte — which treats an
+// apostrophe as a word BOUNDARY — is pinned below because both behaviours are load-bearing.
 //
-// "driver's license number" concatenates to "driver'slicensenumber", keeping the apostrophe, so the
-// camelCase field name a JSON export actually writes — "driversLicenseNumber" — matches neither this
-// per-word check nor the vocabulary gate before it. Measured: ContainsAnyLabel is false for
-// "driverslicensenumber" and true for "driver'slicensenumber".
+// #438 was filed on the theory that this asymmetry is what hid the camelCase licence label
+// `driversLicenseNumber`, and **that theory is wrong**. Two measurements refute it:
 //
-// That is a different mechanism from the one this change fixes — a LITERAL character requirement in
-// the keyword, not a separator one — and closing it means changing what an apostrophe means to the
-// shared matcher, for every caller. Filed on its own rather than folded in here.
-func TestApostropheInAKeywordIsAKnownGap(t *testing.T) {
+//   - the apostrophe SPELLINGS already worked end to end. `driver's license number: D1234567`
+//     reported at 95, as did `Drivers License Number:` and `drivers_license_number:`. The two
+//     spellings that reported nothing — `driversLicenseNumber:` and `driverslicensenumber:` —
+//     contain no apostrophe at all.
+//   - making the apostrophe a separator here, on the unchanged vocabulary, is a **measured no-op**:
+//     `driversLicenseNumber: D1234567` still reported 0 findings. The vocabulary's longest DL
+//     keyword was two words ("drivers license" -> "driverslicense"), so no concatenation could
+//     reach "driverslicensenumber" however the apostrophe is treated.
+//
+// The real cause was vocabulary: a keyword's concatenation must equal the WHOLE word, and no
+// three-word DL keyword existed. #438 was closed by adding them to driverslicense's
+// positiveKeywords, leaving the shared matcher's apostrophe semantics untouched — which is the
+// right outcome, because changing them reaches every caller for no measured gain.
+func TestApostropheIsPartOfAWordHereAndABoundaryInIsWordByte(t *testing.T) {
 	licence := []string{"driver's license number"}
 
-	if keywordWord("driverslicensenumber", licence) {
-		t.Log("the apostrophe gap now closes; fold this case into " +
-			"TestOnlyTheWholeKeywordConcatenationCounts and drop this test")
-	}
-	// The apostrophe-preserving spelling is what matches today. If this stops holding, the matcher's
+	// The apostrophe-preserving spelling is what matches. If this stops holding, the matcher's
 	// treatment of an apostrophe changed and every caller is affected.
 	if !keywordWord("driver'slicensenumber", licence) {
 		t.Error("the apostrophe-preserving concatenation no longer matches, so the shared matcher's " +
 			"handling of a literal apostrophe has changed — check every caller, not just this one")
+	}
+	// And the apostrophe-free spelling does NOT, which is what makes the doc comment on keywordWord
+	// correct as now written. It said the opposite until #438, and that false example is what made
+	// the camelCase gap look already-closed.
+	if keywordWord("driverslicensenumber", licence) {
+		t.Error("an apostrophe is now dropped from a keyword's concatenation. That is a change to " +
+			"shared matcher semantics for every caller of ContainsLabel/LooksLikeFieldLabel — if it " +
+			"is deliberate, update the keywordWord doc comment, which states the opposite, and " +
+			"re-measure the label-gated validators (driverslicense, passport, medicalid)")
+	}
+	// The other half of the asymmetry: isWordByte excludes the apostrophe, so a bare "driver"
+	// whole-word-matches inside "driver'slicensenumber" but not inside "driverslicensenumber".
+	// This is why the two functions must be read together and neither changed alone.
+	if !ContainsLabelLower("driver'slicensenumber:", "driver") {
+		t.Error(`ContainsLabelLower no longer treats "'" as a word boundary, so a bare keyword ` +
+			`stopped matching before an apostrophe`)
+	}
+	if ContainsLabelLower("driverslicensenumber:", "driver") {
+		t.Error(`ContainsLabelLower now matches "driver" inside "driverslicensenumber", so the ` +
+			`whole-word rule has been weakened into a prefix search`)
 	}
 }
 
