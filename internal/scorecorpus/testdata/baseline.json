@@ -121,7 +121,7 @@
     },
     "SECRETS": {
       "tp": 2,
-      "tp_high_medium": 2,
+      "tp_high_medium": 1,
       "fn_missed": 0,
       "fn_band": 0,
       "fp_high_medium": 0,

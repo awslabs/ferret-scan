@@ -327,11 +327,20 @@ var MultiCheckCases = []Case{
 	{
 		Name:      "secret_aws_access_key",
 		Origin:    "authored 2026-08 for scorecorpus; value verified against the real CLI",
-		Rationale: "An AWS access key id in a config file.",
+		Rationale: "An AWS access key id in a config file. This one is AWS's published documentation placeholder, so the band it lands in is a policy decision, not an accident.",
 		Checks:    []string{"SECRETS"},
 		Input:     "AWS_ACCESS_KEY_ID=" + fakeAWSAccessKeyID + "\n",
 		Labels: []Label{
-			{Line: 1, Value: fakeAWSAccessKeyID, Types: []string{"AWS_ACCESS_KEY"}, MinBand: BandMedium},
+			// BandLow, lowered from BandMedium by #364. MinBand records what the tool
+			// produces TODAY, and a documentation placeholder is now capped at 15 (top
+			// of LOW) so surrounding context cannot present it as a real credential.
+			//
+			// The label is kept rather than deleted, and that is the point of this
+			// case: BandLow still requires the value to be REPORTED, and only reported
+			// findings reach the redactor. If the demotion ever turns into a drop this
+			// label becomes FN(miss) — a genuine cleartext leak — instead of passing
+			// quietly. Redactable: true below puts it through the sink gate too.
+			{Line: 1, Value: fakeAWSAccessKeyID, Types: []string{"AWS_ACCESS_KEY"}, MinBand: BandLow},
 		},
 		Redactable: true,
 	},
