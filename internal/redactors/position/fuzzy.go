@@ -311,68 +311,6 @@ func (dpc *DefaultPositionCorrelator) normalizeString(s string) string {
 	return result.String()
 }
 
-// findBestContextualMatch finds the best contextual match for the target text
-func (dpc *DefaultPositionCorrelator) findBestContextualMatch(extractedContext, targetText, originalText string) *ContextMatch {
-	if len(extractedContext) == 0 || len(targetText) == 0 || len(originalText) == 0 {
-		return nil
-	}
-
-	bestMatch := &ContextMatch{
-		Similarity: 0.0,
-	}
-
-	// Search for the target text in the original text
-	targetIndices := dpc.findAllOccurrences(targetText, originalText)
-	if len(targetIndices) == 0 {
-		return nil
-	}
-
-	// For each occurrence, extract context and compare with extracted context
-	for _, index := range targetIndices {
-		originalContext := dpc.extractContext(index, originalText)
-		similarity := dpc.calculateStringSimilarity(extractedContext, originalContext)
-
-		if similarity > bestMatch.Similarity {
-			bestMatch = &ContextMatch{
-				Index:      index,
-				Context:    originalContext,
-				Similarity: similarity,
-			}
-		}
-	}
-
-	// Return nil if similarity is too low
-	if bestMatch.Similarity < 0.3 {
-		return nil
-	}
-
-	return bestMatch
-}
-
-// findAllOccurrences finds all occurrences of a substring in a string
-func (dpc *DefaultPositionCorrelator) findAllOccurrences(substring, text string) []int {
-	var indices []int
-
-	if len(substring) == 0 {
-		return indices
-	}
-
-	start := 0
-
-	for start < len(text) {
-		index := strings.Index(text[start:], substring)
-		if index == -1 {
-			break
-		}
-
-		actualIndex := start + index
-		indices = append(indices, actualIndex)
-		start = actualIndex + 1
-	}
-
-	return indices
-}
-
 // extractContext extracts context around a position in text
 func (dpc *DefaultPositionCorrelator) extractContext(index int, text string) string {
 	halfWindow := dpc.contextWindowSize / 2
@@ -381,24 +319,6 @@ func (dpc *DefaultPositionCorrelator) extractContext(index int, text string) str
 	end := min(len(text), index+halfWindow)
 
 	return text[start:end]
-}
-
-// extractExtractedContext extracts context around a position in extracted text
-func (dpc *DefaultPositionCorrelator) extractExtractedContext(pos redactors.TextPosition, extractedText string) string {
-	lines := strings.Split(extractedText, "\n")
-
-	if pos.Line < 1 || pos.Line > len(lines) {
-		return ""
-	}
-
-	// Calculate character index in the full text
-	charIndex := 0
-	for i := 0; i < pos.Line-1; i++ {
-		charIndex += len(lines[i]) + 1 // +1 for newline
-	}
-	charIndex += pos.StartChar
-
-	return dpc.extractContext(charIndex, extractedText)
 }
 
 // estimatePositionByLine estimates position in original text based on line number
