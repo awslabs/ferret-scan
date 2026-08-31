@@ -94,7 +94,6 @@ COPY --from=builder /app/ferret-scan /ferret-scan
 
 # Minimal environment variables
 ENV FERRET_CONTAINER_MODE=true
-ENV FERRET_QUIET_MODE=true
 # Use ferret user's temp directory instead of /tmp
 ENV TMPDIR=/home/ferret/tmp
 # Uncomment if you enable CA certificates above

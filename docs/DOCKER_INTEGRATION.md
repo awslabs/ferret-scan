@@ -329,7 +329,6 @@ docker run --rm \
 docker run --rm \
   -v $(pwd):/data \
   -e FERRET_CONTAINER_MODE=true \
-  -e FERRET_QUIET_MODE=true \
   ferret-scan:latest \
   --file /data --recursive
 ```

@@ -120,9 +120,12 @@ docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan f
 
 ### Environment Variables
 - `FERRET_CONFIG_DIR` - Config directory location (set to `/home/ferret/.ferret-scan` in container)
-- `PORT` - Web UI port (default: 8080)
-- `FERRET_CONTAINER_MODE` - Set to `true` in container for optimized operation
-- `FERRET_QUIET_MODE` - Set to `true` in container to reduce debug output
+- `FERRET_CONTAINER_MODE` - Set to `true` in the image. It makes the web UI bind
+  `0.0.0.0` instead of `127.0.0.1`, so the port publish works; `--bind` overrides it.
+
+The web UI port is a flag, not an environment variable — `--web --port 8080`, as in
+`docker-compose.yml`. There is no `PORT` variable: it is read nowhere, and with
+`PORT=9999 ferret-scan --web --port 8091` the server binds 8091 and 9999 refuses.
 
 ## Troubleshooting
 
