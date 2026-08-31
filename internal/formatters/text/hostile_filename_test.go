@@ -154,11 +154,35 @@ func TestNoFabricatedLineSurvivesRendering(t *testing.T) {
 // only on the --verbose path, so a mutation removing its sanitization SURVIVED the whole
 // text-formatter suite. Every write of a borrowed string needs its own case; one sanitized
 // site does not cover its neighbour.
+// Runs BOTH colour settings, and that is the whole point of the change here. The first version
+// of this test hardcoded NoColor: true — the branch that was already correct — while the
+// coloured branch printed the filename raw. So `--verbose` leaked on the DEFAULT invocation and
+// this test passed: measured on origin/main, 1 raw ESC byte with colour and 0 without (#544).
+//
+// A safety test that only exercises the arm that already works cannot fail on the arm that does
+// not. Both emitters now derive their filename from one sanitized value before branching, and
+// this loop is what holds that.
 func TestTheVerboseMatchFoundLineIsSanitized(t *testing.T) {
+	for _, noColor := range []bool{true, false} {
+		t.Run(colourLabel(noColor), func(t *testing.T) {
+			verboseSinkIsSanitized(t, noColor)
+		})
+	}
+}
+
+func colourLabel(noColor bool) string {
+	if noColor {
+		return "no-color"
+	}
+	return "colour"
+}
+
+func verboseSinkIsSanitized(t *testing.T, noColor bool) {
+	t.Helper()
 	out, err := NewFormatter().Format([]detector.Match{hostileMatch(erasePayload)}, nil,
 		formatters.FormatterOptions{
 			ConfidenceLevel: map[string]bool{"high": true, "medium": true, "low": true},
-			NoColor:         true,
+			NoColor:         noColor,
 			Verbose:         true,
 			ShowMatch:       true,
 			Limit:           0,
