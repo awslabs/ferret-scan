@@ -80,32 +80,6 @@
     },
     {
       "category": "sast",
-      "confidence": "Medium",
-      "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 2)\n**Confidence:** MEDIUM (69.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "AWS_ACCESS_KEY"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "secrets"
-        }
-      ],
-      "location": {
-        "end_line": 2,
-        "file": "notes.txt",
-        "start_line": 2
-      },
-      "message": "AWS access key detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Aws Access Key Detected",
-      "severity": "High"
-    },
-    {
-      "category": "sast",
       "confidence": "Low",
       "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 1)\n**Confidence:** LOW (33.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact john.doe@example.com or call 212-555-0142.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
       "id": "ferret-<HASH>",
@@ -128,6 +102,32 @@
       },
       "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
       "name": "Business Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <TMPDIR>/notes.txt (line 2)\n**Confidence:** LOW (15.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AWS_ACCESS_KEY"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "secrets"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "notes.txt",
+        "start_line": 2
+      },
+      "message": "AWS access key detected: [HIDDEN] (confidence: LOW)",
+      "name": "Aws Access Key Detected",
       "severity": "Medium"
     },
     {

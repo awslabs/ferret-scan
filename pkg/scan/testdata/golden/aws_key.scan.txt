@@ -1,2 +1,2 @@
-[MEDIUM] AWS_ACCESS_KEY (line 1, conf 84%, likely_real) val="AKIAIOSFODNN7EXAMPLE"
-[MEDIUM] AWS_SECRET_ACCESS_KEY (line 2, conf 75%, likely_real) val="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+[LOW] AWS_ACCESS_KEY (line 1, conf 15%, likely_test) val="AKIAIOSFODNN7EXAMPLE"
+[LOW] AWS_SECRET_ACCESS_KEY (line 2, conf 15%, likely_test) val="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"

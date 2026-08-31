@@ -11,72 +11,6 @@
                 "artifactLocation": {
                   "uri": "file://<TMPDIR>/clip.wav"
                 },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Comment: contact 212-555-0142 or \nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
-                  },
-                  "startLine": 7
-                },
-                "region": {
-                  "endColumn": 54,
-                  "snippet": {
-                    "text": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
-                  },
-                  "startColumn": 34,
-                  "startLine": 7
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "AWS_ACCESS_KEY Detected in clip.wav at line 7 (confidence: 84.0% - MEDIUM). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
-          },
-          "properties": {
-            "confidence": 84,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0,
-              "context_doc_type": "Configuration",
-              "context_doctype": "Configuration",
-              "context_domain": "Unknown",
-              "detection_method": "keyword_pattern",
-              "environment_type": "test",
-              "original_confidence": 84,
-              "secret_type": "AWS_ACCESS_KEY",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "config_file_boost": true,
-                "has_entropy": true,
-                "min_length": true,
-                "not_common_word": true,
-                "not_test_data": true,
-                "specific_pattern": true,
-                "test_environment_penalty": true,
-                "valid_format": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "secrets"
-          },
-          "rank": 67,
-          "ruleId": "AWS_ACCESS_KEY"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "file://<TMPDIR>/clip.wav"
-                },
                 "region": {
                   "endColumn": 29,
                   "snippet": {
@@ -261,6 +195,73 @@
           },
           "rank": 37.5,
           "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/clip.wav"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Comment: contact 212-555-0142 or \nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 54,
+                  "snippet": {
+                    "text": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE"
+                  },
+                  "startColumn": 34,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "AWS_ACCESS_KEY Detected in clip.wav at line 7 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 0,
+              "context_doc_type": "Configuration",
+              "context_doctype": "Configuration",
+              "context_domain": "Unknown",
+              "detection_method": "keyword_pattern",
+              "environment_type": "test",
+              "original_confidence": 15,
+              "secret_type": "AWS_ACCESS_KEY",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "config_file_boost": true,
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": false,
+                "specific_pattern": true,
+                "test_environment_penalty": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 32.5,
+          "ruleId": "AWS_ACCESS_KEY"
         },
         {
           "level": "error",
