@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/office"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/pdf"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
+	svgredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/svg"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/video"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 	"github.com/awslabs/ferret-scan/v2/internal/validators"
@@ -216,6 +217,13 @@ func NewDefaultRedactionManager(outputDir string, strategy redactors.RedactionSt
 		image.NewImageMetadataRedactor(outputManager, observer),
 		audio.NewAudioRedactor(outputManager, observer),
 		video.NewVideoRedactor(outputManager, observer),
+		// SVG. Registered SEPARATELY from plaintext although the substitution is the
+		// same, because the worker pool prefers RedactContent (the extracted text) over
+		// RedactDocument (the file), and SVG extraction is lossy by design -- prose
+		// nodes only. Measured on a 479-byte drawing: routed to the plaintext redactor,
+		// the "redacted" output was five lines of prose with no <svg> element at all.
+		// See internal/redactors/svg and #314.
+		svgredactor.NewSVGRedactor(outputManager, observer),
 	} {
 		if err := manager.RegisterRedactor(r); err != nil {
 			return nil, nil, fmt.Errorf("failed to register redactor %s: %w", r.GetName(), err)
