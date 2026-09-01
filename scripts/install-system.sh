@@ -191,12 +191,14 @@ uninstall() {
         print_warning "Binary not found: $INSTALL_DIR/$BINARY_NAME"
     fi
 
-    # Remove pre-commit wrapper
+    # Remove the legacy pre-commit wrapper if an older install left one behind.
+    # This installer no longer creates it (see setup_pre_commit_integration), so
+    # its absence is the normal case and is not a problem worth warning about.
     if [ -f "$INSTALL_DIR/ferret-scan-precommit" ]; then
         rm "$INSTALL_DIR/ferret-scan-precommit"
-        print_success "Removed $INSTALL_DIR/ferret-scan-precommit"
+        print_success "Removed legacy wrapper $INSTALL_DIR/ferret-scan-precommit"
     else
-        print_warning "Pre-commit wrapper not found: $INSTALL_DIR/ferret-scan-precommit"
+        print_info "No legacy pre-commit wrapper to remove (expected — current installs do not create one)"
     fi
 
     # Ask about config directory
