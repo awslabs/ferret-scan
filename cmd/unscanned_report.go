@@ -82,6 +82,23 @@ const (
 	// there is no link, the entry IS the object, and rendering "symlink not followed"
 	// for a FIFO would be a true disclosure under a false heading. See #485.
 	causeNotRegular
+	// causeRefusedTraversal is a path the traversal gate declined: once cleaned it still
+	// climbs above the directory it is relative to, or a walked entry resolved outside the
+	// tree the walk was asked to descend.
+	//
+	// It exists because the refusal used to be SILENT. The input-path gate did
+	// `totalSkipped++; continue` with an explicit comment saying not to warn ("they're
+	// security-related"), and the walk gate did a bare `return nil`. Measured at a0e983c
+	// on a file merely NAMED report..final.txt: rc 0, "No files to process", and
+	// --fail-on-incomplete also 0. A refusal nobody can see is indistinguishable from a
+	// clean scan, which is the one thing this report exists to prevent — so a refusal that
+	// survives the segment test now lands here, in the denominator and in the exit code.
+	//
+	// Not folded into causeUnreadable: nothing was read because nothing was ATTEMPTED, and
+	// "cannot read" would send the operator to chmod for a decision the tool made. Not
+	// folded into causeNotFollowed either — there is no symlink involved. Both would be
+	// true disclosures under a false heading; see the note on causeNotRegular. See #562.
+	causeRefusedTraversal
 )
 
 func (c unscannedCause) String() string {
@@ -103,6 +120,8 @@ func (c unscannedCause) String() string {
 		return "file too large to scan"
 	case causeNotRegular:
 		return "not a regular file"
+	case causeRefusedTraversal:
+		return "path refused as traversal"
 	default:
 		return "unknown"
 	}
@@ -184,6 +203,8 @@ func toFormatterNotExamined(entries []unscannedEntry) []formatters.NotExaminedFi
 			cause = formatters.NotExaminedTooLarge
 		case causeNotRegular:
 			cause = formatters.NotExaminedNotRegular
+		case causeRefusedTraversal:
+			cause = formatters.NotExaminedRefusedTraversal
 		default:
 			cause = formatters.NotExaminedUnreadable
 		}

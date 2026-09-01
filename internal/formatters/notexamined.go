@@ -100,6 +100,18 @@ const (
 	// said "cannot read" for a refused symlink while the text report said "symlink not
 	// followed". This is the same trap one cause later. See #485.
 	NotExaminedNotRegular
+
+	// NotExaminedRefusedTraversal — the path was declined by the traversal gate: once
+	// cleaned it still climbs above the directory it is relative to, or a walked entry
+	// resolved outside the tree being scanned.
+	//
+	// Mapped here from the moment the cmd-side cause exists, because the two causes above
+	// both record what happens otherwise: a cmd cause with no mapping falls to the default
+	// arm and every machine format says "cannot read" for a file nobody tried to read. For
+	// this cause that mislabelling would be doubly wrong — the refusal was a POLICY
+	// decision, and sending the operator to chmod hides the actual remedy (name the path
+	// absolutely). See #562.
+	NotExaminedRefusedTraversal
 )
 
 // String returns the operator-facing cause label.
@@ -127,6 +139,10 @@ func (c NotExaminedCause) String() string {
 		return "file too large to scan"
 	case NotExaminedNotRegular:
 		return "not a regular file"
+	case NotExaminedRefusedTraversal:
+		// Word-for-word the cmd-side label. An operator comparing the human report
+		// against a SARIF or JUnit artifact from the same run must not have to translate.
+		return "path refused as traversal"
 	default:
 		return "unknown"
 	}

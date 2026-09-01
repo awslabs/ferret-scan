@@ -452,9 +452,18 @@ func (v *SchemaValidator) validateLocation(location *GitLabLocation) error {
 		errorList = append(errorList, "end_line must be >= start_line")
 	}
 
-	// Validate file path format (basic validation)
-	if strings.Contains(location.File, "..") {
-		errorList = append(errorList, "file path cannot contain '..'")
+	// Validate file path format. Tested by SEGMENT, not as a substring: the GitLab schema wants a
+	// repo-relative path that does not CLIMB, and a ".." path element is what climbs. A filename that
+	// merely contains ".." — "report..final.txt", "2024..2025.csv" — is an ordinary name.
+	//
+	// The substring form silently dropped such a finding. Measured on two byte-identical files in one
+	// directory, only one of them named with "..": json reported 2 findings and sarif 2, while
+	// gitlab-sast reported 1 with `"status": "success"` and nothing on stderr — the loop in
+	// formatter.go `continue`s past a vulnerability that fails validation and logs it only under
+	// --verbose. A GitLab gate therefore read a successful report with a real SSN missing from it. The
+	// scan was not even reaching that file before #562; fixing the scan is what exposed this.
+	if pathHasClimbingSegment(location.File) {
+		errorList = append(errorList, "file path cannot contain a '..' path segment")
 	}
 
 	if len(errorList) > 0 {
@@ -592,4 +601,18 @@ func (e *SchemaValidationError) GetDetails() map[string]interface{} {
 	}
 
 	return details
+}
+
+// pathHasClimbingSegment reports whether p contains a ".." PATH SEGMENT, i.e. a component that climbs
+// out of its parent — as opposed to a filename that merely contains two dots.
+//
+// Both separators are treated as separators regardless of host, because this value is a path from a
+// scanned tree that may have been produced on Windows and is being formatted anywhere.
+func pathHasClimbingSegment(p string) bool {
+	for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }

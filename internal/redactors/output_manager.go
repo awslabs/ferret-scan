@@ -127,8 +127,32 @@ func (osm *OutputStructureManager) makeRelativePath(path string) string {
 		return "current"
 	}
 
-	// Replace any remaining problematic characters
-	path = strings.ReplaceAll(path, "..", "parent")
+	// Neutralise a ".." SEGMENT, not every occurrence of two dots.
+	//
+	// This was strings.ReplaceAll(path, "..", "parent"), which rewrites the middle of a
+	// FILENAME. Until #562 no path containing ".." ever reached a scanner — cmd refused
+	// them all with a substring test of its own — so the substitution was unreachable for
+	// real input and the collision below could not happen. Fixing cmd's gate makes it
+	// reachable, and measured on a directory holding report..final.txt (SSN 452-11-9384)
+	// and reportparentfinal.txt (SSN 613-22-7451), both scanned and both reported:
+	//
+	//	redacted/.../reportparentfinal.txt   <- one file, holding ***-**-9384
+	//
+	// Two distinct inputs mapped to one output path and the second write clobbered the
+	// first, so one redacted copy did not exist at all while the findings table listed
+	// both files. Segment-wise, the two names stay distinct and both copies are written.
+	//
+	// The rewrite is kept for a genuine ".." segment: this function's job is to turn a
+	// scanned path into a path UNDER the redaction output directory, and a "parent"
+	// segment must not climb out of it. Splitting on "/" is correct here because the
+	// backslash conversion above has already run.
+	segments := strings.Split(path, "/")
+	for i, seg := range segments {
+		if seg == ".." {
+			segments[i] = "parent"
+		}
+	}
+	path = strings.Join(segments, "/")
 
 	return path
 }
