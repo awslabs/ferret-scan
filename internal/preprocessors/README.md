@@ -11,6 +11,7 @@ The preprocessor system uses a **specialized architecture** where each file type
 - **OfficeMetadataPreprocessor**: Handles Office documents (.docx, .xlsx, .pptx, .odt, .ods, .odp)
 - **AudioMetadataPreprocessor**: Handles audio files (.mp3, .flac, .wav, .m4a)
 - **VideoMetadataPreprocessor**: Handles video files (.mp4, .m4v, .mov)
+- **TextPreprocessor**: Extracts document body text (.pdf, Office, ODF) and SVG prose (.svg)
 
 ## Features
 
@@ -37,6 +38,20 @@ The preprocessor system uses a **specialized architecture** where each file type
 - **Extensions**: .docx, .xlsx, .pptx, .odt, .ods, .odp
 - **ProcessorType**: `office_metadata`
 - **Extracts**: Document properties, author information, embedded media, revision history
+
+### Vector Graphics
+- **Extensions**: .svg
+- **ProcessorType**: `Text Extractor`
+- **Extracts**: `<text>`, `<tspan>`, `<textPath>`, `<title>`, `<desc>`, `<metadata>`,
+  Inkscape flowed text, the `<foreignObject>` subtree, XML comments, and the prose-bearing
+  attributes (`aria-label`, `alt`, `title`, `inkscape:label`, ...)
+- **Never extracts**: `d`, `points`, `transform`, `viewBox`, `href`, `<style>`, `<script>`,
+  or any other geometry, presentation or script content
+
+An SVG is claimed by NAME here so the plaintext preprocessor cannot claim it on a byte
+sniff. That matters because the router runs every claiming preprocessor and concatenates
+the successes: handing the raw drawing to the validators measured 943 findings, 817 of
+them PHONE, on a 64KB drawing of integer-coordinate glyph paths.
 
 ### Audio Files
 - **Extensions**: .mp3, .flac, .wav, .m4a
@@ -112,6 +127,10 @@ Each specialized preprocessor has its own detailed documentation:
 ### PDF Documents (Metadata + Text)
 
 - PDF (.pdf) - Document metadata + text extraction
+
+### Vector Graphics (Prose Text Only)
+
+- SVG (.svg) - text/tspan/title/desc/metadata nodes and prose attributes; never geometry
 
 ### Office Documents (Metadata + Text)
 

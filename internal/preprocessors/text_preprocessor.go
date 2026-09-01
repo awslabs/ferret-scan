@@ -5,13 +5,16 @@ package preprocessors
 
 import (
 	"fmt"
-	"github.com/awslabs/ferret-scan/v2/internal/coverage"
+	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	textextractofficetextlib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/text-extractors/text-extract-officetextlib"
 	textextractpdftextlib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/text-extractors/text-extract-pdftextlib"
+	textextractsvgtextlib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/text-extractors/text-extract-svgtextlib"
 )
 
 // TextPreprocessor handles text extraction from various document formats
@@ -32,6 +35,20 @@ func NewTextPreprocessor() *TextPreprocessor {
 			".odt", ".ods", ".odp",
 			// ODF templates: the same packages with a template media type (#528).
 			".ott", ".ots", ".otp",
+			// SVG. Claimed by NAME here so the geometry never reaches a validator.
+			//
+			// An .svg sniffs as text, so before this the plaintext preprocessor claimed
+			// it and handed the whole document over -- coordinates included. Measured at
+			// a0e983c on a 64KB SVG of integer-coordinate glyph paths: 943 findings, 817
+			// of them PHONE (122 HIGH), all path data. The response had been to exclude
+			// embedded .svg parts entirely (embedded.SkipTextPipeline), which made an SVG
+			// carrying PII in its <text> nodes a silent miss: the same drawing reported 4
+			// findings standalone and 0 when embedded in a .docx, exit 0, nothing on
+			// stderr even under --fail-on-incomplete, and no redacted copy written.
+			//
+			// Routing it here instead sends it to textextractsvgtextlib, which collects
+			// only prose-bearing nodes and attributes. See processSVG (#314).
+			".svg",
 		},
 	}
 }
@@ -93,6 +110,8 @@ func (tp *TextPreprocessor) Process(filePath string) (*ProcessedContent, error) 
 	case ".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm",
 		".odt", ".ods", ".odp", ".ott", ".ots", ".otp":
 		result, err = tp.processOffice(filePath, content)
+	case ".svg":
+		result, err = tp.processSVG(filePath, content)
 	default:
 		err = fmt.Errorf("unsupported file extension: %s", ext)
 		content.Error = err
@@ -262,6 +281,87 @@ func (tp *TextPreprocessor) processOffice(filePath string, content *ProcessedCon
 	tp.createOfficePositionMappings(content, officeContent)
 
 	return content, nil
+}
+
+// processSVG extracts the human-readable text from an SVG drawing.
+//
+// The geometry is not filtered after extraction, it is never collected -- see
+// textextractsvgtextlib. That is what makes the false-positive flood unreachable
+// rather than merely unlikely: no coordinate is handed to a validator, so no
+// validator's numeric patterns matter.
+func (tp *TextPreprocessor) processSVG(filePath string, content *ProcessedContent) (*ProcessedContent, error) {
+	svgContent, err := textextractsvgtextlib.ExtractText(filePath)
+	if err != nil {
+		// Carry the extractor's note across the error return, exactly as the Office
+		// branch does. Without it a .svg that could not be read at all reports zero
+		// findings with nothing said, which is the silence this change exists to remove.
+		if svgContent != nil {
+			content.ExtractionWarning = svgContent.ExtractionWarning
+			content.ExtractionCause = svgContent.ExtractionCause
+			if !content.ExtractionCause.Known() {
+				content.ExtractionCause = coverage.CauseUnparseable
+			}
+		}
+		content.Error = fmt.Errorf("failed to extract text from SVG: %w", err)
+		return content, content.Error
+	}
+
+	// A file NAMED .svg whose root element is not <svg> is a mislabelled text file,
+	// and prose-only extraction is the wrong reading of it.
+	//
+	// Measured before this arm existed, on a plain text file holding an SSN and an
+	// email renamed to .svg: 2 findings through the plaintext preprocessor (which
+	// claimed it on a byte sniff), and 0 once .svg routed here. Recovering precision on
+	// real drawings must not cost recall on a renamed file, so the raw bytes are
+	// scanned instead -- the same argument plaintext_preprocessor.go's
+	// containerExtensions makes for a text file named .docx.
+	if svgContent.NotSVG {
+		raw, readErr := os.ReadFile(filepath.Clean(filePath)) // #nosec G304 -- path already vetted by the router
+		if readErr != nil {
+			content.ExtractionCause = coverage.CauseUnreadable
+			content.ExtractionWarning = fmt.Sprintf(
+				"no text extracted from %s: %v, so file content was NOT scanned",
+				filepath.Ext(filePath), readErr)
+			content.Error = fmt.Errorf("failed to read mislabelled SVG: %w", readErr)
+			return content, content.Error
+		}
+		content.Text = string(raw)
+		content.Format = "Text (file named .svg is not an SVG document)"
+	} else {
+		content.Text = svgContent.Text
+		content.Format = svgContent.Format
+		content.ExtractionWarning = svgContent.ExtractionWarning
+		content.ExtractionCause = svgContent.ExtractionCause
+	}
+
+	content.WordCount = len(strings.Fields(content.Text))
+	content.CharCount = len(content.Text)
+	content.LineCount = len(splitLines(content.Text))
+	content.Success = true
+
+	content.EnablePositionTracking()
+	// Lower than Office's 0.7: the extractor emits one line per prose node, so a
+	// reported line number identifies the NODE reliably and its position within the
+	// source file only approximately.
+	content.SetPositionConfidence(0.6)
+	tp.createSVGPositionMappings(content)
+
+	return content, nil
+}
+
+// createSVGPositionMappings creates position mappings for extracted SVG text.
+func (tp *TextPreprocessor) createSVGPositionMappings(content *ProcessedContent) {
+	tp.createBasicLineMappings(content, "svg_extraction")
+
+	content.AddPositionMetadata("extraction_method", "svg_prose_node_extraction")
+	content.AddPositionMetadata("document_format", content.Format)
+	content.AddPositionMetadata("confidence_reason", "svg_text_node_extraction")
+
+	if tp.observer != nil && tp.observer.Debug() != nil {
+		tp.observer.Debug().LogDetail("text_preprocessor",
+			fmt.Sprintf("Created %d position mappings for %s",
+				len(content.PositionMappings), content.Format))
+	}
 }
 
 // createPDFPositionMappings creates position mappings for PDF content
