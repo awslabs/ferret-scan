@@ -73,6 +73,16 @@ func TestConfirmationStillCatchesAGenuineQuadratic(t *testing.T) {
 	base := buildComplexityInput(quadraticUnit(0), nil, reps)
 	big := buildComplexityInput(quadraticUnit(0), nil, reps*4)
 
+	// Warm up and DISCARD. The trigger reading is the first thing this package times, so on a
+	// cold or contended runner it absorbs one-off cost that the `big` reading does not pay in
+	// proportion — which inflates the base and collapses the ratio. Measured on CI, where the base
+	// read 11.7-15.2ms against 2.9-4.7ms locally while `big` was only ~2.3x its local value: the
+	// ratio fell to 6.46x-7.71x on ubuntu and windows purely from that asymmetry. Allocation is not
+	// the cause (pre-sizing the output slice moves the ratio 15.79x -> 15.90x and the loop makes
+	// only 12 allocations), so the fix is to stop MEASURING cold, not to change the fixture.
+	timeValidate(t, newV(), base)
+	timeValidate(t, newV(), big)
+
 	tb, nb := timeValidate(t, newV(), base)
 	tg, ng := timeValidate(t, newV(), big)
 	if nb == 0 || ng <= nb {
@@ -80,11 +90,12 @@ func TestConfirmationStillCatchesAGenuineQuadratic(t *testing.T) {
 	}
 	first := float64(tg) / float64(tb)
 	t.Logf("synthetic quadratic first reading: %.2fx (base=%v big=%v)", first, tb, tg)
-	if first <= maxGrowthRatio {
-		t.Fatalf("the synthetic quadratic read %.2fx, at or below the %.1f threshold — the "+
-			"fixture is too small to be a meaningful control", first, maxGrowthRatio)
-	}
 
+	// The first reading is ONE wall-clock pair, and this file's own guard exists because a single
+	// pair is not a statistic. It is logged, not asserted: a contended sample used to fail here
+	// with Fatalf BEFORE the median was ever computed, so the control reported "the fixture is too
+	// small" on a fixture whose median is 14.3x-15.9x. The median assertion below is the real one,
+	// and it is strictly stronger — it is what the guard under test actually judges.
 	median, samples := medianGrowthRatio(t, newV, base, big, first)
 	t.Logf("synthetic quadratic median: %.2fx over %d pairs %s", median, len(samples), formatRatios(samples))
 	if median <= maxGrowthRatio {
