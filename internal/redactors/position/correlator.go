@@ -5,7 +5,6 @@ package position
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
@@ -58,7 +57,7 @@ type PositionCorrelation struct {
 	// Context is the surrounding context used for correlation
 	Context string
 
-	// Method is the correlation method used (exact, fuzzy, contextual)
+	// Method is the correlation method used (exact, fuzzy, heuristic)
 	Method CorrelationMethod
 
 	// DocumentType is the type of document being processed
@@ -71,13 +70,14 @@ type PositionCorrelation struct {
 // CorrelationMethod represents the method used for position correlation
 type CorrelationMethod int
 
+// There is deliberately no contextual method. A CorrelationContextual value and a
+// tryContextualMatch step between fuzzy and heuristic existed here and could never be
+// returned; see CorrelatePosition for the two independent measurements (#383).
 const (
 	// CorrelationExact indicates exact text matching
 	CorrelationExact CorrelationMethod = iota
 	// CorrelationFuzzy indicates fuzzy text matching
 	CorrelationFuzzy
-	// CorrelationContextual indicates context-based matching
-	CorrelationContextual
 	// CorrelationHeuristic indicates heuristic-based matching
 	CorrelationHeuristic
 )
@@ -89,8 +89,6 @@ func (cm CorrelationMethod) String() string {
 		return "exact"
 	case CorrelationFuzzy:
 		return "fuzzy"
-	case CorrelationContextual:
-		return "contextual"
 	case CorrelationHeuristic:
 		return "heuristic"
 	default:
@@ -161,12 +159,31 @@ func (dpc *DefaultPositionCorrelator) CorrelatePosition(extractedPos redactors.T
 		}
 	}
 
-	// Try contextual matching
-	if correlation := dpc.tryContextualMatch(extractedPos, targetText, extractedText, originalText, documentType); correlation != nil {
-		if correlation.ConfidenceScore >= dpc.confidenceThreshold {
-			return correlation, nil
-		}
-	}
+	// There is no contextual step between fuzzy and heuristic. One was here, and it was
+	// dead two ways over — either reason alone is sufficient, so restoring it would need
+	// both to be answered (#383).
+	//
+	// 1. Arithmetic. Its scorer returned 0.75 * contextSimilarity * (0.8 + 0.2*lengthBonus).
+	//    calculateStringSimilarity is a convex combination of three metrics each bounded by
+	//    1, and lengthBonus was math.Min(1.0, len/20), so the analytic ceiling was 0.75 —
+	//    below the confidenceThreshold of 0.8 it was measured against. Maximising the scorer
+	//    over 20,001 inputs, including identical contexts with a 200-byte target, returned
+	//    0.75 exactly. Nothing in the tree calls SetConfidenceThreshold, so the gate is
+	//    always 0.8: instrumenting this function recorded threshold=0.8 on all 6,655
+	//    correlations performed by the full test suite plus a 17-file redaction corpus.
+	//
+	// 2. Structure. The step could only be reached when neither exact nor fuzzy cleared the
+	//    gate. Whenever tryExactMatch resolves at all, targetText occurs verbatim in
+	//    originalText, so findBestFuzzyMatch finds it at edit distance 0 and
+	//    calculateFuzzyMatchConfidence returns 0.8*1.0 — clearing this `>=` gate exactly.
+	//    So the step was only reachable when targetText was absent from the document, and
+	//    findBestContextualMatch required at least one verbatim occurrence and therefore
+	//    returned nil in precisely that case. The same instrumentation recorded the branch
+	//    entered 0 times in 6,655 correlations.
+	//
+	// The only production caller (PlainTextRedactor.correlateMatchPosition) passes the same
+	// string as extractedText and originalContent, and derives targetText from a line of it,
+	// so case 2 holds by construction there.
 
 	// Return best effort result even if below threshold
 	bestCorrelation := dpc.tryHeuristicMatch(extractedPos, targetText, originalText, documentType)
@@ -483,42 +500,6 @@ func (dpc *DefaultPositionCorrelator) tryFuzzyMatch(extractedPos redactors.TextP
 	}
 }
 
-// tryContextualMatch attempts context-based matching
-func (dpc *DefaultPositionCorrelator) tryContextualMatch(extractedPos redactors.TextPosition, targetText, extractedText, originalText, documentType string) *PositionCorrelation {
-	// Extract context around the target text in extracted content
-	extractedContext := dpc.extractExtractedContext(extractedPos, extractedText)
-	if extractedContext == "" {
-		return nil
-	}
-
-	// Find the best contextual match in original text
-	contextMatch := dpc.findBestContextualMatch(extractedContext, targetText, originalText)
-	if contextMatch == nil {
-		return nil
-	}
-
-	// Calculate document position
-	docPos := dpc.calculateDocumentPosition(contextMatch.Index, len(targetText), originalText, documentType)
-
-	// Calculate confidence based on context similarity
-	confidence := dpc.calculateContextualMatchConfidence(extractedContext, contextMatch.Context, targetText)
-
-	return &PositionCorrelation{
-		ExtractedPosition: extractedPos,
-		OriginalPosition:  docPos,
-		ConfidenceScore:   confidence,
-		MatchedText:       targetText,
-		Context:           contextMatch.Context,
-		Method:            CorrelationContextual,
-		DocumentType:      documentType,
-		Metadata: map[string]interface{}{
-			"match_index":        contextMatch.Index,
-			"context_similarity": contextMatch.Similarity,
-			"extracted_context":  extractedContext,
-		},
-	}
-}
-
 // tryHeuristicMatch attempts heuristic-based matching as a fallback
 func (dpc *DefaultPositionCorrelator) tryHeuristicMatch(extractedPos redactors.TextPosition, targetText, originalText, documentType string) *PositionCorrelation {
 	// Use simple heuristics like position estimation based on line numbers
@@ -631,19 +612,6 @@ func (dpc *DefaultPositionCorrelator) calculateFuzzyMatchConfidence(targetText, 
 	return baseConfidence * similarity
 }
 
-func (dpc *DefaultPositionCorrelator) calculateContextualMatchConfidence(extractedContext, originalContext, targetText string) float64 {
-	// Calculate context similarity
-	contextSimilarity := dpc.calculateStringSimilarity(extractedContext, originalContext)
-
-	// Base confidence for contextual match
-	baseConfidence := 0.75
-
-	// Adjust based on context similarity and target text length
-	lengthBonus := math.Min(1.0, float64(len(targetText))/20.0) // Longer text gets higher confidence
-
-	return baseConfidence * contextSimilarity * (0.8 + 0.2*lengthBonus)
-}
-
 func (dpc *DefaultPositionCorrelator) calculateHeuristicMatchConfidence(estimatedIndex, actualIndex int, targetText string) float64 {
 	// Calculate confidence based on distance from estimated position
 	distance := abs(estimatedIndex - actualIndex)
@@ -670,13 +638,6 @@ type FuzzyMatch struct {
 	Index        int
 	EditDistance int
 	Similarity   float64
-}
-
-// ContextMatch represents a contextual match result
-type ContextMatch struct {
-	Index      int
-	Context    string
-	Similarity float64
 }
 
 // Helper functions for string operations
