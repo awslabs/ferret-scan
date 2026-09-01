@@ -570,10 +570,15 @@ func writeStdinOutput(outputFile, formatted string, precommitConfig *precommit.P
 			"Check that the path is valid and accessible")
 		return err
 	}
-	if strings.Contains(outputFile, "..") || strings.Contains(cleanOutputPath, "..") {
+	// The stdin twin of the --output gate in main; see the reasoning there. An output path
+	// refusal costs no coverage and is loud, so the refusal stays and only the substring test
+	// is narrowed to a segment test. `--output ../escape.json` is still refused with a
+	// non-zero exit, which TestStdin_OutputPathTraversalRejected pins; `--output
+	// report..final.json` now works.
+	if pathEscapesBase(outputFile) {
 		printPrecommitError(precommitConfig,
 			fmt.Sprintf("Path traversal not allowed in output path: %s", outputFile),
-			"Use absolute paths or paths without '..' components")
+			"Use an absolute path, or one that does not climb above the working directory")
 		return fmt.Errorf("path traversal")
 	}
 	cleanOutputPath = abs

@@ -2506,11 +2506,23 @@ func main() {
 				"Check that the path is valid and accessible")
 			os.Exit(1)
 		}
-		// Check for path traversal attempts
-		if strings.Contains(*outputFile, "..") || strings.Contains(cleanOutputPath, "..") {
+		// An OUTPUT path, which is a different trust question from an input path, so the
+		// refusal is kept and only the TEST is narrowed.
+		//
+		// The distinction: refusing an input path loses coverage — a file goes unscanned and
+		// its contents stay in cleartext — whereas refusing an output path loses nothing that
+		// was going to be scanned, and it is already LOUD (this message plus exit 1), so it
+		// can never be mistaken for a clean run. That is why the input sites now disclose and
+		// keep going while this one still stops.
+		//
+		// The substring bug bit here too, just less severely: `--output report..final.json`
+		// was refused as an attack, and the operator's only recourse was to rename their
+		// artifact. pathEscapesBase accepts that name and still refuses `../escape.json`,
+		// which tests/integration/stdin_test.go pins for the sibling site below.
+		if pathEscapesBase(*outputFile) {
 			printPrecommitError(precommitConfig,
 				fmt.Sprintf("Path traversal not allowed in output path: %s", *outputFile),
-				"Use absolute paths or paths without '..' components")
+				"Use an absolute path, or one that does not climb above the working directory")
 			os.Exit(1)
 		}
 		cleanOutputPath = abs
