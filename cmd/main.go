@@ -1572,10 +1572,37 @@ func main() {
 			fmt.Printf("Error: Invalid input path: %s\n", inputPath)
 			continue
 		}
-		// Check for path traversal attempts - handle as skipped instead of error
-		if strings.Contains(inputPath, "..") || strings.Contains(cleanPath, "..") {
-			totalSkipped++
-			// Don't show warning for path traversal attempts - they're security-related
+		// A path that ESCAPES is refused; a name that merely CONTAINS ".." is scanned.
+		//
+		// This gate used to be strings.Contains(inputPath, "..") — a substring test where a
+		// segment test was meant — so `--file report..final.txt` never reached a scanner.
+		// Two more things made that a leak rather than an inconvenience: the refusal
+		// incremented totalSkipped, which classifies the file as a genuine skip ("an
+		// unsupported type nobody expected a result for"), and it printed nothing, on
+		// purpose. Measured at a0e983c on a .txt named report..final.txt holding
+		// SSN: 452-11-9384 — a type and a value the tool detects with confidence 100:
+		//
+		//	rc 0, stdout "No files to process", stderr empty
+		//	--fail-on-incomplete            also rc 0
+		//	--format json                   files_skipped 1, no files_not_examined key
+		//
+		// So the value stayed in cleartext, was never handed to the redactor, and the run
+		// reported success. See pathEscapesBase for why the boundary is a post-Clean
+		// leading "..".
+		//
+		// The refusal that remains is DISCLOSED rather than counted as a skip. It goes to
+		// discoveryUnexamined, the same channel a permission-denied input uses, which puts
+		// it in total_files, in files_not_examined, in the NOT FULLY EXAMINED report, and
+		// under --fail-on-incomplete in the exit code (3). The old comment argued for
+		// silence because the case is "security-related"; that has it backwards — a
+		// security refusal the operator cannot see is a refusal they cannot audit, and it
+		// reads exactly like a clean scan.
+		if pathEscapesBase(inputPath) {
+			discoveryUnexamined = append(discoveryUnexamined, SkippedFile{
+				Path:   inputPath,
+				Reason: traversalRefusedDetail,
+				Cause:  causeRefusedTraversal,
+			})
 			continue
 		}
 		cleanPath = abs
@@ -2709,9 +2736,23 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 		SkippedFiles:    []SkippedFile{},
 		UnexaminedFiles: []SkippedFile{},
 	}
-	// Validate input path before any file operations
-	if strings.Contains(inputPath, "..") {
-		return nil, fmt.Errorf("path traversal not allowed: %s", inputPath)
+	// Validate input path before any file operations.
+	//
+	// Same predicate as the gate in main, so the two cannot disagree about what a
+	// traversal is; see pathEscapesBase. Reached only by callers that skip that gate
+	// (the tests in this package), which is exactly why it reports through the RESULT
+	// rather than as an error: an error here is printed to stderr and then dropped
+	// unless the path is permission-denied, so a refusal arriving this way would reach
+	// no counter — the silent third category this change exists to remove. An entry in
+	// UnexaminedFiles reaches discoveryUnexamined, the denominator, files_not_examined
+	// and --fail-on-incomplete no matter which entry point refused it.
+	if pathEscapesBase(inputPath) {
+		result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+			Path:   inputPath,
+			Reason: traversalRefusedDetail,
+			Cause:  causeRefusedTraversal,
+		})
+		return result, nil
 	}
 
 	// Check if input contains glob patterns (but first check if file exists as-is)
@@ -2785,13 +2826,26 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 		// Filter out directories and check file sizes
 		var filesToProcess []string
 		for _, match := range matches {
-			// Validate each match for path traversal
+			// Validate each match for path traversal.
+			//
+			// Two substring tests stood here. The second, `Contains(cleanMatch, "..")`, was
+			// the second disjunct of the first, so it could not be true when the first was
+			// false — dead by construction — and is removed rather than converted.
+			//
+			// The first dropped every match whose NAME held two dots with a bare `continue`:
+			// `--file '<dir>/*.txt'` over a directory holding normal.txt and
+			// report..final.txt queued one file, reported total_files 1, and said nothing
+			// about the other. filepath.Glob never invents a segment, so a match can only
+			// climb if the PATTERN did, which the gate in main has already refused for the
+			// whole argument — this is defence in depth, and it now discloses instead of
+			// dropping, so it cannot repeat the silence if it ever does fire.
 			cleanMatch := filepath.Clean(match)
-			if strings.Contains(match, "..") || strings.Contains(cleanMatch, "..") {
-				continue
-			}
-			// Additional validation before file access
-			if strings.Contains(cleanMatch, "..") {
+			if pathEscapesBase(cleanMatch) {
+				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+					Path:   cleanMatch,
+					Reason: traversalRefusedDetail,
+					Cause:  causeRefusedTraversal,
+				})
 				continue
 			}
 			info, err := os.Stat(cleanMatch)
@@ -2897,10 +2951,14 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 	// Clean the path to resolve any ".." components
 	cleanPath := filepath.Clean(inputPath)
 
-	// Additional validation after cleaning
-	if strings.Contains(cleanPath, "..") {
-		return nil, fmt.Errorf("path traversal not allowed after cleaning: %s", inputPath)
-	}
+	// The "additional validation after cleaning" that stood here is removed, not converted.
+	//
+	// It asked strings.Contains(cleanPath, "..") where cleanPath is filepath.Clean(inputPath),
+	// and the gate at the top of this function now asks pathEscapesBase(inputPath), which
+	// cleans its argument itself. filepath.Clean is idempotent, so pathEscapesBase(cleanPath)
+	// and pathEscapesBase(inputPath) are the same question and this site could never answer it
+	// differently. Its substring form did differ — it dropped a directory merely NAMED
+	// `2024..2025` with an error rather than scanning it — and that difference was the bug.
 
 	// Check if the path exists
 	fileInfo, err := os.Stat(cleanPath)
@@ -2983,10 +3041,36 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 		var symlinkCands []symlinkCandidate
 
 		err := filepath.Walk(cleanPath, func(path string, info os.FileInfo, err error) error {
-			// Validate path for traversal attempts
+			// Validate that the walked entry is inside the tree we were asked to walk.
+			//
+			// This is the site behind the false accounting. It was
+			// strings.Contains(path, "..") with a bare `return nil`, so an entry whose NAME
+			// carried two dots left the walk without entering FilesToProcess,
+			// SkippedFiles, UnexaminedFiles or any counter. Measured at a0e983c on a
+			// directory holding normal.txt and report..final.txt, both carrying
+			// SSN: 452-11-9384: total_files 1, files_processed 1, files_skipped 0, no
+			// files_not_examined key, one finding, rc 0 — self-consistent numbers
+			// describing a complete scan of a file set with a member missing from its own
+			// denominator. (The issue reported total_files 2 / files_processed 2; the
+			// measurement above is what the shipped binary prints, and it is worse: the
+			// dropped file is absent from the TOTAL as well, so no arithmetic on the
+			// printed numbers can reveal it.)
+			//
+			// Containment against the walk root, not a test on the working directory:
+			// "inside the tree" is the property that matters for a walked entry, and
+			// filepath.Walk with a relative root yields relative paths, which a
+			// working-directory test would have to special-case. pathEscapesRoot is
+			// lexical — it runs once per entry of every scanned tree and must not add
+			// syscalls per file. Symlinks, which need resolution, are handled below by
+			// withinRoot and disclosed as causeNotFollowed.
 			cleanWalkPath := filepath.Clean(path)
-			if strings.Contains(path, "..") || strings.Contains(cleanWalkPath, "..") {
-				return nil // Skip paths with traversal attempts
+			if pathEscapesRoot(cleanPath, cleanWalkPath) {
+				result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
+					Path:   cleanWalkPath,
+					Reason: "resolved outside the scanned directory",
+					Cause:  causeRefusedTraversal,
+				})
+				return nil
 			}
 
 			// A path the walk could not access is a COVERAGE LOSS, and must be
