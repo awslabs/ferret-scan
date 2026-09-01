@@ -34,6 +34,51 @@ The text extraction preprocessors allow Ferret-scan to analyze the content of do
 - **PDF Documents**: `.pdf`
 - **Microsoft Office**: `.docx`, `.xlsx`, `.pptx`, and the macro-enabled forms `.docm`, `.xlsm`, `.pptm`
 - **OpenDocument**: `.odt`, `.ods`, `.odp` — and their templates `.ott`, `.ots`, `.otp`, which are the same packages with a template media type
+- **SVG**: `.svg` — **prose only**, see below
+
+### SVG: prose only, never geometry
+
+An `.svg` is XML text, so the byte-sniffing plaintext path used to claim it and hand the
+whole document — path coordinates included — to every validator. Measured on a 64KB SVG
+built from integer-coordinate glyph paths, the shape real icon and font SVGs carry:
+**943 findings, 817 of them PHONE (122 HIGH), every one a path coordinate.** On a 7.2MB
+SVG whose geometry sits in one huge `d=` attribute: **400,001 findings in 19.9 seconds.**
+
+`.svg` is therefore routed to a dedicated extractor,
+`internal/preprocessors/text-extractors/text-extract-svgtextlib`, which collects only:
+
+| Collected | Never collected |
+|---|---|
+| `<text>`, `<tspan>`, `<textPath>`, `<tref>` character data | `d`, `points`, `transform`, `viewBox`, and every other geometry or presentation attribute |
+| `<title>`, `<desc>` | `<path>`, `<polygon>`, `<polyline>`, `<line>`, `<rect>`, `<circle>`, `<ellipse>` content |
+| `<metadata>` (RDF / Dublin Core) | `<style>` (CSS, including base64 `@font-face`) |
+| Inkscape flowed text (`<flowRoot>`, `<flowPara>`, …) | `<script>` |
+| The `<foreignObject>` subtree (embedded XHTML) | `href` / `xlink:href`, including `data:` URIs |
+| `aria-label`, `aria-description`, `aria-roledescription`, `aria-valuetext`, `alt`, `title`, `inkscape:label`, `sodipodi:docname` | `id`, `class`, and every other attribute |
+| XML comments | |
+
+The set of things that CAN be collected is an allowlist, so a construct nobody
+anticipated is dropped rather than admitted. That is what makes the flood unreachable
+rather than merely unlikely: no coordinate is handed to a validator, so no validator's
+numeric patterns matter.
+
+Consequences worth knowing:
+
+- **A prose-less drawing is clean, not unexamined.** An icon with no text reports zero
+  findings and says nothing about it — 88 of 90 real `.svg` files measured carry no prose,
+  so a coverage warning each would be noise. Truncation (size bound, nesting bound,
+  malformed markup) *is* disclosed and makes `--fail-on-incomplete` exit 3.
+- **Text converted to outlines is not read.** An Illustrator export can render words as
+  `<path>` geometry with no character data anywhere. That is a known limitation, the same
+  class as the pixels of a raster image.
+- **A file named `.svg` that is not an SVG is still scanned as raw text.** The root
+  element decides; a renamed `.txt` holding an SSN reports it exactly as before.
+- **Redaction rewrites the FILE, not the extracted prose.** See
+  `internal/redactors/svg`: because SVG extraction is lossy by design, the content-based
+  redaction path would have replaced the drawing with a list of its labels.
+- **Embedded `.svg` parts are scanned and redacted too.** They were excluded
+  (`embedded.SkipTextPipeline`) for the flood above; `.emf`, `.wmf` and `.wdp` remain
+  excluded because they are binary metafiles with no text reader at all.
 
 ## Configuration
 
