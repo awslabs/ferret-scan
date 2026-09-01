@@ -30,7 +30,7 @@ import (
 //	standalone .svg    4 findings (SSN 100, BUSINESS 98, PERSON_NAME 92, PHONE 15)
 //	embedded in .docx  0 findings, exit 0, 0 bytes of stderr, exit 0 again under
 //	                   --fail-on-incomplete, and NO redacted copy written at all
-//	64KB glyph .svg    943 findings, 817 of them PHONE (122 HIGH)
+//	64KB glyph .svg    1,313 findings, 1,143 of them PHONE (162 HIGH)
 //	7.2MB one-attr     400,001 findings in 19.9s wall / 80s CPU
 
 const svgE2EDrawing = `<?xml version="1.0" encoding="UTF-8"?>
@@ -213,7 +213,7 @@ func TestSVGRecallAndFloodBothDirections(t *testing.T) {
 		}
 		if n := len(res.Matches); n != 0 {
 			t.Errorf("a geometry-only SVG produced %d findings; every one is a path coordinate.\n"+
-				"Measured at a0e983c on this fixture: 943 findings, 817 of them PHONE.\nfirst few: %v",
+				"Measured at 9046dae on this fixture: 1,313 findings, 1,143 of them PHONE.\nfirst few: %v",
 				n, typesOf(res.Matches, 8))
 		}
 	})

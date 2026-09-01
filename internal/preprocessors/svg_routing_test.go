@@ -28,7 +28,7 @@ import (
 // This file covers (1) and the handoff to (2). Measured before the change, on a
 // 479-byte drawing carrying an SSN, an email, a name and a phone in
 // <text>/<title>/<desc>: 4 findings standalone through the plaintext path, 0 when the
-// same drawing was an embedded part -- and 943 findings on a 64KB SVG of pure glyph
+// same drawing was an embedded part -- and 1,313 findings on a 75KB SVG of pure glyph
 // geometry.
 
 const svgRoutingProse = `<?xml version="1.0" encoding="UTF-8"?>
@@ -69,7 +69,7 @@ func TestSVGIsClaimedByExactlyOnePreprocessor(t *testing.T) {
 		t.Error("the plaintext preprocessor still claims .svg.\n" +
 			"The router runs every claiming preprocessor and concatenates the successes, so the raw " +
 			"document -- path coordinates included -- would be scanned alongside the prose. Measured " +
-			"at a0e983c: 943 findings on a 64KB glyph-path SVG, 817 of them PHONE.")
+			"at 9046dae: 1,313 findings on a 75KB glyph-path SVG, 1,143 of them PHONE.")
 	}
 
 	// The withdrawal must come from the SHARED validator, not from a second list in

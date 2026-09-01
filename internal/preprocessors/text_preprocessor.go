@@ -39,7 +39,7 @@ func NewTextPreprocessor() *TextPreprocessor {
 			//
 			// An .svg sniffs as text, so before this the plaintext preprocessor claimed
 			// it and handed the whole document over -- coordinates included. Measured at
-			// a0e983c on a 64KB SVG of integer-coordinate glyph paths: 943 findings, 817
+			// 9046dae on a 75KB SVG of integer-coordinate glyph paths: 1,313 findings, 1,143
 			// of them PHONE (122 HIGH), all path data. The response had been to exclude
 			// embedded .svg parts entirely (embedded.SkipTextPipeline), which made an SVG
 			// carrying PII in its <text> nodes a silent miss: the same drawing reported 4

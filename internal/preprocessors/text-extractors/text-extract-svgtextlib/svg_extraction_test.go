@@ -16,10 +16,10 @@ import (
 
 // #314: an .svg carrying PII in its <text> nodes was never scanned.
 //
-// The measurement that produced the exclusion, re-taken at a0e983c on a 64KB SVG built
+// The measurement that produced the exclusion, re-taken at 9046dae on a 75KB SVG built
 // from integer-coordinate glyph paths (the shape real icon and font SVGs carry):
 //
-//	943 findings: PHONE 122 HIGH + 695 MEDIUM, CREDIT_CARD 45 MEDIUM + 5 LOW,
+//	1,313 findings: PHONE 1,143 (162 HIGH), SSN 87, CREDIT_CARD 83,
 //	SSN 3 HIGH + 73 LOW  --  every one of them path coordinates
 //
 // and on a 7.2MB SVG whose geometry sits in one huge d= attribute, 400,001 findings in

@@ -318,10 +318,10 @@ func Recurses(name string) bool {
 // The rule is about the EXTRACTOR, not the format. The original list also held .svg,
 // on the reasoning that an .svg is XML text and the byte-sniffing text path claims it
 // happily -- so admitting it fed coordinate soup to every validator. That measurement
-// was real. Re-measured at a0e983c on a 64KB SVG built from integer-coordinate glyph
+// was real. Re-measured at 9046dae on a 75KB SVG built from integer-coordinate glyph
 // paths, the shape real icon and font SVGs carry:
 //
-//	943 findings: PHONE 122 HIGH + 695 MEDIUM, CREDIT_CARD 45 MEDIUM + 5 LOW,
+//	1,313 findings: PHONE 1,143 (162 HIGH), SSN 87, CREDIT_CARD 83,
 //	SSN 3 HIGH + 73 LOW  --  every one of them path coordinates
 //
 // (The two example strings this comment used to show, "43.5968 15.4721 43.4928 15.7281
@@ -341,7 +341,7 @@ func Recurses(name string) bool {
 // .svg was therefore REMOVED from this list and given the extractor the old comment
 // asked for (internal/preprocessors/text-extractors/text-extract-svgtextlib): it
 // collects only prose-bearing nodes and attributes, so the digits that caused the flood
-// are never handed to a validator. Measured after: the 64KB glyph-path SVG reports 0
+// are never handed to a validator. Measured after: the 75KB glyph-path SVG reports 0
 // findings of any type embedded or standalone, and the <text>-carrying part reports its
 // 4. See #314.
 //

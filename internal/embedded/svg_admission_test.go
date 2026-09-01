@@ -21,7 +21,7 @@ import (
 //	                  exit 0 again under --fail-on-incomplete,
 //	                  and no redacted copy written at all
 //
-// The exclusion's stated reason was real -- 943 findings, 817 of them PHONE, on a 64KB
+// The exclusion's stated reason was real -- 1,313 findings, 1,143 of them PHONE, on a 64KB
 // SVG of integer-coordinate glyph paths -- but the cure was the wrong one. The prose-only
 // extractor (text-extract-svgtextlib) removes the flood at the source, so the exclusion
 // buys nothing and costs the coverage.

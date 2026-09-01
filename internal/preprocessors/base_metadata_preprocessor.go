@@ -331,7 +331,7 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 		// findings -- indistinguishable from a clean part.
 		//
 		// .svg used to be on that list for the same reason (its geometry flooded the
-		// validators: 943 findings on a 64KB glyph-path drawing, 817 of them PHONE) and
+		// validators: 1,313 findings on a 75KB glyph-path drawing, 1,143 of them PHONE) and
 		// is no longer, because it now routes to an SVG-AWARE extractor that never
 		// collects a coordinate. That exclusion cost real coverage: an embedded drawing
 		// carrying an SSN, an email, a name and a phone in its <text>/<title>/<desc>

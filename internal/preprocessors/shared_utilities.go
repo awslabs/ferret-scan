@@ -175,8 +175,8 @@ func NewFileExtensionValidator() *FileExtensionValidator {
 		// The distinction this map exists to make is not "which extractor is nicer" but
 		// WHICH VALIDATOR INPUT IS PRODUCED. An .svg sniffs as text, so the plaintext
 		// preprocessor claimed it and handed over the whole document -- geometry
-		// included. Measured at a0e983c on a 64KB SVG of integer-coordinate glyph
-		// paths, the shape real icon and font SVGs carry: 943 findings, 817 of them
+		// included. Measured at 9046dae on a 75KB SVG of integer-coordinate glyph
+		// paths, the shape real icon and font SVGs carry: 1,313 findings, 1,143 of them
 		// PHONE (122 HIGH), every one a path coordinate. Because the router runs EVERY
 		// preprocessor that claims a file and concatenates the successes, an SVG-aware
 		// extractor alone would not have fixed that -- the plaintext claim had to go,

@@ -50,7 +50,7 @@ The preprocessor system uses a **specialized architecture** where each file type
 
 An SVG is claimed by NAME here so the plaintext preprocessor cannot claim it on a byte
 sniff. That matters because the router runs every claiming preprocessor and concatenates
-the successes: handing the raw drawing to the validators measured 943 findings, 817 of
+the successes: handing the raw drawing to the validators measured 1,313 findings, 1,143 of
 them PHONE, on a 64KB drawing of integer-coordinate glyph paths.
 
 ### Audio Files

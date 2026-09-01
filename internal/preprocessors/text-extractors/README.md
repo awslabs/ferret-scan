@@ -47,7 +47,7 @@ Each extractor uses its corresponding library:
 - SVG (.svg) - **prose only**
 
 An SVG's bulk is coordinate geometry, and handing it to the validators floods them:
-measured 943 findings, 817 of them PHONE, on a 64KB drawing built from
+measured 1,313 findings, 1,143 of them PHONE, on a 64KB drawing built from
 integer-coordinate glyph paths, and 400,001 findings on a 7.2MB one. So
 `text-extract-svgtextlib` collects only `<text>`, `<tspan>`, `<textPath>`, `<title>`,
 `<desc>`, `<metadata>`, Inkscape flowed text, the `<foreignObject>` subtree, XML

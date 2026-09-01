@@ -159,7 +159,7 @@ var mediaExtValidator = NewFileExtensionValidator()
 // .svg is the one entry here whose bytes ARE text, and it is the reason IsVectorFile
 // exists. Sniffing decided it, so this preprocessor claimed it and handed the whole
 // drawing -- path coordinates and base64 rasters included -- to every validator:
-// measured at a0e983c, 943 findings on a 64KB SVG of integer-coordinate glyph paths,
+// measured at 9046dae, 1,313 findings on a 75KB SVG of integer-coordinate glyph paths,
 // 817 of them PHONE. The router runs EVERY claiming preprocessor and concatenates the
 // successes, so adding an SVG-aware extractor without withdrawing this claim would
 // have scanned both texts and changed nothing. Unlike the image and audio cases, the

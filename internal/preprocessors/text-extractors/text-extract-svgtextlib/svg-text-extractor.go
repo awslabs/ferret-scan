@@ -6,10 +6,10 @@
 //
 // An SVG is XML, so the byte-sniffing text path claims it happily and hands the whole
 // document — geometry included — to every validator. Measured at main a0e983c on a
-// 64KB SVG built from integer-coordinate glyph paths, the shape real icon and font
+// 75KB SVG built from integer-coordinate glyph paths, the shape real icon and font
 // SVGs carry:
 //
-//	943 findings: PHONE 122 HIGH + 695 MEDIUM, CREDIT_CARD 45 MEDIUM + 5 LOW,
+//	1,313 findings: PHONE 1,143 (162 HIGH), SSN 87, CREDIT_CARD 83,
 //	SSN 3 HIGH + 73 LOW  --  every one of them path coordinates
 //
 // and on 90 real .svg files (9.8MB) collected off one workstation, 19 of 21 findings
@@ -37,6 +37,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -415,8 +416,17 @@ func extract(r io.Reader, content *TextContent, ext string) (out *TextContent, e
 			// reads. Only the attribute NAME decides, never the element's.
 			if neverDepth == 0 {
 				for _, a := range t.Attr {
-					if proseAttrs[localName(strings.ToLower(a.Name.Local))] {
+					name := localName(strings.ToLower(a.Name.Local))
+					if proseAttrs[name] {
 						emit(a.Value)
+						continue
+					}
+					// href / xlink:href are admitted by VALUE, not by name — the only
+					// value-conditional rule in this package. See contactTarget.
+					if linkAttrs[name] {
+						if v, ok := contactTarget(a.Value); ok {
+							emit(v)
+						}
 					}
 				}
 			}
@@ -589,4 +599,63 @@ func collapseSpace(s string) string {
 		b.WriteByte(c)
 	}
 	return b.String()
+}
+
+// linkAttrs are the attributes whose value is a link TARGET rather than prose. Their values are
+// admitted only through contactTarget, never wholesale.
+var linkAttrs = map[string]bool{"href": true}
+
+// contactTarget returns the contact inside a mailto: or tel: URI, and whether the value is one.
+//
+// This is the single value-conditional admission in this package, and the reason it earns an
+// exception to the name-only rule above is that a link target is the commonest place a real diagram
+// carries a contact: an <a xlink:href="mailto:..."> wrapping a "Contact the owner" label puts the
+// address in the attribute and only the label in the text node. Measured on such a diagram, the
+// address was reported at HIGH 100 by the pre-#314 raw-XML scan and not at all by the prose
+// extractor, so excluding every href traded 1,313 coordinate false positives for one real miss.
+//
+// Only mailto: and tel: are admitted, and that restriction is what keeps the flood out. Measured on
+// 300 <a> elements whose href is an ordinary numeric CDN asset URL
+// (https://cdn.example.com/asset/1234567890/v2): scanning those targets yields 256 PHONE and 9 NPI
+// findings, every one false. The same rule admits 0 of them, because none is a contact scheme.
+// http/https/data/fragment/relative targets stay excluded by construction — this is an allowlist of
+// two schemes, not a denylist.
+//
+// The scheme is matched case-insensitively because RFC 3986 §3.1 defines it as case-insensitive, and
+// real files do write "MAILTO:". Percent-encoding is decoded because a generator may emit
+// "mailto:a%40b.example" for an address a validator would otherwise never see; a value that fails to
+// decode is passed through as-is rather than dropped, since a malformed escape is not a reason to
+// lose the contact.
+//
+// The scheme prefix itself is stripped so the emitted text is the bare address or number. Leaving
+// "mailto:" attached made the EMAIL validator's own boundary handling the thing under test, which is
+// not this package's business. Any ?subject=/&body= query is cut for the same reason: it is prose
+// aimed at a mail client, and admitting it re-opens an unbounded surface.
+func contactTarget(raw string) (string, bool) {
+	v := strings.TrimSpace(raw)
+	lower := strings.ToLower(v)
+	var rest string
+	switch {
+	case strings.HasPrefix(lower, "mailto:"):
+		rest = v[len("mailto:"):]
+	case strings.HasPrefix(lower, "tel:"):
+		rest = v[len("tel:"):]
+	default:
+		return "", false
+	}
+	// Drop a mailto query (?subject=, &body=) and any fragment.
+	if i := strings.IndexAny(rest, "?#"); i >= 0 {
+		rest = rest[:i]
+	}
+	// PathUnescape, NOT QueryUnescape: the latter decodes "+" to a SPACE, which destroys the
+	// international prefix of a tel: number. Measured — "tel:+14159263481" came out as
+	// "14159263481", and PHONE then declined it. A tel: URI is a path, not a query.
+	if dec, err := url.PathUnescape(rest); err == nil {
+		rest = dec
+	}
+	rest = strings.TrimSpace(rest)
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
 }
