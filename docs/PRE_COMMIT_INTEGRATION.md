@@ -201,6 +201,14 @@ when you pass them; the pre-commit values are defaults for when you do not. And 
 you asked for is always written, even on a clean run where the console output is deliberately
 silent.
 
+`--quiet=false` means "give me the full report", and that now reaches the **formatter**, not just the
+progress output. It previously did not: the formatters were told pre-commit mode was active from the
+DETECTED value rather than from the decision, so on a clean run they emitted an empty document —
+measured at 0 bytes with `--format json` where `--quiet=false` outside pre-commit mode gives 238. An
+empty document is not a quiet document; a consumer gets a parse error or reads no findings. The
+`--stdin` path was affected differently and more completely, because it returns before the flag guard
+is reached at all.
+
 > **Changed in this release.** Detection previously also treated `MSYSTEM`, `MINGW_PREFIX`,
 > `GIT_EXEC_PATH`, `GITHUB_DESKTOP`, and "the working directory is a git repository containing a
 > pre-commit hook file" as pre-commit signals — on Windows only. None of those indicates a hook
