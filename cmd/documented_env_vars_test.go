@@ -71,11 +71,16 @@ var evgHarnessOnly = map[string]string{
 //
 // Kept short and literal on purpose. The cost of a marker that is too narrow is a false violation on
 // true prose, so the failure message tells the author to widen this list rather than delete the text.
+// Every marker here must be UNAMBIGUOUSLY a negation on its own. Three earlier candidates were
+// dropped for failing that: "reads it" exempts the positive phrase "the CLI reads it from the
+// environment", and "no longer"/"deprecated" both appear in prose that still instructs the reader to
+// SET the variable ("FERRET_X is deprecated, use ..."). None of the three exempted anything in the
+// tree, so removing them costs nothing today and closes the hole before a future doc walks into it.
 var evgNegationMarkers = []string{
 	"there is no", "there are no", "no such",
-	"not read", "is not read", "read nowhere", "nothing reads", "reads it",
-	"none of", "no longer", "does not exist", "do not exist",
-	"remove this", "deprecated", "has been removed", "have been removed",
+	"not read", "is not read", "read nowhere", "nothing reads", "nothing reads it",
+	"none of", "does not exist", "do not exist",
+	"remove this", "has been removed", "have been removed",
 }
 
 // evgShippedConfigFiles are non-markdown files that SET environment variables in something we ship or

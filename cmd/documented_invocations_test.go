@@ -52,7 +52,7 @@ const invDocsDir = "../docs"
 // than silently tolerated — an allowlist that starts empty cannot hide anything.
 //
 // The orphaned enhanced-architecture-runbook.md used to contribute 17 of the invocations counted here;
-// #555 deleted it, so the non-vacuity floor below is now met by 294 rather than 311.
+// #555 deleted it, so the non-vacuity floor below is now met by 293 rather than 310.
 var invKnownPositional = map[string]string{}
 
 // invOffender is one bad invocation.

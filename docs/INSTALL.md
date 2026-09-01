@@ -34,7 +34,6 @@ Only use these commands for executables from trusted sources.
 This installs:
 - `ferret-scan` binary to `/usr/local/bin/`
 - Ready-to-use configuration to `~/.ferret-scan/config.yaml`
-- Pre-commit wrapper to `/usr/local/bin/ferret-scan-precommit`
 
 #### Windows
 ```powershell

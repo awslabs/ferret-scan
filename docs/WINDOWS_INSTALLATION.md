@@ -219,8 +219,13 @@ but only for one consumer — the web UI, which stages uploads there:
 ```yaml
 platform:
   windows:
-    temp_dir: "%TEMP%\ferret-scan"
+    temp_dir: "C:\\Users\\you\\AppData\\Local\\Temp\\ferret-scan"
 ```
+
+**The value is used verbatim — there is no environment-variable expansion.** Writing
+`"%TEMP%\ferret-scan"` creates a directory literally named `%TEMP%\ferret-scan`, because
+`tempDirOverrideValue()` returns the configured string unchanged (`internal/paths/paths.go:73-79`);
+nothing in `internal/paths` or `internal/platform` calls `os.ExpandEnv`. Give an absolute path.
 
 That key is accepted (a typo such as `tempdir` is rejected with
 `Warning: unknown config key`), and it is the only override in the tool: it reaches
