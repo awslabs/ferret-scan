@@ -258,7 +258,7 @@ repos:
         name: Ferret Scan Security Check
         entry: ferret-scan
         language: system
-        args: ['--file', '--confidence', 'high,medium', '--format', 'text', '--quiet']
+        args: ['--confidence', 'high,medium', '--format', 'text', '--quiet']
         files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
 ```
 
