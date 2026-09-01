@@ -752,6 +752,46 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 		return result, nil
 	}
 
+	// NOTHING produced text, but a preprocessor reported SUCCESS. That means the file
+	// was READ and held no text -- which is not a failure, and must not be reported as
+	// one.
+	//
+	// Same argument as the 0-byte short-circuit at the top of this function, and the
+	// same false statements were being made. The gate above requires Text != "", so a
+	// reader that parsed its input completely and found nothing to scan fell through to
+	// "all preprocessors failed", which the CLI renders as:
+	//
+	//	NOT FULLY EXAMINED: 1 of 1 file -- findings may be missing
+	//	  cannot parse (1)
+	//	    icon.svg  contents do not match the .svg format
+	//
+	// and exit 3 under --fail-on-incomplete. Measured on a well-formed 64KB SVG of pure
+	// path geometry: every word of that is false. The bytes parsed, the format matched,
+	// and there was no text in the file. An SVG made this reachable because it is the
+	// first type with exactly ONE preprocessor that can legitimately extract nothing --
+	// a PDF with no text layer is rescued by pdf_metadata succeeding alongside it, which
+	// is why the gate's Text != "" has held up until now.
+	//
+	// The producer's own note and cause are carried through unchanged, so a reader that
+	// found no text BECAUSE it was cut short still discloses that (svgtextlib sets
+	// CauseCutShort on its depth and size bounds). Silence here belongs to the reader
+	// that says nothing, not to this function.
+	for _, pResult := range ordered {
+		if pResult.err != nil || pResult.result == nil || !pResult.result.Success {
+			continue
+		}
+		return &preprocessors.ProcessedContent{
+			OriginalPath:      filePath,
+			Filename:          filepath.Base(filePath),
+			Text:              "",
+			Format:            pResult.result.Format,
+			ProcessorType:     pResult.name,
+			Success:           true,
+			ExtractionWarning: pResult.result.ExtractionWarning,
+			ExtractionCause:   pResult.result.ExtractionCause,
+		}, nil
+	}
+
 	return nil, fmt.Errorf("all preprocessors failed for file: %s", filePath)
 }
 
