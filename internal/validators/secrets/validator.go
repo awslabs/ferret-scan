@@ -177,16 +177,20 @@ const awsDocPlaceholderMarker = "EXAMPLE"
 // AKIA[0-9A-Z]{16} keyspace and no authority has withheld it from issue, so
 // "cannot be real" is not available as a justification. Vendor documentation
 // placeholder => demote; authority-withheld value => drop. See
-// docs/proposals/CONFIDENCE_CONTRACT.md §9.
+// docs/proposals/CONFIDENCE_CONTRACT.md §7c.
 //
 // Restricted to the two AWS credential types on purpose, and this is the load-
 // bearing part of the design. "Value contains EXAMPLE" is only safe where the
 // attacker cannot put it there:
 //
-//   - AWS_ACCESS_KEY is AKIA plus exactly 16 chars from [0-9A-Z] (isAWSAccessKey).
-//     Appending EXAMPLE to a real key makes it 27 chars, which the length gate
-//     rejects outright — so the marker can only be present in a key AWS itself
-//     issued that way, a ~3e-10 event over the 10 candidate offsets.
+//   - AWS_ACCESS_KEY is gated by isAWSAccessKey, which is exactly
+//     `strings.HasPrefix(match, "AKIA") && len(match) == 20` — a prefix and a LENGTH,
+//     with no character-class check (an earlier draft of this comment claimed
+//     "16 chars from [0-9A-Z]"; it does not). The length is what carries the argument:
+//     appending EXAMPLE to a real 20-char key makes it 27 and the gate rejects it
+//     outright. The marker can therefore only appear INSIDE a 20-char window, i.e.
+//     `AKIA` + 9 free chars + `EXAMPLE`, which is a key AWS itself would have had to
+//     issue in that shape.
 //   - AWS_SECRET_ACCESS_KEY is the 40-char capture of reAWSSecretCandidate, whose
 //     trailing `($|[^A-Za-z0-9/+=])` means <real40>EXAMPLE yields no 40-char
 //     window at all. The marker cannot coexist with a full real secret in one
@@ -197,6 +201,7 @@ const awsDocPlaceholderMarker = "EXAMPLE"
 // suppression — the failure mode unlabelledHexIdentifierCap's comment above
 // describes. A documentation placeholder of a type this function does not name
 // keeps its full confidence; that is the accepted side of the trade.
+
 // clampToPublishedCeiling enforces a match's own ConfidenceCeilingKey at this
 // validator's boundary, so the number it reports never exceeds the bound it publishes
 // in the same metadata map.

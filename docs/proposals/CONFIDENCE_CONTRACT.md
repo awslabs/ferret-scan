@@ -227,13 +227,15 @@ applies wins.
 | # | Treatment | Predicate | Precedent |
 |---|---|---|---|
 | **T1** | **Drop (N1 — never emitted)** | A numbering or registration authority has withheld **this exact value** from assignment, so it identifies nobody, now or later — *and* the value has no fixture footprint that needs redacting. | `ssn.isTestSSN` (`123-45-6789`, `078-05-1120`); `ipaddress` RFC 5737 TEST-NET ranges |
-| **T2** | **Ceiling at 15, published as `Metadata["confidence_ceiling"]`** | The value is **published as a placeholder** by a standard, a registration authority or a vendor's own documentation, but nothing withholds it from being real — *or* T1's predicate holds while the value still needs to be redacted. | `phone.reservedFictionalCeiling` (NANP `555-01xx`); `otp.publishedSecretCeiling` (RFC 4226/6238 seeds); `creditcard` test cards; `secrets.awsDocPlaceholderCeiling` (`AKIAIOSFODNN7EXAMPLE`, `wJalr…CYEXAMPLEKEY`) |
+| **T2** | **Ceiling at 15, published as `Metadata["confidence_ceiling"]`** (see the note below — only the newest implementation publishes it) | The value is **published as a placeholder** by a standard, a registration authority or a vendor's own documentation, but nothing withholds it from being real — *or* T1's predicate holds while the value still needs to be redacted. | `phone.reservedFictionalCeiling` (NANP `555-01xx`); `otp.publishedSecretCeiling` (RFC 4226/6238 seeds); `creditcard` test cards; `secrets.awsDocPlaceholderCeiling` (`AKIAIOSFODNN7EXAMPLE`, `wJalr…CYEXAMPLEKEY`) |
 | **T3** | **Leave reported at full confidence** | The value is a **vendor test-mode credential**. `sk_test_…` authenticates against Stripe's test environment: it can be abused and it discloses account structure. "test" in a vendor prefix is a product tier, not a fiction. | `secrets.isStripeAPIKey` — unchanged on purpose |
 
 **Why 15 and not 85.** 15 is the top of LOW. At 85 the value still appears under
 `--confidence medium,high`, which is the pre-commit filter this repo itself uses — i.e. it stays
 exactly the finding the complaint was about. Four validators now agree on 15; a fifth number
 would recreate the divergence.
+
+**The four T2 precedents share the CEILING but not the PUBLICATION, and that is a real gap rather than a wording slip.** Measured: `phone.reservedFictionalCeiling`, `otp.publishedSecretCeiling` and the `creditcard` test-card handling each clamp locally — `if confidence > ceiling { confidence = ceiling }` — and none of the three packages contains any reference to `confidence_ceiling` or `ConfidenceCeilingKey` (`grep -rc` over `internal/validators/{phone,otp,creditcard}` returns zero for both names). Only `secrets.awsDocPlaceholderCeiling`, added by #364, publishes the bound it enforces. This matters because an unpublished ceiling does not survive a later re-score: a downstream consumer that raises confidence has no way to learn a bound was intended, so the clamp silently stops holding. Publishing is therefore the shape new T2 implementations should follow, and retrofitting the other three is worth its own change — not assumed here, and not claimed as already done.
 
 **Why T2 is the default and T1 the exception.** Only reported findings reach the redactor
 (§4, "Redaction — NOT band-gated anywhere"), so a drop removes the value from the redaction path
