@@ -18,7 +18,6 @@ services:
       - ~/.ferret-scan:/home/ferret/.ferret-scan
     environment:
       - FERRET_CONTAINER_MODE=true
-      - FERRET_QUIET_MODE=false
     command: ["--web", "--port", "8080"]
     restart: unless-stopped
 

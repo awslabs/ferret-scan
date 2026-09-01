@@ -37,7 +37,6 @@ This installs:
 - `ferret-scan` binary to `/usr/local/bin/`
 - **Ready-to-use configuration** to `~/.ferret-scan/config.yaml` (from examples/ferret.yaml)
 - Example configuration to `~/.ferret-scan/ferret.example.yaml`
-- Pre-commit wrapper to `/usr/local/bin/ferret-scan-precommit`
 
 #### Windows
 ```powershell
@@ -235,14 +234,12 @@ repos:
     hooks:
       - id: ferret-scan
         name: Ferret Scan Security Check
-        entry: ferret-scan-precommit
+        entry: ferret-scan --pre-commit-mode --confidence high,medium --checks all
         language: system
         files: '\.(go|js|py|java|txt|md|yaml|yml|json|xml|sql|sh)$'
         exclude: '^(test_|_test\.|spec_|_spec\.)'
         env:
-          FERRET_CONFIDENCE: "high,medium"
-          FERRET_CHECKS: "all"
-          FERRET_FAIL_ON: "high"
+          FERRET_PRECOMMIT_EXIT_ON: "high"
 EOF
 
 # Install hooks
@@ -437,9 +434,9 @@ ferret-scan --version
 # Test basic functionality
 echo "4111-1111-1111-1111" | ferret-scan --config ~/.ferret-scan/config.yaml --file -
 
-# Test pre-commit integration
+# Test pre-commit integration (there is no wrapper binary; invoke ferret-scan directly)
 echo "test-data: sk_test_123" > test.yaml
-ferret-scan-precommit test.yaml
+ferret-scan --pre-commit-mode --file test.yaml
 rm test.yaml
 ```
 
@@ -477,7 +474,6 @@ source ~/.bashrc
 ```bash
 # Fix permissions
 sudo chmod +x /usr/local/bin/ferret-scan
-sudo chmod +x /usr/local/bin/ferret-scan-precommit
 ```
 
 **3. "Build failed"**
@@ -585,7 +581,7 @@ Enable debug output for troubleshooting:
 sudo FERRET_DEBUG=1 scripts/install-system.sh
 
 # Debug pre-commit
-FERRET_DEBUG=1 ferret-scan-precommit test-file.py
+FERRET_DEBUG=1 ferret-scan --pre-commit-mode --file test-file.py
 
 # Debug binary directly
 ferret-scan --config ferret.yaml --debug --file test-file.py
@@ -638,7 +634,6 @@ pre-commit uninstall
 ```bash
 # Remove only binary
 sudo rm /usr/local/bin/ferret-scan
-sudo rm /usr/local/bin/ferret-scan-precommit
 
 # Keep configuration
 # /etc/ferret-scan/ remains

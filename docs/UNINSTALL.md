@@ -60,7 +60,9 @@ make clean-everything
 
 ### System Files
 - `/usr/local/bin/ferret-scan` - Main binary
-- `/usr/local/bin/ferret-scan-precommit` - Pre-commit wrapper
+- `/usr/local/bin/ferret-scan-precommit` - Pre-commit wrapper. **No current version installs
+  this**; the installer removed it in favour of invoking `ferret-scan` directly, so the removal
+  commands here exist only to clean up an older installation.
 
 ### User Configuration
 - `~/.ferret-scan/config.yaml` - User configuration

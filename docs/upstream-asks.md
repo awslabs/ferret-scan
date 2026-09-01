@@ -110,9 +110,10 @@ consume it too.
 
 ## Status
 
-Verify against `ferret-scan --checks` rather than trusting this table: the check names
-the CLI accepts are the authoritative list, and this table has already drifted behind
-them once.
+Verify against `ferret-scan --help checks` rather than trusting this table: the check
+names the CLI accepts are the authoritative list, and this table has already drifted
+behind them once. (`--checks` is the flag that *selects* checks and requires a value —
+given on its own it exits 2 with `flag needs an argument: -checks`.)
 
 | # | Ask | Status | Notes |
 |---|---|---|---|

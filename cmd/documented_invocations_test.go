@@ -51,9 +51,8 @@ const invDocsDir = "../docs"
 // its rot test are kept because the next one to appear should be recorded here with an issue rather
 // than silently tolerated — an allowlist that starts empty cannot hide anything.
 //
-// The orphaned enhanced-architecture-runbook.md does contain positional-first invocations, but no flag
-// FOLLOWS the path on those lines, so nothing is dropped and this guard correctly ignores them. Its
-// absent FLAGS are a different defect, tracked in #555.
+// The orphaned enhanced-architecture-runbook.md used to contribute 17 of the invocations counted here;
+// #555 deleted it, so the non-vacuity floor below is now met by 293 rather than 310.
 var invKnownPositional = map[string]string{}
 
 // invOffender is one bad invocation.

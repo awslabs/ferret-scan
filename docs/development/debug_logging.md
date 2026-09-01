@@ -77,6 +77,14 @@ ferret-scan --file "C:\path\to\scan" --profile my-debug-profile
 anywhere in the codebase and setting it changes nothing (measured: byte-identical output with and
 without it, while `--verbose` more than doubles it). Use the `--verbose` flag.
 
+This document itself used to contradict that sentence three sections further down, by
+advertising `FERRET_PERF`, `FERRET_SERVICE_MODE` and `FERRET_EVENTLOG`. None of the three
+is read anywhere either; all three have been removed. The complete set of `FERRET_*`
+variables the binary reads is `FERRET_CONFIG_DIR`, `FERRET_CONTAINER_MODE`,
+`FERRET_DEBUG`, `FERRET_PRECOMMIT`, `FERRET_PRECOMMIT_BATCH_SIZE`,
+`FERRET_PRECOMMIT_EXIT_ON` and `FERRET_PRECOMMIT_EXIT_ON_FIRST` — and that list is now
+enforced by a test, so a fourth cannot be added to the documentation by accident.
+
 **Unix/Linux/macOS:**
 ```bash
 # Enable debug mode via environment variable
@@ -432,10 +440,11 @@ REM [DEBUG]   - Archive: true
 
 Monitor Windows-specific performance issues:
 
+There is no in-process performance switch — `FERRET_PERF` is not read anywhere — so
+memory is sampled from outside the process:
+
 ```powershell
-# Debug with performance monitoring
 $env:FERRET_DEBUG = "1"
-$env:FERRET_PERF = "1"
 
 # Start performance monitoring in background
 Start-Job -ScriptBlock {
@@ -486,37 +495,6 @@ REM [DEBUG] Registry configuration check:
 REM [DEBUG]   - HKCU\Software\FerretScan: (not found)
 REM [DEBUG]   - HKLM\Software\FerretScan: (not found)
 REM [DEBUG]   - Using file-based configuration
-```
-
-### Windows Service Debugging
-
-Debug when running as Windows service:
-
-```powershell
-# Debug service mode
-$env:FERRET_DEBUG = "1"
-$env:FERRET_SERVICE_MODE = "1"
-
-# Check service-specific debug output:
-# [DEBUG] Service mode detected
-# [DEBUG] Service account: NT AUTHORITY\SYSTEM
-# [DEBUG] Working directory: C:\Windows\System32
-# [DEBUG] Config directory: C:\ProgramData\ferret-scan
-```
-
-### Windows Event Log Integration
-
-Enable Windows Event Log debugging:
-
-```powershell
-# Enable Windows Event Log debugging
-$env:FERRET_DEBUG = "1"
-$env:FERRET_EVENTLOG = "1"
-
-ferret-scan --file "C:\test" --debug
-
-# Check Windows Event Logs
-Get-WinEvent -LogName Application | Where-Object {$_.ProviderName -eq "ferret-scan"} | Select-Object -First 10
 ```
 
 ### Debugging Output Redirection on Windows

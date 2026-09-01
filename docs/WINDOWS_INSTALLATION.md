@@ -211,10 +211,27 @@ Set up Windows environment variables for optimal operation:
 
 # Enable debug mode (optional)
 [Environment]::SetEnvironmentVariable("FERRET_DEBUG", "1", "User")
-
-# Set custom temp directory (optional)
-[Environment]::SetEnvironmentVariable("FERRET_TEMP_DIR", "$env:TEMP\ferret-scan", "User")
 ```
+
+There is no `FERRET_TEMP_DIR`. A temp directory can be set in the configuration file,
+but only for one consumer — the web UI, which stages uploads there:
+
+```yaml
+platform:
+  windows:
+    temp_dir: "C:\\Users\\you\\AppData\\Local\\Temp\\ferret-scan"
+```
+
+**The value is used verbatim — there is no environment-variable expansion.** Writing
+`"%TEMP%\ferret-scan"` creates a directory literally named `%TEMP%\ferret-scan`, because
+`tempDirOverrideValue()` returns the configured string unchanged (`internal/paths/paths.go:73-79`);
+nothing in `internal/paths` or `internal/platform` calls `os.ExpandEnv`. Give an absolute path.
+
+That key is accepted (a typo such as `tempdir` is rejected with
+`Warning: unknown config key`), and it is the only override in the tool: it reaches
+`paths.GetTempDir()`, whose sole production caller is the web upload path. CLI scanning
+and embedded-container redaction use the operating system's temp directory regardless
+(`os.MkdirTemp("", ...)`), so do not treat this as a general temp redirect.
 
 ## Integration Setup
 
