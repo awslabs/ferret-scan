@@ -171,7 +171,7 @@ Create `.vscode/launch.json`:
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/main.go",
-            "args": ["web", "--port", "8080"],
+            "args": ["--web", "--port", "8080"],
             "env": {
                 "FERRET_DEBUG": "1"
             },

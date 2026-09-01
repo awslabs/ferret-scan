@@ -540,7 +540,7 @@ Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='ferret-scan
 ### Performance Monitoring
 ```powershell
 # Monitor ferret-scan performance
-$Process = Start-Process ferret-scan -ArgumentList "scan", ".", "--format", "json" -PassThru
+$Process = Start-Process ferret-scan -ArgumentList "--file", ".", "--format", "json" -PassThru
 while (!$Process.HasExited) {
     $Process.Refresh()
     Write-Host "CPU: $($Process.TotalProcessorTime.TotalSeconds)s, Memory: $([math]::Round($Process.WorkingSet64/1MB, 2))MB"

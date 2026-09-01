@@ -163,7 +163,7 @@ function Invoke-FerretScan {
         [string]$Output
     )
 
-    $args = @("scan", $Path, "--format", $Format, "--checks", $Checks, "--confidence", $Confidence)
+    $args = @("--file", $Path, "--format", $Format, "--checks", $Checks, "--confidence", $Confidence)
 
     if ($Recursive) { $args += "--recursive" }
     if ($Output) { $args += @("--output", $Output) }
@@ -372,7 +372,7 @@ ferret-scan --web
 ferret-scan --web --port 9000
 
 # Start in background
-Start-Process ferret-scan -ArgumentList "web", "--port", "8080" -WindowStyle Hidden
+Start-Process ferret-scan -ArgumentList "--web", "--port", "8080" -WindowStyle Hidden
 
 # Start with specific configuration
 ferret-scan --web --port 8080 --config "$env:APPDATA\ferret-scan\config.yaml"

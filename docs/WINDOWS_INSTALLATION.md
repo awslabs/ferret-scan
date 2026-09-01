@@ -251,7 +251,7 @@ function Scan-Directory {
         [string]$Output = $null
     )
 
-    $args = @("scan", $Path, "--format", $Format)
+    $args = @("--file", $Path, "--format", $Format)
     if ($Output) {
         $args += @("--output", $Output)
     }
@@ -286,7 +286,7 @@ Enable tab completion for Ferret Scan commands:
 Register-ArgumentCompleter -Native -CommandName ferret-scan -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
-    $commands = @('scan', 'web', '--help', '--version', '--config', '--format', '--checks')
+    $commands = @('--file', '--web', '--help', '--version', '--config', '--format', '--checks')
     $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
@@ -362,7 +362,7 @@ Remove-Item test.txt
 Measure-Command { ferret-scan --file $env:USERPROFILE\Documents --format json }
 
 # Test web UI startup
-Start-Process -NoNewWindow ferret-scan -ArgumentList "web", "--port", "8080"
+Start-Process -NoNewWindow ferret-scan -ArgumentList "--web", "--port", "8080"
 Start-Sleep 3
 Stop-Process -Name "ferret-scan" -Force
 ```
