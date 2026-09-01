@@ -780,7 +780,10 @@ func setBoolFlag(flag *bool, value bool) {
 // shouldSuppressProgressOutput determines if progress output should be suppressed
 func shouldSuppressProgressOutput(finalConfig *finalConfiguration, precommitConfig *precommit.PrecommitConfig, isInteractive bool) bool {
 	suppress := finalConfig.debug || finalConfig.quiet || !isInteractive
-	if precommitConfig != nil && precommitConfig.QuietMode {
+	// effectivePrecommitQuiet, not precommitConfig.QuietMode: an explicit --quiet=false must not be
+	// overridden by the detected default. finalConfig.quiet is a snapshot taken before the detection
+	// guard runs and is never reassigned, so it cannot carry this on its own.
+	if effectivePrecommitQuiet(precommitConfig) {
 		suppress = true
 	}
 	return suppress
@@ -1861,7 +1864,7 @@ func main() {
 		Verbose:         finalConfig.verbose,
 		NoColor:         finalConfig.noColor,
 		ShowMatch:       finalConfig.showMatch,
-		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
+		PrecommitMode:   effectivePrecommitQuiet(precommitConfig),
 		// An explicitly requested artifact is written even when pre-commit mode would
 		// otherwise stay silent. See FormatterOptions.OutputToFile (#353).
 		OutputToFile: *outputFile != "",
@@ -3291,6 +3294,39 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 }
 
 // isFlagSet checks if a flag was explicitly set on the command line
+// effectivePrecommitQuiet reports whether pre-commit quiet output applies, AFTER an explicitly
+// requested --quiet has been honoured.
+//
+// This exists because the rule was written once and re-derived wrongly in three other places. The
+// guard in the detection path is correct — it applies the pre-commit quiet DEFAULT only when the
+// operator did not ask, so `--quiet=false` survives:
+//
+//	if precommitConfig.QuietMode && !isFlagSet("quiet") { setBoolFlag(quiet, true) }
+//
+// But the three FormatterOptions sites read `precommitConfig.QuietMode` directly, which is the
+// detected default rather than the decision, so the flag was discarded at the point it mattered.
+// Measured on a clean file with --format json: no flags 238 bytes, `--quiet=false` 238,
+// `--pre-commit-mode` 0 (the correct default), and `--pre-commit-mode --quiet=false` **0** — the
+// operator asked for a document and got an empty one, so a consumer sees a parse error or reads no
+// findings. Same shape as the --output half of #353, and the same harm.
+//
+// The stdin path is worse, and differently: it returns before that guard is ever reached, so no
+// explicit --quiet was honoured there at all. Measured: `--stdin --pre-commit-mode` 1 byte and
+// `--stdin --pre-commit-mode --quiet=false` also 1 byte, against 20 with no flags.
+//
+// Reading the flag through flag.Lookup rather than a threaded pointer is what lets both cmd files
+// share ONE definition; a second copy is how this diverged in the first place.
+func effectivePrecommitQuiet(pc *precommit.PrecommitConfig) bool {
+	if pc == nil {
+		return false
+	}
+	if isFlagSet("quiet") {
+		f := flag.Lookup("quiet")
+		return f != nil && f.Value.String() == "true"
+	}
+	return pc.QuietMode
+}
+
 func isFlagSet(name string) bool {
 	found := false
 	flag.Visit(func(f *flag.Flag) {
@@ -3601,7 +3637,7 @@ func validatePort(portStr string) (string, error) {
 
 // printPrecommitError prints error messages optimized for pre-commit workflows
 func printPrecommitError(precommitConfig *precommit.PrecommitConfig, errorMsg string, resolutionGuidance ...string) {
-	if precommitConfig != nil && precommitConfig.QuietMode {
+	if effectivePrecommitQuiet(precommitConfig) {
 		// In pre-commit mode, provide concise, actionable error messages
 		fmt.Fprintf(os.Stderr, "ferret-scan: %s\n", errorMsg)
 

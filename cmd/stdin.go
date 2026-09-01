@@ -157,7 +157,10 @@ func runStdinScan(in stdinScanInputs) int {
 		if precommitConfig.NoColor {
 			finalCfg.noColor = true
 		}
-		if precommitConfig.QuietMode {
+		// The file path guards this with !isFlagSet("quiet"); this path did not, which is why
+		// --stdin --pre-commit-mode --quiet=false was quiet anyway. effectivePrecommitQuiet is that
+		// guard, shared rather than restated.
+		if effectivePrecommitQuiet(precommitConfig) {
 			finalCfg.quiet = true
 		}
 		if !isFlagSet("format") {
@@ -309,7 +312,7 @@ func runStdinScan(in stdinScanInputs) int {
 		Verbose:         finalCfg.verbose,
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
-		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
+		PrecommitMode:   effectivePrecommitQuiet(precommitConfig),
 		Limit:           in.limit,
 	}
 
@@ -494,7 +497,7 @@ func formatStdinFindings(
 		Verbose:         finalCfg.verbose,
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
-		PrecommitMode:   precommitConfig != nil && precommitConfig.QuietMode,
+		PrecommitMode:   effectivePrecommitQuiet(precommitConfig),
 		Limit:           limit,
 	}
 	if finalCfg.showSuppressed {
@@ -526,7 +529,7 @@ func shouldSuppressStdinProse(
 	if finalCfg.quiet {
 		return true
 	}
-	if precommitConfig != nil && precommitConfig.QuietMode {
+	if effectivePrecommitQuiet(precommitConfig) {
 		return true
 	}
 	if finalCfg.enableRedaction && outputFile == "" {
