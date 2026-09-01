@@ -143,6 +143,32 @@ Starting confidence level for detected patterns.
   HIGH band. A password hash is still flagged because its line carries a real
   credential word (`password`/`pwd`).
 
+### Published Ceilings (context cannot lift these)
+
+A ceiling is an upper bound the validator publishes in
+`Match.Metadata["confidence_ceiling"]`. Unlike the penalties above it is not an
+addend competing with context — nothing downstream can out-vote it. Two apply here:
+
+| Value class | Ceiling | Reason |
+|---|---|---|
+| A bare 32/40/64-char hex identifier on a line naming nothing secret | 55 | GUIDs, digests, ETags and commit ids share the shape of a key. `api_key = "14f6…"` keeps its full score; `ImageUniqueID: "14f6…"` is capped. |
+| An AWS credential whose own bytes contain `EXAMPLE` — `AKIAIOSFODNN7EXAMPLE`, `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` | 15 | AWS publishes these in its documentation. Measured before: 84% and 75% MEDIUM, i.e. presented as real credentials (#364). |
+
+Both are **demotions, not suppressions**: the finding is still reported, so it is
+still redacted. `--confidence low` shows it; `--explain` reports
+`not_test_data: false` and a `likely_test` verdict.
+
+The `EXAMPLE` rule applies only to the `AWS_ACCESS_KEY` and
+`AWS_SECRET_ACCESS_KEY` types, both of which have an exact-length gate an author
+cannot get past — appending `EXAMPLE` to a real 20-char `AKIA` key makes it 27 and
+fails detection entirely. It is deliberately **not** applied to
+`API_KEY_OR_SECRET`, which has no length gate and where the same rule would let
+anyone silence a real credential by appending seven characters. Vendor **test-mode**
+credentials such as `sk_test_…` are unaffected: those authenticate, so they are
+real secrets and keep their full confidence.
+
+Full policy: [docs/proposals/CONFIDENCE_CONTRACT.md](../../../docs/proposals/CONFIDENCE_CONTRACT.md) §7c.
+
 ## Implementation Details
 
 ### Memory Security

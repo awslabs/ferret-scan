@@ -144,71 +144,6 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "AWS key \nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n in the config."
-                  },
-                  "startLine": 2
-                },
-                "region": {
-                  "endColumn": 29,
-                  "snippet": {
-                    "text": "AWS key AKIAIOSFODNN7EXAMPLE in the config."
-                  },
-                  "startColumn": 9,
-                  "startLine": 2
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "AWS_ACCESS_KEY Detected in <golden:mixed_pii_basic> at line 2 (confidence: 69.0% - MEDIUM). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
-          },
-          "properties": {
-            "confidence": 69,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0,
-              "context_doc_type": "Unknown",
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
-              "detection_method": "keyword_pattern",
-              "environment_type": "test",
-              "original_confidence": 69,
-              "secret_type": "AWS_ACCESS_KEY",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "has_entropy": true,
-                "min_length": true,
-                "not_common_word": true,
-                "not_test_data": true,
-                "specific_pattern": true,
-                "test_environment_penalty": true,
-                "valid_format": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "secrets"
-          },
-          "rank": 59.5,
-          "ruleId": "AWS_ACCESS_KEY"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:mixed_pii_basic>"
-                },
-                "contextRegion": {
-                  "snippet": {
                     "text": "Contact \nContact john.doe@example.com or call 212-555-0142.\n or call 212-555-0142."
                   },
                   "startLine": 1
@@ -272,6 +207,72 @@
           },
           "rank": 41.5,
           "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:mixed_pii_basic>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "AWS key \nAWS key AKIAIOSFODNN7EXAMPLE in the config.\n in the config."
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "AWS key AKIAIOSFODNN7EXAMPLE in the config."
+                  },
+                  "startColumn": 9,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "AWS_ACCESS_KEY Detected in <golden:mixed_pii_basic> at line 2 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 0,
+              "context_doc_type": "Unknown",
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "detection_method": "keyword_pattern",
+              "environment_type": "test",
+              "original_confidence": 15,
+              "secret_type": "AWS_ACCESS_KEY",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": false,
+                "specific_pattern": true,
+                "test_environment_penalty": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 32.5,
+          "ruleId": "AWS_ACCESS_KEY"
         },
         {
           "level": "error",

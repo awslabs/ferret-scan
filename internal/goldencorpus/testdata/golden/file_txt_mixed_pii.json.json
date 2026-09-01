@@ -75,44 +75,6 @@
       "validator": "creditcard"
     },
     {
-      "confidence": 69,
-      "confidence_level": "MEDIUM",
-      "filename": "<TMPDIR>/notes.txt",
-      "line_number": 2,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 0,
-        "context_doc_type": "Unknown",
-        "context_doctype": "Unknown",
-        "context_domain": "Unknown",
-        "detection_method": "keyword_pattern",
-        "environment_type": "test",
-        "original_confidence": 69,
-        "secret_type": "AWS_ACCESS_KEY",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "has_entropy": true,
-          "min_length": true,
-          "not_common_word": true,
-          "not_test_data": true,
-          "specific_pattern": true,
-          "test_environment_penalty": true,
-          "valid_format": true
-        },
-        "validation_path": "document"
-      },
-      "text": "AKIAIOSFODNN7EXAMPLE",
-      "type": "AWS_ACCESS_KEY",
-      "validator": "secrets"
-    },
-    {
       "confidence": 33,
       "confidence_level": "LOW",
       "filename": "<TMPDIR>/notes.txt",
@@ -152,6 +114,45 @@
       "text": "john.doe@example.com",
       "type": "BUSINESS",
       "validator": "email"
+    },
+    {
+      "confidence": 15,
+      "confidence_level": "LOW",
+      "filename": "<TMPDIR>/notes.txt",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "confidence_ceiling": 15,
+        "context_confidence": 0,
+        "context_doc_type": "Unknown",
+        "context_doctype": "Unknown",
+        "context_domain": "Unknown",
+        "detection_method": "keyword_pattern",
+        "environment_type": "test",
+        "original_confidence": 15,
+        "secret_type": "AWS_ACCESS_KEY",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "has_entropy": true,
+          "min_length": true,
+          "not_common_word": true,
+          "not_test_data": false,
+          "specific_pattern": true,
+          "test_environment_penalty": true,
+          "valid_format": true
+        },
+        "validation_path": "document"
+      },
+      "text": "AKIAIOSFODNN7EXAMPLE",
+      "type": "AWS_ACCESS_KEY",
+      "validator": "secrets"
     },
     {
       "confidence": 15,

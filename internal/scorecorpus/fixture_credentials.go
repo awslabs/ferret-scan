@@ -29,7 +29,11 @@ const (
 	// fakeAWSAccessKeyID is AWS's own documentation example key. It is published in
 	// public AWS docs, so it is deliberately NOT split — a scanner flagging it is
 	// finding a value that is already public, and the corpus needs it recorded as
-	// the reserved-example case it is (it scores MEDIUM, not HIGH, which is the
-	// behavior worth pinning).
+	// the reserved-example case it is.
+	//
+	// It scores LOW 15 as of #364: a documentation placeholder is band-demoted, not
+	// dropped, so it is still REPORTED and therefore still redacted. Being reported
+	// at all is the behavior worth pinning here — this case is the corpus's proof
+	// that the demotion did not turn into a suppression. It was MEDIUM before #364.
 	fakeAWSAccessKeyID = "AKIAIOSFODNN7EXAMPLE"
 )

@@ -143,6 +143,63 @@ func TestTheIPAddressValidatorsCeilingReachesTheBridge(t *testing.T) {
 	}
 }
 
+// TestTheSecretsValidatorsPlaceholderCeilingReachesTheBridge is the #364 half of the
+// same loop.
+//
+// AWS publishes AKIAIOSFODNN7EXAMPLE as the access key ID in its own documentation, and
+// it was reported at 84% MEDIUM — a value from a vendor's docs page presented to a
+// reviewer as a real credential. The treatment is a ceiling of 15 (top of LOW) rather
+// than a drop, because only reported findings are redacted and this exact value is a
+// live finding in 39 of this repo's golden files.
+//
+// A ceiling only holds if the bridge can read it, so this drives the validator and then
+// replays what the bridge does. It fails both if the validator stops publishing the key
+// and if the ceiling stops being a float64, which clampToCeiling ignores.
+func TestTheSecretsValidatorsPlaceholderCeilingReachesTheBridge(t *testing.T) {
+	const docAccessKeyID = "AKIAIOSFODNN7EXAMPLE"
+
+	matches, err := secrets.NewValidator().ValidateContent(
+		"AWS_ACCESS_KEY_ID="+docAccessKeyID+"\n", "creds.env")
+	if err != nil {
+		t.Fatalf("ValidateContent: %v", err)
+	}
+
+	var m detector.Match
+	var found int
+	for _, candidate := range matches {
+		if candidate.Type == "AWS_ACCESS_KEY" {
+			m = candidate
+			found++
+		}
+	}
+	if found != 1 {
+		t.Fatalf("got %d AWS_ACCESS_KEY matches, want 1 — the placeholder must still be "+
+			"REPORTED, since only reported findings are redacted", found)
+	}
+
+	if _, ok := m.Metadata[ConfidenceCeilingKey]; !ok {
+		t.Fatalf("the capped match carries no %q the bridge can read.\nIts metadata keys: %v\n"+
+			"Without it, the document-context adjustment applied after the validator returns "+
+			"puts an AWS documentation placeholder back above LOW (#364).",
+			ConfidenceCeilingKey, metadataKeys(m.Metadata))
+	}
+
+	// Do what the bridge does: raise, then clamp.
+	before := m.Confidence
+	m.Confidence += 20
+	clampToCeiling(&m)
+
+	if m.Confidence != before {
+		t.Errorf("after a +20 document adjustment and the clamp, confidence = %v, want %v",
+			m.Confidence, before)
+	}
+	if m.Confidence >= 60 {
+		t.Errorf("confidence = %v, which is MEDIUM or better; a value AWS prints in its "+
+			"documentation must stay in LOW so the standard CI filter never presents it as "+
+			"a real credential", m.Confidence)
+	}
+}
+
 func metadataKeys(meta map[string]any) []string {
 	keys := make([]string, 0, len(meta))
 	for k := range meta {
