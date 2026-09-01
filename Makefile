@@ -142,7 +142,6 @@ install-system: build
 		echo ""; \
 		echo "This will install:"; \
 		echo "   • ferret-scan binary to /usr/local/bin/"; \
-		echo "   • ferret-scan-precommit wrapper to /usr/local/bin/"; \
 		echo "   • Configuration files to ~/.ferret-scan/"; \
 		echo ""; \
 		exit 1; \
@@ -179,7 +178,7 @@ uninstall:
 	else \
 		echo "❌ install-system.sh not found. Manual uninstall:"; \
 		echo "   sudo rm -f /usr/local/bin/ferret-scan"; \
-		echo "   sudo rm -f /usr/local/bin/ferret-scan-precommit"; \
+		echo "   sudo rm -f /usr/local/bin/ferret-scan-precommit   # legacy wrapper, only if an older install left one"; \
 		echo "   rm -rf ~/.ferret-scan"; \
 	fi
 
@@ -392,19 +391,8 @@ test-precommit:
 	@echo "🔗 Testing pre-commit mode..."
 	@./bin/ferret-scan --config config.yaml --pre-commit-mode --confidence high,medium test-sensitive.txt || echo "✅ Pre-commit mode test completed"
 	@echo ""
-	@echo "🔗 Testing system installation..."
-	@if command -v ferret-scan-precommit >/dev/null 2>&1; then \
-		echo "✅ ferret-scan-precommit found in system PATH"; \
-		echo "🧪 Testing system pre-commit wrapper..."; \
-		FERRET_CONFIDENCE="high,medium" FERRET_FAIL_ON="none" ferret-scan-precommit test-sensitive.txt; \
-	else \
-		echo "⚠️  ferret-scan-precommit not found in system PATH"; \
-		echo ""; \
-		echo "💡 To install for pre-commit integration:"; \
-		echo "   sudo make install-system"; \
-		echo ""; \
-		echo "This will install ferret-scan-precommit to /usr/local/bin/"; \
-	fi
+	@echo "💡 To wire this into a repo, add ferret-scan --pre-commit-mode to"
+	@echo "   .pre-commit-config.yaml — see docs/PRE_COMMIT_INTEGRATION.md"
 	@echo ""
 	@echo "🧹 Cleaning up test files..."
 	@rm -f test-sensitive.txt
