@@ -51,7 +51,11 @@ arm. The producer now states the cause ([#432](https://github.com/awslabs/ferret
 [#412](https://github.com/awslabs/ferret-scan/issues/412)) and the classifiers remain only as a fallback
 for records that carry none.
 
-## The six causes
+## The eight causes
+
+The heading said "six" while the table listed seven; two causes were added to the code
+after it was written. It now agrees with the rows below, which is the point of documenting
+a closed list at all.
 
 | cause | meaning | were findings possible? |
 |---|---|---|
@@ -62,6 +66,7 @@ for records that carry none.
 | `symlink not followed` | a link that dangles, loops, names a directory or device, or resolves outside the scanned tree | the target was never read; scan it directly |
 | `file too large to scan` | over the size limit, so never opened — and of a type the tool WOULD have processed | no |
 | `not a regular file` | the directory entry is a named pipe, socket or device node, or on Windows a junction, mount point or other non-symlink reparse point | the entry was never opened; it is not readable content |
+| `path refused as traversal` | the path, once cleaned, still climbs above the directory it is relative to — or a walked entry resolved outside the tree being scanned | the path was never opened; name it absolutely to scan it |
 
 The third and fourth never claim the file was unread. A `.docx` with an empty body but
 PII in its author field appears both as findings *and* in this list, and saying its
@@ -83,6 +88,46 @@ directory without the pipe, and `--fail-on-incomplete` also exited 0.
 An **unprocessable** type refused for size is not listed at all. It is a genuine skip: no
 finding was ever possible from it, so reporting lost coverage would be reporting a
 non-event.
+
+### What `path refused as traversal` covers, and what it no longer refuses
+
+A filename containing `..` is **not** a traversal. `report..final.txt`, a date range
+`2024..2025.csv`, and anything from a tool that writes `name..ext` are ordinary names, and
+all of them are scanned. Eight gates in `cmd` used to ask `strings.Contains(path, "..")` —
+a substring test where a path-segment test was meant — and every one of those names was
+dropped. Measured before [#562](https://github.com/awslabs/ferret-scan/issues/562), on two
+byte-identical files in one directory each holding one SSN:
+
+```text
+--file <dir>/normal.txt              1 finding    exit 0
+--file <dir>/report..final.txt       0 findings   exit 0   "No files to process"
+  ... --fail-on-incomplete           0 findings   exit 0
+--format json --file <dir>           total_files 1, files_processed 1, files_skipped 0
+```
+
+The last row is why this cause exists. The dropped file was absent from the numerator *and
+from the denominator*, so the printed numbers were self-consistent and a consumer reading
+`files_skipped: 0` concluded coverage was complete. Only reported findings reach the
+redactor, so the second file's SSN stayed in cleartext at a success exit code.
+
+The gate is now a segment test: a path is refused only when `filepath.Clean` cannot resolve
+its `..` away, meaning it climbs above the directory it is relative to. `../../etc/passwd`
+is still refused. `/home/alice/../../etc/hosts` is accepted, because it cleans to
+`/etc/hosts` — a path the caller could have named directly, and this gate fronts neither a
+sandbox nor a document root. An absolute path outside the working directory is accepted, as
+it always was: `--file /etc/hosts` works, and refusing it would be a new way to lose
+coverage silently. See `cmd/path_traversal.go` for the full argument.
+
+What remains refused is now **disclosed**. The refusal used to increment the skip counter
+and print nothing — deliberately, on the grounds that it was "security-related", which has
+it backwards: a refusal nobody can see cannot be audited and reads exactly like a clean
+scan. It now appears in this report, in `total_files`, in `files_not_examined`, and under
+`--fail-on-incomplete` in the exit code (3).
+
+An `--output` path is a different question and is still refused outright with exit 1 rather
+than disclosed: refusing where the tool WRITES loses no coverage, and the refusal is already
+loud. Its substring test was narrowed the same way, so `--output report..final.json` works
+while `--output ../escape.json` is still rejected.
 
 ### What `coverage cut short` covers inside a container
 
