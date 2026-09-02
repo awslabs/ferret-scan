@@ -40,7 +40,7 @@ Returns health status with complete build information:
 }
 ```
 
-**Note**: The `timestamp` field shows the current server time, while `build_info.build_date` shows the actual build timestamp.
+**Note**: The values above are illustrative, like the placeholder `commit` and `version` beside them. The `timestamp` field shows the current server time, while `build_info.build_date` shows the actual build timestamp, and `build_info.go_version` reports whichever toolchain the binary was compiled with — it is not a supported-version claim, so it is not kept in step with [`.go-version`](../.go-version).
 
 ## Implementation Details
 
