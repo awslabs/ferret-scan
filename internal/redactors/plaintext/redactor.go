@@ -16,6 +16,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/position"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/replacement"
+	"github.com/awslabs/ferret-scan/v2/internal/redactverify"
 )
 
 // PlainTextRedactor implements redaction for plain text files
@@ -199,6 +200,18 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	// spaced CREDIT_CARD match) gets redacted first, mutating the text so the
 	// larger match can no longer be located — leaving its un-redacted head
 	// (the card's BIN) exposed. See redactors.ResolveOverlaps.
+	// Captured BEFORE the narrowing, because this is the set the FLOOR judges.
+	//
+	// ResolveOverlaps drops any match fully contained in a wider surviving match, which is right for
+	// positional replacement: the wider span's replacement covers the contained value at that one
+	// reported position. But it is wrong for the completeness invariant — every OTHER copy of the
+	// contained value in the document survives, and the sweep never learns the value exists.
+	//
+	// Measured: this single asymmetry was the sole cause of 3 of the 4 files that refused, and of 13 of
+	// the 14 residual values across a 480-file corpus, including OTP secrets and recovery codes. The
+	// predicate and the enforcer have to agree on the match SET as well as on the spellings; the
+	// package doc stated the second and quietly assumed the first.
+	sweepMatches := matches
 	matches = redactors.ResolveOverlaps(matches)
 
 	// Sort matches by position (descending) to avoid position shifts during replacement
@@ -400,6 +413,36 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			"replacement_length": len(replacement),
 			"confidence":         confidence,
 			"correlation_used":   correlationUsed,
+		})
+	}
+
+	// COMPLETENESS PASS. Everything above is positional and best-effort: correlation can fail, spans
+	// shift as earlier replacements land, overlaps collapse to one span, and the detector deduplicates
+	// occurrences upstream — so a value present many times may be reported far fewer times and the
+	// unreported copies were never located.
+	//
+	// This is the invariant half, and it is opted INTO here because this redactor's output is text, so
+	// a blind substitution is valid. It lives in redactverify beside the predicate that checks it
+	// rather than inline, because the same conflation exists in every text-substituting redactor and a
+	// fix written here would be repeated as a bug by the next one (#459).
+	//
+	// Measured on 480 real files before this: 143 reported values — including 44 recovery codes and 5
+	// OTP secrets — survived inside 29 files this redactor reported as successfully redacted.
+	swept, sweptValues, sweepErr := redactverify.SweepRemaining(redactedText, sweepMatches,
+		func(m detector.Match) (string, error) {
+			return ptr.generateReplacement(m.Text, m.Type, strategy)
+		})
+	if sweepErr != nil {
+		return "", nil, fmt.Errorf("completeness sweep: %w", sweepErr)
+	}
+	if len(sweptValues) > 0 {
+		redactedText = swept
+		// Recorded as its own event rather than folded into redaction_applied: a value the sweep had
+		// to remove is one the positional pass did NOT locate, which is a signal about the
+		// correlator's coverage and not just another redaction. The VALUES are never logged, only
+		// how many there were — the same rule that keeps a matched value out of every log line here.
+		ptr.logEvent("completeness_sweep_applied", true, map[string]interface{}{
+			"values_swept": len(sweptValues),
 		})
 	}
 

@@ -7,6 +7,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/awslabs/ferret-scan/v2/internal/coverage"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactverify"
 	"github.com/awslabs/ferret-scan/v2/internal/resilience"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
@@ -445,6 +449,9 @@ func (wp *WorkerPool) performInlineRedaction(job *Job, matches []detector.Match,
 		// Use content-based redaction (new interface)
 		result, err := contentRedactor.RedactContent(processedContent, outputPath, matches, strategy)
 		if err == nil && result != nil {
+			if vErr := verifyWrittenOutput(result, outputPath, matches); vErr != nil {
+				return nil, outputPath, vErr
+			}
 			// Add redaction result to the redaction manager's index
 			job.RedactionManager.AddRedactionResult(job.FilePath, outputPath, result)
 		}
@@ -453,9 +460,64 @@ func (wp *WorkerPool) performInlineRedaction(job *Job, matches []detector.Match,
 		// Fallback to file-based redaction (existing interface)
 		result, err := redactor.RedactDocument(job.FilePath, outputPath, matches, strategy)
 		if err == nil && result != nil {
+			if vErr := verifyWrittenOutput(result, outputPath, matches); vErr != nil {
+				return nil, outputPath, vErr
+			}
 			// Add redaction result to the redaction manager's index
 			job.RedactionManager.AddRedactionResult(job.FilePath, outputPath, result)
 		}
 		return result, outputPath, err
 	}
+}
+
+// verifyWrittenOutput is THE FLOOR: it reads back what a redactor actually wrote and refuses the
+// result if a reported value is still in it.
+//
+// This is applied at the dispatch point rather than inside each redactor, which is the whole of #459.
+// Verification was per-redactor policy, so four verified and three did not, and every new redactor had
+// to remember. #449 was the case where one forgot: tagmeta.Residual searched only the ranges it had
+// rewritten, so a value surviving OUTSIDE them was invisible by construction, and a file containing a
+// reported SSN was written with Success: true at exit 0.
+//
+// It is a FLOOR, never a replacement. It reads raw bytes, so it cannot inflate a zip member or walk a
+// box tree; office and tagmeta keep their format-aware checks and run first. What this adds is that
+// omission is no longer a way to skip verification.
+//
+// Refusing on failure matches every redactor that already verifies. The output file is removed, so a
+// file that would look redacted and is not cannot be left on disk for something else to pick up — the
+// caller reports the refusal through the unredacted-files channel, which names the path and the cause.
+//
+// A redactor that wrote nothing (pdf refuses outright) or chose a different name is handled by
+// preferring result.RedactedFilePath, because trusting the guess would read the WRONG file and pass
+// vacuously. An unreadable output is not treated as clean for the same reason.
+func verifyWrittenOutput(result *redactors.RedactionResult, outputPath string, matches []detector.Match) error {
+	if result == nil || !result.Success {
+		return nil // the caller's existing failure handling owns this
+	}
+	written := result.RedactedFilePath
+	if written == "" {
+		written = outputPath
+	}
+	raw, err := os.ReadFile(written) // #nosec G304 -- the path this run just asked a redactor to write
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing was written. A redactor that refuses outright is a legitimate outcome and its
+			// own error path reports it; there are no bytes to verify.
+			return nil
+		}
+		return fmt.Errorf("reading back redacted output %s to verify it: %w", filepath.Base(written), err)
+	}
+	residual := redactverify.ResidualTypes(raw, matches)
+	if len(residual) == 0 {
+		return nil
+	}
+	// Remove the output before reporting, so a file that looks redacted and is not cannot be
+	// consumed by anything downstream.
+	if rmErr := os.Remove(written); rmErr != nil && !os.IsNotExist(rmErr) {
+		return fmt.Errorf("redacted output %s still holds reported value(s) of type %s, and it could "+
+			"not be removed (%v); treat the file at that path as UNREDACTED",
+			filepath.Base(written), strings.Join(residual, ", "), rmErr)
+	}
+	return fmt.Errorf("redacted output %s still holds reported value(s) of type %s; refusing to write "+
+		"a file that would look redacted", filepath.Base(written), strings.Join(residual, ", "))
 }

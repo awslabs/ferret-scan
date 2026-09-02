@@ -206,6 +206,38 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > font names. A value inside one is redactable like any other, because an element is stored
 > behind its own length prefix and a same-length overwrite never touches it.
 
+## What "redacted" guarantees
+
+**Every standalone occurrence of a reported value is removed — not just the one the finding points at.**
+
+That distinction is not academic. Redaction locates a match at its reported POSITION, and the detector
+deduplicates occurrences, so a value present many times may be reported far fewer times. Measured on 480
+real files before this guarantee existed: **143 reported values survived inside 29 files the tool reported
+as successfully redacted**, among them 44 recovery codes and 5 OTP secrets. One name occurred 137 times
+and 4 copies remained.
+
+Two rules bound it:
+
+- **A value inside a longer token is left alone.** If `BEEF1234567` is reported as a member ID and the
+  document also contains `0xDEADBEEF12345678`, the hex constant is *not* rewritten — those bytes are part
+  of a different token, and editing them would corrupt a document the tool was asked to redact rather than
+  to edit. An occurrence counts only when no letter, digit or `_` abuts it.
+- **Values shorter than 4 bytes are removed only at their reported position.** A two- or three-character
+  string occurs incidentally throughout ordinary prose, so removing it everywhere does more harm than the
+  leak it closes.
+
+Narrow text, UTF-16LE, UTF-16BE and XML *named* entity spellings (`O&apos;Connor`) all count as the same
+value. Numeric character references (`&#56;`) are not yet recognised.
+
+**The output is verified before it is written.** Both dispatch points — whole files, and embedded parts
+inside a container — read back what the redactor actually wrote and refuse it if a reported value is still
+there, rather than trusting the redactor's own success flag. The `--stdin` streaming gateway does the same
+before anything reaches stdout, because there is no file left on disk to inspect afterwards.
+
+A refusal is disclosed on the console and the output is removed, so a file that looks redacted and is not
+cannot be picked up by something downstream. See the note above on exit codes: a refusal does **not**
+change the exit code today.
+
 ## Synthetic Strategy — Token Details
 
 The `synthetic` strategy is type-aware for secrets:
