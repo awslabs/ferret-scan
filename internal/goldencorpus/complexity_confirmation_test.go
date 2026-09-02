@@ -4,7 +4,8 @@
 package goldencorpus
 
 import (
-	"sort"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -56,129 +57,126 @@ func (quadraticValidator) ValidateContent(content, _ string) ([]detector.Match, 
 
 func quadraticUnit(i int) string { return "XQZ aaaaaaaaaaaaaaaa " }
 
-// TestConfirmationStillCatchesAGenuineQuadratic is the half that protects the guard's purpose.
+// TestGrowthRatioStillCatchesAGenuineQuadratic is the half that protects the guard's purpose.
 //
-// Re-measuring on failure must not become a way to retry until the machine is quiet enough to
-// pass. A real quadratic exceeds the threshold on EVERY pair, so its median exceeds it too —
-// asserted here rather than assumed, because a confirmation step that softened detection would
-// be strictly worse than the flake it replaces.
-func TestConfirmationStillCatchesAGenuineQuadratic(t *testing.T) {
+// The estimator must not be so noise-tolerant that it stops detecting the thing it exists for.
+// A real quadratic must exceed the threshold, and asserting it here is what stops a future
+// robustness change from quietly buying stability with blindness.
+func TestGrowthRatioStillCatchesAGenuineQuadratic(t *testing.T) {
 	newV := func() validatorUnderTest { return quadraticValidator{} }
 
-	// Sized so the BASE reading is milliseconds, not microseconds. A first version used
-	// reps = 300, giving a 45µs base, and the samples then spanned 8.46x-20.33x — noise, in
-	// the very regime this change exists to escape. The guard itself only evaluates a ratio
-	// when the base exceeds 2ms, so a control below that measures nothing the guard would.
+	// Sized so the base CPU reading clears minMeasurableCPU. A first version used reps = 300,
+	// giving a 45µs base, which is below the resolution the ratio is computed at.
 	const reps = 3000
 	base := buildComplexityInput(quadraticUnit(0), nil, reps)
 	big := buildComplexityInput(quadraticUnit(0), nil, reps*4)
 
-	// Warm up and DISCARD. The trigger reading is the first thing this package times, so on a
-	// cold or contended runner it absorbs one-off cost that the `big` reading does not pay in
-	// proportion — which inflates the base and collapses the ratio. Measured on CI, where the base
-	// read 11.7-15.2ms against 2.9-4.7ms locally while `big` was only ~2.3x its local value: the
-	// ratio fell to 6.46x-7.71x on ubuntu and windows purely from that asymmetry. Allocation is not
-	// the cause (pre-sizing the output slice moves the ratio 15.79x -> 15.90x and the loop makes
-	// only 12 allocations), so the fix is to stop MEASURING cold, not to change the fixture.
-	timeValidate(t, newV(), base)
-	timeValidate(t, newV(), big)
+	g := growthRatio(t, newV, base, big)
+	t.Logf("synthetic quadratic: %.2fx on the %s clock (min base=%v big=%v, per-pair %s)",
+		g.ratio, g.clock, g.baseMin, g.bigMin, formatRatios(g.samples))
 
-	tb, nb := timeValidate(t, newV(), base)
-	tg, ng := timeValidate(t, newV(), big)
-	if nb == 0 || ng <= nb {
-		t.Fatalf("fixture is not exercising the quadratic path: base=%d big=%d matches", nb, ng)
-	}
-	first := float64(tg) / float64(tb)
-	t.Logf("synthetic quadratic first reading: %.2fx (base=%v big=%v)", first, tb, tg)
-
-	// The first reading is ONE wall-clock pair, and this file's own guard exists because a single
-	// pair is not a statistic. It is logged, not asserted: a contended sample used to fail here
-	// with Fatalf BEFORE the median was ever computed, so the control reported "the fixture is too
-	// small" on a fixture whose median is 14.3x-15.9x. The median assertion below is the real one,
-	// and it is strictly stronger — it is what the guard under test actually judges.
-	median, samples := medianGrowthRatio(t, newV, base, big, first)
-	t.Logf("synthetic quadratic median: %.2fx over %d pairs %s", median, len(samples), formatRatios(samples))
-	if median <= maxGrowthRatio {
-		t.Errorf("a genuine O(n^2) validator's MEDIAN ratio is %.2fx, at or below the %.1f "+
-			"threshold — the confirmation step has turned the guard into a retry-until-quiet "+
-			"loop and would no longer detect the regression it exists for. samples %v",
-			median, maxGrowthRatio, formatRatios(samples))
-	}
-	// Deliberately NOT asserting that every sample exceeds the threshold. An earlier version
-	// did, and it failed under load 84: a genuine quadratic produced
-	// [13.38x 22.06x 5.96x 20.13x 7.54x 13.12x 12.31x] — median 13.12x, correct, but two
-	// individual samples below 8.0. That is the same base-inflation effect documented on
-	// medianGrowthRatio (contention can push a single ratio DOWN), so per-sample stability is
-	// exactly what this design does not rely on. The median is the contract; asserting more
-	// than the contract is how a test fails on correct code, which is the defect being fixed.
-	if len(samples) != confirmationPairs {
-		t.Errorf("got %d confirmation samples, want %d", len(samples), confirmationPairs)
+	// Non-vacuity: the fixture must actually be driving the quadratic path. A reject path is
+	// fast and its ratio is noise, which would make the assertion below meaningless. The counts
+	// come from the same measurement, so they describe the readings being judged.
+	if g.baseMatches == 0 || g.bigMatches <= g.baseMatches {
+		t.Fatalf("fixture is not exercising the quadratic path: base=%d big=%d matches",
+			g.baseMatches, g.bigMatches)
 	}
 
-	// The returned value must be the MEDIAN of the samples, asserted structurally rather than
-	// inferred from it being "low enough". A mutation returning the MAXIMUM instead survived the
-	// checks above: on an idle machine the largest sample is still under the threshold, so the
-	// test passed while the statistic was wrong — and under load the maximum is exactly what
-	// reinstates the flake this change removes.
-	sorted := make([]float64, len(samples))
-	copy(sorted, samples)
-	sort.Float64s(sorted)
-	wantMedian := sorted[len(sorted)/2]
-	if median != wantMedian {
-		t.Errorf("medianGrowthRatio returned %.4fx, but the median of its own samples is %.4fx "+
-			"(sorted %v) — the statistic must be the median: the minimum is biased toward "+
-			"passing and could mask a quadratic, the maximum reinstates the contention flake",
-			median, wantMedian, formatRatios(sorted))
+	if g.ratio <= maxGrowthRatio {
+		t.Errorf("a genuine O(n^2) validator measured %.2fx on the %s clock, at or below the %.1f "+
+			"threshold — the guard would no longer detect the regression it exists for. "+
+			"min base=%v big=%v, per-pair %s",
+			g.ratio, g.clock, maxGrowthRatio, g.baseMin, g.bigMin, formatRatios(g.samples))
 	}
 }
 
-// TestConfirmationIsSkippedOnTheHappyPath.
+// TestGrowthRatioStaysLowOnLinearCode is the must-NOT-fire half.
 //
-// The re-measurement must cost nothing when the first reading is fine, or this change makes
-// every CI run slower to fix a flake. medianGrowthRatio is called only inside the
-// `ratio > maxGrowthRatio` branch, and this asserts a linear validator's ratio stays under the
-// bound so that branch is not entered on correct code.
-//
-// It judges the MEDIAN, not one reading, and that correction came from CI failing this very test:
-// macos-latest under -race reported
-//
-//	linear control: 8.17x (base=34.762375ms big=284.058167ms)
-//
-// on a validator that does one pass. The base was 34ms, so this was not the small-measurement
-// noise the fixtures were already sized against — it is that an allocation-heavy loop is not
-// linear in WALL CLOCK under -race, where every access is instrumented and GC cost grows with the
-// heap. A first version asserted a single reading and therefore contradicted the premise of the
-// change it accompanies: that one wall-clock pair is not a statistic. Using medianGrowthRatio here
-// makes the test judge correct code exactly as production does.
-func TestConfirmationIsSkippedOnTheHappyPath(t *testing.T) {
-	// A linear validator: one pass, no per-match rescan.
-	linear := func() validatorUnderTest { return linearValidator{} }
-	// Sized so the base is several times the guard's own 2ms ratio floor. 12000 was tried first
-	// and gave a 1.5ms base — below that floor, i.e. back in the noise regime the fixtures exist
-	// to escape, which would have made this control meaningless in the other direction.
+// #546 was this direction failing: correct code read 8.60x and 9.68x on a contended runner and
+// the guard reported an O(n^2) regression that did not exist. The validator here allocates a
+// Match per finding exactly as production ones do, because allocation was the specific thing that
+// made a single-pass scan read 8.17x — see withGCOff.
+func TestGrowthRatioStaysLowOnLinearCode(t *testing.T) {
+	newV := func() validatorUnderTest { return linearValidator{} }
 	const reps = 40000
 	base := buildComplexityInput(linearUnit, nil, reps)
 	big := buildComplexityInput(linearUnit, nil, reps*4)
 
-	tb, nb := timeValidate(t, linear(), base)
-	tg, ng := timeValidate(t, linear(), big)
-	if nb == 0 || ng <= nb {
-		t.Fatalf("fixture not exercising the scan: base=%d big=%d", nb, ng)
-	}
-	first := float64(tg) / float64(tb)
-	t.Logf("linear control first reading: %.2fx (base=%v big=%v)%s", first, tb, tg, raceNote())
+	g := growthRatio(t, newV, base, big)
+	t.Logf("linear control: %.2fx on the %s clock (min base=%v big=%v, per-pair %s)",
+		g.ratio, g.clock, g.baseMin, g.bigMin, formatRatios(g.samples))
 
-	// Under the threshold on the first reading is the common case and needs nothing further.
-	if first <= maxGrowthRatio {
-		return
+	if g.ratio > maxGrowthRatio {
+		t.Errorf("a single-pass validator measured %.2fx on the %s clock, above the %.1f "+
+			"threshold — this is #546, the guard failing on correct code. min base=%v big=%v, "+
+			"per-pair %s", g.ratio, g.clock, maxGrowthRatio, g.baseMin, g.bigMin, formatRatios(g.samples))
 	}
-	median, samples := medianGrowthRatio(t, linear, base, big, first)
-	t.Logf("linear control median: %.2fx over %d pairs %s", median, len(samples), formatRatios(samples))
-	if median > maxGrowthRatio {
-		t.Errorf("a linear validator's MEDIAN ratio is %.2fx over %d pairs, above the %.1f "+
-			"threshold. Either the threshold is wrong for this configuration or this fixture is "+
-			"not actually linear in wall clock — under -race an allocation-heavy loop is not. "+
-			"samples %v", median, len(samples), maxGrowthRatio, formatRatios(samples))
+}
+
+// TestNothingInThisPackageRunsInParallel protects the assumption the CPU clock depends on.
+//
+// getrusage(RUSAGE_SELF) reports CPU for the WHOLE PROCESS, so it is only a measure of the
+// validator under test while nothing else in this process is burning CPU concurrently. Two facts
+// make that true today, and this test pins the one that a future edit could break:
+//
+//  1. `go test` builds and runs one binary PER PACKAGE, so the other packages competing for the
+//     machine are separate processes and their CPU does not enter this reading. That is why the
+//     estimator survives a loaded runner — measured with 28 external busy-loop processes on 14
+//     CPUs, the minimum base reading was 3.727ms against 3.703ms idle.
+//  2. No test in this package runs concurrently with another. This is the fragile half.
+//
+// Measured, so this is not a theoretical worry: running the linear control with 28 busy
+// GOROUTINES in-process made it read 11.62x with the base inflated from 4.374ms to 39.559ms —
+// a false O(n^2) report on a single-pass scan. Adding t.Parallel() anywhere in this package would
+// do exactly that to whichever measurement happened to overlap.
+func TestNothingInThisPackageRunsInParallel(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read package dir: %v", err)
+	}
+
+	// Assembled from fragments so this file does not contain the literal it searches for. A
+	// first version matched its own search string and its own error message, and "exempt the
+	// guard's own file" would have been the wrong fix: this file measures too, so it has to be
+	// policed like the rest.
+	needle := "t.Paralle" + "l()"
+
+	var scanned int
+	var offenders []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		raw, err := os.ReadFile(e.Name()) // #nosec G304 -- a test file in this package
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		scanned++
+		for i, line := range strings.Split(string(raw), "\n") {
+			code := line
+			if idx := strings.Index(code, "//"); idx >= 0 {
+				code = code[:idx]
+			}
+			if strings.Contains(code, needle) {
+				offenders = append(offenders, fmt.Sprintf("%s:%d", e.Name(), i+1))
+			}
+		}
+	}
+
+	// Non-vacuity: if the directory walk stopped finding test files, the assertion below would
+	// pass on an empty set.
+	if scanned < 5 {
+		t.Fatalf("scanned only %d _test.go files in this package; the check is not reading the "+
+			"sources it is meant to police", scanned)
+	}
+	if len(offenders) > 0 {
+		t.Errorf("%s found at %s. The complexity guard measures process-wide CPU time "+
+			"(getrusage RUSAGE_SELF), so a test running concurrently with a measurement is "+
+			"charged to the validator being measured: in-process load inflated a base reading "+
+			"4.374ms -> 39.559ms and turned a 4.07x linear scan into 11.62x, above the %.1f "+
+			"threshold. Either keep this package sequential or move the complexity guard to a "+
+			"clock that is not process-wide.", needle, strings.Join(offenders, ", "), maxGrowthRatio)
 	}
 }
 
@@ -208,48 +206,4 @@ func (linearValidator) ValidateContent(content, _ string) ([]detector.Match, err
 		}
 	}
 	return out, nil
-}
-
-// TestConfirmationClearsAContendedOutlierOnLinearCode models #546 directly.
-//
-// The reported failure was a SINGLE contended reading on correct code — dob 8.60x under -race,
-// medicalid 9.68x plain — where every re-measurement of the same code is ~4x. This feeds
-// medianGrowthRatio exactly that situation: a linear validator plus a first reading above the
-// threshold, standing in for the contended outlier. The median must come back below the
-// threshold, or the confirmation step does not fix the flake it was added for.
-//
-// This is the complement of TestConfirmationStillCatchesAGenuineQuadratic: together they pin
-// both directions — a real quadratic must survive confirmation, a contended outlier must not.
-func TestConfirmationClearsAContendedOutlierOnLinearCode(t *testing.T) {
-	newV := func() validatorUnderTest { return linearValidator{} }
-	const reps = 40000
-	base := buildComplexityInput(linearUnit, nil, reps)
-	big := buildComplexityInput(linearUnit, nil, reps*4)
-
-	// The worst correct-code reading #546 recorded. Higher than anything linear code costs.
-	const contendedOutlier = 9.68
-
-	median, samples := medianGrowthRatio(t, newV, base, big, contendedOutlier)
-	t.Logf("contended-outlier first=%.2fx -> median %.2fx over %d pairs %s",
-		contendedOutlier, median, len(samples), formatRatios(samples))
-
-	if median > maxGrowthRatio {
-		t.Errorf("a linear validator whose FIRST reading was a contended %.2fx still has median "+
-			"%.2fx, above the %.1f threshold — the confirmation step does not clear the flake "+
-			"#546 reported. samples %v", contendedOutlier, median, maxGrowthRatio, formatRatios(samples))
-	}
-	// The trigger must NOT be one of the samples. It is in the set only by virtue of having
-	// been high, so letting it vote biases the median upward — measured, that is how a first
-	// version produced median 9.68x from [9.68x 4.02x 14.18x 3.85x 15.64x] and failed linear
-	// code. Asserted so nobody "helpfully" adds it back.
-	for _, s := range samples {
-		if s == contendedOutlier {
-			t.Errorf("the triggering reading %.2fx appears in the confirmation samples %v — the "+
-				"suspect measurement must not vote on its own confirmation",
-				contendedOutlier, formatRatios(samples))
-		}
-	}
-	if len(samples) != confirmationPairs {
-		t.Errorf("got %d confirmation samples, want %d", len(samples), confirmationPairs)
-	}
 }
