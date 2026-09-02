@@ -514,4 +514,4 @@ The enhanced metadata validation system provides automatic migration:
 ### Troubleshooting
 - [Enhanced Processing Sequence](../development/enhanced-processing-sequence.md)
 - [Debug Logging Guide](../development/debug_logging.md)
-- [Testing Guide](../testing/TESTING.md)
+- [Test Plan](../testing/TEST_PLAN.md)

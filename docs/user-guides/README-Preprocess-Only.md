@@ -324,5 +324,5 @@ ferret-scan --file "*.yaml" --preprocess-only
 
 - [Configuration Guide](../configuration.md) - Setting up preprocessing options
 - [Architecture Overview](../architecture-diagram.md) - Understanding the preprocessing pipeline
-- [Testing Guide](../testing/TESTING.md) - Testing preprocessing functionality
+- [Test Plan](../testing/TEST_PLAN.md) - How the suites are organised and what each covers
 - [Main README](../../README.md) - General usage and examples
