@@ -1,285 +1,85 @@
-# GitLab CI/CD Setup for Ferret Scan
+# GitLab CI/CD Setup
 
-[← Back to Documentation Index](../README.md)
+How this repository's own GitLab pipeline is organised, and how to reproduce its checks locally.
 
-This document explains how to set up and use the GitLab CI/CD pipeline for Ferret Scan, optimized for GitLab Ultimate with GitLab Duo.
+> **If you want to run ferret-scan inside *your* pipeline** — as a security scanner producing GitLab
+> SAST reports — that is a different task. See [GitLab Integration](../GITLAB_INTEGRATION.md) and
+> [GitLab Security Scanner Setup](GITLAB_SECURITY_SCANNER_SETUP.md).
 
-## Pipeline Overview
+## Source of truth
 
-The GitLab CI/CD pipeline includes the following stages:
+[`.gitlab-ci.yml`](../../.gitlab-ci.yml) is the only authoritative description of the pipeline.
 
-1. **Build**: Compile the application and create artifacts
-2. **Test**: Run unit tests, integration tests, and race detection
-3. **Security**: SAST, Secret Detection, Dependency Scanning, License Scanning
-4. **Quality**: Code quality analysis and coverage reporting
-5. **Benchmark**: Performance benchmarks (main branch only)
-6. **Deploy**: Docker builds, GitLab Pages, and releases
+**This page deliberately does not list the jobs, stages or image versions.** An earlier revision did,
+and every one of those lists drifted out of date — it documented a job matrix and a set of GitLab
+Ultimate features that the pipeline had never contained, which is worse than documenting nothing
+because a reader cannot tell an aspiration from a fact. To see what runs, read `.gitlab-ci.yml`: the
+`stages:` list at the top gives the order, and each top-level key below it is a job.
 
-## GitLab Ultimate Features Used
+## Reproducing CI checks locally
 
-### Security Scanning
-- **SAST (Static Application Security Testing)**: Automatic code vulnerability detection
-- **Secret Detection**: Prevents secrets from being committed
-- **Dependency Scanning**: Identifies vulnerable dependencies
-- **License Scanning**: Ensures license compliance
+The pipeline runs the same `make` targets you can run on a workstation, so a red pipeline is almost
+always reproducible before you push:
 
-### Code Quality
-- **Code Quality Reports**: Integrated with merge requests
-- **Coverage Visualization**: Built-in coverage tracking and visualization
-- **Test Reports**: JUnit XML integration for test result visualization
-
-### Container Registry
-- **Docker Image Storage**: Automatic image builds and storage
-- **Vulnerability Scanning**: Container image security scanning
-
-### GitLab Pages
-- **Coverage Reports**: Automated deployment of HTML coverage reports
-- **Documentation**: Automatic documentation hosting
-
-## Pipeline Configuration
-
-### Environment Variables
-
-`.gitlab-ci.yml` sets none of these. It declares `GO_VERSION`, `GO_DOCKER_IMAGE`, the
-Kubernetes resource limits, `AUTO_VERSION_ENABLED` and the license-scanning variables,
-and contains no `AWS_*` variable at all. `FERRET_TEST_MODE` is set by the `Makefile` and
-`scripts/run-tests.sh` when they invoke `go test`, not by the pipeline — and it enables
-no AWS mocking: it is read only by `tests/helpers`, and no production code reads it.
-
-### Caching
-
-Go modules and build cache are cached between jobs for faster execution:
-
-```yaml
-cache:
-  key: "${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}"
-  paths:
-    - .cache/go-build/
-    - .cache/go-mod/
-    - .go/pkg/mod/
-```
-
-## Job Details
-
-### Build Jobs
-
-#### `build`
-- Compiles the application
-- Creates binary artifacts
-- Runs on all branches and merge requests
-
-#### `docker:build`
-- Builds Docker image
-- Tests Docker functionality
-- Pushes to GitLab Container Registry (main branch/tags only)
-
-### Test Jobs
-
-#### `test:unit`
-- Fast unit tests with no external dependencies
-- Generates JUnit XML reports
-- Produces coverage reports
-- Runs on all merge requests and main branch
-
-#### `test:integration`
-- Integration tests with mocked AWS services
-- Tests complete workflows
-- Generates separate JUnit reports
-
-#### `test:race`
-- Race condition detection
-- Allowed to fail (warning only)
-
-#### Multi-version Testing
-- `test:go-1.24`, `test:go-1.25`, `test:go-1.26`
-- Ensures compatibility across Go versions
-
-### Security Jobs
-
-#### `security:sast`
-- Static Application Security Testing
-- Excludes test directories from scanning
-- Automatic vulnerability detection
-
-#### `security:secret-detection`
-- Prevents secrets in code
-- Excludes test data directories
-
-#### `security:dependency-scanning`
-- Scans Go modules for vulnerabilities
-- Provides security advisories
-
-#### `license_scanning`
-- Ensures license compliance
-- Tracks open source dependencies
-
-### Quality Jobs
-
-#### `code_quality`
-- Runs golangci-lint
-- Generates Code Climate reports
-- Integrates with merge request discussions
-
-#### `coverage`
-- Detailed coverage analysis
-- GitLab Ultimate coverage visualization
-- Coverage badges and trends
-
-### Performance Jobs
-
-#### `benchmark`
-- Performance benchmarks
-- Runs on main branch and tags only
-- Tracks performance regressions
-
-### Deployment Jobs
-
-#### `pages`
-- Deploys coverage reports to GitLab Pages
-- Hosts documentation
-- Available at `https://your-group.gitlab.io/ferret-scan`
-
-#### `release`
-- Creates release artifacts for tagged versions
-- Builds versioned binaries
-- Long-term artifact storage
-
-## Merge Request Integration
-
-### Automatic Checks
-When you create a merge request, the pipeline automatically:
-
-1. **Builds** the application
-2. **Runs tests** (unit and integration)
-3. **Performs security scans**
-4. **Analyzes code quality**
-5. **Generates coverage reports**
-
-### Merge Request Widgets
-GitLab Ultimate provides widgets showing:
-- **Test Results**: Pass/fail status with details
-- **Coverage Changes**: Coverage diff from target branch
-- **Security Findings**: New vulnerabilities introduced
-- **Code Quality**: New issues or improvements
-- **License Compliance**: License compatibility
-
-### Approval Rules
-You can configure approval rules based on:
-- Security scan results
-- Coverage thresholds
-- Code quality gates
-
-## Branch Protection
-
-### Main Branch
-- Requires successful pipeline
-- Requires merge request approval
-- Runs full test suite including benchmarks
-- Builds and pushes Docker images
-
-### Feature Branches
-- Runs core tests and security scans
-- Provides fast feedback
-- Blocks merge on test failures
-
-## Monitoring and Alerts
-
-### Pipeline Notifications
-Configure notifications for:
-- Pipeline failures
-- Security vulnerabilities
-- Coverage drops
-- Performance regressions
-
-### GitLab Duo Integration
-GitLab Duo can help with:
-- **Code Suggestions**: AI-powered code completion
-- **Vulnerability Explanations**: AI explanations of security findings
-- **Test Generation**: AI-assisted test creation
-- **Code Review**: AI-powered code review suggestions
-
-## Local Development
-
-### Running Tests Locally
 ```bash
-# Run the same tests as CI. The Makefile targets set FERRET_TEST_MODE themselves;
-# exporting it by hand changes nothing, because no production code reads it.
-make test-unit
-make test-integration
-make test-race
-
-# Generate coverage like CI
-make test-coverage
+make test-unit          # fast tests, no external dependencies
+make test-integration   # end-to-end workflows
+make test-race          # race detector
+make test-coverage      # coverage profile
 ```
 
-### Pre-commit Testing
+`scripts/run-tests.sh` is the underlying runner if you want to select suites directly:
+
 ```bash
-# Run quick validation before pushing
-./scripts/run-tests.sh -t unit -v
-
-# Run full test suite
-./scripts/run-tests.sh
+./scripts/run-tests.sh -t unit -v   # one suite, verbose
+./scripts/run-tests.sh              # everything
 ```
 
-## Troubleshooting
+These targets set `FERRET_TEST_MODE` themselves. Exporting it by hand changes nothing: it is read only
+by `tests/helpers`, no production code consults it, and it enables no service mocking.
 
-### Common Issues
+## Go version
 
-#### Pipeline Fails on Dependencies
-```bash
-# Clear Go module cache
-rm -rf .cache/go-mod/
-git push --force-with-lease
-```
+The pipeline does not pin a Go version of its own. [`.go-version`](../../.go-version) is the single
+source of truth, and `make sync-go-version` propagates it into `.gitlab-ci.yml`, `go.mod` and the
+`Dockerfile`; `make check-go-version` verifies every pin still agrees and checks the Dockerfile digest
+against the registry. Never hardcode a version here or in any other document — see
+[Go Version Management](../GO_VERSION_MANAGEMENT.md).
 
-#### Security Scan False Positives
-Add to `.gitlab-ci.yml`:
-```yaml
-security:sast:
-  variables:
-    SAST_EXCLUDED_PATHS: "tests/, testdata/, specific-file.go"
-```
+## Variables and caching
 
-#### Coverage Not Updating
-Ensure coverage format is correct:
-```yaml
-coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
-```
+Pipeline variables are declared in the `variables:` block of `.gitlab-ci.yml`. Two things are worth
+knowing because they are easy to assume wrongly:
 
-#### Docker Build Failures
-Check Docker service availability:
-```yaml
-services:
-  - docker:24-dind
-```
+- **There are no AWS credentials or endpoints in the pipeline.** No `AWS_*` variable is set anywhere in
+  the CI configuration, and no job requires cloud access.
+- **The cache is deliberately conservative**, scoped to the Go module cache rather than every build
+  artifact, because the runner storage budget is small. If you add a job, do not widen the cache
+  without checking that budget.
 
-### Getting Help
+## What this pipeline does *not* include
 
-1. **Pipeline Logs**: Check detailed logs in GitLab CI/CD → Pipelines
-2. **Security Dashboard**: View security findings in GitLab Ultimate
-3. **Coverage Reports**: Access via GitLab Pages or merge request widgets
-4. **GitLab Duo**: Ask AI assistant for help with pipeline issues
+Listed because the absence is a design decision rather than an oversight, and because a previous
+version of this page claimed all of them:
 
-## Best Practices
+| Not configured | Note |
+|---|---|
+| GitLab Pages | No documentation or coverage site is published. |
+| Coverage visualisation and badges | Coverage is produced locally by `make test-coverage`; no `coverage:` regex or report artifact is wired up. |
+| Code quality reports | No Code Climate artifact, so merge requests show no code-quality widget. |
+| JUnit test reports | Test results appear in job logs only. |
+| Benchmark jobs | Performance work is done locally; see the testing docs. |
+| License scanning | Approved-licence *variables* are set, but no licence-scanning job is enabled, so nothing evaluates them yet. |
+| Container image publishing | The image build is a **commented-out** Kaniko component. Its path is instance-specific, and leaving it uncommented with a placeholder makes the whole file fail to parse — which would stop the security jobs from running. A `docker` stage is declared but currently has no jobs. Uncomment and set the component path for your instance to enable it. |
 
-### Performance Optimization
-- Use caching for Go modules and build artifacts
-- Run expensive jobs only on main branch
-- Parallelize independent jobs
+Security scanning *is* enabled: `.gitlab-ci.yml` includes GitLab's SAST, Secret Detection and
+Dependency Scanning templates alongside the repository's own scanning jobs. Which jobs those templates
+expand to depends on your GitLab tier and instance configuration, which is another reason not to
+enumerate them here.
 
-### Security
-- Exclude test data from security scans
-- Use GitLab Ultimate security features
-- Review security findings before merging
+## Related
 
-### Quality Gates
-- Set coverage thresholds
-- Require code quality improvements
-- Use approval rules for sensitive changes
-
-### Monitoring
-- Set up pipeline failure notifications
-- Monitor coverage trends
-- Track performance benchmarks
-
-This GitLab CI/CD setup provides comprehensive testing, security scanning, and quality assurance while leveraging GitLab Ultimate's advanced features for better development workflows.
+- [GitLab Integration](../GITLAB_INTEGRATION.md) — using ferret-scan as a scanner in any pipeline
+- [GitLab Security Scanner Setup](GITLAB_SECURITY_SCANNER_SETUP.md) — SAST report wiring
+- [Go Version Management](../GO_VERSION_MANAGEMENT.md) — how the toolchain pins stay in sync
+- [Test Plan](../testing/TEST_PLAN.md) — what the suites cover
