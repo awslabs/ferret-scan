@@ -141,19 +141,17 @@ func docxFixture(t *testing.T) string {
 		"ClassificationReviewedBy": "morgan.blake@example.com",
 	}
 
-	// NOT t.TempDir(). The Office metadata extractor runs every path through
-	// validateFilePath, which rejects absolute paths under /var/, /tmp/ and
-	// /home/ (office-extractor.go). TMPDIR resolves under /var/folders on macOS
-	// and /tmp on Linux, and on Linux CI the checkout itself sits under
-	// /home/runner — so an absolute fixture path makes office_metadata fail
-	// silently and only the text extractor runs, which is precisely the
-	// multi-preprocessor path these tests exist to cover. A relative path
-	// matches none of those prefixes on any platform.
-	dir, err := os.MkdirTemp(".", "determinism-fixture-")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	// t.TempDir() is safe here. This fixture used to be written repo-relative because
+	// the Office metadata extractor refused absolute paths under /var/, /tmp/ and
+	// /home/, which is where TMPDIR resolves on all three CI platforms — so an
+	// absolute path silently dropped office_metadata and left only the text
+	// extractor, defeating the multi-preprocessor coverage these tests exist for.
+	// That denylist was deleted in #238 (it broke `--file ~/report.docx` on Linux,
+	// where every user file is under /home/), and validateFilePath now rejects only
+	// path traversal and URL schemes. Verified by measurement: a byte-identical .docx
+	// yields the same findings, AUTHOR_INFO included, from t.TempDir() and from a
+	// repo-relative directory alike.
+	dir := t.TempDir()
 
 	path := filepath.Join(dir, "determinism_fixture.docx")
 	if err := os.WriteFile(path, buildDOCX(t, body, custom), 0o600); err != nil {
@@ -186,6 +184,17 @@ func TestProcessFile_ContainerOutputIsReproducible(t *testing.T) {
 		types[got.ProcessorType]++
 	}
 
+	// Non-vacuity: every iteration must have combined BOTH preprocessors. All three
+	// constructs the #179 fix ordered — the body/metadata assembly, formatOfficeMetadata,
+	// FormatPropertiesMap — live behind the office_metadata path, so a single-section
+	// extraction is reproducible for free and would pin nothing.
+	for typ := range types {
+		if !strings.Contains(typ, "+") {
+			t.Fatalf("ProcessorType %q shows a single preprocessor ran; the multi-section "+
+				"assembly this test exists to pin was never exercised", typ)
+		}
+	}
+
 	if len(texts) != 1 {
 		t.Errorf("extracted text is not reproducible: %d distinct results over %d runs (distribution %v)", len(texts), reps, texts)
 	}
@@ -208,9 +217,11 @@ func TestProcessFile_ContainerBodyPrecedesMetadata(t *testing.T) {
 		t.Fatalf("ProcessFile: %v", err)
 	}
 
-	if !strings.Contains(got.ProcessorType, "+") {
-		t.Skipf("only one preprocessor handled the fixture (%q); arrangement not exercised", got.ProcessorType)
-	}
+	// No skip on a single-section result. The two-preprocessor arrangement IS this
+	// test's claim, and the path denylist that once made a skip the honest choice is
+	// gone (#238) — so one section on this fixture is now a defect, not an
+	// environment. Measured: with a Skipf here, a mutation that killed the metadata
+	// extractor left this test green while it asserted nothing.
 	if want := "Text Extractor+office_metadata"; got.ProcessorType != want {
 		t.Errorf("ProcessorType = %q, want %q", got.ProcessorType, want)
 	}
