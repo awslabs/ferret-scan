@@ -13,6 +13,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/embedded"
+	"github.com/awslabs/ferret-scan/v2/internal/redactverify"
 )
 
 // Redacting a file that lives INSIDE another file.
@@ -255,6 +256,23 @@ func (rm *RedactionManager) RedactEmbedded(req EmbeddedRedactionRequest) (*Embed
 	if err != nil {
 		return nil, fmt.Errorf("reading redacted embedded part %s: %w",
 			filepath.Base(req.PartName), err)
+	}
+
+	// THE FLOOR. The bytes are already in hand, so the only question left is whether a reported
+	// value is still in them. Asking here rather than in each redactor is the point of #459: this
+	// was per-redactor policy, and #449 was the case where one forgot — tagmeta.Residual searched
+	// only the ranges it had rewritten, so a value surviving outside them was invisible by
+	// construction, and a part containing a reported SSN was embedded back into the container at
+	// exit 0.
+	//
+	// Refusing rather than returning the bytes matches every redactor that already verifies
+	// (audio, office, tagmeta, video): a part that would look redacted and is not is worse than a
+	// disclosed refusal, because the container is rebuilt around it and nothing downstream looks
+	// again. The caller turns this into a disclosed, non-fatal skip for the whole file.
+	if residual := redactverify.ResidualTypes(redacted, req.Matches); len(residual) > 0 {
+		return nil, fmt.Errorf("redacted embedded part %s still holds reported value(s) of type %s; "+
+			"refusing to embed a part that would look redacted",
+			filepath.Base(req.PartName), strings.Join(residual, ", "))
 	}
 
 	return &EmbeddedRedactionResult{

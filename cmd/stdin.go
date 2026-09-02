@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/precommit"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	plaintextredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
+	"github.com/awslabs/ferret-scan/v2/internal/redactverify"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 )
@@ -411,6 +412,22 @@ func runStdinRedaction(
 		printPrecommitError(precommitConfig,
 			fmt.Sprintf("redaction failed: %v", err),
 			"Verify input encoding and configuration")
+		return 1
+	}
+
+	// THE FLOOR, and this is the instance with the least margin for error. The redacted text goes to
+	// STDOUT, so it is usually being captured -- `cat sensitive.log | ferret-scan --stdin
+	// --enable-redaction > clean.log`. A value the redactor left behind lands in clean.log, the command
+	// reports success, and there is no file on disk to inspect afterwards. Nothing verified this before.
+	//
+	// Refusing means writing NOTHING to stdout: a partial stream is indistinguishable from a complete
+	// one to the process on the other end of the pipe. The message goes to stderr, where the findings go
+	// in this shape anyway, and the return is non-zero so a shell `&&` chain stops.
+	if residual := redactverify.ResidualTypes([]byte(redacted), matches); len(residual) > 0 {
+		printPrecommitError(precommitConfig,
+			fmt.Sprintf("refusing to emit redacted content: reported value(s) of type %s survive it",
+				strings.Join(residual, ", ")),
+			"The input is unchanged. Re-run without --enable-redaction to see the findings.")
 		return 1
 	}
 
