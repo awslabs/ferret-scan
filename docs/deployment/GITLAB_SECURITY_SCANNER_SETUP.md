@@ -26,7 +26,7 @@ stages:
 # Build Ferret Scan (if building from source)
 build:ferret:
   stage: build
-  image: golang:1.26
+  image: golang:1.27
   script:
     - make build
   artifacts:
@@ -37,7 +37,7 @@ build:ferret:
 # Ferret Scan Security Scanner
 ferret-sast:
   stage: security
-  image: golang:1.26  # or use ferret-scan container image
+  image: golang:1.27  # or use ferret-scan container image
   dependencies:
     - build:ferret
   script:
@@ -107,7 +107,7 @@ ferret-sast:
 
 ```yaml
 variables:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
 
 build:ferret:
   stage: build

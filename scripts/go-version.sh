@@ -159,7 +159,12 @@ check_go_mod() {
 
 check_dockerfile() {
     [[ -f "$DOCKERFILE" ]] || return
-    local tag; tag=$(grep -oE "${GOLANG_REGISTRY}:[0-9]+\.[0-9]+\.[0-9]+-alpine" "$DOCKERFILE" | head -1 | sed "s#${GOLANG_REGISTRY}:##")
+    # Anchored to the FROM line, NOT to the first match anywhere in the file. The header comment
+    # names the tag too ("crane digest .../golang:<ver>-alpine"), so an unanchored grep with head -1
+    # read the COMMENT and reported the comment's version as the pin. That is how the FROM line drifted
+    # to 1.27.0 while .go-version, go.mod and .gitlab-ci.yml all still said 1.26.7 and `check` printed a
+    # green tick: the guard was validating prose. Only the FROM line determines what is built.
+    local tag; tag=$(grep -E "^FROM ${GOLANG_REGISTRY}:" "$DOCKERFILE" | head -1 | grep -oE "${GOLANG_REGISTRY}:[0-9]+\.[0-9]+\.[0-9]+-alpine" | sed "s#${GOLANG_REGISTRY}:##")
     if [[ "$tag" == "$GOLANG_TAG" ]]; then
         ok "Dockerfile tag: $tag"
     else
@@ -168,7 +173,7 @@ check_dockerfile() {
 
     # Verify the digest matches the tag if we can reach a resolver; otherwise
     # warn (offline pre-commit should not hard-fail on an un-verifiable digest).
-    local pinned; pinned=$(grep -oE "${GOLANG_REGISTRY}:${GO_VERSION}-alpine@sha256:[a-f0-9]{64}" "$DOCKERFILE" | head -1 | grep -oE "sha256:[a-f0-9]{64}" || true)
+    local pinned; pinned=$(grep -E "^FROM ${GOLANG_REGISTRY}:" "$DOCKERFILE" | head -1 | grep -oE "${GOLANG_REGISTRY}:${GO_VERSION}-alpine@sha256:[a-f0-9]{64}" | grep -oE "sha256:[a-f0-9]{64}" || true)
     if [[ -z "$pinned" ]]; then
         fail "Dockerfile: no @sha256 digest pinned for golang:${GOLANG_TAG}"
         return

@@ -9,7 +9,7 @@ This guide covers developing Ferret Scan on Windows systems, including setting u
 ### Prerequisites
 
 #### Required Software
-- **Go 1.26+**: Download from [golang.org](https://golang.org/dl/)
+- **Go 1.27+**: Download from [golang.org](https://golang.org/dl/)
 - **Git for Windows**: Download from [git-scm.com](https://git-scm.com/download/win)
 - **PowerShell 7+**: Download from [GitHub](https://github.com/PowerShell/PowerShell/releases)
 - **Windows Terminal**: Install from Microsoft Store (recommended)
