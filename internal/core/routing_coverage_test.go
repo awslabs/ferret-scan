@@ -136,17 +136,11 @@ func TestMetadataStillReportedUnderItsOwnType(t *testing.T) {
 func scanDOCX(t *testing.T, paras []string) map[string]bool {
 	t.Helper()
 
-	// The Office metadata extractor rejects paths under /var/, /tmp/, /home/ and
-	// C:\Users\ as system directories, and t.TempDir() lives under exactly those on
-	// all three CI platforms. A fixture written there would silently lose that
-	// extractor, take the single-extractor fast path, and never reach the routing arm
-	// this test is about — passing for the wrong reason. So use a repo-relative dir,
-	// as internal/router/determinism_test.go does.
-	dir, err := os.MkdirTemp(".", "routing-coverage-")
-	if err != nil {
-		t.Fatalf("creating fixture dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	// The dual-extractor routing arm this test covers depends on BOTH preprocessors
+	// claiming the fixture; see minimalDOCX below, which carries a body and core
+	// properties for exactly that reason. t.TempDir() does not interfere — the path
+	// denylist that once made a repo-relative fixture necessary was removed in #238.
+	dir := t.TempDir()
 
 	path := filepath.Join(dir, "report.docx")
 	if err := os.WriteFile(path, minimalDOCX(paras), 0o600); err != nil {

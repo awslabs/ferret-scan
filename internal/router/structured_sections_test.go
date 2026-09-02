@@ -227,17 +227,10 @@ func TestSectionKindMetadataRoutesOnlyItsOwnText(t *testing.T) {
 // misreport line numbers in every finding from that section.
 func TestFileRouterDeclaresSectionsMatchingItsOwnText(t *testing.T) {
 	// A .docx has two capable preprocessors, so this exercises the multi-section
-	// concatenation where the offsets can actually be wrong.
-	//
-	// Repo-relative, not t.TempDir(): the Office metadata extractor's path guard
-	// rejects /var, /tmp and /home, which is where t.TempDir() lives on all three
-	// CI platforms. A fixture there would silently lose that extractor, leave one
-	// section, and pass this test for the wrong reason.
-	dir, err := os.MkdirTemp(".", "structured-sections-")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	// concatenation where the offsets can actually be wrong. The len(pc.Sections) < 2
+	// check below is what enforces that both actually claimed the file, so this test
+	// cannot quietly degrade to the single-extractor path.
+	dir := t.TempDir()
 
 	path := filepath.Join(dir, "report.docx")
 	if err := os.WriteFile(path, minimalSectionedDOCX(), 0o600); err != nil {
