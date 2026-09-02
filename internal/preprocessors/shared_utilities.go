@@ -95,6 +95,7 @@ type FileExtensionValidator struct {
 	officeExtensions map[string]bool
 	audioExtensions  map[string]bool
 	videoExtensions  map[string]bool
+	vectorExtensions map[string]bool
 }
 
 // NewFileExtensionValidator creates a new file extension validator
@@ -168,6 +169,35 @@ func NewFileExtensionValidator() *FileExtensionValidator {
 			".3gp": true,
 			".3g2": true,
 		},
+		// VECTOR graphics whose text is extracted by an SVG-AWARE reader, not by
+		// handing the file to the byte-sniffing plaintext path.
+		//
+		// The distinction this map exists to make is not "which extractor is nicer" but
+		// WHICH VALIDATOR INPUT IS PRODUCED. An .svg sniffs as text, so the plaintext
+		// preprocessor claimed it and handed over the whole document -- geometry
+		// included. Measured at 9046dae on a 75KB SVG of integer-coordinate glyph
+		// paths, the shape real icon and font SVGs carry: 1,313 findings, 1,143 of them
+		// PHONE (122 HIGH), every one a path coordinate. Because the router runs EVERY
+		// preprocessor that claims a file and concatenates the successes, an SVG-aware
+		// extractor alone would not have fixed that -- the plaintext claim had to go,
+		// or both texts would be scanned.
+		//
+		// Listing it here is what withdraws that claim: plaintext_preprocessor.go's
+		// claimedByAnotherPreprocessor delegates to IsVectorFile, so one map decides
+		// both who owns .svg and who must not. Same single-source-of-truth argument as
+		// officeExtensions above, which the router's isBinaryDocument derives from.
+		//
+		// .svg is NOT added to isBinaryDocument: its bytes are text, so the router's
+		// text branch is the correct gate, and a file named .svg holding binary is
+		// still refused as an unsupported type rather than promised to a preprocessor.
+		//
+		// .emf, .wmf and .wdp are absent DELIBERATELY. They are binary metafiles with
+		// no text reader in this tool, so they stay excluded from the embedded text
+		// pipeline (embedded.SkipTextPipeline) rather than being claimed here and
+		// reported as scanned-and-clean. See #314.
+		vectorExtensions: map[string]bool{
+			".svg": true,
+		},
 	}
 }
 
@@ -201,6 +231,12 @@ func (fev *FileExtensionValidator) IsVideoFile(filePath string) bool {
 	return fev.videoExtensions[ext]
 }
 
+// IsVectorFile checks if the file is a vector graphic handled by an SVG-aware reader
+func (fev *FileExtensionValidator) IsVectorFile(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	return fev.vectorExtensions[ext]
+}
+
 // GetImageExtensions returns all supported image extensions
 func (fev *FileExtensionValidator) GetImageExtensions() []string {
 	return fev.getExtensionsFromMap(fev.imageExtensions)
@@ -224,6 +260,11 @@ func (fev *FileExtensionValidator) GetAudioExtensions() []string {
 // GetVideoExtensions returns all supported video extensions
 func (fev *FileExtensionValidator) GetVideoExtensions() []string {
 	return fev.getExtensionsFromMap(fev.videoExtensions)
+}
+
+// GetVectorExtensions returns all supported vector-graphic extensions
+func (fev *FileExtensionValidator) GetVectorExtensions() []string {
+	return fev.getExtensionsFromMap(fev.vectorExtensions)
 }
 
 // getExtensionsFromMap converts a map of extensions to a slice

@@ -79,6 +79,19 @@ func (ptr *PlainTextRedactor) GetName() string {
 
 // GetSupportedTypes returns the file types this redactor can handle
 func (ptr *PlainTextRedactor) GetSupportedTypes() []string {
+	// .svg is DELIBERATELY absent, and the reason is the one thing about this
+	// redactor a caller must understand.
+	//
+	// This redactor implements RedactContent, which the worker pool PREFERS over
+	// RedactDocument (parallel/worker_pool.go performInlineRedaction), and
+	// RedactContent writes the PREPROCESSOR'S EXTRACTED TEXT. For every type listed
+	// above that is the whole file, so the two are the same bytes. For an .svg it is
+	// not: extraction is lossy by design (prose nodes only), so writing it would
+	// replace the drawing with a list of its labels. Measured before .svg was routed
+	// to internal/redactors/svg, on a 479-byte SVG: the "redacted" output was 5 lines
+	// of prose, no <svg> element, no geometry -- the values were gone and so was the
+	// file. See internal/redactors/svg, which reuses this redactor's RedactDocument
+	// (the raw-file path) and does not expose RedactContent. #314.
 	return []string{"text", ".txt", ".log", ".csv", ".json", ".xml", ".yaml", ".yml", ".md", ".conf", ".ini"}
 }
 

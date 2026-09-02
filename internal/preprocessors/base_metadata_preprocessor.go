@@ -324,9 +324,19 @@ func (bmp *BaseMetadataPreprocessor) ProcessEmbeddedMedia(originalFilePath strin
 			continue
 		}
 
-		// Drawing geometry is not prose. See embedded.SkipTextPipeline: routing the
-		// .svg parts of one real deck through the validators produced 1,095 PHONE
-		// findings, 826 of them HIGH, all matching path coordinates.
+		// Drawing geometry is not prose, and for a BINARY metafile nothing here can
+		// separate the two. See embedded.SkipTextPipeline: .emf, .wmf and .wdp have no
+		// text reader anywhere in this tool, so routing them would produce a part that
+		// reached a preprocessor, extracted nothing, and reported Success with zero
+		// findings -- indistinguishable from a clean part.
+		//
+		// .svg used to be on that list for the same reason (its geometry flooded the
+		// validators: 1,313 findings on a 75KB glyph-path drawing, 1,143 of them PHONE) and
+		// is no longer, because it now routes to an SVG-AWARE extractor that never
+		// collects a coordinate. That exclusion cost real coverage: an embedded drawing
+		// carrying an SSN, an email, a name and a phone in its <text>/<title>/<desc>
+		// reported 4 findings standalone and 0 here, silently, with no redacted copy
+		// written. See #314.
 		if embedded.SkipTextPipeline(media.OriginalName) {
 			continue
 		}

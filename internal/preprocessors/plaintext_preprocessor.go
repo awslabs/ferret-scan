@@ -155,13 +155,26 @@ var mediaExtValidator = NewFileExtensionValidator()
 // already handled them above with a sniff: they are claimed by another
 // preprocessor AND claimable here when the bytes turn out to be text. What
 // remains are the media types, which this preprocessor should not claim.
+//
+// .svg is the one entry here whose bytes ARE text, and it is the reason IsVectorFile
+// exists. Sniffing decided it, so this preprocessor claimed it and handed the whole
+// drawing -- path coordinates and base64 rasters included -- to every validator:
+// measured at 9046dae, 1,313 findings on a 75KB SVG of integer-coordinate glyph paths,
+// 817 of them PHONE. The router runs EVERY claiming preprocessor and concatenates the
+// successes, so adding an SVG-aware extractor without withdrawing this claim would
+// have scanned both texts and changed nothing. Unlike the image and audio cases, the
+// withdrawal here has no fallback: a file named .svg that is NOT an SVG is recovered
+// by the SVG branch itself, which scans the raw bytes when the root element is not
+// <svg> (see TextPreprocessor.processSVG). Verified with a plain text file holding an
+// SSN renamed to .svg: 2 findings before and after.
 func claimedByAnotherPreprocessor(ext string) bool {
 	// The Is*File predicates run filepath.Ext internally, which returns "" for a
 	// bare ".heic", so give them a filename to inspect.
 	probe := "f" + ext
 	return mediaExtValidator.IsImageFile(probe) ||
 		mediaExtValidator.IsVideoFile(probe) ||
-		mediaExtValidator.IsAudioFile(probe)
+		mediaExtValidator.IsAudioFile(probe) ||
+		mediaExtValidator.IsVectorFile(probe)
 }
 
 // containerExtensions are the extensions whose files are normally binary

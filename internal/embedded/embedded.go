@@ -312,33 +312,48 @@ func Recurses(name string) bool {
 	return KindOfPath(name) == KindDocument
 }
 
-// vectorGraphicsExts hold DRAWING GEOMETRY, not prose, and must not be fed to the
-// text validators.
+// vectorGraphicsExts hold DRAWING GEOMETRY that NO extractor in this tool can separate
+// from prose, so they must not be fed to the text validators.
 //
-// Admitting them looked like a pure coverage win and is not. An .svg is XML text, so
-// the byte-sniffing text path claims it happily -- and its content is coordinate soup.
-// Measured on one real deck carrying 171 embedded .svg parts, routing them through the
-// pipeline took PHONE findings from 0 to 1,095, of which 826 were HIGH. The matches are
-// path data:
+// The rule is about the EXTRACTOR, not the format. The original list also held .svg,
+// on the reasoning that an .svg is XML text and the byte-sniffing text path claims it
+// happily -- so admitting it fed coordinate soup to every validator. That measurement
+// was real. Re-measured at 9046dae on a 75KB SVG built from integer-coordinate glyph
+// paths, the shape real icon and font SVGs carry:
 //
-//	43.5968 15.4721 43.4928 15.7281 43.3048 15.9
-//	38.9358 20.3361 37.5138 18.9301 40.1318 16.2
+//	1,313 findings: PHONE 1,143 (162 HIGH), SSN 87, CREDIT_CARD 83,
+//	SSN 3 HIGH + 73 LOW  --  every one of them path coordinates
 //
-// 826 HIGH false positives in a single file is not coverage. HIGH is the band operators
-// triage first, so this would bury the findings that matter -- the precise failure mode
-// the confidence contract exists to prevent.
+// (The two example strings this comment used to show, "43.5968 15.4721 43.4928 15.7281
+// 43.3048 15.9" and "38.9358 20.3361 37.5138 18.9301 40.1318 16.2", produce ZERO
+// findings at a0e983c: #443/PR #445 taught the identifier-adjacency guard to treat "."
+// as a boundary, which removed the 4-decimal shape. Anyone probing with them would have
+// concluded the flood was fixed. The integer form above is what still fires --
+// "0 863 76 1012 109", lifted from a real glyph path, is one SSN HIGH 100 on its own.)
 //
-// This is a DEFERRAL, not a judgement that these parts are uninteresting. An .svg's
-// <text>, <title> and <desc> nodes are real prose and can carry real PII: a fixture
-// with <text>Employee SSN: ...</text> is detected at confidence 90 when scanned as a
-// standalone file. Recovering that needs an SVG-aware extractor that reads text nodes
-// and ignores geometry, which is its own change with its own precision evidence. Until
-// then these parts are excluded rather than shipped as noise.
+// But excluding the part is not what removes the flood, and it costs the coverage. The
+// cost, measured: the same drawing carrying an SSN, an email, a name and a phone in its
+// <text>, <title> and <desc> nodes reported 4 findings standalone and 0 embedded in a
+// .docx -- exit 0, nothing on stderr, exit 0 again under --fail-on-incomplete, and no
+// redacted copy written at all. Since only reported findings reach the redactor, that is
+// a cleartext leak, not merely a gap.
+//
+// .svg was therefore REMOVED from this list and given the extractor the old comment
+// asked for (internal/preprocessors/text-extractors/text-extract-svgtextlib): it
+// collects only prose-bearing nodes and attributes, so the digits that caused the flood
+// are never handed to a validator. Measured after: the 75KB glyph-path SVG reports 0
+// findings of any type embedded or standalone, and the <text>-carrying part reports its
+// 4. See #314.
+//
+// The three that remain are BINARY metafiles with no text reader anywhere in this tool.
+// Admitting them would make a part reach a preprocessor and extract nothing, which is
+// worse than the exclusion: "Success, 0 findings" is indistinguishable from a clean
+// file, whereas an excluded part is at least an excluded part. They stay out until they
+// get comparable treatment.
 var vectorGraphicsExts = map[string]bool{
-	".svg": true, // XML text, but the text is path geometry
-	".emf": true, // Enhanced Metafile: drawing records
+	".emf": true, // Enhanced Metafile: binary drawing records, no text reader
 	".wmf": true, // Windows Metafile: same
-	".wdp": true, // JPEG XR / HD Photo
+	".wdp": true, // JPEG XR / HD Photo: binary raster, no metadata reader
 }
 
 // SkipTextPipeline reports whether a part holds drawing geometry rather than prose, and
