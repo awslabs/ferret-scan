@@ -108,6 +108,16 @@ func evgProductionNames(t *testing.T) map[string]bool {
 	for _, root := range evgProductionDirs {
 		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
+				// A vanished path is not a broken walk. Tests elsewhere in the tree create and
+				// remove their own scratch directories, and under `go test ./...` this walk runs
+				// concurrently with them, so an entry can disappear between being listed and being
+				// stat'd. That flaked this guard on branches touching neither package (#577):
+				// "walk ../internal: open ../internal/router/structured-sections-3058054452: no
+				// such file or directory". Skipping is safe because the len(out) < 5 check below
+				// still fails loudly if the walk stops finding anything.
+				if os.IsNotExist(err) {
+					return nil
+				}
 				return err
 			}
 			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
