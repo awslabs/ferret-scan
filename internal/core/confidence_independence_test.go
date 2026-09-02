@@ -37,11 +37,38 @@ const unlabelledSecret = `value "wJalrXUtnFEMI7K7MDENGbPxRfiCYzz1"`
 // TestConfidenceIsIndependentOfUnrelatedFindings is the regression.
 func TestConfidenceIsIndependentOfUnrelatedFindings(t *testing.T) {
 	alone := secretConfidence(t, "alone", "")
-	withMeta := secretConfidence(t, "withmeta", "Jane Analyst")
+
+	withMetaTypes := scanDOCXWith(t, "withmeta", "Jane Analyst", unlabelledSecret)
+	// Snapshot immediately after the scan: confidences is a package global that every
+	// scanDOCXWith call overwrites, so reading it any later couples this value to
+	// statement order.
+	var withMeta float64
+	for _, m := range withMetaTypes {
+		if m == "API_KEY_OR_SECRET" {
+			withMeta = confidences[m]
+		}
+	}
 
 	if alone == 0 {
 		t.Fatal("no API_KEY_OR_SECRET finding in the control fixture; the comparison " +
 			"below would be vacuous")
+	}
+	// Guard the premise, not just the control value. The "unrelated finding" comes from
+	// the Office metadata extractor claiming docProps/core.xml, and the regressed defect
+	// was a boost applied only when BOTH validation paths reported. If that section stops
+	// appearing, withmeta collapses to the control's single finding and this equality
+	// passes with the boost reinstated. Any non-secret type counts, so a benign retyping
+	// of the creator finding does not false-fire this.
+	unrelated := false
+	for _, typ := range withMetaTypes {
+		if typ != "API_KEY_OR_SECRET" {
+			unrelated = true
+		}
+	}
+	if !unrelated {
+		t.Fatalf("the withmeta fixture carries no finding besides the secret, so there is "+
+			"nothing for its confidence to be independent OF and the comparison below cannot "+
+			"fail; the office_metadata section is missing. Findings: %v", withMetaTypes)
 	}
 	if alone != withMeta {
 		t.Errorf("the same value scored %v alone and %v when the document also carried an "+
@@ -94,11 +121,7 @@ var confidences = map[string]float64{}
 func scanDOCXWith(t *testing.T, name, creator, body string) []string {
 	t.Helper()
 
-	dir, err := os.MkdirTemp(".", "conf-indep-")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	dir := t.TempDir()
 
 	path := filepath.Join(dir, name+".docx")
 	if err := os.WriteFile(path, buildDOCX(creator, body), 0o600); err != nil {

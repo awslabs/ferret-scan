@@ -91,44 +91,47 @@ func TestNoExtractionWarningOnAHealthyContainer(t *testing.T) {
 	}
 }
 
-// TestDocxWithNoBodyPartIsFlagged drives the real extractor rather than a stub, so the
+// TestDocxWithNoBodyPartIsFlagged drives the real extractors rather than stubs, so the
 // two halves (the extractor setting the note, the router carrying it) are proven to fit
-// together. Built in a repo-relative directory: t.TempDir() would work for the text
-// extractor but not for the metadata one, and the point is the combined result.
+// together. BOTH real producers are wired in, because the router-carrying half only
+// exists on the success arm: with the text extractor alone, its body-part error makes
+// the whole route fail, the stub test above is the only coverage the carry gets, and an
+// earlier version of this test passed with noteEmptyExtraction deleted outright.
 func TestDocxWithNoBodyPartIsFlagged(t *testing.T) {
-	dir, err := os.MkdirTemp(".", "empty-extraction-")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	dir := t.TempDir()
 
 	path := filepath.Join(dir, "nobody.docx")
 	if err := os.WriteFile(path, docxWithoutBodyPart(), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	// Use the real text preprocessor rather than the registry: NewFileRouter starts
+	// Use the real preprocessors rather than the registry: NewFileRouter starts
 	// with an empty preprocessor list and InitializePreprocessors registers only what
 	// a caller has previously supplied a factory for, so relying on it would make this
-	// test silently skip — which is how the gap being fixed stayed invisible.
+	// test silently skip — which is how the gap being fixed stayed invisible. The
+	// fixture provides docProps/core.xml, so the metadata producer succeeds.
 	fr := NewFileRouter(false)
-	fr.preprocessors = []preprocessors.Preprocessor{preprocessors.NewTextPreprocessor()}
+	fr.preprocessors = []preprocessors.Preprocessor{
+		preprocessors.NewTextPreprocessor(),
+		preprocessors.NewOfficeMetadataPreprocessor(),
+	}
 
 	got, err := fr.ProcessFileWithContext(path, &ProcessingContext{FilePath: path})
-
-	// A degenerate container may legitimately fail outright. What must not happen is a
-	// result that looks fine and says nothing, so assert on whichever came back.
-	switch {
-	case err != nil:
-		if !strings.Contains(err.Error(), "no preprocessor") && !strings.Contains(err.Error(), "failed") {
-			t.Fatalf("unexpected routing error shape: %v", err)
-		}
-	case got == nil:
-		t.Fatal("no result and no error")
-	case got.ExtractionWarning == "":
-		t.Errorf("a .docx with no document body part produced no ExtractionWarning "+
-			"(ProcessorType=%q, textLen=%d); its unread body would be invisible to the operator",
-			got.ProcessorType, len(got.Text))
+	if err != nil {
+		t.Fatalf("routing failed outright (%v); the router-carrying half this test is "+
+			"named for was never exercised", err)
+	}
+	if got == nil || got.ProcessorType == "" {
+		t.Fatal("no successful producer, so the warning-carrying success arm is unreachable " +
+			"and this test proves nothing")
+	}
+	if got.ExtractionWarning == "" {
+		t.Fatalf("a .docx with no document body part produced no ExtractionWarning "+
+			"(ProcessorType=%q, textLen=%d); the metadata sibling made the file look healthy, "+
+			"so its unread body would be invisible to the operator", got.ProcessorType, len(got.Text))
+	}
+	if !strings.Contains(got.ExtractionWarning, "no document body part") {
+		t.Errorf("ExtractionWarning = %q, want it to name the missing body part", got.ExtractionWarning)
 	}
 }
 

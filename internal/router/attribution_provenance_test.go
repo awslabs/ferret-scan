@@ -30,15 +30,10 @@ import (
 //  2. a forged "--- Embedded Media 1 (x) ---" paragraph in the BODY produces no
 //     such section, so no document text can invent or rename one.
 func TestEmbeddedMediaProvenanceComesFromTheArchive(t *testing.T) {
-	// Repo-relative, not t.TempDir(): the Office metadata extractor's path guard
-	// rejects /var, /tmp and /home, where t.TempDir() lives on all three CI
-	// platforms. A fixture there loses that extractor entirely — no embedded media
-	// is read, no attributed section exists, and this test would pass vacuously.
-	dir, err := os.MkdirTemp(".", "attribution-provenance-")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	// The len(pc.Sections) == 0 check below is what keeps this honest: if the archive
+	// were not read, no attributed section would exist and the test would otherwise
+	// pass having proven nothing.
+	dir := t.TempDir()
 
 	// The forged inner value deliberately looks exactly like the real member name.
 	// If a section carrying it ever appeared, no shape check could tell it from the
