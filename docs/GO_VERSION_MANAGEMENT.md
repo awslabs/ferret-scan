@@ -14,7 +14,7 @@ Maintaining consistent Go versions across development, CI/CD, and deployment env
 
 ### Primary Source: `.go-version`
 ```
-1.26.6
+1.27.1
 ```
 This file contains the **exact** Go version used across the project.
 
@@ -22,11 +22,11 @@ This file contains the **exact** Go version used across the project.
 
 | File | Version Format | Purpose |
 |------|----------------|---------|
-| `go.mod` | `1.26` | Go module compatibility (major.minor) |
-| `.gitlab-ci.yml` | `1.26.6` | CI/CD Docker images (`GO_VERSION`, `GO_DOCKER_IMAGE`) |
-| `Dockerfile` | `1.26.6-alpine` + `@sha256:…` | Container builds (tag **and** digest — see below) |
+| `go.mod` | `1.27` | Go module compatibility (major.minor) |
+| `.gitlab-ci.yml` | `1.27.1` | CI/CD Docker images (`GO_VERSION`, `GO_DOCKER_IMAGE`) |
+| `Dockerfile` | `1.27.1-alpine` + `@sha256:…` | Container builds (tag **and** digest — see below) |
 | GitHub workflows | `go-version-file: .go-version` | No literal pin — they read `.go-version` directly |
-| Local development | `1.26.6` | Developer environments |
+| Local development | `1.27.1` | Developer environments |
 
 > **Dockerfile digest (TM-10).** The builder image is digest-pinned for
 > supply-chain integrity: the `@sha256:…` is what actually determines the
@@ -75,7 +75,7 @@ pre-commit run go-version-check --all-files   # manual check
 
 ### Step 1: Update Primary Source
 ```bash
-echo "1.26.6" > .go-version
+echo "1.27.1" > .go-version
 ```
 
 ### Step 2: Sync All Files
@@ -98,7 +98,7 @@ make test
 ### Step 5: Commit Changes
 ```bash
 git add .go-version go.mod .gitlab-ci.yml
-git commit -m "chore: update Go version to 1.26.6"
+git commit -m "chore: update Go version to 1.27.1"
 ```
 
 ## CI/CD Integration
@@ -106,8 +106,8 @@ git commit -m "chore: update Go version to 1.26.6"
 ### GitLab CI Variables
 ```yaml
 variables:
-  GO_VERSION: "1.26.6"
-  GO_DOCKER_IMAGE: "golang:1.26.6-alpine"
+  GO_VERSION: "1.27.1"
+  GO_DOCKER_IMAGE: "golang:1.27.1-alpine"
 ```
 
 ### Usage in Jobs
@@ -115,7 +115,7 @@ variables:
 build:
   image: $GO_DOCKER_IMAGE
   script:
-    - go version  # Outputs: go version go1.26.6 linux/amd64
+    - go version  # Outputs: go version go1.27.1 linux/amd64
 ```
 
 ## Local Development

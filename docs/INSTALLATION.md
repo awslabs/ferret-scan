@@ -304,7 +304,7 @@ scripts/setup-pre-commit.sh
 
 ```dockerfile
 # In your development Dockerfile
-FROM golang:1.26
+FROM golang:1.27
 
 # Install ferret-scan
 COPY ferret-scan/ /tmp/ferret-scan/
