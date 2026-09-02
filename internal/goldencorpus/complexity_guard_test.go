@@ -5,7 +5,8 @@ package goldencorpus
 
 import (
 	"fmt"
-	"sort"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -270,50 +271,48 @@ var complexityTargets = []struct {
 	},
 }
 
-// TestValidatorComplexityIsSubQuadratic checks that doubling input size does not
-// roughly quadruple runtime for any validator. It measures at two sizes and
-// asserts the growth ratio stays well under the quadratic expectation.
-// maxGrowthRatio is the growth-ratio limit for a 4x input step. Linear is ~4x, quadratic ~16x.
+// TestValidatorComplexityIsSubQuadratic checks that a 4x input step does not roughly sixteen-fold
+// the work any validator does. maxGrowthRatio is the limit: linear is ~4x, quadratic ~16x.
 //
-// 8.0, measured. It replaces 12.0, and the comment above the absolute ceiling used to justify
-// that number by asserting "-race inflates both measurements equally, so the growth factor is
-// preserved". That is false (#509).
+// 8.0, unchanged in value but now resting on a different measurement, because the statistic
+// underneath it changed. It is a ratio of MINIMUM CPU readings with GC disabled (see growthRatio
+// and withGCOff) rather than a median of wall-clock ratios, and that is what makes one number
+// viable on a loaded runner.
 //
-// Measured on the dob target by defeating its line-global keyword hoist
-// (internal/validators/dob/validator.go, the fix its own comment at :157-167 describes), which
-// restores a genuine O(n^2):
+// Why the old basis had to be replaced (#579): under 28 external busy-loop processes on 14 CPUs
+// with -race, the wall-clock statistic INVERTED — a genuine O(n^2) validator read 9.94x while a
+// single-pass one read 10.20x. The populations did not merely overlap; the linear reading was the
+// higher of the two, and at 10.20x it is above this threshold, which is #546 exactly: the guard
+// failing on correct code. No threshold can fix that, because the ordering itself was wrong. Two
+// causes, both measured and both removed:
 //
-//	                       base       big      ratio
-//	quadratic, no -race   ~99ms     ~1.54s    15.4-15.6x
-//	quadratic, -race     ~138ms     ~1.72s    12.4-12.7x
+//   - CONTENTION inflates the base term hardest, because a short measurement is descheduled
+//     proportionally more than a long one, and that drives the ratio DOWN toward passing.
+//     Contention steals wall time without changing cycle count, so CPU time is immune to it and
+//     getrusage(RUSAGE_SELF) excludes other processes entirely.
+//   - GC is real CPU work and scales with heap, so it survives the switch of clocks. An
+//     ALLOCATING linear validator read 10.04x with GC on and 3.95x with it off. Production
+//     validators allocate a Match per finding and cannot avoid it, which is why GC is disabled
+//     for the measurement rather than the fixtures being rewritten.
 //
-// -race inflates the BASE 1.39x and the big term only 1.11x, so the ratio COMPRESSES ~1.24x.
-// Against 12.0 that left 1.03x of headroom over the very defect this guard exists to catch:
-// all four runs failed, but by 0.4-0.7x. The same compression was measured independently on the
-// detector's line-span guard (7.3x -> 5.6x), so it is a property of the instrumentation and not
-// of one target. CI runs this suite with -race, so that is the configuration that matters.
+// The correct-code population on the new statistic, all 18 targets, -race:
 //
-// The correct-code population, 144 readings over all 18 targets and three configurations:
+//	3.81x - 4.60x
 //
-//	plain                54 readings   2.97-4.55x
-//	-race                54 readings   3.59-4.68x
-//	-race GOMAXPROCS=1   36 readings   3.22-4.58x
+// against a genuine quadratic at 13.85x-16.15x, measured idle and under the same external load
+// (13.85x loaded, 14.00x-16.15x idle — the ratio of minimums moves ~1% where the median of ratios
+// moved 9% and its worst sample halved). So 8.0 sits 1.74x above the worst correct reading and
+// 1.75x below the observed quadratic: symmetric margin, where the previous statistic had none.
 //
-// So 8.0 clears every margin this repo aims for, in both configurations:
+// Kept from the earlier derivation because they are still true and still the reason this is one
+// number rather than a per-configuration table: -race compresses a wall-clock ratio about 1.24x
+// (it inflates the base 1.39x and the big term 1.11x on a reproduced dob quadratic), and #509
+// reported correct readings up to 8.29x under GOMAXPROCS=1 which never reproduced here. Both were
+// arguments about wall clock. The ratio is logged on every run, with the clock named, so the
+// evidence for the next change is in CI output rather than inferred from a failure.
 //
-//	              below   above
-//	plain         1.76x   1.93x
-//	-race         1.71x   1.55x
-//
-// against 12.0's 2.56x below and 1.03x above. No -race conditional is needed: one number does
-// better in both configurations than 12.0 did in either.
-//
-// #509 reported correct readings up to 8.29x on cloudresources under GOMAXPROCS=1, which would
-// leave no room at 8.0. That did NOT reproduce here in 144 readings — the worst anywhere was
-// 4.68x, and cloudresources specifically read 4.00-4.20x. Recorded because it is the one figure
-// behind this number I could not confirm: if a runner does produce 8x on correct code, the ratio
-// is logged on every run now, so the evidence will be in the output rather than inferred from a
-// failure.
+// The one dependency this rests on is that nothing else in this process burns CPU during a
+// measurement — see TestNothingInThisPackageRunsInParallel, which enforces it.
 const maxGrowthRatio = 8.0
 
 func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
@@ -336,8 +335,12 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 			// Absolute ceiling: even the big input must finish quickly. With
 			// bounded execution and linear scanning this is generous; an O(n^2)
 			// blowup on a dense line would blow past it.
-			tBase, nBase := timeValidate(t, tgt.new(), baseLine)
-			tBig, nBig := timeValidate(t, tgt.new(), bigLine)
+			// ONE measurement drives all three assertions below — ceiling, non-vacuity and
+			// growth. Timing each validator separately for the ceiling doubled the cost of the
+			// slowest test in the repo for no extra information.
+			g := growthRatio(t, tgt.new, baseLine, bigLine)
+			tBase, nBase := g.baseWallMin, g.baseMatches
+			tBig, nBig := g.bigWallMin, g.bigMatches
 
 			// NON-VACUITY FLOOR. Both assertions below are ceilings or ratios, and
 			// both pass trivially when the validator matches nothing: a reject path
@@ -394,47 +397,99 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 			// constant factors, GC, and measurement noise on small absolute
 			// times). Only meaningful when the base time is large enough to
 			// measure; below 2ms the ratio is dominated by noise.
-			if tBase > 2*time.Millisecond {
-				ratio := float64(tBig) / float64(tBase)
+			{
+				ratio, gBase, gBig, clock, samples := g.ratio, g.baseMin, g.bigMin, g.clock, g.samples
 				// Logged on every run, not only on failure. This guard governs 18 targets from
 				// one threshold, and the margin between the correct and regressed populations is
 				// the thinnest in the repo (#509) — so the readings need to be visible in CI
 				// output rather than reconstructable only from a failure.
-				t.Logf("%s: 4x input took %.2fx longer (base=%v big=%v)%s",
-					tgt.name, ratio, tBase, tBig, raceNote())
+				t.Logf("%s: 4x input took %.2fx longer on the %s clock (min base=%v big=%v over %d pairs %s; ceiling pair wall base=%v big=%v)%s",
+					tgt.name, ratio, clock, gBase, gBig, growthPairs, formatRatios(samples), tBase, tBig, raceNote())
 
-				// A single pair of wall-clock readings is not enough to fail on. Re-measure
-				// and use the MEDIAN before reporting a regression — see
-				// medianGrowthRatio for the measurements behind this.
+				// See growthRatio for why this is a ratio of minimum CPU readings rather
+				// than one wall-clock pair.
 				if ratio > maxGrowthRatio {
-					confirmed, samples := medianGrowthRatio(t, tgt.new, baseLine, bigLine, ratio)
-					t.Logf("%s: first reading %.2fx exceeded %.1f; re-measured median %.2fx over %d pairs%s",
-						tgt.name, ratio, maxGrowthRatio, confirmed, len(samples), raceNote())
-					if confirmed > maxGrowthRatio {
-						t.Errorf("%s: 4x input took %.1fx longer (median of %d paired readings, "+
-							"first %.1fx, samples %v) — superlinear growth suggests an O(n^2) regression",
-							tgt.name, confirmed, len(samples), ratio, formatRatios(samples))
-					}
+					t.Errorf("%s: 4x input took %.1fx longer on the %s clock (minimum of %d pairs, "+
+						"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression",
+						tgt.name, ratio, clock, growthPairs, gBase, gBig, formatRatios(samples))
 				}
 			}
 		})
 	}
 }
 
-// timeValidate runs ValidateContent once and returns the wall-clock duration AND
-// the match count. The count is not decoration: it is what the caller uses to
-// prove the duration measured real scanning work rather than an early return.
-// Discarding it (as this helper used to) is how three subtests in this file
-// became no-ops without any test failing.
-func timeValidate(t *testing.T, v validatorUnderTest, content string) (time.Duration, int) {
+// minMeasurableCPU is the smallest CPU reading this file will divide by.
+//
+// getrusage reports microseconds and GetProcessTimes 100ns ticks, but both accumulate at
+// timer-tick granularity — 15.6ms on Windows by default. Dividing two readings near that
+// granularity produces a quantised ratio, which is the noise regime the wall-clock version of
+// this guard already had to escape. Callers fall back to wall clock below this and SAY SO, so a
+// platform with a coarse CPU clock cannot silently switch the ratio assertion off.
+const minMeasurableCPU = 2 * time.Millisecond
+
+// reading is one ValidateContent measurement.
+//
+// Both clocks are kept because the two assertions in this file need different ones. The absolute
+// ceiling is a claim about how long a user waits, which is wall clock by definition. The growth
+// ratio is a claim about algorithmic complexity, and wall clock cannot carry it on a contended
+// machine: measured under 28 busy-loops on 14 CPUs with -race, a genuine O(n^2) validator read
+// 9.94x while a linear one read 10.20x — the populations INVERTED (#579). Contention steals wall
+// time without changing how many cycles the work costs, so CPU time separates them: 14.86x
+// against 4.00x on the same run.
+type reading struct {
+	wall    time.Duration
+	cpu     time.Duration
+	matches int
+}
+
+// timeValidate runs ValidateContent once and returns both clocks AND the match count.
+//
+// The count is not decoration: it is what the caller uses to prove the duration measured real
+// scanning work rather than an early return. Discarding it (as this helper used to) is how three
+// subtests in this file became no-ops without any test failing.
+//
+// GC is NOT disabled here. It is disabled by the caller across a whole group of readings — see
+// withGCOff — because SetGCPercent triggers a collection when it restores, and paying that
+// between a base and a big reading would land inside the very interval being measured.
+func timeValidate(t *testing.T, v validatorUnderTest, content string) reading {
 	t.Helper()
-	start := time.Now()
-	matches, err := v.ValidateContent(content, "<complexity>")
-	elapsed := time.Since(start)
+
+	cpuBefore, err := processCPUTime()
 	if err != nil {
-		t.Fatalf("ValidateContent error: %v", err)
+		t.Fatalf("processCPUTime: %v", err)
 	}
-	return elapsed, len(matches)
+	start := time.Now()
+	matches, vErr := v.ValidateContent(content, "<complexity>")
+	elapsed := time.Since(start)
+	cpuAfter, err := processCPUTime()
+	if err != nil {
+		t.Fatalf("processCPUTime: %v", err)
+	}
+	if vErr != nil {
+		t.Fatalf("ValidateContent error: %v", vErr)
+	}
+	return reading{wall: elapsed, cpu: cpuAfter - cpuBefore, matches: len(matches)}
+}
+
+// withGCOff runs fn with the garbage collector disabled, then restores it.
+//
+// Measured under load with -race: an ALLOCATING linear validator read 10.04x with GC on and
+// 3.95x with it off, against a true value of 4.0x. The inflation is GC work, which is real CPU
+// time and therefore is not removed by switching clocks — and it scales with heap size, so it
+// hits the big reading harder than the base one and inflates the ratio. Production validators
+// allocate a Match per finding and cannot be rewritten to avoid it, so disabling GC for the
+// measurement is what makes the ratio mean what it claims on real code.
+//
+// A collection is forced on the way out. Without it the heap that accumulated while GC was off
+// is carried into the next target, which is how 18 subtests in sequence would otherwise turn a
+// bounded measurement into growing memory pressure.
+func withGCOff(fn func()) {
+	previous := debug.SetGCPercent(-1)
+	defer func() {
+		debug.SetGCPercent(previous)
+		runtime.GC()
+	}()
+	fn()
 }
 
 // buildComplexityInput scales a target's input to reps repetitions, from either a
@@ -451,71 +506,126 @@ func buildComplexityInput(unit string, gen func(int) string, reps int) string {
 	return sb.String()
 }
 
-// confirmationPairs is how many FRESH base/big pairs medianGrowthRatio measures when the
-// first reading exceeds maxGrowthRatio.
+// growthPairs is how many base/big pairs growthRatio measures.
 //
-// 7, and the first reading is deliberately NOT one of them — see medianGrowthRatio. An odd
-// count so the median is a real sample, and 7 rather than 5 because a first version using 5
-// (with the suspect reading included) still landed its median on an outlier: measured
-// [9.68x 4.02x 14.18x 3.85x 15.64x] on linear code, median 9.68x, a false failure.
-const confirmationPairs = 7
+// 2, and the number is a cost decision made against measured stability rather than a guess.
+// Minimums converge fast because contamination only ever ADDS: under 28 external busy-loop
+// processes on 14 CPUs the minimum base reading was 3.727ms against 3.703ms idle, a 0.6%
+// difference over 9 pairs. So the marginal sample buys very little, while each one costs 5x a
+// base reading (the 4x input dominates). Measured on all 18 targets with -race:
+//
+//	pairs   suite time   worst correct-code reading
+//	1 (old)     22.4s    n/a — a single reading is what #546 and #579 are about
+//	2           45.8s    4.60x
+//	3           69.8s    4.54x
+//
+// Going from 2 to 3 moves the worst reading by 0.06x for another 24 seconds, so 2 it is. Two is
+// still strictly more than one bad sample can defeat, which is the property that matters.
+const growthPairs = 2
 
-// medianGrowthRatio re-measures the growth ratio and returns the MEDIAN, plus every sample.
+// growth is everything one growthRatio call measured.
 //
-// It runs ONLY when the first reading already exceeded the threshold, so the happy path pays
-// nothing: an unregressed validator on an idle machine is measured exactly once, as before.
+// The wall-clock minima are carried alongside the growth clock because the absolute ceiling is a
+// claim about elapsed time, not cycles, and reusing these readings is what keeps the guard from
+// timing each validator twice. Minima rather than a single reading there too: a contended sample
+// would otherwise trip the ceiling on code that is fast.
+type growth struct {
+	ratio                   float64
+	baseMin, bigMin         time.Duration
+	baseWallMin, bigWallMin time.Duration
+	baseMatches, bigMatches int
+	clock                   string
+	samples                 []float64
+}
+
+// growthRatio measures both inputs growthPairs times and returns bigMin/baseMin.
 //
-// Why re-measure at all. The single-shot ratio is not a stable statistic under load, and #546
-// is the proof: 5 of the readings this guard produced on CORRECT code sat in (8.0, 12.0] —
-// dob 8.60x under -race, medicalid 9.68x — every one of which passes at the old 12.0 threshold
-// and none of which is a defect. Measured here on the four flakiest targets at load average
-// 160 on 14 CPUs, 24 trials per statistic:
+// THE MINIMUM, NOT THE MEDIAN, AND THAT IS THE POINT. getrusage reports CPU for the whole
+// process, so a short measurement also collects whatever the runtime's other threads burned
+// during it — sysmon, the race detector's background work, and any GC that a previous target
+// left pending. That contamination is strictly ADDITIVE and grows with how long the measurement
+// is descheduled, so it inflates the base term hardest and drives the ratio DOWN, toward passing.
+// The minimum over a few trials is the least-contaminated estimate of each term, and because the
+// error is one-signed the minimum cannot overshoot the true cost.
 //
-//	statistic                        spread        worst high   worst low
-//	single pair (what this replaces) 1.20 - 6.82x    6.82x        1.20x
-//	min of independent mins          2.87 - 6.07x    6.07x        2.87x
-//	MEDIAN of paired readings        3.58 - 6.03x    6.03x        3.58x
+// Measured, -race, quadratic against linear synthetics:
 //
-// Why the MEDIAN and not the minimum, which would look safer still. Contention does not only
-// inflate the big term: when it inflates the BASE instead, the ratio goes DOWN — single-shot
-// produced 1.20x and 1.78x on linear code in the same run. A minimum would therefore be
-// biased toward passing and could mask a genuine quadratic whose base reading was unlucky.
-// The median is robust in both directions, which is the property needed here.
+//	                     median of ratios          ratio of minimums
+//	quadratic, idle      13.66x (13.05-14.17)      14.17x
+//	quadratic, loaded    12.48x ( 7.24-15.19)      14.00x
+//	linear, idle          3.65x ( 2.41- 4.11)       3.75x
+//	linear, loaded        2.92x ( 1.67- 3.73)       3.18x
 //
-// Why not simply raise the threshold. The window is narrow at both ends: a reproduced
-// quadratic reads 15.4-15.6x plain but only 12.4-12.7x under -race, so the bound must stay
-// well below 12.4, while contended correct code reached 9.68x. There is no single number with
-// margin on both sides — 8.0 has 1.55x below the -race quadratic and, with this statistic,
-// 1.33x above the worst contended reading. Fixing the MEASUREMENT is what buys the margin
-// that no threshold could.
+// The ratio of minimums moves 1.2% between idle and loaded on the quadratic where the median of
+// ratios moves 9% and its worst sample halves. That is what makes one threshold viable.
 //
-// Pairs are measured adjacently in time so both halves see the same load regime; interleaving
-// is what makes the per-pair ratio meaningful rather than comparing across load conditions.
-// newV is passed rather than the whole target because complexityTargets is an anonymous
-// struct slice with no named type; the helper needs only a fresh validator per reading.
-func medianGrowthRatio(t *testing.T, newV func() validatorUnderTest, baseLine, bigLine string, first float64) (float64, []float64) {
+// There is no trigger-then-confirm split any more. The old design took ONE pair and re-measured
+// only when it exceeded the threshold, which is a false-negative hole: a genuine quadratic whose
+// single reading was contaminated down to 7.17x — measured, #579 — never entered confirmation and
+// the guard passed it. Measuring the same way every time costs a few seconds and removes that.
+func growthRatio(t *testing.T, newV func() validatorUnderTest, baseLine, bigLine string) growth {
 	t.Helper()
 
-	// The first reading is the TRIGGER, not evidence. It is here only because it exceeded the
-	// threshold, so including it in the median hands the suspect sample a vote — which is how a
-	// first version of this produced median 9.68x from [9.68x 4.02x 14.18x 3.85x 15.64x] and
-	// failed linear code. Fresh pairs only.
-	_ = first
-
-	var samples []float64
-	for len(samples) < confirmationPairs {
-		tb, _ := timeValidate(t, newV(), baseLine)
-		tg, _ := timeValidate(t, newV(), bigLine)
-		if tb <= 0 {
-			continue
-		}
-		samples = append(samples, float64(tg)/float64(tb))
+	// No separate warm-up pair. Taking a MINIMUM already discards a cold reading, because a
+	// first-touch cost that inflates a sample makes it the maximum, not the minimum. The
+	// wall-clock version of this needed an explicit warm-up only because a median gives the cold
+	// sample a vote.
+	var bases, bigs []reading
+	for i := 0; i < growthPairs; i++ {
+		var b, g reading
+		withGCOff(func() {
+			b = timeValidate(t, newV(), baseLine)
+			g = timeValidate(t, newV(), bigLine)
+		})
+		bases = append(bases, b)
+		bigs = append(bigs, g)
 	}
 
-	sorted := make([]float64, len(samples))
-	copy(sorted, samples)
-	sort.Float64s(sorted)
-	return sorted[len(sorted)/2], samples
+	// Choose the clock from the least-contaminated base reading, so a coarse CPU clock is
+	// detected on the cleanest sample rather than on an unlucky one.
+	useCPU := true
+	for _, b := range bases {
+		if b.cpu < minMeasurableCPU {
+			useCPU = false
+			break
+		}
+	}
+	clock := "wall"
+	if useCPU {
+		clock = "cpu"
+	}
+	pick := func(r reading) time.Duration {
+		if useCPU {
+			return r.cpu
+		}
+		return r.wall
+	}
+
+	g := growth{clock: clock, baseMatches: bases[0].matches, bigMatches: bigs[0].matches}
+	g.baseMin, g.bigMin = pick(bases[0]), pick(bigs[0])
+	g.baseWallMin, g.bigWallMin = bases[0].wall, bigs[0].wall
+	for i := range bases {
+		if d := pick(bases[i]); d < g.baseMin {
+			g.baseMin = d
+		}
+		if d := pick(bigs[i]); d < g.bigMin {
+			g.bigMin = d
+		}
+		if bases[i].wall < g.baseWallMin {
+			g.baseWallMin = bases[i].wall
+		}
+		if bigs[i].wall < g.bigWallMin {
+			g.bigWallMin = bigs[i].wall
+		}
+		if db := pick(bases[i]); db > 0 {
+			g.samples = append(g.samples, float64(pick(bigs[i]))/float64(db))
+		}
+	}
+	if g.baseMin <= 0 {
+		t.Fatalf("every base reading was zero on the %s clock; the ratio cannot be computed", clock)
+	}
+	g.ratio = float64(g.bigMin) / float64(g.baseMin)
+	return g
 }
 
 // formatRatios renders ratios for a failure message at the precision that matters.
