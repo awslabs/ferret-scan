@@ -47,7 +47,7 @@ func TestSyntaxIsVetoed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, e := spanOf(t, tc.line, tc.token)
-			if !isSyntaxNotAHandle(tc.line, tc.token, s, e) {
+			if !isSyntaxNotAHandle(tc.line, tc.token, "probe.txt", s, e) {
 				t.Errorf("%q in %q was not recognised as syntax; it reports as TWITTER at confidence 100",
 					tc.token, tc.line)
 			}
@@ -91,7 +91,7 @@ func TestARealHandleIsNeverVetoed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, e := spanOf(t, tc.line, tc.token)
-			if isSyntaxNotAHandle(tc.line, tc.token, s, e) {
+			if isSyntaxNotAHandle(tc.line, tc.token, "probe.txt", s, e) {
 				t.Errorf("%q in %q was vetoed as syntax. A wrong veto suppresses a real finding, and "+
 					"only reported findings reach the redactor.", tc.token, tc.line)
 			}
@@ -155,7 +155,7 @@ func TestVetoIgnoresURLMatches(t *testing.T) {
 	line := `see https://twitter.com/media for the feed`
 	for _, token := range []string{"twitter.com/media", "https://twitter.com/media"} {
 		s, e := spanOf(t, line, token)
-		if isSyntaxNotAHandle(line, token, s, e) {
+		if isSyntaxNotAHandle(line, token, "probe.txt", s, e) {
 			t.Errorf("%q was vetoed; a URL is not a bare handle and these rules must not see it", token)
 		}
 	}
@@ -166,7 +166,7 @@ func TestVetoIgnoresURLMatches(t *testing.T) {
 	// be silently suppressed.
 	keyed := `{"twitter.com/type": "official account"}`
 	s, e := spanOf(t, keyed, "twitter.com/type")
-	if isSyntaxNotAHandle(keyed, "twitter.com/type", s, e) {
+	if isSyntaxNotAHandle(keyed, "twitter.com/type", "probe.txt", s, e) {
 		t.Error("a profile URL used as a JSON key was vetoed. The JSON rule is about JSON-LD keywords " +
 			"beginning with @, not about any quoted string, and a suppressed finding is a cleartext leak.")
 	}
@@ -326,7 +326,7 @@ func TestDelimitedExportsAreNotCSS(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, e := spanOf(t, tc.line, tc.token)
-			if isSyntaxNotAHandle(tc.line, tc.token, s, e) {
+			if isSyntaxNotAHandle(tc.line, tc.token, "probe.txt", s, e) {
 				t.Errorf("%q in %q was vetoed as CSS. It is a data row or prose, the handle is real, "+
 					"and only reported findings reach the redactor.", tc.token, tc.line)
 			}
@@ -349,7 +349,7 @@ func TestCSSPreludeSignalAcceptsWhatRealCSSWrites(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, e := spanOf(t, tc.line, tc.token)
-			if !isSyntaxNotAHandle(tc.line, tc.token, s, e) {
+			if !isSyntaxNotAHandle(tc.line, tc.token, "probe.txt", s, e) {
 				t.Errorf("%q in %q was NOT recognised as CSS, so a real at-rule reports as a handle",
 					tc.token, tc.line)
 			}
@@ -366,7 +366,7 @@ func TestCSSPreludeSignalAcceptsWhatRealCSSWrites(t *testing.T) {
 func TestAQuoteAfterTheNameIsSafeBecauseOfThePositionCheck(t *testing.T) {
 	quoted := `"@media","12"`
 	s, e := spanOf(t, quoted, "@media")
-	if isSyntaxNotAHandle(quoted, "@media", s, e) {
+	if isSyntaxNotAHandle(quoted, "@media", "probe.txt", s, e) {
 		t.Error(`"@media","12" was vetoed. A quoted CSV field puts the quote BEFORE the token, which ` +
 			"opensAStatement must reject — that is what makes accepting a trailing quote safe.")
 	}

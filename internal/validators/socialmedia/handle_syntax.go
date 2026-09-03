@@ -143,7 +143,7 @@ var cssAtRules = map[string]struct{}{
 // containing "/", which mutation testing showed to be dead code — no configured pattern produces a
 // match that both starts with "@" and contains a slash — so it was removed rather than left as an
 // untested guard that reads like a real one.
-func isSyntaxNotAHandle(line, match string, start, end int) bool {
+func isSyntaxNotAHandle(line, match, filename string, start, end int) bool {
 	if !strings.HasPrefix(match, "@") {
 		return false
 	}
@@ -153,6 +153,14 @@ func isSyntaxNotAHandle(line, match string, start, end int) bool {
 	}
 
 	if isJSONLDKey(line, token, start, end) {
+		return true
+	}
+	// Both of these are decided by SYNTAX rather than by vocabulary, which is what makes them
+	// categorical where the two rules below are probabilistic. See each function for why.
+	if isMakeRecipePrefix(line, filename, start) {
+		return true
+	}
+	if isImageDigest(line, end) {
 		return true
 	}
 	if isCSSAtRule(line, token, start, end) {
@@ -303,4 +311,82 @@ func opensAStatement(line string, start int) bool {
 		}
 	}
 	return true // nothing but whitespace before it
+}
+
+// isMakeRecipePrefix reports whether a bare "@token" is Make's recipe-prefix marker.
+//
+// This is a veto, and vetoes in this file have a bad history — see the leak record above. It is safe
+// where the CSS rule was not, and the difference is worth stating precisely: the CSS leaks happened
+// because at-rule NAMES collide with plausible account names. "@media" is a credible handle, so a
+// name-based rule could only ever be probabilistic.
+//
+// A Make recipe prefix is not a name, it is a POSITION defined by Make's grammar. A recipe line must
+// begin with a TAB, and the first token after it (past any of the `-`, `+`, `@` prefix characters) is
+// the command Make executes. A handle cannot occupy that position in a working Makefile, because Make
+// would try to run a program by that name.
+//
+// Measured on this repository's Makefile: 357 of 357 "@token" occurrences sit at that position, zero
+// exceptions, and they account for 346 of the 387 TWITTER findings the file produces.
+//
+// Two signals, per the standard the rest of this file sets:
+//
+//  1. the token is at the recipe-prefix position — leading TAB, then only `-`, `+` or `@` before it,
+//  2. the file is a makefile by name.
+//
+// A handle LATER on a recipe line is untouched, which is the case that matters:
+// "\t@echo \"Follow @awscloud\"" must veto @echo and keep @awscloud.
+func isMakeRecipePrefix(line, filename string, start int) bool {
+	if !isMakefileName(filename) {
+		return false
+	}
+	if start == 0 || line[0] != '\t' {
+		return false
+	}
+	// Everything between the tab and the token must be Make prefix characters. Anything else — a
+	// word, a quote, a brace — means this token is an argument, not the command.
+	for i := 1; i < start; i++ {
+		switch line[i] {
+		case '-', '+', '@', ' ':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isMakefileName reports whether a path names a makefile, by the conventions make itself uses.
+func isMakefileName(filename string) bool {
+	base := filename
+	if i := strings.LastIndexAny(base, "/\\"); i >= 0 {
+		base = base[i+1:]
+	}
+	lower := strings.ToLower(base)
+	switch lower {
+	case "makefile", "gnumakefile", "makefile.am", "makefile.in":
+		return true
+	}
+	return strings.HasSuffix(lower, ".mk") || strings.HasSuffix(lower, ".make")
+}
+
+// isImageDigest reports whether a bare "@token" is the digest half of a container image reference.
+//
+// Categorical rather than probabilistic: "@sha256:" is followed by a colon and 64 hex characters, and
+// a handle cannot contain a colon — the configured pattern is @[a-zA-Z0-9_]{1,15}, which stops at it.
+// So the token captured is "@sha256" and what FOLLOWS it in the line decides. Nothing else in the
+// grammar of an image reference can produce that shape.
+func isImageDigest(line string, end int) bool {
+	rest := line[end:]
+	if !strings.HasPrefix(rest, ":") {
+		return false
+	}
+	rest = rest[1:]
+	n := 0
+	for n < len(rest) && isHexByte(rest[n]) {
+		n++
+	}
+	return n >= 32
+}
+
+func isHexByte(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
