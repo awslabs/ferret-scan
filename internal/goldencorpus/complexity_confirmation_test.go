@@ -4,12 +4,11 @@
 package goldencorpus
 
 import (
-	"fmt"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/perfguard"
 )
 
 // #546: the growth-ratio guard failed on CORRECT code. Five readings this guard produced on
@@ -65,7 +64,7 @@ func quadraticUnit(i int) string { return "XQZ aaaaaaaaaaaaaaaa " }
 func TestGrowthRatioStillCatchesAGenuineQuadratic(t *testing.T) {
 	newV := func() validatorUnderTest { return quadraticValidator{} }
 
-	// Sized so the base CPU reading clears minMeasurableCPU. A first version used reps = 300,
+	// Sized so the base CPU reading clears perfguard.MinMeasurableCPU. A first version used reps = 300,
 	// giving a 45µs base, which is below the resolution the ratio is computed at.
 	const reps = 3000
 	base := buildComplexityInput(quadraticUnit(0), nil, reps)
@@ -73,7 +72,7 @@ func TestGrowthRatioStillCatchesAGenuineQuadratic(t *testing.T) {
 
 	g := growthRatio(t, newV, base, big)
 	t.Logf("synthetic quadratic: %.2fx on the %s clock (min base=%v big=%v, per-pair %s)",
-		g.ratio, g.clock, g.baseMin, g.bigMin, formatRatios(g.samples))
+		g.Ratio, g.Clock, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
 
 	// Non-vacuity: the fixture must actually be driving the quadratic path. A reject path is
 	// fast and its ratio is noise, which would make the assertion below meaningless. The counts
@@ -83,11 +82,11 @@ func TestGrowthRatioStillCatchesAGenuineQuadratic(t *testing.T) {
 			g.baseMatches, g.bigMatches)
 	}
 
-	if g.ratio <= maxGrowthRatio {
+	if g.Ratio <= maxGrowthRatio {
 		t.Errorf("a genuine O(n^2) validator measured %.2fx on the %s clock, at or below the %.1f "+
 			"threshold — the guard would no longer detect the regression it exists for. "+
 			"min base=%v big=%v, per-pair %s",
-			g.ratio, g.clock, maxGrowthRatio, g.baseMin, g.bigMin, formatRatios(g.samples))
+			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
 	}
 }
 
@@ -105,12 +104,12 @@ func TestGrowthRatioStaysLowOnLinearCode(t *testing.T) {
 
 	g := growthRatio(t, newV, base, big)
 	t.Logf("linear control: %.2fx on the %s clock (min base=%v big=%v, per-pair %s)",
-		g.ratio, g.clock, g.baseMin, g.bigMin, formatRatios(g.samples))
+		g.Ratio, g.Clock, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
 
-	if g.ratio > maxGrowthRatio {
+	if g.Ratio > maxGrowthRatio {
 		t.Errorf("a single-pass validator measured %.2fx on the %s clock, above the %.1f "+
 			"threshold — this is #546, the guard failing on correct code. min base=%v big=%v, "+
-			"per-pair %s", g.ratio, g.clock, maxGrowthRatio, g.baseMin, g.bigMin, formatRatios(g.samples))
+			"per-pair %s", g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
 	}
 }
 
@@ -131,37 +130,9 @@ func TestGrowthRatioStaysLowOnLinearCode(t *testing.T) {
 // a false O(n^2) report on a single-pass scan. Adding t.Parallel() anywhere in this package would
 // do exactly that to whichever measurement happened to overlap.
 func TestNothingInThisPackageRunsInParallel(t *testing.T) {
-	entries, err := os.ReadDir(".")
+	offenders, scanned, err := perfguard.AssertNoParallelTests(".")
 	if err != nil {
-		t.Fatalf("read package dir: %v", err)
-	}
-
-	// Assembled from fragments so this file does not contain the literal it searches for. A
-	// first version matched its own search string and its own error message, and "exempt the
-	// guard's own file" would have been the wrong fix: this file measures too, so it has to be
-	// policed like the rest.
-	needle := "t.Paralle" + "l()"
-
-	var scanned int
-	var offenders []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		raw, err := os.ReadFile(e.Name()) // #nosec G304 -- a test file in this package
-		if err != nil {
-			t.Fatalf("read %s: %v", e.Name(), err)
-		}
-		scanned++
-		for i, line := range strings.Split(string(raw), "\n") {
-			code := line
-			if idx := strings.Index(code, "//"); idx >= 0 {
-				code = code[:idx]
-			}
-			if strings.Contains(code, needle) {
-				offenders = append(offenders, fmt.Sprintf("%s:%d", e.Name(), i+1))
-			}
-		}
+		t.Fatalf("scanning this package for parallel tests: %v", err)
 	}
 
 	// Non-vacuity: if the directory walk stopped finding test files, the assertion below would
@@ -171,12 +142,12 @@ func TestNothingInThisPackageRunsInParallel(t *testing.T) {
 			"sources it is meant to police", scanned)
 	}
 	if len(offenders) > 0 {
-		t.Errorf("%s found at %s. The complexity guard measures process-wide CPU time "+
+		t.Errorf("t.Parallel found at %s. The complexity guard measures process-wide CPU time "+
 			"(getrusage RUSAGE_SELF), so a test running concurrently with a measurement is "+
 			"charged to the validator being measured: in-process load inflated a base reading "+
 			"4.374ms -> 39.559ms and turned a 4.07x linear scan into 11.62x, above the %.1f "+
 			"threshold. Either keep this package sequential or move the complexity guard to a "+
-			"clock that is not process-wide.", needle, strings.Join(offenders, ", "), maxGrowthRatio)
+			"clock that is not process-wide.", strings.Join(offenders, ", "), maxGrowthRatio)
 	}
 }
 

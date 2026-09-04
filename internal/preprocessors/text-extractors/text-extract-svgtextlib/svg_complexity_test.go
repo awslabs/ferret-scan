@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/perfguard"
 	"time"
 )
 
@@ -66,7 +68,6 @@ func TestManyTextNodesIsSubQuadratic(t *testing.T) {
 		n     int
 		bytes int
 		nodes int
-		el    time.Duration
 	}
 	var pts []point
 
@@ -76,9 +77,7 @@ func TestManyTextNodesIsSubQuadratic(t *testing.T) {
 		if _, err := ExtractFromBytes("scale.svg", []byte(body)); err != nil {
 			t.Fatalf("N=%d: %v", n, err)
 		}
-		start := time.Now()
 		c, err := ExtractFromBytes("scale.svg", []byte(body))
-		el := time.Since(start)
 		if err != nil {
 			t.Fatalf("N=%d: %v", n, err)
 		}
@@ -103,7 +102,7 @@ func TestManyTextNodesIsSubQuadratic(t *testing.T) {
 			}
 		}
 
-		pts = append(pts, point{n: n, bytes: len(body), nodes: c.Nodes, el: el})
+		pts = append(pts, point{n: n, bytes: len(body), nodes: c.Nodes})
 	}
 
 	// GROWTH, not just non-zero. A flat node count across sizes is the signature of a
@@ -117,29 +116,54 @@ func TestManyTextNodesIsSubQuadratic(t *testing.T) {
 	}
 
 	for _, p := range pts {
-		t.Logf("N=%-6d %8d bytes  %6d nodes  %v", p.n, p.bytes, p.nodes, p.el)
+		t.Logf("N=%-6d %8d bytes  %6d nodes", p.n, p.bytes, p.nodes)
 	}
 
-	// The ceiling is deliberately loose. A wall-clock ratio on a shared CI runner is
-	// noisy in both directions, and -race compresses it further, so the number has to
-	// separate LINEAR from QUADRATIC rather than measure a constant: 2x per doubling
-	// is linear, 4x is quadratic, and 3.2x sits between them with room for noise. This
-	// is a shape assertion, not a performance budget.
-	const ceiling = 3.2
-	for i := 1; i < len(pts); i++ {
-		prev, cur := pts[i-1].el, pts[i].el
-		// Below a millisecond the ratio is measuring the clock, not the algorithm.
-		if prev < time.Millisecond {
-			t.Logf("N=%d took %v, too fast to form a ratio; skipped", pts[i-1].n, prev)
-			continue
-		}
-		ratio := float64(cur) / float64(prev)
-		t.Logf("N=%d -> N=%d: %.2fx (%v -> %v)", pts[i-1].n, pts[i].n, ratio, prev, cur)
-		if ratio > ceiling {
-			t.Errorf("extraction scaled %.2fx from N=%d to N=%d (%v -> %v); "+
-				"linear is 2.0x and quadratic 4.0x, so this is superlinear beyond noise",
-				ratio, pts[i-1].n, pts[i].n, prev, cur)
-		}
+	// TIMING, measured separately from the assertions above and on a different statistic.
+	//
+	// The correctness work above (node counts, distinct values, growth) is per size and stays. What
+	// changed is the timing: this compared a SINGLE wall-clock reading per size against a 3.2 ceiling,
+	// and its own comment conceded the problem — "a wall-clock ratio on a shared CI runner is noisy in
+	// both directions, and -race compresses it further". Its sibling in this package,
+	// TestCollapseSpaceIsLinear, duly failed on macOS CI at 3.37x against a 3.0 bound on a PR that
+	// touched no file here.
+	//
+	// perfguard measures CPU time with GC disabled and compares the MINIMUM of several readings; see
+	// that package for why a median, an exponent fit and a larger base were each measured and rejected.
+	// One 4x step rather than two consecutive doublings: the old form let a single bad sample pollute
+	// two ratios, and taking a minimum makes the extra size unnecessary.
+	bodyBase := svgWithNTextNodes(base)
+	bodyBig := svgWithNTextNodes(4 * base)
+	var outBase, outBig int
+	g, err := perfguard.Measure(perfguard.DefaultPairs,
+		func() {
+			c, e := ExtractFromBytes("scale.svg", []byte(bodyBase))
+			if e == nil {
+				outBase = c.Nodes
+			}
+		},
+		func() {
+			c, e := ExtractFromBytes("scale.svg", []byte(bodyBig))
+			if e == nil {
+				outBig = c.Nodes
+			}
+		})
+	if err != nil {
+		t.Fatalf("measuring extraction: %v", err)
+	}
+	// The floor again, on the readings that were actually timed rather than on earlier ones.
+	if outBase == 0 || outBig <= outBase {
+		t.Fatalf("timed extraction produced %d and %d nodes; the ratio below would measure nothing",
+			outBase, outBig)
+	}
+	t.Logf("extraction over a 4x document: %s", g)
+
+	// 8.0 against a linear expectation of 4.0 and a quadratic one of 16.0, so the bound sits between
+	// the two populations rather than 0.2x from the noise the old 3.2 was failing on.
+	const ceiling = 8.0
+	if g.Ratio > ceiling {
+		t.Errorf("extraction scaled %s over a 4x document — linear is ~4x and quadratic ~16x, so this "+
+			"is superlinear beyond noise", g)
 	}
 }
 

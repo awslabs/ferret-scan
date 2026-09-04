@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/perfguard"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/coverage"
@@ -536,23 +538,43 @@ func TestDeterministicExtraction(t *testing.T) {
 // It is the one place in this package where a naive implementation (repeated
 // concatenation, or a regexp over the whole node per space run) would be quadratic in
 // a single node's length, and a <desc> is unbounded.
+// It measured a SINGLE wall-clock sample per size and divided consecutive singles against a fixed
+// threshold, which is not a statistic. That failed on macOS CI (run 33825436653) at 3.37x against its
+// 3.0 bound while windows and ubuntu passed the identical commit, on a PR touching no file in this
+// package — 35.170083ms -> 118.467625ms on a 4MB input, which is scheduling noise, not complexity.
+//
+// It now uses perfguard: CPU time rather than wall clock, GC disabled across the measured region, and
+// the ratio of MINIMUM readings rather than a lone sample. See that package for the measurements
+// behind each of the three, and for why a median, an exponent fit and a larger base were all tried
+// and rejected first.
 func TestCollapseSpaceIsLinear(t *testing.T) {
-	var prev time.Duration
-	for i, n := range []int{1 << 20, 1 << 21, 1 << 22} {
-		in := strings.Repeat("a \n\t", n/4)
-		start := time.Now()
-		out := collapseSpace(in)
-		el := time.Since(start)
-		if len(out) == 0 {
-			t.Fatalf("collapseSpace returned nothing for %d bytes of input", len(in))
-		}
-		if i > 0 && prev > 0 {
-			if ratio := float64(el) / float64(prev); ratio > 3.0 {
-				t.Errorf("collapseSpace scaled %.2fx per doubling at n=%d (linear is 2x, quadratic 4x): %v -> %v",
-					ratio, n, prev, el)
-			}
-		}
-		prev = el
+	const base = 1 << 21
+	// 4x rather than 2x. The old test compared consecutive doublings, so a single bad sample
+	// polluted two ratios; one 4x step against a linear expectation of 4.0 gives the same
+	// discrimination with half the readings, and the minimum makes the extra size unnecessary.
+	in := strings.Repeat("a \n\t", base/4)
+	big := strings.Repeat("a \n\t", base)
+
+	var baseOut, bigOut string
+	g, err := perfguard.Measure(perfguard.DefaultPairs,
+		func() { baseOut = collapseSpace(in) },
+		func() { bigOut = collapseSpace(big) })
+	if err != nil {
+		t.Fatalf("measuring collapseSpace: %v", err)
+	}
+	// Non-vacuity: a fold that returned nothing would be "linear" for free.
+	if len(baseOut) == 0 || len(bigOut) == 0 {
+		t.Fatalf("collapseSpace returned nothing (base=%d big=%d bytes out)", len(baseOut), len(bigOut))
+	}
+	t.Logf("collapseSpace over a 4x input: %s", g)
+
+	// 8.0 against a linear expectation of 4.0 and a quadratic one of 16.0, so the bound sits
+	// halfway between the two populations on a log scale rather than 0.37x from the failure the
+	// old threshold produced.
+	if g.Ratio > 8.0 {
+		t.Errorf("collapseSpace scaled %s — linear over a 4x input is ~4x and quadratic ~16x, so "+
+			"this is a quadratic fold: repeated concatenation, or a regexp re-run per space run "+
+			"over the whole node", g)
 	}
 }
 
