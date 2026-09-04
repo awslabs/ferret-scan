@@ -314,6 +314,32 @@ var complexityTargets = []struct {
 const maxGrowthRatio = 8.0
 
 func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
+	// NOT under the race detector. It is run without it by its own CI step, so coverage is unchanged.
+	//
+	// This guard measures single-goroutine CPU-time ratios. The race detector cannot find anything here
+	// -- nothing in it runs concurrently -- and it costs two things that matter:
+	//
+	//  1. MEMORY, catastrophically. Measured on this guard: 101 MB without -race against 6.9-8.1 GB
+	//     with it, a ~70x amplification. That killed CI. On ubuntu-latest, sampled every 15s,
+	//     goldencorpus.test grew 1.2GB -> 14.4GB in 45 seconds, exhausted 16GB of RAM and all 3GB of
+	//     swap, and the runner was SIGTERM'd mid-suite with no test reporting FAIL -- six times, and it
+	//     cost six wrong hypotheses to find. The chain: the socialmedia validator allocates ~30KB per
+	//     match, -race multiplies that ~22x to ~663KB, its big reading produces 4,800 matches (3.0GB),
+	//     and the guard holds 2*pairs readings with GC disabled. Its fixture cannot shrink -- both sizes
+	//     must stay above maxClusterMatches (1000) or they measure different code paths.
+	//
+	//  2. ACCURACY. -race compresses the very ratios this guard compares, which is why the file carries
+	//     raceCeilingMultiplier and why #509 had to retune a threshold. Removing it removes the reason
+	//     for those adjustments rather than compensating for them again.
+	//
+	// The socialmedia validator's ~30KB per match is a real inefficiency in its own right, filed
+	// separately -- a user scanning a file of profile URLs pays it too, without -race to blame.
+	if raceDetectorEnabled {
+		t.Skip("complexity guard runs without -race: it measures single-goroutine CPU ratios, and -race " +
+			"costs ~70x memory (101MB -> 6.9-8.1GB, which OOM-killed ubuntu-latest) while compressing " +
+			"the ratios being compared. A dedicated CI step runs it without the detector.")
+	}
+
 	if testing.Short() {
 		t.Skip("complexity guard skipped in -short mode")
 	}
@@ -406,10 +432,26 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 
 				// See internal/perfguard for why this is a ratio of minimum CPU readings
 				// rather than one wall-clock pair.
-				if ratio > maxGrowthRatio {
+				//
+				// Asserted only when the base reading spans enough CLOCK TICKS for the ratio to be a
+				// measurement rather than arithmetic on tick counts. Measured on windows-latest, where
+				// the CPU clock advances 15.625ms at a time, this assertion was comparing integers:
+				// `ssn` reported "5.00x" from base=46.875ms big=234.375ms, which is 3 ticks over 15,
+				// and a linear control reported exactly "2.00x" from 2 ticks over 1. Every Windows
+				// reading in that run was an exact multiple of the tick.
+				//
+				// A skip here is not a silent hole: the tick count is logged above on every run, the
+				// absolute ceiling and the match-count floors still assert on every platform, and the
+				// ratio is still asserted wherever the clock can support it -- which is Linux and
+				// macOS, so a regression is still caught by CI. Asserting on 1-tick readings was the
+				// hole, because it can fail on correct code and pass a real regression.
+				if _, resolvable := g.Ticks(); !resolvable {
+					t.Logf("%s: growth ratio NOT asserted — %s", tgt.name, g.ResolutionNote())
+				} else if ratio > maxGrowthRatio {
 					t.Errorf("%s: 4x input took %.1fx longer on the %s clock (minimum of %d pairs, "+
-						"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression",
-						tgt.name, ratio, clock, perfguard.DefaultPairs, gBase, gBig, perfguard.FormatRatios(samples))
+						"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression. %s",
+						tgt.name, ratio, clock, perfguard.DefaultPairs, gBase, gBig,
+						perfguard.FormatRatios(samples), g.ResolutionNote())
 				}
 			}
 		})

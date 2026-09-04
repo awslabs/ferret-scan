@@ -56,15 +56,23 @@ jobs:
         with:
           go-version-file: '.go-version'
 
-      - name: Cache Go modules
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      # No separate module-cache step. actions/setup-go already caches BOTH of the paths one would
+      # name here -- ~/go/pkg/mod and ~/.cache/go-build -- keyed on go.sum, and it does so by
+      # default. A second actions/cache over the same paths does not just duplicate the work, it
+      # RELIABLY FAILS: setup-go extracts first, then the second restore tries to write the same
+      # files and tar exits 2. Measured, from an ubuntu-latest log:
+      #
+      #	setup-go:  Cache hit ... Cache Size: ~678 MB ... Cache restored successfully
+      #	           /home/runner/go/pkg/mod
+      #	           /home/runner/.cache/go-build
+      #	cache:     path: ~/.cache/go-build, ~/go/pkg/mod ... Cache Size: ~677 MB
+      #	           ##[error]/usr/bin/tar: ...: Cannot open: File exists     (x many)
+      #	           ##[warning]Failed to restore: "/usr/bin/tar" failed with exit code 2
+      #
+      # So every run with a cache hit downloaded ~677 MB a second time and then failed to unpack it.
+      # It also correlated with the runs that died: all 3 ubuntu jobs killed by SIGTERM at ~245s had
+      # this failure, against 1 of 5 that passed -- suggestive, NOT established, and deliberately not
+      # claimed as the cause. Removing a step that always fails is right on its own terms.
 
       - name: Gofmt
         # Formatting is platform-independent, so gate it on one runner instead of
@@ -90,6 +98,41 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Complexity guards (no race detector)
+        # The O(n^2) guards are skipped under -race by the main suite and run here instead. They measure
+        # single-goroutine CPU-time ratios, so the detector can find nothing in them, and it costs two
+        # things: ~70x memory (101MB -> 6.9-8.1GB on this guard, measured) and accuracy, because it
+        # compresses the ratios being compared.
+        #
+        # The memory is why this exists. ubuntu-latest was SIGTERM'd mid-suite six times with no test
+        # reporting FAIL; sampling the machine showed goldencorpus.test growing 1.2GB -> 14.4GB in 45
+        # seconds and exhausting 16GB of RAM plus all 3GB of swap. Not a gate that can be dropped --
+        # without this step the guards would not run at all.
+        run: go test -count=1 -run 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio' ./internal/goldencorpus/ ./internal/detector/ ./internal/preprocessors/text-extractors/text-extract-svgtextlib/
+        shell: bash
+
+      - name: Report the complexity guard's measured ratios
+        # The O(n^2) guard compares a ratio of CPU-time readings against a single threshold (8.0),
+        # and that threshold was chosen from measurements taken on ONE platform. It does not hold
+        # everywhere: the synthetic-quadratic control read 7.46x and 7.85x on ubuntu-latest -- BELOW
+        # its own 8.0 threshold -- against 13.49x-14.06x on darwin/arm64, so on that runner the guard
+        # could not detect the regression it exists for.
+        #
+        # The guard logs every ratio, but `go test` hides t.Logf output for a PASSING package unless
+        # -v is set (fmt.Println is hidden too -- both measured), so these numbers have never appeared
+        # in any CI log and the threshold has been resting on one machine's. This prints all 18
+        # validator targets plus both controls, on all three runners, every run. See #599.
+        #
+        # Placed after Build rather than after the test step ON PURPOSE: the granularity step added by
+        # #597 anchors after the test step, and two insertions at the same point conflict -- measured
+        # with a real merge, not guessed. Running before the main suite is equivalent for a
+        # continue-on-error reporting step.
+        #
+        # continue-on-error: this is observation, not a gate. The assertions run in the suite proper.
+        run: go test -v -count=1 -run 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio' ./internal/goldencorpus/
+        shell: bash
+        continue-on-error: true
+
       - name: Test (with race detector)
         # -race only works on amd64/arm64 platforms Go supports — all three
         # runners qualify. Race detector roughly halves throughput but
@@ -103,3 +146,24 @@ jobs:
         # quality. Run them locally on Windows when working on those tests.
         run: go test -race -count=1 $(go list ./... | grep -v /tests/integration)
         shell: bash
+
+      - name: Report this runner's clock granularity
+        # internal/perfguard measures algorithmic growth as a ratio of CPU-time readings, and the
+        # threshold it will divide by (MinMeasurableCPU) is a fixed 2ms on every platform. Whether
+        # 2ms is enough depends entirely on the runner's clock granularity, which nobody had
+        # measured -- the constant's own doc comment asserts "15.6ms on Windows by default" without
+        # evidence, and if that is right then a Windows reading between 2ms and 15.6ms clears the
+        # gate while still being a single quantised tick.
+        #
+        # The test polls each clock and logs the granularity plus how many ticks the gate is worth.
+        # It runs in the step above too, but `go test` hides t.Logf output for a PASSING package
+        # unless -v is set (fmt.Println is hidden as well -- both were measured), so without this
+        # step the numbers are computed on all three platforms every run and never seen. This step
+        # is what makes them observable, which is the whole point of collecting them.
+        #
+        # Deliberately `continue-on-error`: this reports a characteristic of the machine, it does
+        # not gate the build. The assertions it carries -- monotonicity of ProcessCPUTime, and a
+        # non-vacuity floor -- are enforced by the real run above.
+        run: go test -v -count=1 -run 'TestClockGranularityIsReportedAndCPUTimeIsMonotonic' ./internal/perfguard/
+        shell: bash
+        continue-on-error: true
