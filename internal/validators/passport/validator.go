@@ -1556,29 +1556,78 @@ func (v *Validator) isKnownTestPattern(text string) bool {
 
 // isLikelyWord checks if the text is likely an English word
 func (v *Validator) isLikelyWord(text string) bool {
-	// Check against common words list
+	// Check against common words list. Unconditional: a match that literally IS one of these
+	// words is a false positive whatever its shape.
 	for _, word := range v.commonWords {
 		if strings.EqualFold(text, word) {
 			return true
 		}
 	}
 
+	// The vowel-ratio heuristic below is only meaningful when the WHOLE match could be an
+	// English word, and an English word is made of letters. Applying it to anything else was
+	// #591, and it silently dropped real passports:
+	//
+	//   - An MRZ is 44 characters of format: "P<" + issuing state + a "<"-padded name field.
+	//     Its vowel content is decided entirely by the HOLDER'S NAME, so whether a passport was
+	//     protected depended on how the holder is called. Measured on 16 real names, 10 MISSED
+	//     (base 60 + 20 for a valid country code - 40 here - 25 from isPossibleFalsePositive
+	//     = 15, under the 60 emit threshold): ERIKSSON, JOHANSSON, GARCIA, TANAKA, MUELLER,
+	//     ROSSI, PAPADOPOULOS, OKONKWO, AALTO, KAMEHAMEHA. Reported: SMITH, GHYNSKI, OMOLLO,
+	//     SINGH, NGUYEN, KOWALSKI. The bias is not incidental -- it falls on Swedish, Spanish,
+	//     Japanese, German, Italian, Greek, Igbo, Finnish and Hawaiian orthographies, which use
+	//     more vowels than English does.
+	//
+	//   - A national passport NUMBER contains digits, and two of them can still land in the
+	//     window. Measured: the Canadian shape AE123456 (2 vowels of 8 = 25%) scored 0 where
+	//     BC123456 scored 45, and the EU shape AE1234567 scored 0 too. Two letters of a
+	//     document number decided whether it was reported.
+	//
+	// By the sink rule each of those is a cleartext leak: only reported findings reach the
+	// redactor. Requiring letters is what makes the heuristic apply where it means something --
+	// a digit or an MRZ filler "<" occurs in no English word, so nothing that was correctly
+	// caught before is let through.
+	if !isWordShaped(text) {
+		return false
+	}
+
 	// Simple heuristic: English words typically have vowels
 	// and a reasonable vowel-to-consonant ratio
-	if len(text) >= 5 {
+	if len([]rune(text)) >= 5 {
 		vowels := 0
-		for _, char := range strings.ToUpper(text) {
+		runes := []rune(strings.ToUpper(text))
+		for _, char := range runes {
 			if strings.ContainsRune("AEIOU", char) {
 				vowels++
 			}
 		}
 
 		// If it has vowels and the ratio of vowels to length is reasonable for English
-		vowelRatio := float64(vowels) / float64(len(text))
+		vowelRatio := float64(vowels) / float64(len(runes))
 		return vowels >= 1 && vowelRatio >= 0.2 && vowelRatio <= 0.6
 	}
 
 	return false
+}
+
+// isWordShaped reports whether text could be a single English word: letters only.
+//
+// Counted in RUNES, not bytes, so an accented word ("Café") is still word-shaped and the ratio
+// below is computed against the character count rather than the UTF-8 length -- measuring a
+// 5-character word as 6 bytes would move it in the window for no reason.
+//
+// Empty is NOT word-shaped: an empty string has no vowels, so the ratio is undefined and the
+// old code's len >= 5 guard was the only thing stopping a divide-by-zero.
+func isWordShaped(text string) bool {
+	if text == "" {
+		return false
+	}
+	for _, r := range text {
+		if !unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // determineCountry tries to identify the country format based on the match pattern
