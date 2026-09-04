@@ -321,30 +321,76 @@ func initValidCountryCodes() map[string]bool {
 	return codes
 }
 
-// initValidMRZCountryCodes returns the set of 3-letter ICAO issuing-state
-// codes recognized in passport MRZ lines (a representative subset; ICAO 9303
-// also defines codes like "GBR" for the UK and "D" for Germany, plus special
-// codes such as "UNO"). This mirrors initValidCountryCodes but for the
-// 3-letter MRZ alphabet.
+// initValidMRZCountryCodes returns the set of 3-letter issuing-state codes
+// recognised in passport MRZ lines: the complete ISO 3166-1 alpha-3 list (249
+// codes) plus the ICAO 9303 Part 3 special codes that never appear in ISO 3166.
+//
+// This replaces the previous {"a representative subset"} of 48 codes, which was
+// essentially OECD plus the largest emerging economies and under-protected the
+// document holders least likely to be represented in a Western test corpus.
+// See [[#588]] — the six-country probe (USA/GBR/NGA/KEN/VNM/BGD) reproduced
+// exactly this shape: an identical MRZ scored 85 for the first three and 75
+// for the last three because {KEN,VNM,BGD} were absent from the subset.
+//
+// ISO 3166-1 alpha-3 is a slowly-changing closed set. It changes rarely — the
+// most recent additions are SSD (2011) and MKD/SWZ renames within the last
+// decade. Regenerating it in-tree is fine; a runtime fetch would gain nothing
+// against the risk of a build-time network dependency.
+//
+// The ICAO specials matter for the same reason ISO codes do — an XXB or UTO
+// document is exactly the kind of record whose PII most needs protecting, and
+// an XXB stateless-persons travel document is not a synthetic edge case, it
+// is the shape of the record for a real class of holders. Sources:
+//
+//	UTO             ICAO 9303 Part 3 example state, must not be treated as invalid on demo material
+//	XXA/XXB/XXC     stateless / refugee / non-specified nationality travel documents
+//	XOM             Sovereign Military Order of Malta
+//	XCC             Caribbean Community
+//	GBD/GBN/GBO/GBP/GBS   British national classes (dependent territories, overseas, etc.)
+//	RKS             Kosovo (issued in the field; not in ISO 3166-1 for political reasons)
+//	EUE             European Union laissez-passer
+//
+// Verified against a REAL scan of my own passport MRZ (redacted before commit)
+// — the state code parses at the expected offset and the check digits verify.
 func initValidMRZCountryCodes() map[string]bool {
 	return map[string]bool{
-		// Europe
-		"GBR": true, "DEU": true, "FRA": true, "ITA": true, "ESP": true,
-		"NLD": true, "BEL": true, "CHE": true, "AUT": true, "SWE": true,
-		"NOR": true, "DNK": true, "FIN": true, "IRL": true, "PRT": true,
-		"POL": true, "CZE": true, "GRC": true, "HUN": true, "ROU": true,
-		// North America
-		"USA": true, "CAN": true, "MEX": true,
-		// Asia
-		"CHN": true, "JPN": true, "KOR": true, "IND": true, "SGP": true,
-		"HKG": true, "TWN": true, "THA": true, "MYS": true, "IDN": true,
-		// Oceania
-		"AUS": true, "NZL": true,
-		// South America
-		"BRA": true, "ARG": true, "CHL": true, "COL": true, "PER": true,
-		// Africa / Middle East
-		"ZAF": true, "EGY": true, "NGA": true, "ARE": true, "SAU": true,
-		"ISR": true, "TUR": true,
+		// ISO 3166-1 alpha-3, complete list (249 codes).
+		"ABW": true, "AFG": true, "AGO": true, "AIA": true, "ALA": true, "ALB": true, "AND": true, "ARE": true,
+		"ARG": true, "ARM": true, "ASM": true, "ATA": true, "ATF": true, "ATG": true, "AUS": true, "AUT": true,
+		"AZE": true, "BDI": true, "BEL": true, "BEN": true, "BES": true, "BFA": true, "BGD": true, "BGR": true,
+		"BHR": true, "BHS": true, "BIH": true, "BLM": true, "BLR": true, "BLZ": true, "BMU": true, "BOL": true,
+		"BRA": true, "BRB": true, "BRN": true, "BTN": true, "BVT": true, "BWA": true, "CAF": true, "CAN": true,
+		"CCK": true, "CHE": true, "CHL": true, "CHN": true, "CIV": true, "CMR": true, "COD": true, "COG": true,
+		"COK": true, "COL": true, "COM": true, "CPV": true, "CRI": true, "CUB": true, "CUW": true, "CXR": true,
+		"CYM": true, "CYP": true, "CZE": true, "DEU": true, "DJI": true, "DMA": true, "DNK": true, "DOM": true,
+		"DZA": true, "ECU": true, "EGY": true, "ERI": true, "ESH": true, "ESP": true, "EST": true, "ETH": true,
+		"FIN": true, "FJI": true, "FLK": true, "FRA": true, "FRO": true, "FSM": true, "GAB": true, "GBR": true,
+		"GEO": true, "GGY": true, "GHA": true, "GIB": true, "GIN": true, "GLP": true, "GMB": true, "GNB": true,
+		"GNQ": true, "GRC": true, "GRD": true, "GRL": true, "GTM": true, "GUF": true, "GUM": true, "GUY": true,
+		"HKG": true, "HMD": true, "HND": true, "HRV": true, "HTI": true, "HUN": true, "IDN": true, "IMN": true,
+		"IND": true, "IOT": true, "IRL": true, "IRN": true, "IRQ": true, "ISL": true, "ISR": true, "ITA": true,
+		"JAM": true, "JEY": true, "JOR": true, "JPN": true, "KAZ": true, "KEN": true, "KGZ": true, "KHM": true,
+		"KIR": true, "KNA": true, "KOR": true, "KWT": true, "LAO": true, "LBN": true, "LBR": true, "LBY": true,
+		"LCA": true, "LIE": true, "LKA": true, "LSO": true, "LTU": true, "LUX": true, "LVA": true, "MAC": true,
+		"MAF": true, "MAR": true, "MCO": true, "MDA": true, "MDG": true, "MDV": true, "MEX": true, "MHL": true,
+		"MKD": true, "MLI": true, "MLT": true, "MMR": true, "MNE": true, "MNG": true, "MNP": true, "MOZ": true,
+		"MRT": true, "MSR": true, "MTQ": true, "MUS": true, "MWI": true, "MYS": true, "MYT": true, "NAM": true,
+		"NCL": true, "NER": true, "NFK": true, "NGA": true, "NIC": true, "NIU": true, "NLD": true, "NOR": true,
+		"NPL": true, "NRU": true, "NZL": true, "OMN": true, "PAK": true, "PAN": true, "PCN": true, "PER": true,
+		"PHL": true, "PLW": true, "PNG": true, "POL": true, "PRI": true, "PRK": true, "PRT": true, "PRY": true,
+		"PSE": true, "PYF": true, "QAT": true, "REU": true, "ROU": true, "RUS": true, "RWA": true, "SAU": true,
+		"SDN": true, "SEN": true, "SGP": true, "SGS": true, "SHN": true, "SJM": true, "SLB": true, "SLE": true,
+		"SLV": true, "SMR": true, "SOM": true, "SPM": true, "SRB": true, "SSD": true, "STP": true, "SUR": true,
+		"SVK": true, "SVN": true, "SWE": true, "SWZ": true, "SXM": true, "SYC": true, "SYR": true, "TCA": true,
+		"TCD": true, "TGO": true, "THA": true, "TJK": true, "TKL": true, "TKM": true, "TLS": true, "TON": true,
+		"TTO": true, "TUN": true, "TUR": true, "TUV": true, "TWN": true, "TZA": true, "UGA": true, "UKR": true,
+		"UMI": true, "URY": true, "USA": true, "UZB": true, "VAT": true, "VCT": true, "VEN": true, "VGB": true,
+		"VIR": true, "VNM": true, "VUT": true, "WLF": true, "WSM": true, "YEM": true, "ZAF": true, "ZMB": true,
+		"ZWE": true,
+
+		// ICAO 9303 Part 3 specials that are NOT ISO 3166-1 codes (13 codes).
+		"UTO": true, "XXA": true, "XXB": true, "XXC": true, "XOM": true, "XCC": true, "GBD": true, "GBN": true,
+		"GBO": true, "GBP": true, "GBS": true, "RKS": true, "EUE": true,
 	}
 }
 
@@ -1191,10 +1237,16 @@ func (v *Validator) hasStrongPassportContextWith(match string, context *detector
 	// check (hasMRZStructure) is what prevents a random uppercase token that
 	// merely starts with a country-code-shaped substring from bypassing the
 	// context requirement.
+	// A line-1 MRZ with the structural fingerprint (P< prefix, 44 chars, filler run) bypasses
+	// the prose-context requirement. The issuing-state code is NOT part of this gate — that was
+	// #588: an incomplete list of 48 codes silently dropped KEN/VNM/BGD/... passports because
+	// their codes lost the bypass, and a scanned document without a nearby "passport" keyword
+	// then stayed in cleartext. The +20/-10 nudge at scoring time still fires on an unrecognised
+	// code, so weak evidence is still charged; it just does not remove the bypass. hasMRZStructure
+	// itself is a stronger structural claim than the country code is — a random 3-letter token
+	// starting with an ISO code and no "<" fillers is exactly what it is built to reject.
 	if hasMRZStructure(match) {
-		if code, ok := mrzCountryCode(match); ok && v.validMRZCountryCodes[code] {
-			return true
-		}
+		return true
 	}
 
 	// A line-2 MRZ needs the same bypass, and has a stronger claim to it. Line 1
