@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/office"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/pdf"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
+	rtfredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/rtf"
 	svgredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/svg"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/video"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
@@ -224,6 +225,13 @@ func NewDefaultRedactionManager(outputDir string, strategy redactors.RedactionSt
 		// the "redacted" output was five lines of prose with no <svg> element at all.
 		// See internal/redactors/svg and #314.
 		svgredactor.NewSVGRedactor(outputManager, observer),
+		// RTF. Registered separately for exactly the same reason as SVG, and the failure was
+		// measured the same way: RTF extraction is lossy by design (document destinations
+		// only), so routing it to the plaintext redactor writes the EXTRACTED PROSE over the
+		// file. Measured on a 115-byte RTF, the "redacted" output was two lines of text with
+		// no {\rtf header, no font table and no control words, and `textutil -convert txt`
+		// read 0 bytes back out of it. See internal/redactors/rtf and #421.
+		rtfredactor.NewRTFRedactor(outputManager, observer),
 	} {
 		if err := manager.RegisterRedactor(r); err != nil {
 			return nil, nil, fmt.Errorf("failed to register redactor %s: %w", r.GetName(), err)

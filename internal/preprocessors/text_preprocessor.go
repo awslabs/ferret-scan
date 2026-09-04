@@ -14,6 +14,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	textextractofficetextlib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/text-extractors/text-extract-officetextlib"
 	textextractpdftextlib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/text-extractors/text-extract-pdftextlib"
+	textextractrtftextlib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/text-extractors/text-extract-rtftextlib"
 	textextractsvgtextlib "github.com/awslabs/ferret-scan/v2/internal/preprocessors/text-extractors/text-extract-svgtextlib"
 )
 
@@ -49,6 +50,25 @@ func NewTextPreprocessor() *TextPreprocessor {
 			// Routing it here instead sends it to textextractsvgtextlib, which collects
 			// only prose-bearing nodes and attributes. See processSVG (#314).
 			".svg",
+			// RTF. Claimed by NAME here so the control words never reach a validator.
+			//
+			// An .rtf is ASCII markup, so before this the plaintext preprocessor claimed it and
+			// handed the whole document over. That is not a cosmetic mismatch: a real producer
+			// splits a value across formatting runs. Measured at f91ad60 on macOS `textutil`
+			// output — the TextEdit and Pages engine — holding an SSN and a card number:
+			//
+			//	real.rtf  0 findings          <- reported as scanned and clean
+			//	real.txt  2 findings          <- identical content, decoded
+			//	exit 0 even with --fail-on-incomplete
+			//
+			// because the bytes reaching the validators are `452-11-\f1\b 9384`. By the sink
+			// rule that is a disclosure, not just a miss: an unreported value is never handed to
+			// the redactor, so it stays cleartext in a file the operator was told was fine.
+			//
+			// Routing it here sends it to textextractrtftextlib, which emits character data from
+			// document destinations only and skips \pict, \fonttbl, \info and every
+			// specification-ignorable \* destination wholesale. See processRTF (#421).
+			".rtf",
 		},
 	}
 }
@@ -112,6 +132,8 @@ func (tp *TextPreprocessor) Process(filePath string) (*ProcessedContent, error) 
 		result, err = tp.processOffice(filePath, content)
 	case ".svg":
 		result, err = tp.processSVG(filePath, content)
+	case ".rtf":
+		result, err = tp.processRTF(filePath, content)
 	default:
 		err = fmt.Errorf("unsupported file extension: %s", ext)
 		content.Error = err
@@ -289,6 +311,69 @@ func (tp *TextPreprocessor) processOffice(filePath string, content *ProcessedCon
 // textextractsvgtextlib. That is what makes the false-positive flood unreachable
 // rather than merely unlikely: no coordinate is handed to a validator, so no
 // validator's numeric patterns matter.
+// processRTF extracts the prose from a Rich Text Format document.
+//
+// Mirrors processSVG deliberately, including the mislabelled-file fallback, because the two solve the
+// same problem: a text-shaped markup format whose raw bytes must not reach the validators, and whose
+// name must not become a way to lose recall on a file that is not really that format.
+func (tp *TextPreprocessor) processRTF(filePath string, content *ProcessedContent) (*ProcessedContent, error) {
+	rtfContent, err := textextractrtftextlib.ExtractText(filePath)
+	if err != nil {
+		// Carry the extractor's note across the error return, as the SVG and Office branches do.
+		// Without it an .rtf that could not be read reports zero findings with nothing said.
+		if rtfContent != nil {
+			content.ExtractionWarning = rtfContent.ExtractionWarning
+			content.ExtractionCause = rtfContent.ExtractionCause
+		}
+		if !content.ExtractionCause.Known() {
+			content.ExtractionCause = coverage.CauseUnparseable
+		}
+		content.Error = fmt.Errorf("failed to extract text from RTF: %w", err)
+		return content, content.Error
+	}
+
+	// A file NAMED .rtf with no RTF signature is a mislabelled text file, and prose-only extraction
+	// is the wrong reading of it. Measured on the SVG precedent this mirrors: a plain text file
+	// holding an SSN renamed to .svg went from 2 findings to 0 once the name routed it to a
+	// prose-only reader. Recovering precision on real documents must not cost recall on a renamed
+	// one, so the raw bytes are scanned instead.
+	if rtfContent.NotRTF {
+		raw, readErr := os.ReadFile(filepath.Clean(filePath)) // #nosec G304 -- path already vetted by the router
+		if readErr != nil {
+			content.ExtractionCause = coverage.CauseUnreadable
+			content.ExtractionWarning = fmt.Sprintf(
+				"no text extracted from %s: %v, so file content was NOT scanned",
+				filepath.Ext(filePath), readErr)
+			content.Error = fmt.Errorf("failed to read mislabelled RTF: %w", readErr)
+			return content, content.Error
+		}
+		content.Text = string(raw)
+		content.Format = "Text (file named .rtf is not an RTF document)"
+	} else {
+		content.Text = rtfContent.Text
+		content.Format = rtfContent.Format
+		content.ExtractionWarning = rtfContent.ExtractionWarning
+		content.ExtractionCause = rtfContent.ExtractionCause
+	}
+
+	content.WordCount = len(strings.Fields(content.Text))
+	content.CharCount = len(content.Text)
+	content.LineCount = len(splitLines(content.Text))
+	// Without this the router counts the preprocessor as FAILED, and because .rtf now has exactly
+	// one preprocessor that can claim it, "all preprocessors failed" becomes the whole file:
+	// measured, files_processed went 1 -> 0 and the report read `contents do not match the .rtf
+	// format` on a well-formed textutil document. Omitting it is worse than the bug being fixed.
+	content.Success = true
+
+	content.EnablePositionTracking()
+	// Matches the SVG arm rather than Office's 0.7: this extractor emits prose in document order
+	// but drops the control words between runs, so a reported line identifies the paragraph
+	// reliably and its offset in the source file only approximately.
+	content.SetPositionConfidence(0.6)
+
+	return content, nil
+}
+
 func (tp *TextPreprocessor) processSVG(filePath string, content *ProcessedContent) (*ProcessedContent, error) {
 	svgContent, err := textextractsvgtextlib.ExtractText(filePath)
 	if err != nil {

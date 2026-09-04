@@ -90,12 +90,13 @@ func (mf *MetadataFormatter) CalculateTextMetrics(text string) (wordCount, charC
 
 // FileExtensionValidator provides common file extension validation functions
 type FileExtensionValidator struct {
-	imageExtensions  map[string]bool
-	pdfExtensions    map[string]bool
-	officeExtensions map[string]bool
-	audioExtensions  map[string]bool
-	videoExtensions  map[string]bool
-	vectorExtensions map[string]bool
+	imageExtensions    map[string]bool
+	pdfExtensions      map[string]bool
+	officeExtensions   map[string]bool
+	audioExtensions    map[string]bool
+	videoExtensions    map[string]bool
+	vectorExtensions   map[string]bool
+	richTextExtensions map[string]bool
 }
 
 // NewFileExtensionValidator creates a new file extension validator
@@ -198,7 +199,39 @@ func NewFileExtensionValidator() *FileExtensionValidator {
 		vectorExtensions: map[string]bool{
 			".svg": true,
 		},
+		// RICH TEXT whose prose is extracted by an RTF-AWARE reader rather than by handing the
+		// markup to the byte-sniffing plaintext path.
+		//
+		// Same argument as vectorExtensions above, and the same measurement shape. An .rtf is ASCII
+		// markup, so the plaintext preprocessor claimed it and handed over the control words too.
+		// Measured at f91ad60 on a file produced by macOS `textutil` — the TextEdit and Pages
+		// engine — holding an SSN and a card number: 0 findings, against 2 for the identical
+		// content decoded to .txt, at exit 0 even under --fail-on-incomplete. A real producer
+		// splits a value across formatting runs, `452-11-\f1\b 9384`, and no pattern matches
+		// across that.
+		//
+		// The router runs EVERY preprocessor that claims a file and concatenates the successes, so
+		// an RTF-aware extractor alone would not fix it — the plaintext claim has to go, or the raw
+		// markup is scanned as well. Listing it here is what withdraws that claim, through the same
+		// claimedByAnotherPreprocessor path, so one map decides both who owns .rtf and who must not.
+		//
+		// NOT added to isBinaryDocument: the bytes are text, so the router's text branch is the
+		// correct gate, and a file named .rtf that is not RTF is refused by the extractor's
+		// signature check rather than returned as empty — which would read as scanned-and-clean.
+		richTextExtensions: map[string]bool{
+			".rtf": true,
+		},
 	}
+}
+
+// IsRichTextFile reports whether the file is rich text handled by the RTF-aware reader.
+//
+// The single source of truth for .rtf ownership: text_preprocessor.go claims it and dispatches to
+// textextractrtftextlib, and plaintext_preprocessor.go withdraws its claim through this same
+// predicate, so the two cannot drift about who owns the extension.
+func (fev *FileExtensionValidator) IsRichTextFile(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	return fev.richTextExtensions[ext]
 }
 
 // IsImageFile checks if the file is an image file

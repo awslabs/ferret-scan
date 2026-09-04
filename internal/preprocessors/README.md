@@ -11,7 +11,7 @@ The preprocessor system uses a **specialized architecture** where each file type
 - **OfficeMetadataPreprocessor**: Handles Office documents (.docx, .xlsx, .pptx, .odt, .ods, .odp)
 - **AudioMetadataPreprocessor**: Handles audio files (.mp3, .flac, .wav, .m4a)
 - **VideoMetadataPreprocessor**: Handles video files (.mp4, .m4v, .mov)
-- **TextPreprocessor**: Extracts document body text (.pdf, Office, ODF) and SVG prose (.svg)
+- **TextPreprocessor**: Extracts document body text (.pdf, Office, ODF), SVG prose (.svg) and RTF prose (.rtf)
 
 ## Features
 
@@ -52,6 +52,22 @@ An SVG is claimed by NAME here so the plaintext preprocessor cannot claim it on 
 sniff. That matters because the router runs every claiming preprocessor and concatenates
 the successes: handing the raw drawing to the validators measured 1,313 findings, 1,143 of
 them PHONE, on a 64KB drawing of integer-coordinate glyph paths.
+
+### Rich Text Format
+- **Extensions**: .rtf
+- **ProcessorType**: `Text Extractor`
+- **Extracts**: character data from document destinations, with `\'hh` hex and `\uN` Unicode
+  escapes decoded, and `\par`/`\line`/`\cell`/`\row`/`\tab` emitted as separators
+- **Never extracts**: `\*\pict`, `\object`/`\objdata` (embedded images and OLE data, stored
+  as hex), `\fonttbl`, `\colortbl`, `\stylesheet`, `\listtable`, `\info`, `\generator`, or
+  any group opened with the ignorable marker `{\*\...}`
+
+An RTF is claimed by NAME for the same reason as SVG, but the failure it fixes is the
+opposite one: **silent misses, not a flood.** A producer such as macOS `textutil` splits a
+value across formatting runs — bolding four digits yields `452-11-\f1\b 9384` — and no
+validator pattern matches across a control word. Measured, a bold `textutil` RTF reported
+**0 findings** where its `.txt` twin reported 3, at `files_processed: 1` and exit code 0
+under `--fail-on-incomplete`, so nothing signalled the miss.
 
 ### Audio Files
 - **Extensions**: .mp3, .flac, .wav, .m4a

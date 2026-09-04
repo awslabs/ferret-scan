@@ -174,7 +174,8 @@ func claimedByAnotherPreprocessor(ext string) bool {
 	return mediaExtValidator.IsImageFile(probe) ||
 		mediaExtValidator.IsVideoFile(probe) ||
 		mediaExtValidator.IsAudioFile(probe) ||
-		mediaExtValidator.IsVectorFile(probe)
+		mediaExtValidator.IsVectorFile(probe) ||
+		mediaExtValidator.IsRichTextFile(probe)
 }
 
 // containerExtensions are the extensions whose files are normally binary
