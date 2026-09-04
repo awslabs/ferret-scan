@@ -85,9 +85,29 @@ reached no counter at all — a directory holding one ordinary file and one name
 reported `total_files: 1` and exit 0, byte-for-byte the same accounting as the same
 directory without the pipe, and `--fail-on-incomplete` also exited 0.
 
-An **unprocessable** type refused for size is not listed at all. It is a genuine skip: no
-finding was ever possible from it, so reporting lost coverage would be reporting a
+An **unprocessable** type is not one of the eight causes and does not appear in the
+not-examined report. It is a genuine skip: no finding was ever possible from it, so listing
+it among causes that mean "we may have missed something here" would be reporting a
 non-event.
+
+It IS named, though — just not here. A count alone is not a disclosure, because the output
+is byte-identical whether the skipped files are build detritus or documents the operator
+cares about. So the scan summary groups them by type:
+
+```
+Files: 29 scanned, 14 skipped (.test × 13, .DS_Store × 1) | Findings: 203 (20 high, ...)
+```
+
+and `json`/`yaml` carry the same data structurally as `skipped_types`, a field deliberately
+distinct from the not-examined list so a consumer cannot confuse "declined, nothing was
+possible" with "may have missed something". The human histogram is capped at six types with
+the remainder disclosed as `and N more types`; the structured value is never capped.
+
+Grouped by **extension** rather than by reason because the reason does not discriminate —
+every one of those 14 returns the single reason `Unsupported file type`, so a reason
+histogram has one bucket. Note the histogram describes the FILES, not the rule: the skip
+decision is content-aware, and a one-byte file named `f.test` is scanned while a 20MB Mach-O
+of the same name is not.
 
 ### What `path refused as traversal` covers, and what it no longer refuses
 
