@@ -85,13 +85,20 @@ func TestTheRedactedFileIsStillAnRTFDocument(t *testing.T) {
 	}
 }
 
-// TestAValueSplitAcrossRunsIsRefusedNotSilentlyLeft is the RTF-specific hazard.
+// TestAValueSplitAcrossRunsIsRedacted is the RTF-specific hazard, now closed.
 //
-// The extractor reassembles `452-11-\f1\b 9384`, so the value is reported — but it occurs
-// nowhere literally, so a byte substitution finds nothing. Writing a file an operator will read
-// as redacted while it still holds the value is the leak; a loud failure is the honest answer,
-// and the scan reports the finding either way.
-func TestAValueSplitAcrossRunsIsRefusedNotSilentlyLeft(t *testing.T) {
+// The extractor reassembles `452-11-\f1\b 9384`, so the value is reported — but it occurs nowhere
+// literally, so a byte substitution finds nothing. This test used to assert that the file was REFUSED
+// for exactly that reason, which was the honest end state while the value could not be removed.
+//
+// It can now be removed: the extractor records a span map from its output back to the source bytes, so
+// the redactor rewrites the bytes that PRODUCED the value. The assertions here are the three things
+// that have to hold together, because getting any one of them alone is easy and useless:
+//
+//	the value is gone            — including the trailing fragment, not just the joined form
+//	the document is still RTF    — header, font table and control words intact
+//	the formatting run survives  — \f1\b is between the two halves and must not be eaten
+func TestAValueSplitAcrossRunsIsRedacted(t *testing.T) {
 	r, dir := newRedactor(t)
 	in := write(t, dir, "split.rtf", splitRTF)
 	out := filepath.Join(dir, "out", "split.rtf")
@@ -99,20 +106,66 @@ func TestAValueSplitAcrossRunsIsRefusedNotSilentlyLeft(t *testing.T) {
 	res, err := r.RedactDocument(in, out, []detector.Match{
 		{Text: ssn, Type: "SSN", Confidence: 100, Validator: "ssn"},
 	}, redactors.RedactionSimple)
-	if err == nil {
-		t.Fatalf("a value that could not be removed was reported as successfully redacted (result %+v)", res)
+	if err != nil {
+		t.Fatalf("a split value should now be redactable, not refused: %v", err)
 	}
-	if !strings.Contains(err.Error(), "SSN") {
-		t.Errorf("the error must name the TYPE so the operator knows what survived; got %q", err)
+	written := res.RedactedFilePath
+	if written == "" {
+		written = out
 	}
-	// BSC4: the error reaches the operator through the redaction-error channel, so it must NOT
-	// republish the value the run exists to remove.
-	if strings.Contains(err.Error(), ssn) {
-		t.Errorf("the error text contains the raw value, republishing what redaction removes: %q", err)
+	got, err := os.ReadFile(written) // #nosec G304 -- test-local path
+	if err != nil {
+		t.Fatal(err)
 	}
-	// No half-redacted file may be left behind for someone to trust.
-	if _, statErr := os.Stat(out); statErr == nil {
-		t.Error("a file was left at the output path after a refused redaction")
+	text := string(got)
+
+	// The value must be gone in every spelling. "9384" matters on its own: the naive fix replaces the
+	// first mapped range and forgets the rest, leaving the tail digits in the file.
+	for _, leak := range []string{ssn, "452-11-", "9384"} {
+		if strings.Contains(text, leak) {
+			t.Errorf("%q survives in the redacted document:\n%s", leak, text)
+		}
+	}
+	// Still a document.
+	if !strings.HasPrefix(text, `{\rtf`) {
+		t.Errorf("output no longer starts with the RTF signature:\n%s", text)
+	}
+	for _, want := range []string{`{\fonttbl`, `\par`} {
+		if !strings.Contains(text, want) {
+			t.Errorf("RTF markup %q was lost:\n%s", want, text)
+		}
+	}
+	// And the formatting run BETWEEN the two halves of the value must survive. Collapsing the whole
+	// span would delete it and change how the rest of the paragraph renders.
+	if !strings.Contains(text, `\f1\b`) {
+		t.Errorf("the formatting run between the split halves was eaten; only the value's bytes should "+
+			"be rewritten:\n%s", text)
+	}
+}
+
+// TestResidueCheckStillRefusesAValueItCannotRemove keeps the safety net pinned.
+//
+// The span map closes the common case, so the end-to-end refusal path is no longer easy to reach — and
+// an unreachable guard is one nobody notices has broken. This exercises residueTypes directly: if a
+// value is still present in the written bytes, by any spelling, the caller must refuse rather than
+// leave a file an operator will read as redacted.
+func TestResidueCheckStillRefusesAValueItCannotRemove(t *testing.T) {
+	matches := []detector.Match{{Text: ssn, Type: "SSN"}}
+
+	// Present verbatim.
+	if got := residueTypes([]byte(verbatimRTF), matches); len(got) != 1 || got[0] != "SSN" {
+		t.Errorf("residueTypes on bytes still holding the value = %v, want [SSN]", got)
+	}
+	// Present only in the DECODED rendering, split across a run. This is the spelling a raw-bytes-only
+	// check misses, and it is why the check decodes.
+	if got := residueTypes([]byte(splitRTF), matches); len(got) != 1 || got[0] != "SSN" {
+		t.Errorf("residueTypes on a SPLIT value = %v, want [SSN] — a raw-bytes-only check cannot see "+
+			"this, which is the leak the decoding exists to catch", got)
+	}
+	// Genuinely absent.
+	clean := "{\\rtf1\\ansi\\deff0\\f0 Employee SSN: [SSN-REDACTED]\\par\n}\n"
+	if got := residueTypes([]byte(clean), matches); len(got) != 0 {
+		t.Errorf("residueTypes on redacted bytes = %v, want none — this would refuse every good file", got)
 	}
 }
 
