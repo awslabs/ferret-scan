@@ -4,11 +4,14 @@
 package perfguard
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 )
 
 // spin burns CPU for roughly the given number of units, without allocating.
@@ -159,34 +162,72 @@ func TestTheClockIsAlwaysNamed(t *testing.T) {
 	}
 }
 
-// TestATinyWorkloadFallsBackToWallClock covers the coarse-clock path.
+// TestATinyWorkloadDoesNotDivideAQuantisedCPUReading covers the coarse-clock path.
 //
 // A workload far below MinMeasurableCPU cannot be divided on a clock that accumulates at tick
-// granularity, so the estimator must fall back and SAY so rather than divide quantised readings.
+// granularity, so the estimator must fall back to wall and SAY so, rather than divide two quantised
+// readings and present the quotient as a growth ratio.
 //
-// The fixture does real but tiny work rather than nothing at all. An empty function makes every
-// reading zero on BOTH clocks, which Measure reports as an error — so the test would pass without the
-// fallback ever being exercised, and a mutation that forces the CPU clock survived exactly that way.
-func TestATinyWorkloadFallsBackToWallClock(t *testing.T) {
+// # Why this asserts on the clock NAME and tolerates an error
+//
+// The first version of this test required the measurement to SUCCEED on the wall clock, on the
+// reasoning that a tiny-but-non-empty workload is always measurable there. That is false, and it
+// broke the build on windows-latest -- deterministically, in two consecutive runs:
+//
+//	perfguard_test.go:182: a tiny but non-empty workload should still measure on the wall clock:
+//	                       perfguard: every base reading was zero on the wall clock
+//
+// A ~90us workload reads ZERO on BOTH clocks there. Windows accumulates process CPU time at timer-tick
+// granularity, and the runners' wall clock is coarse enough that sub-millisecond work rounds to nothing
+// as well. So on Windows the window this test was aiming at -- "long enough to measure on the wall
+// clock, short enough to be under MinMeasurableCPU" -- can be EMPTY, because the wall granularity is
+// not necessarily finer than the 2ms threshold. No choice of iteration count fixes that; the premise
+// itself was platform-dependent.
+//
+// What is actually being asserted is the FALLBACK DECISION, and that decision is made before either
+// outcome is known. So both of these are correct behaviour:
+//
+//	the workload is measurable on wall  -> Growth.Clock == "wall"
+//	it is measurable on neither clock   -> an error that names the WALL clock
+//
+// and exactly one thing is a defect: reporting or erroring on the CPU clock, which would mean a
+// quantised reading was about to be divided. Asserting on the name in both branches keeps the test
+// non-vacuous -- verified by mutation, forcing useCPU true still fails it, because the error then
+// names "cpu" -- while making it independent of any platform's clock resolution.
+func TestATinyWorkloadDoesNotDivideAQuantisedCPUReading(t *testing.T) {
 	tiny := func() {
 		x := 0
 		for i := 0; i < 200_000; i++ {
 			x += i % 7
 		}
 		if x < 0 {
-			panic("unreachable")
+			panic("unreachable, keeps the loop from being optimised away")
 		}
 	}
+
 	g, err := Measure(DefaultPairs, tiny, tiny)
 	if err != nil {
-		t.Fatalf("a tiny but non-empty workload should still measure on the wall clock: %v", err)
+		// Measurable on neither clock, which a coarse-clock platform is entitled to report. The
+		// error still has to say the estimator had FALLEN BACK, or the CPU clock was chosen for a
+		// reading too small to divide.
+		if strings.Contains(err.Error(), "cpu") {
+			t.Errorf("a workload below MinMeasurableCPU (%v) was measured on the CPU clock: %v. The "+
+				"fallback did not happen, so a quantised reading would have been divided", MinMeasurableCPU, err)
+		}
+		if !strings.Contains(err.Error(), "wall") {
+			t.Errorf("error names no clock, so a failure here cannot be diagnosed: %v", err)
+		}
+		t.Logf("both clocks too coarse for this workload; correctly refused on the wall clock: %v", err)
+		return
 	}
+
 	if g.Clock != "wall" {
-		t.Errorf("Clock = %q for a workload below MinMeasurableCPU (%v), want wall (base=%v)",
+		t.Errorf("Clock = %q for a workload below MinMeasurableCPU (%v), want wall (base=%v). Dividing "+
+			"two tick-quantised CPU readings produces a ratio that is an artefact of the clock",
 			g.Clock, MinMeasurableCPU, g.BaseMin)
 	}
 	if g.BaseWallMin <= 0 {
-		t.Error("wall reading was zero, so the fallback clock is not measuring either")
+		t.Error("reported success with a zero wall reading; the ratio cannot mean anything")
 	}
 }
 
@@ -207,6 +248,152 @@ func TestProcessCPUTimeAdvancesWithWork(t *testing.T) {
 			"this package is vacuous on this platform", d)
 	} else {
 		t.Logf("CPU clock advanced %v across the fixture", d)
+	}
+}
+
+// TestClockGranularityIsReportedAndCPUTimeIsMonotonic measures each platform's actual clock
+// granularity instead of assuming it, and pins the one invariant ProcessCPUTime must have.
+//
+// This exists because a granularity ASSUMPTION in this package's own doc comment went unchecked and
+// then broke the build on windows-latest. MinMeasurableCPU is 2ms, while the comment above it says
+// Windows accumulates at "15.6ms by default" -- so if that figure is right, a Windows reading between
+// 2ms and 15.6ms CLEARS the gate while still being a single quantised tick, and is divided anyway.
+// Nobody had measured which it is, on any platform.
+//
+// Granularity is measured by POLLING THE CLOCK IN A TIGHT LOOP until it changes, and taking the
+// smallest non-zero increment. That measures the CLOCK. An earlier version timed workloads of
+// increasing size and took the smallest non-zero delta, which measures the smallest WORKLOAD instead
+// -- it reported 866us with one set of fixtures and 1.912ms with another, on the same machine, which
+// is how you can tell it was not measuring the clock at all.
+//
+// The granularity is logged rather than asserted, because the right threshold is a judgement about
+// the machine and not something this test can decide. But the number now arrives free with every CI
+// run on all three platforms, so #596 can be settled from a log instead of a guess.
+//
+// The ASSERTION here is MONOTONICITY, which is not a judgement call: process CPU time accumulates, so
+// a later reading can never be smaller than an earlier one. If it ever is, every delta in this package
+// is untrustworthy -- and a ratio of MINIMUMS would preferentially select the corrupted sample,
+// precisely because a corrupted sample is the smallest one.
+func TestClockGranularityIsReportedAndCPUTimeIsMonotonic(t *testing.T) {
+	// cpuTick polls ProcessCPUTime in a tight CPU-burning loop until the value changes, and returns
+	// the increment. Burning CPU is required: the clock only advances while this process runs, so a
+	// sleeping poll would spin forever on a coarse clock.
+	cpuTick := func() (time.Duration, error) {
+		start, err := ProcessCPUTime()
+		if err != nil {
+			return 0, err
+		}
+		last := start
+		x := 0
+		for i := 0; i < 200_000_000; i++ {
+			x += i % 7
+			if i%512 != 0 {
+				continue
+			}
+			now, err := ProcessCPUTime()
+			if err != nil {
+				return 0, err
+			}
+			// MONOTONICITY, checked on every one of these reads rather than once at the end.
+			if now < last {
+				return 0, fmt.Errorf("ProcessCPUTime went BACKWARDS: %v then %v", last, now)
+			}
+			last = now
+			if now > start {
+				return now - start, nil
+			}
+		}
+		if x < 0 {
+			panic("unreachable")
+		}
+		return 0, fmt.Errorf("clock did not advance in 200M iterations")
+	}
+
+	wallTick := func() time.Duration {
+		start := time.Now()
+		for {
+			if d := time.Since(start); d > 0 {
+				return d
+			}
+		}
+	}
+
+	// Smallest increment over a few attempts: one tick, by definition.
+	var cpuGran, wallGran time.Duration
+	for i := 0; i < 5; i++ {
+		d, err := cpuTick()
+		if err != nil {
+			t.Fatalf("measuring cpu granularity: %v. Every delta this package computes is now "+
+				"untrustworthy, and a ratio of minimums would preferentially select the corrupted sample", err)
+		}
+		if cpuGran == 0 || d < cpuGran {
+			cpuGran = d
+		}
+		if w := wallTick(); wallGran == 0 || w < wallGran {
+			wallGran = w
+		}
+	}
+
+	t.Logf("clock granularity on %s/%s: cpu=%v wall=%v", runtime.GOOS, runtime.GOARCH, cpuGran, wallGran)
+	// The number that matters is how many TICKS the gate is worth. Many ticks means a reading that
+	// clears MinMeasurableCPU carries real resolution; a handful means the ratio is mostly clock.
+	ticks := float64(MinMeasurableCPU) / float64(cpuGran)
+	t.Logf("MinMeasurableCPU (%v) is %.0f cpu ticks on this platform", MinMeasurableCPU, ticks)
+	if ticks < 10 {
+		t.Logf("NOTE: the gate is worth fewer than 10 ticks here, so a reading it admits is coarsely " +
+			"quantised and the ratio built from it is substantially an artefact of the clock. " +
+			"MinMeasurableCPU may need to be platform-dependent — see #596.")
+	}
+
+	// Non-vacuity: a zero granularity means the loop never observed the clock move.
+	if cpuGran <= 0 || wallGran <= 0 {
+		t.Errorf("granularity measured as cpu=%v wall=%v; a non-positive tick means nothing was "+
+			"observed and the granularity figures above are meaningless", cpuGran, wallGran)
+	}
+
+	// MONOTONICITY, over a LONG ENOUGH SPAN to be worth asserting.
+	//
+	// The granularity loop above exits after a single tick -- a microsecond on this platform -- so a
+	// clock that advances correctly for a while and then jumps backwards would never be seen by it.
+	// Verified: a mutant returning (user+sys) %% 3ms, which wraps to zero every 3ms of CPU, SURVIVED
+	// the short check and is caught only here. So this deliberately burns tens of milliseconds of CPU
+	// and reads the clock throughout.
+	var samples int
+	last, err := ProcessCPUTime()
+	if err != nil {
+		t.Fatalf("ProcessCPUTime: %v", err)
+	}
+	start := last
+	x := 0
+	for i := 0; i < 400_000_000 && last-start < 60*time.Millisecond; i++ {
+		x += i % 7
+		if i%4096 != 0 {
+			continue
+		}
+		now, err := ProcessCPUTime()
+		if err != nil {
+			t.Fatalf("ProcessCPUTime: %v", err)
+		}
+		samples++
+		if now < last {
+			t.Fatalf("ProcessCPUTime went BACKWARDS after %v of CPU: %v then %v (a drop of %v). Every "+
+				"delta this package computes is untrustworthy, and a ratio of MINIMUMS would "+
+				"preferentially select the corrupted sample because it is the smallest",
+				last-start, last, now, last-now)
+		}
+		last = now
+	}
+	if x < 0 {
+		panic("unreachable, keeps the loop from being optimised away")
+	}
+
+	// Non-vacuity for the monotonicity check itself: it must have compared many real readings across a
+	// meaningful span, or a backwards jump could simply have been missed.
+	span := last - start
+	t.Logf("monotonicity: %d readings over %v of CPU, never decreasing", samples, span)
+	if samples < 100 || span < 10*time.Millisecond {
+		t.Errorf("only %d readings over %v of CPU; too short to have observed a backwards jump, so this "+
+			"assertion proves little", samples, span)
 	}
 }
 

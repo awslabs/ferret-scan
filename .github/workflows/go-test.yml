@@ -103,3 +103,24 @@ jobs:
         # quality. Run them locally on Windows when working on those tests.
         run: go test -race -count=1 $(go list ./... | grep -v /tests/integration)
         shell: bash
+
+      - name: Report this runner's clock granularity
+        # internal/perfguard measures algorithmic growth as a ratio of CPU-time readings, and the
+        # threshold it will divide by (MinMeasurableCPU) is a fixed 2ms on every platform. Whether
+        # 2ms is enough depends entirely on the runner's clock granularity, which nobody had
+        # measured -- the constant's own doc comment asserts "15.6ms on Windows by default" without
+        # evidence, and if that is right then a Windows reading between 2ms and 15.6ms clears the
+        # gate while still being a single quantised tick.
+        #
+        # The test polls each clock and logs the granularity plus how many ticks the gate is worth.
+        # It runs in the step above too, but `go test` hides t.Logf output for a PASSING package
+        # unless -v is set (fmt.Println is hidden as well -- both were measured), so without this
+        # step the numbers are computed on all three platforms every run and never seen. This step
+        # is what makes them observable, which is the whole point of collecting them.
+        #
+        # Deliberately `continue-on-error`: this reports a characteristic of the machine, it does
+        # not gate the build. The assertions it carries -- monotonicity of ProcessCPUTime, and a
+        # non-vacuity floor -- are enforced by the real run above.
+        run: go test -v -count=1 -run 'TestClockGranularityIsReportedAndCPUTimeIsMonotonic' ./internal/perfguard/
+        shell: bash
+        continue-on-error: true
