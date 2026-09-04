@@ -38,8 +38,16 @@ stack, shared scanning primitives, a promoted public API) can be proven
 5. **Algorithmic complexity** ([complexity_guard_test.go](complexity_guard_test.go),
    `TestValidatorComplexityIsSubQuadratic`) — guards against reintroducing the
    O(n²) per-line rescan pattern the audit found. It scales a dense single-line
-   input 4× and asserts runtime grows roughly linearly (not quadratically). This
+   input 4× and asserts the work grows roughly linearly (not quadratically). This
    is the guardrail for Move C (shared scanning primitive).
+
+   The growth measurement itself lives in `internal/perfguard`, shared with the
+   SVG extraction guards. It is a ratio of minimum **CPU** readings with GC
+   disabled, not a wall-clock median — that package's doc comment carries the
+   measurements behind each choice, including the loaded run where a wall-clock
+   median ranked a genuine O(n²) validator *below* a linear one. Because the
+   estimator reads process-wide CPU time, no test in this package may call
+   `t.Parallel`; `TestNothingInThisPackageRunsInParallel` enforces that.
 
 ## Determinism
 

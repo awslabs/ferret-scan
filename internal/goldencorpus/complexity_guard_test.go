@@ -4,14 +4,12 @@
 package goldencorpus
 
 import (
-	"fmt"
-	"runtime"
-	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/perfguard"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/address"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/bankaccount"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/cloudresources"
@@ -275,8 +273,8 @@ var complexityTargets = []struct {
 // the work any validator does. maxGrowthRatio is the limit: linear is ~4x, quadratic ~16x.
 //
 // 8.0, unchanged in value but now resting on a different measurement, because the statistic
-// underneath it changed. It is a ratio of MINIMUM CPU readings with GC disabled (see growthRatio
-// and withGCOff) rather than a median of wall-clock ratios, and that is what makes one number
+// underneath it changed. It is a ratio of MINIMUM CPU readings with GC disabled — the estimator in
+// internal/perfguard — rather than a median of wall-clock ratios, and that is what makes one number
 // viable on a loaded runner.
 //
 // Why the old basis had to be replaced (#579): under 28 external busy-loop processes on 14 CPUs
@@ -339,8 +337,8 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 			// growth. Timing each validator separately for the ceiling doubled the cost of the
 			// slowest test in the repo for no extra information.
 			g := growthRatio(t, tgt.new, baseLine, bigLine)
-			tBase, nBase := g.baseWallMin, g.baseMatches
-			tBig, nBig := g.bigWallMin, g.bigMatches
+			tBase, nBase := g.BaseWallMin, g.baseMatches
+			tBig, nBig := g.BigWallMin, g.bigMatches
 
 			// NON-VACUITY FLOOR. Both assertions below are ceilings or ratios, and
 			// both pass trivially when the validator matches nothing: a reject path
@@ -398,98 +396,24 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 			// times). Only meaningful when the base time is large enough to
 			// measure; below 2ms the ratio is dominated by noise.
 			{
-				ratio, gBase, gBig, clock, samples := g.ratio, g.baseMin, g.bigMin, g.clock, g.samples
+				ratio, gBase, gBig, clock, samples := g.Ratio, g.BaseMin, g.BigMin, g.Clock, g.Samples
 				// Logged on every run, not only on failure. This guard governs 18 targets from
 				// one threshold, and the margin between the correct and regressed populations is
 				// the thinnest in the repo (#509) — so the readings need to be visible in CI
 				// output rather than reconstructable only from a failure.
 				t.Logf("%s: 4x input took %.2fx longer on the %s clock (min base=%v big=%v over %d pairs %s; ceiling pair wall base=%v big=%v)%s",
-					tgt.name, ratio, clock, gBase, gBig, growthPairs, formatRatios(samples), tBase, tBig, raceNote())
+					tgt.name, ratio, clock, gBase, gBig, perfguard.DefaultPairs, perfguard.FormatRatios(samples), tBase, tBig, raceNote())
 
-				// See growthRatio for why this is a ratio of minimum CPU readings rather
-				// than one wall-clock pair.
+				// See internal/perfguard for why this is a ratio of minimum CPU readings
+				// rather than one wall-clock pair.
 				if ratio > maxGrowthRatio {
 					t.Errorf("%s: 4x input took %.1fx longer on the %s clock (minimum of %d pairs, "+
 						"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression",
-						tgt.name, ratio, clock, growthPairs, gBase, gBig, formatRatios(samples))
+						tgt.name, ratio, clock, perfguard.DefaultPairs, gBase, gBig, perfguard.FormatRatios(samples))
 				}
 			}
 		})
 	}
-}
-
-// minMeasurableCPU is the smallest CPU reading this file will divide by.
-//
-// getrusage reports microseconds and GetProcessTimes 100ns ticks, but both accumulate at
-// timer-tick granularity — 15.6ms on Windows by default. Dividing two readings near that
-// granularity produces a quantised ratio, which is the noise regime the wall-clock version of
-// this guard already had to escape. Callers fall back to wall clock below this and SAY SO, so a
-// platform with a coarse CPU clock cannot silently switch the ratio assertion off.
-const minMeasurableCPU = 2 * time.Millisecond
-
-// reading is one ValidateContent measurement.
-//
-// Both clocks are kept because the two assertions in this file need different ones. The absolute
-// ceiling is a claim about how long a user waits, which is wall clock by definition. The growth
-// ratio is a claim about algorithmic complexity, and wall clock cannot carry it on a contended
-// machine: measured under 28 busy-loops on 14 CPUs with -race, a genuine O(n^2) validator read
-// 9.94x while a linear one read 10.20x — the populations INVERTED (#579). Contention steals wall
-// time without changing how many cycles the work costs, so CPU time separates them: 14.86x
-// against 4.00x on the same run.
-type reading struct {
-	wall    time.Duration
-	cpu     time.Duration
-	matches int
-}
-
-// timeValidate runs ValidateContent once and returns both clocks AND the match count.
-//
-// The count is not decoration: it is what the caller uses to prove the duration measured real
-// scanning work rather than an early return. Discarding it (as this helper used to) is how three
-// subtests in this file became no-ops without any test failing.
-//
-// GC is NOT disabled here. It is disabled by the caller across a whole group of readings — see
-// withGCOff — because SetGCPercent triggers a collection when it restores, and paying that
-// between a base and a big reading would land inside the very interval being measured.
-func timeValidate(t *testing.T, v validatorUnderTest, content string) reading {
-	t.Helper()
-
-	cpuBefore, err := processCPUTime()
-	if err != nil {
-		t.Fatalf("processCPUTime: %v", err)
-	}
-	start := time.Now()
-	matches, vErr := v.ValidateContent(content, "<complexity>")
-	elapsed := time.Since(start)
-	cpuAfter, err := processCPUTime()
-	if err != nil {
-		t.Fatalf("processCPUTime: %v", err)
-	}
-	if vErr != nil {
-		t.Fatalf("ValidateContent error: %v", vErr)
-	}
-	return reading{wall: elapsed, cpu: cpuAfter - cpuBefore, matches: len(matches)}
-}
-
-// withGCOff runs fn with the garbage collector disabled, then restores it.
-//
-// Measured under load with -race: an ALLOCATING linear validator read 10.04x with GC on and
-// 3.95x with it off, against a true value of 4.0x. The inflation is GC work, which is real CPU
-// time and therefore is not removed by switching clocks — and it scales with heap size, so it
-// hits the big reading harder than the base one and inflates the ratio. Production validators
-// allocate a Match per finding and cannot be rewritten to avoid it, so disabling GC for the
-// measurement is what makes the ratio mean what it claims on real code.
-//
-// A collection is forced on the way out. Without it the heap that accumulated while GC was off
-// is carried into the next target, which is how 18 subtests in sequence would otherwise turn a
-// bounded measurement into growing memory pressure.
-func withGCOff(fn func()) {
-	previous := debug.SetGCPercent(-1)
-	defer func() {
-		debug.SetGCPercent(previous)
-		runtime.GC()
-	}()
-	fn()
 }
 
 // buildComplexityInput scales a target's input to reps repetitions, from either a
@@ -506,133 +430,49 @@ func buildComplexityInput(unit string, gen func(int) string, reps int) string {
 	return sb.String()
 }
 
-// growthPairs is how many base/big pairs growthRatio measures.
+// growth is one growthRatio measurement: the shared estimator's reading plus the match counts.
 //
-// 2, and the number is a cost decision made against measured stability rather than a guess.
-// Minimums converge fast because contamination only ever ADDS: under 28 external busy-loop
-// processes on 14 CPUs the minimum base reading was 3.727ms against 3.703ms idle, a 0.6%
-// difference over 9 pairs. So the marginal sample buys very little, while each one costs 5x a
-// base reading (the 4x input dominates). Measured on all 18 targets with -race:
-//
-//	pairs   suite time   worst correct-code reading
-//	1 (old)     22.4s    n/a — a single reading is what #546 and #579 are about
-//	2           45.8s    4.60x
-//	3           69.8s    4.54x
-//
-// Going from 2 to 3 moves the worst reading by 0.06x for another 24 seconds, so 2 it is. Two is
-// still strictly more than one bad sample can defeat, which is the property that matters.
-const growthPairs = 2
-
-// growth is everything one growthRatio call measured.
-//
-// The wall-clock minima are carried alongside the growth clock because the absolute ceiling is a
-// claim about elapsed time, not cycles, and reusing these readings is what keeps the guard from
-// timing each validator twice. Minima rather than a single reading there too: a contended sample
-// would otherwise trip the ceiling on code that is fast.
+// The counts are not decoration. They are what proves the durations measured real scanning work
+// rather than an early return — discarding them is how three subtests in this file once became
+// no-ops without anything failing. They live here rather than in internal/perfguard because they are
+// specific to validators, while the timing is not.
 type growth struct {
-	ratio                   float64
-	baseMin, bigMin         time.Duration
-	baseWallMin, bigWallMin time.Duration
+	perfguard.Growth
+
 	baseMatches, bigMatches int
-	clock                   string
-	samples                 []float64
 }
 
-// growthRatio measures both inputs growthPairs times and returns bigMin/baseMin.
+// growthRatio measures both inputs and returns the ratio of their minimum CPU readings.
 //
-// THE MINIMUM, NOT THE MEDIAN, AND THAT IS THE POINT. getrusage reports CPU for the whole
-// process, so a short measurement also collects whatever the runtime's other threads burned
-// during it — sysmon, the race detector's background work, and any GC that a previous target
-// left pending. That contamination is strictly ADDITIVE and grows with how long the measurement
-// is descheduled, so it inflates the base term hardest and drives the ratio DOWN, toward passing.
-// The minimum over a few trials is the least-contaminated estimate of each term, and because the
-// error is one-signed the minimum cannot overshoot the true cost.
-//
-// Measured, -race, quadratic against linear synthetics:
-//
-//	                     median of ratios          ratio of minimums
-//	quadratic, idle      13.66x (13.05-14.17)      14.17x
-//	quadratic, loaded    12.48x ( 7.24-15.19)      14.00x
-//	linear, idle          3.65x ( 2.41- 4.11)       3.75x
-//	linear, loaded        2.92x ( 1.67- 3.73)       3.18x
-//
-// The ratio of minimums moves 1.2% between idle and loaded on the quadratic where the median of
-// ratios moves 9% and its worst sample halves. That is what makes one threshold viable.
-//
-// There is no trigger-then-confirm split any more. The old design took ONE pair and re-measured
-// only when it exceeded the threshold, which is a false-negative hole: a genuine quadratic whose
-// single reading was contaminated down to 7.17x — measured, #579 — never entered confirmation and
-// the guard passed it. Measuring the same way every time costs a few seconds and removes that.
+// The estimator itself is internal/perfguard — CPU time rather than wall clock, GC disabled across
+// the readings, and a ratio of minimums on both sides. That package's doc comment carries the
+// measurements behind each of those three choices, including the run where a wall-clock median
+// ranked a genuine O(n^2) validator BELOW a linear one. It is shared rather than private here
+// because the SVG extraction guards need the same statistic, and two copies of a measurement
+// technique drift.
 func growthRatio(t *testing.T, newV func() validatorUnderTest, baseLine, bigLine string) growth {
 	t.Helper()
 
-	// No separate warm-up pair. Taking a MINIMUM already discards a cold reading, because a
-	// first-touch cost that inflates a sample makes it the maximum, not the minimum. The
-	// wall-clock version of this needed an explicit warm-up only because a median gives the cold
-	// sample a vote.
-	var bases, bigs []reading
-	for i := 0; i < growthPairs; i++ {
-		var b, g reading
-		withGCOff(func() {
-			b = timeValidate(t, newV(), baseLine)
-			g = timeValidate(t, newV(), bigLine)
-		})
-		bases = append(bases, b)
-		bigs = append(bigs, g)
-	}
+	// Captured from inside the timed closures. ValidateContent is deterministic for a given input,
+	// so every pair records the same count and the last write is the same as the first.
+	var baseMatches, bigMatches int
 
-	// Choose the clock from the least-contaminated base reading, so a coarse CPU clock is
-	// detected on the cleanest sample rather than on an unlucky one.
-	useCPU := true
-	for _, b := range bases {
-		if b.cpu < minMeasurableCPU {
-			useCPU = false
-			break
-		}
+	g, err := perfguard.Measure(perfguard.DefaultPairs,
+		func() { baseMatches = validateOnce(t, newV(), baseLine) },
+		func() { bigMatches = validateOnce(t, newV(), bigLine) })
+	if err != nil {
+		t.Fatalf("measuring growth: %v", err)
 	}
-	clock := "wall"
-	if useCPU {
-		clock = "cpu"
-	}
-	pick := func(r reading) time.Duration {
-		if useCPU {
-			return r.cpu
-		}
-		return r.wall
-	}
-
-	g := growth{clock: clock, baseMatches: bases[0].matches, bigMatches: bigs[0].matches}
-	g.baseMin, g.bigMin = pick(bases[0]), pick(bigs[0])
-	g.baseWallMin, g.bigWallMin = bases[0].wall, bigs[0].wall
-	for i := range bases {
-		if d := pick(bases[i]); d < g.baseMin {
-			g.baseMin = d
-		}
-		if d := pick(bigs[i]); d < g.bigMin {
-			g.bigMin = d
-		}
-		if bases[i].wall < g.baseWallMin {
-			g.baseWallMin = bases[i].wall
-		}
-		if bigs[i].wall < g.bigWallMin {
-			g.bigWallMin = bigs[i].wall
-		}
-		if db := pick(bases[i]); db > 0 {
-			g.samples = append(g.samples, float64(pick(bigs[i]))/float64(db))
-		}
-	}
-	if g.baseMin <= 0 {
-		t.Fatalf("every base reading was zero on the %s clock; the ratio cannot be computed", clock)
-	}
-	g.ratio = float64(g.bigMin) / float64(g.baseMin)
-	return g
+	return growth{Growth: g, baseMatches: baseMatches, bigMatches: bigMatches}
 }
 
-// formatRatios renders ratios for a failure message at the precision that matters.
-func formatRatios(rs []float64) string {
-	parts := make([]string, 0, len(rs))
-	for _, r := range rs {
-		parts = append(parts, fmt.Sprintf("%.2fx", r))
+// validateOnce runs ValidateContent once and returns how many matches it produced.
+func validateOnce(t *testing.T, v validatorUnderTest, content string) int {
+	t.Helper()
+
+	matches, err := v.ValidateContent(content, "<complexity>")
+	if err != nil {
+		t.Fatalf("ValidateContent error: %v", err)
 	}
-	return "[" + strings.Join(parts, " ") + "]"
+	return len(matches)
 }

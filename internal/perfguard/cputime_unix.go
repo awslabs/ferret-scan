@@ -3,7 +3,7 @@
 
 //go:build unix
 
-package goldencorpus
+package perfguard
 
 import (
 	"syscall"
@@ -13,9 +13,9 @@ import (
 // processCPUTime returns CPU time consumed by this process, user plus system.
 //
 // getrusage reports microseconds. The kernel accumulates at timer-tick granularity on some
-// platforms, so a reading below a couple of milliseconds is not trustworthy — cpuMeasurable
+// platforms, so a reading below a couple of milliseconds is not trustworthy — MinMeasurableCPU
 // is what callers use to decide, rather than assuming a resolution here.
-func processCPUTime() (time.Duration, error) {
+func ProcessCPUTime() (time.Duration, error) {
 	var ru syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
 		return 0, err

@@ -3,7 +3,7 @@
 
 //go:build windows
 
-package goldencorpus
+package perfguard
 
 import (
 	"syscall"
@@ -14,9 +14,9 @@ import (
 //
 // GetProcessTimes reports in 100-nanosecond units. Its effective granularity is the system
 // timer interval, typically 15.6ms, which is coarse relative to a base reading of a few
-// milliseconds — cpuMeasurable is what callers use to decide whether a reading is usable, so
+// milliseconds — MinMeasurableCPU is what callers use to decide whether a reading is usable, so
 // this returns the raw value and does not pretend to a resolution it does not have.
-func processCPUTime() (time.Duration, error) {
+func ProcessCPUTime() (time.Duration, error) {
 	h, err := syscall.GetCurrentProcess()
 	if err != nil {
 		return 0, err
