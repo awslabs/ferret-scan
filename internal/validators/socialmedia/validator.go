@@ -2711,6 +2711,9 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 		return v.detectPatternsByLineBatch(ctx, content, originalPath)
 	}
 
+	// Hoisted once per document; see bare_handle_ceiling.go for why it is document-scoped.
+	docCorroborated := documentHasSocialCorroboration(content)
+
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
@@ -2730,7 +2733,7 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 		}
 
 		// Batch process all patterns for this line to reduce overhead
-		lineMatches[lineNum] = v.processLineForAllPatterns(line, lineNum, originalPath, contextExtractor)
+		lineMatches[lineNum] = v.processLineForAllPatterns(line, lineNum, originalPath, contextExtractor, docCorroborated)
 	}
 
 	return lineMatches
@@ -2738,6 +2741,9 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 
 // detectPatternsByLineBatch processes large files using batch processing for better performance
 func (v *Validator) detectPatternsByLineBatch(ctx stdctx.Context, content string, originalPath string) map[int][]detector.Match {
+	// Hoisted once per document, as in detectPatternsByLine; this is the large-file path and
+	// must not diverge from it — a flag computed in one and not the other is how two paths drift.
+	docCorroborated := documentHasSocialCorroboration(content)
 	lineMatches := make(map[int][]detector.Match)
 
 	// Split content into lines
@@ -2765,7 +2771,7 @@ func (v *Validator) detectPatternsByLineBatch(ctx stdctx.Context, content string
 			}
 
 			// Process line with all patterns
-			matches := v.processLineForAllPatterns(line, lineNum, originalPath, contextExtractor)
+			matches := v.processLineForAllPatterns(line, lineNum, originalPath, contextExtractor, docCorroborated)
 			if len(matches) > 0 {
 				lineMatches[lineNum] = matches
 			}
@@ -2782,7 +2788,7 @@ func (v *Validator) detectPatternsByLineBatch(ctx stdctx.Context, content string
 }
 
 // processLineForAllPatterns efficiently processes a single line against all patterns
-func (v *Validator) processLineForAllPatterns(line string, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor) []detector.Match {
+func (v *Validator) processLineForAllPatterns(line string, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor, docCorroborated bool) []detector.Match {
 	// Each match is kept with the byte offset it was found at, so the returned
 	// slice can be put into a stable, content-independent order below. The outer
 	// loop ranges over v.compiledPatterns, which is a map, so the order matches
@@ -2841,12 +2847,12 @@ func (v *Validator) processLineForAllPatterns(line string, lineNum int, original
 				// real code and documentation files, 1,470 TWITTER findings were essentially all
 				// JSON-LD keywords, CSS at-rules and doc-comment tags. See handle_syntax.go for why
 				// each rule needs the syntactic POSITION and not just the word.
-				if isSyntaxNotAHandle(line, match, loc[0], loc[1]) {
+				if isSyntaxNotAHandle(line, match, originalPath, loc[0], loc[1]) {
 					continue
 				}
 
 				// Process match with optimized confidence calculation
-				processedMatch := v.processMatchOptimized(match, platform, patternIndex, line, lineLower, loc[0], lineNum, originalPath, contextExtractor)
+				processedMatch := v.processMatchOptimized(match, platform, patternIndex, line, lineLower, loc[0], lineNum, originalPath, contextExtractor, docCorroborated)
 				if processedMatch != nil {
 					found = append(found, offsetMatch{offset: loc[0], match: *processedMatch})
 				}
@@ -2881,7 +2887,7 @@ func (v *Validator) processLineForAllPatterns(line string, lineNum int, original
 // FindAllStringIndex), which removes the per-match strings.Index(line, match)
 // rescan and pins the context window to this specific occurrence. lineLower is
 // the line lowercased once per line, reused for keyword context analysis.
-func (v *Validator) processMatchOptimized(match, platform string, patternIndex int, line, lineLower string, matchOffset int, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor) *detector.Match {
+func (v *Validator) processMatchOptimized(match, platform string, patternIndex int, line, lineLower string, matchOffset int, lineNum int, originalPath string, contextExtractor *detector.ContextExtractor, docCorroborated bool) *detector.Match {
 	// Filter out false positives from email addresses
 	if v.isPartOfEmailAddress(match, line) {
 		return nil
@@ -2999,6 +3005,11 @@ func (v *Validator) processMatchOptimized(match, platform string, patternIndex i
 			"validation_details": v.getValidationDetails(match, platform, checks),
 		},
 	}
+
+	// A bare "@token" with nothing around it saying social media may not reach the HIGH band.
+	// Declared as a ceiling rather than applied here, so the downstream context adjustment and
+	// correlation boost cannot lift it back; see bare_handle_ceiling.go.
+	applyBareHandleCeiling(&socialMediaMatch, contextInfo, docCorroborated)
 
 	// Perform enhanced context window analysis (only if needed for performance)
 	if confidence > 50 { // Only do expensive analysis for higher confidence matches
