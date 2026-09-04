@@ -58,21 +58,45 @@ import (
 // a reviewer asking for everything still sees it.
 const bareHandleCeiling = 55.0
 
-// socialCorroboration are the words that make a bare "@token" a handle rather than syntax.
+// socialCorroboration are the phrases that make a bare "@token" a handle rather than syntax.
 //
-// Every entry names the platform, the act of following, or the act of mentioning — the things a
-// document says when a bare token really is somebody's account. A Makefile recipe, a stylesheet, a
-// JSDoc block and a Docker digest say none of them.
+// PHRASES AND PLATFORM NAMES ONLY — no bare generic word, and that constraint was measured rather
+// than reasoned. A first version held "handle", "username", "follow" and "following", matched as
+// substrings. On 400 real JavaScript files from /Library, /Applications and local projects:
 //
-// Matched on the surrounding context, not just the token's own line, because a mentions export or a
-// credit list carries its heading above the handles.
+//	handle      66 files (16.5%)   <- "handleClick", "handleRequest", "file handle"
+//	follow      27 files
+//	following   17 files           <- "the following steps"
+//	username    15 files
+//	mentions     0 files
+//	twitter      0 files
+//
+// So one real JS file in five lifted the ceiling on a word that has nothing to do with social media —
+// `function handleClick()` alone promoted a JSDoc `@returns` out of the LOW band. Two entries did all
+// the damage and neither was about Twitter.
+//
+// The rule this settles on: an entry must be a platform name, or a multi-word phrase, or a compound a
+// document only writes when it means an account. "follow us" is safe where "follow" is not; "twitter
+// handle" is safe where "handle" is not. Note the asymmetry with the substring matching below — the
+// entries are chosen so that substring matching is harmless, rather than the matching being tightened
+// to rescue bad entries.
+//
+// Deliberately ABSENT, each for a measured or stated reason:
+//
+//   - "handle", "username" — see the table above.
+//   - "follow", "following" — the verb is ordinary English; "followers" and "follow us" are kept.
+//   - "threads" — the platform shares its name with concurrency. "threads.net" is kept instead.
+//   - "profile" — appears in every settings page and every performance tool.
 var socialCorroboration = []string{
+	// Platform names. Specific enough to stand alone; measured at 0 occurrences across 400 real JS files.
 	"twitter", "x.com", "tweet", "retweet",
+	"instagram", "mastodon", "bluesky", "threads.net",
+	// Mentions, which is what a bare handle IS.
 	"@mention", "mentions", "mentioned by",
-	"follow", "follower", "following",
-	"handle", "screen name", "username",
-	"social media", "socialmedia",
-	"instagram", "mastodon", "bluesky", "threads",
+	// Phrases. Each names an account rather than describing an action on one.
+	"follow us", "follow me", "followers",
+	"twitter handle", "social handle", "handle is",
+	"screen name", "social media", "socialmedia",
 }
 
 // isBareHandle reports whether a match is a bare "@token" rather than a URL.

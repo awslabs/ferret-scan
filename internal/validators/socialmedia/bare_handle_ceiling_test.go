@@ -178,3 +178,62 @@ func TestTheCeilingIsDeclaredNotApplied(t *testing.T) {
 		t.Errorf("unexpected key %q", validators.ConfidenceCeilingKey)
 	}
 }
+
+// TestCorroborationDoesNotFireOnOrdinaryCode is the regression guard for the narrowing, and it exists
+// because the first version of socialCorroboration was measurably wrong.
+//
+// It held the bare words "handle", "username", "follow" and "following". Measured on 400 real
+// JavaScript files: "handle" appeared in 66 of them (16.5%), "follow" in 27, "following" in 17,
+// "username" in 15 — and "twitter" in ZERO. So one real file in five lifted the ceiling on a word with
+// nothing to do with social media, and `function handleClick()` alone promoted a JSDoc `@returns` out
+// of the LOW band. After the narrowing, 1 of those 400 files corroborates.
+//
+// The strings below are ordinary code and prose, none of it about social media. If any of them starts
+// corroborating, an entry has been added that is a bare generic word rather than a platform name or a
+// phrase, and the ceiling has stopped applying to a large share of real files.
+func TestCorroborationDoesNotFireOnOrdinaryCode(t *testing.T) {
+	for _, s := range []string{
+		"function handleClick(e) { return e.type }",
+		"const handler = req => res.send(req.username)",
+		"// handle the error before continuing",
+		"see the following steps for details",
+		"follow the instructions in the README",
+		"var fileHandle = os.Open(path)",
+		"thread pool with 8 threads",
+		"profile the request and log the timing",
+		"user profile settings page",
+		"await client.getUsername()",
+	} {
+		if documentHasSocialCorroboration(s) {
+			var hit []string
+			for _, kw := range socialCorroboration {
+				if strings.Contains(strings.ToLower(s), kw) {
+					hit = append(hit, kw)
+				}
+			}
+			t.Errorf("ordinary code corroborated: %q via %v — an entry that is a bare generic word "+
+				"lifts the ceiling on a large share of real files; entries must be platform names or "+
+				"phrases", s, hit)
+		}
+	}
+}
+
+// TestCorroborationStillFiresOnRealSocialContext is the other half: narrowing must not have gone so
+// far that a genuine handle in prose is demoted. Each case is a shape a real document writes.
+func TestCorroborationStillFiresOnRealSocialContext(t *testing.T) {
+	for _, s := range []string{
+		"Follow @awscloud on Twitter",
+		"Our Twitter handle is @awscloud",
+		"follow us: @awscloud",
+		"Twitter mentions export",
+		"he has 40k followers",
+		"our social media accounts",
+		"find us on instagram",
+		"@mention someone to notify them",
+	} {
+		if !documentHasSocialCorroboration(s) {
+			t.Errorf("real social context did NOT corroborate: %q — the narrowing has gone too far "+
+				"and a genuine handle in this document would be demoted", s)
+		}
+	}
+}
