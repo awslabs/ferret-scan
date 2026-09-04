@@ -314,6 +314,32 @@ var complexityTargets = []struct {
 const maxGrowthRatio = 8.0
 
 func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
+	// NOT under the race detector. It is run without it by its own CI step, so coverage is unchanged.
+	//
+	// This guard measures single-goroutine CPU-time ratios. The race detector cannot find anything here
+	// -- nothing in it runs concurrently -- and it costs two things that matter:
+	//
+	//  1. MEMORY, catastrophically. Measured on this guard: 101 MB without -race against 6.9-8.1 GB
+	//     with it, a ~70x amplification. That killed CI. On ubuntu-latest, sampled every 15s,
+	//     goldencorpus.test grew 1.2GB -> 14.4GB in 45 seconds, exhausted 16GB of RAM and all 3GB of
+	//     swap, and the runner was SIGTERM'd mid-suite with no test reporting FAIL -- six times, and it
+	//     cost six wrong hypotheses to find. The chain: the socialmedia validator allocates ~30KB per
+	//     match, -race multiplies that ~22x to ~663KB, its big reading produces 4,800 matches (3.0GB),
+	//     and the guard holds 2*pairs readings with GC disabled. Its fixture cannot shrink -- both sizes
+	//     must stay above maxClusterMatches (1000) or they measure different code paths.
+	//
+	//  2. ACCURACY. -race compresses the very ratios this guard compares, which is why the file carries
+	//     raceCeilingMultiplier and why #509 had to retune a threshold. Removing it removes the reason
+	//     for those adjustments rather than compensating for them again.
+	//
+	// The socialmedia validator's ~30KB per match is a real inefficiency in its own right, filed
+	// separately -- a user scanning a file of profile URLs pays it too, without -race to blame.
+	if raceDetectorEnabled {
+		t.Skip("complexity guard runs without -race: it measures single-goroutine CPU ratios, and -race " +
+			"costs ~70x memory (101MB -> 6.9-8.1GB, which OOM-killed ubuntu-latest) while compressing " +
+			"the ratios being compared. A dedicated CI step runs it without the detector.")
+	}
+
 	if testing.Short() {
 		t.Skip("complexity guard skipped in -short mode")
 	}

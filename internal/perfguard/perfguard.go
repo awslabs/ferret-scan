@@ -185,9 +185,29 @@ func Measure(pairs int, base, big func()) (Growth, error) {
 			if b, err = Time(base); err != nil {
 				return
 			}
+			// Collect BETWEEN readings, never inside one.
+			//
+			// GC stays disabled for the duration of every timed call, which is the property #581
+			// established: an ALLOCATING linear validator read 10.04x with GC on and 3.95x with it off,
+			// because collection cost scales with heap and so hits the big reading harder. Nothing here
+			// changes that -- runtime.GC() is called only in the gaps, where nothing is being measured.
+			//
+			// What it fixes is unbounded growth ACROSS readings. With GC off for the whole loop, the
+			// Matches from all 2*pairs calls stayed reachable at once, and that killed CI: measured on
+			// ubuntu-latest, goldencorpus.test grew 1.2GB -> 14.4GB in 45 seconds, exhausted 16GB of RAM
+			// and all 3GB of swap, and the runner was SIGTERM'd mid-suite. One target, socialmedia,
+			// accounted for 4.0GB of the 4.6GB local peak on its own -- 4,800 matches per big reading,
+			// four readings, every Match race-instrumented. Its fixture cannot shrink: both sizes must
+			// stay above maxClusterMatches (1000) or the two sizes measure different code paths, and its
+			// non-vacuity floor needs 1,100 matches.
+			//
+			// So the peak is now ONE reading's working set rather than four, at the cost of a collection
+			// in each gap, which nothing times.
+			runtime.GC()
 			if g, err = Time(big); err != nil {
 				return
 			}
+			runtime.GC()
 			bases = append(bases, b)
 			bigs = append(bigs, g)
 		}

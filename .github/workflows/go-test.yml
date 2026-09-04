@@ -98,6 +98,19 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Complexity guards (no race detector)
+        # The O(n^2) guards are skipped under -race by the main suite and run here instead. They measure
+        # single-goroutine CPU-time ratios, so the detector can find nothing in them, and it costs two
+        # things: ~70x memory (101MB -> 6.9-8.1GB on this guard, measured) and accuracy, because it
+        # compresses the ratios being compared.
+        #
+        # The memory is why this exists. ubuntu-latest was SIGTERM'd mid-suite six times with no test
+        # reporting FAIL; sampling the machine showed goldencorpus.test growing 1.2GB -> 14.4GB in 45
+        # seconds and exhausting 16GB of RAM plus all 3GB of swap. Not a gate that can be dropped --
+        # without this step the guards would not run at all.
+        run: go test -count=1 -run 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio' ./internal/goldencorpus/ ./internal/detector/ ./internal/preprocessors/text-extractors/text-extract-svgtextlib/
+        shell: bash
+
       - name: Report the complexity guard's measured ratios
         # The O(n^2) guard compares a ratio of CPU-time readings against a single threshold (8.0),
         # and that threshold was chosen from measurements taken on ONE platform. It does not hold
