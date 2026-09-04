@@ -1,0 +1,61 @@
+# Surfaces drift between the embedded IANA TLD snapshot and the live root zone.
+#
+# A scheduled job rather than a test, deliberately. internal/validators/email/tlds.go embeds the root
+# zone and caps addresses on unrecognised TLDs into the LOW band, so a stale snapshot demotes real
+# email on a newly delegated gTLD. But a test that fetches IANA would make `go test` depend on network
+# egress and fail closed when a runner has none, and a test keyed on a wall-clock date is a time bomb
+# that breaks the build on a day nobody chose. This checks out of band and opens an issue instead.
+#
+# Weekly, matching download-metrics.yml's cadence. ICANN delegations are rare, so daily would be noise.
+name: TLD snapshot
+
+on:
+  schedule:
+    # Mondays 07:00 UTC, an hour after download-metrics so the two do not contend.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the embedded snapshot against IANA
+        id: check
+        run: |
+          out=$(scripts/check-tlds.sh check 2>&1)
+          echo "$out"
+          {
+            echo 'report<<EOF'
+            echo "$out"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+          if echo "$out" | grep -q 'has drifted'; then
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open an issue when the snapshot has drifted
+        if: steps.check.outputs.drifted == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT: ${{ steps.check.outputs.report }}
+        run: |
+          # One open issue at a time. Re-running weekly must not file a duplicate every Monday.
+          existing=$(gh issue list --state open --label tld-snapshot --limit 1 --json number -q '.[].number')
+          if [ -n "$existing" ]; then
+            echo "already tracked in #$existing"
+            exit 0
+          fi
+          gh issue create \
+            --title "email: the embedded IANA TLD snapshot has drifted from the root zone" \
+            --label tld-snapshot \
+            --body "$(printf '%s\n\n%s\n' \
+              "$REPORT" \
+              "Addresses on TLDs delegated since the snapshot are capped into the LOW band by unrecognisedTLDCeiling, so real email on a new gTLD is demoted below the view a reviewer uses. Refresh with \`scripts/check-tlds.sh update\` and regenerate \`internal/validators/email/tlds.go\`.")"
