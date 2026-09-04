@@ -1557,6 +1557,7 @@ func main() {
 	// Get list of files to process (supports glob patterns like *.pdf)
 	var allFilesToProcess []string
 	var totalSkipped int
+	var discoverySkippedPaths []string
 
 	// discoveryUnexamined holds coverage losses found while DISCOVERING files, as
 	// distinct from the ones found while scanning them. Both must reach the same report:
@@ -1671,6 +1672,10 @@ func main() {
 		// Handle skipped files
 		for _, skipped := range result.SkippedFiles {
 			totalSkipped++
+			// Collected so the summary's histogram covers BOTH skip stages. Counting one and
+			// naming the other would understate, which is the partial disclosure this change
+			// exists to remove.
+			discoverySkippedPaths = append(discoverySkippedPaths, skipped.Path)
 			if !skipped.Silent {
 				fmt.Fprintf(os.Stderr, "Warning: Skipping %s: %s\n", skipped.Path, skipped.Reason)
 			}
@@ -1978,6 +1983,7 @@ func main() {
 	// coverage gap (code 3), which is the distinction the old failedFiles counter
 	// blurred.
 	scanMalfunction := false
+	var skippedPaths []string
 	for _, filePath := range filesToProcess {
 		canProcess, reason := fileRouter.CanProcessFile(filePath, finalConfig.enablePreprocessors)
 		if canProcess {
@@ -1995,6 +2001,9 @@ func main() {
 			continue
 		}
 		skippedFiles++
+		// Collected, not just counted: a number the operator has to take on trust is not a
+		// disclosure. See cmd/skipped_summary.go.
+		skippedPaths = append(skippedPaths, filePath)
 	}
 
 	// Handle preprocess-only mode - exit early after preprocessing
@@ -2012,7 +2021,8 @@ func main() {
 
 	// Show additional filtering info if more files were filtered out
 	if skippedFiles > 0 && !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
-		fmt.Fprintf(os.Stderr, "Filtered out %d unsupported file types\n", skippedFiles)
+		fmt.Fprintf(os.Stderr, "Filtered out %d files of unsupported types %s\n",
+			skippedFiles, formatters.SummarizeSkippedTypes(skippedPaths))
 	}
 
 	if len(supportedFiles) > 0 {
@@ -2100,7 +2110,12 @@ func main() {
 		// for the same files (a 23-vs-24 split a reader had to reconcile).
 		fmt.Fprintf(os.Stderr, "Scan complete: %d files scanned", processedFiles)
 		if finalSkippedCount > 0 {
-			fmt.Fprintf(os.Stderr, ", %d skipped (unsupported type)", finalSkippedCount)
+			// Same wording and the same histogram as the pre-scan line, over the UNION of both
+			// skip stages. Two messages describing the same files with different words is how a
+			// reader concludes they are different files.
+			allSkipped := append(append([]string{}, discoverySkippedPaths...), skippedPaths...)
+			fmt.Fprintf(os.Stderr, ", %d skipped, unsupported types %s",
+				finalSkippedCount, formatters.SummarizeSkippedTypes(allSkipped))
 		}
 		// Trailing blank line so the progress block (spinner, bar, this line) is
 		// visually separated from the findings table that follows it. Without it the
@@ -2338,9 +2353,13 @@ func main() {
 	unredactedDisclosure := toFormatterUnredacted(unredactedFiles, unsuppressedMatches)
 
 	formatterOptions.Stats = &formatters.ScanStats{
-		TotalFiles:        consideredFiles,
-		FilesProcessed:    scannedFiles,
-		FilesSkipped:      finalSkippedCount,
+		TotalFiles:     consideredFiles,
+		FilesProcessed: scannedFiles,
+		FilesSkipped:   finalSkippedCount,
+		// Names WHICH types, over the union of both skip stages. A count alone leaves the
+		// operator unable to tell build detritus from documents they care about.
+		SkippedTypes: formatters.SkippedTypeCounts(
+			append(append([]string{}, discoverySkippedPaths...), skippedPaths...)),
 		FilesNotExamined:  len(unscannedEntries),
 		FilesNotRedacted:  len(unredactedDisclosure),
 		ValuesNotRedacted: formatters.UnredactedValueCount(unredactedDisclosure),
