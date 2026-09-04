@@ -768,6 +768,9 @@ version:
 	@./bin/ferret-scan --version 2>/dev/null || echo "Binary not built. Run 'make build' first."
 
 # Check Go version consistency across project
+check-tlds: ## Compare the embedded IANA TLD snapshot against the live root zone (warns, never fails)
+	@scripts/check-tlds.sh check
+
 check-go-version:
 	@echo "🔍 Checking Go version consistency..."
 	@./scripts/go-version.sh check
