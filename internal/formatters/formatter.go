@@ -143,6 +143,10 @@ type ScanStats struct {
 	TotalFiles     int `json:"total_files" yaml:"total_files"`
 	FilesProcessed int `json:"files_processed" yaml:"files_processed"`
 	FilesSkipped   int `json:"files_skipped" yaml:"files_skipped"`
+	// SkippedTypes names WHICH types were skipped, because a count is not a disclosure: the
+	// output is byte-identical whether the skipped files are build detritus or customer
+	// documents. See SummarizeSkippedTypes.
+	SkippedTypes map[string]int `json:"skipped_types,omitempty" yaml:"skipped_types,omitempty"`
 
 	// FilesNotExamined counts files the tool could not read, parse or extract text
 	// from. They are NOT "skipped" (an unsupported type the user does not expect a

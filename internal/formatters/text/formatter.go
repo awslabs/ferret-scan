@@ -310,6 +310,11 @@ func (f *Formatter) writeSummaryHeader(w io.Writer, options formatters.Formatter
 	}
 	if stats.FilesSkipped > 0 {
 		summaryLine += fmt.Sprintf(", %d skipped", stats.FilesSkipped)
+		// Name the types. A bare count leaves the operator unable to tell build detritus from
+		// documents they care about, on the one axis where a mistake is silent.
+		if h := formatters.FormatSkippedTypes(stats.SkippedTypes); h != "" {
+			summaryLine += " " + h
+		}
 	}
 	summaryLine += fmt.Sprintf(" | Findings: %d (%d high, %d medium, %d low)",
 		stats.TotalFindings, stats.High, stats.Medium, stats.Low)
