@@ -42,12 +42,33 @@ import (
 type quadraticValidator struct{}
 
 func (quadraticValidator) ValidateContent(content, _ string) ([]detector.Match, error) {
-	var out []detector.Match
-	for i := 0; i+3 <= len(content); i++ {
-		if content[i:i+3] != "XQZ" {
-			continue
+	// Pre-sized, and the match scan uses strings.Index rather than a per-byte slice compare. Both
+	// exist to keep LINEAR cost out of what is being timed, so the ratio measures the quadratic step
+	// rather than the fixture's own overhead. Measured contributions on darwin/arm64 under -race,
+	// three runs each, against a theoretical 16x for a 4x input step:
+	//
+	//	as it was (append per match, per-byte scan)   13.49x - 14.06x
+	//	pre-sized only                               14.65x - 14.89x
+	//	strings.Index only                           13.30x - 13.78x   <- no effect alone
+	//	both                                         15.73x - 16.09x
+	//
+	// The order matters and is not obvious: strings.Index does nothing on its own, because the
+	// repeated slice growth dominates and hides the scan. Once the slice is pre-sized the per-byte
+	// compare becomes a visible linear term, and removing it is what closes the remaining gap.
+	//
+	// This is why it mattered: on ubuntu-latest the same control read 7.46x and 7.85x -- BELOW its own
+	// 8.0 threshold -- because the base reading there was 11-12ms against 3.9ms here, i.e. dominated
+	// by linear cost rather than by the algorithm. For a 4x step the ratio is 4*(1+3f) where f is the
+	// quadratic share of the base, so f=0.29 on ubuntu gives 7.5x while f=0.80 here gave 13.6x. With
+	// the fixture overhead removed f is ~0.99 and the ratio is close to 16x on both.
+	out := make([]detector.Match, 0, 1+strings.Count(content, "XQZ"))
+	for off := 0; ; {
+		j := strings.Index(content[off:], "XQZ")
+		if j < 0 {
+			break
 		}
-		// The quadratic step: a full-input scan per match.
+		off += j + 1
+		// The quadratic step: a full-input scan per match, for every match.
 		n := strings.Count(content, "a")
 		out = append(out, detector.Match{Text: "XQZ", Type: "TEST", Confidence: float64(50 + n%2)})
 	}
