@@ -126,6 +126,24 @@ func (r *RTFRedactor) RedactDocument(originalPath string, outputPath string,
 	if readErr != nil {
 		return nil, fmt.Errorf("reading back redacted RTF %s: %w", filepath.Base(outputPath), readErr)
 	}
+
+	// SECOND PASS, for values the byte substitution could not reach.
+	//
+	// The inner redactor searches for Match.Text verbatim, so it removes every value the file spells
+	// contiguously. It cannot touch one the producer SPLIT across a formatting run — `452-11-\f1\b 9384`
+	// contains the reported `452-11-9384` nowhere — and that is the common case for real textutil and
+	// Word output. Before this, such a file was refused entirely by the residue check below.
+	//
+	// This pass uses the extractor's span map to find which SOURCE bytes produced the value and rewrites
+	// those, leaving the control words between them in place so the document's formatting survives. It
+	// runs on the inner pass's OUTPUT rather than the original, so the two compose instead of fighting
+	// over offsets.
+	if spanned, handled := redactViaSpans(string(out), matches, strategy); len(handled) > 0 {
+		if err := os.WriteFile(written, []byte(spanned), 0o600); err != nil {
+			return nil, fmt.Errorf("writing span-redacted RTF %s: %w", filepath.Base(outputPath), err)
+		}
+		out = []byte(spanned)
+	}
 	if residue := residueTypes(out, matches); len(residue) > 0 {
 		// Remove the output. Leaving a file an operator will read as redacted is worse than
 		// leaving no file: the scan reported the finding either way, so the honest end state
