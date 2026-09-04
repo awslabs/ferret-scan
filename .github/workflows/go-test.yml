@@ -101,5 +101,37 @@ jobs:
         # build assumptions, error-message assertions that don't match
         # actual binary output). Tracked separately from production-code
         # quality. Run them locally on Windows when working on those tests.
-        run: go test -race -count=1 $(go list ./... | grep -v /tests/integration)
+        run: |
+          # DIAGNOSTIC BRANCH ONLY. ubuntu-latest has been killed by SIGTERM ("the runner has received
+          # a shutdown signal") 6+ times, always mid-suite at 244-306s, never on windows or macos, with
+          # no test reporting FAIL. Six hypotheses are eliminated by measurement: test-suite OOM,
+          # -race compile OOM, disk exhaustion, concurrency cancellation, a configured timeout, and the
+          # redundant cache step (removed in #602 -- the SIGTERM happened anyway with the tar failure
+          # absent). Local measurement cannot settle it: this repo is developed on darwin/arm64, and
+          # ThreadSanitizer's shadow mapping is a different size on linux/amd64, so extrapolating is
+          # exactly the assumption that has been wrong twice already.
+          #
+          # So sample the machine WHILE the suite runs and let the runner answer. Total memory across
+          # all processes, not one process's RSS -- `go test` runs up to GOMAXPROCS race-instrumented
+          # binaries concurrently, so the sum is the number that matters and the one no local tool here
+          # reported.
+          echo "::group::machine"
+          nproc; free -m; df -h /; ulimit -a
+          echo "::endgroup::"
+          ( while true; do
+              printf '[SAMPLE t=%ss] mem: ' "$SECONDS"
+              free -m | awk '/^Mem:/{printf "used=%sMB avail=%sMB", $3, $7}'
+              printf ' | swap: '
+              free -m | awk '/^Swap:/{printf "used=%sMB", $3}'
+              printf ' | disk: '
+              df -m / | awk 'NR==2{printf "avail=%sMB", $4}'
+              printf ' | top-rss: '
+              ps -eo rss,comm --sort=-rss | awk 'NR>1 && NR<5{printf "%s=%sMB ", $2, int($1/1024)}'
+              echo
+              sleep 15
+            done ) &
+          SAMPLER=$!
+          trap 'kill $SAMPLER 2>/dev/null || true' EXIT
+          go test -race -count=1 $(go list ./... | grep -v /tests/integration)
         shell: bash
+        timeout-minutes: 25
