@@ -406,10 +406,26 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 
 				// See internal/perfguard for why this is a ratio of minimum CPU readings
 				// rather than one wall-clock pair.
-				if ratio > maxGrowthRatio {
+				//
+				// Asserted only when the base reading spans enough CLOCK TICKS for the ratio to be a
+				// measurement rather than arithmetic on tick counts. Measured on windows-latest, where
+				// the CPU clock advances 15.625ms at a time, this assertion was comparing integers:
+				// `ssn` reported "5.00x" from base=46.875ms big=234.375ms, which is 3 ticks over 15,
+				// and a linear control reported exactly "2.00x" from 2 ticks over 1. Every Windows
+				// reading in that run was an exact multiple of the tick.
+				//
+				// A skip here is not a silent hole: the tick count is logged above on every run, the
+				// absolute ceiling and the match-count floors still assert on every platform, and the
+				// ratio is still asserted wherever the clock can support it -- which is Linux and
+				// macOS, so a regression is still caught by CI. Asserting on 1-tick readings was the
+				// hole, because it can fail on correct code and pass a real regression.
+				if _, resolvable := g.Ticks(); !resolvable {
+					t.Logf("%s: growth ratio NOT asserted — %s", tgt.name, g.ResolutionNote())
+				} else if ratio > maxGrowthRatio {
 					t.Errorf("%s: 4x input took %.1fx longer on the %s clock (minimum of %d pairs, "+
-						"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression",
-						tgt.name, ratio, clock, perfguard.DefaultPairs, gBase, gBig, perfguard.FormatRatios(samples))
+						"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression. %s",
+						tgt.name, ratio, clock, perfguard.DefaultPairs, gBase, gBig,
+						perfguard.FormatRatios(samples), g.ResolutionNote())
 				}
 			}
 		})

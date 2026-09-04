@@ -58,13 +58,22 @@ import (
 	"time"
 )
 
-// MinMeasurableCPU is the smallest CPU reading Growth will divide by.
+// MinMeasurableCPU is the floor for CHOOSING THE CLOCK, and no longer the gate on whether a ratio
+// means anything. Growth.Ticks and MinTicks are that gate — see resolution.go.
 //
 // getrusage reports microseconds and GetProcessTimes 100ns ticks, but both accumulate at timer-tick
-// granularity — 15.6ms on Windows by default. Dividing two readings near that granularity produces a
-// quantised ratio, which is the noise regime this package exists to escape. Below it, Growth falls
-// back to wall clock and SAYS SO, so a platform with a coarse CPU clock cannot silently switch an
-// assertion off.
+// granularity. The "15.6ms on Windows" this comment used to assert without evidence is now MEASURED
+// and exact: windows-latest advances the CPU clock in steps of 15.625ms, so every reading there is an
+// integer multiple of it (15.625, 31.25, 46.875, 78.125, 93.75, 125, 140.625, 156.25, 234.375,
+// 546.875 all observed in one run).
+//
+// Which makes the problem with this constant plain: 2ms is 0.128 of a SINGLE TICK on that platform,
+// so it admitted 1-tick readings and divided them. The complexity guard's Windows output was
+// therefore a ratio of small integers — a linear control reported "2.00x" from 2 ticks over 1.
+//
+// It is kept because it still answers a different and narrower question: below it a CPU reading is
+// certainly useless, so the wall clock is worth trying instead. Whether the reading that survives is
+// worth DIVIDING is decided by tick count, not by this.
 const MinMeasurableCPU = 2 * time.Millisecond
 
 // DefaultPairs is how many base/big pairs Growth measures.

@@ -571,7 +571,12 @@ func TestCollapseSpaceIsLinear(t *testing.T) {
 	// 8.0 against a linear expectation of 4.0 and a quadratic one of 16.0, so the bound sits
 	// halfway between the two populations on a log scale rather than 0.37x from the failure the
 	// old threshold produced.
-	if g.Ratio > 8.0 {
+	// Asserted only where the base reading spans enough clock ticks for the ratio to be a
+	// measurement rather than arithmetic on tick counts — on windows-latest the CPU clock advances
+	// 15.625ms at a time, and a 1-tick base makes any ratio an artefact. See perfguard.Growth.Ticks.
+	if _, resolvable := g.Ticks(); !resolvable {
+		t.Logf("growth ratio NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio > 8.0 {
 		t.Errorf("collapseSpace scaled %s — linear over a 4x input is ~4x and quadratic ~16x, so "+
 			"this is a quadratic fold: repeated concatenation, or a regexp re-run per space run "+
 			"over the whole node", g)
