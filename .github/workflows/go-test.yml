@@ -90,6 +90,28 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Report the complexity guard's measured ratios
+        # The O(n^2) guard compares a ratio of CPU-time readings against a single threshold (8.0),
+        # and that threshold was chosen from measurements taken on ONE platform. It does not hold
+        # everywhere: the synthetic-quadratic control read 7.46x and 7.85x on ubuntu-latest -- BELOW
+        # its own 8.0 threshold -- against 13.49x-14.06x on darwin/arm64, so on that runner the guard
+        # could not detect the regression it exists for.
+        #
+        # The guard logs every ratio, but `go test` hides t.Logf output for a PASSING package unless
+        # -v is set (fmt.Println is hidden too -- both measured), so these numbers have never appeared
+        # in any CI log and the threshold has been resting on one machine's. This prints all 18
+        # validator targets plus both controls, on all three runners, every run. See #599.
+        #
+        # Placed after Build rather than after the test step ON PURPOSE: the granularity step added by
+        # #597 anchors after the test step, and two insertions at the same point conflict -- measured
+        # with a real merge, not guessed. Running before the main suite is equivalent for a
+        # continue-on-error reporting step.
+        #
+        # continue-on-error: this is observation, not a gate. The assertions run in the suite proper.
+        run: go test -v -count=1 -run 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio' ./internal/goldencorpus/
+        shell: bash
+        continue-on-error: true
+
       - name: Test (with race detector)
         # -race only works on amd64/arm64 platforms Go supports — all three
         # runners qualify. Race detector roughly halves throughput but
