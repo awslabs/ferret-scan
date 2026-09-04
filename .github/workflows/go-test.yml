@@ -56,15 +56,23 @@ jobs:
         with:
           go-version-file: '.go-version'
 
-      - name: Cache Go modules
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      # No separate module-cache step. actions/setup-go already caches BOTH of the paths one would
+      # name here -- ~/go/pkg/mod and ~/.cache/go-build -- keyed on go.sum, and it does so by
+      # default. A second actions/cache over the same paths does not just duplicate the work, it
+      # RELIABLY FAILS: setup-go extracts first, then the second restore tries to write the same
+      # files and tar exits 2. Measured, from an ubuntu-latest log:
+      #
+      #	setup-go:  Cache hit ... Cache Size: ~678 MB ... Cache restored successfully
+      #	           /home/runner/go/pkg/mod
+      #	           /home/runner/.cache/go-build
+      #	cache:     path: ~/.cache/go-build, ~/go/pkg/mod ... Cache Size: ~677 MB
+      #	           ##[error]/usr/bin/tar: ...: Cannot open: File exists     (x many)
+      #	           ##[warning]Failed to restore: "/usr/bin/tar" failed with exit code 2
+      #
+      # So every run with a cache hit downloaded ~677 MB a second time and then failed to unpack it.
+      # It also correlated with the runs that died: all 3 ubuntu jobs killed by SIGTERM at ~245s had
+      # this failure, against 1 of 5 that passed -- suggestive, NOT established, and deliberately not
+      # claimed as the cause. Removing a step that always fails is right on its own terms.
 
       - name: Gofmt
         # Formatting is platform-independent, so gate it on one runner instead of
