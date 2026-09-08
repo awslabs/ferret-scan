@@ -51,6 +51,16 @@ updates:
     labels:
       - "dependencies"
       - "go"
+    # Without this, `gomod` version updates cover DIRECT dependencies only, and
+    # this module's CVE exposure is almost entirely indirect: x/crypto,
+    # x/image, x/net and x/text all arrive through pdfcpu, not through go.mod's
+    # first require block. Security updates would still reach them, but only
+    # for advisories Dependabot can see — the container scan reads a different
+    # vulnerability database, so a CVE with no GHSA entry yet leaves no alert
+    # for Dependabot to act on and the weekly run skips the dependency
+    # entirely. Grouped above, so the wider scope costs one PR, not thirteen.
+    allow:
+      - dependency-type: "all"
     groups:
       go-minor-and-patch:
         update-types:
