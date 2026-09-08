@@ -332,7 +332,33 @@ func TestAssignLineColumnsMemoIsLoadBearing(t *testing.T) {
 		"line once, so extra bytes are nearly free; correct is ~0.8x, a per-match hash is ~7x",
 		matches, ratio, tBase, tBig)
 
-	if ratio > 2.5 {
+	// tBase > 0 before dividing, which the two other ratio assertions in this file already do
+	// (see fBase > 0 and tBase > 0 below) and this one did not.
+	//
+	// The base reading here is the SMALLEST timed workload in the repo — measured on darwin/arm64,
+	// 358µs plain and 1.1ms under -race — and a wall-clock reading that small can come back as
+	// exactly ZERO on a platform whose clock advances at timer-tick granularity. That is not
+	// hypothetical: windows-latest returned a zero WALL reading for a ~90µs workload in
+	// internal/perfguard, which is what broke the build in run 33899001272.
+	//
+	// Both arithmetic outcomes are bad, and the worse one is the one that speaks:
+	//
+	//	tBase == 0, tBig > 0  ->  +Inf, and +Inf > 2.5 is TRUE
+	//	                      ->  "the per-match line hash is back" on CORRECT code
+	//	tBase == 0, tBig == 0 ->  NaN,  and NaN > 2.5 is FALSE
+	//	                      ->  passes, having measured nothing
+	//
+	// Verified in Go rather than assumed: 15625.0/0 == +Inf and (+Inf > 2.5) == true; 0.0/0.0 == NaN
+	// and (NaN > 2.5) == false.
+	//
+	// Deliberately NOT also failing when tBase == 0. That would trade a false pass for a false
+	// failure on any platform whose granularity exceeds this fixture, and the actual granularity on
+	// windows-latest is still UNMEASURED — assuming it is the mistake that produced the break this
+	// guard is being hardened against. #596 collects that figure on every CI run; once it is known,
+	// either this fixture grows until it clears the clock, or the pair moves onto
+	// internal/perfguard.Measure, which refuses a zero reading outright instead of dividing it.
+	// The log line above reports base and big on every run, so a zero is visible in the meantime.
+	if tBase > 0 && ratio > 2.5 {
 		t.Errorf("growing the LINE 8x at a fixed match count cost %.2fx more (base=%v big=%v) — "+
 			"the per-match line hash is back: the line-id memo in ResolveLineSpans is no longer "+
 			"collapsing consecutive matches that share a line, so each match re-hashes the whole "+

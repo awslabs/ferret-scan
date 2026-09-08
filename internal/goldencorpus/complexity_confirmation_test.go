@@ -42,11 +42,38 @@ import (
 type quadraticValidator struct{}
 
 func (quadraticValidator) ValidateContent(content, _ string) ([]detector.Match, error) {
-	var out []detector.Match
-	for i := 0; i+3 <= len(content); i++ {
-		if content[i:i+3] != "XQZ" {
-			continue
+	// Pre-sized, and the match scan uses strings.Index rather than a per-byte slice compare. Both keep
+	// the fixture's own LINEAR cost out of what is timed, so the ratio measures the quadratic step.
+	//
+	// This matters on ubuntu-latest, where the base reading was dominated by linear cost and this
+	// control measured 7.46x and 7.85x -- BELOW its own 8.0 threshold, i.e. the guard could not detect
+	// the regression it exists for. For a 4x step the ratio is 4*(1+3f) where f is the quadratic share
+	// of the base, and f was 0.29 there against 0.80 locally.
+	//
+	// Contributions measured in isolation, three runs each under -race on darwin/arm64, because the
+	// first two explanations reached for were both wrong:
+	//
+	//	as it was (append per match, per-byte scan)   13.49x - 14.06x
+	//	pre-sized only                               14.65x - 14.89x
+	//	strings.Index only                           13.30x - 13.78x   <- no effect alone
+	//	both                                         14.96x - 15.31x
+	//
+	// The order is not obvious: strings.Index does nothing by itself because repeated slice growth
+	// dominates and hides the scan; once pre-sized the per-byte compare becomes visible and removing
+	// it closes the gap. A third change -- emitting only every 64th match -- measured 15.87x against
+	// 15.82x, i.e. nothing, and was dropped rather than shipped on a story it could not support.
+	//
+	// A first attempt at this shipped WITHOUT the tick gate on the assertion above and broke
+	// windows-latest: making the base cheaper made it span FEWER of that platform's 15.625ms ticks, so
+	// the ratio became pure quantisation. The two platforms want opposite fixtures -- ubuntu a larger
+	// quadratic share, Windows a longer absolute time -- which is why the gate is what makes this safe.
+	out := make([]detector.Match, 0, 1+strings.Count(content, "XQZ"))
+	for off := 0; ; {
+		j := strings.Index(content[off:], "XQZ")
+		if j < 0 {
+			break
 		}
+		off += j + 1
 		// The quadratic step: a full-input scan per match.
 		n := strings.Count(content, "a")
 		out = append(out, detector.Match{Text: "XQZ", Type: "TEST", Confidence: float64(50 + n%2)})
@@ -82,11 +109,18 @@ func TestGrowthRatioStillCatchesAGenuineQuadratic(t *testing.T) {
 			g.baseMatches, g.bigMatches)
 	}
 
-	if g.Ratio <= maxGrowthRatio {
+	// Asserted only where the clock can support a ratio. On windows-latest the CPU clock advances
+	// 15.625ms at a time, so this control's base was a single tick and its "ratio" was one integer
+	// over another -- which is why an earlier fixture change to this test passed on main and FAILED
+	// there. See Growth.Ticks.
+	if _, resolvable := g.Ticks(); !resolvable {
+		t.Logf("quadratic control NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio <= maxGrowthRatio {
 		t.Errorf("a genuine O(n^2) validator measured %.2fx on the %s clock, at or below the %.1f "+
 			"threshold — the guard would no longer detect the regression it exists for. "+
-			"min base=%v big=%v, per-pair %s",
-			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
+			"min base=%v big=%v, per-pair %s. %s",
+			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin,
+			perfguard.FormatRatios(g.Samples), g.ResolutionNote())
 	}
 }
 
@@ -106,7 +140,13 @@ func TestGrowthRatioStaysLowOnLinearCode(t *testing.T) {
 	t.Logf("linear control: %.2fx on the %s clock (min base=%v big=%v, per-pair %s)",
 		g.Ratio, g.Clock, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
 
-	if g.Ratio > maxGrowthRatio {
+	// Same tick gate as the quadratic half. This direction matters just as much: on windows-latest a
+	// linear control read exactly "2.00x" from base=15.625ms big=31.25ms -- two ticks over one -- and a
+	// 1-tick base can just as easily quantise UPWARD past the threshold and fail correct code, which is
+	// what #546 was.
+	if _, resolvable := g.Ticks(); !resolvable {
+		t.Logf("linear control NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio > maxGrowthRatio {
 		t.Errorf("a single-pass validator measured %.2fx on the %s clock, above the %.1f "+
 			"threshold — this is #546, the guard failing on correct code. min base=%v big=%v, "+
 			"per-pair %s", g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))

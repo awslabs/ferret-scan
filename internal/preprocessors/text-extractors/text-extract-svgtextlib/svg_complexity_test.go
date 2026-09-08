@@ -161,7 +161,12 @@ func TestManyTextNodesIsSubQuadratic(t *testing.T) {
 	// 8.0 against a linear expectation of 4.0 and a quadratic one of 16.0, so the bound sits between
 	// the two populations rather than 0.2x from the noise the old 3.2 was failing on.
 	const ceiling = 8.0
-	if g.Ratio > ceiling {
+	// Asserted only where the base reading spans enough clock ticks for the ratio to be a
+	// measurement rather than arithmetic on tick counts — on windows-latest the CPU clock advances
+	// 15.625ms at a time, and a 1-tick base makes any ratio an artefact. See perfguard.Growth.Ticks.
+	if _, resolvable := g.Ticks(); !resolvable {
+		t.Logf("growth ratio NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio > ceiling {
 		t.Errorf("extraction scaled %s over a 4x document — linear is ~4x and quadratic ~16x, so this "+
 			"is superlinear beyond noise", g)
 	}
