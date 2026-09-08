@@ -18,6 +18,57 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 )
 
+// Compiled once at package init rather than per call.
+//
+// Two shapes were doing this per MATCH, in functions reached once for every finding:
+//
+//   - 43 inline regexp.MustCompile calls over just 16 distinct literal patterns, inside the
+//     per-platform username validators
+//   - 5 uses of the package-level regexp.MatchString(pattern, s), which COMPILES ITS PATTERN ON
+//     EVERY CALL -- a detail easy to miss because the call reads like a simple predicate
+//
+// Measured on a 126KB input producing 6,400 matches: 207.8 MB allocated, ~34 KB per match, roughly
+// 1,730x the size of the input, and 2.38 MILLION allocations for a single ValidateContent. In the
+// profile, regexp.compile accounted for 522 MB of 861 MB (60%), and after the MustCompile hoist the
+// remaining 333 MB of 667 MB was all reached through regexp.MatchString.
+//
+// This is a cost a user pays on any file dense with profile URLs. It also nearly broke CI: under the
+// race detector the same allocation amplifies ~22x, which is how the complexity guard reached 14.4 GB
+// and got ubuntu-latest OOM-killed.
+//
+// MustCompile at package scope is right for these: every pattern is a literal, so a failure is a
+// programming error that should panic at startup rather than be discarded per call. The one genuinely
+// DYNAMIC pattern in this file (an email domain built with regexp.QuoteMeta) is left alone -- it
+// cannot be hoisted, and it sits behind an early return that a URL match never passes.
+var (
+	reNotAlnumDash              = regexp.MustCompile(`[^a-zA-Z0-9-]`)
+	reNotAlnumDotUnderscoreDash = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+	reNotAlnumUnderscore        = regexp.MustCompile(`[^a-zA-Z0-9_]`)
+	reYouTubeChannelID          = regexp.MustCompile(`^UC[a-zA-Z0-9_-]{22}$`)
+	reAlnumDash                 = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+	reAlnumDotUnderscoreDash    = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	reAlnumDotUnderscore        = regexp.MustCompile(`^[a-zA-Z0-9._]+$`)
+	reAlnumInnerDash            = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
+	reAlnum                     = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+	reAlnumUnderscoreDash       = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	reAlnumUnderscoreDot        = regexp.MustCompile(`^[a-zA-Z0-9_.]+$`)
+	reAlnumUnderscoreSlashDash  = regexp.MustCompile(`^[a-zA-Z0-9_/-]+$`)
+	reAlnumUnderscore           = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	reAllDigits                 = regexp.MustCompile(`^\d+$`)
+	reLeadingDigit              = regexp.MustCompile(`^\d`)
+	reFacebookProfileID         = regexp.MustCompile(`profile\.php\?id=(\d+)`)
+	reDigitsOnly                = regexp.MustCompile(`^[0-9]+$`)
+	reSingleLetter              = regexp.MustCompile(`^[a-zA-Z]$`)
+	reOnlyUnderscoreDot         = regexp.MustCompile(`^[_.]+$`)
+	reNoAlnum                   = regexp.MustCompile(`^[^a-zA-Z0-9]+$`)
+
+	// isPlaceholderURL's patterns, compiled once. They are literals, so there is nothing to cache.
+	placeholderRegexps = []*regexp.Regexp{
+		regexp.MustCompile(`\[.*\]`), regexp.MustCompile(`\{.*\}`), regexp.MustCompile(`<.*>`),
+		regexp.MustCompile(`\$\{.*\}`), regexp.MustCompile(`\{\{.*\}\}`),
+	}
+)
+
 // Helper functions for min/max operations
 func min(a, b int) int {
 	if a < b {
@@ -1162,35 +1213,35 @@ func (v *Validator) validateUsernameFormat(username string, platform string) boo
 	switch platform {
 	case "linkedin", "linkedin_patterns":
 		// LinkedIn usernames: alphanumeric, hyphens, underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(username) && len(username) >= 3 && len(username) <= 100
+		return reAlnumUnderscoreDash.MatchString(username) && len(username) >= 3 && len(username) <= 100
 
 	case "twitter", "twitter_patterns":
 		// Twitter usernames: alphanumeric, underscores, 1-15 characters
-		return regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(username) && len(username) >= 1 && len(username) <= 15
+		return reAlnumUnderscore.MatchString(username) && len(username) >= 1 && len(username) <= 15
 
 	case "github", "github_patterns":
 		// GitHub usernames: alphanumeric, hyphens, cannot start/end with hyphen
-		return regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`).MatchString(username) && len(username) >= 1 && len(username) <= 39
+		return reAlnumInnerDash.MatchString(username) && len(username) >= 1 && len(username) <= 39
 
 	case "facebook", "facebook_patterns":
 		// Facebook usernames: alphanumeric, dots, underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9._]+$`).MatchString(username) && len(username) >= 5 && len(username) <= 50
+		return reAlnumDotUnderscore.MatchString(username) && len(username) >= 5 && len(username) <= 50
 
 	case "instagram", "instagram_patterns":
 		// Instagram usernames: alphanumeric, dots, underscores, 1-30 characters
-		return regexp.MustCompile(`^[a-zA-Z0-9_.]+$`).MatchString(username) && len(username) >= 1 && len(username) <= 30
+		return reAlnumUnderscoreDot.MatchString(username) && len(username) >= 1 && len(username) <= 30
 
 	case "youtube", "youtube_patterns":
 		// YouTube usernames: alphanumeric, hyphens, underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(username) && len(username) >= 1 && len(username) <= 100
+		return reAlnumUnderscoreDash.MatchString(username) && len(username) >= 1 && len(username) <= 100
 
 	case "tiktok", "tiktok_patterns":
 		// TikTok usernames: alphanumeric, dots, underscores, 2-24 characters
-		return regexp.MustCompile(`^[a-zA-Z0-9_.]+$`).MatchString(username) && len(username) >= 2 && len(username) <= 24
+		return reAlnumUnderscoreDot.MatchString(username) && len(username) >= 2 && len(username) <= 24
 
 	default:
 		// Generic username validation
-		return regexp.MustCompile(`^[a-zA-Z0-9._-]+$`).MatchString(username) && len(username) >= 1 && len(username) <= 100
+		return reAlnumDotUnderscoreDash.MatchString(username) && len(username) >= 1 && len(username) <= 100
 	}
 }
 
@@ -1247,7 +1298,7 @@ func (v *Validator) validateLinkedInSpecific(match string, matchLower string) bo
 				return false
 			}
 			// LinkedIn usernames: alphanumeric, hyphens, underscores
-			return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(username)
+			return reAlnumUnderscoreDash.MatchString(username)
 		}
 		return false
 	}
@@ -1266,7 +1317,7 @@ func (v *Validator) validateLinkedInSpecific(match string, matchLower string) bo
 				return false
 			}
 			// Company names: alphanumeric, hyphens, underscores
-			return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(companyName)
+			return reAlnumUnderscoreDash.MatchString(companyName)
 		}
 		return false
 	}
@@ -1285,7 +1336,7 @@ func (v *Validator) validateLinkedInSpecific(match string, matchLower string) bo
 				return false
 			}
 			// Pub paths can contain slashes and alphanumeric characters
-			return regexp.MustCompile(`^[a-zA-Z0-9_/-]+$`).MatchString(pubPath)
+			return reAlnumUnderscoreSlashDash.MatchString(pubPath)
 		}
 		return false
 	}
@@ -1304,7 +1355,7 @@ func (v *Validator) validateLinkedInSpecific(match string, matchLower string) bo
 				return false
 			}
 			// School names: alphanumeric, hyphens, underscores
-			return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(schoolName)
+			return reAlnumUnderscoreDash.MatchString(schoolName)
 		}
 		return false
 	}
@@ -1322,7 +1373,7 @@ func (v *Validator) validateTwitterSpecific(match string, matchLower string) boo
 			return false
 		}
 		// Must start with letter or number, can contain underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(username) &&
+		return reAlnumUnderscore.MatchString(username) &&
 			!strings.HasPrefix(username, "_") && !strings.HasSuffix(username, "_")
 	}
 
@@ -1345,7 +1396,7 @@ func (v *Validator) validateTwitterSpecific(match string, matchLower string) boo
 		if len(username) < 1 || len(username) > 15 {
 			return false
 		}
-		return regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(username) &&
+		return reAlnumUnderscore.MatchString(username) &&
 			!strings.HasPrefix(username, "_") && !strings.HasSuffix(username, "_")
 	}
 
@@ -1375,7 +1426,7 @@ func (v *Validator) validateGitHubSpecific(match string, matchLower string) bool
 		if strings.HasPrefix(username, "-") || strings.HasSuffix(username, "-") {
 			return false
 		}
-		if !regexp.MustCompile(`^[a-zA-Z0-9-]+$`).MatchString(username) {
+		if !reAlnumDash.MatchString(username) {
 			return false
 		}
 
@@ -1386,7 +1437,7 @@ func (v *Validator) validateGitHubSpecific(match string, matchLower string) bool
 			if len(repoName) > 100 {
 				return false
 			}
-			if !regexp.MustCompile(`^[a-zA-Z0-9._-]+$`).MatchString(repoName) {
+			if !reAlnumDotUnderscoreDash.MatchString(repoName) {
 				return false
 			}
 		}
@@ -1421,7 +1472,7 @@ func (v *Validator) validateGitHubSpecific(match string, matchLower string) bool
 				if strings.HasPrefix(username, "-") || strings.HasSuffix(username, "-") {
 					return false
 				}
-				return regexp.MustCompile(`^[a-zA-Z0-9-]+$`).MatchString(username)
+				return reAlnumDash.MatchString(username)
 			}
 		}
 		return false
@@ -1435,7 +1486,7 @@ func (v *Validator) validateFacebookSpecific(match string, matchLower string) bo
 	// Numeric ID format: facebook.com/profile.php?id=123456789
 	if strings.Contains(matchLower, "profile.php?id=") {
 		// Extract and validate numeric ID
-		idMatch := regexp.MustCompile(`profile\.php\?id=(\d+)`).FindStringSubmatch(matchLower)
+		idMatch := reFacebookProfileID.FindStringSubmatch(matchLower)
 		if len(idMatch) < 2 {
 			return false
 		}
@@ -1463,7 +1514,7 @@ func (v *Validator) validateFacebookSpecific(match string, matchLower string) bo
 		if len(username) < 5 || len(username) > 50 {
 			return false
 		}
-		return regexp.MustCompile(`^[a-zA-Z0-9._]+$`).MatchString(username) &&
+		return reAlnumDotUnderscore.MatchString(username) &&
 			!strings.HasPrefix(username, ".") && !strings.HasSuffix(username, ".")
 	}
 
@@ -1507,7 +1558,7 @@ func (v *Validator) validateInstagramSpecific(match string, matchLower string) b
 		if len(username) < 1 || len(username) > 30 {
 			return false
 		}
-		return regexp.MustCompile(`^[a-zA-Z0-9_.]+$`).MatchString(username) &&
+		return reAlnumUnderscoreDot.MatchString(username) &&
 			!strings.HasPrefix(username, ".") && !strings.HasSuffix(username, ".") &&
 			!strings.Contains(username, "..")
 	}
@@ -1527,7 +1578,7 @@ func (v *Validator) validateYouTubeSpecific(match string, matchLower string) boo
 				if len(username) < 1 || len(username) > 100 {
 					return false
 				}
-				return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(username)
+				return reAlnumUnderscoreDash.MatchString(username)
 			}
 			return false
 		}
@@ -1540,7 +1591,7 @@ func (v *Validator) validateYouTubeSpecific(match string, matchLower string) boo
 				if len(channelName) < 1 || len(channelName) > 100 {
 					return false
 				}
-				return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(channelName)
+				return reAlnumUnderscoreDash.MatchString(channelName)
 			}
 			return false
 		}
@@ -1554,7 +1605,7 @@ func (v *Validator) validateYouTubeSpecific(match string, matchLower string) boo
 				if len(channelID) != 24 || !strings.HasPrefix(channelID, "UC") {
 					return false
 				}
-				return regexp.MustCompile(`^UC[a-zA-Z0-9_-]{22}$`).MatchString(channelID)
+				return reYouTubeChannelID.MatchString(channelID)
 			}
 			return false
 		}
@@ -1567,7 +1618,7 @@ func (v *Validator) validateYouTubeSpecific(match string, matchLower string) boo
 				if len(handle) < 3 || len(handle) > 30 {
 					return false
 				}
-				return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(handle)
+				return reAlnumUnderscoreDash.MatchString(handle)
 			}
 			return false
 		}
@@ -1592,7 +1643,7 @@ func (v *Validator) validateTikTokSpecific(match string, matchLower string) bool
 			if len(username) < 2 || len(username) > 24 {
 				return false
 			}
-			return regexp.MustCompile(`^[a-zA-Z0-9_.]+$`).MatchString(username) &&
+			return reAlnumUnderscoreDot.MatchString(username) &&
 				!strings.HasPrefix(username, ".") && !strings.HasSuffix(username, ".") &&
 				!strings.Contains(username, "..")
 		}
@@ -1608,7 +1659,7 @@ func (v *Validator) validateTikTokSpecific(match string, matchLower string) bool
 			if len(shortCode) < 8 || len(shortCode) > 12 {
 				return false
 			}
-			return regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(shortCode)
+			return reAlnum.MatchString(shortCode)
 		}
 		return false
 	}
@@ -1627,7 +1678,7 @@ func (v *Validator) validateDiscordSpecific(match string, matchLower string) boo
 			if len(inviteCode) < 6 || len(inviteCode) > 10 {
 				return false
 			}
-			return regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(inviteCode)
+			return reAlnum.MatchString(inviteCode)
 		}
 		return false
 	}
@@ -1641,7 +1692,7 @@ func (v *Validator) validateDiscordSpecific(match string, matchLower string) boo
 			if len(userID) < 17 || len(userID) > 19 {
 				return false
 			}
-			return regexp.MustCompile(`^\d+$`).MatchString(userID)
+			return reAllDigits.MatchString(userID)
 		}
 		return false
 	}
@@ -1674,7 +1725,7 @@ func (v *Validator) validateRedditSpecific(match string, matchLower string) bool
 		if len(username) < 3 || len(username) > 20 {
 			return false
 		}
-		return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(username) &&
+		return reAlnumUnderscoreDash.MatchString(username) &&
 			!strings.HasPrefix(username, "-") && !strings.HasSuffix(username, "-")
 	}
 
@@ -1687,7 +1738,7 @@ func (v *Validator) validateRedditSpecific(match string, matchLower string) bool
 			if len(subreddit) < 2 || len(subreddit) > 21 {
 				return false
 			}
-			return regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(subreddit)
+			return reAlnumUnderscore.MatchString(subreddit)
 		}
 		return false
 	}
@@ -1827,12 +1878,12 @@ func (v *Validator) validateCharacterSet(match string, platform string) bool {
 	switch platform {
 	case "linkedin", "linkedin_patterns":
 		// LinkedIn: alphanumeric, hyphens, underscores, dots
-		return regexp.MustCompile(`^[a-zA-Z0-9._-]+$`).MatchString(username) ||
+		return reAlnumDotUnderscoreDash.MatchString(username) ||
 			strings.Contains(match, "://") // URLs get different validation
 	case "twitter", "twitter_patterns":
 		if strings.HasPrefix(match, "@") {
 			// Twitter handles: alphanumeric and underscores only
-			return regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(username)
+			return reAlnumUnderscore.MatchString(username)
 		}
 		return true // URLs get different validation
 	case "github", "github_patterns":
@@ -1840,26 +1891,26 @@ func (v *Validator) validateCharacterSet(match string, platform string) bool {
 		if strings.Contains(match, "://") {
 			return true // URLs get different validation
 		}
-		return regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`).MatchString(username)
+		return reAlnumInnerDash.MatchString(username)
 	case "facebook", "facebook_patterns":
 		// Facebook: alphanumeric, dots, underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9._]+$`).MatchString(username) ||
+		return reAlnumDotUnderscore.MatchString(username) ||
 			strings.Contains(match, "://") // URLs get different validation
 	case "instagram", "instagram_patterns":
 		// Instagram: alphanumeric, dots, underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9_.]+$`).MatchString(username) ||
+		return reAlnumUnderscoreDot.MatchString(username) ||
 			strings.Contains(match, "://") // URLs get different validation
 	case "youtube", "youtube_patterns":
 		// YouTube: alphanumeric, hyphens, underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(username) ||
+		return reAlnumUnderscoreDash.MatchString(username) ||
 			strings.Contains(match, "://") // URLs get different validation
 	case "tiktok", "tiktok_patterns":
 		// TikTok: alphanumeric, dots, underscores
-		return regexp.MustCompile(`^[a-zA-Z0-9_.]+$`).MatchString(username) ||
+		return reAlnumUnderscoreDot.MatchString(username) ||
 			strings.Contains(match, "://") // URLs get different validation
 	default:
 		// Generic character validation
-		return regexp.MustCompile(`^[a-zA-Z0-9._-]+$`).MatchString(username) ||
+		return reAlnumDotUnderscoreDash.MatchString(username) ||
 			strings.Contains(match, "://") // URLs get different validation
 	}
 }
@@ -2104,11 +2155,8 @@ func (v *Validator) isPlaceholderURL(match string) bool {
 	}
 
 	// Check for generic placeholder patterns with regex-like detection
-	placeholderRegexPatterns := []string{
-		`\[.*\]`, `\{.*\}`, `<.*>`, `\$\{.*\}`, `\{\{.*\}\}`,
-	}
-	for _, pattern := range placeholderRegexPatterns {
-		if matched, _ := regexp.MatchString(pattern, match); matched {
+	for _, re := range placeholderRegexps {
+		if re.MatchString(match) {
 			return true
 		}
 	}
@@ -2221,20 +2269,20 @@ func (v *Validator) isOverlyBroadMatch(match string, platform string) bool {
 	switch strings.TrimSuffix(strings.ToLower(platform), "_patterns") {
 	case "twitter", "x":
 		// Twitter handles should not be just numbers or single characters
-		if matched, _ := regexp.MatchString(`^[0-9]+$`, match); matched {
+		if reDigitsOnly.MatchString(match) {
 			return true
 		}
-		if matched, _ := regexp.MatchString(`^[a-zA-Z]$`, match); matched {
+		if reSingleLetter.MatchString(match) {
 			return true
 		}
 	case "instagram":
 		// Instagram usernames should not be just underscores or dots
-		if matched, _ := regexp.MatchString(`^[_.]+$`, match); matched {
+		if reOnlyUnderscoreDot.MatchString(match) {
 			return true
 		}
 	case "linkedin":
 		// LinkedIn profiles should not be just numbers
-		if matched, _ := regexp.MatchString(`^[0-9]+$`, match); matched {
+		if reDigitsOnly.MatchString(match) {
 			return true
 		}
 	case "github":
@@ -2251,7 +2299,7 @@ func (v *Validator) isOverlyBroadMatch(match string, platform string) bool {
 	}
 
 	// Check for matches that contain only special characters
-	if matched, _ := regexp.MatchString(`^[^a-zA-Z0-9]+$`, match); matched {
+	if reNoAlnum.MatchString(match) {
 		return true
 	}
 
@@ -3840,13 +3888,13 @@ func (v *Validator) findInvalidCharacters(match string, platform string) []strin
 	var allowedPattern *regexp.Regexp
 	switch platform {
 	case "linkedin", "linkedin_patterns":
-		allowedPattern = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+		allowedPattern = reNotAlnumDotUnderscoreDash
 	case "twitter", "twitter_patterns":
-		allowedPattern = regexp.MustCompile(`[^a-zA-Z0-9_]`)
+		allowedPattern = reNotAlnumUnderscore
 	case "github", "github_patterns":
-		allowedPattern = regexp.MustCompile(`[^a-zA-Z0-9-]`)
+		allowedPattern = reNotAlnumDash
 	default:
-		allowedPattern = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+		allowedPattern = reNotAlnumDotUnderscoreDash
 	}
 
 	invalidChars := allowedPattern.FindAllString(username, -1)
@@ -5111,7 +5159,7 @@ func (v *Validator) isFalsePositiveHandle(match, line string, matchOffset int) b
 
 	// Invalid Twitter handle patterns
 	// Twitter handles cannot start with numbers, underscores, or be too short
-	if len(username) < 2 || strings.HasPrefix(username, "_") || regexp.MustCompile(`^\d`).MatchString(username) {
+	if len(username) < 2 || strings.HasPrefix(username, "_") || reLeadingDigit.MatchString(username) {
 		if v.observer != nil && v.observer.Debug() != nil {
 			v.observer.Debug().LogDetail("socialmedia",
 				fmt.Sprintf("Filtered invalid handle format: handle [HIDDEN] (len=%d) in line [HIDDEN] (len=%d)",

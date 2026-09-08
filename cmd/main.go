@@ -1903,17 +1903,45 @@ func main() {
 	// findings" — a different and far less serious thing.
 	var failedProcessingFiles []parallel.FileDiagnostic
 
-	// Report config keys the schema does not recognize. Gated only on pre-commit
-	// mode, NOT on quiet/non-interactive — the same rule as the
-	// incomplete-coverage warning below, and for the same reason: CI is exactly
-	// where a config that silently fails to apply is most dangerous, and CI is
-	// never interactive. --quiet documents suppressing *progress* output, which
-	// this is not. It writes to stderr, so scripts parsing results on stdout are
-	// unaffected, and it never changes the exit code.
+	// The unknown-key warning STAYS gated on pre-commit mode. That is a deliberate decision with a
+	// test behind it (tests/integration TestUnknownConfigKeysSilentInPrecommit), and a typo'd key is a
+	// different concern from the one below: it means a setting the operator wrote did not apply, which
+	// is a correctness annoyance, not an attacker's lever. Overturning it would need its own
+	// justification and is out of scope here.
 	if precommitConfig == nil {
 		warnUnknownConfigKeys(os.Stderr, cfg)
-		reportConfigProvenance(os.Stderr, cfg, flags.configFile)
 	}
+
+	// The config-provenance note is NOT gated. It is a disclosure about what governed the scan, not
+	// progress output, so it is gated on neither --quiet, non-interactive, nor pre-commit mode.
+	//
+	// The pre-commit gate used to be here, and the comment that justified it argued against itself:
+	// it said "CI is exactly where a config that silently fails to apply is most dangerous" and then
+	// switched the warning off in pre-commit mode — which IS the CI and git-hook path. Worse,
+	// IsPrecommitEnvironment() is true from ENVIRONMENT VARIABLES ALONE (PRE_COMMIT,
+	// _PRE_COMMIT_RUNNING, PRE_COMMIT_HOME, PRE_COMMIT_HOOK, GIT_HOOK_TYPE), so it did not even take
+	// a flag to silence them.
+	//
+	// Measured on main, scanning a file with a copyright notice next to a .ferret-scan.yaml that
+	// disables the copyright and internal_url types:
+	//
+	//	no env var set        1 finding -> 0 findings, and a note naming the config (126 bytes)
+	//	PRE_COMMIT=1          1 finding -> 0 findings, 0 bytes of output, exit 0
+	//	(same for the other four variables)
+	//
+	// That is THREAT_MODEL TB-7 — an outside contributor's PR run through a maintainer's
+	// pre-commit or CI — reaching the same outcome as TM-11 by a shorter path: ship a config file in
+	// the PR and the gate reviewing it goes quiet, with nothing on stderr and a clean exit code. The
+	// disclosure existed; it was suppressed in precisely the situation it was written for.
+	//
+	// Noise is bounded by reportConfigProvenance itself: it reports only a config DISCOVERED next to
+	// the working directory, and says nothing when --config named one explicitly. So a repo that
+	// deliberately keeps a project config can pass --config to acknowledge it and stay silent, while
+	// an unexpected one is always named.
+	//
+	// It writes to stderr, so scripts parsing results on stdout are unaffected, and it never changes
+	// the exit code.
+	reportConfigProvenance(os.Stderr, cfg, flags.configFile)
 
 	// Suppress progress messages in pre-commit mode or quiet mode
 	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {
