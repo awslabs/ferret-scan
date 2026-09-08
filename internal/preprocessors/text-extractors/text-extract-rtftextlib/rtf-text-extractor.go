@@ -80,6 +80,9 @@ import (
 // Shaped to match the SVG extractor's return so processRTF can mirror processSVG: the fields the
 // router carries for coverage disclosure are the same ones, and a second shape would drift.
 type TextContent struct {
+	// Spans maps the extracted Text back to the source bytes, for redaction. See Span.
+	Spans []Span
+
 	Text   string
 	Format string
 
@@ -97,6 +100,109 @@ type TextContent struct {
 	// the name routed it to a prose-only reader. Recovering precision on real documents must not
 	// cost recall on a renamed one, so the caller scans the raw bytes instead.
 	NotRTF bool
+}
+
+// Span maps a run of extracted text back to the source bytes it came from.
+//
+// It exists so a value the producer SPLIT across formatting runs can still be redacted. macOS textutil
+// writes `452-11-9384` as `452-11-\f1\b 9384`, so the extractor reassembles it and the value is
+// reported — but the reassembled form occurs nowhere in the file, and a byte substitution finds nothing
+// to replace. Before this map, redaction of such a file was refused outright rather than done wrong.
+//
+// Half-open on both sides: [OutStart, OutEnd) in the extracted text corresponds to
+// [SrcStart, SrcEnd) in the original RTF.
+type Span struct {
+	OutStart, OutEnd int
+	SrcStart, SrcEnd int
+}
+
+// SourceRanges returns the source byte ranges covering [outStart, outEnd) of the extracted text, in
+// order, clipped to the requested window.
+//
+// Returns nil when the window is not fully covered — a caller must be able to tell "here are the bytes
+// to rewrite" from "part of this value came from somewhere I cannot point at", because rewriting a
+// partially-mapped value would leave some of it behind. That is the failure this whole map exists to
+// avoid, so it is reported rather than approximated.
+func SourceRanges(spans []Span, outStart, outEnd int) [][2]int {
+	if outEnd <= outStart {
+		return nil
+	}
+	var ranges [][2]int
+	covered := outStart
+	for _, sp := range spans {
+		if sp.OutEnd <= outStart || sp.OutStart >= outEnd {
+			continue
+		}
+		if sp.OutStart > covered {
+			return nil // a gap: something in this window came from no recorded source range
+		}
+		// Clip the span to the requested window, in output coordinates, then map to source.
+		lo, hi := sp.OutStart, sp.OutEnd
+		if lo < outStart {
+			lo = outStart
+		}
+		if hi > outEnd {
+			hi = outEnd
+		}
+		// Only a span whose output and source lengths agree can be offset arithmetically. A \uN escape
+		// emits one rune from many source bytes, so its length differs and it is taken WHOLE rather
+		// than sliced — slicing it would compute a source offset inside a control word.
+		if sp.OutEnd-sp.OutStart == sp.SrcEnd-sp.SrcStart {
+			ranges = append(ranges, [2]int{sp.SrcStart + (lo - sp.OutStart), sp.SrcStart + (hi - sp.OutStart)})
+		} else {
+			ranges = append(ranges, [2]int{sp.SrcStart, sp.SrcEnd})
+		}
+		covered = sp.OutEnd
+		if covered >= outEnd {
+			break
+		}
+	}
+	if covered < outEnd {
+		return nil
+	}
+	return ranges
+}
+
+// shiftSpans re-bases output offsets after TrimSpace and drops what falls outside the trimmed text.
+//
+// Clipping a span has to move BOTH ends of the mapping. Trimming three leading spaces off a span means
+// its source range starts three bytes later too — adjusting only the output offset leaves the map
+// silently off by the trimmed width, which is exactly the off-by-N a document with no leading
+// whitespace would never reveal. Measured before the fix: a value's mapped source came back as
+// "  Leading space then SSN: 452-11-9384" instead of "452-11-9384".
+//
+// A span that needs clipping but is NOT length-preserving is DROPPED rather than guessed at: its output
+// and source lengths differ (an escape), so there is no per-byte correspondence to clip along. Dropping
+// it makes SourceRanges refuse any window covering it, which is the safe direction.
+func shiftSpans(spans []Span, lead, trimmedLen int) []Span {
+	out := spans[:0]
+	for _, sp := range spans {
+		sp.OutStart -= lead
+		sp.OutEnd -= lead
+		if sp.OutEnd <= 0 || sp.OutStart >= trimmedLen {
+			continue
+		}
+		oneToOne := sp.OutEnd-sp.OutStart == sp.SrcEnd-sp.SrcStart
+		if sp.OutStart < 0 {
+			if !oneToOne {
+				continue
+			}
+			sp.SrcStart += -sp.OutStart
+			sp.OutStart = 0
+		}
+		if sp.OutEnd > trimmedLen {
+			if !oneToOne {
+				continue
+			}
+			sp.SrcEnd -= sp.OutEnd - trimmedLen
+			sp.OutEnd = trimmedLen
+		}
+		if sp.OutStart >= sp.OutEnd || sp.SrcStart >= sp.SrcEnd {
+			continue
+		}
+		out = append(out, sp)
+	}
+	return out
 }
 
 // maxRTFBytes bounds the input this reader will parse.
@@ -164,8 +270,8 @@ func ExtractFromBytes(name string, data []byte) (*TextContent, error) {
 		// Reported, not refused. See TextContent.NotRTF.
 		return &TextContent{NotRTF: true}, nil
 	}
-	out, warnings := parse(string(data))
-	tc := &TextContent{Text: out, Format: "Rich Text Format"}
+	out, warnings, spans := parse(string(data))
+	tc := &TextContent{Text: out, Format: "Rich Text Format", Spans: spans}
 	if len(warnings) > 0 {
 		tc.ExtractionWarning = strings.Join(warnings, "; ")
 		tc.ExtractionCause = coverage.CauseCutShort
@@ -194,7 +300,7 @@ func looksLikeRTF(data []byte) bool {
 //
 // Single pass, O(n) in the input, with a bounded group stack. The validators downstream have been
 // audited for quadratic behaviour and an extractor that rescanned per group would reintroduce it.
-func parse(s string) (string, []string) {
+func parse(s string) (string, []string, []Span) {
 	var (
 		out       strings.Builder
 		warnings  []string
@@ -208,15 +314,53 @@ func parse(s string) (string, []string) {
 	)
 	out.Grow(len(s) / 2)
 
-	emit := func(str string) {
+	// spans map runs of extracted output back to the source bytes they came from, so a redactor can
+	// find a value in the ORIGINAL markup even when the producer split it across formatting runs.
+	// Without this a reassembled value occurs nowhere literally and cannot be substituted -- which is
+	// why redaction of such a file was refused outright rather than done wrong.
+	//
+	// Recorded per RUN rather than per byte: adjacent emits that are contiguous in both the output and
+	// the source extend the previous span instead of appending, so the slice is proportional to the
+	// number of formatting runs rather than to the document size. A newline inserted for pendingBreak
+	// belongs to no source range and is attributed to the emit that triggered it, which is harmless
+	// because a redactor only ever looks up ranges inside a matched value and a match never begins
+	// with the separator.
+	var spans []Span
+
+	emit := func(str string, srcStart, srcEnd int) {
 		if str == "" {
 			return
 		}
 		if pendingBreak {
+			// The separator is DELIBERATELY not recorded. It corresponds to a control word
+			// (\par, \cell, ...), not to content, so there are no source bytes a redactor could
+			// overwrite with part of a value. Leaving it unmapped makes SourceRanges refuse any window
+			// that crosses a paragraph break — which is correct: a value spanning one cannot be
+			// substituted in place, and refusing beats rewriting the wrong bytes.
 			out.WriteByte('\n')
 			pendingBreak = false
 		}
+		start := out.Len()
 		out.WriteString(str)
+		if srcEnd <= srcStart {
+			// No source bytes to point at. Recorded as nothing rather than as an empty range, so the
+			// gap is visible to SourceRanges instead of being an invalid span.
+			return
+		}
+		// Merge only when BOTH sides are length-preserving, so every merged span keeps
+		// OutEnd-OutStart == SrcEnd-SrcStart and can therefore be sliced by offset arithmetic. An
+		// escape (\'hh emits one byte from four, \uN one rune from several) is never merged: doing so
+		// produced spans whose output was "-11" while their source was "11", and slicing those computes
+		// an offset inside a control word.
+		oneToOne := len(str) == srcEnd-srcStart
+		if n := len(spans); oneToOne && n > 0 &&
+			spans[n-1].OutEnd == start && spans[n-1].SrcEnd == srcStart &&
+			spans[n-1].OutEnd-spans[n-1].OutStart == spans[n-1].SrcEnd-spans[n-1].SrcStart {
+			spans[n-1].OutEnd = out.Len()
+			spans[n-1].SrcEnd = srcEnd
+			return
+		}
+		spans = append(spans, Span{OutStart: start, OutEnd: out.Len(), SrcStart: srcStart, SrcEnd: srcEnd})
 	}
 
 	for i < len(s) {
@@ -237,6 +381,11 @@ func parse(s string) (string, []string) {
 			i++
 			continue
 		case '\\':
+			// The escape's own start, captured BEFORE i advances. The emit sites below need the
+			// source range the escape OCCUPIES ([escStart, next)), and i is already past it by then --
+			// passing i gave every escape an empty range, so its span was dropped and any value
+			// containing one became unmappable and therefore unredactable.
+			escStart := i
 			word, param, hasParam, next := readControl(s, i)
 			i = next
 
@@ -259,7 +408,7 @@ func parse(s string) (string, []string) {
 				if next-1 < len(s) {
 					switch s[next-1] {
 					case '\\', '{', '}':
-						emit(string(s[next-1]))
+						emit(string(s[next-1]), escStart, next)
 					case '\n', '\r':
 						pendingBreak = true
 					}
@@ -268,7 +417,7 @@ func parse(s string) (string, []string) {
 				// \'hh — a byte in the document's codepage. Emitted as the Latin-1 rune, which is
 				// correct for the ANSI codepages real producers use and never fabricates digits.
 				if v, err := strconv.ParseUint(param, 16, 8); err == nil {
-					emit(string(rune(v)))
+					emit(string(rune(v)), escStart, next)
 				}
 			case word == "u":
 				// \uNNNN — a Unicode scalar, optionally negative as a signed 16-bit value.
@@ -280,7 +429,7 @@ func parse(s string) (string, []string) {
 					if utf16.IsSurrogate(r) {
 						r = 0xFFFD
 					}
-					emit(string(r))
+					emit(string(r), escStart, next)
 				}
 				i = skipUnicodeFallback(s, i, unicodeSkip)
 			case word == "uc":
@@ -322,12 +471,22 @@ func parse(s string) (string, []string) {
 			i++
 			continue
 		default:
-			emit(string(c))
+			emit(string(c), i, i+1)
 			i++
 		}
 	}
 
-	return strings.TrimSpace(out.String()), warnings
+	// TrimSpace shifts every output offset, so the map has to be corrected for it or a redactor would
+	// substitute at the wrong place. Computed from the raw string rather than assumed to be zero.
+	raw := out.String()
+	trimmed := strings.TrimSpace(raw)
+	lead := strings.Index(raw, trimmed)
+	if trimmed == "" {
+		lead = 0
+	}
+	spans = shiftSpans(spans, lead, len(trimmed))
+
+	return trimmed, warnings, spans
 }
 
 // readControl parses one control word or symbol starting at the backslash.
