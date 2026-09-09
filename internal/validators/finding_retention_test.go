@@ -57,6 +57,25 @@ import (
 // flaked on a runner nobody had measured (#509, #546). A deterministic statistic that covers the
 // layers is worth more than a noisy one that covers the total.
 
+// THE METADATA MAP IS AT A BUCKET CLIFF, which is the most useful thing this guard knows and it was
+// only found by trying to fix it. A finding's Metadata reaches exactly 8 keys — one key from the
+// validator plus the seven the bridge writes — and 8 is exactly the capacity of one Go map bucket.
+// Measured against this guard:
+//
+//	as it is, 8 keys                                     670 B/finding
+//	a NINTH key holding a 25-byte value                 1012 B/finding   (+342, a second bucket)
+//	all four DOCUMENT-LEVEL keys removed                 630 B/finding   (-40, only 6%)
+//	the map pre-sized with make(..., 10)                  998 B/finding   (+328, 49% WORSE)
+//
+// Two conclusions worth writing down because the profile suggests the opposite of both. First, a
+// heap profile attributes the bucket allocation to the LAST key written, so
+// dual_path_bridge.go:926's "13.51 MB, 39% of retained heap" is the cost of the whole map, not of
+// that key — removing the four document-level values saves 6%, not 39%. Second, pre-sizing is a
+// PESSIMISATION here: a hint of 10 forces two buckets where 8 keys fit in one.
+//
+// So the lever is not trimming keys and not sizing hints; it is whether a per-finding map should
+// exist at all. Filed as #621 with these numbers.
+
 // WHAT MUTATIONS THIS CATCHES. Five, each verified to be a real assertion failure rather than a
 // build error -- the first attempt at two of them read as CAUGHT when they had simply failed to
 // compile:
@@ -168,10 +187,12 @@ func TestFindingRetentionPerFindingStaysBounded(t *testing.T) {
 
 		if m.bridgePerFinding > bridgeRetentionBudget {
 			t.Errorf("%d findings retain %.0f B each through the document bridge, over the %d B "+
-				"budget. Something now holds a per-finding copy of something document-level — the "+
-				"metadata written at dual_path_bridge.go's context block is the usual cause, and "+
-				"four of those values (context_domain, context_doctype, context_confidence, "+
-				"semantic_context) are identical for every finding in a file. See #467.",
+				"budget. The likeliest cause is a NINTH metadata key: a finding's map carries "+
+				"exactly 8 keys today, which is exactly one Go bucket, so the ninth costs a whole "+
+				"second bucket — measured at +342 B PER FINDING for a 25-byte value. Check "+
+				"dual_path_bridge.go's context block. Do NOT try to fix it by pre-sizing the map: "+
+				"a hint of 10 forces two buckets where 8 keys need one, and measured 49%% WORSE "+
+				"(670 -> 998 B/finding). See #467 and #621.",
 				m.findings, m.bridgePerFinding, bridgeRetentionBudget)
 		}
 		if m.filterPerFinding > filterCopyBudget {
