@@ -229,15 +229,37 @@ func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedConten
 	content.Text = pdfContent.Text
 	content.Format = "PDF Document"
 	content.PageCount = pdfContent.PageCount
+	content.PagesScanned = pdfContent.PagesScanned
 	content.WordCount = pdfContent.WordCount
 	content.CharCount = pdfContent.CharCount
 	content.LineCount = pdfContent.LineCount
 
-	// A PDF that parsed but yielded no text is the other half of the same silence.
-	// It is indistinguishable from a genuinely empty document unless we say so, and
-	// a scanned-image PDF (no text layer) lands here too — the operator needs to
-	// know the pages were not read rather than assume they were clean.
-	if strings.TrimSpace(content.Text) == "" {
+	// TRUNCATION IS DISCLOSED, AND IT IS TESTED BEFORE EMPTINESS.
+	//
+	// Order matters here for the reason the SVG extractor documents: a document whose first 50 pages
+	// carry no text layer reaches this point both truncated AND empty, and testing emptiness first
+	// would report "the file parsed but held no document text" about a document that was cut short.
+	// That is a true disclosure under a false heading, which is half a fix.
+	//
+	// Measured before this existed, on a 60-page PDF with an SSN on page 1 and six more on pages
+	// 55-60:
+	//
+	//	1 finding, exit 0, files_skipped: 0, no files_not_examined, 0 bytes of stderr
+	//
+	// Six cleartext SSNs never reported and, under the sink rule, never redacted, with nothing
+	// anywhere saying the scan stopped at page 50.
+	if pdfContent.Truncated() {
+		content.ExtractionWarning = fmt.Sprintf(
+			"only the first %d of %d pages of %s were scanned (page budget), "+
+				"so content on the remaining %d pages was NOT scanned",
+			pdfContent.PagesScanned, pdfContent.PageCount, filepath.Ext(filePath),
+			pdfContent.PageCount-pdfContent.PagesScanned)
+		// CauseCutShort, not CauseNoText: the file was read and PARTLY scanned, which is what
+		// CauseCutShort is defined for -- "a budget, size cap or timeout fired". The remedy an
+		// operator takes differs (split the document, or raise the budget) from the remedy for an
+		// image-only PDF (OCR it), so the two must not share a cause.
+		content.ExtractionCause = coverage.CauseCutShort
+	} else if strings.TrimSpace(content.Text) == "" {
 		content.ExtractionWarning = fmt.Sprintf(
 			"no text extracted from %s: the file parsed but held no document text, "+
 				"so page content was NOT scanned", filepath.Ext(filePath))
@@ -531,7 +553,14 @@ func (tp *TextPreprocessor) createBasicLineMappings(content *ProcessedContent, m
 		// For extracted documents, we estimate the original position
 		// In a real implementation, this would use document structure information
 		originalPos := DocumentPosition{
-			Page:       tp.estimatePageNumber(lineNum, content.LineCount, content.PageCount),
+			// The estimator distributes the EXTRACTED text's lines across pages, so its denominator
+			// must be the number of pages that text actually spans — PagesScanned when an extractor
+			// bounded its work, PageCount otherwise. Passing the document's full count for a
+			// truncated PDF would spread 50 pages of text across 60 and put every estimate early.
+			//
+			// Before the page cap stopped overwriting PageCount this was accidentally right, because
+			// the two were the same number. Keeping the real count made the distinction load-bearing.
+			Page:       tp.estimatePageNumber(lineNum, content.LineCount, content.scannedPageSpan()),
 			CharOffset: lineOffsets[lineNum],
 			LineNumber: lineNum + 1,
 		}

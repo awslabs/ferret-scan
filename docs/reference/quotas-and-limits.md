@@ -172,11 +172,44 @@ Two details decide whether this bound works:
 | **Concurrent validator invocations** | `GOMAXPROCS` | Via the `GOMAXPROCS` environment variable | `execguard.DefaultLimiter`, sized once at process start. Deliberately *not* capped at 8: the worker pool bounds I/O breadth, this bounds CPU-bound validation depth |
 | **Live extracted bytes** | no cap by default | Yes — `--max-live-bytes` | Bounds total extracted content held across concurrently scanned files. Off unless the flag is given |
 | **XML parse time, per Office part** | 30s | No | `officelib.XMLParseTimeout` |
+| **PDF pages scanned, per document** | 50 | No | `textextractpdftextlib.maxScannedPages`. Pages beyond it are **not scanned**; the truncation is disclosed — see below |
 
 There is **no adaptive worker scaling**: the pool size is fixed for the life of the process, no
 limit reacts to memory pressure or to file size, and no scan is chunked. The worker count has no
 flag, config key or environment-variable input — the only performance lever an operator has is
 `--max-live-bytes`, and the only way to change the rest is to edit the constants and rebuild.
+
+### The PDF page budget is a coverage limit, not just a performance one
+
+A PDF is scanned to **50 pages**. Content on later pages is never read, so no finding can be produced
+for it — and under this project's sink rule, a value that is not reported is never redacted either.
+
+That makes the budget different in kind from the others in this table: the rest bound *how much work*
+a scan does, while this one bounds *how much of the document the result is about*. So it is disclosed
+rather than applied silently. On a 60-page document:
+
+```console
+$ ferret-scan --file big.pdf --checks ssn
+NOT FULLY EXAMINED: 1 of 1 file — findings may be missing
+  coverage cut short (1)
+    big.pdf  Text Extractor: only the first 50 of 60 pages of .pdf were scanned (page budget),
+             so content on the remaining 10 pages was NOT scanned
+  Add --fail-on-incomplete to make this a non-zero exit (3).
+```
+
+It reaches every channel the coverage disclosure uses — stderr, `stats.files_not_examined`, the
+structured formats, and exit code **3** under `--fail-on-incomplete`. The cause is
+`coverage cut short`, not `no document text`: the remedy is to split the document or raise the budget,
+which is not the remedy for an image-only PDF.
+
+Before this was disclosed, a 60-page PDF carrying an SSN on page 1 and six more on pages 55–60
+reported **one** finding at exit 0 with `files_skipped: 0` and an empty stderr — six values neither
+reported nor redacted, with nothing saying the scan had stopped.
+
+**Not configurable.** There is no flag and no config key; the comment in the source claimed otherwise
+for some time. If 50 pages is the wrong budget for your documents, split them, and see
+[#626](https://github.com/awslabs/ferret-scan/issues/626) for the measurement a change to the number
+should carry.
 
 ### Output bounds
 
@@ -279,6 +312,6 @@ There is no `performance:` section in the configuration file. Config keys such a
 | Scenario | Recommendation |
 |----------|----------------|
 | **Large Images** | Reduce resolution before processing |
-| **Large PDFs** | Split into smaller files |
+| **Large PDFs** | Split into smaller files — **required** past 50 pages, which is where scanning stops (the truncation is disclosed, and `--fail-on-incomplete` exits 3) |
 | **Many Small Files** | Use batch processing for efficiency |
 | **Memory Issues** | Pass `--max-live-bytes` (e.g. `256MB`), or scan fewer files per invocation. The worker count itself cannot be reduced |

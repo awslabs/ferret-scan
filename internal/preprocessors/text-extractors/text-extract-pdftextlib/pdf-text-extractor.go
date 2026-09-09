@@ -15,13 +15,43 @@ import (
 
 // TextContent represents the extracted text content from a PDF document
 type TextContent struct {
-	Filename  string
-	Text      string
+	Filename string
+	Text     string
+
+	// PageCount is the document's REAL page count, always, even when only some of those pages were
+	// read. It used to be overwritten with the page cap, which made it a lie in output the operator
+	// reads: pdf_metadata_preprocessor formats PageCount as a reported field, so a 200-page document
+	// was described as having 50 pages.
 	PageCount int
+
+	// PagesScanned is how many pages were actually visited. Equal to PageCount for a document under
+	// the cap; below it when maxScannedPages fired.
+	//
+	// A separate field rather than a bool, because the disclosure has to be able to say WHICH numbers
+	// it is talking about — "50 of 200" is actionable and "truncated" is not.
+	PagesScanned int
+
 	WordCount int
 	CharCount int
 	LineCount int
 }
+
+// Truncated reports that the page cap stopped extraction before the end of the document, so any
+// value on a later page was never seen — and under this project's sink rule, never redacted either.
+func (c *TextContent) Truncated() bool { return c.PagesScanned < c.PageCount }
+
+// maxScannedPages bounds how many pages one PDF costs.
+//
+// The number is unchanged at 50. What changed is that it no longer destroys the page count and no
+// longer applies in silence: measured before this, a 60-page PDF with an SSN on page 1 and six more
+// on pages 55-60 reported exactly ONE finding, at exit 0, with files_skipped: 0, no
+// files_not_examined, and an empty stderr. Six cleartext SSNs, unreported and unredacted, with
+// nothing anywhere saying the scan had stopped.
+//
+// It is deliberately still a constant and still 50: raising it is a cost decision that wants a
+// measurement behind it (see #626), and disclosure is correct at any value. The old comment called it
+// "configurable", which it never was -- no config key, no flag, no override.
+const maxScannedPages = 50
 
 // ExtractText extracts text from a PDF document using ledongthuc/pdf
 func ExtractText(filePath string) (content *TextContent, err error) {
@@ -44,14 +74,13 @@ func ExtractText(filePath string) (content *TextContent, err error) {
 	}
 	defer f.Close()
 
-	// Get the number of pages
+	// The document's real page count, kept whether or not all of it is read.
 	content.PageCount = r.NumPage()
 
-	// Performance optimization: limit processing for very large PDFs
-	maxPages := 50 // Configurable limit to prevent excessive processing time
-	if content.PageCount > maxPages {
-		content.PageCount = maxPages
-		// Note: This truncates processing but maintains reasonable performance
+	// Bound the work, WITHOUT overwriting the count above. Every loop below iterates PagesScanned.
+	content.PagesScanned = content.PageCount
+	if content.PagesScanned > maxScannedPages {
+		content.PagesScanned = maxScannedPages
 	}
 
 	// Extract text from all pages with parallel processing for better performance
@@ -62,10 +91,10 @@ func ExtractText(filePath string) (content *TextContent, err error) {
 	}
 
 	// Use parallel processing for multi-page PDFs
-	resultChan := make(chan pageResult, content.PageCount)
+	resultChan := make(chan pageResult, content.PagesScanned)
 
 	// Process pages in parallel
-	for i := 1; i <= content.PageCount; i++ {
+	for i := 1; i <= content.PagesScanned; i++ {
 		go func(pageNum int) {
 			p := r.Page(pageNum)
 			if p.V.IsNull() {
@@ -82,7 +111,7 @@ func ExtractText(filePath string) (content *TextContent, err error) {
 	pageTexts := make(map[int]string)
 	failedPages := 0
 
-	for i := 0; i < content.PageCount; i++ {
+	for i := 0; i < content.PagesScanned; i++ {
 		result := <-resultChan
 		if result.err != nil {
 			failedPages++
@@ -93,7 +122,7 @@ func ExtractText(filePath string) (content *TextContent, err error) {
 
 	// Assemble pages in correct order
 	var buf bytes.Buffer
-	for i := 1; i <= content.PageCount; i++ {
+	for i := 1; i <= content.PagesScanned; i++ {
 		if text, exists := pageTexts[i]; exists {
 			// Preserve page structure with clear page boundaries
 			if buf.Len() > 0 {

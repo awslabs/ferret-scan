@@ -18,12 +18,22 @@ type ProcessedContent struct {
 	Text string
 
 	// Content metadata
-	Format     string
-	PageCount  int
-	WordCount  int
-	CharCount  int
-	LineCount  int
-	Paragraphs int
+	Format    string
+	PageCount int
+
+	// PagesScanned is how many of PageCount pages were actually read, when an extractor bounds its
+	// work. Zero means "not applicable, or all of them" — the zero value therefore preserves existing
+	// behaviour for every producer that does not set it.
+	//
+	// It exists because PageCount used to be OVERWRITTEN with the PDF page cap, which destroyed the
+	// only record that the document was longer than what was scanned. Keeping the real count and the
+	// scanned count separately is what lets the truncation be disclosed (see processPDF) while
+	// anything reasoning about the extracted TEXT still divides by the span the text actually covers.
+	PagesScanned int
+	WordCount    int
+	CharCount    int
+	LineCount    int
+	Paragraphs   int
 
 	// Processing information
 	ProcessorType string
@@ -384,4 +394,17 @@ func ShouldPreprocess(filePath string) bool {
 	// All files should be preprocessed now - the plain text preprocessor handles text files,
 	// document preprocessor handles documents, and metadata preprocessor handles images/media
 	return true
+}
+
+// scannedPageSpan is how many pages the EXTRACTED text spans: PagesScanned when an extractor bounded
+// its work, PageCount otherwise.
+//
+// A method rather than an inline conditional at the call site, so a second consumer of the extracted
+// text cannot pick the wrong one of the two counts. The difference only appears for a truncated
+// document, which is exactly when a mistake here is invisible in testing.
+func (pc *ProcessedContent) scannedPageSpan() int {
+	if pc.PagesScanned > 0 && pc.PagesScanned < pc.PageCount {
+		return pc.PagesScanned
+	}
+	return pc.PageCount
 }
