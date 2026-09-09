@@ -313,6 +313,17 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 func assertFixtureIsMeasurable(t *testing.T, name string, g Growth, floor time.Duration) {
 	t.Helper()
 
+	// The floor must still be NEAR the value it guards. Without this, lowering it to 1ns is a silent
+	// loosening that no assertion notices — verified by mutation: the floor is the only thing standing
+	// between this test and vacuity, and nothing was pinning it. 4x, so a faster machine reporting a
+	// smaller base does not trip it, while a floor that has drifted an order of magnitude down does.
+	if g.BaseWallMin > 4*floor {
+		t.Errorf("the %s fixture's base is %v against a %v floor — %0.f times the floor, so the floor "+
+			"has stopped protecting anything and this check is vacuous. Re-derive it from the current "+
+			"reading (roughly half) rather than leaving it where it was",
+			name, g.BaseWallMin, floor, float64(g.BaseWallMin)/float64(floor))
+	}
+
 	if g.BaseWallMin < floor {
 		t.Errorf("the %s fixture's base is %v of wall time, under the %v floor: the work has become "+
 			"too cheap for the measurement to be about the code. This is the failure a ratio bound "+
