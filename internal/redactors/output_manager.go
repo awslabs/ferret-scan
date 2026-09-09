@@ -115,8 +115,21 @@ func (osm *OutputStructureManager) makeRelativePath(path string) string {
 		path = path[2:]
 	}
 
-	// Convert backslashes to forward slashes for consistency
-	path = strings.ReplaceAll(path, "\\", "/")
+	// Normalise the PLATFORM's separator, which is a no-op where a backslash is not one.
+	//
+	// This was strings.ReplaceAll(path, "\\", "/") unconditionally, and on POSIX a backslash is a
+	// perfectly legal FILENAME character -- so the rewrite mapped two different scanned files onto one
+	// output path. Measured on a tree holding both `a\b.txt` and `a/b.txt`, scanned together with
+	// --enable-redaction: 4 files with findings, 4 findings reported, and only THREE redacted copies
+	// written, at exit 0 with nothing on stderr.
+	//
+	// The lost copy is not the worst of it. The file that DID land at out/.../tree/a/b.txt held the
+	// content of `a\b.txt`, so an operator forwarding it believes it is the redacted `a/b.txt` and it
+	// is a different document -- a MISLABELLED artefact rather than a missing one.
+	//
+	// filepath.ToSlash is the correct spelling of the original intent: it rewrites the separator on
+	// Windows, where a backslash IS one, and leaves a POSIX path alone.
+	path = filepath.ToSlash(path)
 
 	// Remove leading path separators
 	path = strings.TrimLeft(path, "/")
