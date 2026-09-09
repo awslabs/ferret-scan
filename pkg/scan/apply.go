@@ -97,10 +97,21 @@ func RedactText(text string, findings []Finding, strategy RedactStrategy) (*Reda
 		// INTELLECTUAL_PROPERTY finding at 98%, reported Text ending
 		// "[+17 more matches on line]", and RedactText returning Count=1 with output BYTE-IDENTICAL
 		// to the input for all three strategies -- six values in cleartext, attested as redacted.
-		if f.Text != "" && !strings.Contains(text, f.Text) {
-			if line := strings.TrimSpace(f.FullLine); line != "" && strings.Contains(text, line) {
-				m.Metadata = map[string]any{redactors.MatchTextTruncatedKey: true}
-			}
+		// Tested against the finding's OWN LINE, not the whole document, and that is a complexity
+		// decision as much as a correctness one.
+		//
+		// A first version asked !strings.Contains(text, f.Text), which is O(document) per finding and
+		// therefore O(findings x bytes) overall. Measured on distinct values: 27ms/95ms/339ms became
+		// 30ms/110ms/395ms at 1049/2099/4199 findings -- about 16% on a path that is already
+		// superlinear for other reasons. Against its own line the check is O(line), and the cost
+		// disappears.
+		//
+		// It is also the more precise test. A normal match IS a literal substring of the line it was
+		// found on; a bounded consolidated Text is a rendered SUMMARY of several matches and is not.
+		// A match with no single line -- the multi-line SECRETS types -- has an empty FullLine and is
+		// excluded by the first condition, which is what RestoreBoundedMatchText requires anyway.
+		if line := strings.TrimSpace(f.FullLine); line != "" && f.Text != "" && !strings.Contains(f.FullLine, f.Text) {
+			m.Metadata = map[string]any{redactors.MatchTextTruncatedKey: true}
 		}
 
 		matches = append(matches, m)
