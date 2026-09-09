@@ -240,9 +240,12 @@ var cycleSink uint64
 // report a clean 4x/16x from nothing at all. A fixture must be shown to scale before a measurement
 // taken with it means anything, and that check must not itself be Windows-only.
 func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
+	// 8M, not 4M: at 4M the base read 4.9-5.1ms against the 4ms floor asserted below, only 1.2x of
+	// margin. A faster CPU than this one lowers the base, and the floor exists precisely to catch a
+	// base that has drifted down, so it must not sit within noise of the honest value.
 	linear, err := Measure(DefaultPairs,
-		func() { burnCycles(4_000_000) },
-		func() { burnCycles(16_000_000) })
+		func() { burnCycles(8_000_000) },
+		func() { burnCycles(32_000_000) })
 	if err != nil {
 		t.Fatalf("measuring the linear fixture: %v", err)
 	}
@@ -261,9 +264,13 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 	// quantisation noise.
 	assertFixtureIsMeasurable(t, "linear", linear)
 
+	// 12M rather than the linear fixture's 4M. burnQuadratic spends most of its budget in loop
+	// bookkeeping rather than in burnCycles, so at 4M its base read 3.635ms — above MinMeasurableCPU
+	// but UNDER the 2x floor asserted below, which failed this test on the commit that introduced the
+	// floor. Sized from the measurement rather than by symmetry with the linear case.
 	quadratic, err := Measure(DefaultPairs,
-		func() { burnQuadratic(4_000_000) },
-		func() { burnQuadratic(16_000_000) })
+		func() { burnQuadratic(12_000_000) },
+		func() { burnQuadratic(48_000_000) })
 	if err != nil {
 		t.Fatalf("measuring the quadratic fixture: %v", err)
 	}
