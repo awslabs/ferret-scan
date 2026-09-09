@@ -264,12 +264,36 @@ func runStdinScan(in stdinScanInputs) int {
 		}
 	}
 
-	if !shouldSuppressStdinProse(finalCfg, precommitConfig, in.outputFile) {
-		// Unknown-key warnings are prose, so they ride the same gate: with
-		// --enable-redaction and no --output, stderr carries the findings
-		// document and anything else on it breaks `2> findings.json`.
-		warnUnknownConfigKeys(os.Stderr, cfg)
+	// The config-provenance note is a DISCLOSURE about what governed the scan, not progress output, so
+	// it is gated on neither --quiet nor pre-commit mode — the same rule #603 applied to the file path.
+	//
+	// #603 MISSED THIS CALL SITE, and TM-13's unqualified claim that the note is "gated on neither
+	// --quiet, non-interactive, nor pre-commit" was therefore false on the stdin path. Measured at
+	// ea4e2f4 with a .ferret-scan.yaml in the working directory disabling copyright and internal_url:
+	//
+	//	--file, any of the five triggers   109 bytes, note present   (fixed by #603)
+	//	--stdin, no trigger                145 bytes, note present
+	//	--stdin + PRE_COMMIT=1               0 bytes, note ABSENT
+	//	  ... same for _PRE_COMMIT_RUNNING, PRE_COMMIT_HOME, PRE_COMMIT_HOOK, GIT_HOOK_TYPE,
+	//	      --pre-commit-mode and --quiet
+	//
+	// Which is TB-7 again on a different input path: a pull request that ships a config file silences
+	// the gate reviewing it, with nothing on stderr and a clean exit code.
+	//
+	// It IS still gated on the one arm of shouldSuppressStdinProse that is a real constraint rather
+	// than a preference: with --enable-redaction and no --output, stderr carries the findings DOCUMENT,
+	// so prose there breaks `2> findings.json`. That arm suppresses a disclosure for a mechanical
+	// reason, not because the operator asked for quiet.
+	if !stdinStderrCarriesFindings(finalCfg, in.outputFile) {
 		reportConfigProvenance(os.Stderr, cfg, in.flags.configFile)
+	}
+
+	if !shouldSuppressStdinProse(finalCfg, precommitConfig, in.outputFile) {
+		// Unknown-key warnings DO ride the general gate. That is deliberate and matches the file path:
+		// a typo'd key means a setting the operator wrote did not apply, which is a correctness
+		// annoyance rather than an attacker's lever, and tests/integration
+		// TestUnknownConfigKeysSilentInPrecommit pins it.
+		warnUnknownConfigKeys(os.Stderr, cfg)
 
 		fmt.Fprintf(os.Stderr, "Scan complete: stdin scanned in %s\n", elapsed.Round(time.Millisecond))
 		// Mirror file-mode's suppression notice so users see the same
@@ -549,10 +573,22 @@ func shouldSuppressStdinProse(
 	if effectivePrecommitQuiet(precommitConfig) {
 		return true
 	}
-	if finalCfg.enableRedaction && outputFile == "" {
+	if stdinStderrCarriesFindings(finalCfg, outputFile) {
 		return true
 	}
 	return false
+}
+
+// stdinStderrCarriesFindings reports whether stderr is the findings DOCUMENT rather than a human
+// channel.
+//
+// With --enable-redaction and no --output, the redacted content goes to stdout and the findings report
+// goes to stderr, so any prose written there corrupts `2> findings.json`. This is the one reason to
+// withhold even a disclosure, and it is separated from shouldSuppressStdinProse's other arms precisely
+// so it can be applied on its own: --quiet and pre-commit are operator PREFERENCES about progress
+// output, while this is a mechanical constraint about what stderr is carrying.
+func stdinStderrCarriesFindings(finalCfg *finalConfiguration, outputFile string) bool {
+	return finalCfg.enableRedaction && outputFile == ""
 }
 
 // validateStdinFlags rejects flag combinations that don't make sense with
