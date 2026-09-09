@@ -127,3 +127,66 @@ func TestAttachDisabledDetectionTypes(t *testing.T) {
 		}
 	})
 }
+
+// TestFormatCallsAttachDisabledDetectionTypes closes the gap the tests above leave.
+//
+// They call attachDisabledDetectionTypes directly, so they all stay green when Format stops calling
+// it — verified by mutation: deleting the call from formatter.go left every assertion above
+// passing. Same shape as the #603 defect, where the function was right and the caller was not.
+func TestFormatCallsAttachDisabledDetectionTypes(t *testing.T) {
+	options := statsWithDisabled(map[string][]string{"INTELLECTUAL_PROPERTY": {"copyright"}})
+	options.ConfidenceLevel = map[string]bool{"high": true, "medium": true, "low": true}
+
+	out, err := NewFormatter().Format(nil, nil, options)
+	if err != nil {
+		t.Fatalf("formatting: %v", err)
+	}
+
+	var doc struct {
+		Runs []struct {
+			Invocations []struct {
+				ToolExecutionNotifications []struct {
+					Descriptor *struct{ ID string } `json:"descriptor"`
+					Message    struct{ Text string }
+				} `json:"toolExecutionNotifications"`
+			} `json:"invocations"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("the document is not valid JSON: %v\n%s", err, out)
+	}
+	if len(doc.Runs) == 0 || len(doc.Runs[0].Invocations) == 0 {
+		t.Fatalf("Format produced no invocation, so it did not attach the disclosure:\n%s", out)
+	}
+
+	found := false
+	for _, n := range doc.Runs[0].Invocations[0].ToolExecutionNotifications {
+		if n.Descriptor != nil && n.Descriptor.ID == disabledTypesNotificationID {
+			found = true
+			if !strings.Contains(n.Message.Text, "copyright") {
+				t.Errorf("the notification does not name the sub-type: %q", n.Message.Text)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("Format did not emit the %s notification. A SARIF consumer would read zero results "+
+			"from a narrowed scan with nothing saying so.\n%s", disabledTypesNotificationID, out)
+	}
+}
+
+// TestFormatOmitsTheDisclosureWhenNothingIsDisabled is the must-NOT-fire half, at the Format level:
+// an unnarrowed scan's document must not gain an invocation or a descriptor.
+func TestFormatOmitsTheDisclosureWhenNothingIsDisabled(t *testing.T) {
+	options := formatters.FormatterOptions{
+		ConfidenceLevel: map[string]bool{"high": true, "medium": true, "low": true},
+		Stats:           &formatters.ScanStats{},
+	}
+	out, err := NewFormatter().Format(nil, nil, options)
+	if err != nil {
+		t.Fatalf("formatting: %v", err)
+	}
+	if strings.Contains(out, disabledTypesNotificationID) {
+		t.Errorf("an unnarrowed scan's SARIF carries the %s descriptor:\n%s",
+			disabledTypesNotificationID, out)
+	}
+}
