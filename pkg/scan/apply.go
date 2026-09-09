@@ -4,6 +4,8 @@
 package scan
 
 import (
+	"strings"
+
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	plaintextredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
@@ -47,14 +49,47 @@ func RedactText(text string, findings []Finding, strategy RedactStrategy) (*Reda
 		if f.Text == "" {
 			continue // can't redact without the matched substring
 		}
-		matches = append(matches, detector.Match{
+		m := detector.Match{
 			Text:       f.Text,
 			Type:       f.Type,
 			Confidence: f.Confidence,
 			LineNumber: f.LineNumber,
 			Filename:   f.Filename,
 			Validator:  f.Validator,
-		})
+			// Context was dropped here, and dropping it disabled a safety net that the redactor
+			// this function calls ALREADY runs. plaintext.RedactString invokes
+			// redactors.RestoreBoundedMatchText, whose gate isBoundedMatch requires both
+			// Context.FullLine and Metadata[MatchTextTruncatedKey] -- so with neither carried
+			// across, a finding whose Text is a rendered SUMMARY rather than a document span
+			// could not be located, was silently skipped, and was still counted as redacted.
+			Context: detector.ContextInfo{
+				BeforeText: f.ContextBefore,
+				AfterText:  f.ContextAfter,
+				FullLine:   f.FullLine,
+			},
+		}
+
+		// The truncation flag is DERIVED here rather than plumbed through, because pkg/scan.Finding
+		// carries no Metadata at all -- mapResult discards it a layer earlier -- and widening the
+		// public struct to pass one boolean is a compatibility cost for an internal detail.
+		//
+		// The condition is exactly when the restore is both NEEDED and SAFE: the reported text does
+		// not occur in the input (so it cannot be located as given) while its own full line does (so
+		// there is a real span to mask instead). Deriving it from the two observable facts cannot
+		// mis-fire on a finding that is locatable, because such a finding fails the first test.
+		//
+		// Measured before this, with default TextOptions{} and no config, on one line holding six
+		// "Copyright (c) 2026 Acme Corporation ... CONFIDENTIAL" notices: one
+		// INTELLECTUAL_PROPERTY finding at 98%, reported Text ending
+		// "[+17 more matches on line]", and RedactText returning Count=1 with output BYTE-IDENTICAL
+		// to the input for all three strategies -- six values in cleartext, attested as redacted.
+		if f.Text != "" && !strings.Contains(text, f.Text) {
+			if line := strings.TrimSpace(f.FullLine); line != "" && strings.Contains(text, line) {
+				m.Metadata = map[string]any{redactors.MatchTextTruncatedKey: true}
+			}
+		}
+
+		matches = append(matches, m)
 	}
 
 	if len(matches) == 0 {
@@ -64,12 +99,19 @@ func RedactText(text string, findings []Finding, strategy RedactStrategy) (*Reda
 	// Use the plaintext redactor (stateless, no output-manager needed for
 	// in-memory string redaction).
 	redactor := plaintextredactor.NewPlainTextRedactor(nil, nil)
-	redacted, _, err := redactor.RedactString(text, matches, mapStrategy(strategy))
+	redacted, mappings, err := redactor.RedactString(text, matches, mapStrategy(strategy))
 	if err != nil {
 		return nil, err
 	}
 
-	return &Redacted{Text: redacted, Count: len(matches)}, nil
+	// Count the replacements the redactor actually MADE, not the findings handed to it.
+	//
+	// It was len(matches), which made Count an attestation the function could not support: a match
+	// the redactor cannot locate hits `continue` before its mapping is appended, so a value left in
+	// cleartext was still counted as redacted. A caller comparing len(Findings) against Count can now
+	// see the gap -- which matters most for the case this cannot fix, a SOCIAL_MEDIA_CLUSTER whose
+	// members span several lines and so cannot be recovered from a single FullLine.
+	return &Redacted{Text: redacted, Count: len(mappings)}, nil
 }
 
 func mapStrategy(s RedactStrategy) redactors.RedactionStrategy {
