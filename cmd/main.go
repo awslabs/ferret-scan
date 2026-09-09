@@ -1459,6 +1459,13 @@ func main() {
 
 	standardValidators := core.BuildValidatorSet(enabledChecks, cfg, activeProfile)
 
+	// Coverage disclosure for detection that config switched off (#293 direction 3). Asked of the
+	// CONFIGURED validators, so it reports what they will actually not do rather than what the YAML
+	// said. Ungated for the reason TM-13 gives for the provenance note: it is a statement about
+	// what governed the scan, not progress output.
+	disabledDetectionTypes, unrecognisedDisabledTypes := collectDisabledDetectionTypes(standardValidators)
+	reportDisabledDetectionTypes(os.Stderr, disabledDetectionTypes, unrecognisedDisabledTypes)
+
 	// Set up dual path validation integration
 	var dualPathObserver *observability.StandardObserver
 	if mainDebugObs != nil {
@@ -2388,15 +2395,19 @@ func main() {
 		// operator unable to tell build detritus from documents they care about.
 		SkippedTypes: formatters.SkippedTypeCounts(
 			append(append([]string{}, discoverySkippedPaths...), skippedPaths...)),
-		FilesNotExamined:  len(unscannedEntries),
-		FilesNotRedacted:  len(unredactedDisclosure),
-		ValuesNotRedacted: formatters.UnredactedValueCount(unredactedDisclosure),
-		TotalFindings:     len(unsuppressedMatches),
-		High:              highCount,
-		Medium:            mediumCount,
-		Low:               lowCount,
-		Suppressed:        suppressedCount,
-		Duration:          elapsed.Seconds(),
+		FilesNotExamined: len(unscannedEntries),
+		// Machine-readable half of the same disclosure. The stderr line above is for a human at a
+		// terminal; a CI job consuming `"results": []` never sees stderr, and that is the reader
+		// most at risk of taking a narrowed scan for a clean one.
+		DisabledDetectionTypes: disabledDetectionTypes,
+		FilesNotRedacted:       len(unredactedDisclosure),
+		ValuesNotRedacted:      formatters.UnredactedValueCount(unredactedDisclosure),
+		TotalFindings:          len(unsuppressedMatches),
+		High:                   highCount,
+		Medium:                 mediumCount,
+		Low:                    lowCount,
+		Suppressed:             suppressedCount,
+		Duration:               elapsed.Seconds(),
 	}
 
 	// The same disclosure, in structured form, for formats that cannot carry prose.

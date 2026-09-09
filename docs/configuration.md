@@ -270,6 +270,47 @@ You can selectively disable specific IP detection categories using the `disabled
 
 Valid values: `copyright`, `patent`, `trademark`, `trade_secret`, `internal_url`
 
+Only these five values do anything. A value that is not one of them is **inert** — the sub-type stays
+enabled — and the scan says so on stderr rather than leaving you to notice the findings you thought
+you had switched off:
+
+```console
+$ ferret-scan --file notice.txt --checks INTELLECTUAL_PROPERTY --disable-ip-types copyrite
+Warning: config asked to disable INTELLECTUAL_PROPERTY sub-type(s) copyrite, which name nothing
+this validator detects — they had NO effect and detection is still running. Valid values:
+copyright, internal_url, patent, trade_secret, trademark.
+```
+
+##### Disabling a sub-type is disclosed
+
+Switching a sub-type off narrows what the scan can find, so the run says so — a report with no
+COPYRIGHT findings must not be readable as evidence that there are none:
+
+```console
+$ ferret-scan --file notice.txt --checks INTELLECTUAL_PROPERTY
+Note: config disabled 1 INTELLECTUAL_PROPERTY detection sub-type(s) for this scan: copyright.
+Findings of those sub-types are not reported.
+```
+
+This is a **disclosure**, not progress output, so it is not silenced by `--quiet`, by
+non-interactive output, or by pre-commit mode — the same rule the config-provenance note follows.
+It goes to stderr, and it does not change the exit code.
+
+The machine-readable form is in the report itself, for a CI job that never sees stderr:
+
+| format | where |
+|---|---|
+| `json`, `yaml` | `stats.disabled_detection_types`, keyed by check name |
+| `sarif` | `runs[].invocations[].toolExecutionNotifications[]`, descriptor `ferret-scan/detection-disabled-by-config` |
+| `csv`, `text`, `junit`, `gitlab-sast` | stderr only — these formats carry no scan-statistics block |
+
+Both keys are omitted entirely when nothing was disabled, so an ordinary scan's output is
+byte-identical to before.
+
+Unlike the sub-type list, this reflects what the **validator** actually did rather than what the
+config file said. A `disabled_types` block under a validator that does not read it — every validator
+except `intellectual_property` — is correctly silent, because nothing was disabled.
+
 ##### CLI Flag
 
 ```bash

@@ -326,6 +326,37 @@ Every in-band option corrupts something.
 terminal *cannot* tell you coverage was incomplete. If you need machine-readable
 coverage data, use `json`, `yaml`, `sarif` or `gitlab-sast`.
 
+## A different kind of gap: detection narrowed by config
+
+Everything above is about **files**. There is one coverage fact that is not per-file at all:
+configuration can switch specific detection sub-types off, so a whole class of finding cannot be
+produced for **any** file. Today that is `validators.intellectual_property.disabled_types` and the
+`--disable-ip-types` flag.
+
+It is disclosed separately from the not-examined channel, and deliberately so: the not-examined
+causes each name a path, and this one has no path to name. Reporting it as a `NotExaminedFile` would
+have needed a fabricated path, and a true disclosure under a false heading is only half a fix.
+
+| where | what |
+|---|---|
+| stderr | `Note: config disabled N <CHECK> detection sub-type(s) for this scan: ...` |
+| `json`, `yaml` | `stats.disabled_detection_types`, keyed by check name, values sorted |
+| `sarif` | `invocations[].toolExecutionNotifications[]`, descriptor `ferret-scan/detection-disabled-by-config`, level `warning` |
+
+Three properties worth knowing:
+
+- **Ungated.** Not silenced by `--quiet`, by non-interactive output or by pre-commit mode, for the
+  reason the config-provenance note is not: `IsPrecommitEnvironment()` is true from environment
+  variables alone, so a gated disclosure takes no flag to suppress. See TM-13.
+- **Sourced from the validator, not from config.** Only the intellectual-property validator honours
+  `disabled_types`; the key is inert elsewhere. A config-derived disclosure would announce reduced
+  coverage that did not happen.
+- **An unrecognised sub-type is a separate warning**, because it is the opposite failure: the
+  operator asked for detection to stop and it did not.
+
+The gap that remains: the `--stdin` path builds no scan-statistics block at all, so it gets the
+stderr line and no machine-readable form. Tracked separately.
+
 ## Caps
 
 Machine formats enumerate at most **50** entries and then state the total, so
