@@ -6,6 +6,7 @@ package sarif
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -158,11 +159,49 @@ func (m *VulnerabilityMapper) buildArtifactLocation(match detector.Match) SARIFA
 	if !filepath.IsAbs(match.Filename) {
 		location.URIBaseID = "%SRCROOT%"
 	} else {
-		// For absolute paths, use file:// scheme
-		location.URI = "file://" + cleanPath
+		location.URI = absoluteFileURI(cleanPath)
 	}
 
 	return location
+}
+
+// absoluteFileURI renders an absolute filesystem path as a file: URI with an EMPTY authority and a
+// percent-encoded path.
+//
+// It replaced `"file://" + cleanPath`, which was correct on POSIX only by accident -- the path's own
+// leading slash supplied the third one -- and wrong in three separate ways otherwise. Measured with
+// net/url.Parse on what that expression produced:
+//
+//	/tmp/report.txt        file:///tmp/report.txt          host=""   path="/tmp/report.txt"      ok
+//	C:/Users/a/report.txt  file://C:/Users/a/report.txt    host="C:" path="/Users/a/report.txt"  the
+//	                       DRIVE LETTER became the authority and the path lost it, so no consumer
+//	                       resolves the file
+//	/tmp/a#b.txt           file:///tmp/a#b.txt             host=""   path="/tmp/a"               the
+//	                       '#' starts a fragment and the filename is TRUNCATED -- a consumer resolves
+//	                       a different file, silently
+//	/tmp/100% done.txt     file:///tmp/100% done.txt       PARSE ERROR: invalid URL escape "% d"
+//	                       -- the URI is not parseable at all, so a strict consumer rejects it
+//
+// Both specifications are explicit about the shape. SARIF 2.1.0 3.10.2: for a path that is not
+// network-accessible the producer "SHOULD NOT include the host name", and on omitting the authority
+// the URI "SHOULD start with 'file:///'" -- its own example is `file:///C:/src`. RFC 8089 2 states
+// that `file:///c:/path/to/file` is "already supported by the path-absolute rule", and Appendix D.2
+// that "the drive letter (e.g., "c:") is typically mapped into the first path segment"; Appendix B
+// calls the empty-authority form "the most common format in use today". SARIF 3.10.1 additionally
+// requires the value to be "a string in the format specified by the standard [RFC3986]", which the
+// unencoded space and percent violate outright.
+//
+// url.URL.String does the encoding, so the escaping rules live in the standard library rather than in
+// a hand-written set here. Ordinary POSIX paths are UNCHANGED -- file:///tmp/report.txt either way --
+// so this only alters output that was malformed.
+func absoluteFileURI(slashPath string) string {
+	// A Windows path is "C:/..." after ToSlash, with no leading slash, so the drive letter would land
+	// in the authority. Rooting the path is what makes it the first path SEGMENT instead.
+	if !strings.HasPrefix(slashPath, "/") {
+		slashPath = "/" + slashPath
+	}
+	u := url.URL{Scheme: "file", Path: slashPath}
+	return u.String()
 }
 
 // buildRegion extracts line number, column information, and snippet text from matches
