@@ -161,3 +161,71 @@ func assertNoTempLeftovers(t *testing.T, dir string) {
 		}
 	}
 }
+
+// TestTheTemporaryIsCreatedBesideTheDestination makes the temp file's LOCATION observable, which it
+// otherwise is not — a mutation moving it to TMPDIR passed every other test in this file, because on a
+// developer machine TMPDIR and the destination are usually the same filesystem.
+//
+// It matters in production for two reasons: a rename across filesystems fails with EXDEV, and a
+// temporary holding redacted content should never land somewhere with weaker permissions than the
+// destination the operator chose.
+//
+// Made observable by pointing TMPDIR at a directory the process cannot write. A CreateTemp("") would
+// then fail; a CreateTemp(destination dir) succeeds.
+func TestTheTemporaryIsCreatedBesideTheDestination(t *testing.T) {
+	unwritable := filepath.Join(t.TempDir(), "no-temp-here")
+	if err := os.Mkdir(unwritable, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unwritable, 0o700) })
+	t.Setenv("TMPDIR", unwritable)
+
+	// Confirm the premise: a TMPDIR-based temp really is impossible here, or this test proves nothing.
+	if f, err := os.CreateTemp("", "probe-*"); err == nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		t.Skip("TMPDIR is still writable (running as a user that bypasses the mode); the location of " +
+			"the temporary cannot be observed here")
+	}
+
+	dir := t.TempDir()
+	out := filepath.Join(dir, "redacted.txt")
+	if err := writeRedactedOutput(out, []byte("redacted\n")); err != nil {
+		t.Fatalf("writeRedactedOutput failed with TMPDIR unwritable: %v. The temporary must be created "+
+			"in the DESTINATION's directory — in TMPDIR it also risks EXDEV on rename and weaker "+
+			"permissions than the operator chose", err)
+	}
+	if got, err := os.ReadFile(out); err != nil || string(got) != "redacted\n" {
+		t.Errorf("output = %q err=%v, want %q", got, err, "redacted\n")
+	}
+	assertNoTempLeftovers(t, dir)
+}
+
+// TestARenameFailureLeavesNoTemporary forces the rename to fail by making the destination an existing
+// DIRECTORY. Without this the cleanup on that path is unreachable from a test: a mutation deleting it
+// survived everything else in this file.
+func TestARenameFailureLeavesNoTemporary(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "redacted.txt")
+	if err := os.Mkdir(out, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A non-empty directory cannot be replaced by a rename on any platform this runs on.
+	if err := os.WriteFile(filepath.Join(out, "occupant"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := writeRedactedOutput(out, []byte("content\n"))
+	if err == nil {
+		t.Fatal("writing over a non-empty directory succeeded, which it must not")
+	}
+	if !strings.Contains(err.Error(), "failed to write redacted file") {
+		t.Errorf("error = %v, want it to name the write failure", err)
+	}
+
+	assertNoTempLeftovers(t, dir)
+	// And the directory it could not replace must be untouched.
+	if _, serr := os.Stat(filepath.Join(out, "occupant")); serr != nil {
+		t.Errorf("the destination directory's contents were disturbed by a failed write: %v", serr)
+	}
+}
