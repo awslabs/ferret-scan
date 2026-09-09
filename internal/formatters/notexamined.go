@@ -200,11 +200,106 @@ func NotExaminedSummary(shown, total int) string {
 // complete even when the enumeration is not.
 const MaxNotExaminedEntries = 50
 
-// CapNotExamined returns the entries to enumerate plus the full total.
+// CapNotExamined returns the entries to enumerate plus the full total, keeping EVERY CAUSE PRESENT
+// represented rather than taking a flat prefix.
+//
+// It used to return files[:MaxNotExaminedEntries]. The input arrives sorted cause-then-path, so a
+// flat prefix silently dropped whole CAUSES: measured on a tree of 60 unreadable files plus 3
+// unparseable PDFs, the SARIF report carried 50 notifications, every one of them "cannot read", and
+// one summary line reading "63 file(s) ... 50 listed here, 13 omitted". A consumer therefore learned
+// that 13 files were omitted and had no way to know that some of them failed for a reason with a
+// COMPLETELY DIFFERENT REMEDY -- fix the permissions, versus the file is not a PDF.
+//
+// That is the defect this repository already names elsewhere: a count is not a disclosure. The
+// output was byte-identical whether the omitted files were more of the same or an entire class of
+// miss nobody had been told about.
+//
+// The cap itself is unchanged and still bounds the enumeration, because the reason for it is
+// unchanged: an unbounded list is a denial of service against the consumer. What changed is HOW the
+// budget is spent -- every cause present gets at least one slot, and the remainder is distributed
+// evenly -- so no class of miss can disappear entirely while the total says only that something did.
+//
+// Order is preserved. The result is a subsequence of the input, so the cause-then-path ordering the
+// caller established still holds and a byte comparison of two reports of the same scan is stable.
 func CapNotExamined(files []NotExaminedFile) (shown []NotExaminedFile, total int) {
 	total = len(files)
-	if total > MaxNotExaminedEntries {
-		return files[:MaxNotExaminedEntries], total
+	if total <= MaxNotExaminedEntries {
+		return files, total
 	}
-	return files, total
+
+	// Distinct causes in first-appearance order. The input is sorted by cause, so this is also their
+	// sort order, but not relying on that keeps the function correct for any caller.
+	var causes []NotExaminedCause
+	counts := make(map[NotExaminedCause]int)
+	for _, f := range files {
+		if _, seen := counts[f.Cause]; !seen {
+			causes = append(causes, f.Cause)
+		}
+		counts[f.Cause]++
+	}
+
+	quota := allocateCauseQuotas(causes, counts, MaxNotExaminedEntries)
+
+	shown = make([]NotExaminedFile, 0, MaxNotExaminedEntries)
+	taken := make(map[NotExaminedCause]int, len(causes))
+	for _, f := range files {
+		if taken[f.Cause] < quota[f.Cause] {
+			shown = append(shown, f)
+			taken[f.Cause]++
+		}
+	}
+	return shown, total
+}
+
+// allocateCauseQuotas divides budget among causes so that each gets at least one slot where possible,
+// no cause is given more entries than it has, and any slack is redistributed.
+//
+// Written as a separate pure function because the interesting cases are arithmetic -- more causes than
+// budget, one cause holding almost everything, a cause with fewer entries than its share -- and those
+// are far cheaper to test directly than through a formatter and a filesystem.
+func allocateCauseQuotas(causes []NotExaminedCause, counts map[NotExaminedCause]int, budget int) map[NotExaminedCause]int {
+	quota := make(map[NotExaminedCause]int, len(causes))
+	if len(causes) == 0 || budget <= 0 {
+		return quota
+	}
+
+	// More causes than slots: give one each to as many as fit, in order, rather than zero to all.
+	// Preferring the first is deliberate -- the input is cause-sorted, so it is at least deterministic,
+	// and there are only eight causes in the model, so this is a defensive branch rather than a
+	// live one.
+	if len(causes) >= budget {
+		for i := 0; i < budget; i++ {
+			quota[causes[i]] = 1
+		}
+		return quota
+	}
+
+	// One each first, so presence is guaranteed before fairness is considered.
+	remaining := budget
+	for _, c := range causes {
+		quota[c] = 1
+		remaining--
+	}
+
+	// Then hand out the rest a slot at a time, cycling through the causes. Round-robin rather than
+	// proportional: proportional would give a cause with 5,000 entries almost the whole budget and
+	// reduce a cause with 3 back to its single guaranteed slot, which is the imbalance that made a
+	// flat prefix wrong in the first place. Cycling stops when nothing can take more.
+	for remaining > 0 {
+		progressed := false
+		for _, c := range causes {
+			if remaining == 0 {
+				break
+			}
+			if quota[c] < counts[c] {
+				quota[c]++
+				remaining--
+				progressed = true
+			}
+		}
+		if !progressed {
+			break // every cause is fully enumerated; the budget was larger than the input
+		}
+	}
+	return quota
 }
