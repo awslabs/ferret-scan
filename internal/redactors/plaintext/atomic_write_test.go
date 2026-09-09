@@ -6,6 +6,7 @@ package plaintext
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -48,7 +49,15 @@ func TestWriteRedactedOutputWritesTheData(t *testing.T) {
 	// 0600 for the same reason the destination always used it: a redacted copy is as sensitive as the
 	// input. A temp-file rewrite is exactly where this is easy to lose, since CreateTemp makes 0600 on
 	// most platforms but that is not guaranteed by contract.
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	//
+	// ASSERTED ONLY WHERE THE MODE MEANS SOMETHING. Windows has no POSIX permission bits: Go reports
+	// -rw-rw-rw- for any writable file there, which is what failed windows-latest on the first version
+	// of this test. The mode is not being lost on Windows, it never existed -- access is an ACL
+	// question, and asserting a number that the platform does not model would be a false guarantee.
+	if runtime.GOOS == "windows" {
+		t.Logf("mode = %v; not asserted on windows, which has no POSIX permission bits (access is "+
+			"governed by ACLs, and Go reports -rw-rw-rw- for any writable file)", info.Mode().Perm())
+	} else if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("mode = %v, want 0600 — a redacted copy is as sensitive as the input", perm)
 	}
 
