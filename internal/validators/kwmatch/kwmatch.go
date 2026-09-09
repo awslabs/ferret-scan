@@ -153,6 +153,38 @@ func ContainsLabelLower(text, keyword string) bool {
 	return ContainsLower(text, keyword)
 }
 
+// IndexLabelLower returns the byte offset of the leftmost [ContainsLabelLower] match, or -1.
+//
+// It exists so a caller can reason about WHERE a label sits, not merely whether it is present. The
+// motivating case is driverslicense's positional suppression rule (#614): a marker before the label
+// means the data is fake, a marker after it does not, and deciding that needs the label's offset. That
+// validator previously searched its own separate list of label spellings, which drifted from the
+// vocabulary that admits a line — and every spelling in the gap silently dropped real licences.
+//
+// It deliberately shares ContainsLabelLower's separator-flexible semantics, including matching
+// camelCase, so the position agrees with the admission decision by construction. The asymmetry warned
+// about on ContainsLabel still holds and still matters: this is safe for finding a LABEL, and must not
+// be used to locate a keyword that suppresses, because widening a suppressor's reach silences real
+// values.
+func IndexLabelLower(text, keyword string) int {
+	if keyword == "" {
+		return -1
+	}
+	at := -1
+	// accept returning true stops the scan, and both scans run left to right, so the first call
+	// carries the leftmost occurrence.
+	capture := func(start, _ int) bool {
+		at = start
+		return true
+	}
+	if fw := firstWordLen(keyword); fw != len(keyword) {
+		containsSepFlex(text, keyword, fw, false, capture)
+		return at
+	}
+	ContainsFunc(text, keyword, capture)
+	return at
+}
+
 // --- PR6 separator-flexible multi-word matching -------------------------------
 
 // isSepByte is the separator class a keyword space may match. Deliberately

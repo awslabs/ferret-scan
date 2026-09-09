@@ -127,7 +127,11 @@ func TestMarkerBeforeLabel(t *testing.T) {
 		{"example driver license D1234567", true},
 		{"sample license number: D1234567", true},
 		{"placeholder driver license D1234567", true},
-		{"uuid driver license D1234567", true},
+		// "uuid" is deliberately NOT here. It is an identifierTypeMarker, not a provenance marker: it
+		// says the VALUE is a different kind of identifier, so it suppresses wherever it sits and is
+		// handled by markerModifiesLabel rather than by this positional half. The suppression it
+		// provides is asserted in TestIdentifierTypeMarkerSuppressesRegardlessOfPosition below, and
+		// end to end at 0 findings — moved, not dropped.
 
 		// Marker after the label: not this half's business.
 		{"Driver License Number: D1234567, road test scheduled", false},
@@ -138,14 +142,27 @@ func TestMarkerBeforeLabel(t *testing.T) {
 		{"Driver License Number: D1234567", false},
 		{"DL: D1234567 issued CA", false},
 
-		// No recognizable label form: fall back to the old conservative rule so
-		// an unlabelled line with a marker is still suppressed.
+		// No label ON THIS LINE: fall back to the old conservative rule so an unlabelled line with a
+		// marker is still suppressed. Reachable only when the line carries no DL label at all, since
+		// the label search now covers the same vocabulary that admits a line (#614).
 		{"serial D1234567 test value", true},
 		{"serial D1234567 issued", false},
+
+		// #614: a label spelling outside the OLD 11-entry dlLabelForms list must be recognised, so a
+		// marker AFTER it no longer suppresses. Every row here returned true before the fix — meaning
+		// the licence was dropped and returned in cleartext — and the same words with a listed
+		// spelling returned false, which is how the list drift was identified.
+		{"license D1234567, road test scheduled", false},
+		{"DMV D1234567, road test scheduled", false},
+		{"driving license D1234567 vision test passed", false},
+		{"operator license D1234567 breath sample collected", false},
+		{"permit D1234567 drug test negative", false},
+		{"driversLicense: D1234567 alice@example.com", false},
+		{"drivers_license: D1234567 example.com", false},
 	}
 
 	for _, c := range cases {
-		if got := markerBeforeLabel(c.line); got != c.want {
+		if got := markerBeforeLabel(c.line, NewValidator().positiveKeywords); got != c.want {
 			t.Errorf("markerBeforeLabel(%q) = %v, want %v", c.line, got, c.want)
 		}
 	}
@@ -175,6 +192,24 @@ func TestMarkerOpensAsideAfter(t *testing.T) {
 
 		// Nothing after the value at all.
 		{"DL: D1234567", "D1234567", false},
+
+		// #614: a marker word that is part of a DOTTED or @-JOINED token is a hostname or address
+		// component, not an apposition. Every row here returned true before the fix, dropping the
+		// licence and returning it in cleartext. RFC 2606 is incidental — `demo.com` and
+		// `status.mock.acme.io` are not reserved names and behaved identically, which is why the fix
+		// keys on the token shape rather than on a list of reserved domains.
+		{"license D1234567 example.com", "D1234567", false},
+		{"license D1234567 example.org", "D1234567", false},
+		{"license D1234567 demo.com", "D1234567", false},
+		{"license D1234567 status.mock.acme.io", "D1234567", false},
+		{"license D1234567 alice@example.com", "D1234567", false},
+		{"license D1234567 test.internal.corp", "D1234567", false},
+
+		// NON-VACUITY for that guard: a marker followed by a dot that ENDS A SENTENCE is still an
+		// apposition, so the guard must key on a dot followed by a WORD byte, not on any dot. Without
+		// this pair the guard could be widened to "any following dot" and nothing would notice.
+		{"DL: D1234567 (sample).", "D1234567", true},
+		{"DL: D1234567 fake.", "D1234567", true},
 	}
 
 	for _, c := range cases {
@@ -275,4 +310,47 @@ func itoa7(i int) string {
 		i /= 10
 	}
 	return string(b[p:])
+}
+
+// TestIdentifierTypeMarkerSuppressesRegardlessOfPosition guards the class split #614 introduced.
+//
+// strongSuppressKeywords used to mix two kinds of marker, and its own comment described both:
+// "test/placeholder data OR definitive non-DL identifiers". Position matters for the first kind — that
+// is the whole point of the positional rule — and is irrelevant to the second, because "License UUID
+// AB123456 generated" is a UUID whatever the word order.
+//
+// Conflating them is what made the #614 fix LOOK like a precision regression: once "license" was
+// recognised as a label at offset 0, a trailing "uuid" was no longer "before the label" and stopped
+// suppressing, failing TestAdversarial_CrossValidatorConfusion. Splitting the classes fixed that
+// without narrowing the leak fix, so this test exists to stop the two being merged again.
+func TestIdentifierTypeMarkerSuppressesRegardlessOfPosition(t *testing.T) {
+	kws := NewValidator().positiveKeywords
+
+	// Before, after, and with no label at all — every position must suppress.
+	for _, line := range []string{
+		"uuid driver license D1234567",
+		"License UUID AB123456 generated",
+		"driver license D1234567 uuid",
+		"guid driver license D1234567",
+		"driver license D1234567 (guid)",
+	} {
+		if !markerModifiesLabel(line, "D1234567", kws) && !markerModifiesLabel(line, "AB123456", kws) {
+			t.Errorf("markerModifiesLabel(%q) = false; an identifier-type marker must suppress wherever "+
+				"it appears, because it is a claim about what the VALUE is, not about whether the data "+
+				"is real", line)
+		}
+	}
+
+	// NON-VACUITY: the same shape with a PROVENANCE marker after the label must NOT suppress, or this
+	// test would pass with the class distinction removed and every marker suppressing everywhere —
+	// which is the leak #614 is about.
+	for _, line := range []string{
+		"driver license D1234567, road test scheduled",
+		"license D1234567 vision test passed",
+	} {
+		if markerModifiesLabel(line, "D1234567", kws) {
+			t.Errorf("markerModifiesLabel(%q) = true; a provenance marker AFTER the label must not "+
+				"suppress — that is the #614 leak", line)
+		}
+	}
 }

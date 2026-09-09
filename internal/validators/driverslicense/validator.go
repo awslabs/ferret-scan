@@ -612,21 +612,70 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	return confidence, checks
 }
 
-// strongSuppressKeywords are negative keywords that indicate test/placeholder
-// data or definitive non-DL identifiers and must always suppress regardless
-// of how strong the positive signal is.
-var strongSuppressKeywords = []string{
+// strongSuppressKeywords are negative keywords that must suppress regardless of how strong the
+// positive signal is. It is the union of the two lists below, kept for the callers that legitimately
+// ask "is any suppressing keyword present at all".
+var strongSuppressKeywords = append(append([]string{}, provenanceMarkers...), identifierTypeMarkers...)
+
+// provenanceMarkers say the DATA IS NOT REAL. Position matters for these, which is the whole point of
+// the positional rule on markerModifiesLabel: "fake driver license D1234567" is test data, while
+// "driver license D1234567, drug test negative" is a real record that merely mentions a test.
+var provenanceMarkers = []string{
 	"test", "example", "sample", "placeholder", "fake", "mock", "demo",
+}
+
+// identifierTypeMarkers say the VALUE IS A DIFFERENT KIND OF IDENTIFIER. Position is irrelevant for
+// these: "License UUID AB123456 generated" is a UUID whatever the word order, so they suppress wherever
+// they appear on the line.
+//
+// The distinction was implicit before — the old comment on strongSuppressKeywords already described
+// "test/placeholder data OR definitive non-DL identifiers" as one list — and conflating them is what
+// made widening the label vocabulary for #614 look like a precision regression: with "license"
+// recognised as a label at offset 0, a trailing "uuid" was no longer "before the label" and stopped
+// suppressing. Separating the classes fixes that without narrowing the leak fix.
+var identifierTypeMarkers = []string{
 	"uuid", "guid",
 }
 
-// dlLabelForms are the label spellings that make a line a DL line at all. Kept
-// in longest-plausible-first order only for readability; the search takes the
-// EARLIEST occurrence, so order does not affect the result.
-var dlLabelForms = []string{
-	"driver's license", "drivers license", "driver license",
-	"licence number", "license number", "license no",
-	"d.l.", "dl:", "dl #", "dl#", "dl ",
+// labelIndexLower returns the byte offset of the earliest DL label on lower, or -1.
+//
+// It searches the validator's OWN positiveKeywords — the same vocabulary that admits a line as a DL
+// line at all — through kwmatch, the same matcher admission uses. That identity IS the fix for #614.
+//
+// What it replaced was a separate 11-entry `dlLabelForms` list, and the two lists had drifted: the
+// admitting set includes bare "license", "licence", "dmv", "driving", "permit", "operator", "state id"
+// and the camelCase/snake_case spellings added for #438, none of which were in dlLabelForms. Every
+// spelling in the gap reached markerBeforeLabel's no-label fallback, where ANY marker anywhere on the
+// line suppressed the finding — and because that returns -20 against a base of 20, and the emit gate is
+// `confidence <= 0`, the finding was DROPPED, not demoted. Nothing reaches the redactor, and a file
+// with no findings gets no redacted output, so the value survives in cleartext.
+//
+// Measured at ea4e2f4, all reporting 0 findings before this change and all recovered after:
+//
+//	license I1234567, road test scheduled              <- ordinary DMV prose, not test data
+//	DMV I1234567, road test scheduled
+//	driving license I1234567 vision test passed
+//	operator license I1234567 breath sample collected
+//	driversLicense: I1234567 alice@example.com         <- the camelCase spelling #438 added
+//
+// The same words with a spelling that WAS listed reported at 95, which is what identified the drift:
+// "Driver License Number: I1234567, road test scheduled".
+//
+// Deriving the position from positiveKeywords means a future label spelling added for admission cannot
+// silently reintroduce this: one list, one vocabulary.
+func labelIndexLower(lower string, keywords []string) int {
+	at := -1
+	for _, kw := range keywords {
+		// IndexLabelLower, not ContainsFunc: it shares the separator-flexible semantics that ADMIT a
+		// line, so a camelCase spelling like `driversLicense:` yields a label position here exactly
+		// when it counts as a label there. With the stricter matcher it did not, and that one spelling
+		// stayed broken after the rest of #614 was fixed — measured, 0 findings.
+		pos := kwmatch.IndexLabelLower(lower, kw)
+		if pos >= 0 && (at < 0 || pos < at) {
+			at = pos
+		}
+	}
+	return at
 }
 
 // markerBeforeLabel reports whether a test/placeholder keyword appears before
@@ -635,20 +684,18 @@ var dlLabelForms = []string{
 // (it does not depend on the match position). Keeping the hoist matters: the
 // per-match form would make scanning O(matches x line length), which is the
 // single-long-line CPU-exhaustion shape dos_test.go guards.
-func markerBeforeLabel(line string) bool {
+func markerBeforeLabel(line string, labelKeywords []string) bool {
 	lower := strings.ToLower(line)
 
-	labelAt := -1
-	for _, form := range dlLabelForms {
-		if i := strings.Index(lower, form); i >= 0 && (labelAt < 0 || i < labelAt) {
-			labelAt = i
-		}
-	}
+	labelAt := labelIndexLower(lower, labelKeywords)
 
-	// No recognizable label form: keep the old conservative behavior and let any
-	// keyword on the line suppress.
+	// No label ON THIS LINE: keep the old conservative behavior and let any keyword on the line
+	// suppress. Reachable now only when the line carries no DL label at all — it was admitted by a
+	// table header or by the label on the line above — so there is no label position to reason from and
+	// suppressing is the honest answer. Before #614 this branch also caught every line whose label
+	// simply was not in the old 11-entry list, which is what made it a leak.
 	if labelAt < 0 {
-		for _, kw := range strongSuppressKeywords {
+		for _, kw := range provenanceMarkers {
 			if containsKeyword(line, kw) {
 				return true
 			}
@@ -659,7 +706,7 @@ func markerBeforeLabel(line string) bool {
 	if labelAt == 0 {
 		return false
 	}
-	for _, kw := range strongSuppressKeywords {
+	for _, kw := range provenanceMarkers {
 		if keywordIndexIn(lower[:labelAt], kw) >= 0 {
 			return true
 		}
@@ -693,9 +740,25 @@ func markerOpensAsideAfter(line string, spanEnd int) bool {
 	for end < len(word) && isWordByte(word[end]) {
 		end++
 	}
+	// A word that is part of a DOTTED or @-JOINED token is a hostname or address component, not an
+	// apposition on the value. `D1234567 example.com` reads as a domain; `D1234567 (example)` reads as
+	// a marker. Without this, any host under a reserved or demo-ish name suppressed the licence:
+	// measured, `license I1234567 example.com`, `example.org`, `demo.com` and
+	// `status.mock.acme.io` each reported 0 findings and returned the value in cleartext.
+	//
+	// Keyed on a following "." or "@" that is itself followed by a WORD byte, so a sentence-final
+	// `D1234567 (sample).` still suppresses — there the dot ends the sentence rather than joining a
+	// label. `alice@example.com` is covered by the same test through the "@" arm.
+	if end < len(tail[j:]) {
+		rest := tail[j:][end:]
+		if len(rest) >= 2 && (rest[0] == '.' || rest[0] == '@') && isWordByte(rest[1]) {
+			return false
+		}
+	}
+
 	word = strings.ToLower(word[:end])
 
-	for _, kw := range strongSuppressKeywords {
+	for _, kw := range provenanceMarkers {
 		if word == kw {
 			return true
 		}
@@ -737,8 +800,15 @@ func markerOpensAsideAfter(line string, spanEnd int) bool {
 // lab", where "sample" opens the following clause AND is a bare noun. Losing an
 // ambiguous sentence is the intended direction of error here: it suppresses,
 // matching the old behavior, rather than inventing a finding.
-func markerModifiesLabel(line, match string) bool {
-	if markerBeforeLabel(line) {
+func markerModifiesLabel(line, match string, labelKeywords []string) bool {
+	// An identifier-type marker suppresses wherever it sits: it is a claim about what the VALUE is, not
+	// about whether the data is real, so the positional reasoning below does not apply to it.
+	for _, kw := range identifierTypeMarkers {
+		if containsKeyword(line, kw) {
+			return true
+		}
+	}
+	if markerBeforeLabel(line, labelKeywords) {
 		return true
 	}
 	if match == "" {
@@ -833,7 +903,7 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 	// base of 20 lands on 0, and the emit gate is `confidence <= 0`), because a
 	// marker attached to the label really does mean the licence is not real.
 	// What changed is only WHICH lines qualify.
-	if markerModifiesLabel(line, match) {
+	if markerModifiesLabel(line, match, v.positiveKeywords) {
 		return -20
 	}
 
