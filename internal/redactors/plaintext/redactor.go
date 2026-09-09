@@ -6,6 +6,7 @@ package plaintext
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -159,9 +160,8 @@ func (ptr *PlainTextRedactor) RedactDocument(originalPath string, outputPath str
 	// #nosec G703 -- outputPath is operator-controlled (--redaction-output-dir
 	// + mirrored input filename); CLI-only path. Web mode hard-codes
 	// EnableRedaction: false so this is unreachable from the HTTP boundary.
-	err = os.WriteFile(outputPath, preprocessors.EncodeFromUTF8(redactedText, encoding), 0600)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write redacted file: %w", err)
+	if err := writeRedactedOutput(outputPath, preprocessors.EncodeFromUTF8(redactedText, encoding)); err != nil {
+		return nil, err
 	}
 
 	// Preserve file attributes (but not content) if output manager is available
@@ -663,9 +663,8 @@ func (ptr *PlainTextRedactor) RedactContent(content *preprocessors.ProcessedCont
 	}
 
 	// Write redacted content to output file with secure permissions
-	err = os.WriteFile(outputPath, outputBytes, 0600)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write redacted file: %w", err)
+	if err := writeRedactedOutput(outputPath, outputBytes); err != nil {
+		return nil, err
 	}
 
 	// Preserve file attributes if output manager is available
@@ -820,4 +819,72 @@ func (ptr *PlainTextRedactor) calculateTextSimilarity(text1, text2 string) float
 	}
 
 	return float64(commonChars) / float64(len(longer))
+}
+
+// writeRedactedOutput writes the redacted bytes atomically: into a temporary file beside the
+// destination, then rename. A failure therefore leaves the destination exactly as it was.
+//
+// WHAT IT FIXES. os.WriteFile opens with O_TRUNC, so a failed write left a file at outputPath.
+// Measured on a deliberately filled 2MB volume, an 862KB redaction failed with ENOSPC and left a
+// ZERO-BYTE file while the run correctly reported "no redacted copy was written; the original values
+// remain in cleartext". Both statements were true and they contradicted each other on disk.
+//
+// NOT A LEAK, and worth being precise about: the bytes written are the REDACTED text, so any prefix of
+// them has its values already masked, and the file left behind was empty in every case reproduced
+// (0 bytes at 168KB, 400KB and 600KB free). The hazard is a phantom artefact -- a pipeline that globs
+// the redaction output directory finds a document-shaped path where the tool says there is none.
+//
+// WHY RENAME RATHER THAN WRITE-THEN-REMOVE. Removing outputPath after a failure was the first fix, and
+// it carries a hazard of its own: when the failure is at OPEN (EACCES, say) nothing was truncated, so
+// the remove would delete a previous run's perfectly good copy. Writing to a temporary file cannot do
+// that, because the destination is only ever touched by a rename that has already succeeded. It also
+// removes the window in which a concurrent reader can see a half-written "redacted" file.
+//
+// The temporary file is created in the DESTINATION's directory, not in TMPDIR, so the rename is within
+// one filesystem and cannot fail with EXDEV -- and so the temporary never lands somewhere with weaker
+// permissions than the destination. 0600 for the same reason the destination uses it: a redacted copy
+// is as sensitive as the input, and the caller restores the original's mode afterwards.
+//
+// ONE FUNCTION FOR BOTH CALL SITES ON PURPOSE. RedactDocument and RedactContent each had their own copy
+// of this write, and the first attempt at this fix patched only RedactDocument -- which is not the path
+// a CLI scan takes, so the orphan survived and the fix appeared to do nothing at all. Extracting the
+// write is what stops the two drifting again; this repository has already paid for dual-path drift in
+// the metadata validator.
+//
+// Sibling redactors -- svg, video, rtf and image -- all remove their output on failure, and the
+// redaction guide already promises "the output is removed, so a file that looks redacted and is not
+// cannot be picked up by something downstream". This is the plaintext path honouring that.
+func writeRedactedOutput(outputPath string, data []byte) error {
+	dir := filepath.Dir(outputPath)
+
+	tmp, err := os.CreateTemp(dir, ".ferret-redacted-*")
+	if err != nil {
+		return fmt.Errorf("failed to write redacted file: %w", err)
+	}
+	tmpName := tmp.Name()
+
+	// Any failure from here on must leave NOTHING behind, including when the deferred close runs after
+	// a successful rename -- hence the explicit removal on each error path and the name check below.
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to write redacted file: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to write redacted file: %w", err)
+	}
+	// Close BEFORE renaming, and check its error: a buffered write can only fail here, and ignoring it
+	// is how a short write becomes a "successful" redaction. This is the defect #630's sibling found in
+	// the office redactor, which discards zipWriter.Close().
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to write redacted file: %w", err)
+	}
+	if err := os.Rename(tmpName, outputPath); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to write redacted file: %w", err)
+	}
+	return nil
 }
