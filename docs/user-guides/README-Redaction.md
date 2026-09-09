@@ -238,6 +238,40 @@ A refusal is disclosed on the console and the output is removed, so a file that 
 cannot be picked up by something downstream. See the note above on exit codes: a refusal does **not**
 change the exit code today.
 
+### A value split across formatting runs is refused, not silently written
+
+Word, Excel and LibreOffice split a paragraph into **runs** whenever formatting, spell-check state or a
+revision id changes, and the split can fall in the middle of a value:
+
+```xml
+<w:r><w:t xml:space="preserve">Employee SSN: 449-87-</w:t></w:r>
+<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">4100</w:t></w:r>
+```
+
+The scanner reads the runs as one string and reports the SSN, but the rewrite works within a single XML
+text node, so it cannot remove a value that spans two. **That value is not redacted.** What the tool
+does about it is refuse to write the file and say so:
+
+```console
+$ ferret-scan --file split.docx --enable-redaction --redaction-output-dir out
+WARNING: redaction incomplete — 1 of 1 file(s) have findings but no redacted copy was written;
+the original values remain in cleartext:
+  split.docx: refusing to write split.docx: 1 reported value(s) still present in the document's
+  own parts (types: SSN)
+```
+
+The message names the **type**, never the value: it reaches stderr and every machine format without
+`--show-match`, so listing the residue would publish the data the refusal exists to protect.
+
+Before this, the same document produced a written "redacted" copy with the SSN still in it, at exit 0
+with an empty stderr — the value was reported at confidence 100 and shipped in cleartext. Exit codes
+follow the same rule as any other refusal: **0 by default, 3 with `--fail-on-incomplete`**.
+
+The remedy for now is to remove the run split (retype the value so it carries one format) or to handle
+the document outside the tool. Redacting across a run boundary needs a source span map, as the RTF
+redactor already has; that work is tracked in
+[#627](https://github.com/awslabs/ferret-scan/issues/627).
+
 ## Synthetic Strategy — Token Details
 
 The `synthetic` strategy is type-aware for secrets:
