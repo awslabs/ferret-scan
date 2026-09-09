@@ -65,14 +65,37 @@ func TestTicksRefusesAWindowsTickReading(t *testing.T) {
 	}
 }
 
+// reasonableFixtureBudget is the largest base CPU reading this repo is willing to spend on one growth
+// measurement, and therefore the line between "this fixture has drifted too cheap" (a regression) and
+// "this platform's clock cannot support the gate at all" (a tracked platform fact).
+//
+// 50ms, centred on the measured populations rather than picked. The 18 goldencorpus targets have base
+// readings of 3.3ms-98ms, so 50ms is a fixture size the repo demonstrably already ships. And it
+// separates the two cases widely in both directions: ubuntu-latest and darwin/arm64 resolve finely
+// enough that MinTicks costs them under 4ms — 12x below this — while windows-latest advances its CPU
+// clock in 15.625ms steps, so MinTicks costs it 125ms, 2.5x above. Nothing sits near the line.
+const reasonableFixtureBudget = 50 * time.Millisecond
+
 // TestTicksIsSufficientOnThisPlatformForATypicalFixture keeps the gate from silently disabling every
-// assertion on the platforms where it DOES work.
+// assertion on the platforms where it CAN work.
 //
 // The danger of a resolution gate is that it converts a loud wrong answer into a quiet absent one. On
 // a machine whose clock is fine, a normal fixture must clear the floor — measured on darwin/arm64, a
-// ~3.4ms base against a 1µs tick is ~3,400 ticks, so there is enormous headroom. If this ever fails,
-// the guards in goldencorpus and svgtextlib have stopped asserting on THIS platform and the CI log is
-// the only place that would say so.
+// ~3.4ms base against a 1µs tick is ~3,400 ticks, so there is enormous headroom.
+//
+// WHY THIS IS NOW CONDITIONAL. As first written it asserted that of EVERY platform, and windows-latest
+// cannot satisfy it: MinTicks*15.625ms is a 125ms base, against a fixture built for ~4ms. It therefore
+// failed roughly a third of the time on that runner — 6 of 20 consecutive main runs — and the
+// intermittency had a precise cause. Windows reports a CPU reading of either 0 or 15.625ms for this
+// fixture, so whether Measure picks the CPU clock (1 tick, fails) or falls back to the wall clock
+// (tick 722.7µs, ~8 ticks, passes) is close to a coin flip per run.
+//
+// Failing every third run does not make the finding more true; it makes it easier to ignore, and it
+// blocks unrelated merges. The platform-level cause is #619 and its fix is a finer clock, not a bigger
+// fixture. So this now separates the two failures the original conflated:
+//
+//	the platform's tick makes MinTicks unaffordable  -> report it, with numbers. Tracked in #619
+//	the tick is fine and the fixture went cheap      -> FAIL, which is what this test is for
 func TestTicksIsSufficientOnThisPlatformForATypicalFixture(t *testing.T) {
 	cpu, wall := ClockResolution()
 	t.Logf("measured tick on this platform: cpu=%v wall=%v", cpu, wall)
@@ -84,10 +107,72 @@ func TestTicksIsSufficientOnThisPlatformForATypicalFixture(t *testing.T) {
 	n, sufficient := g.Ticks()
 	t.Logf("%s", g)
 	t.Logf("%s", g.ResolutionNote())
+
+	// Feasibility is judged against the clock Measure ACTUALLY used, not always the CPU one. On Windows
+	// the wall clock is 20x finer than the CPU clock, so which one was chosen decides whether MinTicks
+	// is affordable — and that choice is exactly what varies from run to run there.
+	tick := cpu
+	if g.Clock == "wall" {
+		tick = wall
+	}
+	required := time.Duration(MinTicks) * tick
+
+	if required > reasonableFixtureBudget {
+		t.Logf("NOT ASSERTED — this platform's %s tick is %v, so MinTicks (%d) needs a base of %v, over "+
+			"the %v this repo spends on a fixture. Every growth assertion in the repo is being SKIPPED "+
+			"here, which is real and is tracked in #619: the fix is a finer clock, not a bigger fixture. "+
+			"Asserting it anyway failed about one run in three on windows-latest (6 of 20 consecutive "+
+			"main runs) and blocked unrelated merges.",
+			g.Clock, tick, MinTicks, required, reasonableFixtureBudget)
+		return
+	}
+
 	if !sufficient {
-		t.Errorf("a typical fixture spans only %.1f ticks here, so every growth assertion in this repo "+
-			"is being SKIPPED on this platform. Either the fixtures need to grow or MinTicks (%d) is wrong",
-			n, MinTicks)
+		t.Errorf("a typical fixture spans only %.1f ticks here, and this platform's %s tick of %v makes "+
+			"MinTicks (%d) affordable at %v — so this is NOT the #619 platform limitation. Every growth "+
+			"assertion in this repo is being SKIPPED: either the fixtures have drifted too cheap or "+
+			"MinTicks is wrong", n, g.Clock, tick, MinTicks, required)
+	}
+}
+
+// TestTheFeasibilityEscapeHatchCannotSwallowAWorkingPlatform is the must-still-bite half.
+//
+// The conditional above is an escape hatch, and one wide enough to cover a working platform would
+// silently retire the test everywhere. This pins the arithmetic: on any clock resolving at microsecond
+// scale — every platform except Windows' CPU clock — MinTicks costs orders of magnitude less than the
+// budget, so the hatch cannot open.
+func TestTheFeasibilityEscapeHatchCannotSwallowAWorkingPlatform(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tick time.Duration
+		want bool // true = the hatch opens, i.e. this platform is declared infeasible
+	}{
+		{"darwin/arm64 cpu clock, measured ~1µs", time.Microsecond, false},
+		{"ubuntu-latest cpu clock, inferred from a 3.9ms base asserting", 490 * time.Microsecond, false},
+		{"windows-latest wall clock, measured", 722700 * time.Nanosecond, false},
+		{"windows-latest cpu clock, measured", 15625 * time.Microsecond, true},
+		{"a clock as coarse as the whole budget", reasonableFixtureBudget, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := time.Duration(MinTicks)*tc.tick > reasonableFixtureBudget
+			if got != tc.want {
+				t.Errorf("with a %v tick, MinTicks needs %v against a %v budget: infeasible=%v, want %v",
+					tc.tick, time.Duration(MinTicks)*tc.tick, reasonableFixtureBudget, got, tc.want)
+			}
+		})
+	}
+
+	// And the boundary sits where it is claimed to, so the two measured platforms are not merely on the
+	// right side of it by luck.
+	windowsCPU := time.Duration(MinTicks) * 15625 * time.Microsecond
+	ubuntuCPU := time.Duration(MinTicks) * 490 * time.Microsecond
+	if windowsCPU <= reasonableFixtureBudget {
+		t.Errorf("windows needs %v, which the %v budget would call affordable — the hatch would never "+
+			"open and the test would keep flaking there", windowsCPU, reasonableFixtureBudget)
+	}
+	if ubuntuCPU*4 > reasonableFixtureBudget {
+		t.Errorf("ubuntu needs %v, within 4x of the %v budget — too close to the line for a threshold "+
+			"meant to separate a platform limit from a fixture regression", ubuntuCPU, reasonableFixtureBudget)
 	}
 }
 
