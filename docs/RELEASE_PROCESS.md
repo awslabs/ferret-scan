@@ -1,13 +1,18 @@
 # Release Process
 
-This document describes the Go-native release process for Ferret Scan using GoReleaser and git-chglog.
+This document describes the Go-native release process for Ferret Scan using GoReleaser.
+
+> **CHANGELOG.md is hand-maintained.** It is not generated. Add your entry, as prose, in the same PR
+> that makes the change — see the PR checklist. `git-chglog` was removed on 2026-09-09: it was
+> configured to rewrite the whole file from commit subjects with no `[Unreleased]` section, so running
+> it replaced ~43,000 words of measurements and reasoning with one-line subjects. Nothing generates
+> this file, and nothing should.
 
 ## Overview
 
 We use a **Go-native release pipeline** that eliminates NPM dependencies:
 
 - **GoReleaser** - Cross-platform builds and GitHub/GitLab releases
-- **git-chglog** - Conventional changelog generation
 - **GitLab CI** - Automated pipeline with Go-only dependencies
 
 ## Release Types
@@ -69,7 +74,7 @@ make release-snapshot
 
 ### Automatic Installation
 ```bash
-# Install GoReleaser and git-chglog
+# Install GoReleaser
 ./scripts/install-release-tools.sh
 ```
 
@@ -77,9 +82,6 @@ make release-snapshot
 ```bash
 # Install GoReleaser
 go install github.com/goreleaser/goreleaser@latest
-
-# Install git-chglog
-go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
 ```
 
 ## Configuration Files
@@ -90,10 +92,6 @@ go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
 - **GitLab integration**: Automated releases and container images
 - **Checksums**: Security verification files
 
-### git-chglog (`.chglog/config.yml`)
-- **Conventional commits**: Automatic categorization
-- **Changelog format**: GitHub-style with emojis
-- **Filtering**: Excludes non-user-facing changes
 
 ## Makefile Commands
 
@@ -193,18 +191,11 @@ goreleaser build --snapshot --clean
 goreleaser release --debug
 ```
 
-### git-chglog Issues
+### CHANGELOG.md
 
-```bash
-# Test changelog generation
-git-chglog --dry-run
-
-# Generate for specific range
-git-chglog v1.0.0..v1.1.0
-
-# Debug configuration
-git-chglog --help
-```
+There is no tool to run. If an entry is missing from a release, it was missing from the PR — add it by
+hand under `## [Unreleased]`. Note that `[Unreleased]` currently holds everything since v1.7.0; cutting
+it into per-version sections at release time is tracked separately.
 
 ### CI/CD Issues
 
@@ -225,7 +216,7 @@ This project has migrated from semantic-release to GoReleaser:
 
 ### What Changed
 - **Removed**: `package.json`, `.releaserc.js`, NPM cache
-- **Added**: `.goreleaser.yml`, `.chglog/`, Go-native tools
+- **Added**: `.goreleaser.yml`, Go-native tools
 - **Updated**: GitLab CI uses Go-only pipeline
 - **Maintained**: Same conventional commit workflow
 
