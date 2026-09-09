@@ -293,14 +293,37 @@ var complexityTargets = []struct {
 //     validators allocate a Match per finding and cannot avoid it, which is why GC is disabled
 //     for the measurement rather than the fixtures being rewritten.
 //
-// The correct-code population on the new statistic, all 18 targets, -race:
+// PER-PLATFORM POPULATIONS, from CI rather than from one machine (#599). The original derivation
+// of 8.0 was measured on darwin/arm64 alone, and it claimed "1.74x above the worst correct reading
+// and 1.75x below the observed quadratic" for a population of 3.81x-4.60x. That claim was not
+// checkable anywhere else: `go test` hides t.Logf for a PASSING package unless -v is set, so these
+// ratios had never appeared in any CI log. A continue-on-error step now prints all 18 targets plus
+// every control on all three runners, every run. Quoted from run 34281522336 on main, all 18:
 //
-//	3.81x - 4.60x
+//	                    correct code        quadratic control   linear control
+//	ubuntu-latest       3.30x - 4.64x       15.16x              3.93x
+//	macos-latest        3.86x - 4.65x       15.49x              4.06x
+//	windows-latest      0 of 18 asserted    not asserted        not asserted
 //
-// against a genuine quadratic at 13.85x-16.15x, measured idle and under the same external load
-// (13.85x loaded, 14.00x-16.15x idle — the ratio of minimums moves ~1% where the median of ratios
-// moved 9% and its worst sample halved). So 8.0 sits 1.74x above the worst correct reading and
-// 1.75x below the observed quadratic: symmetric margin, where the previous statistic had none.
+// The extremes are the same validators on both platforms: passport lowest, personname highest. So
+// 8.0 sits 1.72x above the worst correct reading and 1.90x-1.94x below the quadratic — the ≥1.5x
+// margin the repo asks for holds on BOTH sides on both platforms that assert. The measurement
+// configuration is also no longer -race: this guard skips under the detector (see the Skip below),
+// so the population above is the plain one, which is what CI actually runs.
+//
+// WINDOWS ASSERTS NOTHING, and that is the real coverage hole here. Its CPU clock advances in
+// 15.625ms steps, and every one of the 18 targets has a base reading spanning 1-7 of them, under
+// the 8 that perfguard requires — so the tick gate declines all 18 and both controls. That gate is
+// correct, not over-strict: vin's raw reading there was "7.00x" from base=15.625ms big=109.375ms
+// with per-pair samples [9.00x 3.50x], one integer over another, and the 9.00x sample would have
+// FAILED correct code at this threshold. The gate converts a false failure into a silent skip,
+// which is the right trade but leaves the platform uncovered. Closing it means resizing 18 fixtures
+// to hold a ~125ms base on Windows; filed separately rather than decided here.
+//
+// The threshold's DETECTION FLOOR is a separate limit from its margin, and it is arithmetic:
+// ratio = 4*(1+3f) for a 4x step, so ratio > 8.0 requires the quadratic term to be more than a
+// third of the base reading. A genuine O(n^2) path taken on a sparse subset of matches falls below
+// that and passes — pinned, with the measurements, by TestGrowthRatioMissesASparseQuadratic.
 //
 // Kept from the earlier derivation because they are still true and still the reason this is one
 // number rather than a per-configuration table: -race compresses a wall-clock ratio about 1.24x

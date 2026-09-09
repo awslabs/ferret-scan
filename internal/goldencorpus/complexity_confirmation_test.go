@@ -50,6 +50,13 @@ func (quadraticValidator) ValidateContent(content, _ string) ([]detector.Match, 
 	// the regression it exists for. For a 4x step the ratio is 4*(1+3f) where f is the quadratic share
 	// of the base, and f was 0.29 there against 0.80 locally.
 	//
+	// RESOLVED, 2026-09-08 (#599): ubuntu-latest now reads 15.16x and macos-latest 15.49x, from run
+	// 34281522336 on main. Two things fixed it and only one of them is this fixture -- dropping -race
+	// from the guard (#602) removed the amplifier, because the 7.46x came from the detector instrumenting
+	// every copy of the large detector.Match struct. Kept rather than deleted because the reasoning
+	// below is what makes the fixture's shape deliberate, and the f = 0.29 measurement is the evidence
+	// for the detection floor now recorded at maxGrowthRatio.
+	//
 	// Contributions measured in isolation, three runs each under -race on darwin/arm64, because the
 	// first two explanations reached for were both wrong:
 	//
@@ -217,4 +224,213 @@ func (linearValidator) ValidateContent(content, _ string) ([]detector.Match, err
 		}
 	}
 	return out, nil
+}
+
+// emittingQuadraticValidator is the SECOND quadratic control #599 asked for.
+//
+// quadraticValidator above is deliberately clean: pre-sized slice, strings.Index scan, a bare
+// Match. That was the right fix for the fixture defect it had, but it also removed the per-match
+// cost every real validator pays -- and #599's question was precisely whether the threshold still
+// holds for the realistic shape. One control cannot answer both: the clean one proves the
+// ESTIMATOR discriminates, this one proves the THRESHOLD does.
+//
+// So this emits like a production validator does: append to a nil slice, populate Context with
+// before/after/full-line spans, and allocate a Metadata map per finding.
+type emittingQuadraticValidator struct{}
+
+func (emittingQuadraticValidator) ValidateContent(content, _ string) ([]detector.Match, error) {
+	var out []detector.Match // NOT pre-sized, as production validators are not
+	for off := 0; ; {
+		j := strings.Index(content[off:], "XQZ")
+		if j < 0 {
+			break
+		}
+		start := off + j
+		off = start + 1
+
+		// The quadratic step: a full-input scan per match.
+		n := strings.Count(content, "a")
+		out = append(out, detector.Match{
+			Text:       content[start : start+3],
+			Type:       "TEST",
+			Confidence: float64(50 + n%2),
+			Validator:  "emitting-quadratic-control",
+			Context:    contextAround(content, start),
+			Metadata:   map[string]any{"validator": "emitting-quadratic-control"},
+		})
+	}
+	return out, nil
+}
+
+// contextAround builds the same shape of ContextInfo a real validator attaches to a finding.
+func contextAround(content string, start int) detector.ContextInfo {
+	lo, hi := start-40, start+43
+	if lo < 0 {
+		lo = 0
+	}
+	if hi > len(content) {
+		hi = len(content)
+	}
+	return detector.ContextInfo{
+		BeforeText: content[lo:start],
+		AfterText:  content[start+3 : hi],
+		FullLine:   content[lo:hi],
+	}
+}
+
+// TestGrowthRatioCatchesAnEmitPerMatchQuadratic answers #599's question directly.
+//
+// The concern was that making quadraticValidator clean removed the per-match emit cost, so the
+// control no longer modelled a real validator: a genuine regression carrying that cost might read
+// lower and slip under 8.0. Measured on darwin/arm64, same fixture size, three runs each:
+//
+//	clean control (unsized append)   15.07x   f=0.92
+//	full production-shaped emit      14.94x   f=0.91
+//
+// The emit dilutes the ratio by about 1%, not by the factor #599 feared. The 7.46x/7.85x ubuntu
+// readings that motivated the issue came from -race instrumenting every copy of the large
+// detector.Match struct, and the guard no longer runs under -race (#602) -- so the amplifier is
+// gone, not merely diluted. Under -race this shape still reads 13.33x.
+func TestGrowthRatioCatchesAnEmitPerMatchQuadratic(t *testing.T) {
+	newV := func() validatorUnderTest { return emittingQuadraticValidator{} }
+
+	// Same size as the clean control, so the two readings are directly comparable.
+	const reps = 3000
+	base := buildComplexityInput(quadraticUnit(0), nil, reps)
+	big := buildComplexityInput(quadraticUnit(0), nil, reps*4)
+
+	g := growthRatio(t, newV, base, big)
+	t.Logf("emit-per-match quadratic: %.2fx on the %s clock (min base=%v big=%v, per-pair %s)",
+		g.Ratio, g.Clock, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
+
+	// Non-vacuity, same as the clean control: a fixture that is not emitting is not modelling
+	// the cost this test exists to include.
+	if g.baseMatches == 0 || g.bigMatches <= g.baseMatches {
+		t.Fatalf("fixture is not exercising the quadratic path: base=%d big=%d matches",
+			g.baseMatches, g.bigMatches)
+	}
+
+	if _, resolvable := g.Ticks(); !resolvable {
+		t.Logf("emit-per-match quadratic control NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio <= maxGrowthRatio {
+		t.Errorf("a genuine O(n^2) validator that emits a Match per finding measured %.2fx on the "+
+			"%s clock, at or below the %.1f threshold — this is #599: the per-match emit cost "+
+			"dilutes the ratio enough to hide a real regression. min base=%v big=%v, per-pair %s. %s",
+			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin,
+			perfguard.FormatRatios(g.Samples), g.ResolutionNote())
+	}
+}
+
+// sparseQuadraticValidator takes the quadratic path only for every Nth match. Everything else is
+// a linear scan with a production-shaped emit.
+//
+// This is the shape a real O(n^2) regression usually has: a full-input rescan guarded by some
+// filter, so it fires on a subset of findings rather than all of them.
+type sparseQuadraticValidator struct {
+	every int
+
+	// rescans counts how many times the quadratic path actually ran, so the test below can prove
+	// the fixture is quadratic rather than assuming it.
+	rescans *int
+}
+
+func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector.Match, error) {
+	var out []detector.Match
+	seen := 0
+	for off := 0; ; {
+		j := strings.Index(content[off:], "XQZ")
+		if j < 0 {
+			break
+		}
+		start := off + j
+		off = start + 1
+
+		seen++
+		confidence := 50.0
+		if seen%v.every == 0 {
+			// The quadratic step, on a sparse subset of the matches.
+			confidence = float64(50 + strings.Count(content, "a")%2)
+			*v.rescans++
+		}
+		out = append(out, detector.Match{
+			Text:       content[start : start+3],
+			Type:       "TEST",
+			Confidence: confidence,
+			Validator:  "sparse-quadratic-control",
+			Context:    contextAround(content, start),
+			Metadata:   map[string]any{"validator": "sparse-quadratic-control"},
+		})
+	}
+	return out, nil
+}
+
+// TestGrowthRatioMissesASparseQuadratic records a LIMIT of this guard, deliberately.
+//
+// It asserts the CURRENT, WRONG behaviour: a genuinely O(n^2) validator goes undetected. That is
+// intentional. The limit is real, it is arithmetic rather than a tuning mistake, and a test that
+// pins it is the only thing that stops it being rediscovered a fourth time (#509, #546, #579, #599
+// are all retunings of this one threshold). A change that closes the gap must INVERT this
+// assertion in the same commit, with the linear control still passing — do not delete it.
+//
+// The arithmetic. For a 4x input step the measured ratio is
+//
+//	ratio = 4 * (1 + 3f)      f = the quadratic share of the BASE reading
+//
+// so ratio > 8.0 requires f > 1/3. An O(n^2) term that is less than a third of the base reading is
+// invisible to this guard at any threshold it could safely carry. f grows with n, so whether a
+// given regression is caught depends on the FIXTURE SIZE as much as on the code -- measured on
+// darwin/arm64, ratio by (rescan density, reps):
+//
+//	rescan every    reps 3000   reps 12000   reps 48000
+//	  1 match          14.62x      —            —
+//	 16 matches         9.45x      12.55x       14.87x
+//	 64 matches         4.95x       9.92x       13.03x
+//	256 matches         4.81x       6.30x        8.88x
+//	4096 matches         —           —           4.82x - 5.26x   <- this test
+//
+// And no threshold fixes it: the cell this test uses reads ~5.1x while correct code reaches 4.65x
+// (see maxGrowthRatio), so a bound between them would have 1.10x margin against the repo's 1.5x
+// rule. Closing this needs a third input size to fit a curve, or a larger step -- not a retune.
+//
+// Under -race the boundary moves the wrong way (the instrumented emit dilutes further): a 1-in-16
+// rescan reads 8.37x plain and 5.85x under -race. The guard runs without -race, which is what
+// keeps the operative column the plain one.
+func TestGrowthRatioMissesASparseQuadratic(t *testing.T) {
+	rescans := 0
+	newV := func() validatorUnderTest { return sparseQuadraticValidator{every: 4096, rescans: &rescans} }
+
+	// 48000 reps because the LINEAR term has to be large enough to measure: at reps=3000 this
+	// shape's base is 254µs-330µs, under perfguard.MinMeasurableCPU, and the ratio would be an
+	// artefact rather than a reading. Base lands at 5.1ms-6.9ms here.
+	const reps = 48000
+	base := buildComplexityInput(quadraticUnit(0), nil, reps)
+	big := buildComplexityInput(quadraticUnit(0), nil, reps*4)
+
+	g := growthRatio(t, newV, base, big)
+	t.Logf("sparse quadratic (1 rescan per 4096 matches): %.2fx on the %s clock "+
+		"(min base=%v big=%v, per-pair %s) — recorded as MISSED at the %.1f threshold",
+		g.Ratio, g.Clock, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples), maxGrowthRatio)
+
+	// Non-vacuity, and the part that matters most here. An assertion that something is NOT
+	// detected passes trivially against a fixture that does no quadratic work at all, which would
+	// turn this test into decoration. Prove the quadratic path ran.
+	if rescans == 0 {
+		t.Fatalf("the quadratic path never ran: this fixture is not O(n^2) and the assertion below "+
+			"would hold for a purely linear validator. base=%d big=%d matches",
+			g.baseMatches, g.bigMatches)
+	}
+	if g.baseMatches == 0 || g.bigMatches <= g.baseMatches {
+		t.Fatalf("fixture is not scaling: base=%d big=%d matches", g.baseMatches, g.bigMatches)
+	}
+
+	if _, resolvable := g.Ticks(); !resolvable {
+		t.Logf("sparse quadratic control NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio > maxGrowthRatio {
+		t.Errorf("a sparse O(n^2) validator measured %.2fx on the %s clock, ABOVE the %.1f "+
+			"threshold — the guard now catches this shape, which is BETTER than what this test "+
+			"records. Do not silence it: invert the assertion, state the new detection floor in "+
+			"maxGrowthRatio's comment, and check the linear control still passes. "+
+			"min base=%v big=%v, per-pair %s",
+			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
+	}
 }
