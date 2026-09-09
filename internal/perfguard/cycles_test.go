@@ -257,12 +257,10 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 	}
 
 	// The assertion that actually catches a fixture gone cheap. A ratio cannot: dropping the sink took
-	// the base from 5.094ms to 1.047ms and the ratio stayed at 4.41x, because scaling every reading by
-	// the same factor leaves their quotient alone. What changed was the CLOCK — perfguard fell back to
-	// wall because the base no longer cleared MinMeasurableCPU — and on Windows, where the CPU clock
-	// steps in 15.625ms, a base that small spans zero ticks and PROPERTY 4 would be measuring
-	// quantisation noise.
-	assertFixtureIsMeasurable(t, "linear", linear)
+	// the base from 9.09ms to 2.15ms and the ratio stayed at 4.41x, because scaling every reading by the
+	// same factor leaves their quotient alone. Judged on the WALL base, because requiring the CPU clock
+	// is unsatisfiable on windows-latest — see assertFixtureIsMeasurable.
+	assertFixtureIsMeasurable(t, "linear", linear, 4*time.Millisecond)
 
 	// 12M rather than the linear fixture's 4M. burnQuadratic spends most of its budget in loop
 	// bookkeeping rather than in burnCycles, so at 4M its base read 3.635ms — above MinMeasurableCPU
@@ -286,30 +284,51 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 			"fixtures are not distinguishable and PROPERTY 4 is vacuous",
 			quadratic.Ratio, linear.Ratio)
 	}
-	assertFixtureIsMeasurable(t, "quadratic", quadratic)
+	assertFixtureIsMeasurable(t, "quadratic", quadratic, 16*time.Millisecond)
 }
 
-// assertFixtureIsMeasurable checks the thing a ratio bound cannot: that the reading was taken on the
-// CPU clock, with a base far enough above MinMeasurableCPU to survive a coarser platform.
+// assertFixtureIsMeasurable checks the thing a ratio bound cannot: that the base reading is large
+// enough for the measurement to be about the code.
 //
-// 2x the floor, not 1x, because MinMeasurableCPU is 2ms and Windows advances its CPU clock in
-// 15.625ms steps — a reading that merely clears 2ms is still under a single tick there. This does not
-// make the fixture Windows-safe on its own; it makes a fixture that has quietly become cheap fail
-// here, on every platform, instead of on the one runner nobody can reproduce.
-func assertFixtureIsMeasurable(t *testing.T, name string, g Growth) {
+// JUDGED ON THE WALL BASE, not on which clock Measure chose. The first version required
+// Clock == "cpu", and that failed on windows-latest with base=10.077ms while printing a message that
+// was flatly untrue there — "its base of 10.077ms did not clear MinMeasurableCPU (2ms)". Windows
+// reports process CPU time in 15.625ms steps, so a 10ms workload reads as 0 and Measure correctly
+// falls back to wall; the fixture was fine and the assertion was unsatisfiable. That is the same
+// defect this repo is fixing elsewhere — an assertion a platform cannot meet — reproduced by me in
+// the change meant to characterise it.
+//
+// BaseWallMin is available on every platform and finely resolved on all of them (41ns on
+// darwin/arm64, 722.7µs on windows-latest), so it is the portable proxy for "did enough work happen".
+//
+// The floor is PER FIXTURE, sized from each one's own measurement, because a single shared number
+// goes vacuous against the cheaper one. Measured on darwin/arm64, wall base:
+//
+//	                 correct    sink dropped   body a constant store
+//	linear (8M)      9.09ms     2.15ms         2.48ms      -> floor 4ms
+//	quadratic (12M)  32.71ms    8.26ms         8.03ms      -> floor 16ms
+//
+// Each floor sits at roughly half the honest value and above both mutations, and both are cleared on
+// windows-latest (linear 10.077ms, quadratic ~31ms).
+func assertFixtureIsMeasurable(t *testing.T, name string, g Growth, floor time.Duration) {
 	t.Helper()
 
-	if g.Clock != "cpu" {
-		t.Errorf("the %s fixture was measured on the %s clock, not cpu: its base of %v did not clear "+
-			"MinMeasurableCPU (%v), so the work has become too cheap to measure. This is the failure "+
-			"a ratio bound cannot see — the ratio stays correct while the reading stops meaning "+
-			"anything", name, g.Clock, g.BaseMin, MinMeasurableCPU)
+	if g.BaseWallMin < floor {
+		t.Errorf("the %s fixture's base is %v of wall time, under the %v floor: the work has become "+
+			"too cheap for the measurement to be about the code. This is the failure a ratio bound "+
+			"cannot see — dropping the sink took this base from 9.09ms to 2.15ms while the ratio stayed "+
+			"at 4.41x, because scaling every reading by the same factor leaves the quotient alone. "+
+			"(measured on the %s clock, cpu base %v)", name, g.BaseWallMin, floor, g.Clock, g.BaseMin)
 		return
 	}
-	if g.BaseMin < 2*MinMeasurableCPU {
-		t.Errorf("the %s fixture's base reading is %v, under 2x MinMeasurableCPU (%v). It still reads "+
-			"on the cpu clock here, but a platform with coarser accounting would divide near-zero "+
-			"tick counts", name, g.BaseMin, 2*MinMeasurableCPU)
+
+	// Not an assertion: which clock was chosen is a property of the platform, and on windows-latest
+	// the CPU clock cannot resolve a 10ms workload at all. Reported so a reader can tell a wall
+	// fallback from a CPU reading when interpreting the ratio.
+	if g.Clock != "cpu" {
+		t.Logf("the %s fixture was measured on the %s clock (cpu base %v, wall base %v): this "+
+			"platform's CPU accounting is too coarse for a fixture this size — see #619",
+			name, g.Clock, g.BaseMin, g.BaseWallMin)
 	}
 }
 
