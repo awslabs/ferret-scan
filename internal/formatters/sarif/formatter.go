@@ -169,6 +169,7 @@ func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleMa
 	// disclosure must not sit behind a has-findings condition.
 	attachNotExamined(&run, options)
 	attachUnredacted(&run, options)
+	attachDisabledDetectionTypes(&run, options)
 
 	// Create the top-level SARIF report
 	report := &SARIFReport{

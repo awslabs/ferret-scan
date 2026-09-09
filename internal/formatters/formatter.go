@@ -161,6 +161,31 @@ type ScanStats struct {
 	// omitempty so a scan with nothing to report stays byte-identical in JSON/YAML.
 	FilesNotExamined int `json:"files_not_examined,omitempty" yaml:"files_not_examined,omitempty"`
 
+	// DisabledDetectionTypes names detection sub-types that CONFIG switched off for this run,
+	// keyed by validator. It is a coverage disclosure, not a setting echo: with it absent, a scan
+	// whose detection had been narrowed was byte-identical to one that ran in full.
+	//
+	// Measured on the parent commit, one copyright notice, --checks INTELLECTUAL_PROPERTY:
+	//
+	//	no project config                       1 finding
+	//	.ferret-scan.yaml disabling copyright   0 findings, rc 0, 109 bytes of stderr naming the
+	//	                                        config but not what it turned off
+	//	--config <same file>                    0 findings, rc 0, ZERO bytes of stderr
+	//
+	// The third row is why this is not merely the provenance note's job. #603 deliberately keeps
+	// the provenance note silent for an explicit --config, on the ground that the operator chose
+	// the file — but a CI job consuming `"results": []` from that run did not choose it and has no
+	// way to tell a clean scan from a narrowed one.
+	//
+	// Sourced from the CONFIGURED VALIDATOR, not from re-reading config: only the
+	// intellectual-property validator honours `disabled_types`, so a config-derived disclosure
+	// would announce reduced coverage for any validator whose section carried the key.
+	//
+	// Values are sorted, because they come from a map and an unsorted disclosure would differ
+	// between runs of an unchanged scan. omitempty so a scan with nothing disabled stays
+	// byte-identical in JSON and YAML.
+	DisabledDetectionTypes map[string][]string `json:"disabled_detection_types,omitempty" yaml:"disabled_detection_types,omitempty"`
+
 	// FilesNotRedacted counts files whose findings were REPORTED but whose values
 	// were not redacted, so they remain in cleartext. Separate from
 	// FilesNotExamined because they are different facts about different stages: a
