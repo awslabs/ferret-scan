@@ -274,17 +274,17 @@ func allocateCauseQuotas(causes []NotExaminedCause, counts map[NotExaminedCause]
 		return quota
 	}
 
-	// One each first, so presence is guaranteed before fairness is considered.
+	// Hand out slots one at a time, cycling through the causes. The FIRST cycle is what guarantees
+	// every cause is present, so no separate pre-seeding pass is needed -- an earlier version had one,
+	// and a mutation removing it changed nothing, which is how it was found to be redundant.
+	//
+	// Round-robin rather than proportional, and that is the substantive choice here: proportional
+	// would give a cause with 5,000 entries almost the whole budget and hold a cause with 3 down to a
+	// single slot, which is the same imbalance that made a flat prefix wrong in the first place.
+	//
+	// Cycling stops when nothing can take more, so a budget larger than the input simply enumerates
+	// all of it.
 	remaining := budget
-	for _, c := range causes {
-		quota[c] = 1
-		remaining--
-	}
-
-	// Then hand out the rest a slot at a time, cycling through the causes. Round-robin rather than
-	// proportional: proportional would give a cause with 5,000 entries almost the whole budget and
-	// reduce a cause with 3 back to its single guaranteed slot, which is the imbalance that made a
-	// flat prefix wrong in the first place. Cycling stops when nothing can take more.
 	for remaining > 0 {
 		progressed := false
 		for _, c := range causes {
