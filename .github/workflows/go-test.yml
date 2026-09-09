@@ -121,7 +121,16 @@ jobs:
         # The guard logs every ratio, but `go test` hides t.Logf output for a PASSING package unless
         # -v is set (fmt.Println is hidden too -- both measured), so these numbers have never appeared
         # in any CI log and the threshold has been resting on one machine's. This prints all 18
-        # validator targets plus both controls, on all three runners, every run. See #599.
+        # validator targets plus every control, on all three runners, every run. See #599.
+        #
+        # This step did its job on its first run and the numbers are now recorded at maxGrowthRatio.
+        # From run 34281522336 on main: ubuntu 3.30x-4.64x correct / 15.16x quadratic, macos
+        # 3.86x-4.65x / 15.49x -- so 8.0 has the repo's 1.5x margin on both sides on both, and the
+        # ubuntu concern above is RESOLVED (dropping -race from the guard in #602 removed the
+        # amplifier). Windows asserts 0 of 18: its 15.625ms CPU tick leaves every base under the 8
+        # ticks perfguard requires, so the tick gate declines them all. KEEP THIS STEP -- it is how
+        # the next retune gets evidence instead of a failure, and it is the only place the Windows
+        # skips are visible.
         #
         # Placed after Build rather than after the test step ON PURPOSE: the granularity step added by
         # #597 anchors after the test step, and two insertions at the same point conflict -- measured
