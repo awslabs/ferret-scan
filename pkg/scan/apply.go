@@ -25,8 +25,22 @@ const (
 
 // Redacted is the result of applying redaction to text.
 type Redacted struct {
-	Text  string // the redacted output
-	Count int    // number of values redacted
+	// Text is the redacted output.
+	Text string
+
+	// Count is how many values were actually REPLACED — not how many findings were passed in.
+	//
+	// The distinction is the point. It used to be len(findings), which made it an attestation this
+	// package could not support: a finding the redactor cannot locate in the text is skipped, and
+	// counting it told the caller a value had been masked when it was still in the clear. Measured
+	// before the change, on one line holding six consolidated copyright notices, RedactText returned
+	// Count=1 with output byte-identical to its input.
+	//
+	// So Count < len(findings) is meaningful and worth checking: it means at least one reported value
+	// could not be located and is still present in Text. The known remaining case is a
+	// SOCIAL_MEDIA_CLUSTER, whose members span several lines and cannot be recovered from a single
+	// line of context — see #631.
+	Count int
 }
 
 // RedactText takes text and pre-computed findings, and returns the redacted
