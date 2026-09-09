@@ -60,3 +60,72 @@ func TestNormalizePaths_CrossPlatform(t *testing.T) {
 		})
 	}
 }
+
+// TestFileURIsNormalizeIdenticallyOnEveryPlatform pins the convergence that keeps SARIF snapshots
+// platform-independent.
+//
+// The temp dir is spelled differently on the two platforms in a way that survives separator
+// normalization: a POSIX temp dir INCLUDES its leading slash, so `file:///private/var/x/n.txt`
+// collapses to `file://<TMPDIR>/n.txt` — two slashes, the third absorbed into the sentinel — while a
+// Windows temp dir does not, so the same correct URI `file:///C:/Users/x/n.txt` collapses to
+// `file:///<TMPDIR>/n.txt` — three.
+//
+// Measured before the canonicalisation, all three spellings:
+//
+//	posix                 -> "uri": "file://<TMPDIR>/notes.txt"
+//	windows native        -> "uri": "file:///<TMPDIR>/notes.txt"
+//	windows json-escaped  -> "uri": "file:///<TMPDIR>/notes.txt"
+//
+// That difference is an artefact of what the sentinel swallowed, and left alone it makes every SARIF
+// snapshot platform-specific. It broke windows-latest on 18 golden subtests the moment the SARIF writer
+// started emitting the RFC 8089 three-slash form for absolute paths (#633) — the writer was right and
+// the snapshot encoded the POSIX accident.
+func TestFileURIsNormalizeIdenticallyOnEveryPlatform(t *testing.T) {
+	const want = `"uri": "file://<TMPDIR>/notes.txt"`
+
+	for _, tc := range []struct {
+		name   string
+		in     string
+		tmpDir string
+	}{
+		{
+			name:   "posix, temp dir carries its leading slash",
+			in:     `"uri": "file:///private/var/folders/x/T/abc/notes.txt"`,
+			tmpDir: "/private/var/folders/x/T/abc",
+		},
+		{
+			name:   "windows, forward slashes as the SARIF writer emits them",
+			in:     `"uri": "file:///C:/Users/runneradmin/AppData/Local/Temp/abc/notes.txt"`,
+			tmpDir: `C:\Users\runneradmin\AppData\Local\Temp\abc`,
+		},
+		{
+			name:   "windows, JSON-escaped backslashes",
+			in:     `"uri": "file:///C:\\Users\\runneradmin\\AppData\\Local\\Temp\\abc\\notes.txt"`,
+			tmpDir: `C:\Users\runneradmin\AppData\Local\Temp\abc`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NormalizePaths(tc.in, tc.tmpDir); got != want {
+				t.Errorf("NormalizePaths(...) = %s, want %s — a snapshot that differs by platform makes "+
+					"every SARIF golden unusable on one of them", got, want)
+			}
+		})
+	}
+}
+
+// TestTheURICanonicalisationDoesNotTouchOtherURIs is the must-NOT-fire half: the rewrite is anchored on
+// the sentinel, so a real three-slash file URI outside the temp dir — and any other scheme — is left
+// exactly as it is. A blanket `file:///` → `file://` would corrupt output rather than normalise it.
+func TestTheURICanonicalisationDoesNotTouchOtherURIs(t *testing.T) {
+	for _, in := range []string{
+		`"uri": "file:///etc/hosts"`,
+		`"uri": "file:///C:/Windows/notepad.exe"`,
+		`"uri": "https://example.com/a"`,
+		`"helpUri": "file:///usr/share/doc/thing"`,
+	} {
+		if got := NormalizePaths(in, "/private/var/folders/x/T/abc"); got != in {
+			t.Errorf("NormalizePaths(%s) = %s, want it unchanged — the canonicalisation must be anchored "+
+				"on the <TMPDIR> sentinel, not applied to every file URI", in, got)
+		}
+	}
+}
