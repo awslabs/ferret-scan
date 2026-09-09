@@ -65,17 +65,6 @@ func TestTicksRefusesAWindowsTickReading(t *testing.T) {
 	}
 }
 
-// reasonableFixtureBudget is the largest base CPU reading this repo is willing to spend on one growth
-// measurement, and therefore the line between "this fixture has drifted too cheap" (a regression) and
-// "this platform's clock cannot support the gate at all" (a tracked platform fact).
-//
-// 50ms, centred on the measured populations rather than picked. The 18 goldencorpus targets have base
-// readings of 3.3ms-98ms, so 50ms is a fixture size the repo demonstrably already ships. And it
-// separates the two cases widely in both directions: ubuntu-latest and darwin/arm64 resolve finely
-// enough that MinTicks costs them under 4ms — 12x below this — while windows-latest advances its CPU
-// clock in 15.625ms steps, so MinTicks costs it 125ms, 2.5x above. Nothing sits near the line.
-const reasonableFixtureBudget = 50 * time.Millisecond
-
 // TestTicksIsSufficientOnThisPlatformForATypicalFixture keeps the gate from silently disabling every
 // assertion on the platforms where it CAN work.
 //
@@ -108,22 +97,20 @@ func TestTicksIsSufficientOnThisPlatformForATypicalFixture(t *testing.T) {
 	t.Logf("%s", g)
 	t.Logf("%s", g.ResolutionNote())
 
-	// Feasibility is judged against the clock Measure ACTUALLY used, not always the CPU one. On Windows
-	// the wall clock is 20x finer than the CPU clock, so which one was chosen decides whether MinTicks
-	// is affordable — and that choice is exactly what varies from run to run there.
-	tick := cpu
-	if g.Clock == "wall" {
-		tick = wall
-	}
-	required := time.Duration(MinTicks) * tick
+	// The decision lives in MinTicksAffordable, a pure function, because its interesting cases are on a
+	// platform this test cannot run: on Windows the wall clock is 20x finer than the CPU one, and which
+	// was chosen is what varies from run to run. Two mutations of the logic survived while it was inline
+	// here — reading the CPU tick unconditionally, and dropping the check — because neither is observable
+	// where both clocks are fine.
+	tick, required, affordable := MinTicksAffordable(g.Clock, cpu, wall)
 
-	if required > reasonableFixtureBudget {
+	if !affordable {
 		t.Logf("NOT ASSERTED — this platform's %s tick is %v, so MinTicks (%d) needs a base of %v, over "+
 			"the %v this repo spends on a fixture. Every growth assertion in the repo is being SKIPPED "+
 			"here, which is real and is tracked in #619: the fix is a finer clock, not a bigger fixture. "+
 			"Asserting it anyway failed about one run in three on windows-latest (6 of 20 consecutive "+
 			"main runs) and blocked unrelated merges.",
-			g.Clock, tick, MinTicks, required, reasonableFixtureBudget)
+			g.Clock, tick, MinTicks, required, MinTicksBudget)
 		return
 	}
 
