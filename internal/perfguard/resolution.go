@@ -30,6 +30,37 @@ import (
 // quantisation error well under the 1.5x margin this repo asks of a guard.
 const MinTicks = 8
 
+// MinTicksBudget is the largest base reading this repo will spend on one growth measurement, and so
+// the line between a fixture that has drifted too cheap (a regression) and a platform whose clock
+// cannot support MinTicks at all (a tracked platform fact, #619).
+//
+// 50ms, centred on measurement rather than picked. The 18 goldencorpus targets have base readings of
+// 3.3ms-98ms, so 50ms is a fixture size the repo demonstrably already ships. It also separates the two
+// cases widely in both directions: ubuntu-latest and darwin/arm64 resolve finely enough that MinTicks
+// costs them under 4ms, 12x below this, while windows-latest advances its CPU clock in 15.625ms steps
+// so MinTicks costs it 125ms, 2.5x above. Nothing sits near the line.
+const MinTicksBudget = 50 * time.Millisecond
+
+// MinTicksAffordable reports whether a platform can clear MinTicks within MinTicksBudget, given the
+// clock a measurement actually used and both measured ticks.
+//
+// A PURE FUNCTION, for the same reason ticksAt is one: the interesting cases are on a platform the
+// developer cannot run. Windows' CPU clock steps in 15.625ms and its wall clock in 722.7µs — a 20x
+// difference that decides the answer — and folded into a test body that logic is only ever exercised
+// by whichever clock the local machine happens to pick. Two mutations of it (always reading the CPU
+// tick; removing the check) survived on darwin/arm64 while being exactly the mistakes that matter.
+//
+// Returns the tick it judged against so a caller can report which clock the verdict is about; a
+// disclosure that does not name the clock cannot be diagnosed from a log.
+func MinTicksAffordable(clock string, cpuTick, wallTick time.Duration) (tick, required time.Duration, affordable bool) {
+	tick = cpuTick
+	if clock == "wall" {
+		tick = wallTick
+	}
+	required = time.Duration(MinTicks) * tick
+	return tick, required, required <= MinTicksBudget
+}
+
 var (
 	tickOnce sync.Once
 	cpuTick  time.Duration
