@@ -115,18 +115,29 @@ type PlatformConfig struct {
 // This block once also carried use_appdata, system_wide_install,
 // create_shortcuts, add_to_path and long_path_support. Those describe an
 // installer, not a scanner: nothing in this repo (including the install-system
-// scripts) ever read them, so they were validated and then ignored. They are
-// gone; the directory overrides below are the two that have a meaning here.
+// scripts) ever read them, so they were validated and then ignored.
+//
+// config_dir went the same way, and for a sharper reason than "nobody wired it":
+// it CANNOT work. A config-directory override read out of the config file asks
+// the file where the file lives. That is why GetEffectiveConfigDir, which
+// existed to serve it, had no caller anywhere in the tree -- it was structurally
+// unusable for its own stated purpose.
+//
+// The need is real and already met: FERRET_CONFIG_DIR is honoured, in
+// paths.GetConfigDir and in both platform implementations, and it works
+// precisely because an environment variable is readable BEFORE the config is.
+//
+// temp_dir is kept, and the asymmetry is not an oversight: the temp directory is
+// not needed in order to find the config, so an override read out of the config
+// is coherent for it. It is wired through paths.tempDirOverrideValue.
 type WindowsConfig struct {
-	ConfigDir string `yaml:"config_dir"` // Override default config directory
-	TempDir   string `yaml:"temp_dir"`   // Override default temp directory
+	TempDir string `yaml:"temp_dir"` // Override default temp directory
 }
 
 // UnixConfig holds Unix-specific configuration settings. See WindowsConfig for
-// why use_xdg is no longer here.
+// why use_xdg and config_dir are no longer here.
 type UnixConfig struct {
-	ConfigDir string `yaml:"config_dir"` // Override default config directory
-	TempDir   string `yaml:"temp_dir"`   // Override default temp directory
+	TempDir string `yaml:"temp_dir"` // Override default temp directory
 }
 
 // ProfileRedaction holds a profile's redaction settings. It is a named type
@@ -788,13 +799,6 @@ func validatePlatformConfig(platformConfig *PlatformConfig) error {
 
 // validateWindowsConfig validates Windows-specific configuration
 func validateWindowsConfig(windowsConfig *WindowsConfig) error {
-	// Validate custom config directory if specified
-	if windowsConfig.ConfigDir != "" {
-		if err := paths.ValidatePath(windowsConfig.ConfigDir); err != nil {
-			return fmt.Errorf("invalid Windows config directory: %w", err)
-		}
-	}
-
 	// Validate custom temp directory if specified
 	if windowsConfig.TempDir != "" {
 		if err := paths.ValidatePath(windowsConfig.TempDir); err != nil {
@@ -807,13 +811,6 @@ func validateWindowsConfig(windowsConfig *WindowsConfig) error {
 
 // validateUnixConfig validates Unix-specific configuration
 func validateUnixConfig(unixConfig *UnixConfig) error {
-	// Validate custom config directory if specified
-	if unixConfig.ConfigDir != "" {
-		if err := paths.ValidatePath(unixConfig.ConfigDir); err != nil {
-			return fmt.Errorf("invalid Unix config directory: %w", err)
-		}
-	}
-
 	// Validate custom temp directory if specified
 	if unixConfig.TempDir != "" {
 		if err := paths.ValidatePath(unixConfig.TempDir); err != nil {
@@ -860,22 +857,6 @@ func validateConfigPaths(config *Config) error {
 	}
 
 	return nil
-}
-
-// GetEffectiveConfigDir returns the effective configuration directory based on platform and config
-func GetEffectiveConfigDir(config *Config) string {
-	// Check for platform-specific override
-	if config.Platform != nil {
-		if runtime.GOOS == "windows" && config.Platform.Windows != nil && config.Platform.Windows.ConfigDir != "" {
-			return normalizePlatformPath(config.Platform.Windows.ConfigDir)
-		}
-		if runtime.GOOS != "windows" && config.Platform.Unix != nil && config.Platform.Unix.ConfigDir != "" {
-			return normalizePlatformPath(config.Platform.Unix.ConfigDir)
-		}
-	}
-
-	// Fall back to default platform-aware config directory
-	return paths.GetConfigDir()
 }
 
 // GetEffectiveTempDir returns the effective temporary directory based on platform and config
