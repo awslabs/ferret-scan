@@ -1156,15 +1156,25 @@ func parentPartResidue(contents *OfficeZipContents, matches []detector.Match) []
 	}
 	probe := strings.NewReplacer(probeArgs...)
 
-	texts := make([]string, 0, len(names))
+	// BOTH views of every part. The separated one catches a value inside a single run and any value
+	// in an attribute; the run-text one catches a value SPLIT across adjacent runs, which is the
+	// shape the scanner reports and which neither view used to see.
+	//
+	// A second view cannot manufacture a false refusal: a value only reaches `wanted` by having been
+	// REPORTED, and if it was reported then some extraction produced it -- run text is the view that
+	// did.
+	texts := make([]string, 0, len(names)*2)
 	anyHit := false
 	for _, name := range names {
-		text, ok := decodedPartText(contents.Files[name])
+		separated, runText, ok := decodedPartText(contents.Files[name])
 		if !ok {
 			continue
 		}
-		texts = append(texts, text)
-		if !anyHit && probe.Replace(text) != text {
+		texts = append(texts, separated)
+		if runText != separated {
+			texts = append(texts, runText)
+		}
+		if !anyHit && (probe.Replace(separated) != separated || probe.Replace(runText) != runText) {
 			anyHit = true
 		}
 	}
@@ -1223,9 +1233,10 @@ func residueTypes(residue []detector.Match) []string {
 // decodedPartText concatenates a part's entity-decoded character data and attribute
 // values. It reports false when the part cannot be tokenized, so the caller can skip
 // it rather than guess.
-func decodedPartText(content []byte) (string, bool) {
-	var sb strings.Builder
-	sb.Grow(len(content) / 2)
+func decodedPartText(content []byte) (separated string, runText string, ok bool) {
+	var sep, runs strings.Builder
+	sep.Grow(len(content) / 2)
+	runs.Grow(len(content) / 2)
 
 	dec := xml.NewDecoder(bytes.NewReader(content))
 	for {
@@ -1234,24 +1245,43 @@ func decodedPartText(content []byte) (string, bool) {
 			break
 		}
 		if err != nil {
-			return "", false
+			return "", "", false
 		}
 		switch t := tok.(type) {
 		case xml.CharData:
-			sb.Write(t)
-			// A separator keeps two adjacent runs from concatenating into a value that
-			// is in neither of them.
-			sb.WriteByte('\n')
+			sep.Write(t)
+			// A separator keeps two adjacent runs from concatenating into a value that is in
+			// neither of them. That reasoning is sound, and this view is kept for it: it is the
+			// one that covers attribute values.
+			sep.WriteByte('\n')
+
+			// runText is character data ONLY, concatenated, with no separator and no attributes.
+			// It models what the SCANNER's office extractor produces -- it strips tags with a
+			// regex and inserts nothing between runs, and xlsx joins <t> runs directly -- so a
+			// value split across two adjacent runs, which IS reported, is visible here and was
+			// visible in neither view before.
+			//
+			// Measured: a .docx holding `<w:t>Employee SSN: 449-87-</w:t>` then
+			// `<w:t>4100</w:t>` reported SSN at confidence 100, the rewrite could not remove it,
+			// and this guard could not see it -- so the file was written with the value in
+			// cleartext at exit 0 with an empty stderr.
+			//
+			// ATTRIBUTES ARE DELIBERATELY EXCLUDED HERE, and getting that wrong is how the first
+			// attempt at this failed. Tokens arrive in document order, so `<w:t xml:space=
+			// "preserve">` contributes "preserve" BETWEEN the two runs: a view built from every
+			// token reads "449-87-" + "preserve" + "4100" and still cannot find the value. The
+			// separated view above is what covers attributes; this one must not.
+			runs.Write(t)
 		case xml.StartElement:
-			// Attribute values are covered because the raw replacer rewrites them, so a
-			// value living in one is in scope for the refusal too.
+			// Attribute values are covered because the raw replacer rewrites them, so a value
+			// living in one is in scope for the refusal too.
 			for _, a := range t.Attr {
-				sb.WriteString(a.Value)
-				sb.WriteByte('\n')
+				sep.WriteString(a.Value)
+				sep.WriteByte('\n')
 			}
 		}
 	}
-	return sb.String(), true
+	return sep.String(), runs.String(), true
 }
 
 // rewritePartText applies repl to an XML part, matching character data on its
