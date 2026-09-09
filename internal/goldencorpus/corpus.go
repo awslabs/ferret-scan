@@ -1350,5 +1350,25 @@ func NormalizePaths(s, tmpDir string) string {
 	// normalize to "<TMPDIR>/notes.txt".
 	s = strings.ReplaceAll(s, `<TMPDIR>\\`, "<TMPDIR>/")
 	s = strings.ReplaceAll(s, `<TMPDIR>\`, "<TMPDIR>/")
+
+	// Canonicalise the file: URI prefix, because the temp dir is spelled differently on the two
+	// platforms in a way that survives everything above.
+	//
+	// A POSIX temp dir INCLUDES its leading slash, so file:///private/var/x/n.txt becomes
+	// file://<TMPDIR>/n.txt -- two slashes, the third having been absorbed into the sentinel. A
+	// Windows temp dir does not, so the same correct URI, file:///C:/Users/x/n.txt, becomes
+	// file:///<TMPDIR>/n.txt -- three. Measured, all three input spellings:
+	//
+	//	posix                 -> "uri": "file://<TMPDIR>/notes.txt"
+	//	windows native        -> "uri": "file:///<TMPDIR>/notes.txt"
+	//	windows json-escaped  -> "uri": "file:///<TMPDIR>/notes.txt"
+	//
+	// Both name the same location; the difference is an artefact of what the sentinel swallowed. Left
+	// alone it makes every SARIF snapshot platform-specific, which is what broke windows-latest when
+	// the SARIF writer started emitting the RFC 8089 three-slash form for absolute paths (#633).
+	//
+	// The two-slash spelling is chosen because it is what the committed snapshots already hold, so no
+	// golden file moves for a difference that carries no meaning.
+	s = strings.ReplaceAll(s, "file:///<TMPDIR>", "file://<TMPDIR>")
 	return s
 }
