@@ -21,6 +21,18 @@ import (
 // A mislabelled artefact is worse than a missing one: nothing about it looks wrong.
 
 func TestMakeRelativePathKeepsABackslashFilenameDistinct(t *testing.T) {
+	// PLATFORM-SPECIFIC BY NECESSITY, and getting this wrong is what made the first version of this
+	// test fail on windows-latest for a correct reason.
+	//
+	// On POSIX a backslash is an ordinary filename character, so `a\b.txt` and `a/b.txt` are two
+	// different files and MUST map to two different output paths. On Windows a backslash IS the
+	// separator, so they are the SAME path and collapsing them is right. The fix (filepath.ToSlash)
+	// does the correct thing on both; only the expectation differs.
+	if filepath.Separator != '/' {
+		t.Skip("a backslash is a path separator on this platform, so `a\\b.txt` and `a/b.txt` are the " +
+			"same file and must map to one output path -- see TestOnWindowsABackslashIsASeparator")
+	}
+
 	osm := &OutputStructureManager{baseOutputDir: "out"}
 
 	// The collision, stated directly: these two inputs must not produce the same relative path.
@@ -43,19 +55,40 @@ func TestMakeRelativePathKeepsABackslashFilenameDistinct(t *testing.T) {
 	}
 }
 
+// TestOnWindowsABackslashIsASeparator is the other half, and it is an assertion rather than a skip so
+// the platform difference is pinned from both directions.
+//
+// filepath.ToSlash rewrites the separator on Windows, so a name containing a backslash and the
+// equivalent nested path are the same file and correctly share one output path. Asserting this is what
+// stops a future "fix" from making the POSIX expectation universal.
+func TestOnWindowsABackslashIsASeparator(t *testing.T) {
+	if filepath.Separator == '/' {
+		t.Skip("a backslash is an ordinary filename character on this platform")
+	}
+
+	osm := &OutputStructureManager{baseOutputDir: "out"}
+	if a, b := osm.makeRelativePath(`/tmp/t/a\b.txt`), osm.makeRelativePath(`/tmp/t/a/b.txt`); a != b {
+		t.Errorf("makeRelativePath gave %q and %q for what is one path on this platform — a backslash "+
+			"is the separator here, so these name the same file", a, b)
+	}
+}
+
 // TestMakeRelativePathIsInjectiveOverAwkwardNames is the general property: distinct inputs, distinct
 // outputs. A path mapper that collapses two names silently loses one artefact and mislabels the other.
 func TestMakeRelativePathIsInjectiveOverAwkwardNames(t *testing.T) {
 	osm := &OutputStructureManager{baseOutputDir: "out"}
 
+	// Two spellings of one path cannot be injective where a backslash IS the separator, so the
+	// backslash forms are only distinct inputs on POSIX. The property under test -- distinct FILES get
+	// distinct output paths -- holds on both; the set of distinct files differs.
 	inputs := []string{
-		`/tmp/t/a\b.txt`,
 		`/tmp/t/a/b.txt`,
 		`/tmp/t/a.txt`,
-		`/tmp/t/a\c.txt`,
-		`/tmp/t/x\y\z.txt`,
 		`/tmp/t/x/y/z.txt`,
 		`/tmp/t/plain.txt`,
+	}
+	if filepath.Separator == '/' {
+		inputs = append(inputs, `/tmp/t/a\b.txt`, `/tmp/t/a\c.txt`, `/tmp/t/x\y\z.txt`)
 	}
 
 	seen := map[string]string{}
