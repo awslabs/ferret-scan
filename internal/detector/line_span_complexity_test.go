@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/perfguard"
 )
 
 // AssignLineColumns runs on EVERY scan, so its growth is a scan-path concern.
@@ -316,53 +318,91 @@ func TestAssignLineColumnsMemoIsLoadBearing(t *testing.T) {
 	// Fixed match count; the line grows 8x. 8x rather than 4x because at 4x the populations were
 	// 1.10x correct against 2.40x regressed under -race, leaving both margins at ~1.5x. Widening
 	// the axis widened the gap without touching the assertion.
-	const matches = 4000
+	//
+	// 96,000 matches, not the 4,000 this used. Moving onto perfguard.Measure was only half the fix:
+	// at 4,000 the base CPU reading is 242µs, under perfguard.MinMeasurableCPU, so Measure falls
+	// back to the WALL clock every time and the statistic is the contended one that flaked. Measured
+	// on darwin/arm64:
+	//
+	//	matches   base        clock   ratio
+	//	  4,000   242µs       wall    1.04x
+	//	 16,000   1.000ms     wall    0.99x
+	//	 48,000   3.400ms     cpu     0.96x
+	//	 96,000   9.025ms     cpu     1.05x   <- 4.5x above MinMeasurableCPU
+	//
+	// 96,000 is the first size with real margin above the floor rather than the first to cross it.
+	const matches = 96000
 	baseFiller := 0
 	bigFiller := 7 * matches * 16
 
-	tBase := bestAssign(t, func() []Match {
-		return buildFixedMatchesGrowingLine(matches, baseFiller)
-	}, false)
-	tBig := bestAssign(t, func() []Match {
-		return buildFixedMatchesGrowingLine(matches, bigFiller)
-	}, false)
+	// Fixtures are built OUTSIDE the timed region, one per timed call, because AssignLineColumns
+	// mutates its argument: reusing a slice would time an already-assigned set on the second pair,
+	// and building inside the closure would charge each reading for a construction cost that differs
+	// between base and big by exactly the thing being measured — the line length.
+	const pairs = perfguard.DefaultPairs
+	baseFixtures := make([][]Match, pairs)
+	bigFixtures := make([][]Match, pairs)
+	for i := 0; i < pairs; i++ {
+		baseFixtures[i] = buildFixedMatchesGrowingLine(matches, baseFiller)
+		bigFixtures[i] = buildFixedMatchesGrowingLine(matches, bigFiller)
+	}
 
-	ratio := float64(tBig) / float64(tBase)
-	t.Logf("8x line length at FIXED %d matches: %.2fx (base=%v big=%v) — the memo hashes the "+
-		"line once, so extra bytes are nearly free; correct is ~0.8x, a per-match hash is ~7x",
-		matches, ratio, tBase, tBig)
+	var baseIdx, bigIdx int
+	g, err := perfguard.Measure(pairs,
+		func() { AssignLineColumns(baseFixtures[baseIdx]); baseIdx++ },
+		func() { AssignLineColumns(bigFixtures[bigIdx]); bigIdx++ })
+	if err != nil {
+		t.Fatalf("measuring column assignment: %v", err)
+	}
 
-	// tBase > 0 before dividing, which the two other ratio assertions in this file already do
-	// (see fBase > 0 and tBase > 0 below) and this one did not.
+	// Non-vacuity, on every fixture rather than one: an assignment that silently stopped happening is
+	// fast, and a guard that times it would report a beautifully flat ratio.
+	for i := 0; i < pairs; i++ {
+		assertColumnsAssigned(t, baseFixtures[i])
+		assertColumnsAssigned(t, bigFixtures[i])
+	}
+
+	t.Logf("8x line length at FIXED %d matches: %.2fx on the %s clock (base=%v big=%v, per-pair %s) "+
+		"— the memo hashes the line once, so extra bytes are nearly free; correct is ~0.8x, a "+
+		"per-match hash is ~7x", matches, g.Ratio, g.Clock, g.BaseMin, g.BigMin,
+		perfguard.FormatRatios(g.Samples))
+
+	// WHY THIS MOVED ONTO perfguard.Measure. This test used a single pair of WALL-clock readings, and
+	// the comment it replaces predicted its own failure: "either this fixture grows until it clears
+	// the clock, or the pair moves onto internal/perfguard.Measure, which refuses a zero reading
+	// outright instead of dividing it". It then failed on macos-latest at 2.90x against a 2.5 bound,
+	// with base=1.690ms — UNDER perfguard.MinMeasurableCPU, so the reading was mostly scheduling
+	// noise, on correct code, blocking merges on PRs that do not touch this package.
 	//
-	// The base reading here is the SMALLEST timed workload in the repo — measured on darwin/arm64,
-	// 358µs plain and 1.1ms under -race — and a wall-clock reading that small can come back as
-	// exactly ZERO on a platform whose clock advances at timer-tick granularity. That is not
-	// hypothetical: windows-latest returned a zero WALL reading for a ~90µs workload in
-	// internal/perfguard, which is what broke the build in run 33899001272.
-	//
-	// Both arithmetic outcomes are bad, and the worse one is the one that speaks:
-	//
-	//	tBase == 0, tBig > 0  ->  +Inf, and +Inf > 2.5 is TRUE
-	//	                      ->  "the per-match line hash is back" on CORRECT code
-	//	tBase == 0, tBig == 0 ->  NaN,  and NaN > 2.5 is FALSE
-	//	                      ->  passes, having measured nothing
-	//
-	// Verified in Go rather than assumed: 15625.0/0 == +Inf and (+Inf > 2.5) == true; 0.0/0.0 == NaN
-	// and (NaN > 2.5) == false.
-	//
-	// Deliberately NOT also failing when tBase == 0. That would trade a false pass for a false
-	// failure on any platform whose granularity exceeds this fixture, and the actual granularity on
-	// windows-latest is still UNMEASURED — assuming it is the mistake that produced the break this
-	// guard is being hardened against. #596 collects that figure on every CI run; once it is known,
-	// either this fixture grows until it clears the clock, or the pair moves onto
-	// internal/perfguard.Measure, which refuses a zero reading outright instead of dividing it.
-	// The log line above reports base and big on every run, so a zero is visible in the meantime.
-	if tBase > 0 && ratio > 2.5 {
-		t.Errorf("growing the LINE 8x at a fixed match count cost %.2fx more (base=%v big=%v) — "+
-			"the per-match line hash is back: the line-id memo in ResolveLineSpans is no longer "+
-			"collapsing consecutive matches that share a line, so each match re-hashes the whole "+
-			"line", ratio, tBase, tBig)
+	// Measure fixes the three things that caused it: a CPU clock rather than wall (contention steals
+	// wall time without changing cycle count), a ratio of MINIMUMS over two pairs rather than one
+	// sample, and the tick gate below, which declines to divide a base the clock cannot resolve.
+	if _, resolvable := g.Ticks(); !resolvable {
+		t.Logf("memo guard NOT asserted — %s", g.ResolutionNote())
+		return
+	}
+
+	if g.Ratio > 2.5 {
+		t.Errorf("growing the LINE 8x at a fixed match count cost %.2fx more on the %s clock "+
+			"(base=%v big=%v, per-pair %s) — the per-match line hash is back: the line-id memo in "+
+			"ResolveLineSpans is no longer collapsing consecutive matches that share a line, so each "+
+			"match re-hashes the whole line", g.Ratio, g.Clock, g.BaseMin, g.BigMin,
+			perfguard.FormatRatios(g.Samples))
+	}
+}
+
+// assertColumnsAssigned is timeAssign's validation half, split out so it can run outside a timed
+// region. Nothing about it belongs inside a measurement.
+func assertColumnsAssigned(t *testing.T, matches []Match) {
+	t.Helper()
+	for i := range matches {
+		if matches[i].StartColumn <= 0 {
+			t.Fatalf("match %d of %d has no column — a timing target must never accept an "+
+				"assignment that silently stopped happening", i, len(matches))
+		}
+		if matches[i].EndColumn <= matches[i].StartColumn {
+			t.Fatalf("match %d has columns %d-%d", i, matches[i].StartColumn, matches[i].EndColumn)
+		}
 	}
 }
 
