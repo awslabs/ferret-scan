@@ -218,13 +218,28 @@ func Measure(pairs int, base, big func()) (Growth, error) {
 
 	// Choose the clock from EVERY base reading, not one: a single unlucky sample below the
 	// granularity would otherwise decide the clock for the whole measurement.
-	useCPU := true
+	cpuMeasurable := true
 	for _, b := range bases {
 		if b.CPU < MinMeasurableCPU {
-			useCPU = false
+			cpuMeasurable = false
 			break
 		}
 	}
+
+	// Both clocks' base minima have to be known BEFORE the clock can be chosen, because the choice
+	// depends on whether each clock can RESOLVE this workload and not merely on a fixed floor. These
+	// are the same minima taken below; computing them here costs nothing and keeps clockForRatio pure.
+	minBaseCPU, minBaseWall := bases[0].CPU, bases[0].Wall
+	for _, b := range bases[1:] {
+		if b.CPU < minBaseCPU {
+			minBaseCPU = b.CPU
+		}
+		if b.Wall < minBaseWall {
+			minBaseWall = b.Wall
+		}
+	}
+	cpuRes, wallRes := ClockResolution()
+	useCPU := clockForRatio(minBaseCPU, minBaseWall, cpuRes, wallRes, cpuMeasurable) == "cpu"
 	pick := func(r Reading) time.Duration {
 		if useCPU {
 			return r.CPU
