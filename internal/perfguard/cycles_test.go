@@ -201,11 +201,19 @@ func cycleRatio(t *testing.T, work func(n int), base int) float64 {
 	return float64(g) / float64(b)
 }
 
-// burnCycles does n units of arithmetic the compiler cannot elide.
+// burnCycles does n units of arithmetic whose result escapes through a package-level sink.
 //
-// The accumulator escapes through a package-level sink, because a purely local computation whose
-// result is unused is exactly what the optimiser removes — and a measurement of removed code reads as
-// an instantaneous, perfectly linear one.
+// The sink is NOT what stops the loop being eliminated — measured, Go keeps the loop either way. What
+// it does is keep each iteration EXPENSIVE: with `_ = acc` instead, the base reading fell from
+// 5.094ms to 1.047ms, and with the body reduced to a constant store it fell to 1.625ms. Both are
+// under MinMeasurableCPU, so perfguard silently fell back to the WALL clock — on a probe whose whole
+// subject is a CPU clock.
+//
+// That fallback, not the ratio, is what TestTheCycleProbesOwnFixturesScaleAsClaimed asserts. The
+// ratios stayed at 3.67x-4.41x and 14.75x-15.54x through both mutations, because a ratio is invariant
+// to how expensive the work is: scaling every reading by the same factor leaves the quotient
+// unchanged. A bound on the ratio can therefore never detect a fixture that became too cheap to
+// measure.
 func burnCycles(n int) {
 	acc := uint64(1)
 	for i := 0; i < n; i++ {
@@ -241,10 +249,17 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 	report(t, "linear fixture: %.2fx on the %s clock (base=%v big=%v)",
 		linear.Ratio, linear.Clock, linear.BaseMin, linear.BigMin)
 	if linear.Ratio < 2.5 || linear.Ratio > 6.0 {
-		t.Errorf("burnCycles at 4x input measured %.2fx, want ~4x. Either the accumulator loop is "+
-			"being elided — cycleSink is what should prevent that — or the workload is not "+
-			"proportional to n, and PROPERTY 4 on Windows would be measuring neither", linear.Ratio)
+		t.Errorf("burnCycles at 4x input measured %.2fx, want ~4x — the workload is not proportional "+
+			"to n, so PROPERTY 4 on Windows would not be measuring a linear shape", linear.Ratio)
 	}
+
+	// The assertion that actually catches a fixture gone cheap. A ratio cannot: dropping the sink took
+	// the base from 5.094ms to 1.047ms and the ratio stayed at 4.41x, because scaling every reading by
+	// the same factor leaves their quotient alone. What changed was the CLOCK — perfguard fell back to
+	// wall because the base no longer cleared MinMeasurableCPU — and on Windows, where the CPU clock
+	// steps in 15.625ms, a base that small spans zero ticks and PROPERTY 4 would be measuring
+	// quantisation noise.
+	assertFixtureIsMeasurable(t, "linear", linear)
 
 	quadratic, err := Measure(DefaultPairs,
 		func() { burnQuadratic(4_000_000) },
@@ -263,6 +278,31 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 		t.Errorf("the quadratic fixture (%.2fx) does not read above the linear one (%.2fx); the two "+
 			"fixtures are not distinguishable and PROPERTY 4 is vacuous",
 			quadratic.Ratio, linear.Ratio)
+	}
+	assertFixtureIsMeasurable(t, "quadratic", quadratic)
+}
+
+// assertFixtureIsMeasurable checks the thing a ratio bound cannot: that the reading was taken on the
+// CPU clock, with a base far enough above MinMeasurableCPU to survive a coarser platform.
+//
+// 2x the floor, not 1x, because MinMeasurableCPU is 2ms and Windows advances its CPU clock in
+// 15.625ms steps — a reading that merely clears 2ms is still under a single tick there. This does not
+// make the fixture Windows-safe on its own; it makes a fixture that has quietly become cheap fail
+// here, on every platform, instead of on the one runner nobody can reproduce.
+func assertFixtureIsMeasurable(t *testing.T, name string, g Growth) {
+	t.Helper()
+
+	if g.Clock != "cpu" {
+		t.Errorf("the %s fixture was measured on the %s clock, not cpu: its base of %v did not clear "+
+			"MinMeasurableCPU (%v), so the work has become too cheap to measure. This is the failure "+
+			"a ratio bound cannot see — the ratio stays correct while the reading stops meaning "+
+			"anything", name, g.Clock, g.BaseMin, MinMeasurableCPU)
+		return
+	}
+	if g.BaseMin < 2*MinMeasurableCPU {
+		t.Errorf("the %s fixture's base reading is %v, under 2x MinMeasurableCPU (%v). It still reads "+
+			"on the cpu clock here, but a platform with coarser accounting would divide near-zero "+
+			"tick counts", name, g.BaseMin, 2*MinMeasurableCPU)
 	}
 }
 
