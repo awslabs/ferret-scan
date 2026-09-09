@@ -182,7 +182,6 @@ defaults:
 platform:
   windows:
     temp_dir: "%TEMP%\ferret-scan"
-    config_dir: "%APPDATA%\ferret-scan"
 
 profiles:
   windows-dev:
@@ -200,6 +199,12 @@ profiles:
     enable_preprocessors: true
     description: "Enterprise Windows scanning with GitLab integration"
 ```
+
+> **The config directory is set with the `FERRET_CONFIG_DIR` environment variable, not in the config file.**
+> A `config_dir` key under `platform.<os>` was removed because it cannot work: a config-directory
+> override read *out of* the config file asks the file where the file lives. An environment variable is
+> readable before the config is, which is why that is the mechanism that exists. A config still carrying
+> the key now reports `Warning: unknown config key "config_dir" — ignored`.
 
 ### Environment Variables
 
