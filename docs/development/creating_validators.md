@@ -550,7 +550,6 @@ func TestWindowsSpecificBehavior(t *testing.T) {
 validators:
   yourvalidator:
     # Use Windows environment variables
-    config_dir: "%APPDATA%\\ferret-scan"
     temp_dir: "%TEMP%\\ferret-scan"
 
     # Windows-specific patterns
@@ -558,6 +557,12 @@ validators:
       - "C:\\\\.*\\.sensitive"  # Windows drive paths
       - "\\\\\\\\.*\\\\.*"      # UNC paths
 ```
+
+> **The config directory is set with the `FERRET_CONFIG_DIR` environment variable, not in the config file.**
+> A `config_dir` key under `platform.<os>` was removed because it cannot work: a config-directory
+> override read *out of* the config file asks the file where the file lives. An environment variable is
+> readable before the config is, which is why that is the mechanism that exists. A config still carrying
+> the key now reports `Warning: unknown config key "config_dir" — ignored`.
 
 ## Best Practices
 

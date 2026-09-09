@@ -110,7 +110,9 @@ defaults:
 # ─────────────────────────────────────────────────────────────────────────────
 platform:
   windows:
-    config_dir: ""              # Leave empty to use default (%APPDATA%\ferret-scan)
+  # config_dir is deliberately absent: a config-directory override read OUT of the
+  # config file cannot work, because it asks the file where the file lives. Use the
+  # FERRET_CONFIG_DIR environment variable, which is read before the config is.
     temp_dir: ""                # Leave empty to use %TEMP%
 
 # ─────────────────────────────────────────────────────────────────────────────

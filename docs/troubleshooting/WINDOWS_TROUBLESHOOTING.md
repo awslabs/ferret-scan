@@ -265,8 +265,6 @@ cmd /c "ferret-scan --file %USERPROFILE%\Documents"
 platform:
   windows:
     temp_dir: "C:/Windows/Temp/ferret-scan"
-    # Or use double backslashes
-    config_dir: "C:\\Users\\%USERNAME%\\AppData\\Roaming\\ferret-scan"
 ```
 
 ## Performance Issues
@@ -282,6 +280,12 @@ platform:
 
 #### Optimize Scanning Parameters
 ```powershell
+
+> **The config directory is set with the `FERRET_CONFIG_DIR` environment variable, not in the config file.**
+> A `config_dir` key under `platform.<os>` was removed because it cannot work: a config-directory
+> override read *out of* the config file asks the file where the file lives. An environment variable is
+> readable before the config is, which is why that is the mechanism that exists. A config still carrying
+> the key now reports `Warning: unknown config key "config_dir" — ignored`.
 # Reduce confidence levels to scan faster
 ferret-scan --file . --confidence high --format json
 
