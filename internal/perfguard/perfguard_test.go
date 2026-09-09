@@ -28,13 +28,70 @@ func spin(units int) {
 	}
 }
 
+// historicalBaseUnits is the fixture size every ratio test in this file used when it was written, and
+// the floor below which baseUnitsFor will not shrink one.
+const historicalBaseUnits = 4
+
+// baseUnitsFor sizes a base fixture so its reading spans at least MinTicks of the clock that will
+// measure it. It is the difference between a ratio and a quotient of two small integers.
+//
+// A single constant cannot serve both platforms, which is why this is computed. Measured: 4 units costs
+// ~3.9ms, which is ~3,900 ticks of darwin's 1µs CPU clock and 0.25 of ONE tick of windows-latest's
+// 15.625ms CPU clock — ample by 494x on one platform and short by 32x on the other. That is what made
+// TestTheRatioUsesMinimumsNotTheFirstReading fail on windows with "1.00x" from a base and a big that had
+// both quantised onto the same single tick.
+//
+// Sized against the FINER of the two clocks, because clockForRatio will move to the wall clock when the
+// CPU clock cannot resolve the workload. On windows that is the 722.7µs wall tick rather than the
+// 15.625ms CPU tick, so MinTicks costs 5.78ms and this returns 6 units instead of 127.
+//
+// PURE, taking the measured costs as parameters, for the reason ticksAt and clockForRatio are: on darwin
+// the floor is returned every time, so no local run exercises the arithmetic that matters.
+func baseUnitsFor(cpuRes, wallRes, oneUnit time.Duration) int {
+	// A failed tick probe or an unmeasurable unit cost gives nothing to compute from. Keep the fixture
+	// the tests were written against rather than invent a size from a zero.
+	if oneUnit <= 0 || cpuRes <= 0 || wallRes <= 0 {
+		return historicalBaseUnits
+	}
+	finer := cpuRes
+	if wallRes < finer {
+		finer = wallRes
+	}
+	need := time.Duration(MinTicks) * finer
+	// Round UP: a fraction of a spin unit buys no ticks, and under-sizing is the failure being fixed.
+	units := int((need + oneUnit - 1) / oneUnit)
+	if units < historicalBaseUnits {
+		return historicalBaseUnits
+	}
+	return units
+}
+
+// calibratedBaseUnits measures what one spin unit costs on the machine running the test and sizes the
+// base fixture from it.
+//
+// The minimum of several samples, not the first: contamination only ever adds, so a descheduled probe
+// would over-state the unit cost and under-size the fixture — the one direction that reintroduces the
+// bug. Under-stating it merely buys a slightly larger fixture, which is harmless.
+func calibratedBaseUnits() int {
+	oneUnit := time.Duration(0)
+	for i := 0; i < 5; i++ {
+		start := time.Now()
+		spin(1)
+		if d := time.Since(start); d > 0 && (oneUnit == 0 || d < oneUnit) {
+			oneUnit = d
+		}
+	}
+	cpuRes, wallRes := ClockResolution()
+	return baseUnitsFor(cpuRes, wallRes, oneUnit)
+}
+
 // TestMeasureSeparatesLinearFromQuadratic is the reason this package exists, asserted directly.
 //
 // The wall-clock statistic it replaces failed at exactly this: under load it scored a genuine O(n^2)
 // function at 9.94x and a linear one at 10.20x — inverted. If this test ever fails, the estimator has
 // stopped discriminating and every guard built on it is decoration.
 func TestMeasureSeparatesLinearFromQuadratic(t *testing.T) {
-	const base = 4
+	base := calibratedBaseUnits()
 
 	lin, err := Measure(DefaultPairs, func() { spin(base) }, func() { spin(4 * base) })
 	if err != nil {
@@ -44,17 +101,29 @@ func TestMeasureSeparatesLinearFromQuadratic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("quadratic: %v", err)
 	}
-	t.Logf("linear-shaped:    %s", lin)
-	t.Logf("quadratic-shaped: %s", quad)
+	t.Logf("linear-shaped:    %s (%s)", lin, lin.ResolutionNote())
+	t.Logf("quadratic-shaped: %s (%s)", quad, quad.ResolutionNote())
 
-	if lin.Ratio > 8.0 {
+	// The gate this package defines, applied to this package's own tests. Without it these assertions
+	// divide whatever the clock happened to report: on windows-latest both readings quantised onto a
+	// single 15.625ms tick and the "ratio" was one integer over another. calibratedBaseUnits is what
+	// should keep this branch untaken; it is here so that a fixture which drifts too cheap reports that
+	// instead of failing on a number it never had the resolution to produce.
+	if _, ok := lin.Ticks(); !ok {
+		t.Logf("linear control NOT asserted — %s", lin.ResolutionNote())
+	} else if lin.Ratio > 8.0 {
 		t.Errorf("a 4x workload measured %.2fx, which a bound of 8.0 would call quadratic", lin.Ratio)
+	}
+	if _, ok := quad.Ticks(); !ok {
+		t.Logf("quadratic control NOT asserted — %s", quad.ResolutionNote())
+		return
 	}
 	if quad.Ratio < 8.0 {
 		t.Errorf("a 16x workload measured %.2fx, which a bound of 8.0 would call linear — the "+
 			"estimator is not discriminating", quad.Ratio)
 	}
-	if quad.Ratio <= lin.Ratio {
+	// Compares the two measurements, so it needs BOTH to be resolvable, not just the quadratic one.
+	if _, ok := lin.Ticks(); ok && quad.Ratio <= lin.Ratio {
 		t.Errorf("ORDERING INVERTED: linear %.2fx >= quadratic %.2fx. This is the exact failure the "+
 			"wall-clock statistic had and the whole reason for this package", lin.Ratio, quad.Ratio)
 	}
@@ -65,7 +134,7 @@ func TestMeasureSeparatesLinearFromQuadratic(t *testing.T) {
 // Contamination is one-signed — it only ever adds — so one deliberately slow reading must not move the
 // result. A median would give that sample a vote; a minimum discards it.
 func TestTheRatioUsesMinimumsNotTheFirstReading(t *testing.T) {
-	const base = 4
+	base := calibratedBaseUnits()
 	calls := 0
 	// The FIRST base reading pays 8x extra, standing in for a cold cache or a descheduled sample.
 	g, err := Measure(4,
@@ -81,9 +150,14 @@ func TestTheRatioUsesMinimumsNotTheFirstReading(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Measure: %v", err)
 	}
-	t.Logf("with one 8x-inflated base sample: %s", g)
+	t.Logf("with one 8x-inflated base sample: %s (%s)", g, g.ResolutionNote())
 
-	if g.Ratio < 2.0 {
+	// This is the assertion that failed on windows-latest with "1.00x from [0.33x 3.00x 3.00x 3.00x]":
+	// base and big had both quantised onto the same single 15.625ms CPU tick, so the minimum was working
+	// perfectly and the clock simply could not show it.
+	if _, ok := g.Ticks(); !ok {
+		t.Logf("minimum-taking NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio < 2.0 {
 		t.Errorf("ratio collapsed to %.2fx — the inflated first sample reached the result, so this is "+
 			"not taking a minimum. Samples: %s", g.Ratio, FormatRatios(g.Samples))
 	}
@@ -100,7 +174,7 @@ func TestTheRatioUsesMinimumsNotTheFirstReading(t *testing.T) {
 // both sides have to discard their contaminated samples. A mutation that took bigs[0] instead of the
 // minimum survived every other test in this file.
 func TestAnInflatedBigSampleDoesNotFakeAQuadratic(t *testing.T) {
-	const base = 4
+	base := calibratedBaseUnits()
 	calls := 0
 	g, err := Measure(4,
 		func() { spin(base) },
@@ -116,9 +190,13 @@ func TestAnInflatedBigSampleDoesNotFakeAQuadratic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Measure: %v", err)
 	}
-	t.Logf("with one 4x-inflated big sample: %s", g)
+	t.Logf("with one 4x-inflated big sample: %s (%s)", g, g.ResolutionNote())
 
-	if g.Ratio > 8.0 {
+	// Quantisation COMPRESSES a ratio, so this direction is the safer of the two — but a 1-tick base can
+	// still land anywhere, and an assertion that cannot fail is not evidence either way.
+	if _, ok := g.Ticks(); !ok {
+		t.Logf("contamination rejection NOT asserted — %s", g.ResolutionNote())
+	} else if g.Ratio > 8.0 {
 		t.Errorf("a linear workload measured %.2fx, over a bound of 8.0 — the contaminated big sample "+
 			"reached the result, so this is a false quadratic report on correct code. Samples: %s",
 			g.Ratio, FormatRatios(g.Samples))

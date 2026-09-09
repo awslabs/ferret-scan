@@ -171,3 +171,83 @@ func TestTheChoiceActuallyDiffersFromTheOldRule(t *testing.T) {
 			movedToWall, len(wallBases))
 	}
 }
+
+// TestBaseUnitsForSizesTheFixtureToTheClockThatWillMeasureIt covers the arithmetic that no darwin run
+// exercises: there the floor is returned every time.
+func TestBaseUnitsForSizesTheFixtureToTheClockThatWillMeasureIt(t *testing.T) {
+	// One spin unit costs ~985µs, measured on this repo's dev machine.
+	const oneUnit = 986 * time.Microsecond
+
+	cases := []struct {
+		name            string
+		cpuRes, wallRes time.Duration
+		oneUnit         time.Duration
+		want            int
+		why             string
+	}{{
+		name:   "darwin: the finer clock resolves MinTicks in 328ns, so the floor stands",
+		cpuRes: macCPUTick, wallRes: macWallTick, oneUnit: oneUnit,
+		want: historicalBaseUnits,
+		why:  "8 x 41ns is far below one spin unit; the fixture must not SHRINK below what the tests were written against",
+	}, {
+		name:   "windows: sized against the 722.7µs WALL tick, not the 15.625ms CPU tick",
+		cpuRes: winCPUTick, wallRes: winWallTick, oneUnit: oneUnit,
+		want: 6,
+		why:  "8 x 722.7µs = 5.78ms, which needs 6 units at ~986µs each. Sizing against the CPU tick would demand 127",
+	}, {
+		name:   "a platform with no usable wall clock is sized against its CPU tick",
+		cpuRes: winCPUTick, wallRes: winCPUTick, oneUnit: oneUnit,
+		want: 127,
+		why:  "8 x 15.625ms = 125ms; expensive, but the alternative is a ratio of two integers",
+	}, {
+		name:   "failed unit calibration keeps the historical fixture",
+		cpuRes: winCPUTick, wallRes: winWallTick, oneUnit: 0,
+		want: historicalBaseUnits,
+		why:  "dividing by a zero unit cost yields a nonsense size; the tests' original fixture is the safe answer",
+	}, {
+		name:   "failed tick probe keeps the historical fixture",
+		cpuRes: 0, wallRes: 0, oneUnit: oneUnit,
+		want: historicalBaseUnits,
+		why:  "no measured tick to size against",
+	}, {
+		name:   "a wall-tick-only probe failure still keeps the historical fixture",
+		cpuRes: macCPUTick, wallRes: 0, oneUnit: oneUnit,
+		want: historicalBaseUnits,
+		why:  "clockForRatio may still choose either clock, so a half-measured platform is not a basis to resize on",
+	}, {
+		name:   "rounds UP: a fraction of a spin unit buys no ticks",
+		cpuRes: 1000 * time.Nanosecond, wallRes: 1000 * time.Nanosecond, oneUnit: 3 * time.Microsecond,
+		want: historicalBaseUnits,
+		why:  "8µs needs 2.67 units, rounded up to 3, which is then raised to the floor of 4",
+	}, {
+		name:   "rounds up above the floor too",
+		cpuRes: 2 * time.Millisecond, wallRes: 2 * time.Millisecond, oneUnit: 3 * time.Millisecond,
+		want: 6,
+		why:  "8 x 2ms = 16ms over 3ms units is 5.33, and 5 units would fall 1ms short of MinTicks",
+	}}
+
+	for _, c := range cases {
+		if got := baseUnitsFor(c.cpuRes, c.wallRes, c.oneUnit); got != c.want {
+			t.Errorf("%s: baseUnitsFor(cpu=%v, wall=%v, unit=%v) = %d, want %d — %s",
+				c.name, c.cpuRes, c.wallRes, c.oneUnit, got, c.want, c.why)
+		}
+	}
+}
+
+// TestTheCalibratedFixtureActuallyClearsTheGateHere is the non-vacuity floor: on this machine the
+// sizer must produce a fixture the local clock can resolve, or every gated assertion above is skipped
+// and the suite proves nothing.
+func TestTheCalibratedFixtureActuallyClearsTheGateHere(t *testing.T) {
+	base := calibratedBaseUnits()
+	g, err := Measure(DefaultPairs, func() { spin(base) }, func() { spin(4 * base) })
+	if err != nil {
+		t.Fatalf("Measure with %d calibrated units: %v", base, err)
+	}
+	n, ok := g.Ticks()
+	t.Logf("%d calibrated units -> %s; %s", base, g, g.ResolutionNote())
+	if !ok {
+		t.Errorf("the calibrated fixture spans only %.1f ticks, under the %d required, so every gated "+
+			"assertion in this package is being SKIPPED on this platform rather than run. %s",
+			n, MinTicks, g.ResolutionNote())
+	}
+}
