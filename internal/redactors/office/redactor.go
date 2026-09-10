@@ -933,6 +933,8 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// before finding it. That is quadratic in document size, the shape already
 	// tracked for the redaction path.
 	partCache := make(map[string]matchLocation)
+	// Built lazily; only the run-joined fallback in redactMatch touches it.
+	runJoined := newRunJoinedIndex()
 
 	// Replacements are ACCUMULATED per part and applied once, after every match has
 	// been resolved.
@@ -954,7 +956,7 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 
 	// Process each match
 	for _, match := range matches {
-		mapping, err := or.redactMatch(modifiedContents, extractedText, textPositions, match, strategy, docType, partCache, pending, partCount)
+		mapping, err := or.redactMatch(modifiedContents, extractedText, textPositions, match, strategy, docType, partCache, pending, partCount, runJoined)
 		if err != nil {
 			or.logEvent("match_redaction_failed", false, map[string]interface{}{
 				"match_type": match.Type,
@@ -971,7 +973,7 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 
 	// Flush before returning: the caller inspects modifiedContents for residue in
 	// embedded parts, so an unapplied replacement would read as a leak.
-	if err := or.applyPendingRedactions(modifiedContents, pending); err != nil {
+	if err := or.applyPendingRedactions(modifiedContents, pending, docType); err != nil {
 		return nil, nil, err
 	}
 
@@ -988,6 +990,46 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 type partReplacements struct {
 	order []string
 	repl  map[string]string
+
+	// split holds only the values that reached this part through the run-joined fallback, i.e. the ones
+	// locateMatch could not find contiguously and which are therefore split across runs.
+	//
+	// It exists to keep the cross-run rewrite off the hot path. That pass searches its value set against
+	// the whole run text, so handing it EVERY value makes it O(values x part size) for every document,
+	// paid by the overwhelming majority that have nothing split at all. Measured on 2,000 contiguous
+	// values with nothing split: +18.0% before this narrowing, and the pass has no work to do in that
+	// document. Searching only the split candidates makes the common case one tokenisation and no search.
+	split map[string]bool
+}
+
+// addSplit records a rewrite for a value known to be split across runs.
+func (p *partReplacements) addSplit(value, replacement string) {
+	p.add(value, replacement)
+	if p.split == nil {
+		p.split = make(map[string]bool)
+	}
+	p.split[value] = true
+}
+
+// splitValues returns the split candidates, in the same longest-first order the replacer uses so the
+// precedence between overlapping values matches.
+func (p *partReplacements) splitValues() []string {
+	if len(p.split) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(p.split))
+	for _, v := range p.order {
+		if p.split[v] {
+			out = append(out, v)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if len(out[i]) != len(out[j]) {
+			return len(out[i]) > len(out[j])
+		}
+		return out[i] < out[j]
+	})
+	return out
 }
 
 // add records a rewrite, keeping the first replacement seen for a value.
@@ -1015,7 +1057,7 @@ func (p *partReplacements) add(value, replacement string) {
 //     in a longer one must not consume bytes the longer one needed and strand its head
 //     in cleartext, which is the failure the overlap pass exists to prevent.
 //     Equal-length values are ordered lexicographically, again for determinism.
-func (or *OfficeRedactor) applyPendingRedactions(zipContents *OfficeZipContents, pending map[string]*partReplacements) error {
+func (or *OfficeRedactor) applyPendingRedactions(zipContents *OfficeZipContents, pending map[string]*partReplacements, docType OfficeDocumentType) error {
 	if len(pending) == 0 {
 		return nil
 	}
@@ -1051,16 +1093,30 @@ func (or *OfficeRedactor) applyPendingRedactions(zipContents *OfficeZipContents,
 			args = append(args, v, pr.repl[v])
 		}
 
+		// Cross-run values FIRST, on the original bytes.
+		//
+		// rewritePartText matches each character-data token independently, so a value split across
+		// adjacent runs is in no single token and was never matched -- the file was then refused by the
+		// residue guard, which is honest but denied redaction to every other value in the same document
+		// (#627). This pass removes the split occurrences; the per-token pass below then runs unchanged
+		// over the result and handles everything contained in one token.
+		//
+		// Ordered this way round because the reverse does not work: rewritePartText rebuilds the part, so
+		// spans collected from the original bytes would be stale by every length change it made.
+		// Only the SPLIT candidates, not every value. See partReplacements.split for the measurement.
+		spanned, splitRewrites := redactAcrossRuns(xmlContent, pr.splitValues(), pr.repl, or.rewritableText(docType))
+
 		replacer := strings.NewReplacer(args...)
-		modifiedContent, charDataRewrites := rewritePartText(xmlContent, replacer)
+		modifiedContent, charDataRewrites := rewritePartText(spanned, replacer)
 		zipContents.addFile(name, modifiedContent)
 
 		or.logEvent("xml_content_modified", true, map[string]interface{}{
-			"file_name":         name,
-			"original_size":     len(xmlContent),
-			"modified_size":     len(modifiedContent),
-			"values":            len(values),
-			"chardata_rewrites": charDataRewrites,
+			"file_name":          name,
+			"original_size":      len(xmlContent),
+			"modified_size":      len(modifiedContent),
+			"values":             len(values),
+			"chardata_rewrites":  charDataRewrites,
+			"split_run_rewrites": splitRewrites,
 		})
 	}
 
@@ -1514,8 +1570,83 @@ func locateMatch(extractedText string, textPositions []OfficeTextPosition, text 
 	return loc
 }
 
+// rewritableText returns the predicate deciding which character data the cross-run rewrite may touch.
+//
+// The same isTextElement the redactor's own extraction uses, so the rewrite can only reach text the
+// redactor already treats as rewritable. Families excluded there -- docProps' vt:blob above all, where a
+// replacement inside base64 would produce invalid base64 -- stay excluded, and a value found in one is
+// refused rather than rewritten. That is the behaviour TestResidueRefusalNamesTypesNotValues pins, and it
+// failed while this filter was missing.
+func (or *OfficeRedactor) rewritableText(docType OfficeDocumentType) func(path []string) bool {
+	return func(path []string) bool { return or.isTextElement(path, docType) }
+}
+
+// recordSplitRunValue registers a run-split value against every part whose run-joined text holds it, so
+// applyPendingRedactions can remove it, and returns those part names.
+//
+// Mirrors the recording the located path does -- one entry per holding part, the replacement generated by
+// the same generator -- so a split value and a contiguous one are redacted by the same machinery with the
+// same mask.
+func (or *OfficeRedactor) recordSplitRunValue(zipContents *OfficeZipContents, match detector.Match, strategy redactors.RedactionStrategy, pending map[string]*partReplacements, runJoined *runJoinedIndex, docType OfficeDocumentType) []string {
+	names := runJoined.partsHoldingRunJoined(zipContents.Files, match.Text, or.rewritableText(docType))
+	if len(names) == 0 {
+		return nil
+	}
+	replacement, err := or.generateReplacement(match.Text, match.Type, strategy)
+	if err != nil {
+		// No replacement means nothing to record. Returning nil sends the caller back to its error, so
+		// the value stays reported and the residue guard still refuses -- never a silent success.
+		return nil
+	}
+	for _, name := range names {
+		pr := pending[name]
+		if pr == nil {
+			pr = &partReplacements{}
+			pending[name] = pr
+		}
+		pr.addSplit(match.Text, replacement)
+	}
+	or.logEvent("office_split_run_value_recorded", true, map[string]interface{}{
+		"match_type": match.Type,
+		"file_names": names,
+		"part_count": len(names),
+	})
+	return names
+}
+
+// splitRunMapping builds the audit mapping for a value located in the run-joined view.
+//
+// position_method names the view that found it, because the offsets a caller would otherwise assume are
+// document offsets do not exist for this path: the value has no contiguous position in the
+// space-separated text, which is the whole reason it took this route. StartChar is therefore -1 rather
+// than a fabricated number.
+func (or *OfficeRedactor) splitRunMapping(match detector.Match, strategy redactors.RedactionStrategy, names []string, docType OfficeDocumentType) (*redactors.RedactionMapping, error) {
+	replacement, err := or.generateReplacement(match.Text, match.Type, strategy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate replacement: %w", err)
+	}
+	return &redactors.RedactionMapping{
+		RedactedText: replacement,
+		Position: redactors.TextPosition{
+			Line:      match.LineNumber,
+			StartChar: -1,
+			EndChar:   -1,
+		},
+		DataType:   match.Type,
+		Strategy:   strategy,
+		Confidence: match.Confidence,
+		Metadata: map[string]interface{}{
+			"office_file":       names[0],
+			"office_files":      names,
+			"document_type":     docType.String(),
+			"position_method":   "run_joined_text",
+			"split_across_runs": true,
+		},
+	}, nil
+}
+
 // redactMatch redacts a single match in the Office document
-func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, match detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType, partCache map[string]matchLocation, pending map[string]*partReplacements, partCount int) (*redactors.RedactionMapping, error) {
+func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, match detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType, partCache map[string]matchLocation, pending map[string]*partReplacements, partCount int, runJoined *runJoinedIndex) (*redactors.RedactionMapping, error) {
 	// Every part that holds the value, not just the one holding its first
 	// occurrence -- see partsHoldingMatch. Cached per distinct value.
 	loc, cached := partCache[match.Text]
@@ -1528,6 +1659,22 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 
 	matchPos := loc.firstOffset
 	if matchPos < 0 {
+		// FALLBACK: the value may be split across adjacent runs.
+		//
+		// extractTextFromXML trims each character-data token and writes a SPACE between text elements, so
+		// a value stored as `<w:t>456-78</w:t><w:t>-1234</w:t>` reads "456-78 -1234" in the view
+		// locateMatch searches and can never be found there -- while the scanner's extractor joins runs
+		// with nothing, reports "456-78-1234" at confidence 100, and the residue guard then refuses the
+		// whole file, denying redaction to every other value in it (#627).
+		//
+		// Asking the run-joined view WHICH PART holds the value is enough: applyPendingRedactions runs
+		// redactAcrossRuns over that part, which does its own locating in run-text coordinates and needs
+		// no document offset from here.
+		if runJoined != nil {
+			if names := or.recordSplitRunValue(zipContents, match, strategy, pending, runJoined, docType); len(names) > 0 {
+				return or.splitRunMapping(match, strategy, names, docType)
+			}
+		}
 		return nil, fmt.Errorf("match text not found in extracted content")
 	}
 	parts := loc.parts
