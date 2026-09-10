@@ -86,9 +86,18 @@ func TestCIExperiment649ControlMargins(t *testing.T) {
 					worst = g.Ratio
 				}
 				n, suff := g.Ticks()
-				t.Logf("EXP649 %-24s pairs=%d trial=%d ratio=%6.2fx margin=%4.2fx clock=%-4s base=%-11v big=%-11v ticks=%.0f(%v) per-pair %s",
-					c.name, pairs, trial, g.Ratio, margin, g.Clock, g.BaseMin, g.BigMin, n, suff,
-					perfguard.FormatRatios(g.Samples))
+				// The CONTENTION SIGNAL: wall/cpu on the base reading. Under contention the wall clock
+				// keeps running while the process is descheduled, so this ratio rises; the CPU clock
+				// itself also inflates through cache and scheduler effects, which is what depresses the
+				// growth ratio. If this tracks the depressed ratios, it is a usable trustworthiness gate
+				// -- Growth already carries both numbers, so no new measurement would be needed.
+				inflation := 0.0
+				if g.BaseMin > 0 {
+					inflation = float64(g.BaseWallMin) / float64(g.BaseMin)
+				}
+				t.Logf("EXP649 %-24s pairs=%d trial=%d ratio=%6.2fx margin=%4.2fx clock=%-4s base=%-11v big=%-11v baseWall=%-11v wall/cpu=%5.2f ticks=%.0f(%v) per-pair %s",
+					c.name, pairs, trial, g.Ratio, margin, g.Clock, g.BaseMin, g.BigMin, g.BaseWallMin,
+					inflation, n, suff, perfguard.FormatRatios(g.Samples))
 			}
 			verdict := "OK"
 			if bestMargin < 1.5 {
