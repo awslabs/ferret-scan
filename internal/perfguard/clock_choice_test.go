@@ -251,3 +251,50 @@ func TestTheCalibratedFixtureActuallyClearsTheGateHere(t *testing.T) {
 			n, MinTicks, g.ResolutionNote())
 	}
 }
+
+// TestTheCalibratedFixtureClearsMinTicksAtEveryObservedWindowsWallTick is the proof that sizing the
+// fixture from the measured tick closes the failure a hardcoded spin(4) could not.
+//
+// windows-latest does not have "a" wall tick. Across this repo's CI logs it has been observed at twenty
+// distinct values from 320µs to 1.7107ms — a 5.3x spread, because the platform's timer resolution depends
+// on what else has raised it. A fixed fixture cannot be right across that: spin(4) is ~7.34ms there, which
+// is 22.9 ticks at the fine end and 4.29 at the coarse end, and the coarse end is what made
+// TestTicksIsSufficientOnThisPlatformForATypicalFixture Errorf on roughly 1 windows run in 17.
+//
+// Driven by the pure sizer, so a developer on darwin can check the windows outcome. The unit cost is
+// windows-latest's own measured spin(1) figure, not this machine's.
+func TestTheCalibratedFixtureClearsMinTicksAtEveryObservedWindowsWallTick(t *testing.T) {
+	// Measured on windows-latest: Measure(2, spin(4), spin(16)) reported min base=7.3437ms, so one spin
+	// unit costs 1.836ms there. Deliberately NOT this Mac's 986µs — a laptop's unit cost would understate
+	// the fixture windows builds and hide the very case this test covers.
+	const winUnitCost = 1836 * time.Microsecond
+
+	observed := []time.Duration{
+		320_000, 332_500, 335_900, 336_100, 372_600, 383_100, 399_400, 473_800, 482_100, 484_500,
+		505_300, 513_700, 518_900, 522_200, 532_200, 546_600, 622_500, 764_800, 951_000, 1_710_700,
+	}
+
+	for _, wallTick := range observed {
+		wallTick *= time.Nanosecond
+		units := baseUnitsFor(winCPUTick, wallTick, winUnitCost)
+		base := time.Duration(units) * winUnitCost
+
+		// The clock the ratio will be divided on: the CPU tick is 15.625ms there, so a base of this size
+		// can never span MinTicks of it, and clockForRatio moves to the wall clock when the wall clock
+		// resolves. That is the path this fixture must satisfy.
+		got := clockForRatio(base, base, winCPUTick, wallTick, true)
+		if got != "wall" {
+			t.Errorf("wall tick %v: clock = %q for a %v base, want wall — the CPU clock needs %v and "+
+				"cannot be satisfied by any fixture this repo ships",
+				wallTick, got, base, time.Duration(MinTicks)*winCPUTick)
+			continue
+		}
+
+		n, sufficient := ticksAt(base, wallTick)
+		if !sufficient {
+			t.Errorf("wall tick %v: a calibrated base of %v (%d units) spans only %.2f ticks, under the "+
+				"%d required — this is the failure the hardcoded spin(4) produced, still open",
+				wallTick, base, units, n, MinTicks)
+		}
+	}
+}

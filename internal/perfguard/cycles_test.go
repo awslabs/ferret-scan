@@ -251,16 +251,46 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 	}
 	report(t, "linear fixture: %.2fx on the %s clock (base=%v big=%v)",
 		linear.Ratio, linear.Clock, linear.BaseMin, linear.BigMin)
-	if linear.Ratio < 2.5 || linear.Ratio > 6.0 {
-		t.Errorf("burnCycles at 4x input measured %.2fx, want ~4x — the workload is not proportional "+
-			"to n, so PROPERTY 4 on Windows would not be measuring a linear shape", linear.Ratio)
+	// Gated on the clock, like every other ratio assertion in this repo. windows-latest FAILED here
+	// with "2.00x on the cpu clock (base=15.625ms big=31.25ms)" -- one tick over two ticks, a quotient
+	// of small integers and not a measurement of code. That is precisely what MinTicks exists to
+	// refuse, and this test was the one ratio assertion in the package that never asked.
+	// A NUMERIC WINDOW ON A GROWTH RATIO BELONGS TO THE CPU CLOCK ONLY.
+	//
+	// This package exists because a wall-clock ratio is not a measure of complexity on a shared runner:
+	// under 28 busy-loops the wall statistic scored a quadratic at 9.94x and a linear one at 10.20x,
+	// INVERTED (see the package comment). Since #645 moved windows-latest onto its wall clock -- the CPU
+	// clock there steps 15.625ms and cannot resolve a fixture this size -- a tight window on that reading
+	// is a bound on descheduling, not on the code. It failed exactly that way: "6.07x on the wall clock
+	// (base=12.4688ms big=75.707ms)" against a 6.0 ceiling, with the base spanning an ample 24.2 ticks.
+	// The clock could resolve it; the number simply was not about burnCycles.
+	//
+	// Proportionality no longer needs the ratio to prove it -- the exact sink values below pin the work
+	// at BOTH sizes, so "big does 4x the iterations of base" is arithmetic rather than a measurement.
+	// What the clock still has to show is that it can SEPARATE the two shapes, and that is the ordering
+	// assertion further down, which held at 2.26x even on the contended wall-clock reading.
+	switch {
+	case linear.Clock != "cpu":
+		t.Logf("linear shape window NOT asserted — measured on the %s clock, where a numeric bound on a "+
+			"ratio bounds contention rather than the code (%.2fx, %s)",
+			linear.Clock, linear.Ratio, linear.ResolutionNote())
+	default:
+		if _, resolvable := linear.Ticks(); !resolvable {
+			t.Logf("linear shape NOT asserted — %s", linear.ResolutionNote())
+		} else if linear.Ratio < 2.5 || linear.Ratio > linearMaxOnCPU {
+			t.Errorf("burnCycles at 4x input measured %.2fx on the cpu clock, want ~4x — the workload is "+
+				"not proportional to n, so PROPERTY 4 on Windows would not be measuring a linear shape. %s",
+				linear.Ratio, linear.ResolutionNote())
+		}
 	}
 
 	// The assertion that actually catches a fixture gone cheap. A ratio cannot: dropping the sink took
 	// the base from 9.09ms to 2.15ms and the ratio stayed at 4.41x, because scaling every reading by the
 	// same factor leaves their quotient alone. Judged on the WALL base, because requiring the CPU clock
 	// is unsatisfiable on windows-latest — see assertFixtureIsMeasurable.
-	assertFixtureIsMeasurable(t, "linear", linear, 4*time.Millisecond)
+	assertFixtureDidTheWork(t, "linear", linear,
+		func() { burnCycles(8_000_000) }, wantLinearBaseSink,
+		func() { burnCycles(32_000_000) }, wantLinearBigSink)
 
 	// 12M rather than the linear fixture's 4M. burnQuadratic spends most of its budget in loop
 	// bookkeeping rather than in burnCycles, so at 4M its base read 3.635ms — above MinMeasurableCPU
@@ -274,68 +304,136 @@ func TestTheCycleProbesOwnFixturesScaleAsClaimed(t *testing.T) {
 	}
 	report(t, "quadratic fixture: %.2fx on the %s clock (base=%v big=%v)",
 		quadratic.Ratio, quadratic.Clock, quadratic.BaseMin, quadratic.BigMin)
-	if quadratic.Ratio < 10.0 {
-		t.Errorf("the quadratic fixture measured %.2fx at 4x input, want ~16x — PROPERTY 4 would "+
-			"report that the cycle counter cannot separate quadratic from linear when the fault is "+
-			"in the fixture", quadratic.Ratio)
+	// Same reasoning, same clock restriction. The observed wall-clock reading was 13.69x against this
+	// 10.0 floor -- only 1.37x of margin, under the 1.5x this repo asks of a guard -- so asserting it on
+	// the wall clock would be the next failure rather than a bound anyone had measured.
+	switch {
+	case quadratic.Clock != "cpu":
+		t.Logf("quadratic shape floor NOT asserted — measured on the %s clock (%.2fx, %s)",
+			quadratic.Clock, quadratic.Ratio, quadratic.ResolutionNote())
+	default:
+		if _, resolvable := quadratic.Ticks(); !resolvable {
+			t.Logf("quadratic shape NOT asserted — %s", quadratic.ResolutionNote())
+		} else if quadratic.Ratio < 10.0 {
+			t.Errorf("the quadratic fixture measured %.2fx at 4x input on the cpu clock, want ~16x — "+
+				"PROPERTY 4 would report that the cycle counter cannot separate quadratic from linear "+
+				"when the fault is in the fixture. %s", quadratic.Ratio, quadratic.ResolutionNote())
+		}
 	}
-	if quadratic.Ratio <= linear.Ratio {
+	// Compares two measurements, so it needs BOTH to be divisible -- on a clock that resolves neither,
+	// "16 ticks > 4 ticks" is arithmetic about the clock rather than about the fixtures.
+	_, linOK := linear.Ticks()
+	_, quadOK := quadratic.Ticks()
+	if !linOK || !quadOK {
+		t.Logf("shape ORDERING not asserted — linear: %s; quadratic: %s",
+			linear.ResolutionNote(), quadratic.ResolutionNote())
+	} else if quadratic.Ratio <= linear.Ratio {
 		t.Errorf("the quadratic fixture (%.2fx) does not read above the linear one (%.2fx); the two "+
 			"fixtures are not distinguishable and PROPERTY 4 is vacuous",
 			quadratic.Ratio, linear.Ratio)
 	}
-	assertFixtureIsMeasurable(t, "quadratic", quadratic, 16*time.Millisecond)
+	assertFixtureDidTheWork(t, "quadratic", quadratic,
+		func() { burnQuadratic(12_000_000) }, wantQuadBaseSink,
+		func() { burnQuadratic(48_000_000) }, wantQuadBigSink)
 }
 
-// assertFixtureIsMeasurable checks the thing a ratio bound cannot: that the base reading is large
-// enough for the measurement to be about the code.
+// wantLinearSink and wantQuadraticSink are the fixtures' exact observable results, and they replace
+// the absolute millisecond floors this file used to assert.
 //
-// JUDGED ON THE WALL BASE, not on which clock Measure chose. The first version required
-// Clock == "cpu", and that failed on windows-latest with base=10.077ms while printing a message that
-// was flatly untrue there — "its base of 10.077ms did not clear MinMeasurableCPU (2ms)". Windows
-// reports process CPU time in 15.625ms steps, so a 10ms workload reads as 0 and Measure correctly
-// falls back to wall; the fixture was fine and the assertion was unsatisfiable. That is the same
-// defect this repo is fixing elsewhere — an assertion a platform cannot meet — reproduced by me in
-// the change meant to characterise it.
+// burnCycles is an LCG: acc = acc*2862933555777941757 + 3037000493, from acc=1, accumulated into
+// cycleSink. Its value after n steps therefore has a CLOSED FORM -- binary exponentiation of the affine
+// map x -> a*x + c, composing (a1,c1) then (a2,c2) as (a1*a2, c1*a2 + c2) -- computed independently of
+// the loop and verified against it for n in {0, 1, 2, 3, 10, 1000}. So the honest result of each fixture
+// is a compile-time constant, and checking it needs no clock, no calibration and no knowledge of the
+// machine.
 //
-// BaseWallMin is available on every platform and finely resolved on all of them (41ns on
-// darwin/arm64, 722.7µs on windows-latest), so it is the portable proxy for "did enough work happen".
+// burnQuadratic(12_000_000) is 60 calls of burnCycles(600_000) (steps = n/200_000, each burning n/20),
+// so its contribution is 60 * f(600_000) taken mod 2^64. uint64 overflow is defined as wrapping by the
+// Go spec on every GOARCH, so these constants are portable.
+// linearMaxOnCPU is the upper end of the linear shape's window, and it is 7.0 rather than 6.0 because
+// 6.0 did not carry this repo's own >=1.5x margin.
 //
-// The floor is PER FIXTURE, sized from each one's own measurement, because a single shared number
-// goes vacuous against the cheaper one. Measured on darwin/arm64, wall base:
+// Every CPU-clock reading of this fixture observed anywhere: 3.67, 3.69, 3.87, 3.95, 3.98, 3.99, 4.00,
+// 4.02, 4.05, 4.14, 4.26, 4.41 (darwin/arm64, plain and -race) and 4.57 (macos-latest, -race). The worst
+// is 4.57, so a ceiling needs to sit at or above 4.57 x 1.5 = 6.86. At 6.0 the margin was 1.31x, which is
+// how a ceiling gets breached by a slightly slower runner rather than by a defect. 7.0 keeps 1.53x above
+// the worst reading while staying 2.3x below the quadratic population (15.4-16.9x on the same clock), so
+// the two shapes remain unambiguously separated.
+const linearMaxOnCPU = 7.0
+
+const (
+	wantLinearBaseSink uint64 = 16024774407366977025 // burnCycles(8_000_000)
+	wantLinearBigSink  uint64 = 4120727529216841729  // burnCycles(32_000_000)
+	wantQuadBaseSink   uint64 = 15005894239974959932 // burnQuadratic(12_000_000) = 60 x f(600_000)
+	wantQuadBigSink    uint64 = 15698372006874624240 // burnQuadratic(48_000_000) = 240 x f(2_400_000)
+)
+
+// assertFixtureDidTheWork checks what an absolute duration floor was trying to check, without being a
+// claim about any particular machine.
 //
-//	                 correct    sink dropped   body a constant store
-//	linear (8M)      9.09ms     2.15ms         2.48ms      -> floor 4ms
-//	quadratic (12M)  32.71ms    8.26ms         8.03ms      -> floor 16ms
+// WHY THE FLOORS ARE GONE. This file used to assert `floor <= g.BaseWallMin <= 4*floor` with floors of
+// 4ms and 16ms, each set at "roughly half" one developer machine's reading. Both bounds are statements
+// about hardware speed, and the fleet is wider than the band:
 //
-// Each floor sits at roughly half the honest value and above both mutations, and both are cleared on
-// windows-latest (linear 10.077ms, quadratic ~31ms).
-func assertFixtureIsMeasurable(t *testing.T, name string, g Growth, floor time.Duration) {
+//	                    dev darwin/arm64   macos-latest        verdict
+//	quadratic base      33.3-37.5ms        66.98ms, 72.78ms    FAILED, ceiling is 64ms
+//	linear base         7.8-8.6ms          ~13-15ms            1.05-1.21x under a 16ms ceiling
+//
+// Re-centring cannot fix it: the ceiling is 4x the floor, and placing the floor at half one machine's
+// reading spends half the window before any other machine is considered. The 16ms linear ceiling is
+// already breached on the derivation machine itself (17.2ms observed). And judging BaseWallMin -- chosen
+// so the check is satisfiable on Windows -- imports contention on top of hardware spread.
+//
+// WHAT REPLACES THEM. The floors existed to catch a fixture gone cheap, tabulated as: dropping the sink
+// took the linear base 9.09ms -> 2.15ms, and a constant-store body -> 2.48ms, with the RATIO unmoved.
+// An exact result catches both of those and more, exactly:
+//
+//	honest                      16024774407366977025
+//	sink dropped                0
+//	body a constant store       3037000493
+//	loop shortened 8x           8372428151581377729
+//	multiplier or increment changed   any other value
+//
+// KNOWN GAP, stated rather than hidden: a semantics-preserving STRENGTH REDUCTION is not caught. Folding
+// the affine map k-wise and iterating n/k times returns a bit-identical result for k=8 and k=64 (checked)
+// while doing 1/k of the work. That is accepted deliberately, because such a fixture is still
+// PROPORTIONAL -- 4x input still costs 4x -- so the shape assertions above still hold, and the only
+// residual risk is a reading too small for the clock, which is a tick question and is checked below.
+func assertFixtureDidTheWork(t *testing.T, name string, g Growth,
+	runBase func(), wantBase uint64, runBig func(), wantBig uint64) {
 	t.Helper()
 
-	// The floor must still be NEAR the value it guards. Without this, lowering it to 1ns is a silent
-	// loosening that no assertion notices — verified by mutation: the floor is the only thing standing
-	// between this test and vacuity, and nothing was pinning it. 4x, so a faster machine reporting a
-	// smaller base does not trip it, while a floor that has drifted an order of magnitude down does.
-	if g.BaseWallMin > 4*floor {
-		t.Errorf("the %s fixture's base is %v against a %v floor — %0.f times the floor, so the floor "+
-			"has stopped protecting anything and this check is vacuous. Re-derive it from the current "+
-			"reading (roughly half) rather than leaving it where it was",
-			name, g.BaseWallMin, floor, float64(g.BaseWallMin)/float64(floor))
+	// BOTH sizes, which is what makes this a proportionality check and not merely an elision check.
+	// Pinning base and big separately says "base did exactly its n iterations and big did exactly its
+	// 4n" -- so "big is 4x base" becomes arithmetic on two exact constants instead of a timing ratio a
+	// contended wall clock can distort. That is what lets the numeric ratio windows above be restricted
+	// to the CPU clock without losing the property they were asserting.
+	for _, c := range []struct {
+		size string
+		run  func()
+		want uint64
+	}{{"base", runBase, wantBase}, {"big", runBig, wantBig}} {
+		// Run OUTSIDE the measured region -- adding it to a timed call would charge the measurement.
+		before := cycleSink
+		c.run()
+		if got := cycleSink - before; got != c.want {
+			t.Errorf("the %s fixture's %s size produced %d, want %d: it is not doing the work it claims, "+
+				"so any ratio measured with it describes something else. 0 means the sink write was "+
+				"dropped or the loop was elided; %d means the body became a constant store.",
+				name, c.size, got, c.want, 3037000493)
+		}
 	}
 
-	if g.BaseWallMin < floor {
-		t.Errorf("the %s fixture's base is %v of wall time, under the %v floor: the work has become "+
-			"too cheap for the measurement to be about the code. This is the failure a ratio bound "+
-			"cannot see — dropping the sink took this base from 9.09ms to 2.15ms while the ratio stayed "+
-			"at 4.41x, because scaling every reading by the same factor leaves the quotient alone. "+
-			"(measured on the %s clock, cpu base %v)", name, g.BaseWallMin, floor, g.Clock, g.BaseMin)
-		return
+	// The measurability half, in TICKS of the clock that took the reading rather than in milliseconds.
+	// Self-scaling: the tick is measured on the same machine, so this says the same thing on a runner
+	// three times slower without naming a duration.
+	if n, ok := g.Ticks(); !ok {
+		t.Logf("the %s fixture's base spans %.1f ticks — %s", name, n, g.ResolutionNote())
 	}
 
-	// Not an assertion: which clock was chosen is a property of the platform, and on windows-latest
-	// the CPU clock cannot resolve a 10ms workload at all. Reported so a reader can tell a wall
-	// fallback from a CPU reading when interpreting the ratio.
+	// Not an assertion: which clock was chosen is a property of the platform, and on windows-latest the
+	// CPU clock cannot resolve a 10ms workload at all. Reported so a reader can tell a wall fallback
+	// from a CPU reading when interpreting the ratio.
 	if g.Clock != "cpu" {
 		t.Logf("the %s fixture was measured on the %s clock (cpu base %v, wall base %v): this "+
 			"platform's CPU accounting is too coarse for a fixture this size — see #619",
@@ -350,4 +448,183 @@ func burnQuadratic(n int) {
 	for i := 0; i < steps; i++ {
 		burnCycles(n / 20)
 	}
+}
+
+// cycleProbeVerdict is the decision this test makes for one fixture reading, extracted so it can be
+// replayed against readings taken on machines a developer does not have.
+type cycleProbeVerdict string
+
+const (
+	verdictAssertWindow cycleProbeVerdict = "assert the numeric window"   // cpu clock, enough ticks
+	verdictWallDisclose cycleProbeVerdict = "disclose: not the cpu clock" // wall clock -> no numeric bound
+	verdictTooFewTicks  cycleProbeVerdict = "disclose: too few ticks"     // cpu clock, unresolvable
+)
+
+// cycleProbeDecision mirrors the control flow in TestTheCycleProbesOwnFixturesScaleAsClaimed exactly.
+//
+// Kept as one function so the table below exercises the REAL branch order rather than a paraphrase of it.
+// The first version of that table asserted only tick sufficiency, and it therefore passed while the test
+// itself failed on windows-latest at "6.07x on the wall clock" -- the reading resolved fine, so the tick
+// question was the wrong one to ask. The branch taken is what matters.
+func cycleProbeDecision(clock string, base, tick time.Duration) cycleProbeVerdict {
+	if clock != "cpu" {
+		return verdictWallDisclose
+	}
+	if _, sufficient := ticksAt(base, tick); !sufficient {
+		return verdictTooFewTicks
+	}
+	return verdictAssertWindow
+}
+
+// TestTheCycleProbeDecisionAgainstRecordedCIReadings replays every reading this test has produced on
+// every OS through the branch that now handles it.
+//
+// This exists because the machine that fixes a timing test is never the machine that broke it. This dev
+// Mac runs these fixtures 3.6x faster than macos-latest and has a 1us CPU tick where windows-latest has
+// 15.625ms, so it reproduces none of the failures. Every row below is quoted from a job that ran.
+//
+// Two rounds of failure are recorded here deliberately, because the second was caused by fixing the first:
+//
+//	round 1, pre-#645   windows chose the CPU clock, base = ONE 15.625ms tick, "2.00x" -> FAILED <2.5
+//	round 2, post-#645  windows moved to the WALL clock, base = 24.2 ticks, "6.07x" -> FAILED >6.0
+//
+// #645 made the clock resolvable, so the tick gate correctly opened and the numeric window then ran
+// against a contended wall-clock ratio. That is why the window is now CPU-clock-only and why this table
+// asserts the BRANCH rather than the tick count.
+func TestTheCycleProbeDecisionAgainstRecordedCIReadings(t *testing.T) {
+	const (
+		winCPUTickLocal = 15625 * time.Microsecond // measured, windows-latest
+		macCPUTickLocal = 1 * time.Microsecond     // measured, macos-latest and darwin/arm64
+	)
+
+	cases := []struct {
+		platform, job, fixture string
+		clock                  string
+		base, tick             time.Duration
+		ratio                  float64
+		want                   cycleProbeVerdict
+		why                    string
+	}{{
+		platform: "windows-latest", job: "102647224117 (pre-#645)", fixture: "linear",
+		clock: "cpu", base: 15625 * time.Microsecond, tick: winCPUTickLocal, ratio: 2.00,
+		want: verdictTooFewTicks,
+		why:  "ONE tick; 2.00x is 2 ticks over 1. Round-1 failure",
+	}, {
+		platform: "windows-latest", job: "102647224117 (pre-#645)", fixture: "quadratic",
+		clock: "cpu", base: 46875 * time.Microsecond, tick: winCPUTickLocal, ratio: 16.00,
+		want: verdictTooFewTicks,
+		why:  "3 ticks; 16.00x is an exact 48/3. Passed by luck then, refused now",
+	}, {
+		platform: "windows-latest", job: "102704815935 (post-#645)", fixture: "linear",
+		clock: "wall", base: 124688 * time.Microsecond / 10, tick: 5142 * time.Microsecond / 10, ratio: 6.07,
+		want: verdictWallDisclose,
+		why:  "24.2 ticks, amply resolvable — but a wall ratio bounds descheduling. ROUND-2 FAILURE",
+	}, {
+		platform: "windows-latest", job: "102704815935 (post-#645)", fixture: "quadratic",
+		clock: "wall", base: 682999 * time.Microsecond / 10, tick: 5142 * time.Microsecond / 10, ratio: 13.69,
+		want: verdictWallDisclose,
+		why:  "13.69x against the old 10.0 floor was only 1.37x of margin, under this repo's 1.5x",
+	}, {
+		platform: "macos-latest", job: "102647366691", fixture: "linear",
+		clock: "cpu", base: 12150 * time.Microsecond, tick: macCPUTickLocal, ratio: 4.57,
+		want: verdictAssertWindow,
+		why:  "12,150 ticks on the cpu clock; 4.57x is the worst cpu reading anywhere and sets the ceiling",
+	}, {
+		platform: "macos-latest", job: "102647366691", fixture: "quadratic",
+		clock: "cpu", base: 60484 * time.Microsecond, tick: macCPUTickLocal, ratio: 15.36,
+		want: verdictAssertWindow,
+		why:  "60,484 ticks; 15.36x clears the 10.0 floor with 1.54x",
+	}, {
+		platform: "macos-latest", job: "102647271956", fixture: "quadratic",
+		clock: "cpu", base: 57710 * time.Microsecond, tick: macCPUTickLocal, ratio: 15.97,
+		want: verdictAssertWindow,
+		why:  "the second macos failure, whose 72.78ms WALL base tripped the deleted 4x vacuity ceiling",
+	}, {
+		platform: "darwin/arm64 (dev)", job: "local, plain and -race", fixture: "linear",
+		clock: "cpu", base: 8766 * time.Microsecond, tick: macCPUTickLocal, ratio: 4.02,
+		want: verdictAssertWindow,
+		why:  "the derivation machine must still assert, or the gate has gone vacuous everywhere",
+	}, {
+		platform: "darwin/arm64 (dev)", job: "local, plain and -race", fixture: "quadratic",
+		clock: "cpu", base: 39018 * time.Microsecond, tick: macCPUTickLocal, ratio: 16.17,
+		want: verdictAssertWindow,
+		why:  "same, quadratic side",
+	}}
+
+	asserted := 0
+	for _, c := range cases {
+		got := cycleProbeDecision(c.clock, c.base, c.tick)
+		if got != c.want {
+			t.Errorf("%s %s (%s): decision = %q, want %q — %s",
+				c.platform, c.fixture, c.job, got, c.want, c.why)
+			continue
+		}
+		if got != verdictAssertWindow {
+			continue // disclosed, not asserted: the ratio is not evidence on that branch
+		}
+		asserted++
+
+		var failed bool
+		switch c.fixture {
+		case "linear":
+			failed = c.ratio < 2.5 || c.ratio > linearMaxOnCPU
+		case "quadratic":
+			failed = c.ratio < 10.0
+		}
+		if failed {
+			t.Errorf("%s %s (%s): %.2fx would FAIL the %s window on the cpu clock — %s",
+				c.platform, c.fixture, c.job, c.ratio, c.fixture, c.why)
+		}
+	}
+
+	// Non-vacuity in two directions. Every recorded reading disclosing would mean the windows assert on
+	// no platform at all -- the failure #619 documents for the whole complexity guard.
+	if asserted == 0 {
+		t.Error("every recorded reading was DISCLOSED, so the numeric windows are asserted on no " +
+			"platform and this table proves nothing")
+	}
+	if asserted == len(cases) {
+		t.Error("every recorded reading was ASSERTED, including the windows wall-clock rows — the " +
+			"cpu-clock restriction is not in effect and round-2 would repeat")
+	}
+}
+
+// TestTheOrderingAssertionHoldsOnEveryRecordedPair covers the one assertion that still runs on the wall
+// clock, and therefore on windows-latest.
+//
+// After the numeric windows became CPU-only, ordering plus the exact sink values are all that windows
+// asserts. Ordering is a comparison of two readings from the same machine in the same run, which is the
+// most contention-robust form available -- but it is not free, so its margin is checked rather than
+// assumed.
+func TestTheOrderingAssertionHoldsOnEveryRecordedPair(t *testing.T) {
+	pairs := []struct {
+		platform, clock string
+		linear, quad    float64
+	}{
+		{"windows-latest (post-#645)", "wall", 6.07, 13.69},
+		{"windows-latest (pre-#645)", "cpu", 2.00, 16.00},
+		{"macos-latest", "cpu", 4.57, 15.36},
+		{"darwin/arm64 (dev)", "cpu", 4.02, 16.17},
+		{"darwin/arm64 (dev, -race)", "cpu", 4.41, 16.08},
+	}
+
+	worst := 999.0
+	for _, p := range pairs {
+		if p.quad <= p.linear {
+			t.Errorf("%s (%s clock): quadratic %.2fx does not read above linear %.2fx — the two shapes "+
+				"are indistinguishable and PROPERTY 4 is vacuous there", p.platform, p.clock, p.quad, p.linear)
+			continue
+		}
+		if sep := p.quad / p.linear; sep < worst {
+			worst = sep
+		}
+	}
+
+	// 2.0x, against a worst observed separation of 2.26x on the contended windows wall clock. Stated as a
+	// floor so a future change that narrows the shapes is visible here rather than as a red CI job.
+	if worst < 2.0 {
+		t.Errorf("the closest recorded shape separation is %.2fx, under the 2.0x this assertion needs to "+
+			"stay meaningful under contention", worst)
+	}
+	t.Logf("worst recorded shape separation: %.2fx (windows wall clock)", worst)
 }
