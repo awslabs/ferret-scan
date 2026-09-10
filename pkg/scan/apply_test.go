@@ -117,7 +117,23 @@ func TestRedactText_FindingNotInText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = result // doesn't crash
+
+	// Count is asserted, not discarded. This test used to end at `_ = result // doesn't crash`, which
+	// left the interesting half unspecified: a finding the redactor cannot locate was once still counted
+	// as redacted, so Count attested to a masking that had not happened. #631 asked for this assertion
+	// by name, because "the gap cannot become unspecified again" is the actual requirement -- a caller
+	// comparing Count against the findings it passed in is the documented way to detect exactly this.
+	if result.Count != 0 {
+		t.Errorf("Count = %d for a finding whose text does not occur in the input, want 0: nothing was "+
+			"replaced, and counting it would attest to a masking that did not happen", result.Count)
+	}
+	if result.Text != text {
+		t.Errorf("output changed for an unlocatable finding:\n got %q\nwant %q", result.Text, text)
+	}
+	if result.Count >= len(findings) {
+		t.Errorf("Count=%d >= len(findings)=%d, so the documented incompleteness check cannot see that "+
+			"a reported value was left in the clear", result.Count, len(findings))
+	}
 }
 
 // --- Edge cases ---
