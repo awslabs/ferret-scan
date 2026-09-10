@@ -309,6 +309,40 @@ func scanForValues(content []byte, values [][]byte, depth int, stopAtFirst bool,
 		views = append(views, decoded)
 	}
 
+	// THIRD VIEW: character data joined with NO separator, so a value split across adjacent elements
+	// is contiguous here.
+	//
+	// The two views above are both byte-contiguous searches, and a value spelled across two runs --
+	// `<w:t>456-78</w:t><w:t>-1234</w:t>` -- occurs in neither, because `</w:t><w:t>` sits between its
+	// halves. The scanner's office extractor strips tags and inserts nothing between runs, so that value
+	// IS reported at confidence 100; this scan then found nothing and the caller took that as permission
+	// to SKIP the part. Measured on a .docx carrying word/embeddings/inner.docx whose document.xml held
+	// the split SSN above: one finding at 100, the "redacted" file WRITTEN with both halves in cleartext
+	// and no mask, at rc=0 even with --fail-on-incomplete, and not one word of diagnostic. The identical
+	// fixture with the value unsplit redacted correctly, so every other part of the nested path works and
+	// this gate was the whole defect (#652).
+	//
+	// That is the same failure the second view was added for -- a value the part spells differently from
+	// the way it was reported -- and the same consequence the comment above names: blindness here is a
+	// leak rather than a missed optimisation. At depth 1 the identical shape is a DISCLOSED REFUSAL
+	// (#627/#630); nesting was turning that refusal into a silent leak.
+	//
+	// decodedPartText is reused rather than reimplemented, deliberately: it is the same run-joined
+	// rendering the depth-1 residue guard judges, pinned by TestDecodedPartTextSeesASplitValueInRunText,
+	// and two renderings that could disagree about what "the part's text" means is how a guard and the
+	// thing it guards drift apart.
+	//
+	// Gated on an XML sniff because decodedPartText pre-allocates builders at len(content)/2 before it
+	// discovers that a part is binary -- most embedded parts are images -- so the sniff is what keeps a
+	// 50MB media part from allocating 25MB to immediately discard it. Cost when the sniff passes is one
+	// tokenisation per part, the same order as the decode above, and part size is already bounded by
+	// maxOfficeEntryBytes at the read.
+	if looksLikeXML(content) {
+		if _, runText, ok := decodedPartText(content); ok && runText != "" {
+			views = append(views, []byte(runText))
+		}
+	}
+
 	for _, v := range values {
 		if _, dup := seen[string(v)]; dup {
 			continue
@@ -362,6 +396,21 @@ func scanForValues(content []byte, values [][]byte, depth int, stopAtFirst bool,
 		}
 	}
 	return found
+}
+
+// looksLikeXML reports whether content is worth handing to an XML tokeniser.
+//
+// A prefix test, not a parse: the only job is to keep binary parts -- which are most of them in a real
+// document -- out of decodedPartText, whose builders are pre-sized at len(content)/2 before it can
+// discover that the bytes are a PNG. Leading whitespace and a UTF-8 BOM are skipped because both are
+// legal before an XML declaration.
+//
+// Deliberately permissive: a false positive costs one tokenisation that fails on its first token, while
+// a false negative would restore exactly the blindness #652 is about. So it errs toward looking.
+func looksLikeXML(content []byte) bool {
+	b := bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})
+	b = bytes.TrimLeft(b, " \t\r\n")
+	return len(b) > 0 && b[0] == '<'
 }
 
 // embeddedFailureSummary renders the unredacted parts as one operator-facing line.
