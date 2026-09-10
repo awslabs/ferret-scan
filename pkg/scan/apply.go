@@ -114,6 +114,44 @@ func RedactText(text string, findings []Finding, strategy RedactStrategy) (*Reda
 			m.Metadata = map[string]any{redactors.MatchTextTruncatedKey: true}
 		}
 
+		// Hand a consolidated finding's members to the redactor, which is the ONLY way it can mask one.
+		//
+		// redactors.ExpandClusterMatches is already on this path -- RedactString delegates to redactText,
+		// which calls it -- but it reads the members from Metadata[ClusterMembersKey], and pkg/scan was
+		// dropping them at this boundary. So expansion ran, found nothing to expand, and (by its
+		// documented fail-safe) passed the cluster through to match nothing.
+		//
+		// The restore above cannot cover this case and #631 explains why: a cluster spans several lines
+		// while FullLine carries only the primary member's line, so restoring to it masks one line and
+		// leaves the rest in the clear. Measured on a 3-line fixture with two clustered handles, before
+		// this: Count=1, len(findings)=1, and one handle still in cleartext for all three strategies --
+		// so the documented Count < len(findings) check read 1 < 1 and reported COMPLETE.
+		if len(f.ClusterMembers) > 0 {
+			members := make([]detector.Match, 0, len(f.ClusterMembers))
+			for _, mem := range f.ClusterMembers {
+				if mem.Text == "" {
+					continue // clusterMembers filters these out anyway; skipping keeps the count honest
+				}
+				members = append(members, detector.Match{
+					Text:       mem.Text,
+					Type:       mem.Type,
+					Confidence: mem.Confidence,
+					LineNumber: mem.LineNumber,
+					Filename:   mem.Filename,
+					Validator:  mem.Validator,
+					Context:    detector.ContextInfo{FullLine: mem.FullLine},
+				})
+			}
+			if len(members) > 0 {
+				if m.Metadata == nil {
+					m.Metadata = map[string]any{}
+				}
+				// The concrete type matters: clusterMembers asserts []detector.Match and returns nil for
+				// anything else, so a []Finding or an []any here would be silently ignored.
+				m.Metadata[redactors.ClusterMembersKey] = members
+			}
+		}
+
 		matches = append(matches, m)
 	}
 
@@ -134,8 +172,12 @@ func RedactText(text string, findings []Finding, strategy RedactStrategy) (*Reda
 	// It was len(matches), which made Count an attestation the function could not support: a match
 	// the redactor cannot locate hits `continue` before its mapping is appended, so a value left in
 	// cleartext was still counted as redacted. A caller comparing len(Findings) against Count can now
-	// see the gap -- which matters most for the case this cannot fix, a SOCIAL_MEDIA_CLUSTER whose
-	// members span several lines and so cannot be recovered from a single FullLine.
+	// see the gap.
+	//
+	// Note that Count can now EXCEED len(findings), and that is correct rather than a bug: a consolidated
+	// finding expands into one mapping per member, so a single cluster covering two handles reports
+	// Count=2 for len(findings)=1. Two values really were replaced. The invariant a caller can rely on is
+	// the direction: Count < (redactable findings) means something was left behind.
 	return &Redacted{Text: redacted, Count: len(mappings)}, nil
 }
 

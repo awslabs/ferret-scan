@@ -28,6 +28,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 )
 
 // TextOptions configures an in-memory text scan.
@@ -135,6 +136,31 @@ type Finding struct {
 	// it. It is kept only so existing callers keep compiling and will be removed
 	// in the next major version.
 	SuppressedBy string
+
+	// ClusterMembers are the individual values a consolidated finding was built from, and they exist
+	// so that RedactText can actually mask it.
+	//
+	// A cluster's own Text is a RENDERED SUMMARY, not a span of the document -- SOCIAL_MEDIA collapses
+	// several handles into one SOCIAL_MEDIA_CLUSTER whose Text reads
+	// "linkedin: janedoe | twitter: janedoe", a string that occurs nowhere in the input. Every redactor
+	// locates a value by searching for its Text, so a cluster masks nothing on its own, and the real
+	// spans were dropped when the validator replaced them.
+	//
+	// internal/redactors.ExpandClusterMatches already solves this for the file-scanning path, keyed on a
+	// match's cluster_members metadata. This field is what carries the same information across the public
+	// boundary; without it RedactText handed the redactor a cluster with no members, expansion found
+	// nothing, and the handles stayed in the clear while Count reported them redacted. Measured before
+	// this field existed, on a 3-line fixture with two clustered handles:
+	//
+	//	simple / synthetic / format_preserving:  Count=1  len(findings)=1  'janedoe' still present: 1
+	//
+	// Count could not reveal it either: one mapping genuinely occurred (the handle on the cluster's own
+	// line), so the documented check Count < len(findings) read 1 < 1 and reported COMPLETE. See #631.
+	//
+	// Empty for every finding that is not a cluster, which is almost all of them. Members carry only
+	// what redaction needs -- Text is the load-bearing field, since that is what the redactor searches
+	// for -- and are never nested more than one level deep.
+	ClusterMembers []Finding
 
 	// ContextBefore and ContextAfter are the text on either side of the match,
 	// excluding the match itself; FullLine is the whole line the match sits on.
@@ -356,6 +382,25 @@ func mapResult(r *core.ScanResult) *Result {
 		if ex, ok := explain.FromMatch(m); ok {
 			f.Rationale = ex.Rationale
 			f.Verdict = string(ex.Verdict)
+		}
+		// Carry a consolidated finding's members across, or RedactText cannot mask it -- see the field's
+		// comment. One level only: a member is never itself a cluster.
+		if members, ok := m.Metadata[redactors.ClusterMembersKey].([]detector.Match); ok {
+			f.ClusterMembers = make([]Finding, 0, len(members))
+			for _, mem := range members {
+				if mem.Text == "" {
+					continue // nothing to locate, so nothing redaction can do with it
+				}
+				f.ClusterMembers = append(f.ClusterMembers, Finding{
+					Type:       mem.Type,
+					Validator:  mem.Validator,
+					Confidence: mem.Confidence,
+					LineNumber: mem.LineNumber,
+					Text:       mem.Text,
+					Filename:   mem.Filename,
+					FullLine:   mem.Context.FullLine,
+				})
+			}
 		}
 		findings = append(findings, f)
 	}
