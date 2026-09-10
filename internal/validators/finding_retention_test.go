@@ -7,6 +7,7 @@ import (
 	stdctx "context"
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -187,7 +188,9 @@ func TestFindingRetentionPerFindingStaysBounded(t *testing.T) {
 
 		if m.bridgePerFinding > bridgeRetentionBudget {
 			t.Errorf("%d findings retain %.0f B each through the document bridge, over the %d B "+
-				"budget. The likeliest cause is a NINTH metadata key: a finding's map carries "+
+				"budget. This budget catches a LARGE value, not one extra small key -- the bucket "+
+				"cliff belongs to TestFindingMetadataStaysBelowTheBucketCliff, because a ninth key "+
+				"lands at 1012 B/f and would PASS here. A finding's map carries "+
 				"exactly 8 keys today, which is exactly one Go bucket, so the ninth costs a whole "+
 				"second bucket — measured at +342 B PER FINDING for a 25-byte value. Check "+
 				"dual_path_bridge.go's context block. Do NOT try to fix it by pre-sizing the map: "+
@@ -223,6 +226,14 @@ type retentionMeasurement struct {
 	findings                                                            int
 	bridgePerFinding, filterPerFinding, jsonPerFinding, churnPerFinding float64
 	semanticCategories                                                  int
+
+	// maxMetadataKeys is the largest metadata key count on any single finding.
+	//
+	// Carried separately from the byte budgets because the bucket cliff is a COUNT question and the
+	// byte budgets cannot see it -- see TestFindingMetadataStaysBelowTheBucketCliff.
+	maxMetadataKeys int
+	// keysOnWidestFinding names them, so a failure says WHICH key was added rather than only that one was.
+	keysOnWidestFinding []string
 }
 
 // measureRetention runs the document bridge over a findings-dense fixture and reports live heap per
@@ -259,6 +270,21 @@ func measureRetention(t *testing.T, lines int) retentionMeasurement {
 		t.Fatalf("the probe produced no findings from %d lines: every quotient below would be "+
 			"undefined", lines)
 	}
+	// The metadata key count, taken here because this is where the bridge's output is still the
+	// authoritative copy. Max rather than mean: the cliff is crossed by the widest finding, and an
+	// average over findings that took the cheap no-context branch would hide it.
+	maxKeys, widest := 0, []string(nil)
+	for i := range matches {
+		if k := len(matches[i].Metadata); k > maxKeys {
+			maxKeys = k
+			widest = widest[:0]
+			for key := range matches[i].Metadata {
+				widest = append(widest, key)
+			}
+		}
+	}
+	sort.Strings(widest)
+
 	n := float64(len(matches))
 
 	options := formatters.FormatterOptions{
@@ -291,6 +317,9 @@ func measureRetention(t *testing.T, lines int) retentionMeasurement {
 		jsonPerFinding:     float64(afterJSON.HeapAlloc-afterFilter.HeapAlloc) / n,
 		churnPerFinding:    float64(afterCall.TotalAlloc-before.TotalAlloc) / n,
 		semanticCategories: len(insights.SemanticContext),
+
+		maxMetadataKeys:     maxKeys,
+		keysOnWidestFinding: widest,
 	}
 
 	// Everything must still be reachable, or the GC above would have collected what is being
@@ -299,4 +328,69 @@ func measureRetention(t *testing.T, lines int) retentionMeasurement {
 	runtime.KeepAlive(filtered)
 	runtime.KeepAlive(jsonRep)
 	return m
+}
+
+// metadataBucketCapacity is 8 because that is exactly how many key/value pairs one Go map bucket holds.
+//
+// Not a tuning knob. It is a property of the runtime's map implementation, so the number below is the
+// boundary itself rather than a budget anyone chose.
+const metadataBucketCapacity = 8
+
+// TestFindingMetadataStaysBelowTheBucketCliff catches the one regression the byte budgets cannot see.
+//
+// A finding's Metadata reaches exactly 8 keys -- one from the validator plus the seven
+// dual_path_bridge.go writes -- and 8 is exactly one Go map bucket. The NINTH key costs a whole second
+// bucket: measured +342 B PER FINDING for a 25-byte value, which is 58 MB on a 168,645-finding scan.
+//
+// WHY A SEPARATE TEST, AND WHY A COUNT. bridgeRetentionBudget is 1200 B/f against 634-669 measured, and
+// a ninth key lands at 1012 -- UNDER the budget. So the byte guard cannot fire for the cause its own
+// failure message used to name, and 342 B/finding would have shipped silently. Its mutation list is
+// consistent with that: every mutation it catches is a LARGE value (a 1KB field reads 2007 B/f), which
+// is a different failure from one more small key.
+//
+// A count is also the right instrument for a second reason. Every other assertion in this file measures
+// live heap, which is a property of the allocator, the GC's timing and the machine; this repo has been
+// burned repeatedly by thresholds calibrated on one machine. A key count is exact, identical on every
+// platform and in every mode, and cannot flake.
+//
+// IF THIS FAILS, do not raise the constant and do not pre-size the map. Pre-sizing is a PESSIMISATION
+// here -- make(..., 10) forces two buckets where 8 keys need one, measured 49% worse at 998 B/f.
+// Either drop a key or accept the second bucket deliberately, with the per-finding cost written down.
+// #621 has the full table and the argument for hoisting the four document-level values, which would
+// take the map to 4 keys and make the next two additions free.
+func TestFindingMetadataStaysBelowTheBucketCliff(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drives the document bridge over a ~2MB fixture; skipped in -short")
+	}
+
+	m := measureRetention(t, 2000)
+
+	// Non-vacuity, both halves. A run that produced no findings, or findings with no metadata at all,
+	// would satisfy any "<= 8" check trivially.
+	if m.findings < retentionFindingsFloor {
+		t.Fatalf("%d findings is under the %d floor, so a key-count check here would prove nothing",
+			m.findings, retentionFindingsFloor)
+	}
+	if m.maxMetadataKeys == 0 {
+		t.Fatal("no finding carried ANY metadata, so this test would pass against a bridge that had " +
+			"stopped writing its context block entirely -- which is the no-context branch, not the " +
+			"path this bounds")
+	}
+	if m.semanticCategories == 0 {
+		t.Fatalf("ContextInsights carried no semantic categories, so the bridge took its no-context "+
+			"branch and never wrote semantic_context -- the widest finding is not the one this test is "+
+			"about (%d findings)", m.findings)
+	}
+
+	t.Logf("widest finding carries %d metadata keys (cliff at %d): %v",
+		m.maxMetadataKeys, metadataBucketCapacity, m.keysOnWidestFinding)
+
+	if m.maxMetadataKeys > metadataBucketCapacity {
+		t.Errorf("a finding's metadata now carries %d keys, over the %d that fit in one Go map bucket, "+
+			"so every finding pays for a SECOND bucket -- measured +342 B per finding, 58 MB on a "+
+			"168,645-finding scan. Keys on the widest finding: %v. Drop one, or accept the second "+
+			"bucket deliberately and write the cost down; do NOT pre-size the map, which measured 49%% "+
+			"worse. See #621.",
+			m.maxMetadataKeys, metadataBucketCapacity, m.keysOnWidestFinding)
+	}
 }
