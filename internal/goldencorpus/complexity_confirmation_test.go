@@ -90,6 +90,43 @@ func (quadraticValidator) ValidateContent(content, _ string) ([]detector.Match, 
 
 func quadraticUnit(i int) string { return "XQZ aaaaaaaaaaaaaaaa " }
 
+// thresholdNotAssertableUnderRace explains why a maxGrowthRatio comparison must not be made when the
+// race detector is active, or returns "" when it may.
+//
+// maxGrowthRatio is a property of the SHIPPED guard, which runs without -race (go-test.yml has a
+// dedicated non-race step for exactly these tests). Comparing an instrumented reading against it is a
+// claim about a configuration nothing ships.
+//
+// The reason it is a SKIP and not a scaled bound: -race does not scale a ratio, it distorts it
+// ASYMMETRICALLY, and in both directions depending on the shape. Measured, same test in the same CI job,
+// non-race step then race step:
+//
+//	                                base            big             ratio
+//	emit-per-match (ubuntu)         4.397->13.841ms  62.675->99.385ms  14.25x -> 7.18x
+//	sparse 1-in-4096 (macos)        22.293->47.809ms 134.69->402.884ms  6.04x -> 8.43x
+//	synthetic quadratic (macos)     4.592-> 9.202ms  72.026->72.442ms  15.69x -> 7.87x
+//
+// The emit-heavy base inflates 3.1x while its big inflates 1.6x, because instrumentation costs scale
+// with the per-match ALLOCATION rather than with the scan, and the base has proportionally more emit per
+// unit of scan. The synthetic quadratic is worse: base doubles while big moves 0.6%. There is no single
+// multiplier -- one shape halves, another rises 40%.
+//
+// This is also a correction to race_ceiling_race_test.go, which states "the ratio check is unaffected
+// either way: -race inflates the base and the 4x measurement equally, so the growth factor it asserts on
+// is preserved". That holds for a pure-compute fixture and is false for an allocating one, which is what
+// every control in this file is.
+//
+// These three readings are the whole of #620's and #643's CI failures.
+func thresholdNotAssertableUnderRace() string {
+	if !raceDetectorEnabled {
+		return ""
+	}
+	return "the race detector is active, and it distorts this ratio asymmetrically (measured: an " +
+		"emit-heavy base inflates 3.1x against its big's 1.6x, taking 14.25x to 7.18x). maxGrowthRatio " +
+		"describes the guard as shipped, which runs without -race — go-test.yml's non-race step is " +
+		"where this assertion is made"
+}
+
 // TestGrowthRatioStillCatchesAGenuineQuadratic is the half that protects the guard's purpose.
 //
 // The estimator must not be so noise-tolerant that it stops detecting the thing it exists for.
@@ -120,7 +157,9 @@ func TestGrowthRatioStillCatchesAGenuineQuadratic(t *testing.T) {
 	// 15.625ms at a time, so this control's base was a single tick and its "ratio" was one integer
 	// over another -- which is why an earlier fixture change to this test passed on main and FAILED
 	// there. See Growth.Ticks.
-	if _, resolvable := g.Ticks(); !resolvable {
+	if note := thresholdNotAssertableUnderRace(); note != "" {
+		t.Logf("quadratic control NOT asserted — %s", note)
+	} else if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("quadratic control NOT asserted — %s", g.ResolutionNote())
 	} else if g.Ratio <= maxGrowthRatio {
 		t.Errorf("a genuine O(n^2) validator measured %.2fx on the %s clock, at or below the %.1f "+
@@ -151,7 +190,9 @@ func TestGrowthRatioStaysLowOnLinearCode(t *testing.T) {
 	// linear control read exactly "2.00x" from base=15.625ms big=31.25ms -- two ticks over one -- and a
 	// 1-tick base can just as easily quantise UPWARD past the threshold and fail correct code, which is
 	// what #546 was.
-	if _, resolvable := g.Ticks(); !resolvable {
+	if note := thresholdNotAssertableUnderRace(); note != "" {
+		t.Logf("linear control NOT asserted — %s", note)
+	} else if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("linear control NOT asserted — %s", g.ResolutionNote())
 	} else if g.Ratio > maxGrowthRatio {
 		t.Errorf("a single-pass validator measured %.2fx on the %s clock, above the %.1f "+
@@ -310,7 +351,9 @@ func TestGrowthRatioCatchesAnEmitPerMatchQuadratic(t *testing.T) {
 			g.baseMatches, g.bigMatches)
 	}
 
-	if _, resolvable := g.Ticks(); !resolvable {
+	if note := thresholdNotAssertableUnderRace(); note != "" {
+		t.Logf("emit-per-match quadratic control NOT asserted — %s", note)
+	} else if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("emit-per-match quadratic control NOT asserted — %s", g.ResolutionNote())
 	} else if g.Ratio <= maxGrowthRatio {
 		t.Errorf("a genuine O(n^2) validator that emits a Match per finding measured %.2fx on the "+
@@ -423,7 +466,9 @@ func TestGrowthRatioMissesASparseQuadratic(t *testing.T) {
 		t.Fatalf("fixture is not scaling: base=%d big=%d matches", g.baseMatches, g.bigMatches)
 	}
 
-	if _, resolvable := g.Ticks(); !resolvable {
+	if note := thresholdNotAssertableUnderRace(); note != "" {
+		t.Logf("sparse quadratic control NOT asserted — %s", note)
+	} else if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("sparse quadratic control NOT asserted — %s", g.ResolutionNote())
 	} else if g.Ratio > maxGrowthRatio {
 		t.Errorf("a sparse O(n^2) validator measured %.2fx on the %s clock, ABOVE the %.1f "+
@@ -432,5 +477,31 @@ func TestGrowthRatioMissesASparseQuadratic(t *testing.T) {
 			"maxGrowthRatio's comment, and check the linear control still passes. "+
 			"min base=%v big=%v, per-pair %s",
 			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
+	}
+}
+
+// TestTheRaceGateIsNotTakenWithoutRace pins the POLARITY of thresholdNotAssertableUnderRace.
+//
+// That one function now decides whether four controls in this file assert anything. If it ever returned
+// a non-empty note unconditionally -- an inverted condition, a debugging line left in, a refactor that
+// dropped the raceDetectorEnabled check -- all four would pass while asserting NOTHING, and the suite
+// would go green with the guard switched off. That is the exact failure #619 documents for windows, and
+// it is worth one test to make it impossible.
+//
+// Runs in both modes and asserts opposite things in each, so neither build tag can hide a mistake.
+func TestTheRaceGateIsNotTakenWithoutRace(t *testing.T) {
+	note := thresholdNotAssertableUnderRace()
+
+	if raceDetectorEnabled {
+		if note == "" {
+			t.Error("the race detector IS active but the gate reports the threshold assertable — the " +
+				"four maxGrowthRatio controls would compare an instrumented ratio against a bound that " +
+				"describes un-instrumented code, which is how #620 and #643 failed")
+		}
+		return
+	}
+	if note != "" {
+		t.Errorf("this is a NON-race run, yet the gate is skipping the maxGrowthRatio assertions: %q. "+
+			"All four controls in this file would pass while asserting nothing.", note)
 	}
 }

@@ -89,7 +89,15 @@ func TestTicksIsSufficientOnThisPlatformForATypicalFixture(t *testing.T) {
 	cpu, wall := ClockResolution()
 	t.Logf("measured tick on this platform: cpu=%v wall=%v", cpu, wall)
 
-	g, err := Measure(DefaultPairs, func() { spin(4) }, func() { spin(16) })
+	// Sized from the MEASURED tick, not hardcoded. A fixed spin(4) is ~7.3ms on windows-latest, and that
+	// platform's wall tick has been observed anywhere from 320µs to 1.7107ms — at the coarse end 7.3ms is
+	// 4.29 ticks, under MinTicks, while MinTicksAffordable correctly reports the platform CAN afford 8
+	// ticks (8 x 1.7107ms = 13.7ms, inside the 50ms budget). So the hatch stayed shut and this test
+	// Errorf'd on about 1 windows run in 17, with a message that blamed a cheapened fixture. The message
+	// was right: the fixture was too cheap FOR THAT TICK. calibratedBaseUnits sizes it against the tick
+	// actually measured, which is the only machine-independent way to say "big enough".
+	base := calibratedBaseUnits()
+	g, err := Measure(DefaultPairs, func() { spin(base) }, func() { spin(4 * base) })
 	if err != nil {
 		t.Fatalf("Measure: %v", err)
 	}
