@@ -48,33 +48,18 @@ jobs:
         with:
           go-version-file: ".go-version"
 
-      - name: Install git-chglog
-        # Pinned to an exact version (not @latest) so a compromised newer release
-        # can't be pulled into this privileged release job (contents:write +
-        # packages:write). Go's sumdb does not protect against a maliciously
-        # published new version. Bump deliberately after review. (MED-4)
-        run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.4
-
-      - name: Generate/Update Changelog
-        run: |
-          if [ ! -f "CHANGELOG.md" ]; then
-            echo "📝 Generating initial changelog..."
-            git-chglog --output CHANGELOG.md
-          else
-            echo "📝 Updating changelog..."
-            git-chglog --output CHANGELOG.md
-          fi
-
-      - name: Commit Changelog
-        run: |
-          if [ -n "$(git status --porcelain CHANGELOG.md)" ]; then
-            echo "📝 Committing updated changelog..."
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add CHANGELOG.md
-            git commit -m "chore: update changelog for ${GITHUB_REF_NAME:-snapshot}"
-          fi
-
+      # NO CHANGELOG GENERATION HERE, DELIBERATELY.
+      #
+      # This job used to `go install git-chglog`, run `git-chglog --output CHANGELOG.md`, and commit the
+      # result -- then never push it. That looks like a missing `git push`, and it is not: CHANGELOG.md
+      # in this repo is HAND-MAINTAINED prose. Its template (.chglog/, deleted in this change) ranged over
+      # tags emitting one line per commit subject, with no [Unreleased] section at all, so regenerating
+      # it replaced ~43,000 words of measurements and reasoning with subjects. The commit existed only to
+      # keep the tree clean for goreleaser, and `--skip=validate` below already waives that check.
+      #
+      # So: do not add a `git push` here, and do not reinstate the generation. If you want the
+      # [Unreleased] section cut into a versioned one at release time, that is a RENAME plus a fresh
+      # empty [Unreleased] -- it preserves the prose. Tracked separately.
       - name: Run GoReleaser (Release)
         if: startsWith(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3

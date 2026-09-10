@@ -32,6 +32,14 @@ embedded_version() {
   grep -oE '# Version [0-9]+' "$TLD_FILE" 2>/dev/null | head -1
 }
 
+# The embedded TLDs themselves, one per line, sorted -- the thing drift is actually about.
+#
+# Same pattern embedded_count counts, capturing the name instead of tallying it, so the two can never
+# disagree about what an entry is.
+embedded_tlds() {
+  grep -oE '"[a-z0-9-]+": \{\}' "$TLD_FILE" 2>/dev/null | sed -E 's/^"([a-z0-9-]+)".*/\1/' | sort -u
+}
+
 if [ ! -f "$TLD_FILE" ]; then
   warn "$TLD_FILE not found; run from the repository root"
   exit 0
@@ -58,8 +66,32 @@ fi
 info "IANA:     $live_version, $live_count TLDs"
 info "embedded: $(embedded_version), $have TLDs"
 
-if [ "$have" = "$live_count" ] && [ "$(embedded_version)" = "$live_version" ]; then
-  info "✅ TLD snapshot is current"
+# Drift is decided by the TLD SET, never by the version serial.
+#
+# IANA bumps that serial roughly daily -- it is a publication timestamp, not a content hash -- so
+# comparing it reported drift every single week regardless of content. Observed 2026-09-07: "embedded
+# 1438 vs IANA 1438", an identical TLD count, flagged as drifted purely because the header read
+# 2026090601 against 2026090400. That is a weekly false alarm, and a check that cries wolf weekly is a
+# check nobody reads.
+#
+# Counts alone are not enough either: one TLD delegated and one withdrawn in the same week leaves the
+# count unchanged while the set has moved, and it is the SET that decides whether a real address gets
+# capped into the LOW band. So compare the names, and say which ones.
+#
+# Lowercased with the same expression update mode uses (line above), because that is what produced the
+# embedded list -- comparing against a differently-normalised copy would report every IDN as drift.
+# shellcheck disable=SC2018,SC2019 # IANA publishes ASCII only (IDNs as punycode), and an explicit
+# A-Z range is locale-independent where [:upper:] is not -- determinism matters more than accents here.
+live_tlds=$(printf '%s\n' "$live" | grep -v '^#' | tr 'A-Z' 'a-z' | sort -u)
+added=$(comm -13 <(embedded_tlds) <(printf '%s\n' "$live_tlds"))
+removed=$(comm -23 <(embedded_tlds) <(printf '%s\n' "$live_tlds"))
+
+if [ -z "$added" ] && [ -z "$removed" ]; then
+  info "✅ TLD snapshot is current ($have TLDs match the root zone exactly)"
+  if [ "$(embedded_version)" != "$live_version" ]; then
+    # Worth saying, worth not failing over: the set is identical and only the publication serial moved.
+    info "   (IANA serial has moved on to $live_version; the TLD set is unchanged, so nothing to do)"
+  fi
   exit 0
 fi
 
@@ -67,6 +99,8 @@ fi
 # break the build, and failing here would block every commit until someone regenerates a data file.
 warn "TLD snapshot has drifted from the IANA root zone"
 warn "  embedded $have vs IANA $live_count"
+[ -n "$added" ] && warn "  delegated since the snapshot ($(printf '%s\n' "$added" | wc -l | tr -d ' ')): $(printf '%s\n' "$added" | tr '\n' ' ')"
+[ -n "$removed" ] && warn "  withdrawn since the snapshot ($(printf '%s\n' "$removed" | wc -l | tr -d ' ')): $(printf '%s\n' "$removed" | tr '\n' ' ')"
 warn "  emails on TLDs delegated since the snapshot are capped into the LOW band"
 warn "  refresh: scripts/check-tlds.sh update   (then regenerate $TLD_FILE)"
 exit 0

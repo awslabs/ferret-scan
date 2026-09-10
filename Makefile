@@ -17,7 +17,6 @@ help:
 	@echo "  sync-go-version    - Sync Go version across all files"
 	@echo "  release-snapshot   - Build snapshot release with GoReleaser"
 	@echo "  release-test       - Test GoReleaser configuration"
-	@echo "  changelog          - Generate changelog with git-chglog"
 	@echo "  version-status     - Show current version and next version"
 	@echo "  version-next       - Show next version number"
 	@echo "  version-bump       - Create next version tag locally"
@@ -730,13 +729,10 @@ release-files-test:
 	@echo "   3. sudo scripts/install-system.sh"
 	@echo "   4. scripts/setup-pre-commit.sh"
 
-changelog:
-	@echo "Generating changelog..."
-	@git-chglog --output CHANGELOG.md
-
-changelog-next:
-	@echo "Generating changelog for next version..."
-	@git-chglog --next-tag $(TAG) --output CHANGELOG.md
+# No `changelog` target. CHANGELOG.md is hand-maintained prose; `git-chglog --output CHANGELOG.md`
+# rewrote the whole file from commit subjects, dropping the [Unreleased] section entirely. The target
+# existed and would have destroyed ~43,000 words on anyone who ran it. Add entries by hand, in the PR
+# that makes the change.
 
 # Version management targets
 version-status:

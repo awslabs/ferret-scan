@@ -275,31 +275,16 @@ goreleaser-release:
       curl -sL "$GORELEASER_URL" | tar -xz -C /usr/local/bin goreleaser
       chmod +x /usr/local/bin/goreleaser
       goreleaser --version
-    # Install git-chglog for changelog generation
-    - go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
     # Configure Git
     - git config --global user.email "ci@gitlab.com"
     - git config --global user.name "GitLab CI"
   script:
     - echo "Starting GoReleaser build and release..."
 
-    # Generate changelog if it doesn't exist
-    - |
-      if [ ! -f "CHANGELOG.md" ]; then
-        echo "📝 Generating initial changelog..."
-        git-chglog --output CHANGELOG.md
-      else
-        echo "📝 Updating changelog..."
-        git-chglog --output CHANGELOG.md
-      fi
-
-    # Commit the changelog to avoid dirty state
-    - |
-      if [ -n "$(git status --porcelain CHANGELOG.md)" ]; then
-        echo "📝 Committing updated changelog..."
-        git add CHANGELOG.md
-        git commit -m "chore: update changelog for ${CI_COMMIT_TAG:-snapshot}"
-      fi
+    # No changelog generation: CHANGELOG.md is hand-maintained prose, and regenerating it from
+    # commit subjects destroyed it. See the note in .github/workflows/release.yml. Removing the
+    # generation also removes the `go install ...@latest` this job used to run with a
+    # write_repository-scoped token in scope, which the repo's own audit flagged as HIGH (CWE-829).
 
     # Run GoReleaser
     - |

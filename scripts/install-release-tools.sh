@@ -5,7 +5,7 @@
 
 
 # Install Go-native release tools
-# GoReleaser and git-chglog for automated releases
+# GoReleaser for automated releases
 
 set -euo pipefail
 
@@ -68,16 +68,6 @@ else
     fi
 fi
 
-# Install git-chglog
-echo ""
-echo "📝 Installing git-chglog..."
-if command -v git-chglog >/dev/null 2>&1; then
-    print_warning "git-chglog already installed: $(git-chglog --version)"
-else
-    go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
-    print_status "git-chglog installed successfully"
-fi
-
 # Verify installations
 echo ""
 echo "🔍 Verifying installations..."
@@ -86,13 +76,6 @@ if command -v goreleaser >/dev/null 2>&1; then
     print_status "GoReleaser: $(goreleaser --version | head -1)"
 else
     print_error "GoReleaser installation failed"
-    exit 1
-fi
-
-if command -v git-chglog >/dev/null 2>&1; then
-    print_status "git-chglog: $(git-chglog --version)"
-else
-    print_error "git-chglog installation failed"
     exit 1
 fi
 
@@ -109,28 +92,14 @@ else
     print_warning ".goreleaser.yml not found in current directory"
 fi
 
-# Test git-chglog configuration
-echo ""
-echo "🧪 Testing git-chglog configuration..."
-if [ -f ".chglog/config.yml" ]; then
-    if git-chglog --dry-run >/dev/null 2>&1; then
-        print_status "git-chglog configuration is valid"
-    else
-        print_warning "git-chglog configuration has issues"
-    fi
-else
-    print_warning ".chglog/config.yml not found"
-fi
-
 echo ""
 print_status "Installation completed!"
 echo ""
 echo "📋 Next steps:"
 echo "1. Test snapshot build: make release-snapshot"
-echo "2. Generate changelog: make changelog"
+echo "2. Add your CHANGELOG.md entry by hand, in the PR that makes the change"
 echo "3. Create a release tag to trigger full release"
 echo ""
 echo "💡 Useful commands:"
 echo "  goreleaser build --snapshot --clean  # Build without releasing"
 echo "  goreleaser check                     # Validate configuration"
-echo "  git-chglog --output CHANGELOG.md     # Generate changelog"
