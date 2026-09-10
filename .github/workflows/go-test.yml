@@ -170,7 +170,11 @@ jobs:
       # controls learned to disclose under instrumentation, and -race distorts these ratios
       # asymmetrically -- an emit-heavy base inflates 3.1x against its big's 1.6x.
       - name: CI experiment (#619 cycle clock, #649 control margins)
-        if: startsWith(github.head_ref, 'exp/') || startsWith(github.ref_name, 'exp/')
+        # always(): a measurement step must not be skipped because an EARLIER step failed. Without
+        # this the windows run of this very experiment produced zero data, because the unrelated
+        # TestTicksIsSufficient flake failed the race step first and GitHub skipped everything after
+        # it. continue-on-error covers this step failing; it does not cover this step being skipped.
+        if: always() && (startsWith(github.head_ref, 'exp/') || startsWith(github.ref_name, 'exp/'))
         continue-on-error: true
         env:
           FERRET_CI_EXPERIMENT: "1"
