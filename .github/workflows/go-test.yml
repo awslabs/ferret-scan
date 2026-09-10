@@ -156,6 +156,28 @@ jobs:
         run: go test -race -count=1 $(go list ./... | grep -v /tests/integration)
         shell: bash
 
+      # CI-only measurement for #619 (is the Windows cycle counter a usable clock?) and #649 (do two
+      # maxGrowthRatio controls really sit under the 1.5x margin, and does the pair count move it?).
+      #
+      # Runs ONLY on exp/* branches, so it costs every other branch nothing. Gated a second time inside
+      # the tests by FERRET_CI_EXPERIMENT, so a stray invocation is a skip rather than five minutes of
+      # measurement.
+      #
+      # continue-on-error and assertion-free by construction: both questions are about what this runner
+      # reports, and a measurement that can fail the build would get switched off.
+      #
+      # NOT under -race. #649 is about the non-race path, which is the one that still asserts after the
+      # controls learned to disclose under instrumentation, and -race distorts these ratios
+      # asymmetrically -- an emit-heavy base inflates 3.1x against its big's 1.6x.
+      - name: CI experiment (#619 cycle clock, #649 control margins)
+        if: startsWith(github.head_ref, 'exp/') || startsWith(github.ref_name, 'exp/')
+        continue-on-error: true
+        env:
+          FERRET_CI_EXPERIMENT: "1"
+        run: |
+          go test -v -count=1 -run 'TestCIExperiment619CycleClock' ./internal/perfguard/
+          go test -v -count=1 -run 'TestCIExperiment649ControlMargins' ./internal/goldencorpus/
+
       - name: Report this runner's clock granularity
         # internal/perfguard measures algorithmic growth as a ratio of CPU-time readings, and the
         # threshold it will divide by (MinMeasurableCPU) is a fixed 2ms on every platform. Whether
