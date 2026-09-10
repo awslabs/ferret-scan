@@ -47,6 +47,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPORT: ${{ steps.check.outputs.report }}
         run: |
+          # The label must exist before ANYTHING below can use it.
+          #
+          # `gh issue create --label` hard-fails on a label the repo does not have. Measured on the
+          # first run of this workflow, 2026-09-07: "could not add label: 'tld-snapshot' not found",
+          # exit 1, no issue filed, job red — and the drift report it had correctly produced sat unread
+          # in the log. The dedup query below is equally blind, so the failure repeats every Monday
+          # rather than converging.
+          #
+          # Created here rather than by hand in repo settings so the check carries its own prerequisite:
+          # a fork, or someone tidying up labels, cannot silently disable the only channel this check
+          # has. Idempotent — a second create is an error we discard.
+          gh label create tld-snapshot \
+            --description "The embedded IANA TLD snapshot has drifted from the live root zone" \
+            --color 'FBCA04' >/dev/null 2>&1 || true
+
           # One open issue at a time. Re-running weekly must not file a duplicate every Monday.
           existing=$(gh issue list --state open --label tld-snapshot --limit 1 --json number -q '.[].number')
           if [ -n "$existing" ]; then
