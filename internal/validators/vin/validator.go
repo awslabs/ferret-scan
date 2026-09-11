@@ -12,6 +12,8 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
+
+	"github.com/awslabs/ferret-scan/v2/internal/bytefold"
 )
 
 // transliterationMap maps VIN characters to their numeric values for check digit calculation.
@@ -186,7 +188,14 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 		// --- Per-LINE-global work, computed once and reused by every match on
 		// this line (was previously recomputed per match -> O(M·L)). ---
-		lineLower := strings.ToLower(line)
+		// bytefold.Lower, not strings.ToLower: this copy is indexed with offsets
+		// taken from `line`, and Unicode case mapping is not length-preserving.
+		// U+212A KELVIN SIGN folds 3 bytes to 1, so a line carrying nine or more
+		// of them made every subsequent offset overshoot the end of the folded
+		// copy -- a recovered panic that returned ZERO findings for the whole
+		// file at exit 0 (#656). Measured: 25 of the 27 length-changing runes
+		// killed this validator.
+		lineLower := bytefold.Lower(line)
 		lineIsHexDump := v.lineLooksEncoded(line)
 		// Whether each keyword is present (as a whole word) anywhere in the
 		// line. This is the dominant cost and is identical for all matches on

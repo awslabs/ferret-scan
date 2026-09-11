@@ -1033,13 +1033,21 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 			fmt.Sprintf("%d out of %d validators failed", len(validationErrors), len(validators)))
 	}
 
-	// Surface a per-validator BUDGET or DEADLINE outcome (v2 Move C) so the caller
-	// can flag ScanResult.Incomplete: a validator's own time budget (child
-	// context.DeadlineExceeded) or match-count cap (ErrMatchBudgetExceeded) means
-	// coverage was cut short even though the overall scan completed. Ordinary
-	// validator errors keep the historical behavior (logged, not surfaced) so a
-	// single failing validator does not by itself mark the scan incomplete. When
-	// no budgets are configured there are no such errors — byte-identical path.
+	// Surface a per-validator BUDGET, DEADLINE or PANIC outcome (v2 Move C) so the
+	// caller can flag ScanResult.Incomplete: a validator's own time budget (child
+	// context.DeadlineExceeded), match-count cap (ErrMatchBudgetExceeded) or a
+	// recovered panic (ErrValidatorPanicked) means coverage was cut short even
+	// though the overall scan completed. Ordinary validator errors keep the
+	// historical behavior (logged, not surfaced) so a single failing validator does
+	// not by itself mark the scan incomplete. When no budgets are configured there
+	// are no budget errors — byte-identical path.
+	//
+	// A PANIC is not an ordinary validator error, which is why it joined the family
+	// in #656: the validator returned ZERO matches for the WHOLE file, so leaving
+	// it logged-but-not-surfaced reported a clean, complete scan of a file that had
+	// been abandoned. The membership test lives in execguard.IsCoverageCutShort,
+	// deliberately as ONE predicate — see its doc comment for what happened the
+	// last time this family was enumerated in more than one place.
 	if budgetErr := firstBudgetError(validationErrors); budgetErr != nil {
 		return allMatches, budgetErr
 	}
