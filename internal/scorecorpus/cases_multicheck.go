@@ -104,6 +104,16 @@ var MultiCheckCases = []Case{
 		Input:     "Routing number 021000021 account 1234567890 for payroll.\n",
 		Labels: []Label{
 			{Line: 1, Value: "1234567890", Types: []string{"US_BANK_ACCOUNT"}, MinBand: BandHigh},
+			// The routing half of "bank_routing_and_account", missing until #628.
+			//
+			// The case name and rationale both claimed the PAIR, and the label set
+			// carried only the account, because 021000021 -- JPMorgan Chase, a live
+			// routing number -- was on a hardcoded denylist of "test" values inside
+			// the validator. The corpus was therefore recording the defect as
+			// correct behaviour: an unlabelled finding scores as a false positive,
+			// so the day the suppression was removed the gate would have called the
+			// fix a precision regression.
+			{Line: 1, Value: "021000021", Types: []string{"ABA_ROUTING"}, MinBand: BandHigh},
 		},
 		Redactable: true,
 	},

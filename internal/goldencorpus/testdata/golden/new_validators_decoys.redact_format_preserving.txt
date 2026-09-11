@@ -4,10 +4,11 @@ license issued 12-31-1987 expires 12-31-2031
 zip on license record 12345-6789
 upgrade dob service to version 2.14.87 build
 test iban *************************** example fixture
-routing 021000021 test transfer
+routing ********* test transfer
 shape only ************* without context
 5 people way too many for the room
 3 items in way of progress
 === FINDINGS (sorted) ===
+type=ABA_ROUTING line=6 conf=medium match=021000021
 type=IBAN line=5 conf=medium match=DE89 3704 0044 0532 0130 00
 type=MEDICARE_MBI line=7 conf=low match=1EG4-TE5-MK73

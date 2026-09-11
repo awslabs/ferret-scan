@@ -1,6 +1,32 @@
 {
   "results": [
     {
+      "confidence": 65,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:new_validators_decoys>",
+      "line_number": 6,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 0.6666666666666666,
+        "context_doctype": "Unknown",
+        "context_domain": "Financial",
+        "context_impact": -5,
+        "federal_reserve_district": "02",
+        "original_confidence": 65,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "validation_path": "document"
+      },
+      "text": "021000021",
+      "type": "ABA_ROUTING",
+      "validator": "bank_account"
+    },
+    {
       "confidence": 60,
       "confidence_level": "MEDIUM",
       "filename": "<golden:new_validators_decoys>",
