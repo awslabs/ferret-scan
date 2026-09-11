@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected company information in this file.\n\n**Location:** <TMPDIR>/sheetnames.xls (line 1)\n**Confidence:** LOW (55.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nCompany: Fairbanks Holdings\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected company information in this file.\n\n**Location:** <TMPDIR>/sheetnames.xls (line 1)\n**Confidence:** LOW (55.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nCompany: Fairbanks Holdings\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nLow risk in general. Strip it when a document is meant to be attributed to another party.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

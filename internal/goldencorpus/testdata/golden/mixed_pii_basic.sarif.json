@@ -95,7 +95,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:mixed_pii_basic> at line 4 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
+            "text": "Visa Card Number Detected in <golden:mixed_pii_basic> at line 4 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
           "properties": {
             "confidence": 100,
@@ -160,7 +160,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:mixed_pii_basic> at line 1 (confidence: 33.0% - LOW). Matched text: 'john.doe@example.com'"
+            "text": "Business Email Address Detected in <golden:mixed_pii_basic> at line 1 (confidence: 33.0% - LOW). Matched text: 'john.doe@example.com'"
           },
           "properties": {
             "confidence": 33,
@@ -234,7 +234,7 @@
             }
           ],
           "message": {
-            "text": "AWS_ACCESS_KEY Detected in <golden:mixed_pii_basic> at line 2 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
+            "text": "AWS Access Key ID Detected in <golden:mixed_pii_basic> at line 2 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
           },
           "properties": {
             "confidence": 15,
@@ -358,28 +358,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type AWS_ACCESS_KEY was detected in the scanned content."
+                "text": "An AWS access key ID was detected. The ID is not itself a secret, but it identifies a specific IAM principal and is half of a long-lived credential pair — so its presence indicates long-lived keys are in use, and the matching secret access key is often nearby or in the same history."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Search the file and the repository history for the matching secret access key; a key ID with its secret is a usable credential. Prefer eliminating the credential class rather than rotating it: IAM roles, instance profiles or IAM Roles Anywhere remove the long-lived pair entirely. If the pair was exposed, deactivate the key and review CloudTrail for use you did not authorise."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#aws_access_key",
               "id": "AWS_ACCESS_KEY",
               "shortDescription": {
-                "text": "AWS_ACCESS_KEY Detected"
+                "text": "AWS Access Key ID Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+                "text": "An email address on a domain that is not a known consumer, disposable, educational or government provider was detected — so it is most likely a corporate or organisational address. A business address identifies both a person and their employer."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Business addresses are frequently published, which lowers the confidentiality concern, but they are the primary target for phishing and credential stuffing, so a harvested list has real value. Remove them from committed fixtures; use the reserved example.com domain instead."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#business",
               "id": "BUSINESS",
               "shortDescription": {
-                "text": "BUSINESS Detected"
+                "text": "Business Email Address Detected"
               }
             },
             {
@@ -410,15 +410,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A payment card number in the Visa range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Visa issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Visa Card Number Detected"
               }
             }
           ],

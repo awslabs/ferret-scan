@@ -287,7 +287,7 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in numrefs.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+            "text": "Document Author Metadata Detected in numrefs.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
           "properties": {
             "confidence": 60,
@@ -346,7 +346,7 @@
             }
           ],
           "message": {
-            "text": "LAST_MODIFIED_BY Detected in numrefs.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+            "text": "Last-Modified-By Metadata Detected in numrefs.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
           },
           "properties": {
             "confidence": 60,
@@ -393,28 +393,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type AUTHOR_INFO was detected in the scanned content."
+                "text": "Author metadata was detected in a document's properties. This field survives copying, emailing and conversion, and it records who created the file rather than anything visible in its contents."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "The risk is that it is invisible: a document reviewed for content still carries the author's name, and in many organisations that is a username. Strip document properties before publishing externally — most office suites offer a document inspector for exactly this."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#author_info",
               "id": "AUTHOR_INFO",
               "shortDescription": {
-                "text": "AUTHOR_INFO Detected"
+                "text": "Document Author Metadata Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type LAST_MODIFIED_BY was detected in the scanned content."
+                "text": "The last-modified-by property was detected in a document's metadata. It names the most recent editor, and because it updates on every save it often reveals a reviewer or approver who is not the stated author."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Frequently more revealing than the author field: it can expose who reviewed a document before release, and in a chain of edits it discloses internal workflow. Strip document properties before publishing."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#last_modified_by",
               "id": "LAST_MODIFIED_BY",
               "shortDescription": {
-                "text": "LAST_MODIFIED_BY Detected"
+                "text": "Last-Modified-By Metadata Detected"
               }
             },
             {

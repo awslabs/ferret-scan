@@ -22,10 +22,27 @@ func TestTypeMeta_KnownTypesResolve(t *testing.T) {
 	}{
 		{"EMAIL", "Email Address Detected", 5.0, "Email address", true},
 		{"SSN", "Social Security Number Detected", 10.0, "Social Security Number", true},
-		{"AWS_ARN", "Cloud Resource Identifier Detected", 7.0, "", false}, // SARIF only
-		{"VISA", "", 0, "Visa credit card", true},                         // gitlab only
-		{"SLACK_TOKEN", "", 0, "Slack token", false},                      // gitlab desc, NO remediation
-		{"AUTHOR_INFO", "", 0, "Author information", false},               // gitlab desc only
+		// AWS_ARN was "SARIF only" — it had a SARIF description and no gitlab copy at all.
+		// #662 filled gitlab for every type, so both gitlab columns move here.
+		{"AWS_ARN", "Cloud Resource Identifier Detected", 7.0, "AWS resource ARN", true},
+		// These rows previously asserted SARIFShort == "" — that these types had gitlab
+		// copy and NO SARIF copy. #662 gave every one of the 64 types both a SARIF
+		// description and gitlab copy, so those columns move.
+		//
+		// What must NOT move is any value that already existed. VISA keeps "Visa credit
+		// card" and the card brands' shared remediation, assigned by a LOOP rather than a
+		// literal; SLACK_TOKEN and AUTHOR_INFO keep their descriptions. An earlier attempt
+		// at #662 rewrote the map literals and silently dropped exactly those, because
+		// pattern-matching the source found 6 types with gitlab fields when there are 20.
+		// This test caught it, which is why the fill is read-modify-write and fill-if-empty.
+		//
+		// wantRemediate flips to true where a type had a description but no remediation.
+		// That asymmetry came from the legacy maps this registry replaced, not from a
+		// decision: a finding with no remediation tells a reviewer what was found and
+		// nothing about what to do.
+		{"VISA", "Visa Card Number Detected", 0, "Visa credit card", true},
+		{"SLACK_TOKEN", "Slack Token Detected", 0, "Slack token", true},
+		{"AUTHOR_INFO", "Document Author Metadata Detected", 0, "Author information", true},
 	}
 	for _, c := range cases {
 		d, ok := TypeMeta(c.typ)

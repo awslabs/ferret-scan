@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "US_MILITARY_ADDRESS Detected in <golden:validator_coverage_expansion> at line 1 (confidence: 95.0% - HIGH). Matched text: 'PSC 1523, Box 25, APO AE 09009'"
+            "text": "US Military Address Detected in <golden:validator_coverage_expansion> at line 1 (confidence: 95.0% - HIGH). Matched text: 'PSC 1523, Box 25, APO AE 09009'"
           },
           "properties": {
             "confidence": 95,
@@ -85,7 +85,7 @@
             }
           ],
           "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:validator_coverage_expansion> at line 3 (confidence: 95.0% - HIGH). Matched text: '123 O'Brien St'"
+            "text": "US Street Address Detected in <golden:validator_coverage_expansion> at line 3 (confidence: 95.0% - HIGH). Matched text: '123 O'Brien St'"
           },
           "properties": {
             "confidence": 95,
@@ -146,7 +146,7 @@
             }
           ],
           "message": {
-            "text": "US_RURAL_ROUTE Detected in <golden:validator_coverage_expansion> at line 2 (confidence: 90.0% - HIGH). Matched text: 'Rural Route 3 Box 88'"
+            "text": "US Rural Route Address Detected in <golden:validator_coverage_expansion> at line 2 (confidence: 90.0% - HIGH). Matched text: 'Rural Route 3 Box 88'"
           },
           "properties": {
             "confidence": 90,
@@ -202,7 +202,7 @@
             }
           ],
           "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:validator_coverage_expansion> at line 4 (confidence: 90.0% - HIGH). Matched text: '456 King-Smith Rd'"
+            "text": "US Street Address Detected in <golden:validator_coverage_expansion> at line 4 (confidence: 90.0% - HIGH). Matched text: '456 King-Smith Rd'"
           },
           "properties": {
             "confidence": 90,
@@ -263,7 +263,7 @@
             }
           ],
           "message": {
-            "text": "DRIVERS_LICENSE Detected in <golden:validator_coverage_expansion> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'D12345678901234'"
+            "text": "Driver's License Number Detected in <golden:validator_coverage_expansion> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'D12345678901234'"
           },
           "properties": {
             "confidence": 85,
@@ -330,7 +330,7 @@
             }
           ],
           "message": {
-            "text": "OTP_SECRET Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'k5cuwy3znrxw4z3t'"
+            "text": "OTP Shared Secret Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'k5cuwy3znrxw4z3t'"
           },
           "properties": {
             "confidence": 85,
@@ -393,7 +393,7 @@
             }
           ],
           "message": {
-            "text": "DRIVERS_LICENSE Detected in <golden:validator_coverage_expansion> at line 6 (confidence: 70.0% - MEDIUM). Matched text: 'J1234567890123'"
+            "text": "Driver's License Number Detected in <golden:validator_coverage_expansion> at line 6 (confidence: 70.0% - MEDIUM). Matched text: 'J1234567890123'"
           },
           "properties": {
             "confidence": 70,
@@ -458,7 +458,7 @@
             }
           ],
           "message": {
-            "text": "US_RURAL_ROUTE Detected in <golden:validator_coverage_expansion> at line 8 (confidence: 40.0% - LOW). Matched text: 'RR 4'"
+            "text": "US Rural Route Address Detected in <golden:validator_coverage_expansion> at line 8 (confidence: 40.0% - LOW). Matched text: 'RR 4'"
           },
           "properties": {
             "confidence": 40,
@@ -494,67 +494,67 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type DRIVERS_LICENSE was detected in the scanned content."
+                "text": "A driver's license number was detected in a format one or more US states issue. State formats differ widely and most have no checksum, so a nearby state name or label is what raises confidence. A license number is a government identifier commonly accepted as proof of identity."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat as a government identifier: it is used for identity verification, so exposure supports identity theft rather than just profiling. Unlike a card it cannot be reissued quickly. Remove it, and prefer storing a verification RESULT rather than the number itself."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#drivers_license",
               "id": "DRIVERS_LICENSE",
               "shortDescription": {
-                "text": "DRIVERS_LICENSE Detected"
+                "text": "Driver's License Number Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type OTP_SECRET was detected in the scanned content."
+                "text": "A TOTP or HOTP shared secret was detected, typically base32-encoded. The secret is the entire basis of one-time-code generation: it does not expire and codes derived from it are indistinguishable from the legitimate user's."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Re-enrol the account so a new secret is issued. Storing a seed in source also means every environment that shares the file shares the second factor, which defeats per-user MFA."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#otp_secret",
               "id": "OTP_SECRET",
               "shortDescription": {
-                "text": "OTP_SECRET Detected"
+                "text": "OTP Shared Secret Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type US_MILITARY_ADDRESS was detected in the scanned content."
+                "text": "A US military address was detected — an APO, FPO or DPO destination with an AA, AE or AP state code. These route mail to service members abroad or afloat."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Handle with more care than an ordinary address, not less: a military address indicates the addressee's affiliation and can imply deployment or location, which is information about the person beyond their contact details."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_military_address",
               "id": "US_MILITARY_ADDRESS",
               "shortDescription": {
-                "text": "US_MILITARY_ADDRESS Detected"
+                "text": "US Military Address Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type US_RURAL_ROUTE was detected in the scanned content."
+                "text": "A US rural route or highway contract route address was detected. These identify a delivery route and box rather than a street, and are used where street addressing is absent."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat as a residential address. Rural routes cover sparsely populated areas, so a route and box number can be MORE identifying than a street address in a city, not less."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_rural_route",
               "id": "US_RURAL_ROUTE",
               "shortDescription": {
-                "text": "US_RURAL_ROUTE Detected"
+                "text": "US Rural Route Address Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type US_STREET_ADDRESS was detected in the scanned content."
+                "text": "A US street address was detected — a number, a street name and a recognised street-type suffix. An address is personal data when it is a residence, and it is a strong quasi-identifier: address with a surname identifies a household."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Distinguish a residential address from a business one, which is usually published and needs no remediation. If residential, it is personal data under GDPR and CCPA and belongs in a system with access control, not in source or logs."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_street_address",
               "id": "US_STREET_ADDRESS",
               "shortDescription": {
-                "text": "US_STREET_ADDRESS Detected"
+                "text": "US Street Address Detected"
               }
             }
           ],

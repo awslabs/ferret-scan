@@ -213,6 +213,546 @@ var typeDescriptors = func() map[string]TypeDescriptor {
 		"VIN":                   "Vehicle Identification Number Detected",
 		"METADATA":              "Sensitive Metadata Detected",
 	}
+
+	// --- SARIF copy for the types that previously fell back to the generic
+	// "Sensitive data of type X was detected in the scanned content" (#662).
+	//
+	// Fifteen of the 64 types KnownTypes() lists had bespoke SARIF copy; these are the
+	// other 49. That generic string is the ENTIRE explanation a reviewer sees in a
+	// code-scanning UI, and it was what an AWS secret access key, an IBAN and every
+	// card brand except the CREDIT_CARD parent all got.
+	//
+	// Applied READ-MODIFY-WRITE, the same shape the gitlabNames loop below uses, and for
+	// the same reason: it can only ever SET the three SARIF fields. A first attempt
+	// rewrote each m["X"] = TypeDescriptor{...} literal instead and silently dropped
+	// existing gitlab copy — it found 6 types with gitlab fields by pattern-matching the
+	// source when there are actually 20, because several are assigned in a loop rather
+	// than as a literal (the card brands share one remediation string). TestTypeMeta_
+	// KnownTypesResolve caught it. Reading a field back out of the map cannot make that
+	// mistake.
+	//
+	// SARIFSensitivityWeight is deliberately NOT set here, so it keeps its existing
+	// value — 0 for these types, which the SARIF mapper turns into its 5.0 default and
+	// hence an unchanged rank. Choosing per-type weights is a scoring judgement, and
+	// bundling it into a documentation change would hide it.
+	//
+	// GitLab fields are likewise untouched: gitlab-sast output is byte-identical after
+	// this change. Writing gitlab copy for these types is worth doing and is a separate
+	// change, because its remediation strings have a different audience and the existing
+	// asymmetry (SLACK_TOKEN has a description but no remediation) is deliberate.
+	for k, c := range map[string]struct{ short, full, help string }{
+		"ABA_ROUTING": {
+			short: "ABA Routing Number Detected",
+			full:  "A nine-digit ABA routing number was detected. It falls in an assigned Federal Reserve prefix range and passes the ABA check-digit formula, so it identifies a real US financial institution. A routing number alone is not secret — banks publish theirs — but paired with an account number it is everything needed to originate an ACH debit.",
+			help:  "Check whether an account number appears nearby: the PAIR is the disclosure, and this tool reports US_BANK_ACCOUNT separately. A routing number on its own in a payment integration is usually legitimate configuration, but it should still come from a secret store rather than a committed file, so a change of banking partner does not require a code change.",
+		},
+		"AMERICAN_EXPRESS": {
+			short: "American Express Card Number Detected",
+			full:  "A payment card number in the American Express range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one American Express issues, and it is 15 digits rather than 16. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration.",
+			help:  "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor.",
+		},
+		"API_KEY_OR_SECRET": {
+			short: "API Key or Secret Detected",
+			full:  "A value in the shape of an API key or shared secret was detected, assigned to a name that indicates it is a credential. The specific service is not identified, so the scope of access cannot be inferred from the value alone.",
+			help:  "Identify the service from the surrounding code before deciding urgency; a generic match can be anything from a public analytics key to an administrative token. If it grants access, revoke and reissue it, then load it from a secret manager or environment variable at runtime.",
+		},
+		"APPLE_CORPORATE": {
+			short: "Apple Corporate Email Address Detected",
+			full:  "An email address on an Apple corporate domain was detected.",
+			help:  "Treat as a business address: identifies a person and their employer, is a phishing target, and does not belong in committed fixtures. Use the reserved example.com domain instead.",
+		},
+		"APPLICATION_INFO": {
+			short: "Authoring Application Metadata Detected",
+			full:  "Application metadata was detected in a document's properties, recording the software and often the exact version used to create the file.",
+			help:  "Not personal data, but useful to an attacker: a precise application version narrows which known vulnerabilities apply to the sender's environment, and a fleet-wide version tells them what to target. Strip document properties on external publication.",
+		},
+		"AUTHOR_INFO": {
+			short: "Document Author Metadata Detected",
+			full:  "Author metadata was detected in a document's properties. This field survives copying, emailing and conversion, and it records who created the file rather than anything visible in its contents.",
+			help:  "The risk is that it is invisible: a document reviewed for content still carries the author's name, and in many organisations that is a username. Strip document properties before publishing externally — most office suites offer a document inspector for exactly this.",
+		},
+		"AWS_ACCESS_KEY": {
+			short: "AWS Access Key ID Detected",
+			full:  "An AWS access key ID was detected. The ID is not itself a secret, but it identifies a specific IAM principal and is half of a long-lived credential pair — so its presence indicates long-lived keys are in use, and the matching secret access key is often nearby or in the same history.",
+			help:  "Search the file and the repository history for the matching secret access key; a key ID with its secret is a usable credential. Prefer eliminating the credential class rather than rotating it: IAM roles, instance profiles or IAM Roles Anywhere remove the long-lived pair entirely. If the pair was exposed, deactivate the key and review CloudTrail for use you did not authorise.",
+		},
+		"AWS_SECRET_ACCESS_KEY": {
+			short: "AWS Secret Access Key Detected",
+			full:  "An AWS secret access key was detected. This is the secret half of a long-lived AWS credential pair and grants every permission attached to its IAM principal, for as long as the key stays active.",
+			help:  "Treat this as an active compromise, not a hygiene issue. Deactivate and delete the key immediately, then review CloudTrail for unauthorised use — an exposed key is typically exercised within minutes of reaching a public repository. Replace it with a role rather than a new key pair.",
+		},
+		"BUSINESS": {
+			short: "Business Email Address Detected",
+			full:  "An email address on a domain that is not a known consumer, disposable, educational or government provider was detected — so it is most likely a corporate or organisational address. A business address identifies both a person and their employer.",
+			help:  "Business addresses are frequently published, which lowers the confidentiality concern, but they are the primary target for phishing and credential stuffing, so a harvested list has real value. Remove them from committed fixtures; use the reserved example.com domain instead.",
+		},
+		"COMPANY_INFO": {
+			short: "Company Metadata Detected",
+			full:  "Company metadata was detected in a document's properties, recording the organisation configured in the authoring application.",
+			help:  "Usually low sensitivity, since the company is often obvious from the document itself. It matters when a document is meant to be attributable to someone else — a white-labelled report, or a template reused by a partner — where the metadata contradicts the visible branding.",
+		},
+		"DATE_OF_BIRTH": {
+			short: "Date of Birth Detected",
+			full:  "A date of birth was detected, labelled as such by nearby text rather than inferred from the digits — any date can look like a birth date, so the label is what makes this a finding. Date of birth is a quasi-identifier: weak alone, but combined with a name or postcode it identifies most people uniquely.",
+			help:  "Judge this by what it sits beside. A birth date in a record with a name, address or member ID is a re-identification risk and often the field that makes a dataset personal data. If the data must be retained, consider storing only the year, or an age band, which usually serves the same purpose.",
+		},
+		"DEA_NUMBER": {
+			short: "DEA Registration Number Detected",
+			full:  "A DEA registration number was detected and it passes the DEA check-digit rule. It identifies a practitioner authorised to prescribe controlled substances.",
+			help:  "A DEA number is used to write prescriptions, so exposure enables prescription fraud in the practitioner's name — a different risk from ordinary PII, and one the practitioner will want to know about. Remove it and notify the registrant if it was exposed.",
+		},
+		"DINERS_CLUB": {
+			short: "Diners Club Card Number Detected",
+			full:  "A payment card number in the Diners Club range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Diners Club issues, which is 14 digits. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration.",
+			help:  "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor.",
+		},
+		"DISCOVER": {
+			short: "Discover Card Number Detected",
+			full:  "A payment card number in the Discover range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Discover issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration.",
+			help:  "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor.",
+		},
+		"DISPOSABLE": {
+			short: "Disposable Email Address Detected",
+			full:  "An email address on a known disposable or temporary-mail provider was detected. These mailboxes are created to receive a single message and are often publicly readable by anyone who knows the address.",
+			help:  "Low privacy sensitivity — the mailbox is intended to be throwaway — but a strong signal for abuse detection: disposable addresses in a user table usually mean sign-up abuse, trial farming or bypassed verification. Worth reviewing as a fraud indicator rather than a data-protection one.",
+		},
+		"DOCKER_TOKEN": {
+			short: "Docker Registry Token Detected",
+			full:  "A Docker registry credential was detected. It authenticates pushes and pulls for a registry namespace.",
+			help:  "A push credential is a supply-chain risk: an attacker who can push a tag can have it deployed by anything that pulls that tag. Revoke it in the registry, then use a short-lived token issued by CI, and pin images by digest so a replaced tag cannot silently change what you run.",
+		},
+		"DOCUMENT_COMMENTS": {
+			short: "Document Comments Detected",
+			full:  "Comments or tracked annotations were detected in a document. Comments are frequently invisible in the default view and are not removed by exporting or printing to PDF in every tool.",
+			help:  "Comments are where the candid content lives: pricing rationale, negotiating positions, names of individuals, and text deleted from the visible document. Review them explicitly, then accept or remove all tracked changes and delete all comments before sending a document outside the organisation.",
+		},
+		"DRIVERS_LICENSE": {
+			short: "Driver's License Number Detected",
+			full:  "A driver's license number was detected in a format one or more US states issue. State formats differ widely and most have no checksum, so a nearby state name or label is what raises confidence. A license number is a government identifier commonly accepted as proof of identity.",
+			help:  "Treat as a government identifier: it is used for identity verification, so exposure supports identity theft rather than just profiling. Unlike a card it cannot be reissued quickly. Remove it, and prefer storing a verification RESULT rather than the number itself.",
+		},
+		"EDUCATIONAL": {
+			short: "Educational Email Address Detected",
+			full:  "An email address on an educational domain was detected. These identify a person and their institution, and frequently belong to students.",
+			help:  "Student data attracts additional obligations in several jurisdictions — FERPA in the US, and age-related provisions elsewhere — so an educational address can raise the compliance bar above an ordinary business address. Confirm whether the dataset is subject to those rules.",
+		},
+		"GITHUB": {
+			short: "GitHub Email Address Detected",
+			full:  "An email address associated with GitHub — including the noreply forms GitHub issues for commit authorship — was detected.",
+			help:  "A noreply address is designed to be public and needs no remediation; it exists so that commits do not expose a real mailbox. A non-noreply GitHub address should be treated as a business address. Check which form this is before acting.",
+		},
+		"GITHUB_TOKEN": {
+			short: "GitHub Token Detected",
+			full:  "A GitHub token was detected. Its prefix identifies it as a GitHub credential — personal access, OAuth, app installation or refresh — and the scopes attached to it determine what an attacker can read or push.",
+			help:  "Assume the repositories and organisations that token can reach are compromised, including any CI secrets reachable from a workflow it can trigger. Revoke it in GitHub settings, then prefer a fine-grained token or a short-lived GITHUB_TOKEN supplied by Actions over a long-lived personal token. GitHub also scans public pushes and may have revoked it already.",
+		},
+		"GITLAB_TOKEN": {
+			short: "GitLab Token Detected",
+			full:  "A GitLab token was detected. Depending on type it may grant repository, registry, or full API access to a project or group for the life of the token.",
+			help:  "Assume every project the token can reach is compromised, including package registries and CI variables. Revoke it in GitLab, then use a project access token with the narrowest scope, or a CI job token that expires with the job.",
+		},
+		"GMAIL": {
+			short: "Gmail Address Detected",
+			full:  "A Gmail address was detected. A consumer mailbox is personal data and, unlike a role address, it identifies an individual rather than a function.",
+			help:  "Personal addresses carry more privacy weight than corporate ones: they usually persist for life and are reused across services, so they are effective join keys between datasets. Replace with example.com in fixtures and keep real addresses in a system with access control.",
+		},
+		"GOOGLE_CLOUD_API_KEY": {
+			short: "Google Cloud API Key Detected",
+			full:  "A Google Cloud API key was detected. API keys identify a project rather than a principal and are often unrestricted by default, so the same key may reach several enabled services.",
+			help:  "Check the key's API and application restrictions in the console — an unrestricted key is usable by anyone who has the string. Regenerate it, then add both API restrictions and application restrictions, or replace it with a service account and Workload Identity where the calling service supports it.",
+		},
+		"GOVERNMENT": {
+			short: "Government Email Address Detected",
+			full:  "An email address on a government domain was detected. It identifies a public-sector employee and their agency.",
+			help:  "Usually published, so rarely confidential in itself — but a government address is a high-value phishing target and its presence may indicate the surrounding data relates to public-sector work with its own handling rules. Remove from fixtures and use example.com.",
+		},
+		"IBAN": {
+			short: "IBAN Detected",
+			full:  "An International Bank Account Number was detected and it passes the ISO 13616 mod-97 checksum, so it is a structurally valid account identifier rather than a coincidental string. An IBAN names both the institution and the account, which is why it is used directly as a payment destination in SEPA and many other schemes.",
+			help:  "An IBAN is a payment destination on its own — more directly actionable than a US routing number, which needs an account number beside it. Remove it from the file and supply it from a secret store. If it appeared in a public repository, tell the account holder: an IBAN is often all that is needed to initiate a direct debit.",
+		},
+		"IMAGE_METADATA": {
+			short: "Image Metadata Detected",
+			full:  "Metadata was detected in an image's EXIF, IPTC or XMP blocks. Depending on the capture device this can include GPS coordinates, a precise timestamp, a device serial number and the owner's name — none of it visible in the picture.",
+			help:  "GPS coordinates are the field to check first: they can place a person at a location and time to within metres, and they survive most resizing and cropping. Strip metadata before publishing images, and be aware that a serial number links every photograph taken by the same camera.",
+		},
+		"INSURANCE_MEMBER_ID": {
+			short: "Insurance Member ID Detected",
+			full:  "A health insurance member identifier was detected. Formats are payer-specific with no common checksum, so this is a contextual match. A member ID is the key used to look up coverage and claims, which is why it is a frequent target for medical identity theft.",
+			help:  "Treat as PHI. Confirm the match against surrounding text, since payer formats vary widely. Member IDs combined with a name and date of birth are enough to attempt fraudulent claims.",
+		},
+		"JCB": {
+			short: "JCB Card Number Detected",
+			full:  "A payment card number in the JCB range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one JCB issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration.",
+			help:  "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor.",
+		},
+		"JWT_TOKEN": {
+			short: "JWT Detected Detected",
+			full:  "A JSON Web Token was detected. The header and payload are base64url-encoded, not encrypted, so any claims inside — subject, email, roles, tenant — are readable by anyone holding the token. The signature does not protect confidentiality, only integrity.",
+			help:  "Read the payload before judging severity: it may itself contain PII, and the token authenticates as its subject until it expires. If it is live, revoke the session or rotate the signing key, and shorten token lifetimes. Never commit tokens as fixtures — mint one at test time instead, since a committed token teaches readers that checking one into source is acceptable.",
+		},
+		"LAST_MODIFIED_BY": {
+			short: "Last-Modified-By Metadata Detected",
+			full:  "The last-modified-by property was detected in a document's metadata. It names the most recent editor, and because it updates on every save it often reveals a reviewer or approver who is not the stated author.",
+			help:  "Frequently more revealing than the author field: it can expose who reviewed a document before release, and in a chain of edits it discloses internal workflow. Strip document properties before publishing.",
+		},
+		"MASTERCARD": {
+			short: "Mastercard Card Number Detected",
+			full:  "A payment card number in the Mastercard range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Mastercard issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration.",
+			help:  "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor.",
+		},
+		"MEDICARE_MBI": {
+			short: "Medicare Beneficiary Identifier Detected",
+			full:  "A Medicare Beneficiary Identifier was detected and it matches the CMS format — eleven characters, position-specific letters and digits, with excluded letters that make coincidental matches unlikely. The MBI replaced the SSN-based HICN precisely so that a Medicare number would stop being an SSN, but it remains PHI and directly identifies a beneficiary.",
+			help:  "Treat this as PHI under HIPAA. Remove it from the file and check whether it needs to be reported as a disclosure under your breach-assessment process; an MBI plus a name or date of birth is a strong identification.",
+		},
+		"MRN": {
+			short: "Medical Record Number Detected",
+			full:  "A Medical Record Number was detected. MRNs are assigned per institution with no national format or checksum, so this is a contextual match — a nearby label is what distinguishes it from any other identifier. Within its issuing organisation an MRN is a direct patient key.",
+			help:  "Treat as PHI. Because MRNs have no standard format, confirm the finding against the surrounding text before acting. An MRN is only meaningful to the issuing institution, which limits external misuse but not internal over-exposure.",
+		},
+		"NPI": {
+			short: "National Provider Identifier Detected",
+			full:  "A ten-digit National Provider Identifier was detected and it passes the CMS Luhn check. An NPI identifies a healthcare provider and is published in the NPPES public registry, so the number itself is not confidential — but it is a strong link between a record and a named clinician, which makes surrounding patient data far easier to attribute.",
+			help:  "Lower urgency than patient identifiers, because the NPI is public. What matters is context: an NPI beside diagnoses, dates of service or patient identifiers turns a de-identified record into an attributable one, which affects whether a dataset still counts as de-identified.",
+		},
+		"OTPAUTH_URI": {
+			short: "OTP Provisioning URI Detected",
+			full:  "An otpauth:// provisioning URI was detected. This is the payload behind an authenticator QR code and it carries the shared TOTP secret in its query string, so it is enough to enrol a new device and generate valid codes indefinitely.",
+			help:  "Treat it as a second-factor compromise: anyone with this URI can produce the same codes as the legitimate authenticator, and the user gets no signal that they are doing so. Re-enrol the account, which issues a fresh secret and invalidates this one.",
+		},
+		"OTP_SECRET": {
+			short: "OTP Shared Secret Detected",
+			full:  "A TOTP or HOTP shared secret was detected, typically base32-encoded. The secret is the entire basis of one-time-code generation: it does not expire and codes derived from it are indistinguishable from the legitimate user's.",
+			help:  "Re-enrol the account so a new secret is issued. Storing a seed in source also means every environment that shares the file shares the second factor, which defeats per-user MFA.",
+		},
+		"PO_BOX": {
+			short: "PO Box Address Detected",
+			full:  "A Post Office box address was detected. A PO box is a mail destination rather than a dwelling, so it reveals less than a street address — but it is still a contactable location tied to whoever rents it.",
+			help:  "Lower sensitivity than a residential street address. Treat it as contact information: fine in published material, not something to accumulate in logs or test fixtures alongside names.",
+		},
+		"RECOVERY_CODES": {
+			short: "Account Recovery Codes Detected",
+			full:  "Multi-factor recovery codes were detected. These are single-use bypasses for MFA, issued as a set, and each one is enough to complete an authentication without the second factor.",
+			help:  "Recovery codes defeat the control that MFA exists to provide, so a leaked set reduces the account to password-only. Regenerate the codes, which invalidates the leaked set, and store them in a password manager rather than any file that could be committed or shared.",
+		},
+		"SLACK_TOKEN": {
+			short: "Slack Token Detected",
+			full:  "A Slack token was detected. Slack tokens read and post as the user or app they belong to, so message history, channel membership and files in scope are all reachable.",
+			help:  "Message history is often the most sensitive thing an organisation has in one place — treat a leaked token as disclosure of everything the token could read. Rotate it in the Slack app configuration and review the audit log for API calls you did not make.",
+		},
+		"SSH_PRIVATE_KEY": {
+			short: "SSH Private Key Detected",
+			full:  "An SSH private key block was detected. If it is unencrypted — no passphrase — it is directly usable, and grants whatever access its matching public key has been authorised for on any host.",
+			help:  "An unencrypted private key in a repository is a host-access credential, and the blast radius is every machine listing its public key in authorized_keys. Generate a new key pair, remove the old public key from every authorized_keys and deploy-key list, and keep private keys out of repositories entirely — use an agent or a certificate authority.",
+		},
+		"STRIPE_API_KEY": {
+			short: "Stripe API Key Detected",
+			full:  "A Stripe API key was detected. A live secret key can move money, read customer records and issue refunds; a restricted or test key is limited to what its configuration allows.",
+			help:  "Check whether the prefix indicates a LIVE secret key — that is a financial and PII incident, not a hygiene one. Roll the key in the Stripe dashboard, which invalidates it immediately, then review recent API activity. Use restricted keys scoped to the endpoints a service actually calls.",
+		},
+		"SWIFT_BIC": {
+			short: "SWIFT/BIC Code Detected",
+			full:  "A SWIFT/BIC business identifier code was detected — eight or eleven characters naming a financial institution and optionally a branch. Unlike an account number a BIC is public directory information, so on its own it is low sensitivity; it matters as corroboration that surrounding text is banking data.",
+			help:  "A BIC alone rarely needs remediation. Treat it as a signal to look for account identifiers nearby: an IBAN or account number on the same record is the actual disclosure. If this is payment configuration, it still belongs in deployment configuration rather than in source.",
+		},
+		"TEMPLATE_INFO": {
+			short: "Document Template Metadata Detected",
+			full:  "Template metadata was detected in a document's properties. It records the template the document was created from, frequently as a full filesystem path.",
+			help:  "The path is the disclosure, not the template name: it can expose a username, an internal share name and a directory layout, all of which help an attacker map an internal environment. Strip document properties before publishing.",
+		},
+		"US_BANK_ACCOUNT": {
+			short: "US Bank Account Number Detected",
+			full:  "A US bank account number was detected. Account numbers have no checksum and no fixed length, so this is a contextual match — a nearby banking keyword is what distinguishes it from any other digit string. With a routing number it is sufficient to originate an ACH debit.",
+			help:  "Confirm it against the surrounding text before acting, since account numbers cannot be validated structurally. If real, remove it and rotate the account if it has been exposed in a public repository; unlike a card, a bank account cannot be reissued quickly, so notify the account holder.",
+		},
+		"US_MILITARY_ADDRESS": {
+			short: "US Military Address Detected",
+			full:  "A US military address was detected — an APO, FPO or DPO destination with an AA, AE or AP state code. These route mail to service members abroad or afloat.",
+			help:  "Handle with more care than an ordinary address, not less: a military address indicates the addressee's affiliation and can imply deployment or location, which is information about the person beyond their contact details.",
+		},
+		"US_RURAL_ROUTE": {
+			short: "US Rural Route Address Detected",
+			full:  "A US rural route or highway contract route address was detected. These identify a delivery route and box rather than a street, and are used where street addressing is absent.",
+			help:  "Treat as a residential address. Rural routes cover sparsely populated areas, so a route and box number can be MORE identifying than a street address in a city, not less.",
+		},
+		"US_STREET_ADDRESS": {
+			short: "US Street Address Detected",
+			full:  "A US street address was detected — a number, a street name and a recognised street-type suffix. An address is personal data when it is a residence, and it is a strong quasi-identifier: address with a surname identifies a household.",
+			help:  "Distinguish a residential address from a business one, which is usually published and needs no remediation. If residential, it is personal data under GDPR and CCPA and belongs in a system with access control, not in source or logs.",
+		},
+		"VISA": {
+			short: "Visa Card Number Detected",
+			full:  "A payment card number in the Visa range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Visa issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration.",
+			help:  "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor.",
+		},
+	} {
+		d := m[k] // zero value if k had no entry at all; existing entry otherwise
+		d.SARIFShort = c.short
+		d.SARIFFull = c.full
+		d.SARIFHelp = c.help
+		m[k] = d
+	}
+
+	// --- gitlab-sast copy, filling every gap rather than the ones #662 first noticed.
+	//
+	// The SARIF loop above closed 49 of 64. gitlab-sast was WORSE: 45 of 64 had no check
+	// description and 49 had no remediation, including types that DID have SARIF copy
+	// (PASSPORT, PERSON_NAME and all six cloud-resource identifiers). A gitlab consumer
+	// therefore read "Sensitive data (X)" with a generic "Review the detected..." for
+	// two-thirds of everything this tool reports.
+	//
+	// FILL-IF-EMPTY, not assign. Every one of the 20 pre-existing gitlab values is left
+	// exactly as it was, including the card brands' shared remediation string, which is
+	// assigned by a loop rather than a literal and is the value an earlier attempt at
+	// this change silently clobbered.
+	//
+	// One deliberate behaviour change beyond filling gaps: types that had a description
+	// but no remediation (SLACK_TOKEN, AUTHOR_INFO, COMPANY_INFO, DOCUMENT_COMMENTS) now
+	// get one. That asymmetry came from the legacy maps this registry replaced rather
+	// than from a decision -- a finding with no remediation tells a reviewer what was
+	// found and nothing about what to do -- so TestTypeMeta_KnownTypesResolve is updated
+	// with the reason rather than worked around.
+	for k, c := range map[string]struct{ desc, rem string }{
+		"ABA_ROUTING": {
+			desc: "ABA routing number",
+			rem:  "Move banking coordinates into configuration a deployment supplies. If an account number appears on the same record, treat the pair as a payment-credential exposure.",
+		},
+		"ALIBABA_ARN": {
+			desc: "Alibaba Cloud resource identifier",
+			rem:  "Remove the resource identifier and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
+		},
+		"AMERICAN_EXPRESS": {
+			desc: "American Express card number",
+			rem:  "Remove the card number and use the brand's published test PAN instead. If it is real, have the card reissued — scrubbing the file does not undo the exposure.",
+		},
+		"API_KEY_OR_SECRET": {
+			desc: "API key or secret",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"APPLE_CORPORATE": {
+			desc: "Apple corporate email address",
+			rem:  "Replace with an example.com address, as for any business email in a fixture.",
+		},
+		"APPLICATION_INFO": {
+			desc: "Authoring application metadata",
+			rem:  "Strip document properties. Precise version strings help an attacker select exploits for your environment.",
+		},
+		"AUTHOR_INFO": {
+			desc: "Document author metadata",
+			rem:  "Strip document properties before external publication. Author metadata survives copying and is not visible in the document body.",
+		},
+		"AWS_ACCESS_KEY": {
+			desc: "AWS access key ID",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"AWS_ARN": {
+			desc: "AWS resource ARN",
+			rem:  "Remove the ARN and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
+		},
+		"AWS_SECRET_ACCESS_KEY": {
+			desc: "AWS secret access key",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"AZURE_RESOURCE_ID": {
+			desc: "Azure resource ID",
+			rem:  "Remove the resource ID and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
+		},
+		"BUSINESS": {
+			desc: "Business email address",
+			rem:  "Replace with an address on the reserved example.com domain. Business addresses are the main target for phishing lists.",
+		},
+		"COMPANY_INFO": {
+			desc: "Company metadata",
+			rem:  "Low risk in general. Strip it when a document is meant to be attributed to another party.",
+		},
+		"DATE_OF_BIRTH": {
+			desc: "Date of birth",
+			rem:  "Remove or coarsen the date — a year or age band usually serves the purpose. Combined with a name it is enough to identify most individuals.",
+		},
+		"DEA_NUMBER": {
+			desc: "DEA registration number",
+			rem:  "Remove the DEA number and notify the registrant if it was exposed — the practical risk is prescription fraud in their name.",
+		},
+		"DINERS_CLUB": {
+			desc: "Diners Club card number",
+			rem:  "Remove the card number and use the brand's published test PAN instead. If it is real, have the card reissued — scrubbing the file does not undo the exposure.",
+		},
+		"DISCOVER": {
+			desc: "Discover card number",
+			rem:  "Remove the card number and use the brand's published test PAN instead. If it is real, have the card reissued — scrubbing the file does not undo the exposure.",
+		},
+		"DISPOSABLE": {
+			desc: "Disposable email address",
+			rem:  "Low privacy risk, but review as an abuse signal — disposable addresses in a user table usually indicate sign-up abuse.",
+		},
+		"DOCKER_TOKEN": {
+			desc: "Docker registry token",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"DOCUMENT_COMMENTS": {
+			desc: "Document comments",
+			rem:  "Review and delete comments and tracked changes before external distribution — they hold content that is not visible in the document body.",
+		},
+		"DRIVERS_LICENSE": {
+			desc: "Driver's license number",
+			rem:  "Remove the license number. Store the outcome of an identity check rather than the identifier, which cannot be reissued quickly.",
+		},
+		"EDUCATIONAL": {
+			desc: "Educational email address",
+			rem:  "Remove and check obligations: student data can attract FERPA or age-related requirements beyond ordinary personal data.",
+		},
+		"GCP_RESOURCE_NAME": {
+			desc: "Google Cloud resource name",
+			rem:  "Remove the resource name and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
+		},
+		"GITHUB": {
+			desc: "GitHub email address",
+			rem:  "A noreply form is intended to be public and needs no action. Treat any other GitHub address as a business email.",
+		},
+		"GITHUB_TOKEN": {
+			desc: "GitHub token",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"GITLAB_TOKEN": {
+			desc: "GitLab token",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"GMAIL": {
+			desc: "Gmail address",
+			rem:  "Replace with an example.com address. Personal mailboxes are long-lived and act as join keys across datasets.",
+		},
+		"GOOGLE_CLOUD_API_KEY": {
+			desc: "Google Cloud API key",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"GOVERNMENT": {
+			desc: "Government email address",
+			rem:  "Replace with example.com in fixtures. Government addresses are high-value phishing targets even when published.",
+		},
+		"IBAN": {
+			desc: "IBAN",
+			rem:  "Remove the IBAN and supply payment destinations from a secret store. An IBAN is directly actionable, so treat public exposure as an incident.",
+		},
+		"IBM_CRN": {
+			desc: "IBM Cloud resource name (CRN)",
+			rem:  "Remove the CRN and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
+		},
+		"IMAGE_METADATA": {
+			desc: "Image metadata",
+			rem:  "Strip EXIF/IPTC/XMP before publishing images. GPS coordinates and device serial numbers survive resizing and are invisible in the picture.",
+		},
+		"INSURANCE_MEMBER_ID": {
+			desc: "Insurance member ID",
+			rem:  "Remove the member ID and handle it as PHI. Verify the match — payer formats vary, so detection is contextual.",
+		},
+		"JCB": {
+			desc: "JCB card number",
+			rem:  "Remove the card number and use the brand's published test PAN instead. If it is real, have the card reissued — scrubbing the file does not undo the exposure.",
+		},
+		"JWT_TOKEN": {
+			desc: "JSON Web Token",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"LAST_MODIFIED_BY": {
+			desc: "Last-modified-by metadata",
+			rem:  "Strip document properties before publication — this field can disclose reviewers and internal workflow.",
+		},
+		"MASTERCARD": {
+			desc: "Mastercard card number",
+			rem:  "Remove the card number and use the brand's published test PAN instead. If it is real, have the card reissued — scrubbing the file does not undo the exposure.",
+		},
+		"MEDICARE_MBI": {
+			desc: "Medicare Beneficiary Identifier",
+			rem:  "Remove the MBI and handle it as PHI under HIPAA, including a breach assessment if it was exposed outside its intended audience.",
+		},
+		"MRN": {
+			desc: "Medical Record Number",
+			rem:  "Remove the MRN and handle it as PHI. Confirm the match first — MRNs have no standard format, so detection is contextual.",
+		},
+		"NPI": {
+			desc: "National Provider Identifier",
+			rem:  "Public in the NPPES registry, so rarely a disclosure alone. Review whether it re-identifies patient data held nearby.",
+		},
+		"OCI_OCID": {
+			desc: "Oracle Cloud identifier (OCID)",
+			rem:  "Remove the OCID and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
+		},
+		"OTPAUTH_URI": {
+			desc: "OTP provisioning URI",
+			rem:  "Re-enrol the account to issue a new TOTP secret. The URI contains the shared secret, so it is a second-factor compromise rather than a configuration nit.",
+		},
+		"OTP_SECRET": {
+			desc: "OTP shared secret",
+			rem:  "Re-enrol to issue a new secret, and keep seeds in a secret manager. A committed seed makes the second factor shared rather than per-user.",
+		},
+		"PASSPORT": {
+			desc: "Passport number",
+			rem:  "Remove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
+		},
+		"PERSON_NAME": {
+			desc: "Person name",
+			rem:  "Replace real names with obviously fictional ones. A name is a weak identifier alone but combines with a date of birth or address to identify an individual.",
+		},
+		"PO_BOX": {
+			desc: "PO Box address",
+			rem:  "Usually lower risk than a street address. Avoid pairing it with names in logs or fixtures.",
+		},
+		"RECOVERY_CODES": {
+			desc: "MFA recovery codes",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"SLACK_TOKEN": {
+			desc: "Slack token",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"SSH_PRIVATE_KEY": {
+			desc: "SSH private key",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"STRIPE_API_KEY": {
+			desc: "Stripe API key",
+			rem:  "Revoke the credential first, then remove it from the file and from version-control history. Rewriting history does not un-disclose a secret that has already been fetched.",
+		},
+		"SWIFT_BIC": {
+			desc: "SWIFT/BIC code",
+			rem:  "Usually benign on its own — check for an account number or IBAN nearby, which would be the real disclosure. Keep payment configuration out of source.",
+		},
+		"TEMPLATE_INFO": {
+			desc: "Document template metadata",
+			rem:  "Strip document properties. Template paths often expose usernames and internal share layout.",
+		},
+		"US_BANK_ACCOUNT": {
+			desc: "US bank account number",
+			rem:  "Remove the account number and supply banking details at deployment time. Account numbers cannot be validated structurally, so confirm the finding before closing it.",
+		},
+		"US_MILITARY_ADDRESS": {
+			desc: "US military address (APO/FPO/DPO)",
+			rem:  "Remove military addresses. They disclose affiliation and can imply deployment, beyond ordinary contact information.",
+		},
+		"US_RURAL_ROUTE": {
+			desc: "US rural route address",
+			rem:  "Treat as residential. In sparsely populated areas a route and box number is highly identifying.",
+		},
+		"US_STREET_ADDRESS": {
+			desc: "US street address",
+			rem:  "Remove residential addresses; business addresses are usually public. Address plus surname identifies a household.",
+		},
+		"VISA": {
+			desc: "Visa card number",
+			rem:  "Remove the card number and use the brand's published test PAN instead. If it is real, have the card reissued — scrubbing the file does not undo the exposure.",
+		},
+	} {
+		d := m[k]
+		if d.GitLabCheckDesc == "" {
+			d.GitLabCheckDesc = c.desc
+		}
+		if d.GitLabRemediation == "" {
+			d.GitLabRemediation = c.rem
+		}
+		m[k] = d
+	}
+
 	for k, name := range gitlabNames {
 		d := m[k] // zero value if k had no SARIF/sensitivity entry
 		d.GitLabName = name

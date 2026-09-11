@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "ABA_ROUTING Detected in <golden:new_validators_decoys> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '021000021'"
+            "text": "ABA Routing Number Detected in <golden:new_validators_decoys> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '021000021'"
           },
           "properties": {
             "confidence": 65,
@@ -142,7 +142,7 @@
             }
           ],
           "message": {
-            "text": "MEDICARE_MBI Detected in <golden:new_validators_decoys> at line 7 (confidence: 40.0% - LOW). Matched text: '1EG4-TE5-MK73'"
+            "text": "Medicare Beneficiary Identifier Detected in <golden:new_validators_decoys> at line 7 (confidence: 40.0% - LOW). Matched text: '1EG4-TE5-MK73'"
           },
           "properties": {
             "confidence": 40,
@@ -183,23 +183,23 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type ABA_ROUTING was detected in the scanned content."
+                "text": "A nine-digit ABA routing number was detected. It falls in an assigned Federal Reserve prefix range and passes the ABA check-digit formula, so it identifies a real US financial institution. A routing number alone is not secret — banks publish theirs — but paired with an account number it is everything needed to originate an ACH debit."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Check whether an account number appears nearby: the PAIR is the disclosure, and this tool reports US_BANK_ACCOUNT separately. A routing number on its own in a payment integration is usually legitimate configuration, but it should still come from a secret store rather than a committed file, so a change of banking partner does not require a code change."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#aba_routing",
               "id": "ABA_ROUTING",
               "shortDescription": {
-                "text": "ABA_ROUTING Detected"
+                "text": "ABA Routing Number Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type IBAN was detected in the scanned content."
+                "text": "An International Bank Account Number was detected and it passes the ISO 13616 mod-97 checksum, so it is a structurally valid account identifier rather than a coincidental string. An IBAN names both the institution and the account, which is why it is used directly as a payment destination in SEPA and many other schemes."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "An IBAN is a payment destination on its own — more directly actionable than a US routing number, which needs an account number beside it. Remove it from the file and supply it from a secret store. If it appeared in a public repository, tell the account holder: an IBAN is often all that is needed to initiate a direct debit."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#iban",
               "id": "IBAN",
@@ -209,15 +209,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MEDICARE_MBI was detected in the scanned content."
+                "text": "A Medicare Beneficiary Identifier was detected and it matches the CMS format — eleven characters, position-specific letters and digits, with excluded letters that make coincidental matches unlikely. The MBI replaced the SSN-based HICN precisely so that a Medicare number would stop being an SSN, but it remains PHI and directly identifies a beneficiary."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat this as PHI under HIPAA. Remove it from the file and check whether it needs to be reported as a disclosure under your breach-assessment process; an MBI plus a name or date of birth is a strong identification."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#medicare_mbi",
               "id": "MEDICARE_MBI",
               "shortDescription": {
-                "text": "MEDICARE_MBI Detected"
+                "text": "Medicare Beneficiary Identifier Detected"
               }
             }
           ],

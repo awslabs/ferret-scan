@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:creditcard_phone_overlap> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532 0151 1283 0366'"
+            "text": "Visa Card Number Detected in <golden:creditcard_phone_overlap> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532 0151 1283 0366'"
           },
           "properties": {
             "confidence": 100,
@@ -233,15 +233,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A payment card number in the Visa range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Visa issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Visa Card Number Detected"
               }
             }
           ],

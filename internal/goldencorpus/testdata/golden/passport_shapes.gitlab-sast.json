@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_shapes> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nPassport Number: 512345678\n```\n\n**Additional Information:**\n- context_impact: 40\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:passport_shapes> (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nPassport Number: 512345678\n```\n\n**Additional Information:**\n- context_impact: 40\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -48,14 +48,14 @@
         "file": "<golden:passport_shapes>",
         "start_line": 1
       },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Passport Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_shapes> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\npassport no 987654321\n```\n\n**Additional Information:**\n- context_impact: 40\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:passport_shapes> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\npassport no 987654321\n```\n\n**Additional Information:**\n- context_impact: 40\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -74,14 +74,14 @@
         "file": "<golden:passport_shapes>",
         "start_line": 2
       },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Passport Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_shapes> (line 3)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nP<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:passport_shapes> (line 3)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nP<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,7 +100,7 @@
         "file": "<golden:passport_shapes>",
         "start_line": 3
       },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "Passport number detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Passport Number Detected",
       "severity": "High"
     }

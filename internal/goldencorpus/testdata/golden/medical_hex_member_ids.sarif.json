@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "DEA_NUMBER Detected in <golden:medical_hex_member_ids> at line 10 (confidence: 100.0% - HIGH). Matched text: 'AB1234563'"
+            "text": "DEA Registration Number Detected in <golden:medical_hex_member_ids> at line 10 (confidence: 100.0% - HIGH). Matched text: 'AB1234563'"
           },
           "properties": {
             "confidence": 100,
@@ -95,7 +95,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'E1122334455'"
+            "text": "Insurance Member ID Detected in <golden:medical_hex_member_ids> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'E1122334455'"
           },
           "properties": {
             "confidence": 80,
@@ -158,7 +158,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'ABCDEF123456'"
+            "text": "Insurance Member ID Detected in <golden:medical_hex_member_ids> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'ABCDEF123456'"
           },
           "properties": {
             "confidence": 80,
@@ -221,7 +221,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'BEEF1234567'"
+            "text": "Insurance Member ID Detected in <golden:medical_hex_member_ids> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'BEEF1234567'"
           },
           "properties": {
             "confidence": 80,
@@ -284,7 +284,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '1234567890AB'"
+            "text": "Insurance Member ID Detected in <golden:medical_hex_member_ids> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '1234567890AB'"
           },
           "properties": {
             "confidence": 80,
@@ -347,7 +347,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 5 (confidence: 80.0% - MEDIUM). Matched text: '55DEADBEEF12'"
+            "text": "Insurance Member ID Detected in <golden:medical_hex_member_ids> at line 5 (confidence: 80.0% - MEDIUM). Matched text: '55DEADBEEF12'"
           },
           "properties": {
             "confidence": 80,
@@ -392,28 +392,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type DEA_NUMBER was detected in the scanned content."
+                "text": "A DEA registration number was detected and it passes the DEA check-digit rule. It identifies a practitioner authorised to prescribe controlled substances."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "A DEA number is used to write prescriptions, so exposure enables prescription fraud in the practitioner's name — a different risk from ordinary PII, and one the practitioner will want to know about. Remove it and notify the registrant if it was exposed."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#dea_number",
               "id": "DEA_NUMBER",
               "shortDescription": {
-                "text": "DEA_NUMBER Detected"
+                "text": "DEA Registration Number Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type INSURANCE_MEMBER_ID was detected in the scanned content."
+                "text": "A health insurance member identifier was detected. Formats are payer-specific with no common checksum, so this is a contextual match. A member ID is the key used to look up coverage and claims, which is why it is a frequent target for medical identity theft."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat as PHI. Confirm the match against surrounding text, since payer formats vary widely. Member IDs combined with a name and date of birth are enough to attempt fraudulent claims."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#insurance_member_id",
               "id": "INSURANCE_MEMBER_ID",
               "shortDescription": {
-                "text": "INSURANCE_MEMBER_ID Detected"
+                "text": "Insurance Member ID Detected"
               }
             }
           ],

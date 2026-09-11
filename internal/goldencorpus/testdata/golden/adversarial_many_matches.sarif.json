@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 1 (confidence: 40.0% - LOW). Matched text: 'user00@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 1 (confidence: 40.0% - LOW). Matched text: 'user00@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -100,7 +100,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 2 (confidence: 40.0% - LOW). Matched text: 'user01@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 2 (confidence: 40.0% - LOW). Matched text: 'user01@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -171,7 +171,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 3 (confidence: 40.0% - LOW). Matched text: 'user02@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 3 (confidence: 40.0% - LOW). Matched text: 'user02@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -242,7 +242,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 4 (confidence: 40.0% - LOW). Matched text: 'user03@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 4 (confidence: 40.0% - LOW). Matched text: 'user03@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -313,7 +313,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 5 (confidence: 40.0% - LOW). Matched text: 'user04@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 5 (confidence: 40.0% - LOW). Matched text: 'user04@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -384,7 +384,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 6 (confidence: 40.0% - LOW). Matched text: 'user05@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 6 (confidence: 40.0% - LOW). Matched text: 'user05@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -455,7 +455,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 7 (confidence: 40.0% - LOW). Matched text: 'user06@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 7 (confidence: 40.0% - LOW). Matched text: 'user06@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -526,7 +526,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 8 (confidence: 40.0% - LOW). Matched text: 'user07@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 8 (confidence: 40.0% - LOW). Matched text: 'user07@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -597,7 +597,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 9 (confidence: 40.0% - LOW). Matched text: 'user08@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 9 (confidence: 40.0% - LOW). Matched text: 'user08@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -668,7 +668,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 10 (confidence: 40.0% - LOW). Matched text: 'user09@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 10 (confidence: 40.0% - LOW). Matched text: 'user09@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -739,7 +739,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 11 (confidence: 40.0% - LOW). Matched text: 'user10@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 11 (confidence: 40.0% - LOW). Matched text: 'user10@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -810,7 +810,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:adversarial_many_matches> at line 12 (confidence: 40.0% - LOW). Matched text: 'user11@example.com'"
+            "text": "Business Email Address Detected in <golden:adversarial_many_matches> at line 12 (confidence: 40.0% - LOW). Matched text: 'user11@example.com'"
           },
           "properties": {
             "confidence": 40,
@@ -863,15 +863,15 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+                "text": "An email address on a domain that is not a known consumer, disposable, educational or government provider was detected — so it is most likely a corporate or organisational address. A business address identifies both a person and their employer."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Business addresses are frequently published, which lowers the confidentiality concern, but they are the primary target for phishing and credential stuffing, so a harvested list has real value. Remove them from committed fixtures; use the reserved example.com domain instead."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#business",
               "id": "BUSINESS",
               "shortDescription": {
-                "text": "BUSINESS Detected"
+                "text": "Business Email Address Detected"
               }
             }
           ],
