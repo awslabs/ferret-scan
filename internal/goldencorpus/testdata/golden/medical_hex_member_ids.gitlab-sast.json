@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (dea number) in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 10)\n**Confidence:** HIGH (100.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\ninsurance member id for prescriber: AB1234563\n```\n\n**Additional Information:**\n- context_impact: 30\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected dea registration number in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 10)\n**Confidence:** HIGH (100.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\ninsurance member id for prescriber: AB1234563\n```\n\n**Additional Information:**\n- context_impact: 30\n\n**Remediation:**\nRemove the DEA number and notify the registrant if it was exposed — the practical risk is prescription fraud in their name.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -48,14 +48,14 @@
         "file": "<golden:medical_hex_member_ids>",
         "start_line": 10
       },
-      "message": "Sensitive data (dea number) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "DEA registration number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Dea Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 1)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: E1122334455\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected insurance member id in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 1)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: E1122334455\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nRemove the member ID and handle it as PHI. Verify the match — payer formats vary, so detection is contextual.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -74,14 +74,14 @@
         "file": "<golden:medical_hex_member_ids>",
         "start_line": 1
       },
-      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "Insurance member ID detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Insurance Member Id Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 2)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: ABCDEF123456\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected insurance member id in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 2)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: ABCDEF123456\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nRemove the member ID and handle it as PHI. Verify the match — payer formats vary, so detection is contextual.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,14 +100,14 @@
         "file": "<golden:medical_hex_member_ids>",
         "start_line": 2
       },
-      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "Insurance member ID detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Insurance Member Id Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 3)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: BEEF1234567\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected insurance member id in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 3)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: BEEF1234567\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nRemove the member ID and handle it as PHI. Verify the match — payer formats vary, so detection is contextual.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -126,14 +126,14 @@
         "file": "<golden:medical_hex_member_ids>",
         "start_line": 3
       },
-      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "Insurance member ID detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Insurance Member Id Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 4)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nsubscriber id: 1234567890AB\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected insurance member id in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 4)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nsubscriber id: 1234567890AB\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nRemove the member ID and handle it as PHI. Verify the match — payer formats vary, so detection is contextual.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -152,14 +152,14 @@
         "file": "<golden:medical_hex_member_ids>",
         "start_line": 4
       },
-      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "Insurance member ID detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Insurance Member Id Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (insurance member id) in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 5)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: 55DEADBEEF12\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected insurance member id in this file.\n\n**Location:** <golden:medical_hex_member_ids> (line 5)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nmember id: 55DEADBEEF12\n```\n\n**Additional Information:**\n- context_impact: 10\n\n**Remediation:**\nRemove the member ID and handle it as PHI. Verify the match — payer formats vary, so detection is contextual.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -178,7 +178,7 @@
         "file": "<golden:medical_hex_member_ids>",
         "start_line": 5
       },
-      "message": "Sensitive data (insurance member id) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "Insurance member ID detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Insurance Member Id Detected",
       "severity": "High"
     }

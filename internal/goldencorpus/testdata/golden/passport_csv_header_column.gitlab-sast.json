@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nJane,jane.smith@acmecorp.io,987654321,US\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected business email address in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nJane,jane.smith@acmecorp.io,987654321,US\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReplace with an address on the reserved example.com domain. Business addresses are the main target for phishing lists.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -48,14 +48,14 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 2
       },
-      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Business email address detected: [HIDDEN] (confidence: HIGH)",
       "name": "Business Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nBob,bob.jones@acmecorp.io,512345678,GB\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected business email address in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nBob,bob.jones@acmecorp.io,512345678,GB\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReplace with an address on the reserved example.com domain. Business addresses are the main target for phishing lists.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -74,14 +74,14 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 3
       },
-      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Business email address detected: [HIDDEN] (confidence: HIGH)",
       "name": "Business Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 4)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nAmy,amy.lee@acmecorp.io,512345671,CA\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected business email address in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 4)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nAmy,amy.lee@acmecorp.io,512345671,CA\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReplace with an address on the reserved example.com domain. Business addresses are the main target for phishing lists.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,14 +100,14 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 4
       },
-      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Business email address detected: [HIDDEN] (confidence: HIGH)",
       "name": "Business Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nSam,sam.roe@acmecorp.io,987654322,AU\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected business email address in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nSam,sam.roe@acmecorp.io,987654322,AU\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nReplace with an address on the reserved example.com domain. Business addresses are the main target for phishing lists.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -126,14 +126,14 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 5
       },
-      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Business email address detected: [HIDDEN] (confidence: HIGH)",
       "name": "Business Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nJane,jane.smith@acmecorp.io,987654321,US\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nJane,jane.smith@acmecorp.io,987654321,US\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -152,14 +152,14 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 2
       },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Passport Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nBob,bob.jones@acmecorp.io,512345678,GB\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nBob,bob.jones@acmecorp.io,512345678,GB\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -178,14 +178,14 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 3
       },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Passport Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 4)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nAmy,amy.lee@acmecorp.io,512345671,CA\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 4)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nAmy,amy.lee@acmecorp.io,512345671,CA\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -204,14 +204,14 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 4
       },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Passport Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (passport) in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nSam,sam.roe@acmecorp.io,987654322,AU\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:passport_csv_header_column> (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nSam,sam.roe@acmecorp.io,987654322,AU\n```\n\n**Additional Information:**\n- context_impact: 30\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number. It is a government identity document number, cannot be reissued quickly, and supports identity theft rather than just profiling.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -230,7 +230,7 @@
         "file": "<golden:passport_csv_header_column>",
         "start_line": 5
       },
-      "message": "Sensitive data (passport) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Passport Number Detected",
       "severity": "Critical"
     }

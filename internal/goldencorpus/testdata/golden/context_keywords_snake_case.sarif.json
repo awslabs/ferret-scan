@@ -161,7 +161,7 @@
             }
           ],
           "message": {
-            "text": "DATE_OF_BIRTH Detected in <golden:context_keywords_snake_case> at line 3 (confidence: 90.0% - HIGH). Matched text: '1985-03-14'"
+            "text": "Date of Birth Detected in <golden:context_keywords_snake_case> at line 3 (confidence: 90.0% - HIGH). Matched text: '1985-03-14'"
           },
           "properties": {
             "confidence": 90,
@@ -292,7 +292,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:context_keywords_snake_case> at line 4 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
+            "text": "Visa Card Number Detected in <golden:context_keywords_snake_case> at line 4 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
           },
           "properties": {
             "confidence": 15,
@@ -357,7 +357,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:context_keywords_snake_case> at line 5 (confidence: 15.0% - LOW). Matched text: '4012888888881881'"
+            "text": "Visa Card Number Detected in <golden:context_keywords_snake_case> at line 5 (confidence: 15.0% - LOW). Matched text: '4012888888881881'"
           },
           "properties": {
             "confidence": 15,
@@ -404,15 +404,15 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type DATE_OF_BIRTH was detected in the scanned content."
+                "text": "A date of birth was detected, labelled as such by nearby text rather than inferred from the digits — any date can look like a birth date, so the label is what makes this a finding. Date of birth is a quasi-identifier: weak alone, but combined with a name or postcode it identifies most people uniquely."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Judge this by what it sits beside. A birth date in a record with a name, address or member ID is a re-identification risk and often the field that makes a dataset personal data. If the data must be retained, consider storing only the year, or an age band, which usually serves the same purpose."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#date_of_birth",
               "id": "DATE_OF_BIRTH",
               "shortDescription": {
-                "text": "DATE_OF_BIRTH Detected"
+                "text": "Date of Birth Detected"
               }
             },
             {
@@ -430,15 +430,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A payment card number in the Visa range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Visa issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Visa Card Number Detected"
               }
             }
           ],

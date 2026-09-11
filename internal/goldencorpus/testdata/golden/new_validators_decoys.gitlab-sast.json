@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (aba routing) in this file.\n\n**Location:** <golden:new_validators_decoys> (line 6)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\nrouting 021000021 test transfer\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected aba routing number in this file.\n\n**Location:** <golden:new_validators_decoys> (line 6)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\nrouting 021000021 test transfer\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nMove banking coordinates into configuration a deployment supplies. If an account number appears on the same record, treat the pair as a payment-credential exposure.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -48,14 +48,14 @@
         "file": "<golden:new_validators_decoys>",
         "start_line": 6
       },
-      "message": "Sensitive data (aba routing) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "ABA routing number detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Aba Routing Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (iban) in this file.\n\n**Location:** <golden:new_validators_decoys> (line 5)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\ntest iban DE89 3704 0044 0532 0130 00 example fixture\n```\n\n**Additional Information:**\n- context_impact: -25\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected iban in this file.\n\n**Location:** <golden:new_validators_decoys> (line 5)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\ntest iban DE89 3704 0044 0532 0130 00 example fixture\n```\n\n**Additional Information:**\n- context_impact: -25\n\n**Remediation:**\nRemove the IBAN and supply payment destinations from a secret store. An IBAN is directly actionable, so treat public exposure as an incident.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -74,14 +74,14 @@
         "file": "<golden:new_validators_decoys>",
         "start_line": 5
       },
-      "message": "Sensitive data (iban) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "IBAN detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Iban Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "Low",
-      "description": "Ferret Scan detected sensitive data (medicare mbi) in this file.\n\n**Location:** <golden:new_validators_decoys> (line 7)\n**Confidence:** LOW (40.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nshape only 1EG4-TE5-MK73 without context\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected medicare beneficiary identifier in this file.\n\n**Location:** <golden:new_validators_decoys> (line 7)\n**Confidence:** LOW (40.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nshape only 1EG4-TE5-MK73 without context\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the MBI and handle it as PHI under HIPAA, including a breach assessment if it was exposed outside its intended audience.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,7 +100,7 @@
         "file": "<golden:new_validators_decoys>",
         "start_line": 7
       },
-      "message": "Sensitive data (medicare mbi) detected: [HIDDEN] (confidence: LOW)",
+      "message": "Medicare Beneficiary Identifier detected: [HIDDEN] (confidence: LOW)",
       "name": "Medicare Mbi Detected",
       "severity": "Medium"
     }

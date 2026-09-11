@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "MEDICARE_MBI Detected in <golden:new_validators_display_formats> at line 1 (confidence: 95.0% - HIGH). Matched text: '1EG4-TE5-MK73'"
+            "text": "Medicare Beneficiary Identifier Detected in <golden:new_validators_display_formats> at line 1 (confidence: 95.0% - HIGH). Matched text: '1EG4-TE5-MK73'"
           },
           "properties": {
             "confidence": 95,
@@ -92,7 +92,7 @@
             }
           ],
           "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:new_validators_display_formats> at line 6 (confidence: 95.0% - HIGH). Matched text: '123 42nd Street'"
+            "text": "US Street Address Detected in <golden:new_validators_display_formats> at line 6 (confidence: 95.0% - HIGH). Matched text: '123 42nd Street'"
           },
           "properties": {
             "confidence": 95,
@@ -154,7 +154,7 @@
             }
           ],
           "message": {
-            "text": "DATE_OF_BIRTH Detected in <golden:new_validators_display_formats> at line 4 (confidence: 90.0% - HIGH). Matched text: '3/14/87'"
+            "text": "Date of Birth Detected in <golden:new_validators_display_formats> at line 4 (confidence: 90.0% - HIGH). Matched text: '3/14/87'"
           },
           "properties": {
             "confidence": 90,
@@ -218,7 +218,7 @@
             }
           ],
           "message": {
-            "text": "DATE_OF_BIRTH Detected in <golden:new_validators_display_formats> at line 4 (confidence: 90.0% - HIGH). Matched text: 'March 14th, 1987'"
+            "text": "Date of Birth Detected in <golden:new_validators_display_formats> at line 4 (confidence: 90.0% - HIGH). Matched text: 'March 14th, 1987'"
           },
           "properties": {
             "confidence": 90,
@@ -282,7 +282,7 @@
             }
           ],
           "message": {
-            "text": "DATE_OF_BIRTH Detected in <golden:new_validators_display_formats> at line 5 (confidence: 90.0% - HIGH). Matched text: '03.14.1987'"
+            "text": "Date of Birth Detected in <golden:new_validators_display_formats> at line 5 (confidence: 90.0% - HIGH). Matched text: '03.14.1987'"
           },
           "properties": {
             "confidence": 90,
@@ -345,7 +345,7 @@
             }
           ],
           "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:new_validators_display_formats> at line 7 (confidence: 90.0% - HIGH). Matched text: '1234 US Highway 61'"
+            "text": "US Street Address Detected in <golden:new_validators_display_formats> at line 7 (confidence: 90.0% - HIGH). Matched text: '1234 US Highway 61'"
           },
           "properties": {
             "confidence": 90,
@@ -407,7 +407,7 @@
             }
           ],
           "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:new_validators_display_formats> at line 8 (confidence: 85.0% - MEDIUM). Matched text: '742 evergreen terrace'"
+            "text": "US Street Address Detected in <golden:new_validators_display_formats> at line 8 (confidence: 85.0% - MEDIUM). Matched text: '742 evergreen terrace'"
           },
           "properties": {
             "confidence": 85,
@@ -529,7 +529,7 @@
             }
           ],
           "message": {
-            "text": "DRIVERS_LICENSE Detected in <golden:new_validators_display_formats> at line 3 (confidence: 70.0% - MEDIUM). Matched text: 'D123-4567-8901'"
+            "text": "Driver's License Number Detected in <golden:new_validators_display_formats> at line 3 (confidence: 70.0% - MEDIUM). Matched text: 'D123-4567-8901'"
           },
           "properties": {
             "confidence": 70,
@@ -579,36 +579,36 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type DATE_OF_BIRTH was detected in the scanned content."
+                "text": "A date of birth was detected, labelled as such by nearby text rather than inferred from the digits — any date can look like a birth date, so the label is what makes this a finding. Date of birth is a quasi-identifier: weak alone, but combined with a name or postcode it identifies most people uniquely."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Judge this by what it sits beside. A birth date in a record with a name, address or member ID is a re-identification risk and often the field that makes a dataset personal data. If the data must be retained, consider storing only the year, or an age band, which usually serves the same purpose."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#date_of_birth",
               "id": "DATE_OF_BIRTH",
               "shortDescription": {
-                "text": "DATE_OF_BIRTH Detected"
+                "text": "Date of Birth Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type DRIVERS_LICENSE was detected in the scanned content."
+                "text": "A driver's license number was detected in a format one or more US states issue. State formats differ widely and most have no checksum, so a nearby state name or label is what raises confidence. A license number is a government identifier commonly accepted as proof of identity."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat as a government identifier: it is used for identity verification, so exposure supports identity theft rather than just profiling. Unlike a card it cannot be reissued quickly. Remove it, and prefer storing a verification RESULT rather than the number itself."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#drivers_license",
               "id": "DRIVERS_LICENSE",
               "shortDescription": {
-                "text": "DRIVERS_LICENSE Detected"
+                "text": "Driver's License Number Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type IBAN was detected in the scanned content."
+                "text": "An International Bank Account Number was detected and it passes the ISO 13616 mod-97 checksum, so it is a structurally valid account identifier rather than a coincidental string. An IBAN names both the institution and the account, which is why it is used directly as a payment destination in SEPA and many other schemes."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "An IBAN is a payment destination on its own — more directly actionable than a US routing number, which needs an account number beside it. Remove it from the file and supply it from a secret store. If it appeared in a public repository, tell the account holder: an IBAN is often all that is needed to initiate a direct debit."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#iban",
               "id": "IBAN",
@@ -618,28 +618,28 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MEDICARE_MBI was detected in the scanned content."
+                "text": "A Medicare Beneficiary Identifier was detected and it matches the CMS format — eleven characters, position-specific letters and digits, with excluded letters that make coincidental matches unlikely. The MBI replaced the SSN-based HICN precisely so that a Medicare number would stop being an SSN, but it remains PHI and directly identifies a beneficiary."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat this as PHI under HIPAA. Remove it from the file and check whether it needs to be reported as a disclosure under your breach-assessment process; an MBI plus a name or date of birth is a strong identification."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#medicare_mbi",
               "id": "MEDICARE_MBI",
               "shortDescription": {
-                "text": "MEDICARE_MBI Detected"
+                "text": "Medicare Beneficiary Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type US_STREET_ADDRESS was detected in the scanned content."
+                "text": "A US street address was detected — a number, a street name and a recognised street-type suffix. An address is personal data when it is a residence, and it is a strong quasi-identifier: address with a surname identifies a household."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Distinguish a residential address from a business one, which is usually published and needs no remediation. If residential, it is personal data under GDPR and CCPA and belongs in a system with access control, not in source or logs."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_street_address",
               "id": "US_STREET_ADDRESS",
               "shortDescription": {
-                "text": "US_STREET_ADDRESS Detected"
+                "text": "US Street Address Detected"
               }
             }
           ],

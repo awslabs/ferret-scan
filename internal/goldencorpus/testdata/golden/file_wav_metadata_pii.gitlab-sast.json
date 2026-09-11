@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 6)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nArtist: john.doe@example.com\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 6)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nArtist: john.doe@example.com\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nStrip document properties before external publication. Author metadata survives copying and is not visible in the document body.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected document comments in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- context_impact: -0.04999999999999999\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected document comments in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 7)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nComment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE\n```\n\n**Additional Information:**\n- context_impact: -0.04999999999999999\n- source: preprocessed_content\n\n**Remediation:**\nReview and delete comments and tracked changes before external distribution — they hold content that is not visible in the document body.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "Low",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 6)\n**Confidence:** LOW (25.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nArtist: john.doe@example.com\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected business email address in this file.\n\n**Location:** <TMPDIR>/clip.wav (line 6)\n**Confidence:** LOW (25.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nArtist: john.doe@example.com\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nReplace with an address on the reserved example.com domain. Business addresses are the main target for phishing lists.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,7 +100,7 @@
         "file": "clip.wav",
         "start_line": 6
       },
-      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: LOW)",
+      "message": "Business email address detected: [HIDDEN] (confidence: LOW)",
       "name": "Business Detected",
       "severity": "Medium"
     },

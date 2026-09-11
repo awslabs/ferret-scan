@@ -95,7 +95,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in alt_case.docx at line 5 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
+            "text": "Visa Card Number Detected in alt_case.docx at line 5 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
           "properties": {
             "confidence": 100,
@@ -154,7 +154,7 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in alt_case.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+            "text": "Document Author Metadata Detected in alt_case.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
           "properties": {
             "confidence": 60,
@@ -213,7 +213,7 @@
             }
           ],
           "message": {
-            "text": "LAST_MODIFIED_BY Detected in alt_case.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+            "text": "Last-Modified-By Metadata Detected in alt_case.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
           },
           "properties": {
             "confidence": 60,
@@ -260,28 +260,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type AUTHOR_INFO was detected in the scanned content."
+                "text": "Author metadata was detected in a document's properties. This field survives copying, emailing and conversion, and it records who created the file rather than anything visible in its contents."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "The risk is that it is invisible: a document reviewed for content still carries the author's name, and in many organisations that is a username. Strip document properties before publishing externally — most office suites offer a document inspector for exactly this."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#author_info",
               "id": "AUTHOR_INFO",
               "shortDescription": {
-                "text": "AUTHOR_INFO Detected"
+                "text": "Document Author Metadata Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type LAST_MODIFIED_BY was detected in the scanned content."
+                "text": "The last-modified-by property was detected in a document's metadata. It names the most recent editor, and because it updates on every save it often reveals a reviewer or approver who is not the stated author."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Frequently more revealing than the author field: it can expose who reviewed a document before release, and in a chain of edits it discloses internal workflow. Strip document properties before publishing."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#last_modified_by",
               "id": "LAST_MODIFIED_BY",
               "shortDescription": {
-                "text": "LAST_MODIFIED_BY Detected"
+                "text": "Last-Modified-By Metadata Detected"
               }
             },
             {
@@ -299,15 +299,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A payment card number in the Visa range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Visa issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Visa Card Number Detected"
               }
             }
           ],

@@ -69,6 +69,13 @@ func renderCheckPage() string {
 		b.WriteString(fmt.Sprintf("**%s**\n\n", d.Short))
 		b.WriteString(d.Full + "\n\n")
 		b.WriteString("*What to do:* " + d.Help + "\n\n")
+		// The gitlab-sast remediation is rendered here too, so the page is the single
+		// home for a type's copy rather than SARIF's half of it. It is deliberately
+		// shorter and more imperative than the SARIF help — the two formats have
+		// different audiences — and showing both makes a drifting pair visible.
+		if meta, ok := core.TypeMeta(t); ok && strings.TrimSpace(meta.GitLabRemediation) != "" {
+			b.WriteString("*Short form (gitlab-sast):* " + meta.GitLabRemediation + "\n\n")
+		}
 	}
 	return b.String()
 }
@@ -307,5 +314,87 @@ func TestUnknownTypeStillGetsAResolvingURI(t *testing.T) {
 	known := core.KnownTypes()[0]
 	if u := rm.buildRuleForType(known).HelpURI; !strings.Contains(u, "#"+strings.ToLower(known)) {
 		t.Errorf("known type %s lost its anchor: %q", known, u)
+	}
+}
+
+// TestEveryTypeHasBespokeCopy is the gate #662 deliberately added LAST.
+//
+// GetRuleDescription falls back to a generated generic string for a type with no
+// registry entry: "Sensitive data of type <TYPE> was detected in the scanned content."
+// That fallback is correct and must stay — a type minted after this test should still
+// produce a usable rule — but no type should be RELYING on it, because the generic text
+// is the entire explanation a reviewer gets in a code-scanning UI.
+//
+// Measured before #662: 15 of the 64 types had bespoke copy and 49 did not, including
+// every credential type, every card brand except the CREDIT_CARD parent, and all four
+// banking sub-types. The generic string said nothing about what an AWS secret access key
+// grants, or that an IBAN is a payment destination on its own.
+//
+// Added only with the last batch, on purpose: introduced earlier it would have been red
+// until all 49 were written, blocking every unrelated change in the meantime.
+func TestEveryTypeHasBespokeCopy(t *testing.T) {
+	known := core.KnownTypes()
+	if len(known) < 20 {
+		t.Fatalf("core.KnownTypes() returned %d types; this gate would cover almost nothing", len(known))
+	}
+
+	var generic []string
+	for _, typ := range known {
+		d := GetRuleDescription(typ)
+		// Compared against the fallback GetRuleDescription itself constructs rather than
+		// against a copy of the string: keeping a second literal in step with the first
+		// is the drift this file exists to prevent.
+		if d.Full == "Sensitive data of type "+typ+" was detected in the scanned content." {
+			generic = append(generic, typ)
+			continue
+		}
+		// Present-but-empty is worse than the fallback: it renders a blank section in
+		// docs/checks.md and an empty SARIF rule.
+		if strings.TrimSpace(d.Short) == "" || strings.TrimSpace(d.Full) == "" || strings.TrimSpace(d.Help) == "" {
+			t.Errorf("%s has an entry with an empty Short/Full/Help field", typ)
+		}
+
+		// gitlab-sast is covered by the SAME gate, deliberately.
+		//
+		// #662 was first scoped to SARIF alone, and that left gitlab-sast WORSE than the
+		// problem being fixed: 45 of 64 types had no check description and 49 had no
+		// remediation, so a gitlab consumer read "Sensitive data (X)" plus a generic
+		// "Review the detected..." for two-thirds of everything reported. A gate covering
+		// one formatter would have declared the class closed while half of it was open.
+		meta, ok := core.TypeMeta(typ)
+		if !ok {
+			t.Errorf("%s is in KnownTypes() but has no registry entry at all", typ)
+			continue
+		}
+		if strings.TrimSpace(meta.GitLabCheckDesc) == "" {
+			t.Errorf("%s has no GitLabCheckDesc, so gitlab-sast renders the generic "+
+				"\"Sensitive data (%s)\" for it", typ, typ)
+		}
+		if strings.TrimSpace(meta.GitLabRemediation) == "" {
+			t.Errorf("%s has no GitLabRemediation, so its gitlab-sast finding tells a "+
+				"reviewer what was found and nothing about what to do", typ)
+		}
+	}
+
+	if len(generic) > 0 {
+		sort.Strings(generic)
+		t.Errorf("%d of %d detection type(s) still fall back to the generic description:\n  %s\n\n"+
+			"That string is the whole explanation a reviewer sees for the finding. Add "+
+			"SARIFShort/SARIFFull/SARIFHelp in internal/core/typemeta.go, then regenerate the "+
+			"page with UPDATE_CHECK_DOCS=1 go test ./internal/formatters/sarif/.",
+			len(generic), len(known), strings.Join(generic, "\n  "))
+	}
+}
+
+// TestTheGenericFallbackStillWorks keeps the gate above from being read as "the fallback
+// is gone". A type minted after this test must still produce a usable rule.
+func TestTheGenericFallbackStillWorks(t *testing.T) {
+	const invented = "A_TYPE_NOBODY_HAS_DOCUMENTED_YET"
+	d := GetRuleDescription(invented)
+	if d.Short == "" || d.Full == "" || d.Help == "" {
+		t.Errorf("the generic fallback produced an empty field for an unknown type: %+v", d)
+	}
+	if !strings.Contains(d.Full, invented) {
+		t.Errorf("the generic fallback does not name the type: %q", d.Full)
 	}
 }

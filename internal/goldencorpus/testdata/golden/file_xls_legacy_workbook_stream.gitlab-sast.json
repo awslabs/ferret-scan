@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/budget.xls (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/budget.xls (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nStrip document properties before external publication. Author metadata survives copying and is not visible in the document body.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

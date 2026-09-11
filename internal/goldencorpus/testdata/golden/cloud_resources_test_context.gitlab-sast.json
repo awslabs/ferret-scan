@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nprod arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected aws resource arn in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nprod arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nRemove the ARN and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -48,14 +48,14 @@
         "file": "<golden:cloud_resources_test_context>",
         "start_line": 1
       },
-      "message": "Sensitive data (aws arn) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "AWS resource ARN detected: [HIDDEN] (confidence: HIGH)",
       "name": "Aws Arn Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (aws arn) in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nexample arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected aws resource arn in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nexample arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nRemove the ARN and supply resource identifiers from deployment configuration. They name real infrastructure, which helps an attacker map an environment and target it directly.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -74,7 +74,7 @@
         "file": "<golden:cloud_resources_test_context>",
         "start_line": 2
       },
-      "message": "Sensitive data (aws arn) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "AWS resource ARN detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Aws Arn Detected",
       "severity": "High"
     }

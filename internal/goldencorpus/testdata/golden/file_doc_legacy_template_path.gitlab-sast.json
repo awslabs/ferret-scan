@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (template info) in this file.\n\n**Location:** <TMPDIR>/from_template.doc (line 2)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nTemplate: \\\\corp-fs01\\templates\\quarterly.dot\n```\n\n**Additional Information:**\n- context_impact: -0.15\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected document template metadata in this file.\n\n**Location:** <TMPDIR>/from_template.doc (line 2)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nTemplate: \\\\corp-fs01\\templates\\quarterly.dot\n```\n\n**Additional Information:**\n- context_impact: -0.15\n- source: preprocessed_content\n\n**Remediation:**\nStrip document properties. Template paths often expose usernames and internal share layout.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -74,14 +74,14 @@
         "file": "from_template.doc",
         "start_line": 2
       },
-      "message": "Sensitive data (template info) detected: [HIDDEN] (confidence: MEDIUM)",
+      "message": "Document template metadata detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Template Info Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/from_template.doc (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/from_template.doc (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nStrip document properties before external publication. Author metadata survives copying and is not visible in the document body.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

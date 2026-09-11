@@ -167,7 +167,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in people.csv at line 2 (confidence: 75.0% - MEDIUM). Matched text: 'alice@example.com'"
+            "text": "Business Email Address Detected in people.csv at line 2 (confidence: 75.0% - MEDIUM). Matched text: 'alice@example.com'"
           },
           "properties": {
             "confidence": 75,
@@ -238,7 +238,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in people.csv at line 3 (confidence: 75.0% - MEDIUM). Matched text: 'bob@example.org'"
+            "text": "Business Email Address Detected in people.csv at line 3 (confidence: 75.0% - MEDIUM). Matched text: 'bob@example.org'"
           },
           "properties": {
             "confidence": 75,
@@ -309,7 +309,7 @@
             }
           ],
           "message": {
-            "text": "MASTERCARD Detected in people.csv at line 3 (confidence: 25.0% - LOW). Matched text: '5425233430109903'"
+            "text": "Mastercard Card Number Detected in people.csv at line 3 (confidence: 25.0% - LOW). Matched text: '5425233430109903'"
           },
           "properties": {
             "confidence": 25,
@@ -374,7 +374,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in people.csv at line 2 (confidence: 25.0% - LOW). Matched text: '4532015112830366'"
+            "text": "Visa Card Number Detected in people.csv at line 2 (confidence: 25.0% - LOW). Matched text: '4532015112830366'"
           },
           "properties": {
             "confidence": 25,
@@ -421,28 +421,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+                "text": "An email address on a domain that is not a known consumer, disposable, educational or government provider was detected — so it is most likely a corporate or organisational address. A business address identifies both a person and their employer."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Business addresses are frequently published, which lowers the confidentiality concern, but they are the primary target for phishing and credential stuffing, so a harvested list has real value. Remove them from committed fixtures; use the reserved example.com domain instead."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#business",
               "id": "BUSINESS",
               "shortDescription": {
-                "text": "BUSINESS Detected"
+                "text": "Business Email Address Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MASTERCARD was detected in the scanned content."
+                "text": "A payment card number in the Mastercard range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Mastercard issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mastercard",
               "id": "MASTERCARD",
               "shortDescription": {
-                "text": "MASTERCARD Detected"
+                "text": "Mastercard Card Number Detected"
               }
             },
             {
@@ -460,15 +460,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A payment card number in the Visa range was detected. It passed the Luhn check digit and its issuer identification number (IIN) is one Visa issues. Primary account numbers are cardholder data under PCI DSS and must not be stored in source, logs or configuration."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "If this is a real card number, treat it as a PCI DSS incident: remove it from the file AND from version-control history, then have the card reissued, because history rewriting does not recall a number an attacker may already have cloned. If it is test data, use the brand's published test numbers, which are Luhn-valid but declined by every processor."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Visa Card Number Detected"
               }
             }
           ],

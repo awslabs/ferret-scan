@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:passport_csv_header_column> at line 2 (confidence: 100.0% - HIGH). Matched text: 'jane.smith@acmecorp.io'"
+            "text": "Business Email Address Detected in <golden:passport_csv_header_column> at line 2 (confidence: 100.0% - HIGH). Matched text: 'jane.smith@acmecorp.io'"
           },
           "properties": {
             "confidence": 100,
@@ -97,7 +97,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:passport_csv_header_column> at line 3 (confidence: 100.0% - HIGH). Matched text: 'bob.jones@acmecorp.io'"
+            "text": "Business Email Address Detected in <golden:passport_csv_header_column> at line 3 (confidence: 100.0% - HIGH). Matched text: 'bob.jones@acmecorp.io'"
           },
           "properties": {
             "confidence": 100,
@@ -165,7 +165,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:passport_csv_header_column> at line 4 (confidence: 100.0% - HIGH). Matched text: 'amy.lee@acmecorp.io'"
+            "text": "Business Email Address Detected in <golden:passport_csv_header_column> at line 4 (confidence: 100.0% - HIGH). Matched text: 'amy.lee@acmecorp.io'"
           },
           "properties": {
             "confidence": 100,
@@ -233,7 +233,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in <golden:passport_csv_header_column> at line 5 (confidence: 100.0% - HIGH). Matched text: 'sam.roe@acmecorp.io'"
+            "text": "Business Email Address Detected in <golden:passport_csv_header_column> at line 5 (confidence: 100.0% - HIGH). Matched text: 'sam.roe@acmecorp.io'"
           },
           "properties": {
             "confidence": 100,
@@ -539,15 +539,15 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+                "text": "An email address on a domain that is not a known consumer, disposable, educational or government provider was detected — so it is most likely a corporate or organisational address. A business address identifies both a person and their employer."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Business addresses are frequently published, which lowers the confidentiality concern, but they are the primary target for phishing and credential stuffing, so a harvested list has real value. Remove them from committed fixtures; use the reserved example.com domain instead."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#business",
               "id": "BUSINESS",
               "shortDescription": {
-                "text": "BUSINESS Detected"
+                "text": "Business Email Address Detected"
               }
             },
             {

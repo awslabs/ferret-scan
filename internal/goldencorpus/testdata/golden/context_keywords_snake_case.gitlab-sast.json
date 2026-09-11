@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (date of birth) in this file.\n\n**Location:** <golden:context_keywords_snake_case> (line 3)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\nmy_dob_field: 1985-03-14\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected date of birth in this file.\n\n**Location:** <golden:context_keywords_snake_case> (line 3)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\nmy_dob_field: 1985-03-14\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nRemove or coarsen the date — a year or age band usually serves the purpose. Combined with a name it is enough to identify most individuals.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,7 +100,7 @@
         "file": "<golden:context_keywords_snake_case>",
         "start_line": 3
       },
-      "message": "Sensitive data (date of birth) detected: [HIDDEN] (confidence: HIGH)",
+      "message": "Date of birth detected: [HIDDEN] (confidence: HIGH)",
       "name": "Date Of Birth Detected",
       "severity": "Critical"
     },

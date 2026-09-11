@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "MEDICARE_MBI Detected in <golden:medical_long_form_labels> at line 3 (confidence: 85.0% - MEDIUM). Matched text: '1EG4TE5MK73'"
+            "text": "Medicare Beneficiary Identifier Detected in <golden:medical_long_form_labels> at line 3 (confidence: 85.0% - MEDIUM). Matched text: '1EG4TE5MK73'"
           },
           "properties": {
             "confidence": 85,
@@ -90,7 +90,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'X9876543210'"
+            "text": "Insurance Member ID Detected in <golden:medical_long_form_labels> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'X9876543210'"
           },
           "properties": {
             "confidence": 80,
@@ -153,7 +153,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'W1122009988'"
+            "text": "Insurance Member ID Detected in <golden:medical_long_form_labels> at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'W1122009988'"
           },
           "properties": {
             "confidence": 80,
@@ -216,7 +216,7 @@
             }
           ],
           "message": {
-            "text": "MRN Detected in <golden:medical_long_form_labels> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '4472901'"
+            "text": "Medical Record Number Detected in <golden:medical_long_form_labels> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '4472901'"
           },
           "properties": {
             "confidence": 80,
@@ -279,7 +279,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 1 (confidence: 70.0% - MEDIUM). Matched text: 'W1234567801'"
+            "text": "Insurance Member ID Detected in <golden:medical_long_form_labels> at line 1 (confidence: 70.0% - MEDIUM). Matched text: 'W1234567801'"
           },
           "properties": {
             "confidence": 70,
@@ -339,7 +339,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 5 (confidence: 70.0% - MEDIUM). Matched text: 'P5551234567'"
+            "text": "Insurance Member ID Detected in <golden:medical_long_form_labels> at line 5 (confidence: 70.0% - MEDIUM). Matched text: 'P5551234567'"
           },
           "properties": {
             "confidence": 70,
@@ -381,41 +381,41 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type INSURANCE_MEMBER_ID was detected in the scanned content."
+                "text": "A health insurance member identifier was detected. Formats are payer-specific with no common checksum, so this is a contextual match. A member ID is the key used to look up coverage and claims, which is why it is a frequent target for medical identity theft."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat as PHI. Confirm the match against surrounding text, since payer formats vary widely. Member IDs combined with a name and date of birth are enough to attempt fraudulent claims."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#insurance_member_id",
               "id": "INSURANCE_MEMBER_ID",
               "shortDescription": {
-                "text": "INSURANCE_MEMBER_ID Detected"
+                "text": "Insurance Member ID Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MEDICARE_MBI was detected in the scanned content."
+                "text": "A Medicare Beneficiary Identifier was detected and it matches the CMS format — eleven characters, position-specific letters and digits, with excluded letters that make coincidental matches unlikely. The MBI replaced the SSN-based HICN precisely so that a Medicare number would stop being an SSN, but it remains PHI and directly identifies a beneficiary."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat this as PHI under HIPAA. Remove it from the file and check whether it needs to be reported as a disclosure under your breach-assessment process; an MBI plus a name or date of birth is a strong identification."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#medicare_mbi",
               "id": "MEDICARE_MBI",
               "shortDescription": {
-                "text": "MEDICARE_MBI Detected"
+                "text": "Medicare Beneficiary Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MRN was detected in the scanned content."
+                "text": "A Medical Record Number was detected. MRNs are assigned per institution with no national format or checksum, so this is a contextual match — a nearby label is what distinguishes it from any other identifier. Within its issuing organisation an MRN is a direct patient key."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat as PHI. Because MRNs have no standard format, confirm the finding against the surrounding text before acting. An MRN is only meaningful to the issuing institution, which limits external misuse but not internal over-exposure."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mrn",
               "id": "MRN",
               "shortDescription": {
-                "text": "MRN Detected"
+                "text": "Medical Record Number Detected"
               }
             }
           ],
