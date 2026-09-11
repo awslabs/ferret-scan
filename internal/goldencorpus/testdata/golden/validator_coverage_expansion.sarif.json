@@ -499,7 +499,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/DRIVERS_LICENSE.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#drivers_license",
               "id": "DRIVERS_LICENSE",
               "shortDescription": {
                 "text": "DRIVERS_LICENSE Detected"
@@ -512,7 +512,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/OTP_SECRET.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#otp_secret",
               "id": "OTP_SECRET",
               "shortDescription": {
                 "text": "OTP_SECRET Detected"
@@ -525,7 +525,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/US_MILITARY_ADDRESS.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_military_address",
               "id": "US_MILITARY_ADDRESS",
               "shortDescription": {
                 "text": "US_MILITARY_ADDRESS Detected"
@@ -538,7 +538,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/US_RURAL_ROUTE.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_rural_route",
               "id": "US_RURAL_ROUTE",
               "shortDescription": {
                 "text": "US_RURAL_ROUTE Detected"
@@ -551,7 +551,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/US_STREET_ADDRESS.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_street_address",
               "id": "US_STREET_ADDRESS",
               "shortDescription": {
                 "text": "US_STREET_ADDRESS Detected"

@@ -225,7 +225,7 @@
               "help": {
                 "text": "Phone numbers may be considered PII under various privacy regulations. Evaluate whether this phone number should be present in the code. If it's for testing purposes, use clearly fake numbers (e.g., 555-0100 to 555-0199 in North America). For production use, store phone numbers in secure configuration systems with appropriate access controls."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PHONE.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#phone",
               "id": "PHONE",
               "shortDescription": {
                 "text": "Phone Number Detected"
@@ -238,7 +238,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
                 "text": "VISA Detected"

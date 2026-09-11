@@ -431,7 +431,7 @@
               "help": {
                 "text": "Phone numbers may be considered PII under various privacy regulations. Evaluate whether this phone number should be present in the code. If it's for testing purposes, use clearly fake numbers (e.g., 555-0100 to 555-0199 in North America). For production use, store phone numbers in secure configuration systems with appropriate access controls."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PHONE.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#phone",
               "id": "PHONE",
               "shortDescription": {
                 "text": "Phone Number Detected"
@@ -444,7 +444,7 @@
               "help": {
                 "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/SSN.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ssn",
               "id": "SSN",
               "shortDescription": {
                 "text": "Social Security Number Detected"
