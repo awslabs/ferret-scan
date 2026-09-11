@@ -1,4 +1,26 @@
 results:
+    - text: "021000021"
+      line_number: 6
+      type: ABA_ROUTING
+      confidence: 65
+      confidence_level: MEDIUM
+      filename: <golden:new_validators_decoys>
+      validator: bank_account
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0.6666666666666666
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: -5
+        federal_reserve_district: "02"
+        original_confidence: 65
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_path: document
     - text: DE89 3704 0044 0532 0130 00
       line_number: 5
       type: IBAN

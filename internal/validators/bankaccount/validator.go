@@ -73,24 +73,6 @@ var (
 		"SI": 19, "ES": 24, "SE": 24, "CH": 21, "TN": 24, "TR": 26, "UA": 29,
 		"AE": 23, "GB": 22, "VA": 22, "VG": 24,
 	}
-
-	// Known test ABA routing numbers that should NOT be flagged.
-	testRoutingNumbers = map[string]bool{
-		"011000015": true, // Federal Reserve Bank of Boston (commonly used in tests)
-		"021000021": true, // JP Morgan Chase (commonly used in docs/examples)
-		"000000000": true,
-		"123456789": true,
-		"111111111": true,
-		"222222222": true,
-		"333333333": true,
-		"444444444": true,
-		"555555555": true,
-		"666666666": true,
-		"777777777": true,
-		"888888888": true,
-		"999999999": true,
-		"987654321": true,
-	}
 )
 
 // containsKeyword reports whether text contains keyword as a whole word/phrase,
@@ -560,13 +542,25 @@ func (v *Validator) scanABA(ctx stdctx.Context, line string, lineNum int, origin
 			continue
 		}
 
-		// Validate ABA routing number
+		// Validate ABA routing number.
+		//
+		// Nothing follows this but the emit. There USED to be a
+		// `testRoutingNumbers[candidate]` denylist here, and it was a leak: of its
+		// 14 entries only two — 011000015 (FRB Boston) and 021000021 (JPMorgan
+		// Chase) — ever reached it, because isValidABA rejects the other twelve
+		// first on prefix range or checksum. Those two are REAL, in-production
+		// routing numbers that happen to be popular in documentation. So the
+		// denylist's entire net effect was to suppress two live values while
+		// contributing nothing against false positives, and because only reported
+		// findings reach the redactor, suppressing them left them in the cleartext
+		// of a "redacted" document. See #628.
+		//
+		// Deliberately not replaced by a shape rule here: every test-shaped value
+		// it covered (all-same digits, 123456789, 987654321) already fails
+		// isValidABA, and TestEveryFormerDenylistEntryIsRejectedOnItsOwnMerits
+		// pins that so a future widening of the prefix table cannot quietly turn
+		// one of them into a finding.
 		if !v.isValidABA(candidate) {
-			continue
-		}
-
-		// Skip known test routing numbers
-		if testRoutingNumbers[candidate] {
 			continue
 		}
 
@@ -740,7 +734,15 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	clean := stripNonDigits(match)
 	if len(clean) == 9 {
 		checks["valid_length"] = true
-		if testRoutingNumbers[clean] {
+		// A test-pattern SHAPE, not an identity denylist.
+		//
+		// This decides the "not_test" signal that --explain renders as a
+		// likely_test verdict, and it used to read the same testRoutingNumbers map
+		// scanABA did — which meant two real bank routing numbers were reported as
+		// test values. Every one of the twelve entries that was genuinely a test
+		// value is recognisable from its digits alone, so the shape rule is a
+		// complete replacement for the map minus its two false entries (#628).
+		if isTestPatternDigits(clean) {
 			checks["not_test"] = false
 			return 20.0, checks
 		}
@@ -1156,6 +1158,36 @@ func clampConfidence(c float64) float64 {
 		return 0
 	}
 	return c
+}
+
+// isTestPatternDigits reports whether a digit string is a value nobody was ever
+// assigned: every digit the same, or a run of consecutive digits ascending or
+// descending.
+//
+// Shape, never identity. The map this replaced listed two real routing numbers
+// alongside twelve shapes, and a reviewer reading a list of nine-digit literals
+// has no way to tell which is which — 021000021 and 111111111 look equally
+// synthetic. A predicate cannot make that mistake: a real value has to look
+// synthetic to be demoted.
+func isTestPatternDigits(s string) bool {
+	if len(s) < 4 {
+		// Too short for either shape to mean anything: "111" is as likely a
+		// legitimate three-digit field as a placeholder.
+		return false
+	}
+	allSame, ascending, descending := true, true, true
+	for i := 1; i < len(s); i++ {
+		if s[i] != s[0] {
+			allSame = false
+		}
+		if s[i] != s[i-1]+1 {
+			ascending = false
+		}
+		if s[i] != s[i-1]-1 {
+			descending = false
+		}
+	}
+	return allSame || ascending || descending
 }
 
 func stripNonDigits(s string) string {

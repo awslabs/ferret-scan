@@ -35,6 +35,27 @@ func TestBankAccountValidator_ABA_Positive(t *testing.T) {
 			description: "Valid ABA with bank keyword",
 		},
 		{
+			// Both of these sat in the NEGATIVE table until #628, asserting that a
+			// real routing number is "a known test routing number [that] should be
+			// suppressed". 011000015 is the Federal Reserve Bank of Boston and
+			// 021000021 is JPMorgan Chase; both are live, both pass the ABA prefix
+			// and checksum tests, and both are merely POPULAR in documentation.
+			// Suppressing them left them in the cleartext of redacted output,
+			// because only reported findings reach the redactor.
+			name:        "FRB Boston routing number, popular in docs but real",
+			content:     "Routing: 011000015",
+			expectMatch: true,
+			matchType:   "ABA_ROUTING",
+			description: "A real routing number is not a test value just because docs quote it",
+		},
+		{
+			name:        "JPMorgan Chase routing number, popular in docs but real",
+			content:     "Routing: 021000021",
+			expectMatch: true,
+			matchType:   "ABA_ROUTING",
+			description: "A real routing number is not a test value just because docs quote it",
+		},
+		{
 			name:        "ABA with ACH keyword",
 			content:     "ACH transfer routing 071000013",
 			expectMatch: true,
@@ -108,16 +129,6 @@ func TestBankAccountValidator_ABA_Negative(t *testing.T) {
 			name:        "ZIP code",
 			content:     "ZIP code: 123456789",
 			description: "ZIP codes should not match",
-		},
-		{
-			name:        "Test routing 011000015",
-			content:     "Routing: 011000015",
-			description: "Known test routing number should be suppressed",
-		},
-		{
-			name:        "Test routing 021000021",
-			content:     "Routing: 021000021",
-			description: "Known test routing number should be suppressed",
 		},
 		{
 			name:        "All same digits",
@@ -641,12 +652,25 @@ func TestBankAccountValidator_CalculateConfidence(t *testing.T) {
 			checkValue: true,
 		},
 		{
+			// Reaches not_test=false through isTestPatternDigits (consecutive
+			// ascending run), not through an identity denylist.
 			name:       "Test ABA",
 			match:      "123456789",
 			minConf:    0.0,
 			maxConf:    30.0,
 			checkKey:   "not_test",
 			checkValue: false,
+		},
+		{
+			// The other half of #628 in the confidence path: a real routing number
+			// scored 20.0 with not_test=false, so --explain called JPMorgan Chase a
+			// test value. It passes the checksum, so it scores as one.
+			name:       "Real routing number popular in docs",
+			match:      "021000021",
+			minConf:    60.0,
+			maxConf:    100.0,
+			checkKey:   "not_test",
+			checkValue: true,
 		},
 		{
 			name:       "Valid IBAN",

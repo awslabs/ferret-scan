@@ -13,6 +13,59 @@
                 },
                 "contextRegion": {
                   "snippet": {
+                    "text": "routing \nrouting 021000021 test transfer\n test transfer"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 18,
+                  "snippet": {
+                    "text": "routing 021000021 test transfer"
+                  },
+                  "startColumn": 9,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "ABA_ROUTING Detected in <golden:new_validators_decoys> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '021000021'"
+          },
+          "properties": {
+            "confidence": 65,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.7,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": -5,
+              "federal_reserve_district": "02",
+              "original_confidence": 65,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_path": "document"
+            },
+            "validator": "bank_account"
+          },
+          "rank": 57.5,
+          "ruleId": "ABA_ROUTING"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:new_validators_decoys>"
+                },
+                "contextRegion": {
+                  "snippet": {
                     "text": "test iban \ntest iban DE89 3704 0044 0532 0130 00 example fixture\n example fixture"
                   },
                   "startLine": 5
@@ -128,6 +181,19 @@
           "informationUri": "https://github.com/awslabs/ferret-scan",
           "name": "Ferret Scan",
           "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type ABA_ROUTING was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/ABA_ROUTING.md",
+              "id": "ABA_ROUTING",
+              "shortDescription": {
+                "text": "ABA_ROUTING Detected"
+              }
+            },
             {
               "fullDescription": {
                 "text": "Sensitive data of type IBAN was detected in the scanned content."
