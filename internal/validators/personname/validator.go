@@ -17,6 +17,8 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
+
+	"github.com/awslabs/ferret-scan/v2/internal/bytefold"
 )
 
 // Package-level variables for business suffixes and technical phrases to avoid repeated allocations
@@ -1227,7 +1229,29 @@ type lineContextCache struct {
 
 // newLineContextCache precomputes the line-global context signals for line.
 func (v *Validator) newLineContextCache(line string) *lineContextCache {
-	c := &lineContextCache{lowerLine: strings.ToLower(line), emptyLine: line == ""}
+	// bytefold.Lower, not strings.ToLower, because lowerLine is indexed with offsets
+	// taken from the UNFOLDED line and the two must stay in the same coordinate space.
+	//
+	// analyzeContextCached is called with patternMatch.StartIndex (validator.go:196,
+	// :281), which is a LINE offset -- proved by c.Text = line[c.StartIndex:c.EndIndex].
+	// matchIndex then returns it verbatim as an offset into lowerLine, and
+	// nearestWithin compares it against geo/business/product indices found IN
+	// lowerLine by specificPatternIndices. Unicode case mapping is not
+	// byte-length-preserving (U+212A KELVIN SIGN folds 3 bytes to 1), so any such rune
+	// earlier in the line desynchronised the two spaces and the proximity distance was
+	// simply wrong -- silently, because this is an integer comparison and not a slice,
+	// so nothing panicked and no disclosure channel could see it.
+	//
+	// Measured on v2.4.5, byte-length-identical inputs: "Jonathan Whitfield qqqqqq
+	// street" scored PERSON_NAME 92 HIGH while the same 33 bytes with two U+212A
+	// scored 57 LOW -- and vanished entirely under --confidence high. A GROW rune
+	// (U+023A) inverted it the other way, promoting 57 LOW to 92 HIGH. Both directions
+	// are attacker-controllable, and the demotion is a redaction bypass because only
+	// reported findings reach the redactor.
+	//
+	// Folding ASCII only costs nothing here: every keyword this cache is searched for
+	// is ASCII, so folding non-ASCII buys no match while destroying the invariant.
+	c := &lineContextCache{lowerLine: bytefold.Lower(line), emptyLine: line == ""}
 	if c.emptyLine {
 		return c
 	}
