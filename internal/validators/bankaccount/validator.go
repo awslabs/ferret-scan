@@ -14,6 +14,8 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
+
+	"github.com/awslabs/ferret-scan/v2/internal/bytefold"
 )
 
 // Pre-compiled regex patterns for bank account detection.
@@ -165,7 +167,7 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 // The latter is a CPU-exhaustion DoS on a single long line (a crafted 48KB line
 // otherwise pins a core for seconds). See the timing regression test.
 type lineContext struct {
-	lower          string  // strings.ToLower(line), for near-match keyword probes
+	lower          string  // bytefold.Lower(line), for near-match keyword probes
 	keywordImpact  float64 // AnalyzeContext result (positive/negative keyword scan)
 	strongNegative bool    // hasStrongNegativeContext(line)
 	bankingKeyword bool    // hasBankingKeywords(line)
@@ -179,7 +181,14 @@ type lineContext struct {
 // (and therefore identical impact) as the original per-match calls.
 func (v *Validator) buildLineContext(line string) lineContext {
 	return lineContext{
-		lower:          strings.ToLower(line),
+		// bytefold.Lower, not strings.ToLower. keywordNearMatch indexes this copy
+		// with offsets taken from `line`, and Unicode case mapping is not
+		// length-preserving: U+212A KELVIN SIGN folds 3 bytes to 1, so a line
+		// carrying a run of them made the offsets overshoot and panicked, which
+		// the router recovered into ZERO findings for the whole file at exit 0
+		// (#656). Folding only ASCII costs nothing here -- every keyword probed
+		// for is ASCII -- and makes the position invariant true by construction.
+		lower:          bytefold.Lower(line),
 		keywordImpact:  v.AnalyzeContext("", detector.ContextInfo{FullLine: line}),
 		strongNegative: v.hasStrongNegativeContext(line),
 		bankingKeyword: v.hasBankingKeywords(line),

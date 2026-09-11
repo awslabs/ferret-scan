@@ -116,18 +116,53 @@ func TestE2E_StalledDocumentValidatorDoesNotHangScan(t *testing.T) {
 // TestE2E_PanicInDocumentValidatorIsRecovered proves a document-validator panic
 // is converted to a recovered error instead of crashing the process. If the
 // panic were not recovered, the test binary would abort.
+//
+// It ALSO proves the panic is disclosed, which it previously asserted the
+// opposite of. The old body required err == nil, with the comment "the dual-path
+// bridge swallows per-validator errors into an empty result, so we assert only
+// that we get here without crashing" — an accurate observation promoted to a
+// requirement. That made the file internally inconsistent: the test immediately
+// above asserts errors.Is(err, DeadlineExceeded), i.e. that a scan cut short DOES
+// surface its reason. A panic is the same family and was the only member kept
+// silent, which is what #656 was: 0 findings, exit 0, --fail-on-incomplete also
+// 0, and a stats block claiming the file was processed.
+//
+// Two validators, not one, so "isolated" is actually tested. With a single
+// panicking validator, total failure and correct isolation produce the same
+// empty result and the name claims a property the body cannot see.
 func TestE2E_PanicInDocumentValidatorIsRecovered(t *testing.T) {
-	wrapper := buildWrapper(t, map[string]detector.Validator{"PANIC": panicDocValidator{}})
+	wrapper := buildWrapper(t, map[string]detector.Validator{
+		"PANIC": panicDocValidator{},
+		"OK":    &okDocValidator{},
+	})
 
-	// Should return normally (no panic propagates out of the stack). The
-	// dual-path bridge swallows per-validator errors into an empty result, so
-	// we assert only that we get here without crashing.
 	matches, err := wrapper.ValidateProcessedContentCtx(stdctx.Background(), processed("content"))
-	if err != nil {
-		t.Fatalf("unexpected top-level error (panic should be isolated per-validator): %v", err)
+
+	// Getting here at all is the process-survival half: an unrecovered panic
+	// would have aborted the test binary.
+	if err == nil {
+		t.Fatal("a recovered validator panic returned no error. The scan produced no findings " +
+			"for that validator across the whole file, so reporting success makes an abandoned " +
+			"scan indistinguishable from a clean one — and only reported findings are redacted.")
 	}
-	if len(matches) != 0 {
-		t.Errorf("expected no matches from a panicking validator, got %d", len(matches))
+	if !execguard.IsCoverageCutShort(err) {
+		t.Errorf("IsCoverageCutShort(%v) = false; the panic must reach the incomplete-coverage "+
+			"channel (exit 3 under --fail-on-incomplete, SARIF toolExecutionNotifications)", err)
+	}
+	if !errors.Is(err, execguard.ErrValidatorPanicked) {
+		t.Errorf("errors.Is(err, ErrValidatorPanicked) = false for %v", err)
+	}
+
+	// Isolation: the healthy validator's finding still arrives. This is the
+	// property that makes recovering the panic worth doing at all.
+	found := false
+	for _, m := range matches {
+		if m.Type == "OKTYPE" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the healthy validator's match was lost alongside the panicking one; got %v", matches)
 	}
 }
 

@@ -58,6 +58,29 @@ var ErrMatchBudgetExceeded = errors.New("validator match budget exceeded")
 // DISCLOSE the refusal, not to remove the bound.
 var ErrContentTooLarge = errors.New("validator declined oversize content")
 
+// ErrValidatorPanicked is returned by SafeRun when a validator panicked and the panic was
+// recovered. It belongs to the same family as ErrMatchBudgetExceeded and ErrContentTooLarge for
+// exactly the reason stated there, only more so: a panicking validator returns ZERO matches for the
+// WHOLE file, so if the panic is not disclosed the output is indistinguishable from "scanned it,
+// found nothing".
+//
+// It was not disclosed. Recovering the panic is right — one bad validator must not kill a scan — but
+// the recovered error's only consumer was a --debug log line, gated behind an observer that is nil
+// unless --debug is passed. Measured at HEAD before this change, on a file containing a VIN plus a
+// run of U+212A KELVIN SIGN (#656): 0 findings, exit 0, `--fail-on-incomplete` ALSO exit 0, SARIF
+// with zero toolExecutionNotifications, and a stats block reading files_processed 1, files_skipped 0,
+// total_findings 0. The tool affirmatively reported a clean, complete scan of a file it had abandoned.
+//
+// Because only reported findings reach the redactor, that is a redaction bypass an attacker triggers
+// with one character class, and the silence is the part that makes it dangerous: a crash would have
+// been noticed the first time.
+//
+// This is a DISCLOSURE fix, deliberately independent of any individual panic's cause. The specific
+// indexing bug behind #656 is fixed too (see internal/bytefold), but a bug class cannot be closed by
+// enumerating its instances — the NEXT panic, from a nil map or a slice bound nobody has thought of,
+// now reaches the same channel without anyone having to predict it.
+var ErrValidatorPanicked = errors.New("validator panicked")
+
 // IsCoverageCutShort reports whether err means a validator GUARD fired rather than a validator
 // failing: the scan completed, the result is partial, and whatever was found is genuine.
 //
@@ -74,7 +97,8 @@ func IsCoverageCutShort(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded) ||
 		errors.Is(err, context.Canceled) ||
 		errors.Is(err, ErrMatchBudgetExceeded) ||
-		errors.Is(err, ErrContentTooLarge)
+		errors.Is(err, ErrContentTooLarge) ||
+		errors.Is(err, ErrValidatorPanicked)
 }
 
 // ContextAwareValidator is an OPTIONAL extension of detector.Validator. A
@@ -110,7 +134,12 @@ func SafeRun(ctx context.Context, name string, fn func() ([]detector.Match, erro
 			// so re-running it only amplifies the failure. NewPermanentError
 			// produces a *resilience.ClassifiedError that ClassifyError returns
 			// verbatim (Retryable=false), bypassing string-based reclassification.
-			err = resilience.NewPermanentError(fmt.Sprintf("validator %q panicked: %v", name, r), nil)
+			// The sentinel goes in the CAUSE slot, not the message, so
+			// errors.Is traverses to it via ClassifiedError.Unwrap. Matching on
+			// the message text would work today and break the first time anyone
+			// reworded it.
+			err = resilience.NewPermanentError(
+				fmt.Sprintf("validator %q panicked: %v", name, r), ErrValidatorPanicked)
 		}
 	}()
 
