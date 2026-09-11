@@ -584,7 +584,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/DATE_OF_BIRTH.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#date_of_birth",
               "id": "DATE_OF_BIRTH",
               "shortDescription": {
                 "text": "DATE_OF_BIRTH Detected"
@@ -597,7 +597,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/DRIVERS_LICENSE.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#drivers_license",
               "id": "DRIVERS_LICENSE",
               "shortDescription": {
                 "text": "DRIVERS_LICENSE Detected"
@@ -610,7 +610,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/IBAN.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#iban",
               "id": "IBAN",
               "shortDescription": {
                 "text": "IBAN Detected"
@@ -623,7 +623,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/MEDICARE_MBI.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#medicare_mbi",
               "id": "MEDICARE_MBI",
               "shortDescription": {
                 "text": "MEDICARE_MBI Detected"
@@ -636,7 +636,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/US_STREET_ADDRESS.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_street_address",
               "id": "US_STREET_ADDRESS",
               "shortDescription": {
                 "text": "US_STREET_ADDRESS Detected"

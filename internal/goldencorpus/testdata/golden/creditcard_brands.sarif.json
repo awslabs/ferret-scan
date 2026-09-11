@@ -211,7 +211,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/AMERICAN_EXPRESS.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#american_express",
               "id": "AMERICAN_EXPRESS",
               "shortDescription": {
                 "text": "AMERICAN_EXPRESS Detected"
@@ -224,7 +224,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/MASTERCARD.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mastercard",
               "id": "MASTERCARD",
               "shortDescription": {
                 "text": "MASTERCARD Detected"
@@ -237,7 +237,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
                 "text": "VISA Detected"

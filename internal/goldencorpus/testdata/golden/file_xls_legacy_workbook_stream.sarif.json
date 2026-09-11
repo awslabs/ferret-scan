@@ -206,7 +206,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/AUTHOR_INFO.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#author_info",
               "id": "AUTHOR_INFO",
               "shortDescription": {
                 "text": "AUTHOR_INFO Detected"
@@ -219,7 +219,7 @@
               "help": {
                 "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/SSN.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ssn",
               "id": "SSN",
               "shortDescription": {
                 "text": "Social Security Number Detected"
@@ -232,7 +232,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VISA.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
                 "text": "VISA Detected"

@@ -142,7 +142,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/COMPANY_INFO.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#company_info",
               "id": "COMPANY_INFO",
               "shortDescription": {
                 "text": "COMPANY_INFO Detected"
@@ -155,7 +155,7 @@
               "help": {
                 "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/SSN.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ssn",
               "id": "SSN",
               "shortDescription": {
                 "text": "Social Security Number Detected"

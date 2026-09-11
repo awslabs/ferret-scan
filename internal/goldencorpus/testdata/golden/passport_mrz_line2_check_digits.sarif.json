@@ -132,7 +132,7 @@
               "help": {
                 "text": "Passport numbers are protected under various privacy and identity theft prevention regulations. They should never be stored in source code or logs. Remove this passport number immediately and ensure it is stored in a secure, encrypted system with strict access controls and audit logging."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PASSPORT.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#passport",
               "id": "PASSPORT",
               "shortDescription": {
                 "text": "Passport Number Detected"
