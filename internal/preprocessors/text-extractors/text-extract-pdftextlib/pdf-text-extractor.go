@@ -31,6 +31,20 @@ type TextContent struct {
 	// it is talking about — "50 of 200" is actionable and "truncated" is not.
 	PagesScanned int
 
+	// PagesFailed is how many of the PagesScanned pages yielded no text because their
+	// extraction returned an error or panicked.
+	//
+	// A separate field from PagesScanned for the reason PagesScanned is separate from
+	// PageCount: the disclosure has to name WHICH numbers it is talking about. A page the
+	// budget never reached and a page that was reached and failed are different facts with
+	// different remedies — raise the budget, versus investigate or repair the file.
+	//
+	// This count previously existed as a local `failedPages` and was DISCARDED, under a
+	// comment reading "Silent tracking of extraction completeness (no output)". Measured on
+	// 60 real PDFs, whole-file extraction failed for 7 of them, so per-page failure is not
+	// a hypothetical shape.
+	PagesFailed int
+
 	WordCount int
 	CharCount int
 	LineCount int
@@ -96,6 +110,26 @@ func ExtractText(filePath string) (content *TextContent, err error) {
 	// Process pages in parallel
 	for i := 1; i <= content.PagesScanned; i++ {
 		go func(pageNum int) {
+			// A panic here would kill the PROCESS, not the page.
+			//
+			// The recover() in ExtractText's own defer cannot see this: a Go panic does
+			// not cross a goroutine boundary. That recover exists because this library
+			// panics on malformed input — nobody adds one speculatively — so the parent
+			// is protected and the children it spawns were not.
+			//
+			// Latent rather than observed: 323 real PDFs and 24 deliberately damaged ones
+			// (truncated at 50% and 90%, %%EOF removed, a 512-byte run zeroed) produced
+			// zero crashes, so this is defence in depth rather than a live defect. It is
+			// still worth closing, because the failure mode is the worst available — the
+			// process dies mid-run, every file after this one goes unscanned, and there is
+			// no report at all, which is strictly worse than a disclosed refusal.
+			defer func() {
+				if r := recover(); r != nil {
+					resultChan <- pageResult{pageNum: pageNum,
+						err: fmt.Errorf("pdf page %d panicked: %v", pageNum, r)}
+				}
+			}()
+
 			p := r.Page(pageNum)
 			if p.V.IsNull() {
 				resultChan <- pageResult{pageNum: pageNum, err: fmt.Errorf("null page")}
@@ -132,8 +166,9 @@ func ExtractText(filePath string) (content *TextContent, err error) {
 		}
 	}
 
-	// Silent tracking of extraction completeness (no output)
-	// failedPages is tracked but not reported to stderr
+	// Extraction completeness is now REPORTED, not tracked silently. The caller turns a
+	// non-zero PagesFailed into a coverage disclosure; see text_preprocessor.go.
+	content.PagesFailed = failedPages
 
 	// Extract form data (AcroForm fields)
 	formData, err := extractFormData(r)

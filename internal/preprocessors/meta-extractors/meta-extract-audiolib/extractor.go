@@ -131,6 +131,20 @@ func (e *AudioExtractor) ExtractMetadataWithContext(ctx context.Context, filePat
 	}, 1)
 
 	go func() {
+		// A panic here would kill the PROCESS, not the file. A Go panic does not cross a
+		// goroutine boundary, so a recover in any caller cannot see it, and this body runs
+		// a third-party parser over untrusted file bytes. The send is safe from the defer
+		// because `done` is buffered (cap 1) — the select below may already have timed out
+		// and stopped reading, and an unbuffered send would then leak this goroutine.
+		defer func() {
+			if r := recover(); r != nil {
+				done <- struct {
+					metadata *AudioMetadata
+					err      error
+				}{nil, fmt.Errorf("audio metadata extraction panicked: %v", r)}
+			}
+		}()
+
 		metadata, err := extractor.ExtractMetadata(filePath)
 		done <- struct {
 			metadata *AudioMetadata

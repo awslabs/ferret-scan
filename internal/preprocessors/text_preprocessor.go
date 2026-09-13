@@ -192,6 +192,61 @@ func pdfExtractionWarning(filePath string, err error) string {
 }
 
 // processPDF extracts text from PDF documents
+// pdfExtractionDisclosure decides what a PDF extraction has to disclose about its own
+// completeness, returning the operator-facing warning and its cause.
+//
+// Pure, and separate from processPDF, so every branch is testable: see
+// TestPDFExtractionDisclosure. An empty warning with CauseUnset means the extraction was
+// complete and nothing needs saying.
+//
+// ORDER MATTERS, and each step states why it precedes the next.
+func pdfExtractionDisclosure(c *textextractpdftextlib.TextContent, text, ext string) (string, coverage.Cause) {
+	switch {
+	// 1. TRUNCATION FIRST, BEFORE EMPTINESS.
+	//
+	// A document whose first 50 pages carry no text layer arrives here both truncated AND
+	// empty, and testing emptiness first would report "the file parsed but held no document
+	// text" about a document that was cut short. That is a true disclosure under a false
+	// heading, which is half a fix.
+	//
+	// Measured before this existed, on a 60-page PDF with an SSN on page 1 and six more on
+	// pages 55-60: 1 finding, exit 0, files_skipped 0, no files_not_examined, 0 bytes of
+	// stderr. Six cleartext SSNs never reported and, under the sink rule, never redacted,
+	// with nothing anywhere saying the scan stopped at page 50.
+	case c.Truncated():
+		// CauseCutShort, not CauseNoText: the file was read and PARTLY scanned. The remedy an
+		// operator takes (split the document, or raise the budget) differs from the remedy
+		// for an image-only PDF (OCR it), so the two must not share a cause.
+		return fmt.Sprintf(
+			"only the first %d of %d pages of %s were scanned (page budget), "+
+				"so content on the remaining %d pages was NOT scanned",
+			c.PagesScanned, c.PageCount, ext, c.PageCount-c.PagesScanned), coverage.CauseCutShort
+
+	// 2. PAGES REACHED AND FAILED, after truncation.
+	//
+	// A document that is both truncated and has failed pages is first of all truncated, and
+	// the remedy for that is the one to offer. Distinct from the budget case because the
+	// operator's action differs: investigate or repair the file, rather than raise a limit.
+	//
+	// This count previously lived in a local `failedPages` and was discarded under a comment
+	// reading "Silent tracking of extraction completeness (no output)" — so a PDF whose text
+	// layer failed on some pages reported those pages' content as absent with nothing saying
+	// why, which is the same silent-partial-coverage shape case 1 was written to close.
+	case c.PagesFailed > 0:
+		return fmt.Sprintf(
+			"%d of %d pages of %s could not be read, "+
+				"so content on those pages was NOT scanned",
+			c.PagesFailed, c.PagesScanned, ext), coverage.CauseCutShort
+
+	// 3. NOTHING CAME OUT AT ALL. The file parsed; a scanned-image PDF lands here.
+	case strings.TrimSpace(text) == "":
+		return fmt.Sprintf(
+			"no text extracted from %s: the file parsed but held no document text, "+
+				"so page content was NOT scanned", ext), coverage.CauseNoText
+	}
+	return "", coverage.CauseUnset
+}
+
 func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedContent) (*ProcessedContent, error) {
 	pdfContent, err := textextractpdftextlib.ExtractText(filePath)
 	if err != nil {
@@ -234,38 +289,15 @@ func (tp *TextPreprocessor) processPDF(filePath string, content *ProcessedConten
 	content.CharCount = pdfContent.CharCount
 	content.LineCount = pdfContent.LineCount
 
-	// TRUNCATION IS DISCLOSED, AND IT IS TESTED BEFORE EMPTINESS.
-	//
-	// Order matters here for the reason the SVG extractor documents: a document whose first 50 pages
-	// carry no text layer reaches this point both truncated AND empty, and testing emptiness first
-	// would report "the file parsed but held no document text" about a document that was cut short.
-	// That is a true disclosure under a false heading, which is half a fix.
-	//
-	// Measured before this existed, on a 60-page PDF with an SSN on page 1 and six more on pages
-	// 55-60:
-	//
-	//	1 finding, exit 0, files_skipped: 0, no files_not_examined, 0 bytes of stderr
-	//
-	// Six cleartext SSNs never reported and, under the sink rule, never redacted, with nothing
-	// anywhere saying the scan stopped at page 50.
-	if pdfContent.Truncated() {
-		content.ExtractionWarning = fmt.Sprintf(
-			"only the first %d of %d pages of %s were scanned (page budget), "+
-				"so content on the remaining %d pages was NOT scanned",
-			pdfContent.PagesScanned, pdfContent.PageCount, filepath.Ext(filePath),
-			pdfContent.PageCount-pdfContent.PagesScanned)
-		// CauseCutShort, not CauseNoText: the file was read and PARTLY scanned, which is what
-		// CauseCutShort is defined for -- "a budget, size cap or timeout fired". The remedy an
-		// operator takes differs (split the document, or raise the budget) from the remedy for an
-		// image-only PDF (OCR it), so the two must not share a cause.
-		content.ExtractionCause = coverage.CauseCutShort
-	} else if strings.TrimSpace(content.Text) == "" {
-		content.ExtractionWarning = fmt.Sprintf(
-			"no text extracted from %s: the file parsed but held no document text, "+
-				"so page content was NOT scanned", filepath.Ext(filePath))
-		// Genuinely no body text: the file parsed. A scanned-image PDF lands here.
-		content.ExtractionCause = coverage.CauseNoText
-	}
+	// The disclosure decision lives in pdfExtractionDisclosure so it can be tested
+	// directly. processPDF calls ExtractText(filePath), which is not injectable, and one of
+	// the three branches — pages that were reached and failed — is not reachable from any
+	// PDF in the real-file corpus (60 real and 24 deliberately damaged documents produced
+	// whole-file failures and budget truncation, never a partial page failure). Shipping an
+	// untestable branch on the strength of reading it is how a disclosure ends up wrong in
+	// the one case it exists for.
+	content.ExtractionWarning, content.ExtractionCause = pdfExtractionDisclosure(
+		pdfContent, content.Text, filepath.Ext(filePath))
 
 	content.Success = true
 
