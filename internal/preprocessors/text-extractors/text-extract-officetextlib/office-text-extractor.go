@@ -198,6 +198,38 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 	footerFiles := pkg.matching("word/footer", ".xml")
 	corePropsFile := pkg.lookup("docProps/core.xml")
 
+	// Comments, footnotes and endnotes carry ordinary user prose and were read by nothing.
+	//
+	// Measured: an SSN planted in word/comments.xml, word/footnotes.xml or word/endnotes.xml was
+	// absent from --preprocess-only output, reported by no validator, and therefore written to the
+	// "redacted" copy in cleartext at exit 0 with an empty stderr. Under the sink rule an undetected
+	// value is an unredacted value, so a part the extractor does not read is a leak and not merely
+	// reduced coverage. Header and footer parts on the two lines above were already read and
+	// redacted correctly, which is what made the omission invisible — the reviewer's frame of
+	// reference was "running text is covered".
+	//
+	// Not hypothetical parts: across 330 real .docx, word/footnotes.xml appears in 158, endnotes in
+	// 150 and comments in 58 — 48%, 45% and 18%. A review comment naming a person is exactly the
+	// sort of value this tool exists to find.
+	//
+	// Located by relationship AND by conventional name, then unioned, for the reason ooxml_parts.go
+	// documents: a producer chooses part names, and one capital letter has previously dropped a whole
+	// body part. matching() with the "word/comments" prefix also picks up commentsExtended.xml and
+	// commentsIds.xml, which is harmless — they hold ids and timestamps, so they contribute nearly
+	// nothing, and reading a part with no prose costs less than missing one with prose.
+	ownerPart := ""
+	if len(documentFiles) > 0 {
+		ownerPart = documentFiles[0].Name
+	}
+	annotationFiles := unionParts(
+		pkg.relatedParts(ownerPart, "comments"),
+		pkg.relatedParts(ownerPart, "footnotes"),
+		pkg.relatedParts(ownerPart, "endnotes"),
+		pkg.matching("word/comments", ".xml"),
+		pkg.matching("word/footnotes", ".xml"),
+		pkg.matching("word/endnotes", ".xml"),
+	)
+
 	if len(documentFiles) == 0 {
 		return content, fmt.Errorf("document.xml not found in the archive")
 	}
@@ -298,6 +330,21 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 	// Add main document
 	allText.WriteString(cleanedXML)
 
+	// Then comments, footnotes and endnotes, which sit below the body in the reading order a
+	// human would use.
+	for _, annotationFile := range annotationFiles {
+		// Stop once cumulative extracted text hits the cap (LOW-1), the same bound the header and
+		// footer loops respect.
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
+		annotationText, err := extractWordXMLText(annotationFile)
+		if err == nil && annotationText != "" {
+			allText.WriteString("\n\n--- ANNOTATIONS ---\n")
+			allText.WriteString(annotationText)
+		}
+	}
+
 	// Add footers last
 	for _, footerFile := range footerFiles {
 		// Stop once cumulative extracted text hits the cap (LOW-1).
@@ -310,6 +357,8 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 			allText.WriteString(footerText)
 		}
 	}
+
+	appendExternalRelationshipTargets(&allText, pkg)
 
 	content.Text = allText.String()
 
@@ -356,6 +405,31 @@ func extractXlsxText(filePath string, content *TextContent) (*TextContent, error
 	sharedStringsFiles := unionParts(relShared, []*zip.File{pkg.lookup("xl/sharedStrings.xml")})
 	corePropsFile := pkg.lookup("docProps/core.xml")
 
+	// Cell comments, in both the classic and the threaded form.
+	//
+	// Measured: an SSN planted in xl/comments1.xml was absent from --preprocess-only output, reported
+	// by nothing, and written to the "redacted" copy in cleartext at exit 0. Comments are where a
+	// reviewer writes about a row, so they carry names and identifiers by their nature; on the real
+	// corpus xl/comments*.xml held PERSON_NAME at confidence 100.
+	//
+	// Threaded comments live in xl/threadedComments/ with their authors in xl/persons/, which is a
+	// separate part holding display names — collected here too, because an author identity is exactly
+	// the kind of value the tool reports elsewhere from docProps.
+	//
+	// Resolved by relationship from each worksheet, unioned with the conventional prefixes, for the
+	// reason ooxml_parts.go documents.
+	var relComments []*zip.File
+	for _, ws := range worksheets {
+		relComments = append(relComments, pkg.relatedParts(ws.Name, "comments")...)
+		relComments = append(relComments, pkg.relatedParts(ws.Name, "threadedComment")...)
+	}
+	commentFiles := unionParts(
+		relComments,
+		pkg.matching("xl/comments", ".xml"),
+		pkg.matching("xl/threadedComments/", ".xml"),
+		pkg.matching("xl/persons/", ".xml"),
+	)
+
 	// Shared strings are referenced by POSITION, so only one table can be
 	// authoritative; the relationship-resolved one leads and a conventional-name
 	// hit is the fallback. Concatenating two tables would shift every index.
@@ -392,6 +466,24 @@ func extractXlsxText(filePath string, content *TextContent) (*TextContent, error
 		allText.WriteString(sheetText)
 		allText.WriteString("\n\n")
 	}
+
+	// Comments after the sheets, so a comment cannot be mistaken for cell content.
+	for _, commentFile := range commentFiles {
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
+		// extractWordXMLText is named for Word but is a generic XML-to-text strip: its w:p, w:tab and
+		// fldSimple rules simply do not match here, and what remains — remove every tag, decode
+		// entities, collapse whitespace — is exactly what a comments part needs.
+		commentText, err := extractWordXMLText(commentFile)
+		if err == nil && commentText != "" {
+			allText.WriteString("--- COMMENTS ---\n")
+			allText.WriteString(commentText)
+			allText.WriteString("\n\n")
+		}
+	}
+
+	appendExternalRelationshipTargets(&allText, pkg)
 
 	content.Text = allText.String()
 
@@ -493,6 +585,8 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 		}
 		allText.WriteString("\n\n")
 	}
+
+	appendExternalRelationshipTargets(&allText, pkg)
 
 	content.Text = allText.String()
 	content.PageCount = len(slides)
@@ -1194,3 +1288,64 @@ func countWords(text string) int {
 	words := strings.Fields(text)
 	return len(words)
 }
+
+// appendExternalRelationshipTargets writes the package's external relationship targets, if any, to
+// the extracted text.
+//
+// Shared by all three OOXML formats because a hyperlink is stored the same way in each. Emitted under
+// their own label rather than inline, so a URL cannot appear to be part of a sentence in the body and
+// shift a validator's context judgement — several validators weigh surrounding words, and splicing
+// link targets into prose would change the scoring of the prose.
+//
+// Nothing is written when there are no external links, so a document without them extracts
+// byte-identically to before and no golden output moves.
+func appendExternalRelationshipTargets(allText *strings.Builder, pkg *ooxmlPackage) {
+	targets := pkg.externalRelationshipTargets()
+	if len(targets) == 0 {
+		return
+	}
+	if allText.Len() > MaxTotalTextBytes {
+		return
+	}
+	allText.WriteString("\n\n--- LINK TARGETS ---\n")
+	for _, t := range targets {
+		if allText.Len() > MaxTotalTextBytes {
+			break
+		}
+		allText.WriteString(t)
+		allText.WriteString("\n")
+	}
+}
+
+// customXml/item*.xml is deliberately NOT scanned, and this note records the measurement so the
+// decision is not re-litigated from first principles.
+//
+// It looks like it should be: it is USER content (the Word document information panel, SharePoint
+// content-type columns, any structured data an organisation binds to a template), it appears in 207 of
+// 402 real Office documents, and nothing reads it — so a value there is a silent leak by the same
+// argument that justified adding comments, footnotes, endnotes and hyperlink targets above.
+//
+// It was implemented, measured against 422 real containers, and REMOVED. It added 403 findings of which
+// 337 were LOW and 34 MEDIUM, and sampling every type showed them to be false positives essentially
+// throughout:
+//
+//	PHONE 210            "00372960...", "0011874.", "00125.37" — zero-padded record ids and decimal
+//	                     amounts, not telephone numbers
+//	DRIVERS_LICENSE 99   "00103566", "00109484" — sequential zero-padded row ids
+//	SSN 27               nine-digit record ids
+//	PERSON_NAME 30       "Hong Kong", "Saudi Arabia", "Amazon Web Services" — places and companies,
+//	                     at confidence 93-100, i.e. in the band a reviewer actually reads
+//
+// The reason is structural rather than fixable by tuning: customXml holds a column-per-element schema
+// dump, so it is mostly bare identifiers with no surrounding words, and every validator that leans on
+// context has nothing to lean on. That is the opposite of a comment or a footnote, which is prose.
+//
+// An earlier estimate was positive and wrong, which is why this note exists: dumping each part's
+// character data to a .txt and scanning THAT reported EMAIL, GMAIL and GOVERNMENT at confidence 100 and
+// looked like a clear win. Scanning through the real pipeline is what showed the truth. Measure the
+// channel you are changing, not a proxy for it.
+//
+// The part is still covered for REMOVAL — recordCoverageForRemainingParts rewrites a reported value
+// wherever it physically appears, customXml included — so this is a detection gap and not a redaction
+// leak. Reconsidering it needs a precision story for bare identifiers first, not another extraction
+// call.

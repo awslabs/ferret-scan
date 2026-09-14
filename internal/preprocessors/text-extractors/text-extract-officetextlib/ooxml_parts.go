@@ -7,6 +7,7 @@ import (
 	"archive/zip"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -193,4 +194,66 @@ func trimPartLabel(name, prefix string) string {
 		name = name[:len(name)-len(".xml")]
 	}
 	return name
+}
+
+// externalRelationshipTargets returns every EXTERNAL relationship target in the package, in
+// deterministic order.
+//
+// relatedParts deliberately skips external relationships, and rightly so — its job is to resolve a
+// relationship to a PART inside the zip, and an external one points outside it. But the target itself
+// is content: a hyperlink is stored as
+//
+//	<Relationship Id="rId7" Type=".../hyperlink" Target="mailto:someone@example.org"
+//	              TargetMode="External"/>
+//
+// so an address or an internal URL a user linked lives only in a *.rels part, as an ATTRIBUTE, and was
+// therefore read by nothing. Measured: an identifier planted in a hyperlink target was absent from
+// --preprocess-only output, reported by no validator, and written to the "redacted" copy in cleartext
+// at exit 0 (#670). Every one of 330 real .docx sampled contains word/_rels/document.xml.rels, so this
+// is not a corner of the format.
+//
+// Targets only, never Id or Type: those are producer-generated identifiers with no user content, and
+// emitting them would add noise to every scan for no recall.
+//
+// Deduplicated, because the same address is commonly linked from several places and a reader does not
+// benefit from seeing it once per link. Sorted for reproducibility — this text reaches findings, and a
+// map iteration order would make line numbers move between runs.
+func (p *ooxmlPackage) externalRelationshipTargets() []string {
+	seen := make(map[string]struct{})
+	for _, f := range p.files {
+		if !strings.HasSuffix(strings.ToLower(f.Name), ".rels") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+		data, err := readZipEntryLimited(rc)
+		rc.Close()
+		if err != nil {
+			continue
+		}
+		for _, elem := range relElemRe.FindAllString(string(data), -1) {
+			var target string
+			external := false
+			for _, attr := range relAttrRe.FindAllStringSubmatch(elem, -1) {
+				switch strings.ToLower(attr[1]) {
+				case "target":
+					target = attr[2]
+				case "targetmode":
+					external = strings.EqualFold(attr[2], "External")
+				}
+			}
+			if !external || target == "" {
+				continue
+			}
+			seen[decodeXMLEntities(target)] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for t := range seen {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
 }
