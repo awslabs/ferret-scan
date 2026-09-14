@@ -284,20 +284,59 @@ func Synthetic(original, dataType string) (string, error) {
 	}
 }
 
+// syntheticCreditCard produces a card-SHAPED value that is deliberately Luhn-INVALID and
+// keeps the original's issuer prefix.
+//
+// Two defects were fixed here, both measured (#669).
+//
+//  1. IT PRODUCED VALID CARD NUMBERS. The prefix was drawn at random from {4000, 4111,
+//     5555, 3782} — all real issuer ranges — and luhnCheck appended a CORRECT check digit,
+//     so the value written into a "redacted" document was a structurally valid primary
+//     account number. Re-scanning a redacted file reported a card at 95, which defeats the
+//     thing a user does before sharing a document; and a randomly generated Luhn-valid
+//     number on a live IIN is a number an issuer may actually have assigned.
+//
+//  2. IT DID NOT PRESERVE THE BRAND. Because the prefix was random rather than taken from
+//     the original, a Visa redacted to a Mastercard and vice versa — measured, 12 of 12
+//     replacements for a Visa input came back detected as MASTERCARD. That is a silent
+//     change of meaning in a document, in a strategy whose entire purpose is plausibility.
+//
+// The fix keeps the original's leading digits, so brand and format survive, and inverts
+// the final check digit. Length, grouping and separators are unchanged, so a
+// format-sensitive consumer sees what it expects; every Luhn validator rejects it.
+//
+// An alternative was the brands' published test numbers, but those are FEWER than the
+// values needing replacement and are themselves Luhn-valid, so a document with several
+// cards would repeat one — losing the distinctness the synthetic strategy exists to keep.
 func syntheticCreditCard(original string) (string, error) {
-	prefixes := []string{"4000", "4111", "5555", "3782"}
-	prefix := prefixes[secureRandom(len(prefixes))]
-
-	var digits []int
-	for _, c := range prefix {
+	// Take the issuer prefix from the ORIGINAL so the brand is preserved.
+	var origDigits []int
+	for _, c := range original {
 		if c >= '0' && c <= '9' {
-			digits = append(digits, int(c-'0'))
+			origDigits = append(origDigits, int(c-'0'))
 		}
 	}
-	for len(digits) < 15 {
+	// A card shorter than a plausible IIN cannot carry a brand; fall back to a Visa-shaped
+	// prefix rather than indexing past the end.
+	prefixLen := 4
+	if len(origDigits) < prefixLen {
+		prefixLen = len(origDigits)
+	}
+	digits := make([]int, 0, len(origDigits))
+	digits = append(digits, origDigits[:prefixLen]...)
+	if len(digits) == 0 {
+		digits = append(digits, 4, 0, 0, 0)
+	}
+
+	// Fill to one short of the original's digit count, then append a WRONG check digit.
+	target := len(origDigits)
+	if target < 12 {
+		target = 12 // shortest real card length; keeps luhn arithmetic meaningful
+	}
+	for len(digits) < target-1 {
 		digits = append(digits, secureRandom(10))
 	}
-	digits = append(digits, luhnCheck(digits))
+	digits = append(digits, invalidLuhnDigit(digits))
 
 	di := 0
 	var b strings.Builder
@@ -404,6 +443,19 @@ func SyntheticName(original string) (string, error) {
 // syntheticSecret generates a realistic-looking but fake secret value.
 // It preserves the prefix pattern of well-known token formats so the
 // replacement is recognisable as the same type of credential.
+// awsExampleMarker is the literal AWS embeds in the credential values it publishes in
+// documentation, and the literal internal/validators/secrets keys its placeholder ceiling
+// on. Duplicated rather than imported to avoid a dependency from a redactor onto a
+// validator; a test asserts the two agree.
+const awsExampleMarker = "EXAMPLE"
+
+// exampleBody is woven into synthetic credentials whose issuer publishes no reserved test
+// namespace, so the value cannot be mistaken for a live secret by a person triaging a
+// document. Unlike the AWS marker it carries no scoring meaning — no validator keys on it
+// — so it is a legibility measure, not a detection one, and the gate in pkg/redact asserts
+// which types actually stop being reported.
+const exampleBody = "EXAMPLE"
+
 func syntheticSecret(original, dataType string) (string, error) {
 	const hexChars = "0123456789abcdef"
 	const alphaNum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -425,30 +477,38 @@ func syntheticSecret(original, dataType string) (string, error) {
 
 	switch dataType {
 	case "AWS_ACCESS_KEY":
-		// AKIA + 16 uppercase alphanumeric chars
+		// AKIA + 9 random chars + "EXAMPLE" (16 after the prefix, as AWS keys are).
+		//
+		// The marker is not decorative: internal/validators/secrets recognises "EXAMPLE"
+		// anywhere in an AWS credential as a documentation placeholder and caps it at
+		// awsDocPlaceholderCeiling. Measured — AKIAU2I2TJRJVJN7HEHA scores 100, and the same
+		// shape carrying EXAMPLE scores 15. So this reuses the tool's own placeholder
+		// machinery instead of inventing a convention, and the replacement is unmistakable
+		// to a human reading the file as well as to the scanner. AWS publishes
+		// AKIAIOSFODNN7EXAMPLE for exactly this purpose.
 		upper := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-		b := make([]byte, 16)
+		b := make([]byte, 9)
 		for i := range b {
 			b[i] = upper[secureRandom(len(upper))]
 		}
-		return "AKIA" + string(b), nil
+		return "AKIA" + string(b) + awsExampleMarker, nil
 	case "GITHUB_TOKEN":
 		// Preserve prefix (ghp_, gho_, etc.) from original
 		prefix := "ghp_"
 		if len(original) >= 4 {
 			prefix = original[:4]
 		}
-		return prefix + randAlphaNum(36), nil
+		return prefix + exampleBody + randAlphaNum(29), nil
 	case "GOOGLE_CLOUD_API_KEY":
-		return "AIza" + randAlphaNum(35), nil
+		return "AIza" + exampleBody + randAlphaNum(28), nil
 	case "STRIPE_API_KEY":
 		prefix := "sk_test_"
 		if strings.HasPrefix(original, "pk_") {
 			prefix = "pk_test_"
 		}
-		return prefix + randAlphaNum(24), nil
+		return prefix + exampleBody + randAlphaNum(17), nil
 	case "GITLAB_TOKEN":
-		return "glpat-" + randAlphaNum(20), nil
+		return "glpat-" + exampleBody + randAlphaNum(13), nil
 	case "DOCKER_TOKEN":
 		return "dckr_pat_" + randAlphaNum(36), nil
 	case "SLACK_TOKEN":
@@ -657,6 +717,16 @@ func randomString(length int) (string, error) {
 		b[i] = charset[secureRandom(len(charset))]
 	}
 	return string(b), nil
+}
+
+// invalidLuhnDigit returns a final digit that makes the sequence FAIL the Luhn check.
+//
+// Deliberately (correct + 1) mod 10 rather than a random digit: a random choice would land
+// on the correct digit one time in ten, so one card in ten would still be valid — and a
+// generator that is right 90% of the time is the hardest kind of bug to notice, because
+// every test that samples once usually passes. This is wrong by construction.
+func invalidLuhnDigit(digits []int) int {
+	return (luhnCheck(digits) + 1) % 10
 }
 
 func luhnCheck(digits []int) int {
