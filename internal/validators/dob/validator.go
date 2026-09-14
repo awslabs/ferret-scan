@@ -14,6 +14,8 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
+
+	"github.com/awslabs/ferret-scan/v2/internal/bytefold"
 )
 
 // Pre-compiled regex patterns for date detection.
@@ -181,7 +183,21 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			}
 
 			if !lineScanned {
-				lowerLineCached = strings.ToLower(line)
+				// bytefold.Lower, not strings.ToLower: this copy is indexed at
+				// validator.go:223 with cand.start+len(cand.text), an offset produced
+				// by the date regexes run on the UNFOLDED line. Unicode case mapping
+				// is not byte-length-preserving, so a rune such as U+212A KELVIN SIGN
+				// (3 bytes -> 1) earlier in the line shifted the two apart.
+				//
+				// The failure was a FALSE POSITIVE, not a panic, because
+				// disqualifierOpensAsideAfter fails OPEN: its own guard
+				// (matchEnd >= len(lowerLine), :588) absorbs the overshoot and returns
+				// false, so the synthetic-marker rule simply stops firing. Measured on
+				// v2.4.5: "date of birth: 03/14/1985 (test)" is correctly suppressed to
+				// 0 findings, but with two U+212A ahead of it the same line publishes
+				// DATE_OF_BIRTH at 90 HIGH. Every keyword read from this copy is ASCII,
+				// so folding only ASCII loses no match.
+				lowerLineCached = bytefold.Lower(line)
 				lineContextImpact = v.analyzeContext(lowerLineCached)
 				linePositiveKeywords = v.findKeywords(lowerLineCached, v.positiveKeywords)
 				lineNegativeKeywords = v.findKeywords(lowerLineCached, v.negativeKeywords)

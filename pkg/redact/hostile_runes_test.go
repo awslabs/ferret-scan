@@ -112,6 +112,15 @@ func TestNoValidatorIsDisabledByALengthChangingRune(t *testing.T) {
 				}
 				for shape, text := range payloads {
 					redacted, got := redactOnce(text)
+					// A COUNT comparison, which is what this asserted when it shipped
+					// with #658, is too weak: it cannot see a confidence demotion (still
+					// one finding) or a finding GAINED, and both remaining instances of
+					// the class were exactly those shapes. The authoritative oracle is
+					// now TestOutputDoesNotDependOnLengthChangingRunes in pkg/scan, which
+					// diffs the full signature including numeric confidence against a
+					// byte-length-identical control. This test keeps the count check
+					// because it covers something that one does not — the REDACTION path
+					// and the resulting bytes — and a drop here is the leak itself.
 					if got < base {
 						t.Errorf("U+%04X %s: findings dropped %d -> %d. A validator that "+
 							"panics on attacker-supplied text reports a clean scan of a file "+
