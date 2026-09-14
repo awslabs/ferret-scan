@@ -324,10 +324,25 @@ func (ptp *PlainTextPreprocessor) readTextFile(filePath string) (string, error) 
 		content = string(fileContent)
 	}
 
-	// Validate UTF-8 encoding
+	// A last-resort guard, and no longer the thing that mangles legacy text.
+	//
+	// This used to be strings.ToValidUTF8(content, ""), which replaces every invalid byte
+	// WITH NOTHING — deleting it. Measured before the fix, "Employee José García" was
+	// extracted as "Employee Jos Garca", which corrupted the redacted copy, hid any value
+	// containing a legacy byte from DETECTION, and shifted every offset after it.
+	//
+	// Legacy single-byte files no longer reach here as invalid UTF-8: DetectTextEncoding
+	// classifies them EncodingLegacy8Bit and DecodeToUTF8 transcodes them losslessly, so
+	// `content` above is already valid UTF-8 and round-trips byte-for-byte on the way out.
+	//
+	// The branch is kept rather than deleted because DecodeToUTF8 is total but not
+	// omniscient: a UTF-16 file with an unpaired surrogate decodes to U+FFFD, and a caller
+	// could pass an encoding this function did not detect. U+FFFD is used instead of "" so
+	// the replacement PRESERVES the rune count where it can — a substitution keeps offsets
+	// closer to the original than a deletion does, and a visible replacement character is a
+	// signal to whoever reads the output rather than a silent hole.
 	if !utf8.ValidString(content) {
-		// Try to clean up invalid UTF-8
-		content = strings.ToValidUTF8(content, "")
+		content = strings.ToValidUTF8(content, "\uFFFD")
 	}
 
 	// Count lines for validation (prevent excessive memory usage)

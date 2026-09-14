@@ -34,6 +34,24 @@ const (
 	EncodingUTF16BENoBOM
 	// EncodingUnknown means "not a transcodable encoding we recognize" —
 	// callers fall back to treating the bytes as-is.
+	// EncodingLegacy8Bit is a single-byte legacy encoding — Windows-125x, ISO-8859-x —
+	// handled as a LATIN-1 IDENTITY mapping: byte b decodes to rune(b), and a rune below
+	// U+0100 encodes back to that byte.
+	//
+	// Latin-1 identity rather than a real cp1252 table, deliberately, and the reason is byte
+	// FIDELITY rather than display correctness. Latin-1 is a total bijection over all 256
+	// byte values, so ANY byte sequence round-trips exactly — including a cp1251 (Cyrillic)
+	// or cp1256 (Arabic) file, which reads as mojibake but survives byte for byte. A real
+	// Windows-1252 table is not a bijection: 0x81, 0x8D, 0x8F, 0x90 and 0x9D are undefined,
+	// so those five bytes would decode to U+FFFD and be LOST on the way back — reintroducing
+	// the corruption this member exists to prevent, just for rarer inputs.
+	//
+	// The tool's job here is to scan and redact without damaging the document, not to render
+	// it. A curly quote in a cp1252 file reads as U+0091 rather than U+2018; nothing in
+	// detection depends on that, ASCII-range values (SSNs, emails, cards) match either way,
+	// and the bytes written back are the bytes that came in.
+	EncodingLegacy8Bit
+
 	EncodingUnknown
 )
 
@@ -52,6 +70,8 @@ func (e TextEncoding) String() string {
 		return "utf-16le"
 	case EncodingUTF16BENoBOM:
 		return "utf-16be"
+	case EncodingLegacy8Bit:
+		return "legacy-8bit"
 	default:
 		return "unknown"
 	}
@@ -140,7 +160,29 @@ func DetectTextEncoding(buf []byte) TextEncoding {
 		}
 	}
 
-	return EncodingUTF8 // default: treat as UTF-8/unknown-single-byte; callers validate
+	// Not UTF-16 and no BOM. If the bytes are not valid UTF-8 either, this is a legacy
+	// single-byte file and must be transcoded rather than sanitised.
+	//
+	// Before this branch existed the function returned EncodingUTF8 here, the caller kept the
+	// raw bytes, and the plaintext preprocessor then ran strings.ToValidUTF8(content, "") —
+	// which REPLACES each invalid byte WITH NOTHING. Measured: "Employee José García"
+	// extracted as "Employee Jos Garca". That is three defects at once, not one:
+	//
+	//	1. the redacted copy is corrupted, because the write path emits the extracted text
+	//	2. DETECTION runs on the corrupted text, so a value containing a legacy byte is missed
+	//	3. every offset after the first legacy byte shifts, so spans no longer address the
+	//	   bytes they were measured against
+	//
+	// A TRUNCATED FINAL RUNE MUST NOT TRIGGER THIS. One caller passes only the first 512
+	// bytes (the redactor's re-encode decision), and a cut mid-rune would make a perfectly
+	// valid UTF-8 file look legacy — which would then be re-encoded byte-for-byte and mangle
+	// every multi-byte character in it. So up to UTFMax-1 trailing bytes are trimmed before
+	// judging, the same allowance the plaintext preprocessor's text sniff already makes.
+	if !validUTF8IgnoringTruncatedTail(buf) {
+		return EncodingLegacy8Bit
+	}
+
+	return EncodingUTF8 // valid UTF-8, or empty
 }
 
 // DecodeToUTF8 decodes raw file bytes to a UTF-8 string according to enc.
@@ -165,6 +207,15 @@ func DecodeToUTF8(raw []byte, enc TextEncoding) (string, bool) {
 		return decodeUTF16(raw, false), true
 	case EncodingUTF16BENoBOM:
 		return decodeUTF16(raw, true), true
+	case EncodingLegacy8Bit:
+		// Latin-1 identity: every byte becomes the rune of the same value. Total, so no
+		// input can fail and nothing is dropped.
+		var b strings.Builder
+		b.Grow(len(raw) * 2)
+		for _, c := range raw {
+			b.WriteRune(rune(c))
+		}
+		return b.String(), true
 	default:
 		return "", false
 	}
@@ -186,9 +237,48 @@ func EncodeFromUTF8(s string, enc TextEncoding) []byte {
 		return encodeUTF16(s, false, false)
 	case EncodingUTF16BENoBOM:
 		return encodeUTF16(s, true, false)
+	case EncodingLegacy8Bit:
+		// The inverse of the identity decode. A rune below U+0100 came from one byte and goes
+		// back to it, so the original content round-trips exactly.
+		//
+		// Runes at or above U+0100 cannot have come from this file; they were INTRODUCED by
+		// redaction — a synthetic name, or a replacement token. Those are written as UTF-8,
+		// which is the only lossless option: the alternative is dropping them, which is the
+		// corruption this whole change removes. So the guarantee is precise: bytes that were
+		// in the original are byte-identical, and anything new is UTF-8.
+		out := make([]byte, 0, len(s))
+		for _, r := range s {
+			if r < 0x100 {
+				out = append(out, byte(r))
+				continue
+			}
+			out = append(out, []byte(string(r))...)
+		}
+		return out
 	default:
 		return []byte(s)
 	}
+}
+
+// validUTF8IgnoringTruncatedTail reports whether buf is valid UTF-8 once up to UTFMax-1
+// trailing bytes are allowed to be an incomplete final rune.
+//
+// Needed because DetectTextEncoding is called with a 512-byte PREFIX by the redactor's
+// re-encode decision. Without this allowance a valid UTF-8 document whose 512-byte boundary
+// lands mid-character would be classified legacy, and then re-encoded byte-for-byte — which
+// would mangle every multi-byte character in the file. The failure would be silent and would
+// look exactly like the corruption this change is fixing.
+func validUTF8IgnoringTruncatedTail(buf []byte) bool {
+	if utf8.Valid(buf) {
+		return true
+	}
+	for i := 0; i < utf8.UTFMax-1 && len(buf) > 0; i++ {
+		buf = buf[:len(buf)-1]
+		if utf8.Valid(buf) {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeUTF16 converts UTF-16 bytes (without BOM) to a UTF-8 string. An odd
@@ -254,6 +344,3 @@ func utf8OrDecoded(buf []byte) (string, bool) {
 		return "", false
 	}
 }
-
-// Silence unused warnings for utf8 import if build tags change.
-var _ = utf8.RuneError
