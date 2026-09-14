@@ -55,7 +55,11 @@ const (
 	// CauseNoText: opened and parsed, no body text found. Metadata on the same file IS still scanned
 	// and may already have produced findings, which is why the rendered string says so.
 	CauseNoText
-	// CauseCutShort: a budget, size cap or timeout fired, so the file is PARTLY scanned.
+	// CauseCutShort: the file is PARTLY scanned. Either a budget, size cap or timeout fired,
+	// or some UNIT of the file failed to extract while others succeeded — PDF pages are the
+	// case that prompted this wording. The defining property is partial coverage, not which
+	// bound produced it; the operator-facing string is "coverage cut short", which is true of
+	// both, and the specific numbers belong in the warning text rather than in the cause.
 	CauseCutShort
 	// CauseNotFollowed: a link the walk deliberately did not follow — dangling, looping, naming a
 	// directory or device, or resolving outside the scanned tree. Distinct from CauseUnreadable

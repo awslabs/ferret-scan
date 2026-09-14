@@ -262,6 +262,16 @@ func secureXMLUnmarshal(data []byte, v any) error {
 	// Parse with timeout protection
 	done := make(chan error, 1)
 	go func() {
+		// Decoding untrusted XML in a goroutine: a panic here kills the PROCESS, because a
+		// Go panic does not cross a goroutine boundary and no caller's recover can see it.
+		// `done` is buffered (cap 1), so this send cannot block even if the select below has
+		// already returned on ctx.Done().
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("XML decode panicked: %v", r)
+			}
+		}()
+
 		done <- decoder.Decode(v)
 	}()
 

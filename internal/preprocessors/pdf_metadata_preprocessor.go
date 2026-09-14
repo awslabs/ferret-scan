@@ -92,6 +92,17 @@ func (pmp *PDFMetadataPreprocessor) extractPDFMetadataWithContext(ctx context.Co
 
 	// Run extraction in a goroutine
 	go func() {
+		// A panic here would kill the PROCESS. Same reasoning as the page goroutine in
+		// text-extract-pdftextlib: a Go panic does not cross a goroutine boundary, the PDF
+		// library is known to panic on malformed input, and `resultChan` is buffered (cap 1)
+		// so the send from this defer cannot block after a ctx timeout.
+		defer func() {
+			if r := recover(); r != nil {
+				resultChan <- result{meta: nil,
+					err: fmt.Errorf("pdf metadata extraction panicked: %v", r)}
+			}
+		}()
+
 		meta, err := metaextractpdflib.ExtractMetadata(filePath)
 
 		// Handle PDF-specific errors with enhanced error classification
