@@ -360,7 +360,13 @@ func classifyReason(reason string) unscannedCause {
 		return causeUnreadable
 	case strings.Contains(l, "preprocessors failed"),
 		strings.Contains(l, "not a valid"),
-		strings.Contains(l, "corrupt"):
+		strings.Contains(l, "corrupt"),
+		// The router's ReasonRefusedNotText: the file was READ, and it is text, but it carries
+		// NUL bytes the text pipeline cannot take. "cannot parse" is the accurate heading —
+		// "cannot read" would be a true disclosure under a false cause, which this file's notes
+		// on causeNotRegular and causeRefusedTraversal both warn against, and it is what the
+		// hardcoded cause in collectUnscanned produced before the cause was derived.
+		strings.Contains(l, "contains nul byte"):
 		return causeUnparseable
 	case strings.Contains(l, "no extractable text"),
 		strings.Contains(l, "empty extraction"),
@@ -402,9 +408,23 @@ func collectUnscanned(
 		if i := strings.Index(s, ": "); i > 0 {
 			path, reason = s[:i], s[i+2:]
 		}
+		// Cause DERIVED from the reason, not assumed.
+		//
+		// This channel carried Cause: causeUnreadable for every entry, which was true of every
+		// reason it could hold when it was written and stopped being true the moment the router
+		// gained a refusal that was not a read failure. A .env refused for NUL bytes was
+		// therefore disclosed — correctly, in files_not_examined and at exit 3 — under the
+		// heading "cannot read", about a file the tool had just read successfully.
+		//
+		// causeUnreadable stays the fallback: it claims the least about what was scanned, which
+		// is the right default for an unrecognised reason.
+		cause := causeUnreadable
+		if derived := classifyReason(reason); derived != causeCutShort {
+			cause = derived
+		}
 		out = append(out, unscannedEntry{
 			Path:   path,
-			Cause:  causeUnreadable,
+			Cause:  cause,
 			Detail: firstNonEmpty(humanizeReason(path, reason), "could not be opened"),
 		})
 	}

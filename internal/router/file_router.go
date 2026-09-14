@@ -182,6 +182,53 @@ func (fr *FileRouter) InitializePreprocessors(config map[string]interface{}) {
 // prefix to separate "nothing to find here" from "we could not look".
 const ReasonUnreadable = "Unreadable"
 
+// ReasonRefusedNotText prefixes the reason returned when a file's bytes were read successfully and
+// are MOSTLY TEXT, but carry NUL bytes, so the text pipeline cannot take it.
+//
+// A distinct reason because the two outcomes it used to be merged with are different facts:
+//
+//	"Unsupported file type"  a type nobody expected a result from — a .png, a compiled binary.
+//	                         A genuine SKIP.
+//	ReasonUnreadable         the file could not be READ at all — permissions, a dangling link.
+//	ReasonRefusedNotText     the file was read, it IS text, and the tool declined it anyway.
+//
+// The third was reported as the first. Measured: a .env holding API_KEY=abc123 with one NUL byte
+// came back "Unsupported file type", landed in files_skipped with skipped_types {".env": 1}, and
+// --fail-on-incomplete exited 0 — the flag whose only job is to report incomplete coverage was
+// silent about a top-value target the tool never scanned (#667).
+const ReasonRefusedNotText = "Refused"
+
+// RefusalIsCoverageLoss reports whether a CanProcessFile reason means the tool TRIED and could not,
+// rather than a type nobody expected a result from.
+//
+// # Why this is a function and not a prefix test at the call site
+//
+// The bucket a refused file lands in — files_skipped ("deliberately out of scope") versus
+// files_not_examined ("we could not examine this", which feeds --fail-on-incomplete and SARIF
+// toolExecutionNotifications) — was decided by `strings.HasPrefix(reason, ReasonUnreadable)` inline
+// in cmd. Everything that did not match fell through to files_skipped. So the DEFAULT for any reason
+// added later was "pretend this was deliberate", which is how the .env case above was silent: nobody
+// chose it, it was simply what happened to unmatched strings.
+//
+// One exported function makes the choice explicit and testable, and TestEveryRouterReasonHasABucket
+// asserts that every reason CanProcessFile can return is classified here — so a new refusal reason
+// fails a test rather than quietly counting as scope.
+func RefusalIsCoverageLoss(reason string) bool {
+	switch {
+	case strings.HasPrefix(reason, ReasonUnreadable):
+		return true
+	case strings.HasPrefix(reason, ReasonRefusedNotText):
+		return true
+	default:
+		// Everything else — "Unsupported file type", "Binary document (requires preprocessors)",
+		// "File too large (max: NMB)" — is a type or a bound the caller asked for, and nobody
+		// expected a result from it. Note that an oversize file that the tool COULD have
+		// processed is already routed to the unexamined ledger at discovery time by
+		// getFilesToProcess, using router.CanProcessType; it does not rely on this function.
+		return false
+	}
+}
+
 // CanProcessFile determines if a file can be processed. The second return value is
 // a human-readable reason; when it begins with ReasonUnreadable the file was not
 // examined at all, as opposed to examined and skipped.
@@ -242,15 +289,21 @@ func (fr *FileRouter) CanProcessFile(filePath string, enablePreprocessors bool) 
 	// not read it": the old condition (err == nil && isText) collapsed both into
 	// the unsupported-type reason below, so a permission-denied .txt was reported
 	// as an unrecognized file format.
-	isText, err := isTextFile(filePath)
+	verdict, err := sniffTextFile(filePath)
 	if err != nil {
 		return false, fmt.Sprintf("%s: %v", ReasonUnreadable, err)
 	}
-	if isText {
+	switch verdict {
+	case preprocessors.TextSniffText:
 		return true, "Text file"
+	case preprocessors.TextSniffTextWithNUL:
+		// Read fine, and it IS text — it just carries NUL bytes, which the text pipeline cannot
+		// take. That is a file the tool was supposed to scan and did not, so it must not be
+		// reported as an unsupported type. See ReasonRefusedNotText.
+		return false, fmt.Sprintf("%s: file is text but contains NUL byte(s), which the text pipeline cannot process", ReasonRefusedNotText)
+	default:
+		return false, "Unsupported file type"
 	}
-
-	return false, "Unsupported file type"
 }
 
 // CanProcessType reports whether this path's TYPE is one the router would process,
@@ -917,10 +970,27 @@ func getMetadataTypeForExtension(ext string) string {
 }
 
 func isTextFile(filePath string) (bool, error) {
-	cleanPath := filepath.Clean(filePath)
-	file, err := os.Open(cleanPath)
+	buffer, err := readSniffPrefix(filePath)
 	if err != nil {
 		return false, err
+	}
+	if buffer == nil {
+		return true, nil // empty file: readable, and there is nothing undetected in it
+	}
+	return preprocessors.LooksLikeText(buffer), nil
+}
+
+// readSniffPrefix reads the leading bytes used to decide whether a file is text.
+//
+// Returns (nil, nil) for an empty file: readable, with nothing in it. Extracted so isTextFile and
+// sniffTextFile read the SAME prefix through the same code — two readers with slightly different
+// window sizes or EOF handling could classify one file two ways, and the ledger decision and the
+// routing decision would then disagree about it.
+func readSniffPrefix(filePath string) ([]byte, error) {
+	cleanPath := filepath.Clean(filePath)
+	file, err := os.Open(cleanPath) // #nosec G304 -- caller-supplied scan target, cleaned above
+	if err != nil {
+		return nil, err
 	}
 	defer file.Close()
 
@@ -936,23 +1006,45 @@ func isTextFile(filePath string) (bool, error) {
 		// tree: all 25 files in that warning were zero bytes (build artifacts,
 		// empty .err logs, a .venv lock file, empty golden fixtures), which
 		// buried the diagnostic's real purpose — genuinely unreadable files.
+		// An empty file is readable, not unreadable. Read returns io.EOF with n == 0 for a
+		// zero-byte file, and reporting that as an error made the caller classify it as
+		// ReasonUnreadable — which surfaces as the alarming "could not be opened ... any
+		// sensitive data they contain was NOT detected". A zero-byte file contains nothing, so
+		// there is nothing undetected and nothing for an operator to act on. Measured on a real
+		// tree: all 25 files in that warning were zero bytes (build artifacts, empty .err logs, a
+		// .venv lock file, empty golden fixtures), which buried the diagnostic's real purpose —
+		// genuinely unreadable files.
 		if errors.Is(err, io.EOF) {
-			return true, nil
+			return nil, nil
 		}
-		return false, err
+		return nil, err
 	}
 
-	buffer = buffer[:n]
+	// Null-byte gating happens inside the sniff, after encoding detection — UTF-16 text carries a
+	// null per ASCII character, so a pre-decode null check would (and previously did) classify
+	// every UTF-16 file as binary. The sniff is shared with the plaintext preprocessor: an
+	// ASCII-byte-ratio copy here once silently classified short lines containing any multi-byte
+	// character (™, em-dash, accents, non-Latin scripts) as binary, skipping the file for every
+	// validator in file mode.
+	return buffer[:n], nil
+}
 
-	// Null-byte gating happens inside LooksLikeText, after encoding
-	// detection — UTF-16 text carries a null per ASCII character, so a
-	// pre-decode null check would (and previously did) classify every
-	// UTF-16 file as binary.
-	// UTF-8-aware sniff shared with the plaintext preprocessor: the previous
-	// ASCII-byte-ratio copy here silently classified short lines containing
-	// any multi-byte character (™, em-dash, accents, non-Latin scripts) as
-	// binary, skipping the file for every validator in file mode.
-	return preprocessors.LooksLikeText(buffer), nil
+// sniffTextFile is isTextFile, keeping the REASON the sniff reached.
+//
+// Separate from isTextFile rather than replacing it because isTextFile's boolean answer is what the
+// metadata-routing path wants, and only the ledger decision needs the reason. Both read the same
+// prefix through the same helper, so they cannot disagree about a file.
+func sniffTextFile(filePath string) (preprocessors.TextSniffVerdict, error) {
+	buffer, err := readSniffPrefix(filePath)
+	if err != nil {
+		return preprocessors.TextSniffBinary, err
+	}
+	if buffer == nil {
+		// An empty file is readable, not unreadable — the same choice isTextFile makes, and for
+		// the same reason: a zero-byte file contains nothing, so nothing is undetected.
+		return preprocessors.TextSniffText, nil
+	}
+	return preprocessors.ClassifyTextBytes(buffer), nil
 }
 
 func generateRequestID() string {

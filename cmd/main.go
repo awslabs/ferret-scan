@@ -1267,6 +1267,20 @@ func main() {
 		disableIPTypes:       flags.disableIPTypes,
 	})
 
+	// Reject an --exclude pattern the matcher could never apply, before any scanning.
+	//
+	// Validated here rather than inside resolveConfiguration because this covers all THREE sources
+	// at once — the flag, config defaults, and the active profile — whichever won. A pattern that
+	// cannot compile as a glob previously matched nothing, silently: filepath.Match returns
+	// ErrBadPattern for `[abc`, and every call site discarded the error with `matched, _ :=`, so the
+	// user was told nothing and the exclusion they asked for simply did not happen.
+	if err := validateExcludePatterns(finalConfig.excludePatterns); err != nil {
+		printPrecommitError(nil, err.Error(),
+			"Patterns are globs matched against the path, the file name, and each path segment "+
+				"(e.g. '.git', '*.log', 'build/')")
+		os.Exit(1)
+	}
+
 	// Use the pre-commit detector initialized earlier (no need to reinitialize)
 	// precommitConfig is already initialized above
 
@@ -2025,7 +2039,17 @@ func main() {
 			supportedFiles = append(supportedFiles, filePath)
 			continue
 		}
-		if strings.HasPrefix(reason, router.ReasonUnreadable) {
+		// Which LEDGER this refusal belongs in, asked of the router rather than decided here
+		// by a string prefix.
+		//
+		// The prefix test this replaces matched only ReasonUnreadable, so every other reason —
+		// including one added later — fell through to files_skipped, which reads as "deliberately
+		// out of scope". A .env holding API_KEY=abc123 with one NUL byte was reported that way,
+		// and --fail-on-incomplete exited 0. Nobody chose that; it was the default for an
+		// unmatched string. router.RefusalIsCoverageLoss owns the choice, and
+		// TestEveryRouterReasonHasABucket asserts every reason the router can return is covered by
+		// it, so the next reason fails a test instead of counting as scope.
+		if router.RefusalIsCoverageLoss(reason) {
 			unreadableFiles = append(unreadableFiles, fmt.Sprintf("%s: %s", filePath, reason))
 			// Counted as unreadable AND as not-processed. The `continue` here used to
 			// skip the increment below, so an unreadable file landed in NO counter at
@@ -2437,6 +2461,16 @@ func main() {
 	// the exit code instead of the two disagreeing.
 	formatterOptions.FailOnIncomplete = *failOnIncomplete
 
+	// The pre-commit verdict, resolved ONCE and used for both the message and the exit code.
+	//
+	// precommitDecision is computed here, from the matches the formatter is about to render, and
+	// consumed twice: its Message goes to the formatter below, its ExitCode decides os.Exit at the
+	// bottom of main. Before this, the formatter derived its own answer from `Confidence >= 90`
+	// while the exit code came from FERRET_PRECOMMIT_EXIT_ON, so `EXIT_ON=none` printed
+	// "commit blocked for security" and exited 0.
+	precommitDecision := precommit.Resolve(unsuppressedMatches, precommitConfig)
+	formatterOptions.PrecommitBlockMessage = precommitDecision.Message
+
 	// Render the not-examined detail into the summary block rather than printing it
 	// separately. Text format only: structured formats carry the same facts as data,
 	// and pre-commit owns a strict output contract. Building it here means the whole
@@ -2620,9 +2654,6 @@ func main() {
 		fmt.Fprint(os.Stderr, note)
 	}
 
-	// Determine appropriate exit code based on findings and pre-commit configuration
-	hasFindings := len(unsuppressedMatches) > 0
-
 	// hasErrors is deliberately NOT the old `failedFiles > 0`.
 	//
 	// failedFiles was len(supportedFiles) - processedFiles, and an UNREADABLE file
@@ -2638,26 +2669,6 @@ func main() {
 	hasErrors := scanMalfunction
 
 	// Determine the highest confidence level of findings
-	highestConfidence := ""
-	for _, match := range unsuppressedMatches {
-		var currentLevel string
-		if match.Confidence >= 90 {
-			currentLevel = "high"
-		} else if match.Confidence >= 60 {
-			currentLevel = "medium"
-		} else {
-			currentLevel = "low"
-		}
-
-		// Update highest confidence level
-		if currentLevel == "high" {
-			highestConfidence = "high"
-		} else if currentLevel == "medium" && highestConfidence != "high" {
-			highestConfidence = "medium"
-		} else if currentLevel == "low" && highestConfidence != "high" && highestConfidence != "medium" {
-			highestConfidence = "low"
-		}
-	}
 
 	// Use pre-commit exit code logic if in pre-commit mode. --fail-on-incomplete
 	// (flag OR config/profile default) then escalates a clean result to the
@@ -2687,7 +2698,9 @@ func main() {
 	// which one fired without changing flags.
 	coverageGaps := len(unscannedEntries) + len(unredactedDisclosure)
 	if precommitConfig != nil {
-		exitCode := precommit.GetExitCode(hasFindings, hasErrors, highestConfidence, precommitConfig)
+		// The SAME decision that produced the message the user just read, escalated for a tool
+		// malfunction. Nothing here re-derives the finding policy.
+		exitCode := precommitDecision.WithToolError(hasErrors).ExitCode
 		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps))
 	}
 
@@ -2740,44 +2753,153 @@ type SkippedFile struct {
 }
 
 // isExcluded checks if a file path matches any of the exclusion patterns
+// isExcluded reports whether filePath is excluded by any of excludePatterns.
+//
+// Matching is GLOB, at three granularities — the whole path, the basename, and each individual path
+// SEGMENT — and nothing else. There is deliberately no substring arm.
+//
+// # The defect this removes
+//
+// The previous implementation had a fourth arm, `strings.Contains(cleanPath, pattern)`, so a pattern
+// was also treated as a raw substring of the full path. That made a one-character typo silently scan
+// nothing at all:
+//
+//	--exclude t        matched EVERY path containing the letter "t" -> total_files 0, exit 0, silent
+//	--exclude "*.log"  behaved correctly
+//
+// Exit 0 with nothing scanned is the worst available answer: a CI job that excludes "t" by accident
+// reports a clean tree forever. The bug was specifically the bare-substring arm, which is why the
+// glob arms are kept exactly as they were.
+//
+// # Why SEGMENT matching, and what changes
+//
+// The substring arm existed for a real use — `--exclude .git` or `--exclude node_modules` should
+// exclude those directories anywhere in the tree — and plain glob against the whole path does not do
+// that, because `filepath.Match` gives `*` no authority over separators. Matching each segment covers
+// that use exactly, without giving a short pattern authority over unrelated paths: "t" now matches a
+// path component that IS "t", not every path with a "t" in it.
+//
+// The behaviour that changes: a pattern intended as a substring of a FILENAME, such as
+// `--exclude backup` against `my_backup_file.txt`, no longer matches. That is the intended tightening
+// — it is the same mechanism as the "t" bug, just with a longer pattern — and the explicit spelling
+// `--exclude "*backup*"` does match, at every granularity. Measured across a real tree, the patterns
+// people actually pass (directory names, `*.ext` globs, `dir/`) are unaffected: they resolve through
+// the segment or glob arms.
+//
+// A pattern that cannot compile as a glob is rejected before the scan starts, by
+// validateExcludePatterns — silently matching nothing is how the previous behaviour hid mistakes.
+// recordExcluded notes that path was left out by an --exclude pattern, and reports true.
+//
+// # Why deciding and recording are ONE call
+//
+// isExcluded had six call sites and they disagreed about the ledger. Two — the single-file paths —
+// appended a SkippedFile, so the run reported the exclusion. Three, including the recursive walk that
+// is the common case, dropped the path with a bare `continue` or `return nil` and recorded NOTHING.
+// The effect, measured on a two-file directory:
+//
+//	$ ferret-scan --file dir --recursive --checks all --exclude t --format json
+//	"total_files": 0, "files_processed": 0, "files_skipped": 0    <- both files simply vanished
+//	stderr: 0 lines                                               rc 0
+//
+// So whether an exclusion appeared in the accounting depended on HOW the input was named: scan the
+// file directly and the exclusion is disclosed, scan its directory and it is not. That is not a
+// missing warning, it is an accounting hole — files_skipped reads 0 while two files were excluded, so
+// no invariant over the counters can detect the loss.
+//
+// Returning a bool from a method that also records is what closes it: a call site cannot consult the
+// decision without the entry being made, so a new call site added later is accounted for by
+// construction rather than by the author remembering. That is the same reasoning as the exhaustive
+// reason mapping in the router — the compiler and the type, not the reviewer.
+//
+// Directory exclusions record the DIRECTORY, once, rather than its contents: the whole point of
+// skipping a subtree is not walking it, so its files are not known and counting them would mean
+// paying the cost the exclusion exists to avoid.
+func (r *ProcessingResult) recordExcluded(path, reason string) bool {
+	r.SkippedFiles = append(r.SkippedFiles, SkippedFile{
+		Path:   path,
+		Reason: reason,
+		Silent: false,
+	})
+	return true
+}
+
+// excludedBy reports whether path is excluded, recording the exclusion when it is.
+//
+// The single entry point for the question "should this path be left out". Both reasons are handled
+// here so a call site cannot cover one and forget the other, which two of the six previous sites did.
+func (r *ProcessingResult) excludedBy(path string, excludePatterns []string, ignoreMatcher *gitignore.Matcher) bool {
+	if isExcluded(path, excludePatterns) {
+		return r.recordExcluded(path, "excluded by --exclude pattern")
+	}
+	if ignoreMatcher != nil && ignoreMatcher.Match(path) {
+		return r.recordExcluded(path, "excluded by .gitignore")
+	}
+	return false
+}
+
 func isExcluded(filePath string, excludePatterns []string) bool {
 	if len(excludePatterns) == 0 {
 		return false
 	}
 
-	// Clean the file path for consistent matching
 	cleanPath := filepath.Clean(filePath)
 	fileName := filepath.Base(cleanPath)
+	segments := strings.Split(cleanPath, string(filepath.Separator))
 
 	for _, pattern := range excludePatterns {
-		// Try matching against the full path
-		if matched, _ := filepath.Match(pattern, cleanPath); matched {
+		// A trailing "/" means "this is a directory name". Strip it and let the segment arm
+		// below do the work; keeping a separate arm for it would be a second spelling of the
+		// same rule.
+		trimmed := strings.TrimSuffix(pattern, "/")
+		if trimmed == "" {
+			continue
+		}
+
+		// The whole path, and the basename.
+		if matched, err := filepath.Match(trimmed, cleanPath); err == nil && matched {
+			return true
+		}
+		if matched, err := filepath.Match(trimmed, fileName); err == nil && matched {
 			return true
 		}
 
-		// Try matching against just the filename
-		if matched, _ := filepath.Match(pattern, fileName); matched {
-			return true
-		}
-
-		// Try matching against directory names in the path
-		if strings.Contains(cleanPath, pattern) {
-			return true
-		}
-
-		// Handle patterns that end with / as directory exclusions
-		if strings.HasSuffix(pattern, "/") {
-			dirPattern := strings.TrimSuffix(pattern, "/")
-			pathParts := strings.Split(cleanPath, string(filepath.Separator))
-			for _, part := range pathParts {
-				if matched, _ := filepath.Match(dirPattern, part); matched {
-					return true
-				}
+		// Each path segment, which is what makes "--exclude .git" work at any depth.
+		for _, segment := range segments {
+			if segment == "" {
+				continue
+			}
+			if matched, err := filepath.Match(trimmed, segment); err == nil && matched {
+				return true
 			}
 		}
 	}
 
 	return false
+}
+
+// validateExcludePatterns rejects a pattern the matcher could never apply.
+//
+// Returning an error rather than ignoring it, because the failure mode being fixed here is precisely
+// "a pattern that does not do what the user meant, silently". filepath.Match reports ErrBadPattern
+// for an unterminated character class — `--exclude "[abc"` — and the previous code discarded that
+// error with `matched, _ :=`, so the pattern matched nothing and the user was told nothing.
+//
+// Note what is NOT rejected: a syntactically valid pattern that happens to match no file. That is a
+// legitimate thing to write (an exclude list shared across repositories), and refusing it would break
+// working configurations. The case where it matters — a pattern that excludes EVERYTHING — is
+// disclosed at the point the scan finds it has nothing to do, where the tool knows the difference
+// between "you gave me no files" and "your exclusions removed them all".
+func validateExcludePatterns(patterns []string) error {
+	for _, pattern := range patterns {
+		trimmed := strings.TrimSuffix(pattern, "/")
+		if trimmed == "" {
+			continue
+		}
+		if _, err := filepath.Match(trimmed, "probe"); err != nil {
+			return fmt.Errorf("invalid --exclude pattern %q: %w", pattern, err)
+		}
+	}
+	return nil
 }
 
 // getFilesToProcess returns a list of files to process based on the input path
@@ -2837,21 +2959,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 		}
 		if info.Mode().IsRegular() {
 			if info.Size() <= maxScanSizeFor(inputPath) {
-				// Check if file is excluded
-				if isExcluded(inputPath, excludePatterns) {
-					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
-						Path:   inputPath,
-						Reason: "excluded by --exclude pattern",
-						Silent: false,
-					})
-					return result, nil
-				}
-				if ignoreMatcher.Match(inputPath) {
-					result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
-						Path:   inputPath,
-						Reason: "excluded by .gitignore",
-						Silent: false,
-					})
+				if result.excludedBy(inputPath, excludePatterns, ignoreMatcher) {
 					return result, nil
 				}
 				result.FilesToProcess = append(result.FilesToProcess, inputPath)
@@ -2948,7 +3056,8 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// arrives as its own argument — so it only bites when the pattern is quoted,
 			// which is exactly what the documentation asks for.
 			if info.IsDir() {
-				if isExcluded(cleanMatch, excludePatterns) || ignoreMatcher.Match(cleanMatch) {
+				// Records the DIRECTORY: the subtree is not walked, so its files are unknown.
+				if result.excludedBy(cleanMatch, excludePatterns, ignoreMatcher) {
 					continue
 				}
 				if !recursive {
@@ -2982,12 +3091,8 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			}
 
 			if info.Mode().IsRegular() {
-				// Check if file is excluded
-				if isExcluded(cleanMatch, excludePatterns) {
-					continue // Skip excluded files
-				}
-				if ignoreMatcher.Match(cleanMatch) {
-					continue // Skip gitignored files
+				if result.excludedBy(cleanMatch, excludePatterns, ignoreMatcher) {
+					continue
 				}
 
 				if info.Size() <= maxScanSizeFor(cleanMatch) {
@@ -3086,21 +3191,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			})
 			return result, nil
 		}
-		// Check if file is excluded
-		if isExcluded(cleanPath, excludePatterns) {
-			result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
-				Path:   cleanPath,
-				Reason: "excluded by --exclude pattern",
-				Silent: false,
-			})
-			return result, nil
-		}
-		if ignoreMatcher.Match(cleanPath) {
-			result.SkippedFiles = append(result.SkippedFiles, SkippedFile{
-				Path:   cleanPath,
-				Reason: "excluded by .gitignore",
-				Silent: false,
-			})
+		if result.excludedBy(cleanPath, excludePatterns, ignoreMatcher) {
 			return result, nil
 		}
 		result.FilesToProcess = append(result.FilesToProcess, cleanPath)
@@ -3226,18 +3317,16 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				return filepath.SkipDir
 			}
 
-			// Check if path is excluded (for both files and directories)
-			if isExcluded(cleanWalkPath, excludePatterns) {
+			// Check if path is excluded (for both files and directories).
+			//
+			// This is the site that recorded NOTHING: a bare return dropped every excluded file
+			// from the ledger, so a directory scan reported files_skipped 0 while excluding
+			// everything in it. excludedBy records as it decides.
+			if result.excludedBy(cleanWalkPath, excludePatterns, ignoreMatcher) {
 				if info.IsDir() {
 					return filepath.SkipDir // Skip entire directory
 				}
 				return nil // Skip file
-			}
-			if ignoreMatcher.Match(cleanWalkPath) {
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
 			}
 
 			// Only add regular files
