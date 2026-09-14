@@ -11,6 +11,7 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 - [Installation Guide](INSTALL.md) - Quick installation guide for releases
 - [Complete Installation Guide](INSTALLATION.md) - Comprehensive installation options
 - [Configuration Guide](configuration.md) - YAML configuration and profiles
+- [Detection Types](checks.md) - Every type ferret-scan can report, and what each SARIF finding links to
 - [Architecture Overview](architecture-diagram.md) - System architecture and flow diagrams
 - [Application Flow](ferret-application-flow.md) - Processing diagrams and workflows
 

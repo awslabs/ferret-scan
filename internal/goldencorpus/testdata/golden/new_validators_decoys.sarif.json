@@ -188,7 +188,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/ABA_ROUTING.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#aba_routing",
               "id": "ABA_ROUTING",
               "shortDescription": {
                 "text": "ABA_ROUTING Detected"
@@ -201,7 +201,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/IBAN.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#iban",
               "id": "IBAN",
               "shortDescription": {
                 "text": "IBAN Detected"
@@ -214,7 +214,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/MEDICARE_MBI.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#medicare_mbi",
               "id": "MEDICARE_MBI",
               "shortDescription": {
                 "text": "MEDICARE_MBI Detected"

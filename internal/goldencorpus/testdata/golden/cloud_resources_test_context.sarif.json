@@ -147,7 +147,7 @@
               "help": {
                 "text": "Cloud resource identifiers embed account/subscription/project anchors that reveal ownership and infrastructure topology. Avoid hardcoding them in source, logs, or shared documents. Use variables, parameters, or service discovery instead, and scrub identifiers from artifacts shared outside your organization."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/AWS_ARN.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#aws_arn",
               "id": "AWS_ARN",
               "shortDescription": {
                 "text": "Cloud Resource Identifier Detected"

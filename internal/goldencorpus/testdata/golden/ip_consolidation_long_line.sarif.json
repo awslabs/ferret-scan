@@ -2303,7 +2303,7 @@
               "help": {
                 "text": "Ensure that any third-party intellectual property is properly licensed and attributed. Review your organization's policies on using external code and content. If this is your organization's IP, ensure proper copyright notices are in place. For third-party content, verify compliance with license terms."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/INTELLECTUAL_PROPERTY.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#intellectual_property",
               "id": "INTELLECTUAL_PROPERTY",
               "shortDescription": {
                 "text": "Potential Intellectual Property Detected"

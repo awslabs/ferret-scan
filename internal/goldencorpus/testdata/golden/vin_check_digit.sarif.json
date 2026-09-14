@@ -146,7 +146,7 @@
               "help": {
                 "text": "VINs are linked to vehicle owner identity and can reveal personal information through public databases. They should not be stored in source code or logs. Remove VINs and use anonymized identifiers for testing. For production systems, store VINs in encrypted databases with appropriate access controls."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/VIN.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#vin",
               "id": "VIN",
               "shortDescription": {
                 "text": "Vehicle Identification Number Detected"

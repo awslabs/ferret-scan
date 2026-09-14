@@ -397,7 +397,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/DEA_NUMBER.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#dea_number",
               "id": "DEA_NUMBER",
               "shortDescription": {
                 "text": "DEA_NUMBER Detected"
@@ -410,7 +410,7 @@
               "help": {
                 "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/INSURANCE_MEMBER_ID.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#insurance_member_id",
               "id": "INSURANCE_MEMBER_ID",
               "shortDescription": {
                 "text": "INSURANCE_MEMBER_ID Detected"

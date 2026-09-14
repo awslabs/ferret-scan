@@ -3,6 +3,8 @@
 
 package core
 
+import "sort"
+
 // TypeDescriptor is the per-Match.Type (sub-type) metadata that the output
 // formatters look up. It is the single source of truth for type-keyed display
 // strings that were previously scattered across the SARIF and gitlab-sast
@@ -228,3 +230,119 @@ func TypeMeta(t string) (TypeDescriptor, bool) {
 	d, ok := typeDescriptors[t]
 	return d, ok
 }
+
+// knownDetectionTypes is every detection type this tool can put in a report.
+//
+// It exists because a SARIF rule carries a helpUri, and a helpUri has to point at
+// something. Measured by scanning this repository with every check enabled: 59 rules
+// were emitted and ALL 59 helpUris were 404 -- they pointed into docs/checks/, a
+// directory that has never existed. Every finding in every SARIF report a consumer
+// has opened carried a dead documentation link.
+//
+// Deliberately SEPARATE from typeDescriptors. That map means "this type has bespoke
+// per-formatter copy", and only 24 of these 59 do; the rest fall back to the generic
+// SARIF description, which is existing correct behaviour this list does not change.
+// Conflating the two would mean either inventing prose for 35 types or leaving them
+// undocumented. Membership here means only "the tool can emit it, so
+// docs/checks.md must carry an anchor for it".
+//
+// Derived by enumerating the rules the tool ACTUALLY emitted, not by reading
+// validator source: sub-types are what reach a report (a credit card emits VISA; a
+// bank account emits ABA_ROUTING / IBAN / SWIFT_BIC / US_BANK_ACCOUNT), and those
+// are the strings the helpUri is built from. TestEveryEmittedTypeIsKnown keeps the
+// list honest against real scan output.
+var knownDetectionTypes = []string{
+	"APPLICATION_INFO",  // METADATA sub-type; absent from the first draft of this list
+	"AUTHOR_INFO",       // METADATA sub-type; absent from the first draft of this list
+	"COMPANY_INFO",      // METADATA sub-type; absent from the first draft of this list
+	"LAST_MODIFIED_BY",  // METADATA sub-type; absent from the first draft of this list
+	"TEMPLATE_INFO",     // METADATA sub-type; absent from the first draft of this list
+	"ABA_ROUTING",       // generic SARIF copy today
+	"ALIBABA_ARN",       // generic SARIF copy today
+	"AMERICAN_EXPRESS",  // generic SARIF copy today
+	"API_KEY_OR_SECRET", // generic SARIF copy today
+	"APPLE_CORPORATE",   // generic SARIF copy today
+	"AWS_ACCESS_KEY",
+	"AWS_ARN",               // generic SARIF copy today
+	"AWS_SECRET_ACCESS_KEY", // generic SARIF copy today
+	"AZURE_RESOURCE_ID",     // generic SARIF copy today
+	"BUSINESS",              // generic SARIF copy today
+	"CREDIT_CARD",
+	"DATE_OF_BIRTH", // generic SARIF copy today
+	"DEA_NUMBER",    // generic SARIF copy today
+	"DINERS_CLUB",   // generic SARIF copy today
+	"DISCOVER",      // generic SARIF copy today
+	"DISPOSABLE",    // generic SARIF copy today
+	"DOCKER_TOKEN",  // generic SARIF copy today
+	"DOCUMENT_COMMENTS",
+	"DRIVERS_LICENSE", // generic SARIF copy today
+	"EDUCATIONAL",     // generic SARIF copy today
+	"EMAIL",
+	"GCP_RESOURCE_NAME", // generic SARIF copy today
+	"GITHUB",            // generic SARIF copy today
+	"GITHUB_TOKEN",
+	"GITLAB_TOKEN",         // generic SARIF copy today
+	"GMAIL",                // generic SARIF copy today
+	"GOOGLE_CLOUD_API_KEY", // generic SARIF copy today
+	"GOVERNMENT",           // generic SARIF copy today
+	"IBAN",                 // generic SARIF copy today
+	"IBM_CRN",              // generic SARIF copy today
+	"IMAGE_METADATA",       // generic SARIF copy today
+	"INSURANCE_MEMBER_ID",  // generic SARIF copy today
+	"INTELLECTUAL_PROPERTY",
+	"IP_ADDRESS",
+	"JCB",          // generic SARIF copy today
+	"JWT_TOKEN",    // generic SARIF copy today
+	"MASTERCARD",   // generic SARIF copy today
+	"MEDICARE_MBI", // generic SARIF copy today
+	"MRN",          // generic SARIF copy today
+	"NPI",          // generic SARIF copy today
+	"OCI_OCID",     // generic SARIF copy today
+	"OTPAUTH_URI",  // generic SARIF copy today
+	"OTP_SECRET",   // generic SARIF copy today
+	"PASSPORT",
+	"PERSON_NAME",
+	"PHONE",
+	"PO_BOX",         // generic SARIF copy today
+	"RECOVERY_CODES", // generic SARIF copy today
+	"SLACK_TOKEN",
+	"SSH_PRIVATE_KEY", // generic SARIF copy today
+	"SSN",
+	"STRIPE_API_KEY",      // generic SARIF copy today
+	"SWIFT_BIC",           // generic SARIF copy today
+	"US_BANK_ACCOUNT",     // generic SARIF copy today
+	"US_MILITARY_ADDRESS", // generic SARIF copy today
+	"US_RURAL_ROUTE",      // generic SARIF copy today
+	"US_STREET_ADDRESS",   // generic SARIF copy today
+	"VIN",
+	"VISA", // generic SARIF copy today
+}
+
+// KnownTypes returns every detection type this tool can report, sorted.
+//
+// Exported so the documentation page and the SARIF rule builder are driven by the
+// SAME list. A type that can be reported but has no documentation anchor is a link
+// that 404s, which is precisely what this list exists to make impossible.
+func KnownTypes() []string {
+	out := make([]string, len(knownDetectionTypes))
+	copy(out, knownDetectionTypes)
+	sort.Strings(out)
+	return out
+}
+
+// knownTypeSet is knownDetectionTypes as a set, built once.
+var knownTypeSet = func() map[string]bool {
+	m := make(map[string]bool, len(knownDetectionTypes))
+	for _, t := range knownDetectionTypes {
+		m[t] = true
+	}
+	return m
+}()
+
+// IsKnownType reports whether t is a detection type documented in docs/checks.md.
+//
+// The SARIF rule builder uses this to decide whether to append an anchor to a
+// finding's helpUri. It is deliberately the only consumer that needs to care: an
+// unknown type still gets a URI pointing at a committed page, so an incomplete list
+// costs anchor precision and never link validity.
+func IsKnownType(t string) bool { return knownTypeSet[t] }

@@ -463,7 +463,7 @@
               "help": {
                 "text": "Person names are considered PII under GDPR, CCPA, and other privacy regulations. Evaluate whether this name should be present in the code. If it's test data, use clearly fictional names or anonymized identifiers. For production use, ensure names are stored securely with appropriate access controls and data retention policies."
               },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks/PERSON_NAME.md",
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#person_name",
               "id": "PERSON_NAME",
               "shortDescription": {
                 "text": "Person Name Detected"
