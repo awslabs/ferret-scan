@@ -66,7 +66,11 @@ func TestOnlyTheResolverDeclaresTheBlockVerdict(t *testing.T) {
 			if relErr != nil {
 				rel = path
 			}
-			holders = append(holders, rel)
+			// ToSlash so the comparison below is one spelling on every platform: filepath.Rel
+			// yields `internal\precommit\decision.go` on Windows, which would never equal the
+			// forward-slash literal and made this guard fail there rather than on the property
+			// it guards.
+			holders = append(holders, filepath.ToSlash(rel))
 		}
 		return nil
 	})
