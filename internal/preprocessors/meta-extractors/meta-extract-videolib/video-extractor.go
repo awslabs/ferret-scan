@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/ferret-scan/v2/internal/bytefold"
+
 	// isobmff is a pure-standard-library ISO base media container parser — its own package
 	// comment states that nothing about redaction belongs in it — and it owns the spec-derived
 	// definition of an ISO 6709 position string. The extractor shares that definition rather
@@ -1999,6 +2001,34 @@ func searchAppleMetadataInData(data string, metadata *VideoMetadata) {
 	}
 }
 
+// markerIsPartOfKeyPath reports whether the marker at [idx, idx+n) sits inside a
+// dotted identifier such as "com.apple.quicktime.pixeldensity".
+//
+// Container formats name their metadata keys with reverse-DNS paths, so several of the
+// markers this file searches for ("QuickTime", "location", "user") appear in every
+// real file as part of a key name rather than next to a value. A window cut around
+// one of those carries schema, not content.
+//
+// Tests only the immediately adjacent byte on each side, deliberately. Requiring a
+// full reverse-DNS parse would miss shorter paths, and looking further afield would
+// start rejecting text that merely has a full stop near it.
+func markerIsPartOfKeyPath(data string, idx, n int) bool {
+	if idx > 0 && data[idx-1] == '.' {
+		return true
+	}
+	if end := idx + n; end < len(data) && data[end] == '.' {
+		// A trailing dot only means a key path if an identifier byte follows it;
+		// "located." at the end of a sentence must not be rejected.
+		return end+1 < len(data) && isKeyPathByte(data[end+1])
+	}
+	return false
+}
+
+// isKeyPathByte reports whether b can appear in a reverse-DNS key-path segment.
+func isKeyPathByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-' || b == '_'
+}
+
 // searchMetadataPatternsInData searches for various metadata patterns in text data
 func searchMetadataPatternsInData(data string, metadata *VideoMetadata) {
 	// Common metadata patterns to search for
@@ -2016,30 +2046,75 @@ func searchMetadataPatternsInData(data string, metadata *VideoMetadata) {
 		"location":  "Location_Reference",
 	}
 
+	// Folded ONCE, with bytefold, before the loop.
+	//
+	// bytefold.Lower and not strings.ToLower because idx is an offset into the folded
+	// copy and is used to slice `data`, the ORIGINAL. Unicode case mapping is not
+	// byte-length-preserving, so the two were different coordinate spaces and the
+	// +/-50 window landed in the wrong place. `data` here is a 5MB chunk of RAW FILE
+	// BYTES (searchForCombinedMetadata), so it is entirely attacker-controlled.
+	//
+	// Reproduced end-to-end on v2.4.5 with byte-identical 134-byte inputs, a plain
+	// text file named .mp4 -- no real container needed, because this path only
+	// requires isValidUTF8Subset:
+	//
+	//	"HEADER " + 60x'q'      + " ... user metadata SSN 219-09-9999 tail"  -> SSN found
+	//	"HEADER " + 20xU+212A   + " ... user metadata SSN 219-09-9999 tail"  -> 0 findings
+	//
+	// The window shifted off the SSN, so the property never carried it and nothing
+	// downstream could report it. No panic: idx <= len(lowerData) <= len(data) when
+	// the fold shrinks, and `end` is clamped, so the guard below stayed satisfied and
+	// the loss was silent. With a GROWING rune the guard instead skips the property
+	// entirely -- also silent. See #656, #659.
+	//
+	// Folding once also removes 22 full-string lowercases of up to 5MB: the previous
+	// code called strings.ToLower(data) twice per pattern for eleven patterns, once
+	// for the Contains test and again for the Index.
+	lowerData := bytefold.Lower(data)
+
 	// Search for each pattern
 	for pattern, propertyName := range metadataPatterns {
-		if strings.Contains(strings.ToLower(data), strings.ToLower(pattern)) {
-			lowerData := strings.ToLower(data)
-			if idx := strings.Index(lowerData, strings.ToLower(pattern)); idx >= 0 {
-				// Extract context around the pattern
-				start := max(0, idx-50)
-				end := min(len(data), idx+len(pattern)+50)
+		idx := strings.Index(lowerData, bytefold.Lower(pattern))
+		if idx < 0 {
+			continue
+		}
+		// A marker inside a dotted identifier is a KEY NAME, not content.
+		//
+		// This implements, at the point of creation, the rule TestAgainstTheRealFile
+		// already asserts after the fact: "no field or property may hold a key name".
+		// Correcting the offset above is what made the rule bite — with the window
+		// misaligned it happened to land off the key path, so the guard passed by
+		// accident. On the real .mov it uses, the now-correct window reads:
+		//
+		//	"ta   8keys   (mdtacom.apple.quicktime.pixeldensity   0ilst   (   data"
+		//
+		// which is atom names and a key path: container SCHEMA, carrying nothing a
+		// validator could act on. Meanwhile the case this function is useful for keeps
+		// working, because there the marker stands as its own word — " user metadata
+		// SSN 219-09-9999 " — and the value is real content near it.
+		if markerIsPartOfKeyPath(lowerData, idx, len(pattern)) {
+			continue
+		}
 
-				if start < len(data) && end <= len(data) && start < end {
-					context := data[start:end]
-					// Clean up the context (remove non-printable characters)
-					cleanContext := ""
-					for _, c := range context {
-						if c >= 32 && c <= 126 { // Printable ASCII
-							cleanContext += string(c)
-						} else {
-							cleanContext += " "
-						}
-					}
-					metadata.Properties[propertyName] = strings.TrimSpace(cleanContext)
-				}
+		// Extract context around the pattern. idx is now a valid offset into `data`
+		// too, because bytefold.Lower preserved every byte position.
+		start := max(0, idx-50)
+		end := min(len(data), idx+len(pattern)+50)
+		if start >= len(data) || end > len(data) || start >= end {
+			continue
+		}
+
+		// Clean up the context (remove non-printable characters)
+		var clean strings.Builder
+		clean.Grow(end - start)
+		for _, c := range data[start:end] {
+			if c >= 32 && c <= 126 { // Printable ASCII
+				clean.WriteRune(c)
+			} else {
+				clean.WriteByte(' ')
 			}
 		}
+		metadata.Properties[propertyName] = strings.TrimSpace(clean.String())
 	}
 }
 
