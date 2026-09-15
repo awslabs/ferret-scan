@@ -628,8 +628,20 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	// Verbose:true includes the context fields the hash depends on. The file
 	// download path (/export) still honors the user's --show-match choice
 	// server-side, so exported artifacts remain redacted by default.
+	// A confidence value this parser does not recognise is refused, not ignored.
+	//
+	// `confidence` here is a user-supplied request parameter. Silently dropping an unrecognised token
+	// produced a filter with every level false, so the response carried an EMPTY results array while
+	// its own stats block reported findings — the UI would show a clean scan of a document that is not
+	// clean. Refusing tells the caller which values exist instead (#683).
+	confidenceFilter, err := core.ParseConfidenceLevels(confidence)
+	if err != nil {
+		ws.sendError(responseWriter, err.Error())
+		return
+	}
+
 	formatterOptions := formatters.FormatterOptions{
-		ConfidenceLevel: core.ParseConfidenceLevels(confidence),
+		ConfidenceLevel: confidenceFilter,
 		Verbose:         true, // Include context fields (needed for suppression creation)
 		ShowMatch:       true, // Deliver real data to the browser; UI redacts client-side
 	}

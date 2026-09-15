@@ -74,7 +74,10 @@ func TestParseConfidenceLevels_All(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := ParseConfidenceLevels(tc.input)
+			result, err := ParseConfidenceLevels(tc.input)
+			if err != nil {
+				t.Fatalf("ParseConfidenceLevels(%q) returned an error: %v", tc.input, err)
+			}
 			for _, level := range []string{"high", "medium", "low"} {
 				if !result[level] {
 					t.Errorf("expected level %q to be enabled", level)
@@ -85,7 +88,10 @@ func TestParseConfidenceLevels_All(t *testing.T) {
 }
 
 func TestParseConfidenceLevels_Specific(t *testing.T) {
-	result := ParseConfidenceLevels("high,medium")
+	result, err := ParseConfidenceLevels("high,medium")
+	if err != nil {
+		t.Fatalf("ParseConfidenceLevels(\"high,medium\") returned an error: %v", err)
+	}
 	if !result["high"] {
 		t.Error("high should be enabled")
 	}
@@ -98,7 +104,10 @@ func TestParseConfidenceLevels_Specific(t *testing.T) {
 }
 
 func TestParseConfidenceLevels_CaseInsensitive(t *testing.T) {
-	result := ParseConfidenceLevels("HIGH,Medium,LOW")
+	result, err := ParseConfidenceLevels("HIGH,Medium,LOW")
+	if err != nil {
+		t.Fatalf("ParseConfidenceLevels(\"HIGH,Medium,LOW\") returned an error: %v", err)
+	}
 	for _, level := range []string{"high", "medium", "low"} {
 		if !result[level] {
 			t.Errorf("expected level %q to be enabled (case-insensitive)", level)
@@ -107,7 +116,10 @@ func TestParseConfidenceLevels_CaseInsensitive(t *testing.T) {
 }
 
 func TestParseConfidenceLevels_Whitespace(t *testing.T) {
-	result := ParseConfidenceLevels(" high , low ")
+	result, err := ParseConfidenceLevels(" high , low ")
+	if err != nil {
+		t.Fatalf("ParseConfidenceLevels(\" high , low \") returned an error: %v", err)
+	}
 	if !result["high"] {
 		t.Error("high should be enabled after trimming")
 	}

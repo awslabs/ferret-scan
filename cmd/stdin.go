@@ -357,8 +357,17 @@ func runStdinScan(in stdinScanInputs) int {
 		return 1
 	}
 
+	// Same treatment as file mode: an unrecognised confidence level is refused rather than turned
+	// into a filter that matches nothing. See core.ParseConfidenceLevels (#683).
+	confidenceFilter, confErr := parseConfidenceLevels(finalCfg.confidenceLevels)
+	if confErr != nil {
+		printPrecommitError(precommitConfig, confErr.Error(),
+			"Pass one or more of high,medium,low — or \"all\" — separated by commas")
+		return 1
+	}
+
 	formatterOptions := formatters.FormatterOptions{
-		ConfidenceLevel: parseConfidenceLevels(finalCfg.confidenceLevels),
+		ConfidenceLevel: confidenceFilter,
 		Verbose:         finalCfg.verbose,
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
@@ -564,12 +573,17 @@ func formatStdinFindings(
 	if !exists {
 		return "", fmt.Errorf("unsupported output format %q", finalCfg.format)
 	}
+	// Propagated rather than exiting: this helper has an error return, and the caller decides.
+	confidenceFilter, confErr := parseConfidenceLevels(finalCfg.confidenceLevels)
+	if confErr != nil {
+		return "", confErr
+	}
 	// Limit is passed through so the findings report from the redaction path is
 	// capped exactly like the non-redaction path's. It only ever bounds the
 	// report: the caller already redacted against the FULL match set, so a
 	// smaller report can never mean less redacted content.
 	opts := formatters.FormatterOptions{
-		ConfidenceLevel: parseConfidenceLevels(finalCfg.confidenceLevels),
+		ConfidenceLevel: confidenceFilter,
 		Verbose:         finalCfg.verbose,
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,

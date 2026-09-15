@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
@@ -72,4 +73,65 @@ func TestSchemaFormats_MatchRegistry(t *testing.T) {
 // field. Profiles is nil so only the Defaults block under test is exercised.
 func newSchemaProbeConfig() *config.Config {
 	return &config.Config{}
+}
+
+// confidenceSpellings is one table fed to BOTH the config schema and the scanner's parser.
+//
+// The divergence it exists to prevent: validateEnumField compared the "all" wildcard with == against
+// the RAW field value, while core.ParseConfidenceLevels lowercases and trims every token. So
+// `confidence_levels: ALL` in a config file was REJECTED while `--confidence ALL` on the command line
+// was accepted — and `All`, ` all `, `all,high` and `HIGH` behaved the same way. One of those is the
+// documented default, so a user moving a working command line into a config file got a validation
+// error for a value the tool itself accepts.
+//
+// Asserted as AGREEMENT rather than by sharing code, because internal/config cannot import
+// internal/core — core imports config. An external test package can import both, which is the same
+// reason the check-name and formatter guards in this file are here.
+var confidenceSpellings = []string{
+	"all", "ALL", "All", "aLL", " all ", "all,high", "high,all",
+	"high", "HIGH", "Medium", "high,medium", " high , low ",
+	"", "   ", ",", "high,,low",
+	"nonsense", "hi", "high,med", "medum", "HIGHEST", "none",
+}
+
+func TestConfidenceSpellingsAgreeWithTheScanner(t *testing.T) {
+	for _, spelling := range confidenceSpellings {
+		cfg := &config.Config{}
+		cfg.Defaults.ConfidenceLevels = spelling
+		schemaRejected := config.ValidateSchema(cfg) != nil
+
+		_, parseErr := core.ParseConfidenceLevels(spelling)
+		parserRejected := parseErr != nil
+
+		if schemaRejected != parserRejected {
+			verdict := func(rejected bool) string {
+				if rejected {
+					return "REJECTED"
+				}
+				return "accepted"
+			}
+			t.Errorf("confidence_levels %q: the config schema %s it and the scanner's parser %s it.\n"+
+				"  A value the tool accepts on the command line must be valid in a config file, and a "+
+				"value it refuses must be refused in both places. Update validateConfidenceLevels in "+
+				"schema.go and core.ParseConfidenceLevels together.",
+				spelling, verdict(schemaRejected), verdict(parserRejected))
+		}
+	}
+}
+
+// TestConfidenceSpellingsTableIsNotVacuous: the table must contain both accepted and rejected values,
+// or the agreement above holds trivially.
+func TestConfidenceSpellingsTableIsNotVacuous(t *testing.T) {
+	var accepted, rejected int
+	for _, spelling := range confidenceSpellings {
+		if _, err := core.ParseConfidenceLevels(spelling); err != nil {
+			rejected++
+		} else {
+			accepted++
+		}
+	}
+	if accepted < 5 || rejected < 5 {
+		t.Errorf("the spelling table has %d accepted and %d rejected values; it needs both in numbers "+
+			"for the agreement test to mean anything", accepted, rejected)
+	}
 }

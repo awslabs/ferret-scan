@@ -95,7 +95,7 @@ func ValidateSchema(config *Config) error {
 	if err := validateEnumField("defaults.format", config.Defaults.Format, validFormats); err != nil {
 		return err
 	}
-	if err := validateEnumField("defaults.confidence_levels", config.Defaults.ConfidenceLevels, validConfidenceLevels, "all"); err != nil {
+	if err := validateConfidenceLevels("defaults.confidence_levels", config.Defaults.ConfidenceLevels); err != nil {
 		return err
 	}
 	if err := validateEnumField("defaults.checks", config.Defaults.Checks, validCheckNames, "all"); err != nil {
@@ -118,7 +118,7 @@ func ValidateSchema(config *Config) error {
 		if err := validateEnumField(prefix+".format", p.Format, validFormats); err != nil {
 			return err
 		}
-		if err := validateEnumField(prefix+".confidence_levels", p.ConfidenceLevels, validConfidenceLevels, "all"); err != nil {
+		if err := validateConfidenceLevels(prefix+".confidence_levels", p.ConfidenceLevels); err != nil {
 			return err
 		}
 		if err := validateEnumField(prefix+".checks", p.Checks, validCheckNames, "all"); err != nil {
@@ -137,6 +137,41 @@ func ValidateSchema(config *Config) error {
 // on commas and every token must be in domain — this handles both scalar fields
 // (format, strategy) and list-like fields (checks, confidence_levels), since a
 // scalar is just a single-token list.
+// validateConfidenceLevels validates a confidence-levels field the same way the SCANNER parses one.
+//
+// Separate from validateEnumField because the two domains have opposite case rules and one function
+// cannot serve both: check names are canonical UPPERCASE identifiers (SSN, EMAIL), while confidence
+// levels are case-insensitive — core.ParseConfidenceLevels lowercases every token, so `--confidence
+// HIGH` has always worked.
+//
+// The divergence this removes: validateEnumField compared the "all" wildcard with == against the RAW
+// field value, so a config file saying `confidence_levels: ALL` was REJECTED while `--confidence ALL`
+// was accepted, and the same held for `All`, ` all ` and `all,high`. One of those spellings is the
+// documented default. A user moving a working command line into a config file got a validation error
+// for a value the tool itself accepts.
+//
+// Kept in agreement with the parser by TestConfidenceSpellingsAgreeWithTheScanner, an external test
+// that feeds one spelling table to both and requires the same verdict. config cannot import core
+// directly — core imports config — which is why agreement is asserted rather than shared.
+func validateConfidenceLevels(fieldName, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	for _, raw := range strings.Split(value, ",") {
+		token := strings.ToLower(strings.TrimSpace(raw))
+		if token == "" || token == "all" {
+			// Empty: a doubled or trailing separator. "all": the wildcard, accepted anywhere in the
+			// list rather than only alone, because "all,high" plainly means all.
+			continue
+		}
+		if !validConfidenceLevels[token] {
+			return fmt.Errorf("invalid value %q for %s: valid values are %s, or \"all\"",
+				strings.TrimSpace(raw), fieldName, sortedKeys(validConfidenceLevels))
+		}
+	}
+	return nil
+}
+
 func validateEnumField(fieldName, value string, domain map[string]bool, wildcards ...string) error {
 	if strings.TrimSpace(value) == "" {
 		return nil
