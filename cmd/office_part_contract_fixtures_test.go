@@ -126,6 +126,23 @@ func buildDocx(t *testing.T, dir, where, value string) string {
 		addPart("word/settings.xml", wml+".settings+xml", "settings", "settings.xml",
 			`<?xml version="1.0" encoding="UTF-8"?><w:settings `+wNS+
 				`><w:zoom w:percent="100"/><w:proofState w:spelling="clean"/><w:note>`+value+`</w:note></w:settings>`)
+	case "charts":
+		addPart("word/charts/chart1.xml", "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+			"chart", "charts/chart1.xml", chartPartXML(value))
+	case "people":
+		// Comment author display names. The value is in an ATTRIBUTE, which is why a character-data
+		// pass saw nothing here.
+		addPart("word/people.xml", wml+".people+xml", "people", "people.xml",
+			`<?xml version="1.0" encoding="UTF-8"?><w15:people xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">`+
+				`<w15:person w15:author="`+value+`"><w15:presenceInfo w15:providerId="None" w15:userId="`+value+`"/></w15:person></w15:people>`)
+	case "diagrams":
+		addPart("word/diagrams/data1.xml", "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
+			"diagramData", "diagrams/data1.xml", diagramPartXML(value))
+	case "glossary":
+		addPart("word/glossary/document.xml", wml+".document.glossary+xml", "glossaryDocument",
+			"glossary/document.xml",
+			`<?xml version="1.0" encoding="UTF-8"?><w:glossaryDocument `+wNS+`><w:docParts><w:docPart><w:docPartBody>`+
+				wordPara("Saved building block SSN: "+value)+`</w:docPartBody></w:docPart></w:docParts></w:glossaryDocument>`)
 	case "link":
 		// An EXTERNAL relationship, which is how a hyperlink target is stored. No content-type
 		// override: a .rels part is located by convention, and TargetMode="External" means the
@@ -170,7 +187,26 @@ func buildXlsx(t *testing.T, dir, where, value string) string {
 	sheet := `<?xml version="1.0" encoding="UTF-8"?><worksheet ` + sNS +
 		`><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>` + cell + `</t></is></c></row></sheetData></worksheet>`
 
-	var overrides, sheetRels, extra strings.Builder
+	var overrides, sheetRels, wbRels, extra strings.Builder
+	addWbPart := func(name, contentType, relType, target, body string) {
+		fmt.Fprintf(&overrides, `<Override PartName="/%s" ContentType="%s"/>`, name, contentType)
+		fmt.Fprintf(&wbRels, `<Relationship Id="rId%d" Type="%s/%s" Target="%s"/>`,
+			200+wbRels.Len()%700, relT, relType, target)
+		extra.WriteString("\x00" + name + "\x00" + body)
+	}
+	switch where {
+	case "tables":
+		// Column headings a user typed, held in a `name` ATTRIBUTE.
+		addWbPart("xl/tables/table1.xml",
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml", "table",
+			"tables/table1.xml",
+			`<?xml version="1.0" encoding="UTF-8"?><table `+sNS+` id="1" displayName="Roster" ref="A1:B2">`+
+				`<tableColumns count="1"><tableColumn id="1" name="`+value+`"/></tableColumns></table>`)
+	case "charts":
+		addWbPart("xl/charts/chart1.xml",
+			"application/vnd.openxmlformats-officedocument.drawingml.chart+xml", "chart",
+			"charts/chart1.xml", chartPartXML(value))
+	}
 	if where == "comments" {
 		fmt.Fprintf(&overrides, `<Override PartName="/xl/comments1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>`)
 		fmt.Fprintf(&sheetRels, `<Relationship Id="rIdC" Type="%s/comments" Target="../comments1.xml"/>`, relT)
@@ -197,7 +233,8 @@ func buildXlsx(t *testing.T, dir, where, value string) string {
 		{"xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8"?><workbook ` + sNS +
 			` xmlns:r="` + relT + `"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>`},
 		{"xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8"?><Relationships ` + relNS + `>` +
-			`<Relationship Id="rId1" Type="` + relT + `/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`},
+			`<Relationship Id="rId1" Type="` + relT + `/worksheet" Target="worksheets/sheet1.xml"/>` +
+			wbRels.String() + `</Relationships>`},
 		{"xl/worksheets/sheet1.xml", sheet},
 		{"xl/worksheets/_rels/sheet1.xml.rels", `<?xml version="1.0" encoding="UTF-8"?><Relationships ` + relNS + `>` +
 			sheetRels.String() + `</Relationships>`},
@@ -228,7 +265,48 @@ func buildPptx(t *testing.T, dir, where, value string) string {
 	notes := `<?xml version="1.0" encoding="UTF-8"?><p:notes ` + pNS + ` ` + aNS +
 		`><p:cSld><p:spTree>` + shape(notesText) + `</p:spTree></p:cSld></p:notes>`
 
+	// Parts reached from the PRESENTATION's relationships: comments, tags, authors and diagrams.
+	var pOverrides, pRels, pExtra strings.Builder
+	addPresPart := func(name, contentType, relType, target, body string) {
+		fmt.Fprintf(&pOverrides, `<Override PartName="/%s" ContentType="%s"/>`, name, contentType)
+		fmt.Fprintf(&pRels, `<Relationship Id="rId%d" Type="%s" Target="%s"/>`,
+			300+pRels.Len()%600, relType, target)
+		pExtra.WriteString("\x00" + name + "\x00" + body)
+	}
+	// presentationExtra is spliced INTO ppt/presentation.xml, for the row that plants there.
+	presentationExtra := ""
+
 	const pml = "application/vnd.openxmlformats-officedocument.presentationml"
+	const msRel = "http://schemas.microsoft.com/office/powerpoint/2018/10/relationships"
+	switch where {
+	case "modern-comments":
+		addPresPart("ppt/comments/modernComment_1_1.xml", "application/vnd.ms-powerpoint.comments+xml",
+			msRel+"/comments", "comments/modernComment_1_1.xml",
+			`<?xml version="1.0" encoding="UTF-8"?><p188:cmLst xmlns:p188="http://schemas.microsoft.com/office/powerpoint/2018/8/main" `+
+				aNS+`><p188:cm><p188:txBody><a:bodyPr/><a:p><a:r><a:t>Review note SSN: `+value+`</a:t></a:r></a:p></p188:txBody></p188:cm></p188:cmLst>`)
+	case "tags":
+		// The value is in a `val` ATTRIBUTE: no character data at all in this part.
+		addPresPart("ppt/tags/tag1.xml", pml+".tags+xml", relT+"/tags", "tags/tag1.xml",
+			`<?xml version="1.0" encoding="UTF-8"?><p:tagLst `+pNS+`><p:tag name="OWNER" val="`+value+`"/></p:tagLst>`)
+	case "authors":
+		addPresPart("ppt/authors.xml", "application/vnd.ms-powerpoint.authors+xml",
+			msRel+"/authors", "authors.xml",
+			`<?xml version="1.0" encoding="UTF-8"?><p188:authorLst xmlns:p188="http://schemas.microsoft.com/office/powerpoint/2018/8/main">`+
+				`<p188:author id="{1}" name="`+value+`" initials="R" userId="x" providerId="None"/></p188:authorLst>`)
+	case "comment-authors":
+		addPresPart("ppt/commentAuthors.xml", pml+".commentAuthors+xml",
+			relT+"/commentAuthors", "commentAuthors.xml",
+			`<?xml version="1.0" encoding="UTF-8"?><p:cmAuthorLst `+pNS+`><p:cmAuthor id="1" name="`+value+`" initials="R" lastIdx="1" clrIdx="0"/></p:cmAuthorLst>`)
+	case "diagrams":
+		addPresPart("ppt/diagrams/data1.xml",
+			"application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
+			relT+"/diagramData", "diagrams/data1.xml", diagramPartXML(value))
+	case "presentation":
+		// Presentation-level text. This part was already resolved to follow its relationships, which
+		// is exactly why nobody noticed its own text was never read.
+		presentationExtra = `<p:custShowLst><p:custShow name="Deck for ` + value + `" id="1"><p:sldLst/></p:custShow></p:custShowLst>`
+	}
+
 	contentTypes := `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 		`<Default Extension="xml" ContentType="application/xml"/>` +
@@ -236,7 +314,7 @@ func buildPptx(t *testing.T, dir, where, value string) string {
 		`<Override PartName="/ppt/slides/slide1.xml" ContentType="` + pml + `.slide+xml"/>` +
 		`<Override PartName="/ppt/notesSlides/notesSlide1.xml" ContentType="` + pml + `.notesSlide+xml"/>` +
 		`<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
-		`</Types>`
+		pOverrides.String() + `</Types>`
 
 	members := [][2]string{
 		{"[Content_Types].xml", contentTypes},
@@ -245,9 +323,11 @@ func buildPptx(t *testing.T, dir, where, value string) string {
 			`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
 			`</Relationships>`},
 		{"ppt/presentation.xml", `<?xml version="1.0" encoding="UTF-8"?><p:presentation ` + pNS +
-			` xmlns:r="` + relT + `"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>`},
+			` xmlns:r="` + relT + `"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst>` +
+			presentationExtra + `</p:presentation>`},
 		{"ppt/_rels/presentation.xml.rels", `<?xml version="1.0" encoding="UTF-8"?><Relationships ` + relNS + `>` +
-			`<Relationship Id="rId1" Type="` + relT + `/slide" Target="slides/slide1.xml"/></Relationships>`},
+			`<Relationship Id="rId1" Type="` + relT + `/slide" Target="slides/slide1.xml"/>` +
+			pRels.String() + `</Relationships>`},
 		{"ppt/slides/slide1.xml", slide},
 		// The notes part is reached from the SLIDE's relationships, which is how a real package
 		// links it — the extractor resolves it that way rather than guessing by index.
@@ -256,7 +336,34 @@ func buildPptx(t *testing.T, dir, where, value string) string {
 		{"ppt/notesSlides/notesSlide1.xml", notes},
 		{"docProps/core.xml", corePropsXML()},
 	}
+	members = append(members, splitExtraParts(pExtra.String())...)
 	return writeContainer(t, filepath.Join(dir, "contract.pptx"), members)
+}
+
+// chartPartXML is a chart part as a producer writes one: an authored title, plus the numeric cache of
+// the values plotted.
+//
+// The cache is deliberately present and deliberately full of PII-shaped numbers. Reading it was
+// measured on 452 real containers and produced a 17-digit datum as VIN at confidence 90, 10-digit
+// ids as PHONE and 9-digit ids as SSN — so a fixture without it would let that regression back in
+// while every row still passed.
+func chartPartXML(value string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?><c:chartSpace ` +
+		`xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" ` + aNS + `>` +
+		`<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Chart SSN: ` + value + `</a:t></a:r></a:p></c:rich></c:tx></c:title>` +
+		`<c:plotArea><c:barChart><c:ser><c:val><c:numRef><c:numCache>` +
+		`<c:pt idx="0"><c:v>78260869565217395</c:v></c:pt>` +
+		`<c:pt idx="1"><c:v>870366751</c:v></c:pt>` +
+		`</c:numCache></c:numRef></c:val></c:ser>` +
+		`<c:axId val="1829252287"/><c:axId val="1829256815"/></c:barChart></c:plotArea></c:chartSpace>`
+}
+
+// diagramPartXML is a SmartArt data part — an org chart is a diagram full of names.
+func diagramPartXML(value string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?><dgm:dataModel ` +
+		`xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" ` + aNS + `>` +
+		`<dgm:ptLst><dgm:pt modelId="1"><dgm:t><a:bodyPr/><a:p><a:r><a:t>Diagram SSN: ` + value +
+		`</a:t></a:r></a:p></dgm:t></dgm:pt></dgm:ptLst></dgm:dataModel>`
 }
 
 func corePropsXML() string {

@@ -1,0 +1,186 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected sensitive data (person name) in this file.\n\n**Location:** <TMPDIR>/aux_parts.docx (line 10)\n**Confidence:** HIGH (100.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nMarion Reyes\n```\n\n**Additional Information:**\n- context_impact: 13\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PERSON_NAME"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "PERSON_NAME"
+        }
+      ],
+      "location": {
+        "end_line": 10,
+        "file": "aux_parts.docx",
+        "start_line": 10
+      },
+      "message": "Sensitive data (person name) detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Person Name Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/aux_parts.docx (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "SSN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "ssn"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "aux_parts.docx",
+        "start_line": 3
+      },
+      "message": "Social Security Number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Social Security Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/aux_parts.docx (line 6)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nHeadcount for SSN 204-11-8830\n```\n\n**Additional Information:**\n- context_impact: 25\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "SSN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "ssn"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "aux_parts.docx",
+        "start_line": 6
+      },
+      "message": "Social Security Number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Social Security Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/aux_parts.docx (line 14)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEscalation owner SSN 225-66-9014\n```\n\n**Additional Information:**\n- context_impact: 25\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "SSN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "ssn"
+        }
+      ],
+      "location": {
+        "end_line": 14,
+        "file": "aux_parts.docx",
+        "start_line": 14
+      },
+      "message": "Social Security Number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Social Security Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/aux_parts.docx (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AUTHOR_INFO"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "metadata"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "aux_parts.docx",
+        "start_line": 1
+      },
+      "message": "Author information detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Author Info Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected sensitive data (last modified by) in this file.\n\n**Location:** <TMPDIR>/aux_parts.docx (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "LAST_MODIFIED_BY"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "metadata"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "aux_parts.docx",
+        "start_line": 2
+      },
+      "message": "Sensitive data (last modified by) detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Last Modified By Detected",
+      "severity": "High"
+    }
+  ]
+}

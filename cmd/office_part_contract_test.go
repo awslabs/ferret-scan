@@ -74,6 +74,21 @@ const (
 	linkSSN      = "764-22-9051"
 	customXMLSSN = "778-45-1120"
 	settingsSSN  = "786-33-6607"
+
+	// #680 and the five more part families the coverage guard found afterwards. Distinct per row so a
+	// finding can be attributed to the part it was planted in.
+	wordChartSSN    = "204-11-8830"
+	wordPeopleSSN   = "212-34-5507"
+	wordDiagramSSN  = "225-66-9014"
+	wordGlossarySSN = "233-70-4451"
+	xlTableSSN      = "241-19-7762"
+	xlChartSSN      = "252-83-1198"
+	pptCommentSSN   = "263-45-6620"
+	pptTagSSN       = "271-92-3305"
+	pptPresSSN      = "284-57-8841"
+	pptAuthorsSSN   = "295-13-4472"
+	pptCmAuthorsSSN = "303-68-2259"
+	pptDiagramSSN   = "312-24-9903"
 )
 
 type contractRow struct {
@@ -182,6 +197,100 @@ func officeContractRows() []contractRow {
 				"slide, the broad search never ran, and the whole presentation was REFUSED — while the " +
 				"value in the notes alone redacted fine. A name on a slide and again in its speaker notes " +
 				"is completely ordinary, so the common case failed and the rarer one worked.",
+		},
+
+		// ---- #680: six part families read by nothing at HEAD ----
+		//
+		// Each verified against a REAL soffice-produced container first: the value was planted in the
+		// part, was absent from --preprocess-only, was reported by no validator, and was therefore
+		// written to the "redacted" copy in cleartext at exit 0.
+		{
+			name: "docx/chart-title", part: "word/charts/chart1.xml", value: wordChartSSN, scanned: true,
+			build: func(t *testing.T, d string) string { return buildDocx(t, d, "charts", wordChartSSN) },
+			why: "#680. A chart title is authored text. The fixture also carries the numeric CACHE " +
+				"(a 17-digit value and a 9-digit one) which must NOT be read: reading it was measured " +
+				"at 35 findings across 452 real containers, false positives throughout — including the " +
+				"VIN and PERSON_NAME that #680 cited as the reason to read this part at all.",
+		},
+		{
+			name: "xlsx/table-column", part: "xl/tables/table1.xml", value: xlTableSSN, scanned: true,
+			build: func(t *testing.T, d string) string { return buildXlsx(t, d, "tables", xlTableSSN) },
+			why: "#680. Table column headings are typed by the user, and they live in a `name` " +
+				"ATTRIBUTE — so the character-data pass every other extractor uses sees nothing here.",
+		},
+		{
+			name: "xlsx/chart-title", part: "xl/charts/chart1.xml", value: xlChartSSN, scanned: true,
+			build: func(t *testing.T, d string) string { return buildXlsx(t, d, "charts", xlChartSSN) },
+			why:   "#680, as docx/chart-title.",
+		},
+		{
+			name: "pptx/modern-comments", part: "ppt/comments/modernComment_1_1.xml", value: pptCommentSSN,
+			scanned: true,
+			build:   func(t *testing.T, d string) string { return buildPptx(t, d, "modern-comments", pptCommentSSN) },
+			why: "#680. The direct analogue of the Word and Excel comment parts already covered — and " +
+				"a part name that did not exist when this extractor was written, which is the whole " +
+				"argument for the coverage guard rather than another allowlist entry.",
+		},
+		{
+			name: "pptx/tags", part: "ppt/tags/tag1.xml", value: pptTagSSN, scanned: true,
+			build: func(t *testing.T, d string) string { return buildPptx(t, d, "tags", pptTagSSN) },
+			why: "#680. Holds its value in a `val` attribute with NO character data at all. Keying the " +
+				"attribute allowlist on the element name matters here: a bare `val` also matches " +
+				"<c:axId val=...> and reported 28 chart axis ids as PHONE.",
+		},
+		{
+			name: "pptx/presentation-level-text", part: "ppt/presentation.xml", value: pptPresSSN,
+			scanned: true,
+			build:   func(t *testing.T, d string) string { return buildPptx(t, d, "presentation", pptPresSSN) },
+			why: "#680. THE INSTRUCTIVE ONE: this part was always resolved — every slide is found " +
+				"through its relationships — so it was present in the package map while no pass ever " +
+				"extracted its own text. \"Resolved\" and \"scanned\" are different things.",
+		},
+
+		// ---- Found by TestEveryKnownOOXMLPartIsClassified, NOT by #680 ----
+		//
+		// Classifying every XML part name observed in 452 real containers left 23 unclassified, and
+		// five of those hold authored text. Three hold display names. This is the guard finding what a
+		// hand-written list could not, which is the reason it exists.
+		{
+			name: "docx/people-comment-authors", part: "word/people.xml", value: wordPeopleSSN,
+			scanned: true,
+			build:   func(t *testing.T, d string) string { return buildDocx(t, d, "people", wordPeopleSSN) },
+			why: "Comment author display names, in a `w15:person w15:author` attribute. Present in 47 " +
+				"of 452 real containers, read by nothing, and reporting +160 real names once read. The " +
+				"tool already reports authors out of docProps, so missing them here was inconsistent " +
+				"as well as a leak.",
+		},
+		{
+			name: "pptx/authors", part: "ppt/authors.xml", value: pptAuthorsSSN, scanned: true,
+			build: func(t *testing.T, d string) string { return buildPptx(t, d, "authors", pptAuthorsSSN) },
+			why:   "Modern comment authors (`p188:author name`). Present in 13 of 452 real containers.",
+		},
+		{
+			name: "pptx/comment-authors", part: "ppt/commentAuthors.xml", value: pptCmAuthorsSSN,
+			scanned: true,
+			build:   func(t *testing.T, d string) string { return buildPptx(t, d, "comment-authors", pptCmAuthorsSSN) },
+			why: "Classic comment authors (`p:cmAuthor name`). Present in 26 of 452. The " +
+				"`p15:presenceInfo userId` beside it is deliberately NOT read: it is a numeric internal " +
+				"id in most containers and produced 21 SSN false positives.",
+		},
+		{
+			name: "docx/smartart", part: "word/diagrams/data1.xml", value: wordDiagramSSN, scanned: true,
+			build: func(t *testing.T, d string) string { return buildDocx(t, d, "diagrams", wordDiagramSSN) },
+			why:   "SmartArt content. An org chart is a diagram full of names.",
+		},
+		{
+			name: "pptx/smartart", part: "ppt/diagrams/data1.xml", value: pptDiagramSSN, scanned: true,
+			build: func(t *testing.T, d string) string { return buildPptx(t, d, "diagrams", pptDiagramSSN) },
+			why:   "SmartArt content, presentation side.",
+		},
+		{
+			name: "docx/glossary-building-block", part: "word/glossary/document.xml", value: wordGlossarySSN,
+			scanned: true,
+			build:   func(t *testing.T, d string) string { return buildDocx(t, d, "glossary", wordGlossarySSN) },
+			why: "Quick Parts and AutoText. 12 of 16 real parts hold nothing but [placeholder] runs, " +
+				"but a saved building block is authored content — and under the sink rule a part that " +
+				"SOMETIMES holds a value is read.",
 		},
 	}
 }

@@ -1,0 +1,250 @@
+{
+  "results": [
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/aux_parts.docx",
+      "line_number": 10,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 13,
+        "context_keywords": null,
+        "cultural_context": [
+          "western",
+          "english",
+          "european"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "english",
+            "european"
+          ],
+          "FirstName": "Marion",
+          "FullName": "Marion Reyes",
+          "LastName": "Reyes",
+          "MiddleName": "",
+          "Pattern": "basic_western_name",
+          "Suffix": "",
+          "Title": ""
+        },
+        "original_confidence": 100,
+        "pattern": "basic_western_name",
+        "pattern_priority": 5,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "validation_checks": {
+          "both_names_known": true,
+          "has_known_name_component": true,
+          "has_middle_name": false,
+          "has_suffix": false,
+          "has_title": false,
+          "known_first_name": true,
+          "known_last_name": true,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "Marion Reyes",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
+    },
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/aux_parts.docx",
+      "line_number": 3,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 45,
+        "original_confidence": 100,
+        "original_file": "<TMPDIR>/aux_parts.docx",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "449-87-4100",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/aux_parts.docx",
+      "line_number": 6,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 25,
+        "original_confidence": 100,
+        "original_file": "<TMPDIR>/aux_parts.docx",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "204-11-8830",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<TMPDIR>/aux_parts.docx",
+      "line_number": 14,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 25,
+        "original_confidence": 100,
+        "original_file": "<TMPDIR>/aux_parts.docx",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "format": true,
+          "not_common_pattern": true,
+          "not_repeating": true,
+          "not_sequential": true,
+          "not_test_number": true,
+          "valid_area": true
+        },
+        "validation_path": "document"
+      },
+      "text": "225-66-9014",
+      "type": "SSN",
+      "validator": "ssn"
+    },
+    {
+      "confidence": 60.00000000000001,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/aux_parts.docx",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 0,
+        "full_field": "Author: Jane Analyst",
+        "metadata_type": "AUTHOR_INFO",
+        "original_confidence": 60.00000000000001,
+        "original_file": "<TMPDIR>/aux_parts.docx",
+        "preprocessor_adjustment": 0,
+        "preprocessor_name": "Office Metadata Extractor",
+        "preprocessor_type": "office_metadata",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "source_file": "<TMPDIR>/aux_parts.docx",
+        "source_preprocessor": "office_metadata",
+        "total_adjustment": 0,
+        "validation_checks": {
+          "contains_author_field": true
+        },
+        "validation_path": "metadata"
+      },
+      "text": "Jane Analyst",
+      "type": "AUTHOR_INFO",
+      "validator": "metadata"
+    },
+    {
+      "confidence": 60.00000000000001,
+      "confidence_level": "MEDIUM",
+      "filename": "<TMPDIR>/aux_parts.docx",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "context_impact": 0,
+        "full_field": "LastModifiedBy: Ops Reviewer",
+        "metadata_type": "LAST_MODIFIED_BY",
+        "original_confidence": 60.00000000000001,
+        "original_file": "<TMPDIR>/aux_parts.docx",
+        "preprocessor_adjustment": 0,
+        "preprocessor_name": "Office Metadata Extractor",
+        "preprocessor_type": "office_metadata",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "source_file": "<TMPDIR>/aux_parts.docx",
+        "source_preprocessor": "office_metadata",
+        "total_adjustment": 0,
+        "validation_checks": {
+          "contains_modifier_field": true
+        },
+        "validation_path": "metadata"
+      },
+      "text": "Ops Reviewer",
+      "type": "LAST_MODIFIED_BY",
+      "validator": "metadata"
+    }
+  ]
+}

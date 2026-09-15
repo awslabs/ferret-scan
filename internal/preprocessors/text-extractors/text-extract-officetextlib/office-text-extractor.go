@@ -360,6 +360,15 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 
 	appendExternalRelationshipTargets(&allText, pkg)
 
+	// Every remaining XML part, minus a justified exclusion list — see ooxml_auxiliary.go. This is
+	// what covers word/charts/chartN.xml, whose titles and series labels held PERSON_NAME and VIN on
+	// the real corpus, and any part a future producer adds. Only parts whose text was actually
+	// extracted above are marked read: a part resolved merely to follow its relationships has not
+	// been scanned, and treating the two as the same is how ppt/presentation.xml stayed unread.
+	docxRead := make(map[string]bool)
+	markRead(docxRead, documentFiles, headerFiles, footerFiles, annotationFiles, []*zip.File{corePropsFile})
+	appendAuxiliaryParts(&allText, pkg, docxRead)
+
 	content.Text = allText.String()
 
 	// Extract metadata from core.xml if available
@@ -485,6 +494,13 @@ func extractXlsxText(filePath string, content *TextContent) (*TextContent, error
 
 	appendExternalRelationshipTargets(&allText, pkg)
 
+	// Every remaining XML part, minus a justified exclusion list — see ooxml_auxiliary.go. This is
+	// what covers xl/tables/tableN.xml, whose column headings are user-authored and live in a `name`
+	// ATTRIBUTE, and xl/charts/chartN.xml.
+	xlsxRead := make(map[string]bool)
+	markRead(xlsxRead, worksheets, commentFiles, sharedStringsFiles, []*zip.File{corePropsFile})
+	appendAuxiliaryParts(&allText, pkg, xlsxRead)
+
 	content.Text = allText.String()
 
 	// Extract metadata from core.xml if available
@@ -542,6 +558,10 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 	// Process slides, notes, and masters
 	var allText strings.Builder
 
+	// The notes parts whose text is actually extracted below, so the auxiliary pass does not read
+	// them a second time.
+	var notesRead []*zip.File
+
 	// Process slides
 	for i, slide := range slides {
 		// Stop once cumulative extracted text hits the cap (LOW-1).
@@ -563,6 +583,7 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 		// got another slide's speaker notes (or none), mislabeling where that
 		// text, and any PII in it, came from.
 		if notesFile := pptxNotesForSlide(slide, pkg); notesFile != nil {
+			notesRead = append(notesRead, notesFile)
 			notesText, err := extractTextFromXML(notesFile, "//a:t")
 			if err == nil && notesText != "" {
 				allText.WriteString("\n[SPEAKER NOTES]\n")
@@ -587,6 +608,17 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 	}
 
 	appendExternalRelationshipTargets(&allText, pkg)
+
+	// Every remaining XML part, minus a justified exclusion list — see ooxml_auxiliary.go. This
+	// covers ppt/comments/modernComment_*.xml (PowerPoint review comments, the direct analogue of the
+	// Word and Excel comments already read), ppt/tags/tagN.xml, and ppt/presentation.xml itself.
+	//
+	// presentationParts is deliberately NOT marked read. Those parts are resolved here only to
+	// follow their relationships to the slides and masters; no pass extracts their text, and
+	// conflating "resolved" with "scanned" is exactly why presentation-level text was missed (#680).
+	pptxRead := make(map[string]bool)
+	markRead(pptxRead, slides, masters, notesRead, []*zip.File{corePropsFile})
+	appendAuxiliaryParts(&allText, pkg, pptxRead)
 
 	content.Text = allText.String()
 	content.PageCount = len(slides)
