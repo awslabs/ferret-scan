@@ -344,7 +344,7 @@ func buildPptx(t *testing.T, dir, where, value string) string {
 // the values plotted.
 //
 // The cache is deliberately present and deliberately full of PII-shaped numbers. Reading it was
-// measured on 452 real containers and produced a 17-digit datum as VIN at confidence 90, 10-digit
+// measured on the real corpus and produced a 17-digit datum as VIN at confidence 90, 10-digit
 // ids as PHONE and 9-digit ids as SSN — so a fixture without it would let that regression back in
 // while every row still passed.
 func chartPartXML(value string) string {

@@ -209,7 +209,7 @@ func officeContractRows() []contractRow {
 			build: func(t *testing.T, d string) string { return buildDocx(t, d, "charts", wordChartSSN) },
 			why: "#680. A chart title is authored text. The fixture also carries the numeric CACHE " +
 				"(a 17-digit value and a 9-digit one) which must NOT be read: reading it was measured " +
-				"at 35 findings across 452 real containers, false positives throughout — including the " +
+				"at 29 findings across the real corpus, false positives throughout — including the " +
 				"VIN and PERSON_NAME that #680 cited as the reason to read this part at all.",
 		},
 		{
@@ -236,7 +236,7 @@ func officeContractRows() []contractRow {
 			build: func(t *testing.T, d string) string { return buildPptx(t, d, "tags", pptTagSSN) },
 			why: "#680. Holds its value in a `val` attribute with NO character data at all. Keying the " +
 				"attribute allowlist on the element name matters here: a bare `val` also matches " +
-				"<c:axId val=...> and reported 28 chart axis ids as PHONE.",
+				"<c:axId val=...> and reported 24 chart axis ids as PHONE and SSN.",
 		},
 		{
 			name: "pptx/presentation-level-text", part: "ppt/presentation.xml", value: pptPresSSN,
@@ -249,7 +249,7 @@ func officeContractRows() []contractRow {
 
 		// ---- Found by TestEveryKnownOOXMLPartIsClassified, NOT by #680 ----
 		//
-		// Classifying every XML part name observed in 452 real containers left 23 unclassified, and
+		// Classifying every XML part name observed in the real corpus left 23 unclassified, and
 		// five of those hold authored text. Three hold display names. This is the guard finding what a
 		// hand-written list could not, which is the reason it exists.
 		{
@@ -257,20 +257,20 @@ func officeContractRows() []contractRow {
 			scanned: true,
 			build:   func(t *testing.T, d string) string { return buildDocx(t, d, "people", wordPeopleSSN) },
 			why: "Comment author display names, in a `w15:person w15:author` attribute. Present in 47 " +
-				"of 452 real containers, read by nothing, and reporting +160 real names once read. The " +
+				"real containers, read by nothing, and reporting +152 real names once read. The " +
 				"tool already reports authors out of docProps, so missing them here was inconsistent " +
 				"as well as a leak.",
 		},
 		{
 			name: "pptx/authors", part: "ppt/authors.xml", value: pptAuthorsSSN, scanned: true,
 			build: func(t *testing.T, d string) string { return buildPptx(t, d, "authors", pptAuthorsSSN) },
-			why:   "Modern comment authors (`p188:author name`). Present in 13 of 452 real containers.",
+			why:   "Modern comment authors (`p188:author name`). Present in 13 real containers.",
 		},
 		{
 			name: "pptx/comment-authors", part: "ppt/commentAuthors.xml", value: pptCmAuthorsSSN,
 			scanned: true,
 			build:   func(t *testing.T, d string) string { return buildPptx(t, d, "comment-authors", pptCmAuthorsSSN) },
-			why: "Classic comment authors (`p:cmAuthor name`). Present in 26 of 452. The " +
+			why: "Classic comment authors (`p:cmAuthor name`). Present in 26 real containers. The " +
 				"`p15:presenceInfo userId` beside it is deliberately NOT read: it is a numeric internal " +
 				"id in most containers and produced 21 SSN false positives.",
 		},

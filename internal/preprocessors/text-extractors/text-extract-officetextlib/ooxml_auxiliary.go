@@ -25,8 +25,8 @@ import (
 //
 // # Why the answer is not "read everything"
 //
-// That was the first implementation, and it was MEASURED on 452 real .docx/.xlsx/.pptx: +3,585
-// findings, +48.4%, +720 in the HIGH band, on 129 containers. Sampled, the additions were dominated
+// That was the first implementation, and it was MEASURED on 399 real .docx/.xlsx/.pptx: +3,348
+// findings, +47.7%, +680 in the HIGH band. Sampled, the additions were dominated
 // by template and producer parts, not by content:
 //
 //	ppt/slideLayouts/*      ~50 findings PER LAYOUT part, in decks with 26 of them: the deck's
@@ -93,16 +93,16 @@ var auxiliaryPartIncludes = []struct {
 		"PERSON_NAME and VIN"},
 
 	// Found by the coverage guard, NOT by #680, which listed six parts. Classifying every XML part in
-	// 452 real containers left 23 unclassified, and five of them hold authored text — three of those
+	// the real corpus left 23 unclassified, and five of them hold authored text — three of those
 	// hold display names. This is the guard doing the job the issue's own list could not.
 	{"word/people.xml", "comment author display names, in a `w15:person w15:author` ATTRIBUTE. " +
-		"Present in 47 of 452 real containers and read by nothing before this change. A reviewer's " +
+		"Present in 47 real containers and read by nothing before this change. A reviewer's " +
 		"name is exactly what the tool already reports out of docProps, so omitting it here was " +
 		"inconsistent as well as a miss"},
 	{"ppt/commentauthors.xml", "comment author display names (`p:cmAuthor name`) and the presence " +
-		"records beside them (`p15:presenceInfo userId`). Present in 26 of 452 real containers"},
+		"records beside them (`p15:presenceInfo userId`). Present in 26 real containers"},
 	{"ppt/authors.xml", "modern comment author display names (`p188:author name`). Present in 13 of " +
-		"452 real containers"},
+		"the real corpus"},
 	{"diagrams/data", "SmartArt content, for both word/diagrams/ and ppt/diagrams/. Ordinary authored " +
 		"text — an org chart is a diagram full of names — held in a:t runs like any other DrawingML. " +
 		"All 23 such parts in the corpus carry at least one run"},
@@ -191,7 +191,7 @@ var auxiliaryPartExclusions = []struct {
 	{"embeddings/", false, "embedded OLE objects: the embedded-container path's job, not this one"},
 	{"printersettings", false, "printer configuration"},
 
-	// The rest of what the coverage guard surfaced across 452 real containers. Each was inspected and
+	// The rest of what the coverage guard surfaced across the real corpus. Each was inspected and
 	// holds no authored text, so it is skipped rather than left unclassified.
 	{"diagrams/layout", false, "SmartArt layout ALGORITHM definition; the content is in data*.xml"},
 	{"diagrams/quickstyle", false, "SmartArt style variation from the template"},
@@ -215,7 +215,7 @@ var auxiliaryPartExclusions = []struct {
 //
 // Because `val` is OOXML's UNIVERSAL scalar attribute, and keying on it alone was measured wrong.
 // The first version of this list had a bare "val", added for <p:tag name="OWNER" val="..."/>, and it
-// produced 28 false positives across 452 real containers — every one of them a chart axis identifier:
+// produced 24 false positives across the real corpus — every one of them a chart axis identifier:
 //
 //	<c:axId val="1829252287"/>       -> PHONE, confidence 25
 //	<c:crossAx val="1978746304"/>    -> PHONE, confidence 25
@@ -241,7 +241,7 @@ var labelBearingAttrs = map[string]bool{
 	"cmauthor|name":          true, // ppt/commentAuthors.xml: <p:cmAuthor name="..."/>
 	// NOT p15:presenceInfo/@userId, which sits beside cmAuthor in the same part and looks like a
 	// second copy of the name. It is one in some containers and an internal NUMERIC id in most:
-	// measured, it produced 21 SSN findings from a 9-digit id present in 18 of 452 containers. The
+	// measured, it produced 21 SSN findings from a 9-digit id present in 18 containers. The
 	// author's name is already carried by cmAuthor/@name, so reading userId adds a false positive and
 	// no recall.
 	"author|name": true, // ppt/authors.xml: <p188:author name="..."/>
@@ -312,7 +312,7 @@ func AuxiliaryPartDecision(name string) (included, excluded bool, why string) {
 // # Why not all character data
 //
 // Because a chart part is mostly a numeric cache. Taking every character-data run from the six
-// included parts was MEASURED on 452 real containers: +35 findings, and sampling every one of them
+// included parts was MEASURED on 399 real containers: +29 findings, and sampling every one of them
 // showed they were false positives essentially throughout, all from <c:v> cache entries inside
 // xl/charts and word/charts:
 //

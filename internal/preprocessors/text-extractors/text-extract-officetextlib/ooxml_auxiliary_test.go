@@ -146,7 +146,7 @@ func TestAuxiliaryClassificationIsUnambiguous(t *testing.T) {
 // source that a bare attribute-name list produced.
 //
 // `val` is OOXML's universal scalar attribute. Keyed on the name alone it matched <c:axId val="..."/>
-// and reported 28 chart axis identifiers as PHONE across the real corpus. Keyed on the element it
+// and reported 24 chart axis identifiers as PHONE and SSN across the real corpus. Keyed on the element it
 // matches <p:tag val="..."/> and nothing else.
 func TestLabelBearingAttributesAreKeyedOnTheElement(t *testing.T) {
 	for key := range labelBearingAttrs {
@@ -193,7 +193,7 @@ func TestAuxiliaryExtractionSkipsTheNumericCache(t *testing.T) {
 	for _, cached := range []string{"78260869565217395", "870366751"} {
 		if strings.Contains(got, cached) {
 			t.Errorf("a numeric cache entry (%s) was extracted.\n"+
-				"Measured on 452 real containers, reading these produced a 17-digit datum as VIN at "+
+				"Measured on the real corpus, reading these produced a 17-digit datum as VIN at "+
 				"confidence 90, plus 10-digit ids as PHONE and 9-digit ids as SSN — the false "+
 				"positives that #680's own justification for this row turned out to be.\ngot: %q",
 				cached, got)

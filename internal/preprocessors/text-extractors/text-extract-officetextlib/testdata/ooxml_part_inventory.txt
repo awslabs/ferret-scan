@@ -1,6 +1,7 @@
 # Every XML part-name family observed in real OOXML containers, one per line.
 #
-# Collected from 452 real .docx/.xlsx/.pptx produced by Word, PowerPoint, Excel and LibreOffice:
+# Collected from 452 real .docx/.xlsx/.pptx produced by Word, PowerPoint, Excel and LibreOffice
+# (399 of which the scanner reports it examined in full):
 # 90 distinct families. Digit runs are normalised to N and producer-generated ids to ID, so this
 # file is a list of SCHEMA CONVENTIONS and carries no content, no file names and nothing
 # identifying from any document.

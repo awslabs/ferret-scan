@@ -1052,7 +1052,7 @@ func BuildDOCXWithAuxParts(creator, lastModifiedBy string, paras []string, chart
 	chart := xmlDecl + `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" ` + aNS + `>` +
 		`<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>` + escapeXML(chartTitle) + `</a:t></a:r></a:p></c:rich></c:tx></c:title>` +
 		// The numeric cache. Present deliberately: reading it was measured at 35 false positives
-		// across 452 real containers, so a fixture without it would let that regression back in.
+		// across the real corpus, so a fixture without it would let that regression back in.
 		`<c:plotArea><c:barChart><c:ser><c:val><c:numRef><c:numCache>` +
 		`<c:pt idx="0"><c:v>78260869565217395</c:v></c:pt><c:pt idx="1"><c:v>870366751</c:v></c:pt>` +
 		`</c:numCache></c:numRef></c:val></c:ser><c:axId val="1829252287"/></c:barChart></c:plotArea></c:chartSpace>`

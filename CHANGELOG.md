@@ -263,12 +263,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   different things.
 
   **The other five were found by the new guard, not by the issue.** Classifying every XML part name
-  observed across 452 real `.docx`/`.xlsx`/`.pptx` left 23 unclassified, and five of those hold authored
+  observed across 399 real `.docx`/`.xlsx`/`.pptx` left 23 unclassified, and five of those hold authored
   text: `word/people.xml`, `ppt/authors.xml` and `ppt/commentAuthors.xml` carry comment authors'
-  **display names** (present in 47, 13 and 26 of the 452), the Word and PowerPoint `diagrams/data*.xml`
+  **display names** (present in 47, 13 and 26 containers), the Word and PowerPoint `diagrams/data*.xml`
   parts carry SmartArt — an org chart is a diagram full of names — and `word/glossary/document.xml`
-  carries saved building blocks. Reading them reports **+160 real personal names** on that corpus that
-  the tool previously missed entirely, +148 of them in the HIGH band. The tool already reported authors
+  carries saved building blocks. Reading them reports **+152 real personal names** on that corpus that
+  the tool previously missed entirely, +140 of them in the HIGH band. The tool already reported authors
   out of `docProps`, so missing them here was an inconsistency as well as a leak.
 
   **The gate is that no part may be unclassified.** Coverage had been decided by an allowlist of the
@@ -280,12 +280,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it being silently unread. The inventory holds schema conventions only — digit runs normalised — so it
   carries no content or file names from any document.
 
-  **Reading everything was tried first, and measured, and rejected.** It cost **+3,585 findings
-  (+48.4%), +720 HIGH**, dominated by template parts rather than content: `ppt/slideLayouts/*` alone
+  **Reading everything was tried first, and measured, and rejected.** It cost **+3,348 findings
+  (+47.7%), +680 HIGH**, dominated by template parts rather than content: `ppt/slideLayouts/*` alone
   re-reported a deck's copyright boilerplate once per layout, up to 26 times, plus layout ids as `PHONE`;
   `xl/externalLinks/*` gave `Hong Kong` and `Middle East` as `PERSON_NAME` at confidence 92-100. That is
   the `customXml` result ([#679](https://github.com/awslabs/ferret-scan/issues/679): 403 findings, false
-  positives throughout) at nine times the scale. Each such part is now an exclusion carrying the number
+  positives throughout) at eight times the scale. Each such part is now an exclusion carrying the number
   that put it there.
 
   **Two false-positive sources were found and closed by measurement during this change, not after it.**
@@ -293,15 +293,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confidence 90, 10-digit values as `PHONE`, 9-digit as `SSN` — so extraction now takes only DrawingML
   `<a:t>` runs and label-bearing attributes, never arbitrary character data. And the attribute allowlist
   is keyed on **(element, attribute)** rather than attribute name, because `val` is OOXML's universal
-  scalar attribute: keyed on the name alone it matched `<c:axId val="1829252287"/>` and reported 28 chart
-  axis identifiers as `PHONE`. Notably this refutes the reason #680 gave for reading chart parts at all
+  scalar attribute: keyed on the name alone it matched `<c:axId val="1829252287"/>` and reported 24 chart
+  axis identifiers as `PHONE`/`SSN`. Notably this refutes the reason #680 gave for reading chart parts at all
   — "`word/chartN.xml` held `PERSON_NAME` and `VIN` on the real corpus" — because both of those were
   themselves cache false positives; the row stands on chart titles, which are authored text.
   `p15:presenceInfo/@userId` is excluded for the same reason: a name in one container, a numeric
   internal id in 18, and 21 `SSN` false positives.
 
-  Final measurement on the 452 real containers: **+160 findings, every one `PERSON_NAME`**, with the LOW
-  band unchanged at 3,298 and no new `PHONE`, `SSN`, `VIN` or `DATE_OF_BIRTH`. `customXml/item*.xml`
+  Corpus accounting, because the first pass got it wrong: of 452 candidate containers, 17 could not be
+  read at all and the tool reported a further 36 as `files_not_examined`. Those 53 were being counted as
+  zero-finding files, inflating every percentage. All figures here are over the **399** the scanner
+  reports it examined in full, with `files_not_examined == 0` asserted per file — the tool had been
+  disclosing this on stderr all along ("NOT FULLY EXAMINED: 1 of 1 file"), and the measurement script
+  was discarding stderr.
+
+  Final measurement: **+152 findings, every one `PERSON_NAME`**, with the LOW band unchanged at 3,031 and no new `PHONE`, `SSN`, `VIN` or `DATE_OF_BIRTH`. `customXml/item*.xml`
   remains excluded and still has no precision story.
 
   The per-part redaction contract gains **12 rows**, one per newly-read part, each asserting both
