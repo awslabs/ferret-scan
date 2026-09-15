@@ -348,6 +348,62 @@ var commonWordNamesMap = map[string]bool{
 //
 // A single-token surname is untouched — "Morgan" alone was never a finding under
 // these patterns, which require two tokens.
+// toponymPrefixMap holds the words that GENERATE place names — the leading element of a compound
+// toponym — which can never be the GIVEN NAME half of a person name.
+//
+// Same defect shape as functionWordsMap and handled by the same gate: the patterns match Title-Case
+// SHAPE, not vocabulary, so "San Francisco" satisfies basic_western_name exactly as "Anne Grace" does.
+// The surname gate then finds a real surname — "Francisco" IS a name, and so are Austin, Jordan,
+// Houston, Madison, Jackson, Phoenix and Charlotte — and the finding is reported. The leading word was
+// never examined.
+//
+// # Why a prefix list and not a city list
+//
+// A denylist of cities decays and is never complete; this repository deleted one for bank routing
+// numbers because 12 of its 14 entries had stopped being reachable and the two that remained were
+// suppressing REAL values. A list of toponym GENERATORS is different in kind: it is small, closed,
+// linguistically motivated, and it covers cities nobody enumerated. Nineteen entries reach San
+// Francisco, San Diego, San Jose, San Antonio, Saint Louis, St Paul, Los Angeles, Las Vegas, Fort
+// Worth, Mount Vernon, Port Arthur, Cape Town, Lake Charles, New Orleans, El Paso, Rio Grande,
+// Sao Paulo, Puerto Vallarta and Ciudad Juarez without naming one of them.
+//
+// # Measured
+//
+// Against the shipped name data, six place names of this shape were reported and every one scored
+// exactly 80/MEDIUM — ten points below the HIGH band, on the default review surface, and enough to
+// block a pre-commit hook:
+//
+//	San Francisco (80)  Saint Louis (80)  St Paul (80)
+//	Mount Vernon (80)   Port Arthur (80)  La Paz (80)
+//
+// Real people score 100 in the same run — Robin Yang, David Ward, Marco Rossi, Will Smith, May Chen,
+// Grace Hopper — so the two populations are already separated by 20 points and this only has to reject
+// the lower one. Single-token city names ("Austin", "Madison") were never findings: these patterns
+// require two tokens.
+//
+// # The name databases still win
+//
+// isToponymPrefixGiven defers to the shipped data exactly as isFunctionWordGiven does, and that is not
+// a formality — it changes the outcome for a third of this list. "Santa", "Val", "Isla" and "Monte" are
+// given names; "La", "Le", "Fort", "Lake" and "Villa" are surnames. So "La Paz" is STILL reported, and
+// that is correct: overriding the data to catch one Bolivian capital would delete every person named
+// La, Le or Lake. A city that shares a real person's name is not distinguishable from that person by
+// any structural rule, and guessing costs a finding that would otherwise have been redacted.
+var toponymPrefixMap = map[string]bool{
+	// Iberian and Latin American: San Francisco, Santa Clara, Sao Paulo, Puerto Vallarta,
+	// Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.
+	"san": true, "santa": true, "sao": true, "são": true,
+	"puerto": true, "ciudad": true, "villa": true, "bahia": true, "bahía": true,
+	"isla": true, "monte": true, "rio": true, "río": true,
+	// Romance articles that begin a place name: Los Angeles, Las Vegas, La Paz, El Paso, Le Havre.
+	"los": true, "las": true, "la": true, "el": true, "le": true,
+	// English toponym generators: Saint Louis, St Paul, Fort Worth, Mount Vernon, Port Arthur,
+	// Cape Town, Lake Charles, New Orleans, Val Verde.
+	"saint": true, "st": true, "fort": true, "ft": true,
+	"mount": true, "mt": true, "port": true, "cape": true, "lake": true,
+	"new": true, "val": true,
+}
+
 var functionWordsMap = map[string]bool{
 	// determiners and quantifiers
 	"a": true, "an": true, "the": true,

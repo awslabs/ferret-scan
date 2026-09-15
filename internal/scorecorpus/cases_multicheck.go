@@ -374,6 +374,44 @@ var MultiCheckCases = []Case{
 			{Line: 1, Value: "1HGBH41JXMN109186", Types: []string{"VIN"}, MinBand: BandHigh},
 		},
 		Redactable: true,
+	},
+	{
+		Name:   "fp__barcode_is_not_a_uk_phone_number",
+		Origin: "measured against origin/main plus the open PRs, 2026-09 (#672)",
+		Rationale: "A 12-digit UPC-A barcode reported as PHONE at 70/MEDIUM. UK_Standard is " +
+			"`0\\d{2,4}[-.\\s]?\\d{3,8}(...)?`, spanning 6 to 17 digits, so any 12-digit run " +
+			"beginning with 0 matched it — while the same run without the leading zero " +
+			"(987654321098) matched nothing and a REAL phone number scored 15/LOW, which is the " +
+			"ranking inverted. A UK national number is 10 or 11 digits including the trunk 0 and " +
+			"never 12, so the bound is a fact about the numbering plan rather than a guess. The " +
+			"check-digit route was considered and rejected: any 12-digit run passes UPC-A one time " +
+			"in ten, so a valid-checksum veto would silently drop real 12-digit international " +
+			"numbers.",
+		Checks: []string{"PHONE"},
+		Input: "UPC 012345678905 on the label\n" +
+			"Scan 036000291452 at the register\n" +
+			"Item code 012345678905 shipped\n",
+		Negative:   true,
+		Redactable: true,
+	},
+	{
+		Name:   "tp__real_uk_numbers_survive_the_length_bound",
+		Origin: "measured alongside the barcode fix, 2026-09 (#672)",
+		Rationale: "The control for the case above. Every number here is a real UK national format " +
+			"at 10 or 11 digits including the trunk 0 — a London 020 number, a Manchester 0161 " +
+			"number and an 0800 freephone. A length bound that excluded these would trade one " +
+			"barcode false positive for every UK phone number in the corpus, and an unreported " +
+			"number is never handed to the redactor.",
+		Checks: []string{"PHONE"},
+		Input: "Call 020 7123 4567 for support\n" +
+			"Ring 0161 496 0000 today\n" +
+			"Freephone 0800 123 456\n",
+		Labels: []Label{
+			{Line: 1, Value: "020 7123 4567", Types: []string{"PHONE"}},
+			{Line: 2, Value: "0161 496 0000", Types: []string{"PHONE"}},
+			{Line: 3, Value: "0800 123 456", Types: []string{"PHONE"}},
+		},
+		Redactable: true,
 	}}
 
 // MultiCheckQuarantine holds shapes whose correct label is not settled, or that the

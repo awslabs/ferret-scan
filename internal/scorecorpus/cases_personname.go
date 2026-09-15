@@ -293,6 +293,58 @@ var PersonNameCases = []Case{
 		Negative:   true,
 		Redactable: true,
 	},
+	{
+		Name:   "fp__toponym_prefix_before_a_real_surname",
+		Origin: "measured against origin/main plus the open PRs, 2026-09 (#672)",
+		Rationale: "A word that GENERATES a place name in front of a genuine surname. Invisible to " +
+			"the surname gate for the same reason the function-word class is: Francisco, Louis, " +
+			"Paul, Vernon, Arthur, Anthony and Vincent are all real entries in the name database, " +
+			"and basic_western_name asks only for two capitalised tokens — 'San' satisfies that as " +
+			"well as a given name does. Measured on a 1,408-file real corpus: 162 findings across " +
+			"11 distinct place names, 'San Francisco' alone 123 times and reaching 100/HIGH, so " +
+			"this class DID fail a --confidence high gate. The fix is a list of toponym generators " +
+			"rather than of cities, because a city list decays — this repository deleted one for " +
+			"bank routing numbers whose entries had stopped being reachable. It defers to the name " +
+			"databases, which is why 'La Paz' is deliberately still reported: 'La' is a real " +
+			"surname and overriding the data would delete every person named La, Le or Lake.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Ship the order to San Francisco next week.\n" +
+			"Our Saint Louis branch handles returns.\n" +
+			"The St Paul office is closed Monday.\n" +
+			"Drive to Mount Vernon for the site visit.\n" +
+			"Port Arthur received the shipment.\n" +
+			"Los Robles is the nearest campus.\n" +
+			"Rutherford, New Jersey is the billing address.\n" +
+			"New England covers the northern region.\n" +
+			"Mount Saint Vincent hosted the review.\n" +
+			"Saint Anthony signed for the delivery.\n",
+		Negative:   true,
+		Redactable: true,
+	},
+	{
+		Name:   "tp__real_names_survive_the_toponym_gate",
+		Origin: "measured alongside the toponym fix, 2026-09 (#672)",
+		Rationale: "The control for the case above, and the reason it is not a denylist of words. " +
+			"Every leading token here is in the shipped name data — Will, May, Val, Santa, Monte " +
+			"— or is an ordinary given name, so the gate must defer and report the person. A " +
+			"precision fix that deletes these is worse than the false positives it removes: an " +
+			"unreported name is never handed to the redactor and stays in cleartext.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "Contact Will Smith about the contract.\n" +
+			"May Chen approved the request.\n" +
+			"Robin Yang and David Ward attended.\n" +
+			"Marco Rossi filed the report.\n" +
+			"Grace Hopper wrote the compiler.\n",
+		Labels: []Label{
+			{Line: 1, Value: "Will Smith", Types: []string{"PERSON_NAME"}},
+			{Line: 2, Value: "May Chen", Types: []string{"PERSON_NAME"}},
+			{Line: 3, Value: "Robin Yang", Types: []string{"PERSON_NAME"}},
+			{Line: 3, Value: "David Ward", Types: []string{"PERSON_NAME"}},
+			{Line: 4, Value: "Marco Rossi", Types: []string{"PERSON_NAME"}},
+			{Line: 5, Value: "Grace Hopper", Types: []string{"PERSON_NAME"}},
+		},
+		Redactable: true,
+	},
 }
 
 // PersonNameQuarantine holds name shapes the validator cannot satisfy today.

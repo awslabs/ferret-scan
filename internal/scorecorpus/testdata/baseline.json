@@ -93,8 +93,8 @@
       "extra_same_span": 0
     },
     "PERSON_NAME": {
-      "tp": 26,
-      "tp_high_medium": 26,
+      "tp": 32,
+      "tp_high_medium": 32,
       "fn_missed": 0,
       "fn_band": 0,
       "fp_high_medium": 0,
@@ -102,8 +102,8 @@
       "extra_same_span": 0
     },
     "PHONE": {
-      "tp": 2,
-      "tp_high_medium": 2,
+      "tp": 5,
+      "tp_high_medium": 5,
       "fn_missed": 0,
       "fn_band": 0,
       "fp_high_medium": 0,
@@ -150,18 +150,18 @@
   "sink": {
     "format_preserving": {
       "whole_leak": 0,
-      "residue4": 859
+      "residue4": 873
     },
     "simple": {
       "whole_leak": 0,
       "residue4": 0
     }
   },
-  "sink_labels": 203,
+  "sink_labels": 212,
   "suppression": {
-    "cases": 63,
-    "targeted": 63,
-    "silenced": 63,
+    "cases": 65,
+    "targeted": 65,
+    "silenced": 65,
     "collateral": 0,
     "ineffective": 0
   },
@@ -170,8 +170,8 @@
     "findings": 0
   },
   "global": {
-    "cases": 154,
-    "labels": 203,
-    "negatives": 28
+    "cases": 158,
+    "labels": 212,
+    "negatives": 30
   }
 }
