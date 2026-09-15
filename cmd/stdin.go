@@ -21,6 +21,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 	"github.com/awslabs/ferret-scan/v2/internal/precommit"
+	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	plaintextredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
 	"github.com/awslabs/ferret-scan/v2/internal/redactverify"
@@ -99,11 +100,35 @@ func runStdinScan(in stdinScanInputs) int {
 		return 1
 	}
 
-	// Coerce to valid UTF-8. Invalid sequences become the replacement rune,
-	// matching what plaintext_preprocessor does for files.
+	// Decode to UTF-8 for scanning WITHOUT discarding bytes, and remember what the input was
+	// so the redacted stream can be written back in it.
+	//
+	// This used to be a bare strings.ToValidUTF8(content, "\uFFFD"), whose comment claimed it
+	// matched "what plaintext_preprocessor does for files". That was true of the code and false
+	// of the effect: for a legacy single-byte file — Windows-125x, ISO-8859-x — EVERY non-ASCII
+	// byte is invalid UTF-8, so every accented character became U+FFFD. Measured on a 189-byte
+	// cp1252 roster, `cat roster.txt | ferret-scan --stdin --enable-redaction` emitted 10
+	// replacement runes, lost `café` and `Björn`, and reported 2 findings where the same file
+	// scanned by path reports 3 — `José García` did not match PERSON_NAME once its accents were
+	// gone. Under the sink rule that missing finding is a cleartext value in the "clean" output.
+	//
+	// DetectTextEncoding + DecodeToUTF8 is the same pair the file path uses, and for
+	// EncodingLegacy8Bit it is a lossless identity mapping, so the bytes survive the round trip.
+	// ToValidUTF8 remains the fallback for content no encoding claims: marking a byte is still
+	// better than deleting it, and it can no longer be reached by a merely-legacy file.
+	//
+	// UTF-16 cannot arrive here: the NUL-byte rejection above returns first.
 	content := string(raw)
+	stdinEncoding := preprocessors.EncodingUTF8
 	if !utf8.ValidString(content) {
-		content = strings.ToValidUTF8(content, "�")
+		if enc := preprocessors.DetectTextEncoding(raw); enc != preprocessors.EncodingUTF8 {
+			if decoded, ok := preprocessors.DecodeToUTF8(raw, enc); ok {
+				content, stdinEncoding = decoded, enc
+			}
+		}
+		if !utf8.ValidString(content) {
+			content = strings.ToValidUTF8(content, "\uFFFD")
+		}
 	}
 
 	// Resolve config and pre-commit settings the same way main() does.
@@ -320,7 +345,7 @@ func runStdinScan(in stdinScanInputs) int {
 		if in.flags.redactionAuditLog != "" {
 			fmt.Fprintln(os.Stderr, "Note: --redaction-audit-log is not supported with --stdin and will be ignored")
 		}
-		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig)
+		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding)
 	}
 
 	// Resolve formatter.
@@ -421,6 +446,7 @@ func runStdinRedaction(
 	matches []detector.Match,
 	suppressedMatches []detector.SuppressedMatch,
 	precommitConfig *precommit.PrecommitConfig,
+	inputEncoding preprocessors.TextEncoding,
 ) int {
 	strategy := redactors.ParseRedactionStrategy(finalCfg.redactionStrategy)
 
@@ -502,10 +528,20 @@ func runStdinRedaction(
 			len(matches)+len(suppressedMatches))
 	}
 
-	// Redacted content always goes to stdout. Use Print (not Println) so we
-	// don't add a trailing newline that wasn't in the input — important for
-	// callers that pipe the redacted bytes verbatim into another tool.
-	fmt.Print(redacted)
+	// Redacted content always goes to stdout, re-encoded to whatever the input arrived in, so a
+	// legacy single-byte file streams back byte-for-byte outside the spans that were redacted.
+	// Written as BYTES rather than with fmt.Print for the same reason the comment below gives
+	// about newlines: the point is that nothing is added, removed or re-interpreted. For UTF-8
+	// input EncodeFromUTF8 is the identity, so this is a no-op on the common path.
+	//
+	// Use Write (not Println) so we don't add a trailing newline that wasn't in the input —
+	// important for callers that pipe the redacted bytes verbatim into another tool.
+	if _, err := os.Stdout.Write(preprocessors.EncodeFromUTF8(redacted, inputEncoding)); err != nil {
+		// A short write on stdout means the consumer went away mid-stream. Report it rather
+		// than exiting 0 on truncated redacted output, which a gateway would treat as clean.
+		fmt.Fprintf(os.Stderr, "Error: writing redacted content to stdout: %v\n", err)
+		return 1
+	}
 
 	hasFindings := len(matches) > 0
 	if precommitConfig != nil {

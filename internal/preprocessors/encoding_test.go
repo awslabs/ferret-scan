@@ -179,8 +179,16 @@ func TestAdversarialFindings(t *testing.T) {
 		// UTF-16LE, turning the file to mojibake and hiding its PII.
 		// Real UTF-16 always contains nulls; this file has none.
 		data := append([]byte{0xFF, 0xFE}, []byte(" starts this legacy file. SSN: 449-87-4100\n")...)
-		if enc := DetectTextEncoding(data); enc != EncodingUTF8 {
-			t.Errorf("null-free FF FE-leading buffer detected as %v, want fallback (utf-8/legacy)", enc)
+		// Asserted as "not UTF-16" rather than "== EncodingUTF8", which is what this row
+		// previously pinned. EncodingUTF8 was only ever a PROXY for "fell through to the
+		// non-UTF-16 path", and the fallback for these bytes is now EncodingLegacy8Bit —
+		// strictly better for the attack this row names, because the bytes are transcoded
+		// losslessly instead of being kept as invalid UTF-8 and then deleted by
+		// strings.ToValidUTF8(content, ""). Either verdict defeats the attack; only one of
+		// them also keeps the file intact.
+		if enc := DetectTextEncoding(data); isUTF16(enc) {
+			t.Errorf("null-free FF FE-leading buffer detected as %v — decoding legacy text as "+
+				"UTF-16 turns it to mojibake and hides its PII", enc)
 		}
 		if !LooksLikeText(data) {
 			t.Error("FF FE-leading legacy text must classify as text")
@@ -188,7 +196,7 @@ func TestAdversarialFindings(t *testing.T) {
 	})
 	t.Run("legacy text starting with FE FF bytes is not UTF-16", func(t *testing.T) {
 		data := append([]byte{0xFE, 0xFF}, []byte(" also legacy. email a@b.co\n")...)
-		if enc := DetectTextEncoding(data); enc != EncodingUTF8 {
+		if enc := DetectTextEncoding(data); isUTF16(enc) {
 			t.Errorf("null-free FE FF-leading buffer detected as %v", enc)
 		}
 	})
@@ -206,4 +214,19 @@ func TestAdversarialFindings(t *testing.T) {
 			t.Error("random high-byte binary must remain binary")
 		}
 	})
+}
+
+// isUTF16 reports whether enc is any of the four UTF-16 variants.
+//
+// Used by the FF FE / FE FF rows above so they assert their actual intent — that legacy
+// text is not mistaken for UTF-16 — rather than pinning which non-UTF-16 encoding the
+// fallback happens to be. The fallback moved from utf-8 to legacy-8bit when lossless
+// transcoding of single-byte files was added, and a row pinning the proxy would have failed
+// for an improvement.
+func isUTF16(enc TextEncoding) bool {
+	switch enc {
+	case EncodingUTF16LE, EncodingUTF16BE, EncodingUTF16LENoBOM, EncodingUTF16BENoBOM:
+		return true
+	}
+	return false
 }
