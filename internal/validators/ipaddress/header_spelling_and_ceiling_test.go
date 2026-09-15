@@ -112,15 +112,22 @@ func TestAHeaderThatNamesSomethingElseStillCaps(t *testing.T) {
 // adjustment — which is the whole reason the key exists.
 func TestTheCeilingIsPublishedWheneverTheValueIsCapEligible(t *testing.T) {
 	v := NewValidator()
-	cases := map[string]string{
+	// Keyed by the ceiling each case must publish, because the two are no longer the same
+	// number: a context-free quad is held to ambiguousShapeCap, while a product-token version
+	// is held to the lower productVersionCeiling (#681). Publishing the generic 75 for a value
+	// applied at 55 would let the bridge's later raise carry it back into MEDIUM.
+	cases := map[string]struct {
+		content string
+		want    float64
+	}{
 		// A context-free quad in a column naming something else: cap-eligible.
-		"header names something else": csvWithHeader("buildVersion"),
+		"header names something else": {csvWithHeader("buildVersion"), ambiguousShapeCap},
 		// A product version in prose: cap-eligible via the product-token rule.
-		"product version": "Generator: LibreOffice/24.8.4.2$MacOSX_AARCH64\n",
+		"product version": {"Generator: LibreOffice/24.8.4.2$MacOSX_AARCH64\n", productVersionCeiling},
 	}
-	for name, content := range cases {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			ms, err := v.ValidateContent(content, "t.txt")
+			ms, err := v.ValidateContent(tc.content, "t.txt")
 			if err != nil {
 				t.Fatalf("ValidateContent: %v", err)
 			}
@@ -143,8 +150,8 @@ func TestTheCeilingIsPublishedWheneverTheValueIsCapEligible(t *testing.T) {
 						"type assertion and silently ignores anything else", confidenceCeilingKey, raw)
 					continue
 				}
-				if got != ambiguousShapeCap {
-					t.Errorf("%s = %v, want %v", confidenceCeilingKey, got, ambiguousShapeCap)
+				if got != tc.want {
+					t.Errorf("%s = %v, want %v", confidenceCeilingKey, got, tc.want)
 				}
 				if m.Confidence > got {
 					t.Errorf("confidence %.0f exceeds its own published ceiling %v", m.Confidence, got)

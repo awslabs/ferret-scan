@@ -331,6 +331,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- **ipaddress (`--confidence`):** a LibreOffice document's own producer signature was reported as
+  `IP_ADDRESS` at **75 — inside MEDIUM**, the band reviewers filter to. The signature is
+  `LibreOffice/26.8.0.3$MacOSX_AARCH64 LibreOffice_project/bce0998a…`, and its four-part version is
+  structurally identical to a dotted quad. It is **unconditional**: measured on all six formats
+  LibreOffice writes — `.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, `.odp` — 10 of 10 containers reported
+  it, and in a document with no PII that was **half of all findings**. The producer ceiling for a
+  product-token version is now 55, inside LOW.
+  ([#681](https://github.com/awslabs/ferret-scan/issues/681))
+
+  One label covers more than the issue says: the office metadata block emits `Application:` for
+  **three** container families — OOXML `docProps/app.xml <Application>`, ODF `meta.xml
+  <meta:generator>` and legacy OLE `SummaryInformation/AppName` — so the same finding appeared in
+  `.doc`/`.xls`/`.ppt` too. The rule here is keyed on the value's shape rather than on the label, so it
+  covers all of them without naming any. Conversely **OpenOffice is not affected**, contrary to the
+  issue's "LibreOffice/OpenOffice": its signature is `OpenOffice.org/3.4.1$Unix`, and a three-part
+  version is not a dotted quad — measured at zero findings.
+
+  **It also made measurement baselines vacuous, which is how it cost real time.** During
+  [#670](https://github.com/awslabs/ferret-scan/issues/670) verification a probe read "the same 2
+  findings as the unplanted base file" as a meaningful zero-delta baseline; those two findings were this
+  one plus the `APPLICATION_INFO` from the same element, so the baseline was measuring nothing and
+  nearly hid a genuine leak.
+
+  **A ceiling, not the veto the issue proposed — because neither half of "veto a dotted quad in a
+  producer metadata field" is available here.** The field is not knowable: a metadata value reaches the
+  validator as an ordinary line of document text, and measured, a value in `docProps/app.xml` and the
+  identical text written as a **body paragraph** produce byte-identical findings, both with
+  `validation_path: document`. So "in a metadata field" would really mean "on a line starting with a
+  label", which a document's own body can write — the direction the `secrets` validator explicitly
+  rejects, because a negative list of identifier field names lets an author suppress a real value by
+  relabelling, and the reason `ipaddress` deliberately has no "header contradicts" arm. And a veto would
+  remove the value from the report, which under the sink rule is the one thing that stops it being
+  redacted. So the predicate is the RFC 9110 product-token shape already tested by
+  `isProductVersionAt` — bytes adjacent to the value, unreachable by relabelling — and the consequence
+  is a ceiling inside LOW. 55 is the number four other validators already use for "the surroundings
+  contradict the value" (`secrets`, `ssn`, `email`, `socialmedia`).
+
+  **Measured for recall rather than assumed.** A fresh sweep of **26,010** files under `/Applications`,
+  `/Library` and `/System/Library` found 11 occurrences of this shape and 4 distinct values, **every one
+  a software version** — `IslandUpdater/150.1.96.29` and `/151.1.97.29`, `Chrome/102.0.0.0`,
+  `Framework.framework/Versions/153.1.100.18`. Zero genuine addresses. Across **623 real documents**
+  (399 Office containers + 224 PDFs) the change loses and gains **no findings at all** — a ceiling moves
+  a confidence, never a count, so the value is still reported and still redacted — the **HIGH band is
+  unchanged** in both populations, and exactly **3 findings move 75 → 55**. A port or CIDR suffix still
+  outranks the ceiling, because such a suffix is welded to the value: `Gateway/52.94.236.248:8080` stays
+  HIGH. The URL-authority shape cannot match at all, since in `https://52.94.236.248` the byte before
+  the quad is another `/` rather than a letter.
+
+  **The honest residual:** a genuine address written immediately after a name and a slash with no port —
+  `Server/52.94.236.248` — moves from 75 to 55. That shape occurred in neither sweep, and it is a
+  demotion, so it costs a confidence band rather than the value.
+
+  Not fixed here, and filed separately: the same provenance values reach **100 HIGH with no ceiling at
+  all** when the product name happens to contain a validator's positive keyword — `Application: Acme
+  Server Manager 26.8.0.3` → `IP_ADDRESS` 100, and the same escape exists in `ssn`, `creditcard`,
+  `phone`, `vin` and `intellectualproperty`. That is not fixable value-intrinsically (`Acme Server
+  Manager 26.8.0.3` is indistinguishable from `Server 10.0.0.1 is down`), so it needs the metadata-field
+  context that no content validator currently has.
+
 - **redaction:** fix synthetic strategy silently skipping SECRETS, PASSPORT, SOCIAL_MEDIA, and INTELLECTUAL_PROPERTY — added type-aware generators for all four types
 - **redaction:** fix synthetic person name generation producing random character strings — now draws from embedded name databases (~5200 first names, ~2100 last names)
 - **office (redaction):** a value that Word split across two adjacent formatting runs is no longer **written out in cleartext in silence** ([#627](https://github.com/awslabs/ferret-scan/issues/627)). Reproduced: a `.docx` holding `<w:t>Employee SSN: 449-87-</w:t>` then `<w:t>4100</w:t>` — the split Word makes routinely at a bold, rsid or proof-error boundary — reported **SSN at confidence 100**, then wrote a "redacted" copy at **exit 0 with an empty stderr** whose text `textutil` reads back as `Employee SSN: 449-87-4100`. The email in the same part **was** masked, which is the positive control: the redactor ran and simply could not remove the SSN. Now the write is refused and disclosed — `refusing to write split.docx: 1 reported value(s) still present in the document's own parts (types: SSN)`, naming the **type** and never the value, since the message reaches stderr and every machine format without `--show-match`. Exit 0 by default and **3** under `--fail-on-incomplete`, as for any other refusal. Confirmed for `.odt` spans as well; the unsplit control still redacts, and the golden corpus regenerates with **0 files changed**. **Why the fail-closed guard was blind to it:** `decodedPartText` writes a newline after each character-data node, for a sound reason its comment gives — a separator stops two adjacent runs concatenating into a value that is in neither of them. But the *scanner's* extractor strips tags with a regex and inserts nothing between runs, and xlsx joins `<t>` runs directly, so the value that concatenates across runs is **exactly** the value the scanner reports, and the separated view could never see it. There is now a second view of every part — character data only, concatenated — and the residue probe checks both. It cannot manufacture a false refusal: a value is only ever probed for by having been **reported**, and if it was reported then some extraction produced it. **The first attempt at this failed silently, and the reason is now pinned by a test.** `encoding/xml` delivers tokens in document order, so a `w:t` element carrying `xml:space="preserve"` contributes `preserve` *between* the two runs — a view built from every token reads `449-87-preserve4100` and still finds nothing. Attributes stay in the separated view, which is what covers them, and are excluded from the run-text view. That was only caught by probing `decodedPartText` directly; end-to-end the fix looked like a no-op and offered no reason why. **5 mutations, 4 caught**, the fifth correctly surviving because any non-empty separator keeps the runs apart, so the specific byte is not load-bearing. This does **not** redact the split value — doing that needs a span map across XML tokens, as `internal/redactors/rtf/spanredact.go` already does for RTF (#604) — and #627 stays open for it, along with four other findings in the same file: a part `encoding/xml` refuses to tokenize is skipped by both the rewrite and the guard, `zipWriter.Close()` errors are discarded, the extract loop drops unreadable zip parts with only a debug log, and `parentPartResidue` polices every `.xml` part while the rewrite covers only a fixed few.
