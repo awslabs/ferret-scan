@@ -973,6 +973,12 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 
 	// Flush before returning: the caller inspects modifiedContents for residue in
 	// embedded parts, so an unapplied replacement would read as a leak.
+	// Every match has now been resolved by whichever route could see it. Before applying anything,
+	// ask each text-bearing part once whether it STILL holds a reported value, so removal no longer
+	// depends on which route happened to locate the value first. See
+	// recordCoverageForRemainingParts for the measurement that made this necessary.
+	or.recordCoverageForRemainingParts(modifiedContents, matches, strategy, pending)
+
 	if err := or.applyPendingRedactions(modifiedContents, pending, docType); err != nil {
 		return nil, nil, err
 	}
@@ -1197,7 +1203,19 @@ func parentPartResidue(contents *OfficeZipContents, matches []detector.Match) []
 	// Sorted part order so the reported residue list is stable run to run.
 	names := make([]string, 0, len(contents.Files))
 	for name := range contents.Files {
-		if strings.HasSuffix(strings.ToLower(name), ".xml") {
+		// Every part that is not PROVABLY binary, rather than only *.xml.
+		//
+		// The .xml test gave this check the same blind spot as the redactor it exists to police:
+		// OOXML relationship parts are named *.rels, so a value in a hyperlink target
+		// (Target="mailto:...") was invisible to BOTH, and a guard that shares the bug it guards
+		// against cannot fail. .svg and .vml were outside it too — 407 and 12 members across 403
+		// real documents, both XML text.
+		//
+		// Widening the NAME filter is safe without widening the risk, because this check is
+		// content-gated a few lines below: decodedPartText returns ok=false for anything that does
+		// not tokenize as XML, and such a part is skipped. So a binary member that slipped past the
+		// extension test cannot be misread as residue — it is excluded on its bytes, not its name.
+		if !isProvablyBinaryPart(name) {
 			names = append(names, name)
 		}
 	}
