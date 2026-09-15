@@ -20,6 +20,20 @@ type FormatterOptions struct {
 	ShowMatch       bool            // Whether to display the actual matched text
 	PrecommitMode   bool            // Whether to use pre-commit optimized output
 
+	// PrecommitBlockMessage is the pre-commit verdict line to render, or "" to render none.
+	//
+	// The formatter RENDERS this; it does not decide it. It used to decide: it printed "High
+	// confidence issues found - commit blocked for security." whenever any match had
+	// Confidence >= 90, while the exit code was decided in internal/precommit from
+	// FERRET_PRECOMMIT_EXIT_ON. With EXIT_ON=none the tool therefore printed "commit blocked"
+	// and exited 0, so the commit proceeded — and `none` is exactly what a team sets while
+	// adopting the tool. See precommit.Decision, which now returns the message and the exit
+	// code from one evaluation of one policy.
+	//
+	// A string rather than a bool so this package needs no dependency on internal/precommit,
+	// which keeps that dependency one-way and the policy in one place.
+	PrecommitBlockMessage string
+
 	// OutputToFile is true when the caller directed output to a path with --output.
 	//
 	// Pre-commit mode returns an EMPTY document when there is nothing to report, which is
@@ -359,4 +373,51 @@ func GetSupportedFormats() []FormatInfo {
 		formats = append(formats, GetFormatInfo(name))
 	}
 	return formats
+}
+
+// MayStaySilent reports whether a formatter is allowed to return an EMPTY document.
+//
+// Pre-commit mode returns nothing when there is genuinely nothing to say, which is deliberate noise
+// reduction on a developer's every commit. The bug is the word "genuinely": four formatters — text,
+// json, yaml and csv — each decided it from the FILTERED match set, while the exit code is decided
+// from the UNFILTERED one. When a finding's confidence tier is inside the blocking policy but outside
+// the display filter, those two sets disagree and the run rejects the commit having printed nothing.
+//
+// Reachable with one documented environment variable and no other flags, because pre-commit mode
+// auto-applies the built-in `precommit` profile whose ConfidenceLevels is "high,medium". Measured:
+//
+//	FERRET_PRECOMMIT_EXIT_ON=none    rc 0   stdout 0 bytes   stderr 0 bytes
+//	FERRET_PRECOMMIT_EXIT_ON=high    rc 0   stdout 0 bytes   stderr 0 bytes
+//	FERRET_PRECOMMIT_EXIT_ON=medium  rc 0   stdout 0 bytes   stderr 0 bytes
+//	FERRET_PRECOMMIT_EXIT_ON=low     rc 1   stdout 0 bytes   stderr 0 bytes   <- blocks, says nothing
+//
+// on a file holding two LOW findings. The blocking run is BYTE-IDENTICAL to a clean pass on both
+// streams; only the exit code differs. junit, sarif and gitlab-sast are worse than silent — they emit
+// an affirmatively clean envelope (`failures="0"`, `results: []`) while the commit is rejected.
+//
+// The json formatter's stated justification for its silence — that pre-commit mode "has its own
+// out-of-band signalling (exit code + stderr)" — is false in exactly this case, because stderr is
+// empty too.
+//
+// So the rule: silence is permitted only when the run does NOT block. PrecommitBlockMessage is
+// non-empty exactly when precommit.Resolve decided to block, so one predicate covers every format and
+// a formatter cannot reach the wrong answer on its own.
+func (o FormatterOptions) MayStaySilent() bool {
+	return o.PrecommitMode && !o.OutputToFile && o.PrecommitBlockMessage == ""
+}
+
+// MatchesToReport returns the matches a formatter must render.
+//
+// Normally the filtered set: the operator asked to see certain confidence levels. But when the run
+// BLOCKS and the filter has emptied the report, the filtered set is the wrong answer — the exit policy
+// judged the unfiltered set, so the report has to show what it judged, or the developer is told their
+// commit was rejected and nothing else.
+//
+// Widening only in that case, rather than always reporting unfiltered matches, keeps --confidence
+// meaning what it says on every run that does not block.
+func MatchesToReport(filtered, all []detector.Match, o FormatterOptions) []detector.Match {
+	if len(filtered) == 0 && o.PrecommitBlockMessage != "" {
+		return all
+	}
+	return filtered
 }

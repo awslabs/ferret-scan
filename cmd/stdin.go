@@ -363,7 +363,10 @@ func runStdinScan(in stdinScanInputs) int {
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
 		PrecommitMode:   effectivePrecommitQuiet(precommitConfig),
-		Limit:           in.limit,
+		// Resolved once by precommit.Resolve, so the message the user reads and the exit code
+		// returned below cannot disagree. See precommit.Decision.
+		PrecommitBlockMessage: precommit.Resolve(unsuppressedMatches, precommitConfig).Message,
+		Limit:                 in.limit,
 	}
 
 	var formatted string
@@ -395,14 +398,12 @@ func runStdinScan(in stdinScanInputs) int {
 	// uses precommit.GetExitCode based on findings/confidence. --fail-on-incomplete
 	// escalates an otherwise-clean exit to exitCodeIncompleteCoverage (3) when the
 	// scan's coverage was cut short, but never downgrades a non-zero verdict.
-	hasFindings := len(unsuppressedMatches) > 0
 	incompleteCount := 0
 	if result.Incomplete {
 		incompleteCount = 1
 	}
 	if precommitConfig != nil {
-		highest := highestConfidenceLevel(unsuppressedMatches)
-		exitCode := precommit.GetExitCode(hasFindings, false, highest, precommitConfig)
+		exitCode := precommit.Resolve(unsuppressedMatches, precommitConfig).WithToolError(false).ExitCode
 		return resolveIncompleteExitCode(exitCode, finalCfg.failOnIncomplete, incompleteCount)
 	}
 	return resolveIncompleteExitCode(0, finalCfg.failOnIncomplete, incompleteCount)
@@ -543,10 +544,8 @@ func runStdinRedaction(
 		return 1
 	}
 
-	hasFindings := len(matches) > 0
 	if precommitConfig != nil {
-		highest := highestConfidenceLevel(matches)
-		return precommit.GetExitCode(hasFindings, false, highest, precommitConfig)
+		return precommit.Resolve(matches, precommitConfig).WithToolError(false).ExitCode
 	}
 	return 0
 }
@@ -575,7 +574,10 @@ func formatStdinFindings(
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
 		PrecommitMode:   effectivePrecommitQuiet(precommitConfig),
-		Limit:           limit,
+		// Resolved once by precommit.Resolve, so the message the user reads and the exit code
+		// returned below cannot disagree. See precommit.Decision.
+		PrecommitBlockMessage: precommit.Resolve(matches, precommitConfig).Message,
+		Limit:                 limit,
 	}
 	if finalCfg.showSuppressed {
 		return formatter.Format(matches, suppressedMatches, opts)
@@ -700,34 +702,4 @@ func writeStdinOutput(outputFile, formatted string, precommitConfig *precommit.P
 // rc 1 file mode gives. See normalizeChecksArg for the measurements.
 func parseChecksList(checks string) ([]string, error) {
 	return normalizeChecksArg(checks)
-}
-
-// highestConfidenceLevel returns "high"/"medium"/"low"/"" for use with
-// precommit.GetExitCode, mirroring the file-mode computation.
-func highestConfidenceLevel(matches []detector.Match) string {
-	highest := ""
-	for _, m := range matches {
-		var level string
-		switch {
-		case m.Confidence >= 90:
-			level = "high"
-		case m.Confidence >= 60:
-			level = "medium"
-		default:
-			level = "low"
-		}
-		switch level {
-		case "high":
-			highest = "high"
-		case "medium":
-			if highest != "high" {
-				highest = "medium"
-			}
-		case "low":
-			if highest != "high" && highest != "medium" {
-				highest = "low"
-			}
-		}
-	}
-	return highest
 }

@@ -394,9 +394,131 @@ func (ptp *PlainTextPreprocessor) isTextFile(filePath string) bool {
 // both the safer and the stricter signal; the ASCII-ratio heuristic remains
 // only as the fallback for legacy single-byte encodings (Latin-1 etc.),
 // which are not valid UTF-8 but are still text someone may want scanned.
+// LooksLikeText reports whether buf is text, discarding WHY it is not.
+//
+// Retained as the predicate every existing caller uses. ClassifyTextBytes carries the reason, which
+// only the router's ledger decision needs.
 func LooksLikeText(buf []byte) bool {
+	return ClassifyTextBytes(buf) == TextSniffText
+}
+
+// TextSniffVerdict says whether a buffer is text, and when it is not, why.
+type TextSniffVerdict int
+
+const (
+	// TextSniffText is text: scan it.
+	TextSniffText TextSniffVerdict = iota
+
+	// TextSniffBinary is not text and nobody expected a result from it — a compiled binary, an
+	// image, a compressed stream. A genuine SKIP.
+	TextSniffBinary
+
+	// TextSniffTextWithNUL is otherwise-ordinary text carrying one or more NUL bytes.
+	//
+	// A distinct verdict because it is a distinct OUTCOME. The tool cannot scan the file, but it
+	// is a file the tool exists to scan, so counting it as "unsupported type" makes a coverage
+	// LOSS read as deliberate scope. Measured, that is exactly what happened: a .env holding
+	// API_KEY=abc123 with one NUL byte was reported as files_skipped 1 with
+	// skipped_types {".env": 1}, and --fail-on-incomplete — the flag whose entire job is to
+	// report incomplete coverage — exited 0. .env files are a top-value target for this tool and
+	// routinely pick up a stray NUL from an editor or a copied secret (#667).
+	TextSniffTextWithNUL
+)
+
+// nulBearingTextPrintableBar is how printable the NON-NUL remainder must be for a NUL-bearing
+// buffer to count as text rather than binary.
+//
+// Deliberately STRICTER than the 0.95 bar used for NUL-free content, and the number is measured
+// rather than chosen. Sniffing the first 4KB of real files:
+//
+//	NUL-bearing BINARIES     NUL fraction   remainder printable
+//	  Mach-O executables       0.994-0.995        0.333-0.435
+//	  PNG assets               0.013-0.019        0.749-0.917   <- the constraint
+//	TEXT carrying a stray NUL
+//	  .env / .sql / .log       0.009-0.031        1.000
+//	  cp1252 prose             0.009              1.000
+//
+// The NUL FRACTION does not separate them — a PNG has about as few NULs as a .env with one. Only
+// the remainder's printability does, and the worst binary reaches 0.917, so the 0.95 bar leaves
+// almost no margin. 0.99 leaves 0.073, and every text sample measured 1.000, because that is what
+// text is once its NULs are removed. A file landing between 0.917 and 0.99 stays classified binary,
+// which is the conservative direction: it keeps a genuine skip quiet rather than raising a new
+// false alarm.
+const nulBearingTextPrintableBar = 0.99
+
+// maxNULFractionForText is how much of a buffer may be NUL before it is binary regardless of how
+// printable the rest looks.
+//
+// This is the bound that removes the executable family. Measured over the first 4KB of real files:
+//
+//	Mach-O executables   NUL fraction 0.994-0.995   (a ~20-byte remainder, which can be
+//	                                                 accidentally printable — so judging the
+//	                                                 remainder ALONE is not enough)
+//	PNG assets           NUL fraction 0.013-0.019
+//	.env / .sql / .log   NUL fraction 0.009-0.031
+//
+// Note the PNGs sit in the SAME range as the text files, which is why the NUL fraction cannot be the
+// only test either: PNGs are excluded by the printability bar (0.749-0.917, under 0.99) and
+// executables by this fraction. Two bounds, each covering what the other cannot.
+//
+// 0.30 rather than something tighter because a small text file legitimately has a high NUL fraction:
+// one NUL in a 33-byte .env is 0.030, but one NUL in a 4-byte file is 0.25. A tight bound would make
+// the verdict depend on file SIZE, which is the mistake an earlier cut of this made — an absolute
+// 64-byte floor on the remainder classified the very .env from the bug report as binary.
+const maxNULFractionForText = 0.30
+
+// minNULBearingBuffer is the smallest buffer worth computing a fraction over, so a 1-2 byte file
+// does not produce a verdict from a single byte.
+const minNULBearingBuffer = 8
+
+// classifyNULBearing decides whether a NUL-bearing buffer is text that happens to carry NULs, or
+// genuinely binary.
+//
+// Judged on the buffer with its NUL bytes removed, using the same printable classes as the legacy
+// fallback below so the two cannot disagree about what "printable" means.
+func classifyNULBearing(buf []byte) TextSniffVerdict {
+	if len(buf) < minNULBearingBuffer {
+		return TextSniffBinary
+	}
+	remainder := make([]byte, 0, len(buf))
+	nulCount := 0
+	for _, b := range buf {
+		if b == 0 {
+			nulCount++
+			continue
+		}
+		remainder = append(remainder, b)
+	}
+	if len(remainder) == 0 || float64(nulCount)/float64(len(buf)) > maxNULFractionForText {
+		return TextSniffBinary
+	}
+
+	asciiCount, high160Count, typo1252Count := 0, 0, 0
+	for _, b := range remainder {
+		switch {
+		case (b >= 32 && b <= 126) || b == 9 || b == 10 || b == 13:
+			asciiCount++
+		case b >= 160:
+			high160Count++
+		case b >= 128:
+			typo1252Count++
+		}
+	}
+	n := float64(len(remainder))
+	printable := asciiCount + high160Count
+	if float64(asciiCount)/n > 0.5 {
+		printable += typo1252Count
+	}
+	if float64(printable)/n > nulBearingTextPrintableBar {
+		return TextSniffTextWithNUL
+	}
+	return TextSniffBinary
+}
+
+// ClassifyTextBytes reports whether buf is text, and when it is not, why.
+func ClassifyTextBytes(buf []byte) TextSniffVerdict {
 	if len(buf) == 0 {
-		return false
+		return TextSniffBinary
 	}
 
 	// A format whose header is ASCII BY SPECIFICATION cannot be judged by a printability
@@ -429,7 +551,7 @@ func LooksLikeText(buf []byte) bool {
 	// accepts them as "Binary document" (isBinaryDocument -> IsPDFFile) before this sniff is
 	// ever consulted, and the PDF text and metadata extractors have their own parsers.
 	if bytes.HasPrefix(buf, pdfMagic) {
-		return false
+		return TextSniffBinary
 	}
 
 	// Transcodable encodings first: UTF-16 (BOM'd or heuristically detected)
@@ -438,14 +560,19 @@ func LooksLikeText(buf []byte) bool {
 	// window and judge the decoded text instead. PowerShell 5 Out-File,
 	// .reg exports, and plenty of Windows logs are UTF-16LE.
 	if decoded, ok := utf8OrDecoded(buf); ok {
-		return looksLikeDecodedText(decoded)
+		return verdictFor(looksLikeDecodedText(decoded))
 	}
 
 	// Not a recognized transcodable encoding: any null byte means binary
 	// (the classic gate, now applied only after UTF-16 has had its chance).
+	//
+	// The verdict distinguishes two very different files that both land here, because the
+	// caller needs to tell them apart: a compiled binary nobody expected a result from, and a
+	// TEXT file carrying a stray NUL, which is a file the tool was supposed to scan and did
+	// not. See classifyNULBearing for the measurement that separates them.
 	for _, b := range buf {
 		if b == 0 {
-			return false
+			return classifyNULBearing(buf)
 		}
 	}
 
@@ -460,7 +587,7 @@ func LooksLikeText(buf []byte) bool {
 		trimmed = trimmed[:len(trimmed)-1]
 	}
 	if len(trimmed) > 0 && utf8.Valid(trimmed) {
-		return looksLikeDecodedText(string(trimmed))
+		return verdictFor(looksLikeDecodedText(string(trimmed)))
 	}
 
 	// Not valid UTF-8: fall back to a legacy single-byte-encoding judgment.
@@ -498,7 +625,16 @@ func LooksLikeText(buf []byte) bool {
 	if float64(asciiCount)/n > 0.5 {
 		printable += typo1252Count
 	}
-	return float64(printable)/n > 0.95
+	return verdictFor(float64(printable)/n > 0.95)
+}
+
+// verdictFor lifts the historical boolean answer into a verdict. A buffer rejected on printability
+// alone — no NUL involved — is genuinely binary.
+func verdictFor(isText bool) TextSniffVerdict {
+	if isText {
+		return TextSniffText
+	}
+	return TextSniffBinary
 }
 
 // looksLikeDecodedText judges already-decoded (valid UTF-8) text: accept

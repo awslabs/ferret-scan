@@ -49,8 +49,8 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// Pre-commit mode stays silent when there is genuinely nothing to say — deliberate
 	// noise reduction on a developer's every commit, and it signals out of band via
 	// exit code and stderr rather than through this artifact.
-	if len(filteredMatches) == 0 && len(suppressedMatches) == 0 && options.PrecommitMode &&
-		!options.OutputToFile {
+	// Silence only when the run does not BLOCK. See FormatterOptions.MayStaySilent.
+	if len(filteredMatches) == 0 && len(suppressedMatches) == 0 && options.MayStaySilent() {
 		return "", nil
 	}
 

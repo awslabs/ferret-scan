@@ -86,8 +86,13 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 			}
 			return f.formatTextWithSuppressed([]detector.Match{}, suppressedMatches, options), nil
 		}
-		if isPrecommitMode {
+		if isPrecommitMode && options.MayStaySilent() {
 			return "", nil // Silent success in pre-commit mode when no matches
+		}
+		if isPrecommitMode {
+			// The run BLOCKS. Silence here rejects the commit with no explanation on any
+			// stream — see FormatterOptions.MayStaySilent.
+			return f.formatPrecommitOutput(matches, suppressedMatches, options), nil
 		}
 		return f.noMatchesText("No matches found.", options), nil
 	}
@@ -101,8 +106,13 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 			}
 			return f.formatTextWithSuppressed([]detector.Match{}, suppressedMatches, options), nil
 		}
-		if isPrecommitMode {
+		if isPrecommitMode && options.MayStaySilent() {
 			return "", nil // Silent success in pre-commit mode when no matches at specified levels
+		}
+		if isPrecommitMode {
+			// Blocking, but the confidence filter emptied the report: render the UNFILTERED
+			// matches, because the exit policy judged those. MatchesToReport owns that choice.
+			return f.formatPrecommitOutput(filteredMatches, suppressedMatches, options), nil
 		}
 		return f.noMatchesText("No matches found at the specified confidence levels.", options), nil
 	}
@@ -364,7 +374,19 @@ func (f *Formatter) filterMatchesByConfidence(matches []detector.Match, options 
 			filtered = append(filtered, match)
 		}
 	}
-	return filtered
+
+	// A run that BLOCKS must not be reported as clean.
+	//
+	// The confidence filter narrows what the operator sees; the exit policy judges the UNFILTERED
+	// set. When those disagree — a finding inside the blocking policy but outside the display
+	// filter — every formatter downstream renders an empty or affirmatively-clean document while
+	// the commit is rejected. Measured: rc 1 with 0 bytes on stdout and stderr for text/json/yaml/
+	// csv, and `failures="0"` / `results: []` for junit/sarif/gitlab-sast.
+	//
+	// Applied HERE, inside the filter, rather than at each formatter's call site, so a formatter
+	// added later cannot miss it. formatters.MatchesToReport widens only when the run blocks and
+	// the filter emptied the report, so --confidence keeps meaning what it says on every other run.
+	return formatters.MatchesToReport(filtered, matches, options)
 }
 
 // formatTextWithSuppressed formats matches and suppressed findings as text output
@@ -1109,17 +1131,18 @@ func (f *Formatter) getPrecommitResolutionGuidance(matches []detector.Match, opt
 		guidance.WriteString("3. Use --show-match flag to see exact matches for review (otherwise shows [HIDDEN])\n")
 	}
 
-	// Check if there are high confidence findings that should block
-	hasHighConfidence := false
-	for _, match := range matches {
-		if match.Confidence >= 90 {
-			hasHighConfidence = true
-			break
-		}
-	}
-
-	if hasHighConfidence {
-		guidance.WriteString("\nHigh confidence issues found - commit blocked for security.\n")
+	// Render the verdict the resolver reached; do not re-derive it.
+	//
+	// This block used to compute its own answer — any match with Confidence >= 90 — and print
+	// "commit blocked for security" on that basis alone. The exit code came from
+	// PrecommitConfig.ExitOnFindings in a different package, so FERRET_PRECOMMIT_EXIT_ON=none
+	// printed this line and exited 0. Two policies, one of them invisible to the other.
+	//
+	// precommit.Resolve now returns the message and the exit code together, and the caller puts
+	// the message here. An empty message means this run does not block, in which case nothing is
+	// printed at all — a non-blocking pre-commit run should add no line.
+	if options.PrecommitBlockMessage != "" {
+		guidance.WriteString("\n" + options.PrecommitBlockMessage + "\n")
 	}
 
 	return guidance.String()

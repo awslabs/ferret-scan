@@ -60,12 +60,16 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 	// deliberate noise reduction on a developer's every commit. It has its own
 	// out-of-band signalling (exit code + stderr), so it is not relying on this
 	// artifact for the disclosure.
-	if len(filteredMatches) == 0 && len(suppressedMatches) == 0 && options.PrecommitMode &&
-		!options.OutputToFile {
+	// Silence is permitted only when the run does not BLOCK: an empty document on a run that
+	// rejects the commit tells the developer nothing on any stream. The comment above claiming
+	// out-of-band signalling via "exit code + stderr" was measured false — stderr is empty too.
+	// See FormatterOptions.MayStaySilent.
+	if len(filteredMatches) == 0 && len(suppressedMatches) == 0 && options.MayStaySilent() {
 		return "", nil
 	}
 
-	return f.formatJSONWithSuppressed(filteredMatches, suppressedMatches, options)
+	return f.formatJSONWithSuppressed(
+		filteredMatches, suppressedMatches, options)
 }
 
 // formatJSONWithSuppressed formats matches and suppressed findings as JSON using shared structures

@@ -329,7 +329,19 @@ func FilterMatchesByConfidence(matches []detector.Match, options formatters.Form
 			filtered = append(filtered, match)
 		}
 	}
-	return filtered
+
+	// A run that BLOCKS must not be reported as clean.
+	//
+	// The confidence filter narrows what the operator sees; the exit policy judges the UNFILTERED
+	// set. When those disagree — a finding inside the blocking policy but outside the display
+	// filter — every formatter downstream renders an empty or affirmatively-clean document while
+	// the commit is rejected. Measured: rc 1 with 0 bytes on stdout and stderr for text/json/yaml/
+	// csv, and `failures="0"` / `results: []` for junit/sarif/gitlab-sast.
+	//
+	// Applied HERE, inside the filter, rather than at each formatter's call site, so a formatter
+	// added later cannot miss it. formatters.MatchesToReport widens only when the run blocks and
+	// the filter emptied the report, so --confidence keeps meaning what it says on every other run.
+	return formatters.MatchesToReport(filtered, matches, options)
 }
 
 // ApplyLimit truncates an already-filtered, already-sorted slice to
