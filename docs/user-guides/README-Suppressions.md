@@ -14,10 +14,27 @@ The suppression system uses **cryptographic hashing** to uniquely identify findi
   - File context (line content)
   - File basename
   - Line number
-  - Hashed match text (for privacy)
-  - Hashed surrounding context (for privacy)
+  - A digest of the match text
+  - A digest of the surrounding context
 
-- **Privacy Protection**: Sensitive data is hashed before storage, so suppression files don't contain actual sensitive information.
+- **A suppression file is as sensitive as a report.** It does not contain the value verbatim, but its
+  rule `hash` is *derived* from the value and from the line the value sits on, and a digest is only as
+  private as the space of things it could be a digest of. Measured: given a 16-hex SHA-256 prefix of a
+  US SSN, the whole 10^9 space falls in **367 seconds** single-threaded, a date of birth (10^4) is
+  instant, and a search bounded to a known area and group number recovered a planted SSN in **5 ms**.
+  So for any low-entropy value — an SSN, a phone number, a date of birth — treat the digest as
+  equivalent to the value.
+
+  That is why the file is written `0600`, and why **committing it to a repository is a disclosure
+  decision** rather than a neutral one. It is a defensible decision — sharing suppressions is the whole
+  point of the file — but make it deliberately.
+
+  The identity `hash` cannot be salted: the file has to match the same finding on a teammate's machine,
+  so any salt would have to travel in the file beside it. What *was* removable were two purely
+  informational copies of the same digests, `context_hash` and `match_text_hash`, which every rule
+  carried in its metadata and **nothing in the tool ever read**. Those are gone
+  ([#673](https://github.com/awslabs/ferret-scan/issues/673)); existing rule files keep matching,
+  because the identity hash is unchanged.
 
 ## Configuration Files
 
@@ -61,8 +78,6 @@ rules:
       filename: "test_data.txt"
       line_number: "42"
       confidence: "85.50"
-      context_hash: "a1b2c3d4e5f67890"      # Hashed surrounding context (privacy-safe)
-      match_text_hash: "1234567890abcdef"    # Hashed match text (privacy-safe)
 
   # Auto-generated disabled rule (can be enabled by changing enabled: true)
   - id: "SUP-1703123457"
@@ -76,8 +91,6 @@ rules:
       filename: "data-export.csv"
       line_number: "1205"
       confidence: "72.10"
-      context_hash: "b2c3d4e5f6789012"      # Hashed surrounding context (privacy-safe)
-      match_text_hash: "abcdef1234567890"    # Hashed match text (privacy-safe)
 ```
 
 ## Usage Examples
@@ -149,7 +162,9 @@ Then manually add the suppression rule to your `.ferret-scan-suppressions.yaml` 
 
 ### Hash-Based Identification
 - **Unique**: Each finding gets a unique hash based on multiple factors
-- **Privacy-Safe**: Sensitive data is hashed, not stored in plain text
+- **No verbatim values**: digests and metadata, not the matched text. Note that a digest of a
+  low-entropy value is recoverable by enumeration — see the note at the top of this page — so treat a
+  suppression file as being as sensitive as a report.
 - **Context-Aware**: Includes file location and surrounding context
 - **Tamper-Resistant**: Changes to the finding result in different hashes
 
@@ -284,8 +299,6 @@ Suppression rules include metadata for easier management:
 - `filename`: Original filename (basename only)
 - `line_number`: Line where finding occurred
 - `confidence`: Detection confidence score
-- `context_hash`: SHA-256 hash of surrounding context (privacy-safe)
-- `match_text_hash`: SHA-256 hash of matched text (privacy-safe)
 - `last_seen_at`: Timestamp when finding was last encountered (updated automatically)
 
 ### Bulk Operations

@@ -127,9 +127,15 @@ rules:
 ## Security Features
 
 ### Data Protection
-- **Sensitive Data Hashing**: Actual sensitive content never stored in suppression rules
-- **Context Privacy**: Before/after text hashed for privacy
+- **No verbatim values**: a rule stores digests and metadata, not the matched text itself.
+- **But a digest of a low-entropy value is not private.** A rule's identity `hash` is derived from the
+  value and from the line it sits on. Measured: the full 10^9 US SSN space falls to enumeration in 367
+  seconds single-threaded, and a date of birth (10^4) is instant. Treat a suppression file as being as
+  sensitive as a report, and treat committing one as a disclosure decision.
 - **Secure Storage**: Suppression files stored with restricted permissions (0600)
+- The identity hash cannot be salted, because the file must match the same finding on another machine
+  and a salt would travel with it. The two informational digests rules used to carry in metadata
+  (`context_hash`, `match_text_hash`) were read by nothing and have been removed (#673).
 
 ### Access Control
 - **File Permissions**: Configuration directory restricted to user access only
