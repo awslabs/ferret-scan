@@ -1,0 +1,106 @@
+# Every XML part-name family observed in real OOXML containers, one per line.
+#
+# Collected from 452 real .docx/.xlsx/.pptx produced by Word, PowerPoint, Excel and LibreOffice
+# (399 of which the scanner reports it examined in full):
+# 90 distinct families. Digit runs are normalised to N and producer-generated ids to ID, so this
+# file is a list of SCHEMA CONVENTIONS and carries no content, no file names and nothing
+# identifying from any document.
+#
+# TestEveryKnownOOXMLPartIsClassified requires each of these to be either INCLUDED or EXCLUDED by
+# classifyPart, never unclassified. That is the gate #680 exists to install: part coverage has been
+# decided by an allowlist seven times, and nothing ever asserted the list was complete. When a new
+# Office release adds a part, add it here with the others and the guard makes someone decide whether
+# it holds authored text — instead of it being silently unread, which under the sink rule means its
+# values ship in cleartext.
+#
+# Adding a line is cheap. Leaving one out is the bug this file prevents.
+[Content_Types].xml
+customXml/itemN.xml
+customXml/itemPropsN.xml
+docMetadata/LabelInfo.xml
+docProps/app.xml
+docProps/core.xml
+docProps/custom.xml
+ppt/authors.xml
+ppt/changesInfos/changesInfoN.xml
+ppt/commentAuthors.xml
+ppt/comments/modernComment_ID_ID.xml
+ppt/diagrams/colorsN.xml
+ppt/diagrams/dataN.xml
+ppt/diagrams/drawingN.xml
+ppt/diagrams/layoutN.xml
+ppt/diagrams/quickStyleN.xml
+ppt/handoutMasters/handoutMasterN.xml
+ppt/notesMasters/notesMasterN.xml
+ppt/notesSlides/notesSlideN.xml
+ppt/presProps.xml
+ppt/presentation.xml
+ppt/revisionInfo.xml
+ppt/slideLayouts/slideLayoutN.xml
+ppt/slideMasters/slideMasterN.xml
+ppt/slides/slideN.xml
+ppt/tableStyles.xml
+ppt/tags/tagN.xml
+ppt/theme/themeN.xml
+ppt/theme/themeOverrideN.xml
+ppt/viewProps.xml
+ppt/webextensions/taskpanes.xml
+ppt/webextensions/webextensionN.xml
+word/charts/chartN.xml
+word/charts/colorsN.xml
+word/charts/styleN.xml
+word/comments.xml
+word/commentsExtended.xml
+word/commentsExtensible.xml
+word/commentsIds.xml
+word/customizations.xml
+word/diagrams/colorsN.xml
+word/diagrams/dataN.xml
+word/diagrams/drawingN.xml
+word/diagrams/layoutN.xml
+word/diagrams/quickStyleN.xml
+word/document.xml
+word/documenttasks/documenttasksN.xml
+word/endnotes.xml
+word/fontTable.xml
+word/footer.xml
+word/footerN.xml
+word/footnotes.xml
+word/glossary/document.xml
+word/glossary/fontTable.xml
+word/glossary/numbering.xml
+word/glossary/settings.xml
+word/glossary/styles.xml
+word/glossary/webSettings.xml
+word/header.xml
+word/headerN.xml
+word/intelligenceN.xml
+word/numbering.xml
+word/people.xml
+word/settings.xml
+word/styles.xml
+word/stylesWithEffects.xml
+word/tasks.xml
+word/theme/themeN.xml
+word/webSettings.xml
+word/webextensions/taskpanes.xml
+word/webextensions/webextensionN.xml
+xl/calcChain.xml
+xl/charts/chartN.xml
+xl/charts/colorsN.xml
+xl/charts/styleN.xml
+xl/commentsN.xml
+xl/drawings/drawingN.xml
+xl/externalLinks/externalLinkN.xml
+xl/metadata.xml
+xl/pivotCache/pivotCacheDefinitionN.xml
+xl/pivotCache/pivotCacheRecordsN.xml
+xl/pivotTables/pivotTableN.xml
+xl/sharedStrings.xml
+xl/styles.xml
+xl/tables/tableN.xml
+xl/theme/themeN.xml
+xl/webextensions/taskpanes.xml
+xl/webextensions/webextensionN.xml
+xl/workbook.xml
+xl/worksheets/sheetN.xml

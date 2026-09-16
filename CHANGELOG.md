@@ -307,6 +307,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     | 10,000 | 23,236 ns  |  640 ns  |  36×    |
     | 50,000 | 113,155 ns |  619 ns  | 183×    |
 
+- **office (container parts):** **eleven** container parts that hold text a person typed were read by
+  nothing, so their values were reported by no validator and — under the sink rule, where only reported
+  findings reach the redactor — written to the "redacted" copy in cleartext at exit 0 with an empty
+  stderr. Verified by planting a detectable value in each part of real LibreOffice-produced containers.
+  ([#680](https://github.com/awslabs/ferret-scan/issues/680))
+
+  Six were the parts [#680](https://github.com/awslabs/ferret-scan/issues/680) named: PowerPoint review
+  comments (`ppt/comments/modernComment_*.xml`), `ppt/tags/`, `ppt/presentation.xml`, `xl/tables/`
+  column headings, and chart titles in `xl/charts/` and `word/charts/`. `ppt/presentation.xml` is the
+  instructive one — it was always *resolved*, since every slide is found through its relationships, so
+  it sat in the package map while no pass ever extracted its own text. Resolved and scanned are
+  different things.
+
+  **The other five were found by the new guard, not by the issue.** Classifying every XML part name
+  observed across 399 real `.docx`/`.xlsx`/`.pptx` left 23 unclassified, and five of those hold authored
+  text: `word/people.xml`, `ppt/authors.xml` and `ppt/commentAuthors.xml` carry comment authors'
+  **display names** (present in 47, 13 and 26 containers), the Word and PowerPoint `diagrams/data*.xml`
+  parts carry SmartArt — an org chart is a diagram full of names — and `word/glossary/document.xml`
+  carries saved building blocks. Reading them reports **+152 real personal names** on that corpus that
+  the tool previously missed entirely, +140 of them in the HIGH band. The tool already reported authors
+  out of `docProps`, so missing them here was an inconsistency as well as a leak.
+
+  **The gate is that no part may be unclassified.** Coverage had been decided by an allowlist of the
+  parts somebody had thought of, and nothing asserted the list was complete — which is why this class
+  has now been fixed seven times, each fix guaranteeing the next. Every part is now *read*, or
+  *deliberately skipped with a recorded reason*; a part that is neither fails
+  `TestEveryKnownOOXMLPartIsClassified`, which walks a committed inventory of the 90 part-name families
+  observed in the wild. When a new Office release adds a part, someone has to decide about it instead of
+  it being silently unread. The inventory holds schema conventions only — digit runs normalised — so it
+  carries no content or file names from any document.
+
+  **Reading everything was tried first, and measured, and rejected.** It cost **+3,348 findings
+  (+47.7%), +680 HIGH**, dominated by template parts rather than content: `ppt/slideLayouts/*` alone
+  re-reported a deck's copyright boilerplate once per layout, up to 26 times, plus layout ids as `PHONE`;
+  `xl/externalLinks/*` gave `Hong Kong` and `Middle East` as `PERSON_NAME` at confidence 92-100. That is
+  the `customXml` result ([#679](https://github.com/awslabs/ferret-scan/issues/679): 403 findings, false
+  positives throughout) at eight times the scale. Each such part is now an exclusion carrying the number
+  that put it there.
+
+  **Two false-positive sources were found and closed by measurement during this change, not after it.**
+  Taking all character data pulled in chart *numeric caches* — a 17-digit cached datum as `VIN` at
+  confidence 90, 10-digit values as `PHONE`, 9-digit as `SSN` — so extraction now takes only DrawingML
+  `<a:t>` runs and label-bearing attributes, never arbitrary character data. And the attribute allowlist
+  is keyed on **(element, attribute)** rather than attribute name, because `val` is OOXML's universal
+  scalar attribute: keyed on the name alone it matched `<c:axId val="1829252287"/>` and reported 24 chart
+  axis identifiers as `PHONE`/`SSN`. Notably this refutes the reason #680 gave for reading chart parts at all
+  — "`word/chartN.xml` held `PERSON_NAME` and `VIN` on the real corpus" — because both of those were
+  themselves cache false positives; the row stands on chart titles, which are authored text.
+  `p15:presenceInfo/@userId` is excluded for the same reason: a name in one container, a numeric
+  internal id in 18, and 21 `SSN` false positives.
+
+  Corpus accounting, because the first pass got it wrong: of 452 candidate containers, 17 could not be
+  read at all and the tool reported a further 36 as `files_not_examined`. Those 53 were being counted as
+  zero-finding files, inflating every percentage. All figures here are over the **399** the scanner
+  reports it examined in full, with `files_not_examined == 0` asserted per file — the tool had been
+  disclosing this on stderr all along ("NOT FULLY EXAMINED: 1 of 1 file"), and the measurement script
+  was discarding stderr.
+
+  Final measurement: **+152 findings, every one `PERSON_NAME`**, with the LOW band unchanged at 3,031 and no new `PHONE`, `SSN`, `VIN` or `DATE_OF_BIRTH`. `customXml/item*.xml`
+  remains excluded and still has no precision story.
+
+  The per-part redaction contract gains **12 rows**, one per newly-read part, each asserting both
+  directions — the value is REPORTED, and it is absent from every member of the redacted output read
+  decompressed. All 14 pre-existing rows pass on the parent commit and exactly the 12 new ones fail
+  there, which is the signature of a tool fix rather than a fixture change. And the golden corpus, which
+  had no case whose subject was which parts are read — the structural reason "0 golden files changed"
+  was the result for a change that altered extraction on hundreds of real documents — gains one, whose
+  snapshot holds a chart title, a comment author and SmartArt text while the chart's numeric cache stays
+  absent.
+
 - **web:** cache `SuppressionManager` on the `WebServer` with mtime-based reload — eliminates the per-request YAML re-parse that previously dominated `/scan` and `/suppressions` latency. With a 5,000-rule (45k-line) suppression file across 50 sequential requests:
   - `/scan`: 68.7 ms → 28.5 ms per request (**2.4×**)
   - `/suppressions`: 67.3 ms → 29.6 ms per request (**2.3×**)

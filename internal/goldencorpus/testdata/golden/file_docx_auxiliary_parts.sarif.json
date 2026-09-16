@@ -1,0 +1,480 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/aux_parts.docx"
+                },
+                "region": {
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "Marion Reyes"
+                  },
+                  "startColumn": 1,
+                  "startLine": 10
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in aux_parts.docx at line 10 (confidence: 100.0% - HIGH). Matched text: 'Marion Reyes'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 13,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "Marion",
+                "FullName": "Marion Reyes",
+                "LastName": "Reyes",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 100,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 80,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/aux_parts.docx"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Employee SSN \nEmployee SSN 449-87-4100 on file.\n on file."
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "Employee SSN 449-87-4100 on file."
+                  },
+                  "startColumn": 14,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in aux_parts.docx at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 45,
+              "original_confidence": 100,
+              "original_file": "<TMPDIR>/aux_parts.docx",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/aux_parts.docx"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Headcount for SSN \nHeadcount for SSN 204-11-8830"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 30,
+                  "snippet": {
+                    "text": "Headcount for SSN 204-11-8830"
+                  },
+                  "startColumn": 19,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in aux_parts.docx at line 6 (confidence: 100.0% - HIGH). Matched text: '204-11-8830'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 25,
+              "original_confidence": 100,
+              "original_file": "<TMPDIR>/aux_parts.docx",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/aux_parts.docx"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Escalation owner SSN \nEscalation owner SSN 225-66-9014"
+                  },
+                  "startLine": 14
+                },
+                "region": {
+                  "endColumn": 33,
+                  "snippet": {
+                    "text": "Escalation owner SSN 225-66-9014"
+                  },
+                  "startColumn": 22,
+                  "startLine": 14
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in aux_parts.docx at line 14 (confidence: 100.0% - HIGH). Matched text: '225-66-9014'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 25,
+              "original_confidence": 100,
+              "original_file": "<TMPDIR>/aux_parts.docx",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "ssn"
+            ],
+            "validator": "ssn"
+          },
+          "rank": 100,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/aux_parts.docx"
+                },
+                "region": {
+                  "endColumn": 21,
+                  "snippet": {
+                    "text": "Author: Jane Analyst"
+                  },
+                  "startColumn": 9,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "AUTHOR_INFO Detected in aux_parts.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+          },
+          "properties": {
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 0,
+              "full_field": "Author: Jane Analyst",
+              "metadata_type": "AUTHOR_INFO",
+              "original_confidence": 60,
+              "original_file": "<TMPDIR>/aux_parts.docx",
+              "preprocessor_adjustment": 0,
+              "preprocessor_name": "Office Metadata Extractor",
+              "preprocessor_type": "office_metadata",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "source_file": "<TMPDIR>/aux_parts.docx",
+              "source_preprocessor": "office_metadata",
+              "total_adjustment": 0,
+              "validation_checks": {
+                "contains_author_field": true
+              },
+              "validation_path": "metadata"
+            },
+            "validator": "metadata"
+          },
+          "rank": 55,
+          "ruleId": "AUTHOR_INFO"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://<TMPDIR>/aux_parts.docx"
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "LastModifiedBy: Ops Reviewer"
+                  },
+                  "startColumn": 17,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "LAST_MODIFIED_BY Detected in aux_parts.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+          },
+          "properties": {
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "context_impact": 0,
+              "full_field": "LastModifiedBy: Ops Reviewer",
+              "metadata_type": "LAST_MODIFIED_BY",
+              "original_confidence": 60,
+              "original_file": "<TMPDIR>/aux_parts.docx",
+              "preprocessor_adjustment": 0,
+              "preprocessor_name": "Office Metadata Extractor",
+              "preprocessor_type": "office_metadata",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "source_file": "<TMPDIR>/aux_parts.docx",
+              "source_preprocessor": "office_metadata",
+              "total_adjustment": 0,
+              "validation_checks": {
+                "contains_modifier_field": true
+              },
+              "validation_path": "metadata"
+            },
+            "validator": "metadata"
+          },
+          "rank": 55,
+          "ruleId": "LAST_MODIFIED_BY"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type AUTHOR_INFO was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#author_info",
+              "id": "AUTHOR_INFO",
+              "shortDescription": {
+                "text": "AUTHOR_INFO Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Sensitive data of type LAST_MODIFIED_BY was detected in the scanned content."
+              },
+              "help": {
+                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#last_modified_by",
+              "id": "LAST_MODIFIED_BY",
+              "shortDescription": {
+                "text": "LAST_MODIFIED_BY Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A person's name was detected in the scanned content. Names are considered personally identifiable information (PII) under various privacy regulations."
+              },
+              "help": {
+                "text": "Person names are considered PII under GDPR, CCPA, and other privacy regulations. Evaluate whether this name should be present in the code. If it's test data, use clearly fictional names or anonymized identifiers. For production use, ensure names are stored securely with appropriate access controls and data retention policies."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#person_name",
+              "id": "PERSON_NAME",
+              "shortDescription": {
+                "text": "Person Name Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations."
+              },
+              "help": {
+                "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ssn",
+              "id": "SSN",
+              "shortDescription": {
+                "text": "Social Security Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "mappedTo": {
+            "uriBaseId": "%SRCROOT%"
+          },
+          "repositoryUri": "https://github.com/awslabs/ferret-scan",
+          "revisionId": "0.0.0-development"
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0"
+}

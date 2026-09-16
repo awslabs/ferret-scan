@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="aux_parts.docx" classname="security-scan" time="0.001">
+      <failure message="6 security findings detected" type="SECURITY_FINDINGS">Line 10: PERSON_NAME detected with 100.0% confidence (HIGH)&#xA;Match: Marion Reyes&#xA;Validator: PERSON_NAME&#xA;Line 3: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 449-87-4100&#xA;Validator: ssn&#xA;Line 6: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 204-11-8830&#xA;Validator: ssn&#xA;Line 14: SSN detected with 100.0% confidence (HIGH)&#xA;Match: 225-66-9014&#xA;Validator: ssn&#xA;Line 1: AUTHOR_INFO detected with 60.0% confidence (MEDIUM)&#xA;Match: Jane Analyst&#xA;Validator: metadata&#xA;Line 2: LAST_MODIFIED_BY detected with 60.0% confidence (MEDIUM)&#xA;Match: Ops Reviewer&#xA;Validator: metadata</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

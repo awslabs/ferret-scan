@@ -625,6 +625,28 @@ var FileCases = []FileCase{
 		EnablePreprocessors: true,
 	},
 	{
+		Name: "file_docx_auxiliary_parts",
+		Description: "Tier 3: a .docx carrying a value in three NON-BODY parts — a chart title, a comment author in " +
+			"word/people.xml, and SmartArt text — plus a chart numeric cache that must stay unread. " +
+			"The corpus previously held no case whose subject was which container PARTS are read, so a " +
+			"change to part coverage produced \"0 golden files changed\" while altering extraction on " +
+			"hundreds of real documents. That blind spot is the structural reason this class shipped " +
+			"seven times (#680). Diff against file_docx_body_and_metadata, which is the same body with " +
+			"none of these parts.",
+		Checks:   []string{"SSN", "CREDIT_CARD", "METADATA", "PERSON_NAME"},
+		Filename: "aux_parts.docx",
+		Content: BuildDOCXWithAuxParts("Jane Analyst", "Ops Reviewer", []string{
+			"Quarterly summary follows.",
+			"Employee SSN 449-87-4100 on file.",
+		},
+			// Each value is distinct so a snapshot attributes a finding to the part it came from.
+			"Headcount for SSN 204-11-8830",
+			"Marion Reyes",
+			"Escalation owner SSN 225-66-9014"),
+		Tier1Parity:         false, // container extraction has no content-mode equivalent
+		EnablePreprocessors: true,
+	},
+	{
 		Name: "file_docx_forged_separator_midbody",
 		Description: "Tier 3: same .docx as the control plus ONE body paragraph that is exactly the router's own section separator. " +
 			"Locks what the document path is given when document text forges a section boundary. Diff against file_docx_body_and_metadata.",
@@ -987,6 +1009,68 @@ func BuildDOCXWithRawRuns(creator, lastModifiedBy string, rawParas []string) []b
 // conventional names, so this case records the body being scanned.
 func BuildDOCXWithMainPart(mainPart, creator, lastModifiedBy string, paras []string) []byte {
 	return buildOOXML(docxParts(mainPart, creator, lastModifiedBy, paras))
+}
+
+// BuildDOCXWithAuxParts is BuildDOCX plus the container parts that are NOT the body: a chart title,
+// a comment author in word/people.xml, and SmartArt text.
+//
+// It exists because the golden corpus could not see part coverage at all. Every Office case here
+// carried word/document.xml, docProps and (for xlsx) the worksheets — so a change that alters which
+// PARTS are read produced "0 golden files changed" while it altered extraction on hundreds of real
+// documents, and that is the structural reason this class of defect shipped seven times (#680).
+//
+// The three parts chosen are the ones whose text arrives by three DIFFERENT routes, so a regression
+// in any one of them shows up here:
+//
+//	word/charts/chart1.xml   an <a:t> run, alongside a numeric cache that must NOT be read
+//	word/people.xml          a `w15:person w15:author` ATTRIBUTE, with no character data at all
+//	word/diagrams/data1.xml  an <a:t> run under a diagram schema rather than a chart one
+func BuildDOCXWithAuxParts(creator, lastModifiedBy string, paras []string, chartTitle, commentAuthor, smartArt string) []byte {
+	parts := docxParts("word/document.xml", creator, lastModifiedBy, paras)
+
+	// Declared and related exactly as a producer does, so the parts are reachable rather than
+	// orphans a real consumer would ignore.
+	for i, pt := range parts {
+		switch pt.name {
+		case "[Content_Types].xml":
+			parts[i].body = strings.Replace(pt.body, `</Types>`,
+				`<Override PartName="/word/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`+
+					`<Override PartName="/word/people.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml"/>`+
+					`<Override PartName="/word/diagrams/data1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml"/>`+
+					`</Types>`, 1)
+		}
+	}
+
+	const relT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+	docRels := xmlDecl + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+		`<Relationship Id="rIdCh" Type="` + relT + `/chart" Target="charts/chart1.xml"/>` +
+		`<Relationship Id="rIdPe" Type="` + relT + `/people" Target="people.xml"/>` +
+		`<Relationship Id="rIdDg" Type="` + relT + `/diagramData" Target="diagrams/data1.xml"/>` +
+		`</Relationships>`
+
+	const aNS = `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"`
+	chart := xmlDecl + `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" ` + aNS + `>` +
+		`<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>` + escapeXML(chartTitle) + `</a:t></a:r></a:p></c:rich></c:tx></c:title>` +
+		// The numeric cache. Present deliberately: reading it was measured at 35 false positives
+		// across the real corpus, so a fixture without it would let that regression back in.
+		`<c:plotArea><c:barChart><c:ser><c:val><c:numRef><c:numCache>` +
+		`<c:pt idx="0"><c:v>78260869565217395</c:v></c:pt><c:pt idx="1"><c:v>870366751</c:v></c:pt>` +
+		`</c:numCache></c:numRef></c:val></c:ser><c:axId val="1829252287"/></c:barChart></c:plotArea></c:chartSpace>`
+
+	people := xmlDecl + `<w15:people xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">` +
+		`<w15:person w15:author="` + escapeXML(commentAuthor) + `"/></w15:people>`
+
+	diagram := xmlDecl + `<dgm:dataModel xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" ` + aNS + `>` +
+		`<dgm:ptLst><dgm:pt modelId="1"><dgm:t><a:bodyPr/><a:p><a:r><a:t>` + escapeXML(smartArt) +
+		`</a:t></a:r></a:p></dgm:t></dgm:pt></dgm:ptLst></dgm:dataModel>`
+
+	parts = append(parts,
+		ooxmlPart{"word/_rels/document.xml.rels", docRels},
+		ooxmlPart{"word/charts/chart1.xml", chart},
+		ooxmlPart{"word/people.xml", people},
+		ooxmlPart{"word/diagrams/data1.xml", diagram},
+	)
+	return buildOOXML(parts)
 }
 
 func docxParts(mainPart, creator, lastModifiedBy string, paras []string) []ooxmlPart {
