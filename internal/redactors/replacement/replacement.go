@@ -16,6 +16,8 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/personname"
+
+	"github.com/awslabs/ferret-scan/v2/internal/textnorm"
 )
 
 // nameDB caches the loaded name databases so they are only decompressed once.
@@ -254,6 +256,25 @@ func preserveIP(original string) string {
 
 // Synthetic generates realistic-looking but fake data of the same type.
 func Synthetic(original, dataType string) (string, error) {
+	// Generate from the CANONICAL form of the value.
+	//
+	// Every generator below rebuilds a value by walking the original and substituting the parts it
+	// recognises — digitRe is [0-9], the passport generator copies A-Z. None of them recognises a
+	// fullwidth digit or a Unicode dash, so for a value written with those the walk substitutes
+	// nothing and returns the original UNCHANGED. The residue guard then correctly refuses to write a
+	// file that still holds the reported value, so `--redaction-strategy synthetic` failed outright on
+	// a document whose digits came from a CJK-locale form.
+	//
+	// Measured: with the normalization pass of #671 making these values reportable, three of ninety
+	// substituted fixtures — SSN, VISA and PHONE with fullwidth digits — were refused under synthetic
+	// while simple and format_preserving redacted them cleanly. Before #671 they were never reported
+	// at all, so the refusal is new only in the sense that the value is finally visible.
+	//
+	// Folding here rather than widening each generator's character class: a synthetic replacement is a
+	// realistic-looking SUBSTITUTE, not a byte-shape copy, so it has no reason to preserve the exotic
+	// spelling of the value it replaces. format_preserving, which does have that reason, is untouched.
+	original = textnorm.Fold(original)
+
 	if isCreditCardType(dataType) {
 		return syntheticCreditCard(original)
 	}
