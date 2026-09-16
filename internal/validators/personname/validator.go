@@ -509,6 +509,22 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 		return 0.0, checks
 	}
 
+	// The same shape with a word that generates a PLACE name rather than a person: "San Francisco",
+	// "Saint Louis", "Mount Vernon", "Port Arthur". Measured, six such names were reported and every
+	// one scored exactly 80/MEDIUM, while real people scored 100 in the same run — so the populations
+	// were already 20 points apart and only the lower one needed rejecting. See toponymPrefixMap for
+	// why this is a list of toponym GENERATORS and not a list of cities.
+	//
+	// isToponymPrefixGiven defers to the name databases on the same terms, which is why "La Paz" is
+	// still reported: "La" is a real surname, and overriding the data to catch one capital city would
+	// delete every person named La, Le or Lake.
+	if v.isToponymPrefixGiven(components.FirstName) {
+		checks["proper_case"] = false
+		checks["has_known_name_component"] = false
+		checks["both_names_known"] = false
+		return 0.0, checks
+	}
+
 	// Only proceed with expensive calculations if we have database matches
 	baseConfidence := 55.0
 	checks["has_known_name_component"] = true
@@ -842,8 +858,31 @@ func (v *Validator) isCommonWordBigram(components NameComponents) bool {
 // this precision fix would delete real names, and an unreported name is never
 // handed to the redactor: it stays in cleartext in the output.
 func (v *Validator) isFunctionWordGiven(first string) bool {
+	return v.isNonNameGiven(first, functionWordsMap)
+}
+
+// isToponymPrefixGiven reports whether the GIVEN-name half is a word that generates a PLACE name
+// rather than a person's name. See toponymPrefixMap.
+//
+// Separate from isFunctionWordGiven so the two vocabularies stay independent and each carries its own
+// reasoning, but they share one implementation: the deference to the name databases is the part that
+// must not diverge between them. A copy of that ordering would be a copy of the constraint that stops
+// this class of fix from deleting real names.
+func (v *Validator) isToponymPrefixGiven(first string) bool {
+	return v.isNonNameGiven(first, toponymPrefixMap)
+}
+
+// isNonNameGiven reports whether first appears in vocab and the shipped name data has no opinion on it.
+//
+// The database check comes FIRST and wins, for both vocabularies. "will", "may" and "an" are function
+// words that belong to real people (Will Smith, May Chen, An Nguyen); "Santa", "Val", "Isla" and
+// "Monte" are given names and "La", "Le", "Fort", "Lake" and "Villa" are surnames. The data is
+// authoritative and the word lists only reject what it has no opinion about. Without that ordering
+// this precision work would delete real names, and an unreported name is never handed to the redactor
+// — it stays in cleartext in the output.
+func (v *Validator) isNonNameGiven(first string, vocab map[string]bool) bool {
 	first = strings.ToLower(strings.TrimSpace(first))
-	if first == "" || !functionWordsMap[first] {
+	if first == "" || !vocab[first] {
 		return false
 	}
 	// The name databases are authoritative; defer to them.

@@ -122,6 +122,48 @@ type phonePattern struct {
 	regex   *regexp.Regexp
 	country string
 	format  string
+
+	// minDigits and maxDigits bound how many DIGITS a match may contain, counted after separators
+	// are stripped. Zero means unbounded.
+	//
+	// Needed because a national-format pattern cannot express its own length limit as a regex: the
+	// digits are split across optional groups with optional separators, so `0\d{2,4}[-.\s]?\d{3,8}`
+	// spans 6 to 17 digits and no arrangement of counts fixes that without enumerating the groupings.
+	//
+	// The concrete defect: UK_Standard matched a 12-digit UPC-A barcode. `UPC 012345678905 on the
+	// label` was reported as PHONE at 70/MEDIUM, because the run begins with 0 and the pattern
+	// accepts up to 17 digits — while `987654321098`, the same length without the leading zero,
+	// matched nothing, and a REAL phone number scored 15/LOW. A UK national number is 10 or 11
+	// digits including the trunk 0 and never 12, so the bound is a fact about the numbering plan
+	// rather than a guess (#672).
+	minDigits int
+	maxDigits int
+}
+
+// digitCount returns how many ASCII digits s contains.
+func digitCount(s string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			n++
+		}
+	}
+	return n
+}
+
+// lengthAllowed reports whether match has a digit count this pattern permits.
+func (p phonePattern) lengthAllowed(match string) bool {
+	if p.minDigits == 0 && p.maxDigits == 0 {
+		return true
+	}
+	n := digitCount(match)
+	if p.minDigits > 0 && n < p.minDigits {
+		return false
+	}
+	if p.maxDigits > 0 && n > p.maxDigits {
+		return false
+	}
+	return true
 }
 
 // NewValidator creates and returns a new Validator instance
@@ -254,9 +296,14 @@ func NewValidator() *Validator {
 			// Allow an optional THIRD group (M9): a real UK national number like
 			// "0161 496 0345" is area + two subscriber groups, which the previous
 			// two-group pattern truncated to "0161 496".
-			regex:   regexp.MustCompile(`\b0\d{2,4}[-.\s]?\d{3,8}([-.\s]\d{3,4})?\b`),
-			country: "UK",
-			format:  "0XXX XXXXXXXX",
+			regex: regexp.MustCompile(`\b0\d{2,4}[-.\s]?\d{3,8}([-.\s]\d{3,4})?\b`),
+			// A UK national number is 10 or 11 digits INCLUDING the trunk 0 — 020 7123 4567 is 11,
+			// 0161 496 0000 is 11, 0800 123 456 is 10. Never 12, which is what let a UPC-A barcode
+			// through at 70/MEDIUM.
+			minDigits: 10,
+			maxDigits: 11,
+			country:   "UK",
+			format:    "0XXX XXXXXXXX",
 		},
 		{
 			name:    "UK_International",
@@ -396,6 +443,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// Skip if this match was already found by another pattern on this
 				// line. Same containment semantics as isDuplicateMatch, evaluated in
 				// O(1)-amortized time against the per-line dedup index.
+				// A match whose digit count is outside what this pattern's numbering plan allows.
+				// Checked here rather than in the regex because the digits are spread across optional
+				// groups; see phonePattern.minDigits.
+				if !pattern.lengthAllowed(match) {
+					continue
+				}
+
 				cleanNew := v.cleanPhoneNumber(match)
 				if dedup.isDuplicate(cleanNew) {
 					continue
