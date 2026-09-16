@@ -31,6 +31,42 @@ var (
 // rather than competing with a corroborated address for attention.
 const ambiguousShapeCap = 75.0
 
+// productVersionCeiling is the ceiling for a dotted quad in the RFC 9110 product-token
+// position — a product name, a '/', then the version, as in "LibreOffice/26.8.0.3".
+//
+// 55 rather than ambiguousShapeCap's 75, because 75 is inside MEDIUM and this value is not
+// merely context-free: the bytes immediately before it say what it is. 55 is inside LOW (the
+// bands are 90 and 60), so it leaves both `--confidence high` and `--confidence high,medium`
+// — the views a reviewer actually uses — while remaining reported and therefore still
+// redacted. It is the number four other validators already use for "the surroundings
+// contradict the value": secrets' unlabelledHexIdentifierCeiling, ssn's
+// contradictingHeaderCap, email's unrecognisedTLDCeiling and socialmedia's bareHandleCeiling.
+//
+// WHY THIS IS NOT A VETO. The predicate is value-adjacent, not a field name, so an author
+// cannot reach it by relabelling a line — which is the objection the secrets validator
+// records against keying a rule on identifier field names. But it is still a label about the
+// value rather than a fact about the value: a dotted quad is a dotted quad. Only reported
+// findings reach the redactor, so a drop here would leave the value in the redacted output.
+// A demotion costs a confidence band when it is wrong.
+//
+// MEASURED, twice. A sweep of 26,010 files under /Applications, /Library and
+// /System/Library found 11 occurrences of this shape and 4 distinct values, EVERY ONE a
+// software version: IslandUpdater/150.1.96.29 and /151.1.97.29, Chrome/102.0.0.0, and
+// Framework.framework/Versions/153.1.100.18. Zero genuine addresses. And across 400 real
+// .docx/.xlsx/.pptx the ipaddress validator produced 3 findings in total, all of this shape,
+// all at 75 — so on that corpus this change moves every ipaddress finding there is out of
+// MEDIUM and loses nothing.
+//
+// The URL-authority shape is untouched because it cannot match: in "https://10.0.1.42" the
+// byte before the quad is '/', not a letter, so isProductVersionAt is false. That distinction
+// is why the rule reads the character BEFORE the slash.
+//
+// THE HONEST RESIDUAL: a genuine address written immediately after a name and a slash with no
+// port — "Server/52.94.236.248" — moves from 75 to 55. That shape did not occur in either
+// sweep. A port or CIDR suffix still outranks this ceiling, because such a suffix is welded to
+// the value; "Server/10.0.0.1:8080" is unaffected.
+const productVersionCeiling = 55.0
+
 // confidenceCeilingKey is the Match.Metadata key a validator sets to declare a hard
 // upper bound on a finding's confidence.
 //
@@ -461,8 +497,22 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// reintroduced one level up by withholding the bound in exactly the cases that
 				// had not yet crossed it.
 				capEligible := ambiguousShape && !clearsCap
-				if capEligible && confidence > ambiguousShapeCap {
-					confidence = ambiguousShapeCap
+
+				// The ceiling to hold this value to. A product-token version gets the lower
+				// one, because the bytes next to it identify it, and a structural suffix
+				// outranks both — a port or CIDR is welded to the value, so it is an address
+				// whatever precedes it.
+				ceiling := ambiguousShapeCap
+				if productVersion && !hasStructuralSuffixAt(line, matchEnd) {
+					ceiling = productVersionCeiling
+					// A product-token version is capped on the strength of its own
+					// surrounding bytes, so it does not need capEligible: the keyword escape
+					// must not lift it, which is the same precedence clearsCap already gives
+					// productVersion above.
+					capEligible = true
+				}
+				if capEligible && confidence > ceiling {
+					confidence = ceiling
 				}
 
 				// Ensure confidence stays within bounds
@@ -506,7 +556,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					"original_file":     originalPath,
 				}
 				if capEligible {
-					meta[confidenceCeilingKey] = ambiguousShapeCap
+					// Publish the ceiling that was APPLIED, not the generic one: the bridge
+					// raises confidence again from a document-level classification that knows
+					// nothing about this value, and publishing 75 for a value held to 55 would
+					// let that raise carry it back into MEDIUM with nothing left to clamp it.
+					meta[confidenceCeilingKey] = ceiling
 				}
 
 				matches = append(matches, detector.Match{

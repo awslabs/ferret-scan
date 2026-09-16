@@ -62,6 +62,23 @@ func confidenceOf(t *testing.T, content, value string) float64 {
 // already suppressed for an unrelated reason, which is luck rather than a guarantee. A
 // demoted finding is still reported and still redacted, so when this rule is wrong it costs
 // a confidence band; dropping would cost the value in cleartext.
+//
+// THE CEILING MOVED FROM 75 TO 55 IN #681, and these wants moved with it. 75 is inside
+// MEDIUM, so every one of these values still reached `--confidence high,medium`. That matters
+// most for the first row: the LibreOffice producer signature is in EVERY .docx, .xlsx, .pptx,
+// .odt, .ods and .odp that a LibreOffice user writes — measured on all six — so such a user
+// got one guaranteed false positive per document, in the band reviewers filter to, on a
+// document with no PII in it at all. It also made measurement baselines silently vacuous: a
+// probe reading "the same 2 findings as the unplanted base file" was reading this plus the
+// APPLICATION_INFO from the same element, and nearly hid a genuine leak.
+//
+// Re-measured for #681 rather than trusted: a fresh sweep of 26,010 files under
+// /Applications, /Library and /System/Library found 11 occurrences of this shape and 4
+// distinct values, EVERY ONE a software version — IslandUpdater/150.1.96.29 and
+// /151.1.97.29, Chrome/102.0.0.0, and Framework.framework/Versions/153.1.100.18. Zero
+// genuine addresses. Across 400 real .docx/.xlsx/.pptx the validator produced 3 findings in
+// total, all of this shape, so on that corpus the change moves every ipaddress finding there
+// is out of MEDIUM and loses nothing.
 func TestAProductVersionIsNotReportedAsHigh(t *testing.T) {
 	// Transcribed from real files on this host: the LibreOffice generator is the string
 	// every .odt authored by the installed LibreOffice carries, and the Chrome
@@ -108,8 +125,14 @@ func TestAProductVersionIsNotReportedAsHigh(t *testing.T) {
 				t.Errorf("%s reported at %v (HIGH); a product-token version must stay below "+
 					"the HIGH boundary of 90 (#513)", tc.value, got)
 			}
-			if got != ambiguousShapeCap {
-				t.Errorf("%s reported at %v, want the ambiguity cap %v", tc.value, got, ambiguousShapeCap)
+			if got >= 60 {
+				t.Errorf("%s reported at %v, which is MEDIUM (the bands are 90 and 60). A "+
+					"product-token version must leave `--confidence high,medium` — the view a "+
+					"reviewer actually uses — because for a LibreOffice user it is present in "+
+					"EVERY document they produce and is never an address (#681).", tc.value, got)
+			}
+			if got != productVersionCeiling {
+				t.Errorf("%s reported at %v, want the product-version ceiling %v", tc.value, got, productVersionCeiling)
 			}
 		})
 	}
@@ -199,8 +222,11 @@ func TestTheAmbiguityCapPublishesItsCeiling(t *testing.T) {
 		t.Fatalf("%s = %T, want float64. The bridge ignores a ceiling of any other type, "+
 			"which would make this a silent no-op.", confidenceCeilingKey, raw)
 	}
-	if got != ambiguousShapeCap {
-		t.Errorf("%s = %v, want %v", confidenceCeilingKey, got, ambiguousShapeCap)
+	// The ceiling published must be the one APPLIED. Publishing 75 for a value held to 55 would
+	// let the bridge's document-level raise carry it back into MEDIUM with nothing to clamp it —
+	// the same failure #545 fixed, reintroduced by publishing the wrong number.
+	if got != productVersionCeiling {
+		t.Errorf("%s = %v, want %v", confidenceCeilingKey, got, productVersionCeiling)
 	}
 }
 
