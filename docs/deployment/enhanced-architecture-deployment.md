@@ -46,7 +46,7 @@ go test ./tests/integration/architecture_compatibility_test.go -run TestArchitec
 cp ferret-scan-enhanced /staging/bin/ferret-scan
 
 # Run with production-like data
-./ferret-scan --file /staging/test-data/*.pdf --format json --confidence high
+./ferret-scan --file /staging/test-data --recursive --format json --confidence high
 
 # Monitor resource usage
 top -p $(pgrep ferret-scan)

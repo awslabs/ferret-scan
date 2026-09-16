@@ -147,15 +147,25 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > earlier version of this table said the file was "copied unchanged", which was worse than
 > wrong: it implied an output file exists at the sanitized path.
 >
-> **Note on the exit code for a refusal**: every refusal above is disclosed on the console,
-> but none of them changes the exit code — a run that leaves values in cleartext still exits
-> `0`. `--fail-on-incomplete` does **not** cover this: it reports incomplete *scan* coverage
-> (a validator timeout or budget, or a file that could not be opened), and a refused
-> redaction is a fully scanned file. An earlier version of this page said
-> `--fail-on-incomplete` turned a PDF refusal into exit code 3; measured, it does not. Gate
-> CI on the presence of the warning, or on the redacted file existing, until
-> [#441](https://github.com/awslabs/ferret-scan/issues/441) gives these refusals an exit code
-> of their own.
+> **Note on the exit code for a refusal**: by default a run that leaves values in cleartext
+> still exits `0`, with the refusal disclosed on the console and in the structured output.
+> **`--fail-on-incomplete` turns it into exit `3`.** Measured on a PDF with one finding:
+>
+> | run | exit |
+> |---|---|
+> | `--enable-redaction` | `0` |
+> | `--enable-redaction --fail-on-incomplete` | **`3`** |
+> | `--fail-on-incomplete` with no redaction (same PDF) | `0` |
+> | `--enable-redaction --fail-on-incomplete` on a `.txt` that redacts fine | `0` |
+>
+> The third row is the one that shows where the `3` comes from: it is the **refusal**, not
+> scan coverage. So gate CI on `--fail-on-incomplete` rather than on grepping stderr.
+> `cmd/unredacted_exit_code_test.go` (`TestUnredactedFileEscalatesOnlyWithTheFlag`) pins this.
+>
+> An earlier version of this note said the flag did **not** cover a redaction refusal, and
+> claimed that had been measured. It is wrong, and it was the more damaging direction to be
+> wrong in: it sent an operator to grep a log line instead of using the exit code that
+> already works.
 >
 > **Note on audio and video**: only the tag metadata is redacted — a comment, artist,
 > title, copyright, camera make and model, software, or GPS position. The audio or video

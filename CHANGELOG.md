@@ -101,6 +101,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   example mentioning both a redaction key and a `*.pdf` exclude pattern is a configuration sample and
   not a claim. Reporting an accurate passage as a defect is how a guard gets switched off.
 
+  **Three more sites and a second class, found after the first pass.** The `*.pdf` example was broken
+  twice over: the SHELL expands the glob, so with two or more matches `--file` takes the first, every
+  later token becomes a positional path, Go's flag parsing stops, and `--enable-redaction` and
+  `--redaction-output-dir` are silently dropped — measured, seven `Error processing --enable-redaction:
+  path does not exist` lines and, with `--format json`, output that is not JSON. So the advertised
+  command's normal case never even reached the PDF refusal. The same shape sat in the **per-check help**
+  (`--help SECRETS` advertised `--file *.js --checks SECRETS --format json`; measured, both `--checks`
+  and `--format` were dropped, every validator ran and the output was text) and in
+  `docs/deployment/enhanced-architecture-deployment.md`. A guard for that class now covers **359
+  commands across the documentation and 20 help surfaces** — the general help plus all 19 per-check
+  texts, enumerated from `--help checks` so a new validator's help is covered the day it is added.
+  Nothing in the tree looked at the per-check surface before. It fires only when a flag FOLLOWS the
+  glob, since that is what gets dropped; a quoted glob, a single-argument glob and `--file` last are all
+  accepted.
+
+  **And the redaction guide contradicted itself on the exit code, with the wrong half in the operative
+  position.** It said `--fail-on-incomplete` does *not* cover a redaction refusal — *"measured, it does
+  not"* — and told the reader to gate CI on grepping stderr, while a later line in the same file said
+  "0 by default, 3 with `--fail-on-incomplete`". Measured: `--enable-redaction` alone exits **0**, with
+  the flag exits **3**, the same PDF **without** `--enable-redaction` exits 0 (so the 3 comes from the
+  refusal, not from scan coverage), and a `.txt` that redacts fine exits 0.
+  `TestUnredactedFileEscalatesOnlyWithTheFlag` already pinned it. The stale note sent operators to grep
+  a log line instead of using an exit code that works.
+
   Eleven planted-shape controls accompany the guards, because every assertion is a search that finds
   nothing when it is working: the exact `*.pdf` glob line, an indented fenced command, a `$` prompt, a
   piped invocation, a quoted `--file` argument, a directory argument (which makes no type claim), the

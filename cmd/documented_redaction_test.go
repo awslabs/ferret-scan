@@ -801,3 +801,184 @@ func countFiles(t *testing.T, dir string) int {
 	}
 	return n
 }
+
+// unquotedGlob matches a --file argument that is an unquoted shell glob.
+//
+// A glob in a documented command is a defect independent of which type it names, and the mechanism is
+// worth stating because it is invisible on the page: the SHELL expands it before the binary sees it.
+// With two or more matches, `--file` takes the first, every later token becomes a positional path,
+// Go's flag parsing stops there, and the remaining flags are silently dropped. Measured on the exact
+// line #686 shipped, with two PDFs present:
+//
+//	Error processing --enable-redaction: path does not exist or is not accessible: .../--enable-redaction
+//	Error processing --redaction-output-dir: path does not exist or is not accessible: ...
+//
+// and with `--format json` the output is not JSON at all. So the advertised command's normal case never
+// even reaches the PDF refusal — the flags that were supposed to drive it are gone.
+//
+// A quoted glob is fine (the binary expands it itself, which is why --file documents glob support), and
+// a single-match glob happens to work, which is exactly why this survived: it is correct in the
+// one-file case a person tries first.
+var unquotedGlob = regexp.MustCompile(`--?file[=\s]+([^\s"']*[*?][^\s"']*)`)
+
+// TestNoDocumentedCommandPutsAnUnquotedGlobBeforeOtherFlags covers the class, not just redaction.
+//
+// Checked across every documentation surface AND the binary's own help — including the 19 per-check
+// help texts, which is where the second instance was hiding (`--help SECRETS` advertised
+// `--file *.js --checks SECRETS --format json`, and measured, both `--checks` and `--format` were
+// dropped). None of the six existing documented_* guards walks the help surface at all.
+func TestNoDocumentedCommandPutsAnUnquotedGlobBeforeOtherFlags(t *testing.T) {
+	type site struct{ where, command string }
+	var sites []site
+
+	// The documentation.
+	for _, c := range documentedRedactionCommands(t) {
+		sites = append(sites, site{c.Where, c.Command})
+	}
+	anyCommand := regexp.MustCompile(`(?m)^\s*(?:\$\s*)?(?:\./)?ferret-scan\s+([^\n]*)`)
+	for _, root := range redactionDocRoots {
+		info, err := os.Stat(root)
+		if err != nil {
+			t.Fatalf("stat %s: %v", root, err)
+		}
+		scan := func(path string) {
+			data, rerr := os.ReadFile(path) // #nosec G304 -- repository paths only
+			if rerr != nil {
+				t.Fatalf("reading %s: %v", path, rerr)
+			}
+			text := string(data)
+			for _, m := range anyCommand.FindAllStringSubmatchIndex(text, -1) {
+				sites = append(sites, site{
+					where:   path + ":" + itoa(1+strings.Count(text[:m[0]], "\n")),
+					command: strings.TrimSpace(text[m[2]:m[3]]),
+				})
+			}
+		}
+		if !info.IsDir() {
+			scan(root)
+			continue
+		}
+		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".md") {
+				scan(path)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("walk %s: %v", root, err)
+		}
+	}
+
+	// The binary's own help: the general text and every per-check text.
+	bin := buildScanner(t)
+	helpSurfaces := map[string][]string{"--help": {"--help"}}
+	for _, check := range helpChecksToProbe(t, bin) {
+		helpSurfaces["--help "+check] = []string{"--help", check}
+	}
+	for label, argv := range helpSurfaces {
+		out, err := exec.Command(bin, argv...).CombinedOutput() // #nosec G204 -- bin is built by the test
+		if err != nil {
+			t.Fatalf("%s failed: %v\n%s", label, err, out)
+		}
+		for _, m := range anyCommand.FindAllStringSubmatch(string(out), -1) {
+			sites = append(sites, site{label, strings.TrimSpace(m[1])})
+		}
+	}
+
+	// Non-vacuity: the surfaces must actually be producing commands.
+	if len(sites) < 40 {
+		t.Fatalf("only %d command(s) found across the documentation and %d help surface(s); the "+
+			"extraction is not working and this guard asserts nothing", len(sites), len(helpSurfaces))
+	}
+
+	var bad []string
+	for _, s := range sites {
+		m := unquotedGlob.FindStringSubmatch(s.command)
+		if m == nil {
+			continue
+		}
+		// Only a defect when a flag FOLLOWS the glob — that is what gets dropped.
+		rest := s.command[strings.Index(s.command, m[1])+len(m[1]):]
+		if !strings.Contains(rest, "-") {
+			continue
+		}
+		bad = append(bad, s.where+"\n      "+s.command+"\n      glob "+m[1]+" is followed by more flags")
+	}
+	if len(bad) > 0 {
+		t.Errorf("%d documented command(s) put an unquoted glob before other flags:\n    %s\n\n"+
+			"The shell expands the glob, so with two or more matches every flag after it becomes a "+
+			"positional path and is silently dropped — the command does something other than what the "+
+			"page says, and it does it at exit 0.\nUse a directory with --recursive, or quote the "+
+			"pattern so the binary expands it, or put --file last.",
+			len(bad), strings.Join(bad, "\n    "))
+	}
+	t.Logf("checked %d command(s) across %d documentation root(s) and %d help surface(s)",
+		len(sites), len(redactionDocRoots), len(helpSurfaces))
+}
+
+// helpChecksToProbe returns the check names that have their own help text.
+//
+// Read from the binary rather than from a list, so a new validator's help is covered the day it is
+// added — the per-check surface is 19 texts today and nothing else in the tree looks at it.
+func helpChecksToProbe(t *testing.T, bin string) []string {
+	t.Helper()
+	// `--help checks` is the documented enumeration ("--help checks  List all available checks").
+	out, err := exec.Command(bin, "--help", "checks").CombinedOutput() // #nosec G204 -- bin is built by the test
+	if err != nil {
+		t.Fatalf("`--help checks` failed (%v); without it the per-check help texts are not checked, "+
+			"and that is the surface the second instance of #686 was hiding in:\n%s", err, out)
+	}
+	// Only the CHECK column: an indented name followed by two or more spaces and a description.
+	// A bare \b[A-Z_]+\b over the whole output also picks up words from the DESCRIPTION column —
+	// "IBAN", "SWIFT", "MRN" — and `--help MRN` exits 1 with "Check 'MRN' not found".
+	row := regexp.MustCompile(`(?m)^\s+([A-Z][A-Z0-9_]{2,})\s{2,}\S`)
+	seen := map[string]bool{}
+	var checks []string
+	for _, m := range row.FindAllStringSubmatch(string(out), -1) {
+		c := m[1]
+		if seen[c] || c == "ALL" || c == "CHECK" {
+			continue
+		}
+		seen[c] = true
+		checks = append(checks, c)
+	}
+	sort.Strings(checks)
+	if len(checks) < 10 {
+		t.Fatalf("only %d check name(s) parsed from `--help checks` (%v); the tool documents 19, so "+
+			"the parse is wrong and the per-check help surface would go unchecked", len(checks), checks)
+	}
+	return checks
+}
+
+// TestTheGlobGuardCatchesThePlantedShapes is the control for the guard above.
+func TestTheGlobGuardCatchesThePlantedShapes(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+		want    bool
+	}{
+		{"the #686 general-help line", "--file *.pdf --enable-redaction --redaction-output-dir ./safe-docs", true},
+		{"the per-check help line", "--file *.js --checks SECRETS --format json", true},
+		{"the deployment-doc line", "--file /staging/test-data/*.pdf --format json --confidence high", true},
+		{"a quoted glob is fine", `--file "*.pdf" --enable-redaction`, false},
+		{"a single-quoted glob is fine", "--file '*.pdf' --enable-redaction", false},
+		{"a glob with no following flag is fine", "--file *.pdf", false},
+		{"a directory is fine", "--file ./inbox --recursive --format json", false},
+		{"--file last is fine", "--format json --checks SECRETS --file *.js", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := unquotedGlob.FindStringSubmatch(tc.command)
+			flagged := false
+			if m != nil {
+				rest := tc.command[strings.Index(tc.command, m[1])+len(m[1]):]
+				flagged = strings.Contains(rest, "-")
+			}
+			if flagged != tc.want {
+				t.Errorf("flagged=%v want=%v for %q", flagged, tc.want, tc.command)
+			}
+		})
+	}
+}
