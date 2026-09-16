@@ -518,6 +518,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Manager 26.8.0.3` is indistinguishable from `Server 10.0.0.1 is down`), so it needs the metadata-field
   context that no content validator currently has.
 
+- **suppressions, redaction:** a finding suppressed by a rule was **still redacted**. The report said
+  nothing was found while the output file had been rewritten in the suppressed spans:
+
+  ```
+  report:   results: []                    suppressed: 2
+  artifact: Employee SSN: [SSN-REDACTED]   <- rewritten despite being suppressed
+  ```
+
+  Suppressing a finding now excludes it from redaction as well as from the report; **unsuppress it to
+  have the value rewritten**. ([#697](https://github.com/awslabs/ferret-scan/issues/697))
+
+  **The two channels disagreed, and `--stdin` was already right.** `cmd/stdin.go` filters before
+  redacting, so on identical input with identical rules the stdin path left the values intact and the
+  file path rewrote them. That is what makes this a consistency fix rather than a fresh behaviour
+  decision: the file path was brought to the channel that already did the agreed thing. The
+  disagreement was invisible by reading, because each path looks correct on its own.
+
+  The cause is an ordering one. Redaction happens **inside the worker pool**, deliberately, so the
+  extracted content is not derived a second time — and suppression was applied afterwards, in `cmd`, so
+  the redactor received every match. `JobConfig.SuppressionFilter` now carries the predicate into the
+  pool. A **func value** rather than the suppression manager: `internal/parallel` has no business
+  importing `internal/suppressions`, and a predicate is the whole of what redaction needs. Nil means
+  "nothing is suppressed", so every embedder that does not set it keeps its current behaviour.
+
+  **What it costs, and why it is disclosed.** A suppressed value now stays in the redacted copy in
+  cleartext. That is the intent — the user said the finding was not a problem — but under the sink rule
+  it means a rule that is wrong, or that has outlived its reason, is invisible in the report while the
+  value is still in a file they might forward. So a redaction run that skipped anything for this reason
+  says so on stderr with the count and names the remedy. Deliberately **stderr rather than the
+  structured output**: this is not a gap in what the tool did, it is the user's own decision being
+  honoured, and a new `stats` key would change the output schema for every consumer.
+  `--show-suppressed` already lists the individual findings.
+
+  Five assertions, and the two controls are the load-bearing ones. Both-suppressed keeps both values;
+  **nothing-suppressed** must rewrite both — without which a build that redacted nothing at all would
+  pass the first case perfectly; and the **mixed** case pins the shape a blanket implementation gets
+  wrong in either direction: the suppressed SSN survives while the unsuppressed card is still rewritten,
+  so one suppression cannot become a silent hole in the whole file. A fourth asserts the two channels
+  agree, and a fifth pins the disclosure — including that it does **not** fire when there is nothing to
+  disclose, since a note that always appears is a note nobody reads.
+
+  One measurement trap worth recording, because the first attempt at the cross-channel test fell into
+  it: a rule's identity includes the source **basename**, so suppressions generated from a file scan do
+  not match stdin findings at all. Comparing the channels with one shared rule file measures nothing —
+  the rules simply fail to apply and both sides look unsuppressed. Each channel's rules are generated
+  from that channel.
+
 - **redaction:** fix synthetic strategy silently skipping SECRETS, PASSPORT, SOCIAL_MEDIA, and INTELLECTUAL_PROPERTY — added type-aware generators for all four types
 - **redaction:** fix synthetic person name generation producing random character strings — now draws from embedded name databases (~5200 first names, ~2100 last names)
 - **office (redaction):** a value that Word split across two adjacent formatting runs is no longer **written out in cleartext in silence** ([#627](https://github.com/awslabs/ferret-scan/issues/627)). Reproduced: a `.docx` holding `<w:t>Employee SSN: 449-87-</w:t>` then `<w:t>4100</w:t>` — the split Word makes routinely at a bold, rsid or proof-error boundary — reported **SSN at confidence 100**, then wrote a "redacted" copy at **exit 0 with an empty stderr** whose text `textutil` reads back as `Employee SSN: 449-87-4100`. The email in the same part **was** masked, which is the positive control: the redactor ran and simply could not remove the SSN. Now the write is refused and disclosed — `refusing to write split.docx: 1 reported value(s) still present in the document's own parts (types: SSN)`, naming the **type** and never the value, since the message reaches stderr and every machine format without `--show-match`. Exit 0 by default and **3** under `--fail-on-incomplete`, as for any other refusal. Confirmed for `.odt` spans as well; the unsplit control still redacts, and the golden corpus regenerates with **0 files changed**. **Why the fail-closed guard was blind to it:** `decodedPartText` writes a newline after each character-data node, for a sound reason its comment gives — a separator stops two adjacent runs concatenating into a value that is in neither of them. But the *scanner's* extractor strips tags with a regex and inserts nothing between runs, and xlsx joins `<t>` runs directly, so the value that concatenates across runs is **exactly** the value the scanner reports, and the separated view could never see it. There is now a second view of every part — character data only, concatenated — and the residue probe checks both. It cannot manufacture a false refusal: a value is only ever probed for by having been **reported**, and if it was reported then some extraction produced it. **The first attempt at this failed silently, and the reason is now pinned by a test.** `encoding/xml` delivers tokens in document order, so a `w:t` element carrying `xml:space="preserve"` contributes `preserve` *between* the two runs — a view built from every token reads `449-87-preserve4100` and still finds nothing. Attributes stay in the separated view, which is what covers them, and are excluded from the run-text view. That was only caught by probing `decodedPartText` directly; end-to-end the fix looked like a no-op and offered no reason why. **5 mutations, 4 caught**, the fifth correctly surviving because any non-empty separator keeps the runs apart, so the specific byte is not load-bearing. This does **not** redact the split value — doing that needs a span map across XML tokens, as `internal/redactors/rtf/spanredact.go` already does for RTF (#604) — and #627 stays open for it, along with four other findings in the same file: a part `encoding/xml` refuses to tokenize is skipped by both the rewrite and the guard, `zipWriter.Close()` errors are discarded, the extract loop drops unreadable zip parts with only a debug log, and `parentPartResidue` polices every `.xml` part while the rewrite covers only a fixed few.

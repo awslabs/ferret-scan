@@ -365,3 +365,18 @@ Use the built-in `redaction` profile:
 ```bash
 ferret-scan --profile redaction --recursive ./documents/
 ```
+
+## Suppressed findings are not redacted
+
+A finding suppressed by a rule is excluded from redaction as well as from the report — **unsuppress it
+to have the value rewritten**. Its span is left exactly as it was, in the redacted copy, in cleartext.
+
+This is deliberate: suppression is the user's statement that the finding is not a problem, and rewriting
+a span the user asked the tool to ignore would damage content on the strength of a finding they had
+already dismissed. It applies identically on `--file` and on `--stdin`; before, only `--stdin` honoured
+it, so the same input and the same rules produced different output on the two channels.
+
+Because the value does remain in the output, a redaction run that skipped anything for this reason says
+so on stderr with the count, and `--show-suppressed` lists which findings they were. See
+[README-Suppressions.md](README-Suppressions.md#suppression-and-redaction).
+

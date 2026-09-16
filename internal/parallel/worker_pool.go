@@ -66,6 +66,25 @@ type JobConfig struct {
 	RedactionStrategy  string
 	RedactionOutputDir string
 
+	// SuppressionFilter reports whether a match is suppressed by a rule. When set, redaction is
+	// given only the matches for which it returns false.
+	//
+	// WHY REDACTION HAS TO KNOW. Suppression used to be applied after this pool had already run, so
+	// the redactor received every match and rewrote the spans of findings the user had explicitly
+	// suppressed. Measured on a file with two suppressed findings: the report said
+	// `results: [] / suppressed: 2` while the redacted copy came back with both spans replaced. The
+	// two channels also disagreed — the --stdin path filters before redacting, so the same input and
+	// the same rules left the values intact there and rewrote them here.
+	//
+	// A FUNC VALUE, not the suppression manager: internal/parallel has no business importing
+	// internal/suppressions, and a predicate is the whole of what redaction needs. Nil means "nothing
+	// is suppressed", which is the historical behaviour for every embedder that does not set it.
+	//
+	// The consequence is deliberate and is the documented rule: suppressing a finding excludes it
+	// from redaction as well as from the report — unsuppress to include it again. Under the sink rule
+	// that is a real cost, so cmd discloses the count on stderr rather than leaving it silent (#697).
+	SuppressionFilter func(detector.Match) bool
+
 	// JobTimeout bounds the per-file processing time (preprocessing +
 	// validation). The zero value falls back to DefaultJobTimeout (5 minutes),
 	// preserving historical behavior. A long-running embedder (e.g. the web
@@ -383,7 +402,17 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		// file: a source file with no registered redactor (.go, .py, ...) had
 		// its findings erased from every output format while the scan still
 		// reported "0 skipped" and exited 0.
-		redactionResult, redactedPath, err = wp.performInlineRedaction(job, allMatches, processedContent)
+		// Only unsuppressed matches reach the redactor. See JobConfig.SuppressionFilter.
+		redactable := allMatches
+		if job.Config.SuppressionFilter != nil {
+			redactable = make([]detector.Match, 0, len(allMatches))
+			for _, m := range allMatches {
+				if !job.Config.SuppressionFilter(m) {
+					redactable = append(redactable, m)
+				}
+			}
+		}
+		redactionResult, redactedPath, err = wp.performInlineRedaction(job, redactable, processedContent)
 		if err != nil {
 			redactionErr = err
 		}
