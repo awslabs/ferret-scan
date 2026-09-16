@@ -161,7 +161,7 @@
             }
           ],
           "message": {
-            "text": "DATE_OF_BIRTH Detected in <golden:context_keywords_snake_case> at line 3 (confidence: 90.0% - HIGH). Matched text: '1985-03-14'"
+            "text": "Date of Birth Detected in <golden:context_keywords_snake_case> at line 3 (confidence: 90.0% - HIGH). Matched text: '1985-03-14'"
           },
           "properties": {
             "confidence": 90,
@@ -194,7 +194,7 @@
             ],
             "validator": "dob"
           },
-          "rank": 70,
+          "rank": 75,
           "ruleId": "DATE_OF_BIRTH"
         },
         {
@@ -292,7 +292,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:context_keywords_snake_case> at line 4 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
+            "text": "Credit Card Number Detected in <golden:context_keywords_snake_case> at line 4 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
           },
           "properties": {
             "confidence": 15,
@@ -328,7 +328,7 @@
             },
             "validator": "creditcard"
           },
-          "rank": 32.5,
+          "rank": 57.5,
           "ruleId": "VISA"
         },
         {
@@ -357,7 +357,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:context_keywords_snake_case> at line 5 (confidence: 15.0% - LOW). Matched text: '4012888888881881'"
+            "text": "Credit Card Number Detected in <golden:context_keywords_snake_case> at line 5 (confidence: 15.0% - LOW). Matched text: '4012888888881881'"
           },
           "properties": {
             "confidence": 15,
@@ -393,7 +393,7 @@
             },
             "validator": "creditcard"
           },
-          "rank": 32.5,
+          "rank": 57.5,
           "ruleId": "VISA"
         }
       ],
@@ -404,15 +404,15 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type DATE_OF_BIRTH was detected in the scanned content."
+                "text": "A date of birth was detected in the scanned content. A date of birth is a common identity-verification factor and, combined with a name, is frequently enough to pass a knowledge-based authentication check."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Remove the date of birth or replace it with a synthetic one. Judge severity by what sits beside it: a date alone is weak, while a date next to a name or an account number is a usable identity-verification pair. Note that a date of birth has a very small search space, so hashing or truncating one does not make it private."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#date_of_birth",
               "id": "DATE_OF_BIRTH",
               "shortDescription": {
-                "text": "DATE_OF_BIRTH Detected"
+                "text": "Date of Birth Detected"
               }
             },
             {
@@ -430,15 +430,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Credit Card Number Detected"
               }
             }
           ],

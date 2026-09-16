@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "ABA_ROUTING Detected in <golden:new_validators_decoys> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '021000021'"
+            "text": "Bank Account Identifier Detected in <golden:new_validators_decoys> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '021000021'"
           },
           "properties": {
             "confidence": 65,
@@ -53,7 +53,7 @@
             },
             "validator": "bank_account"
           },
-          "rank": 57.5,
+          "rank": 77.5,
           "ruleId": "ABA_ROUTING"
         },
         {
@@ -82,7 +82,7 @@
             }
           ],
           "message": {
-            "text": "IBAN Detected in <golden:new_validators_decoys> at line 5 (confidence: 60.0% - MEDIUM). Matched text: 'DE89 3704 0044 0532 0130 00'"
+            "text": "Bank Account Identifier Detected in <golden:new_validators_decoys> at line 5 (confidence: 60.0% - MEDIUM). Matched text: 'DE89 3704 0044 0532 0130 00'"
           },
           "properties": {
             "confidence": 60,
@@ -113,7 +113,7 @@
             },
             "validator": "bank_account"
           },
-          "rank": 55,
+          "rank": 75,
           "ruleId": "IBAN"
         },
         {
@@ -142,7 +142,7 @@
             }
           ],
           "message": {
-            "text": "MEDICARE_MBI Detected in <golden:new_validators_decoys> at line 7 (confidence: 40.0% - LOW). Matched text: '1EG4-TE5-MK73'"
+            "text": "Medical Identifier Detected in <golden:new_validators_decoys> at line 7 (confidence: 40.0% - LOW). Matched text: '1EG4-TE5-MK73'"
           },
           "properties": {
             "confidence": 40,
@@ -172,7 +172,7 @@
             },
             "validator": "medicalid"
           },
-          "rank": 45,
+          "rank": 60,
           "ruleId": "MEDICARE_MBI"
         }
       ],
@@ -183,41 +183,41 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type ABA_ROUTING was detected in the scanned content."
+                "text": "A bank account identifier — a US account number, an ABA routing number, an IBAN or a SWIFT/BIC code — was detected in the scanned content. A routing number together with an account number is sufficient to originate a debit against that account."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Remove the account identifier, or replace it with a documented test value. Note that routing and account numbers are damaging in COMBINATION: a routing number alone identifies only the institution, so check whether an account number appears nearby before deciding a finding is low risk. Where account details must be stored, hold them in a payments vault rather than in source, logs or shared documents."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#aba_routing",
               "id": "ABA_ROUTING",
               "shortDescription": {
-                "text": "ABA_ROUTING Detected"
+                "text": "Bank Account Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type IBAN was detected in the scanned content."
+                "text": "A bank account identifier — a US account number, an ABA routing number, an IBAN or a SWIFT/BIC code — was detected in the scanned content. A routing number together with an account number is sufficient to originate a debit against that account."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Remove the account identifier, or replace it with a documented test value. Note that routing and account numbers are damaging in COMBINATION: a routing number alone identifies only the institution, so check whether an account number appears nearby before deciding a finding is low risk. Where account details must be stored, hold them in a payments vault rather than in source, logs or shared documents."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#iban",
               "id": "IBAN",
               "shortDescription": {
-                "text": "IBAN Detected"
+                "text": "Bank Account Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MEDICARE_MBI was detected in the scanned content."
+                "text": "A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#medicare_mbi",
               "id": "MEDICARE_MBI",
               "shortDescription": {
-                "text": "MEDICARE_MBI Detected"
+                "text": "Medical Identifier Detected"
               }
             }
           ],

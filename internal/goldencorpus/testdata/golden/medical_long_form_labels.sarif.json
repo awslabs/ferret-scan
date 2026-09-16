@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "MEDICARE_MBI Detected in <golden:medical_long_form_labels> at line 3 (confidence: 85.0% - MEDIUM). Matched text: '1EG4TE5MK73'"
+            "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 3 (confidence: 85.0% - MEDIUM). Matched text: '1EG4TE5MK73'"
           },
           "properties": {
             "confidence": 85,
@@ -61,7 +61,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 67.5,
+          "rank": 82.5,
           "ruleId": "MEDICARE_MBI"
         },
         {
@@ -90,7 +90,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'X9876543210'"
+            "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'X9876543210'"
           },
           "properties": {
             "confidence": 80,
@@ -124,7 +124,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -153,7 +153,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'W1122009988'"
+            "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'W1122009988'"
           },
           "properties": {
             "confidence": 80,
@@ -187,7 +187,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -216,7 +216,7 @@
             }
           ],
           "message": {
-            "text": "MRN Detected in <golden:medical_long_form_labels> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '4472901'"
+            "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '4472901'"
           },
           "properties": {
             "confidence": 80,
@@ -250,7 +250,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "MRN"
         },
         {
@@ -279,7 +279,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 1 (confidence: 70.0% - MEDIUM). Matched text: 'W1234567801'"
+            "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 1 (confidence: 70.0% - MEDIUM). Matched text: 'W1234567801'"
           },
           "properties": {
             "confidence": 70,
@@ -310,7 +310,7 @@
             },
             "validator": "medicalid"
           },
-          "rank": 60,
+          "rank": 75,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -339,7 +339,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_long_form_labels> at line 5 (confidence: 70.0% - MEDIUM). Matched text: 'P5551234567'"
+            "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 5 (confidence: 70.0% - MEDIUM). Matched text: 'P5551234567'"
           },
           "properties": {
             "confidence": 70,
@@ -370,7 +370,7 @@
             },
             "validator": "medicalid"
           },
-          "rank": 60,
+          "rank": 75,
           "ruleId": "INSURANCE_MEMBER_ID"
         }
       ],
@@ -381,41 +381,41 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type INSURANCE_MEMBER_ID was detected in the scanned content."
+                "text": "A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#insurance_member_id",
               "id": "INSURANCE_MEMBER_ID",
               "shortDescription": {
-                "text": "INSURANCE_MEMBER_ID Detected"
+                "text": "Medical Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MEDICARE_MBI was detected in the scanned content."
+                "text": "A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#medicare_mbi",
               "id": "MEDICARE_MBI",
               "shortDescription": {
-                "text": "MEDICARE_MBI Detected"
+                "text": "Medical Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MRN was detected in the scanned content."
+                "text": "A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mrn",
               "id": "MRN",
               "shortDescription": {
-                "text": "MRN Detected"
+                "text": "Medical Identifier Detected"
               }
             }
           ],

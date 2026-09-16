@@ -85,11 +85,11 @@ registry yet; the detection itself is unaffected.
 
 ## ABA_ROUTING
 
-**ABA_ROUTING Detected**
+**Bank Account Identifier Detected**
 
-Sensitive data of type ABA_ROUTING was detected in the scanned content.
+A bank account identifier — a US account number, an ABA routing number, an IBAN or a SWIFT/BIC code — was detected in the scanned content. A routing number together with an account number is sufficient to originate a debit against that account.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the account identifier, or replace it with a documented test value. Note that routing and account numbers are damaging in COMBINATION: a routing number alone identifies only the institution, so check whether an account number appears nearby before deciding a finding is low risk. Where account details must be stored, hold them in a payments vault rather than in source, logs or shared documents.
 
 ## ALIBABA_ARN
 
@@ -101,51 +101,51 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 ## AMERICAN_EXPRESS
 
-**AMERICAN_EXPRESS Detected**
+**Credit Card Number Detected**
 
-Sensitive data of type AMERICAN_EXPRESS was detected in the scanned content.
+A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
 
 ## API_KEY_OR_SECRET
 
-**API_KEY_OR_SECRET Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type API_KEY_OR_SECRET was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## APPLE_CORPORATE
 
-**APPLE_CORPORATE Detected**
+**Email Address Detected**
 
-Sensitive data of type APPLE_CORPORATE was detected in the scanned content.
+An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
 
 ## APPLICATION_INFO
 
-**APPLICATION_INFO Detected**
+**Sensitive Metadata Detected**
 
-Sensitive data of type APPLICATION_INFO was detected in the scanned content.
+Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
 ## AUTHOR_INFO
 
-**AUTHOR_INFO Detected**
+**Sensitive Metadata Detected**
 
-Sensitive data of type AUTHOR_INFO was detected in the scanned content.
+Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
 ## AWS_ACCESS_KEY
 
-**AWS_ACCESS_KEY Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type AWS_ACCESS_KEY was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## AWS_ARN
 
@@ -157,11 +157,11 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 ## AWS_SECRET_ACCESS_KEY
 
-**AWS_SECRET_ACCESS_KEY Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type AWS_SECRET_ACCESS_KEY was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## AZURE_RESOURCE_ID
 
@@ -173,19 +173,19 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 ## BUSINESS
 
-**BUSINESS Detected**
+**Email Address Detected**
 
-Sensitive data of type BUSINESS was detected in the scanned content.
+An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
 
 ## COMPANY_INFO
 
-**COMPANY_INFO Detected**
+**Sensitive Metadata Detected**
 
-Sensitive data of type COMPANY_INFO was detected in the scanned content.
+Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
 ## CREDIT_CARD
 
@@ -197,75 +197,75 @@ A credit card number pattern was detected in the scanned content. Credit card nu
 
 ## DATE_OF_BIRTH
 
-**DATE_OF_BIRTH Detected**
+**Date of Birth Detected**
 
-Sensitive data of type DATE_OF_BIRTH was detected in the scanned content.
+A date of birth was detected in the scanned content. A date of birth is a common identity-verification factor and, combined with a name, is frequently enough to pass a knowledge-based authentication check.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the date of birth or replace it with a synthetic one. Judge severity by what sits beside it: a date alone is weak, while a date next to a name or an account number is a usable identity-verification pair. Note that a date of birth has a very small search space, so hashing or truncating one does not make it private.
 
 ## DEA_NUMBER
 
-**DEA_NUMBER Detected**
+**Medical Identifier Detected**
 
-Sensitive data of type DEA_NUMBER was detected in the scanned content.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## DINERS_CLUB
 
-**DINERS_CLUB Detected**
+**Credit Card Number Detected**
 
-Sensitive data of type DINERS_CLUB was detected in the scanned content.
+A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
 
 ## DISCOVER
 
-**DISCOVER Detected**
+**Credit Card Number Detected**
 
-Sensitive data of type DISCOVER was detected in the scanned content.
+A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
 
 ## DISPOSABLE
 
-**DISPOSABLE Detected**
+**Email Address Detected**
 
-Sensitive data of type DISPOSABLE was detected in the scanned content.
+An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
 
 ## DOCKER_TOKEN
 
-**DOCKER_TOKEN Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type DOCKER_TOKEN was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## DOCUMENT_COMMENTS
 
-**DOCUMENT_COMMENTS Detected**
+**Sensitive Metadata Detected**
 
-Sensitive data of type DOCUMENT_COMMENTS was detected in the scanned content.
+Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
 ## DRIVERS_LICENSE
 
-**DRIVERS_LICENSE Detected**
+**Driver's License Number Detected**
 
-Sensitive data of type DRIVERS_LICENSE was detected in the scanned content.
+A driver's license number was detected in the scanned content. A license number is a government-issued identity document number, and in many jurisdictions its format encodes personal details such as a date of birth or a name fragment.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the license number or replace it with a synthetic value. Because several jurisdictions derive the number from the holder's name and date of birth, the number itself can disclose those details even without them appearing in the text. Formats vary by jurisdiction, so verify a finding against the issuing state's pattern before dismissing it.
 
 ## EDUCATIONAL
 
-**EDUCATIONAL Detected**
+**Email Address Detected**
 
-Sensitive data of type EDUCATIONAL was detected in the scanned content.
+An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
 
 ## EMAIL
 
@@ -285,59 +285,59 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 ## GITHUB
 
-**GITHUB Detected**
+**Social Media Handle Detected**
 
-Sensitive data of type GITHUB was detected in the scanned content.
+A social media handle or username was detected in the scanned content. Social media identifiers can be used to link to personal profiles and may be considered PII in some contexts.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Social media handles can be used to identify individuals and may be considered personal information. Evaluate whether these handles should be present in the code. If they're for testing, use clearly fake handles. For production use, consider whether this information should be stored in a configuration system with appropriate access controls.
 
 ## GITHUB_TOKEN
 
-**GITHUB_TOKEN Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type GITHUB_TOKEN was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## GITLAB_TOKEN
 
-**GITLAB_TOKEN Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type GITLAB_TOKEN was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## GMAIL
 
-**GMAIL Detected**
+**Email Address Detected**
 
-Sensitive data of type GMAIL was detected in the scanned content.
+An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
 
 ## GOOGLE_CLOUD_API_KEY
 
-**GOOGLE_CLOUD_API_KEY Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type GOOGLE_CLOUD_API_KEY was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## GOVERNMENT
 
-**GOVERNMENT Detected**
+**Email Address Detected**
 
-Sensitive data of type GOVERNMENT was detected in the scanned content.
+An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
 
 ## IBAN
 
-**IBAN Detected**
+**Bank Account Identifier Detected**
 
-Sensitive data of type IBAN was detected in the scanned content.
+A bank account identifier — a US account number, an ABA routing number, an IBAN or a SWIFT/BIC code — was detected in the scanned content. A routing number together with an account number is sufficient to originate a debit against that account.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the account identifier, or replace it with a documented test value. Note that routing and account numbers are damaging in COMBINATION: a routing number alone identifies only the institution, so check whether an account number appears nearby before deciding a finding is low risk. Where account details must be stored, hold them in a payments vault rather than in source, logs or shared documents.
 
 ## IBM_CRN
 
@@ -349,19 +349,19 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 ## IMAGE_METADATA
 
-**IMAGE_METADATA Detected**
+**Sensitive Metadata Detected**
 
-Sensitive data of type IMAGE_METADATA was detected in the scanned content.
+Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
 ## INSURANCE_MEMBER_ID
 
-**INSURANCE_MEMBER_ID Detected**
+**Medical Identifier Detected**
 
-Sensitive data of type INSURANCE_MEMBER_ID was detected in the scanned content.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## INTELLECTUAL_PROPERTY
 
@@ -381,59 +381,59 @@ An IP address was detected in the scanned content. IP addresses can be considere
 
 ## JCB
 
-**JCB Detected**
+**Credit Card Number Detected**
 
-Sensitive data of type JCB was detected in the scanned content.
+A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
 
 ## JWT_TOKEN
 
-**JWT_TOKEN Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type JWT_TOKEN was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## LAST_MODIFIED_BY
 
-**LAST_MODIFIED_BY Detected**
+**Sensitive Metadata Detected**
 
-Sensitive data of type LAST_MODIFIED_BY was detected in the scanned content.
+Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
 ## MASTERCARD
 
-**MASTERCARD Detected**
+**Credit Card Number Detected**
 
-Sensitive data of type MASTERCARD was detected in the scanned content.
+A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
 
 ## MEDICARE_MBI
 
-**MEDICARE_MBI Detected**
+**Medical Identifier Detected**
 
-Sensitive data of type MEDICARE_MBI was detected in the scanned content.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## MRN
 
-**MRN Detected**
+**Medical Identifier Detected**
 
-Sensitive data of type MRN was detected in the scanned content.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## NPI
 
-**NPI Detected**
+**Medical Identifier Detected**
 
-Sensitive data of type NPI was detected in the scanned content.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## OCI_OCID
 
@@ -445,19 +445,19 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 ## OTPAUTH_URI
 
-**OTPAUTH_URI Detected**
+**Multi-Factor Authentication Secret Detected**
 
-Sensitive data of type OTPAUTH_URI was detected in the scanned content.
+A multi-factor authentication secret — a TOTP/HOTP shared secret, an otpauth:// provisioning URI or a set of account recovery codes — was detected in the scanned content. These are not transient codes: the SEED generates every future code for the account, so disclosing it defeats the second factor permanently until the account is re-enrolled.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat this as a credential disclosure, not a configuration mistake. Re-enrol the account's second factor and regenerate its recovery codes; removing the value from the file does not undo the exposure, because whoever saw the seed can still generate codes. Provisioning URIs are commonly pasted from a QR-code export, so check for others nearby.
 
 ## OTP_SECRET
 
-**OTP_SECRET Detected**
+**Multi-Factor Authentication Secret Detected**
 
-Sensitive data of type OTP_SECRET was detected in the scanned content.
+A multi-factor authentication secret — a TOTP/HOTP shared secret, an otpauth:// provisioning URI or a set of account recovery codes — was detected in the scanned content. These are not transient codes: the SEED generates every future code for the account, so disclosing it defeats the second factor permanently until the account is re-enrolled.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat this as a credential disclosure, not a configuration mistake. Re-enrol the account's second factor and regenerate its recovery codes; removing the value from the file does not undo the exposure, because whoever saw the seed can still generate codes. Provisioning URIs are commonly pasted from a QR-code export, so check for others nearby.
 
 ## PASSPORT
 
@@ -485,35 +485,35 @@ A phone number was detected in the scanned content. Phone numbers can be conside
 
 ## PO_BOX
 
-**PO_BOX Detected**
+**Physical Address Detected**
 
-Sensitive data of type PO_BOX was detected in the scanned content.
+A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting.
 
 ## RECOVERY_CODES
 
-**RECOVERY_CODES Detected**
+**Multi-Factor Authentication Secret Detected**
 
-Sensitive data of type RECOVERY_CODES was detected in the scanned content.
+A multi-factor authentication secret — a TOTP/HOTP shared secret, an otpauth:// provisioning URI or a set of account recovery codes — was detected in the scanned content. These are not transient codes: the SEED generates every future code for the account, so disclosing it defeats the second factor permanently until the account is re-enrolled.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Treat this as a credential disclosure, not a configuration mistake. Re-enrol the account's second factor and regenerate its recovery codes; removing the value from the file does not undo the exposure, because whoever saw the seed can still generate codes. Provisioning URIs are commonly pasted from a QR-code export, so check for others nearby.
 
 ## SLACK_TOKEN
 
-**SLACK_TOKEN Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type SLACK_TOKEN was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## SSH_PRIVATE_KEY
 
-**SSH_PRIVATE_KEY Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type SSH_PRIVATE_KEY was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## SSN
 
@@ -525,59 +525,59 @@ A Social Security Number (SSN) pattern was detected in the scanned content. SSNs
 
 ## STRIPE_API_KEY
 
-**STRIPE_API_KEY Detected**
+**Secret or API Key Detected**
 
-Sensitive data of type STRIPE_API_KEY was detected in the scanned content.
+A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
 
 ## SWIFT_BIC
 
-**SWIFT_BIC Detected**
+**Bank Account Identifier Detected**
 
-Sensitive data of type SWIFT_BIC was detected in the scanned content.
+A bank account identifier — a US account number, an ABA routing number, an IBAN or a SWIFT/BIC code — was detected in the scanned content. A routing number together with an account number is sufficient to originate a debit against that account.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the account identifier, or replace it with a documented test value. Note that routing and account numbers are damaging in COMBINATION: a routing number alone identifies only the institution, so check whether an account number appears nearby before deciding a finding is low risk. Where account details must be stored, hold them in a payments vault rather than in source, logs or shared documents.
 
 ## TEMPLATE_INFO
 
-**TEMPLATE_INFO Detected**
+**Sensitive Metadata Detected**
 
-Sensitive data of type TEMPLATE_INFO was detected in the scanned content.
+Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
 ## US_BANK_ACCOUNT
 
-**US_BANK_ACCOUNT Detected**
+**Bank Account Identifier Detected**
 
-Sensitive data of type US_BANK_ACCOUNT was detected in the scanned content.
+A bank account identifier — a US account number, an ABA routing number, an IBAN or a SWIFT/BIC code — was detected in the scanned content. A routing number together with an account number is sufficient to originate a debit against that account.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the account identifier, or replace it with a documented test value. Note that routing and account numbers are damaging in COMBINATION: a routing number alone identifies only the institution, so check whether an account number appears nearby before deciding a finding is low risk. Where account details must be stored, hold them in a payments vault rather than in source, logs or shared documents.
 
 ## US_MILITARY_ADDRESS
 
-**US_MILITARY_ADDRESS Detected**
+**Physical Address Detected**
 
-Sensitive data of type US_MILITARY_ADDRESS was detected in the scanned content.
+A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting.
 
 ## US_RURAL_ROUTE
 
-**US_RURAL_ROUTE Detected**
+**Physical Address Detected**
 
-Sensitive data of type US_RURAL_ROUTE was detected in the scanned content.
+A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting.
 
 ## US_STREET_ADDRESS
 
-**US_STREET_ADDRESS Detected**
+**Physical Address Detected**
 
-Sensitive data of type US_STREET_ADDRESS was detected in the scanned content.
+A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting.
 
 ## VIN
 
@@ -589,9 +589,9 @@ A Vehicle Identification Number (VIN) was detected in the scanned content. VINs 
 
 ## VISA
 
-**VISA Detected**
+**Credit Card Number Detected**
 
-Sensitive data of type VISA was detected in the scanned content.
+A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
 

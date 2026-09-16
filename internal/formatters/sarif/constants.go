@@ -65,7 +65,11 @@ type RuleDescription struct {
 // behavior: every sub-type that lacked an entry before still gets the generic
 // description now).
 func GetRuleDescription(detectionType string) RuleDescription {
-	if d, ok := core.TypeMeta(detectionType); ok && d.SARIFShort != "" {
+	// core.DescribeType, not core.TypeMeta: the registry is keyed by SUB-TYPE but was populated at
+	// validator level, so 49 of 64 types reached the generic fallback below while carefully written
+	// copy sat on family keys no finding ever carries. DescribeType resolves a sub-type to its family
+	// per field, which takes SARIF coverage to 64 of 64 (#662).
+	if d := core.DescribeType(detectionType); d.SARIFShort != "" {
 		return RuleDescription{Short: d.SARIFShort, Full: d.SARIFFull, Help: d.SARIFHelp}
 	}
 

@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in settings.json at line 2 (confidence: 36.0% - LOW). Matched text: 'admin@example.com'"
+            "text": "Email Address Detected in settings.json at line 2 (confidence: 36.0% - LOW). Matched text: 'admin@example.com'"
           },
           "properties": {
             "confidence": 36,
@@ -86,15 +86,15 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+                "text": "An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#business",
               "id": "BUSINESS",
               "shortDescription": {
-                "text": "BUSINESS Detected"
+                "text": "Email Address Detected"
               }
             }
           ],

@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "DEA_NUMBER Detected in <golden:medical_hex_member_ids> at line 10 (confidence: 100.0% - HIGH). Matched text: 'AB1234563'"
+            "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 10 (confidence: 100.0% - HIGH). Matched text: 'AB1234563'"
           },
           "properties": {
             "confidence": 100,
@@ -66,7 +66,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 75,
+          "rank": 90,
           "ruleId": "DEA_NUMBER"
         },
         {
@@ -95,7 +95,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'E1122334455'"
+            "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'E1122334455'"
           },
           "properties": {
             "confidence": 80,
@@ -129,7 +129,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -158,7 +158,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'ABCDEF123456'"
+            "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'ABCDEF123456'"
           },
           "properties": {
             "confidence": 80,
@@ -192,7 +192,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -221,7 +221,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'BEEF1234567'"
+            "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'BEEF1234567'"
           },
           "properties": {
             "confidence": 80,
@@ -255,7 +255,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -284,7 +284,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '1234567890AB'"
+            "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '1234567890AB'"
           },
           "properties": {
             "confidence": 80,
@@ -318,7 +318,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "INSURANCE_MEMBER_ID"
         },
         {
@@ -347,7 +347,7 @@
             }
           ],
           "message": {
-            "text": "INSURANCE_MEMBER_ID Detected in <golden:medical_hex_member_ids> at line 5 (confidence: 80.0% - MEDIUM). Matched text: '55DEADBEEF12'"
+            "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 5 (confidence: 80.0% - MEDIUM). Matched text: '55DEADBEEF12'"
           },
           "properties": {
             "confidence": 80,
@@ -381,7 +381,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 65,
+          "rank": 80,
           "ruleId": "INSURANCE_MEMBER_ID"
         }
       ],
@@ -392,28 +392,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type DEA_NUMBER was detected in the scanned content."
+                "text": "A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#dea_number",
               "id": "DEA_NUMBER",
               "shortDescription": {
-                "text": "DEA_NUMBER Detected"
+                "text": "Medical Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type INSURANCE_MEMBER_ID was detected in the scanned content."
+                "text": "A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#insurance_member_id",
               "id": "INSURANCE_MEMBER_ID",
               "shortDescription": {
-                "text": "INSURANCE_MEMBER_ID Detected"
+                "text": "Medical Identifier Detected"
               }
             }
           ],

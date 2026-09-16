@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "US_MILITARY_ADDRESS Detected in <golden:validator_coverage_expansion> at line 1 (confidence: 95.0% - HIGH). Matched text: 'PSC 1523, Box 25, APO AE 09009'"
+            "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 1 (confidence: 95.0% - HIGH). Matched text: 'PSC 1523, Box 25, APO AE 09009'"
           },
           "properties": {
             "confidence": 95,
@@ -85,7 +85,7 @@
             }
           ],
           "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:validator_coverage_expansion> at line 3 (confidence: 95.0% - HIGH). Matched text: '123 O'Brien St'"
+            "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 3 (confidence: 95.0% - HIGH). Matched text: '123 O'Brien St'"
           },
           "properties": {
             "confidence": 95,
@@ -146,7 +146,7 @@
             }
           ],
           "message": {
-            "text": "US_RURAL_ROUTE Detected in <golden:validator_coverage_expansion> at line 2 (confidence: 90.0% - HIGH). Matched text: 'Rural Route 3 Box 88'"
+            "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 2 (confidence: 90.0% - HIGH). Matched text: 'Rural Route 3 Box 88'"
           },
           "properties": {
             "confidence": 90,
@@ -202,7 +202,7 @@
             }
           ],
           "message": {
-            "text": "US_STREET_ADDRESS Detected in <golden:validator_coverage_expansion> at line 4 (confidence: 90.0% - HIGH). Matched text: '456 King-Smith Rd'"
+            "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 4 (confidence: 90.0% - HIGH). Matched text: '456 King-Smith Rd'"
           },
           "properties": {
             "confidence": 90,
@@ -263,7 +263,7 @@
             }
           ],
           "message": {
-            "text": "DRIVERS_LICENSE Detected in <golden:validator_coverage_expansion> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'D12345678901234'"
+            "text": "Driver's License Number Detected in <golden:validator_coverage_expansion> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'D12345678901234'"
           },
           "properties": {
             "confidence": 85,
@@ -301,7 +301,7 @@
             ],
             "validator": "driverslicense"
           },
-          "rank": 67.5,
+          "rank": 77.5,
           "ruleId": "DRIVERS_LICENSE"
         },
         {
@@ -330,7 +330,7 @@
             }
           ],
           "message": {
-            "text": "OTP_SECRET Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'k5cuwy3znrxw4z3t'"
+            "text": "Multi-Factor Authentication Secret Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'k5cuwy3znrxw4z3t'"
           },
           "properties": {
             "confidence": 85,
@@ -364,7 +364,7 @@
             ],
             "validator": "otp"
           },
-          "rank": 67.5,
+          "rank": 87.5,
           "ruleId": "OTP_SECRET"
         },
         {
@@ -393,7 +393,7 @@
             }
           ],
           "message": {
-            "text": "DRIVERS_LICENSE Detected in <golden:validator_coverage_expansion> at line 6 (confidence: 70.0% - MEDIUM). Matched text: 'J1234567890123'"
+            "text": "Driver's License Number Detected in <golden:validator_coverage_expansion> at line 6 (confidence: 70.0% - MEDIUM). Matched text: 'J1234567890123'"
           },
           "properties": {
             "confidence": 70,
@@ -429,7 +429,7 @@
             ],
             "validator": "driverslicense"
           },
-          "rank": 60,
+          "rank": 70,
           "ruleId": "DRIVERS_LICENSE"
         },
         {
@@ -458,7 +458,7 @@
             }
           ],
           "message": {
-            "text": "US_RURAL_ROUTE Detected in <golden:validator_coverage_expansion> at line 8 (confidence: 40.0% - LOW). Matched text: 'RR 4'"
+            "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 8 (confidence: 40.0% - LOW). Matched text: 'RR 4'"
           },
           "properties": {
             "confidence": 40,
@@ -494,67 +494,67 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type DRIVERS_LICENSE was detected in the scanned content."
+                "text": "A driver's license number was detected in the scanned content. A license number is a government-issued identity document number, and in many jurisdictions its format encodes personal details such as a date of birth or a name fragment."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Remove the license number or replace it with a synthetic value. Because several jurisdictions derive the number from the holder's name and date of birth, the number itself can disclose those details even without them appearing in the text. Formats vary by jurisdiction, so verify a finding against the issuing state's pattern before dismissing it."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#drivers_license",
               "id": "DRIVERS_LICENSE",
               "shortDescription": {
-                "text": "DRIVERS_LICENSE Detected"
+                "text": "Driver's License Number Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type OTP_SECRET was detected in the scanned content."
+                "text": "A multi-factor authentication secret — a TOTP/HOTP shared secret, an otpauth:// provisioning URI or a set of account recovery codes — was detected in the scanned content. These are not transient codes: the SEED generates every future code for the account, so disclosing it defeats the second factor permanently until the account is re-enrolled."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat this as a credential disclosure, not a configuration mistake. Re-enrol the account's second factor and regenerate its recovery codes; removing the value from the file does not undo the exposure, because whoever saw the seed can still generate codes. Provisioning URIs are commonly pasted from a QR-code export, so check for others nearby."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#otp_secret",
               "id": "OTP_SECRET",
               "shortDescription": {
-                "text": "OTP_SECRET Detected"
+                "text": "Multi-Factor Authentication Secret Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type US_MILITARY_ADDRESS was detected in the scanned content."
+                "text": "A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_military_address",
               "id": "US_MILITARY_ADDRESS",
               "shortDescription": {
-                "text": "US_MILITARY_ADDRESS Detected"
+                "text": "Physical Address Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type US_RURAL_ROUTE was detected in the scanned content."
+                "text": "A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_rural_route",
               "id": "US_RURAL_ROUTE",
               "shortDescription": {
-                "text": "US_RURAL_ROUTE Detected"
+                "text": "Physical Address Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type US_STREET_ADDRESS was detected in the scanned content."
+                "text": "A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_street_address",
               "id": "US_STREET_ADDRESS",
               "shortDescription": {
-                "text": "US_STREET_ADDRESS Detected"
+                "text": "Physical Address Detected"
               }
             }
           ],

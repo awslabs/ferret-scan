@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <TMPDIR>/people.csv (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nAlice,alice@example.com,449-87-4100,4532015112830366\n```\n\n**Additional Information:**\n- context_impact: -5\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** <TMPDIR>/people.csv (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nAlice,alice@example.com,449-87-4100,4532015112830366\n```\n\n**Additional Information:**\n- context_impact: -5\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,14 +100,14 @@
         "file": "people.csv",
         "start_line": 2
       },
-      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Business Detected",
+      "message": "Email address detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Email Address Detected",
       "severity": "High"
     },
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (business) in this file.\n\n**Location:** <TMPDIR>/people.csv (line 3)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nBob,bob@example.org,529-11-2233,5425233430109903\n```\n\n**Additional Information:**\n- context_impact: -5\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** <TMPDIR>/people.csv (line 3)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nBob,bob@example.org,529-11-2233,5425233430109903\n```\n\n**Additional Information:**\n- context_impact: -5\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -126,8 +126,8 @@
         "file": "people.csv",
         "start_line": 3
       },
-      "message": "Sensitive data (business) detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Business Detected",
+      "message": "Email address detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Email Address Detected",
       "severity": "High"
     },
     {
@@ -153,7 +153,7 @@
         "start_line": 3
       },
       "message": "Mastercard credit card detected: [HIDDEN] (confidence: LOW)",
-      "name": "Mastercard Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Medium"
     },
     {
@@ -179,7 +179,7 @@
         "start_line": 2
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: LOW)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Medium"
     }
   ]

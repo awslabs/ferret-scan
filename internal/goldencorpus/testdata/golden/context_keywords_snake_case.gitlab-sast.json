@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected sensitive data (date of birth) in this file.\n\n**Location:** <golden:context_keywords_snake_case> (line 3)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\nmy_dob_field: 1985-03-14\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected date of birth in this file.\n\n**Location:** <golden:context_keywords_snake_case> (line 3)\n**Confidence:** HIGH (90.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\nmy_dob_field: 1985-03-14\n```\n\n**Additional Information:**\n- context_impact: 75\n- source: preprocessed_content\n\n**Remediation:**\nRemove the date of birth or replace it with synthetic test data. It is an identity-verification factor, especially alongside a name.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,8 +100,8 @@
         "file": "<golden:context_keywords_snake_case>",
         "start_line": 3
       },
-      "message": "Sensitive data (date of birth) detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Date Of Birth Detected",
+      "message": "Date of birth detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Date of Birth Detected",
       "severity": "Critical"
     },
     {
@@ -153,7 +153,7 @@
         "start_line": 4
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: LOW)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Medium"
     },
     {
@@ -179,7 +179,7 @@
         "start_line": 5
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: LOW)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Medium"
     }
   ]
