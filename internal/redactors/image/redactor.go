@@ -147,6 +147,34 @@ func (imr *ImageMetadataRedactor) GetName() string {
 	return "image_metadata_redactor"
 }
 
+// UnimplementedTypes declares the formats this redactor is registered for but cannot rewrite.
+//
+// supportedFormats above lists eight extensions, and every one of them is registered — but
+// redactImageMetadata switches on the decoded format and implements JPEG and PNG only. Everything
+// else reaches the default arm and returns "metadata redaction not implemented for X images", which
+// is the right behaviour (a GIF copied through unchanged would carry its EXIF into a file the caller
+// believes was cleaned) and is exactly why the declaration has to say so.
+//
+// Measured with the real binary: a .tiff carrying an ImageDescription reports its finding and writes
+// ZERO artifacts, while the same value in a .jpg and a .png each write one. GIF and BMP could not be
+// measured end to end because nothing extracts metadata from them today, so they report no finding to
+// redact — latent rather than currently reachable, and listed here because the redaction arm is the
+// same one TIFF proves.
+//
+// Kept beside supportedFormats on purpose: the two lists have to be edited together, and implementing
+// one of these formats means deleting its line here — which the empirical cross-check in
+// cmd/documented_redaction_test.go then requires.
+func (imr *ImageMetadataRedactor) UnimplementedTypes() map[string]string {
+	const reason = "image metadata redaction is implemented for JPEG and PNG only; other formats are " +
+		"recognised but refused rather than copied through with their metadata intact"
+	out := map[string]string{}
+	for _, ext := range []string{".gif", ".tiff", ".tif", ".bmp", ".webp"} {
+		out[ext] = reason
+		out[strings.TrimPrefix(ext, ".")] = reason
+	}
+	return out
+}
+
 // GetSupportedTypes returns the file types this redactor can handle
 func (imr *ImageMetadataRedactor) GetSupportedTypes() []string {
 	// Sorted extensions so the reported type list is identical between runs —

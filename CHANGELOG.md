@@ -51,6 +51,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ New Features
 
+- **docs, cli, redaction:** `--help` advertised
+  `ferret-scan --file *.pdf --enable-redaction --redaction-output-dir ./safe-docs`, a command that can
+  **never succeed**. PDF content redaction is not implemented, and refusing is correct — a "redacted"
+  PDF still holding the values would be worse than no output — but the help text presented it as a
+  supported workflow, so a user followed the example, got one refusal per file, and had to work out
+  whether they had hit a bug, a permissions problem or a limitation.
+  ([#686](https://github.com/awslabs/ferret-scan/issues/686))
+
+  **It was nine places, not one, and PDF was not the only type.** The same false claim sat in
+  `README.md` (".pdf→.pdf"), in the doc comment of the **public** `pkg/scan.RedactFile` API — where a
+  library caller reads it instead of the CLI help — and across `docs/ferret-application-flow.md` and
+  `docs/architecture-diagram.md` in an example command, a sequence-diagram note, a feature list, a node
+  label and a prose paragraph promising "four different redactor types (text, PDF, Office, image)".
+  Meanwhile the **image** redactor declares eight extensions and implements JPEG and PNG only, so
+  `.gif`, `.tiff`, `.tif`, `.bmp` and `.webp` are registered and always refuse. Measured with the real
+  binary: a `.tiff` carrying an `ImageDescription` reports its finding and writes **zero** artifacts,
+  while `.txt`, `.csv`, `.svg`, `.rtf`, `.docx`, `.wav`, `.jpg` and `.png` each write one.
+
+  **The runtime was already honest, and is unchanged.** Both refusals already reach the operator as
+  `no redactor for this file type` with a detail naming the format, in every output format, with a
+  structured `unredacted` entry in JSON — so the second half of the issue, "have the refusal name the
+  reason", was already done. What was missing is that the capability was not machine-readable, so
+  nothing could check a **documented** claim against it.
+
+  **Capability is now declared, and the documentation is generated from it.** A redactor registered for
+  a type it cannot rewrite says so through `redactors.UnimplementedTypeDeclarer`, returning the reason;
+  `core.RedactionCapabilities()` derives the answer from the **live registry** the scan path builds, so
+  a redactor added, removed or re-declared needs no second list updated. `docs/redaction-support.md` is
+  generated from it (`UPDATE_REDACTION_DOCS=1 go test ./internal/core/ -run
+  TestRedactionSupportPageIsUpToDate`), which means a page claiming a capability the build lacks now
+  fails a test instead of misleading a reader. The PDF redactor stays **registered** deliberately —
+  registration is what routes a `.pdf` to the refusal, and an unregistered type would leave the file
+  out of the redaction path entirely with nothing said about it.
+
+  **Five guards, because the claim has four different surfaces and a declaration can drift.** A
+  documented `ferret-scan … --enable-redaction` command may not name an unredactable type; `--help`
+  may not either, checked by running the **built binary**; prose may not claim redaction for such a
+  type unless the same paragraph says it cannot be rewritten; nor may a public-API doc comment; and an
+  empirical cross-check runs the binary to confirm a declared-unimplemented type writes **no** artifact
+  and reports the cause, with a positive control on `.txt` that writes one and leaves no value behind —
+  without which a build that redacted nothing at all would pass the first half perfectly.
+
+  The prose guard is **paragraph-scoped**, which took two attempts worth recording: line-scoped, it
+  reported four passages in `docs/user-guides/README-Redaction.md` that were already correct — that
+  guide accurately documents the JPEG/PNG-only limitation, and even records that an earlier version of
+  its own table listed all six image extensions as redacted, "wrong in the dangerous direction". Its
+  caveats simply wrap onto the next line. Fenced code blocks are excluded too, since a `defaults:`
+  example mentioning both a redaction key and a `*.pdf` exclude pattern is a configuration sample and
+  not a claim. Reporting an accurate passage as a defect is how a guard gets switched off.
+
+  Eleven planted-shape controls accompany the guards, because every assertion is a search that finds
+  nothing when it is working: the exact `*.pdf` glob line, an indented fenced command, a `$` prompt, a
+  piped invocation, a quoted `--file` argument, a directory argument (which makes no type claim), the
+  wrapped-caveat passage, a blockquote paragraph break, a fenced block, a `neither … nor` caveat, and
+  the public-API comment. Three of the four documentation guards fail on the parent commit.
+
 - **coverage:** files skipped as an unsupported type are now NAMED, not just counted. Scanning this repository reported `Filtered out 14 unsupported file types` and `14 skipped`, and nothing anywhere said WHICH 14 — `--verbose` added only the same count, and no flag existed. **A count is not a disclosure:** the output was byte-identical whether those files were build detritus or fourteen customer documents. Here they were 13 compiled Go test binaries and a `.DS_Store`, so no coverage was lost — but the operator had no way to establish that, on the one axis where a mistake is silent. The summary now reads `Files: 29 scanned, 14 skipped (.test × 13, .DS_Store × 1)`, and `json`/`yaml` carry the same data structurally as `skipped_types`, a field deliberately distinct from the not-examined list so a consumer cannot confuse "declined, nothing was possible" with "may have missed something". **This does NOT add a ninth `NotExaminedCause`, and `docs/COVERAGE_DISCLOSURE.md`'s argument against that stands** — an unprocessable type is a genuine skip, so listing it among causes meaning "we may have missed something here" would report a non-event. Naming the files is a different question from where they are reported, and that doc is updated to say so rather than left asserting they are "not listed at all". **Grouped by extension because the reason does not discriminate:** measured, all 14 skips return the single reason `Unsupported file type`, so a reason histogram has one bucket. The histogram describes the FILES, not the rule — the skip decision is content-aware, and a one-byte file named `f.test` IS scanned while a 20MB Mach-O of the same name is not, which is the right way round for a disclosure. It matters beyond tidiness because the supported-type list has been wrong before: [#421](https://github.com/awslabs/ferret-scan/issues/421) is open for `.rtf`, `.rtf`/`.tmp`/`.pages` were once advertised by the finder then reported CLEAN by the scanner, and registering `.3gp` reached the preprocessor and still produced nothing because three separate places must agree — each a file the tool BELIEVED it could not process while a user believed otherwise, invisible behind a bare count. Both stderr messages now use the same wording and the same histogram over the **union of both skip stages**, since counting one stage and naming the other would understate. The human histogram is capped at six types with the remainder **disclosed** as `and N more types` — a silent truncation that reads as completeness is the defect this change exists to fix — while the structured value is never capped. Ordering is by descending count then label, pinned by a test that renders 50 times, because ranging the map would vary run to run in a line that goes into diffed CI logs and whose width sizes the summary box. **One correction to the issue:** it says the files are "counted twice". They are not — 1 scanned + 35 skipped = 36 total on a 36-file probe, so the arithmetic is right; they were reported twice in two different wordings, which is what the shared wording fixes. Four mutations pin the tests, including ones that drop the sort, silently drop the overflow, and cap the structured value. Closes [#583](https://github.com/awslabs/ferret-scan/issues/583).
 
 - **video:** scan and redact `.3gp`/`.3g2`, and read the Apple `keys`/`ilst` metadata that iPhone and macOS recordings actually use. Four separate gaps in the same container, each measured on a real file. **`.3gp`/`.3g2` were not scanned at all** — the same ISO base media container as `.mp4` with a 3GPP brand — and the failure was SILENT: a real ffmpeg-written `.3gp` carrying an SSN in its 3GPP `dscp` box reported `No matches found.` at exit 0, with `--fail-on-incomplete` also exiting 0 and disclosing nothing, so the value was neither reported nor redacted. Registering the extension proved necessary but not sufficient: the twelve **3GPP asset boxes** (`titl` `dscp` `cprt` `auth` `perf` `gnre` `albm` `yrrc` `kywd` `rtng` `clsf` `perm`, per 3GPP TS 26.244) use a `[version][flags][language][NUL-terminated UTF-8]` payload, not the QuickTime `[length][language][text]` form, so with the extension registered and the boxes unhandled the file reported `Status: Success  MimeType: video/3gpp` and still produced zero findings — a "supported" format extracting nothing, whose clean result then looks authoritative. **Apple's `keys`/`ilst` pair** was unreachable four times over: `parseMoovBoxWithContext` had no `meta` case so a `moov`-level `meta` was never visited; `parseMetaBoxWithContext` skipped four version/flags bytes unconditionally, which is right for an ISO FullBox but wrong for QuickTime's plain container, so it read the first child's type `hdlr` AS ITS SIZE (0x68646c72 = 1,751,411,826) and abandoned the box; `keys` was never decoded into the index→name map that an `ilst` item's numeric type refers to; and an index-typed item fell through to a `default` arm gated on a length-only `isFourCC`, landing under a key made of raw bytes. The reader did not merely lose those values — `searchAppleMetadataInData` scraped raw text for `com.apple.quicktime.<field>` and took the bytes that follow, which in a keys table is *the next key's name*, so on a real macOS recording `CameraMake` read `m.apple.quicktime.model`, `CameraModel` read `m.apple.quicktime.software` and `CreationDate_Apple` read the literal atom type `data`, against true values `Apple`, `Mac16,6` and `macOS 15.2 (24C101)`. The scrape now stands down for any key the table answered. Also: `trak > udta` and `trak > meta` are read (`udta` was movie-level only, so a per-track comment was invisible); the eleven inner box walkers now honour the two special ISO size words via a shared reader, where a size of `1` previously failed the `size < 8` check and **ended the walk**, taking every later sibling with it; a `data` box's well-known type indicator is honoured so a binary payload is no longer stringified into the scanned text, while a mislabelled UTF-8 payload is still read; `parseDate` accepts Apple's colon-less zone offset; and the video redactor claims `.3gp`/`.3g2`, without which a newly-found value was reported and then disclosed as `no redactor registered for file type: .3gp`. Verified end to end: redacting a real `.3gp` writes a same-size file that `ffprobe` still recognises with the cleartext gone. Closes [#431](https://github.com/awslabs/ferret-scan/issues/431) and [#400](https://github.com/awslabs/ferret-scan/issues/400).

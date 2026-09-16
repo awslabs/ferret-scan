@@ -48,7 +48,7 @@ type RedactFileResult struct {
 }
 
 // RedactFile scans a file and writes a redacted copy of the SAME file type
-// (a redacted .docx stays a .docx, a .pdf stays a .pdf, images get EXIF/GPS
+// (a redacted .docx stays a .docx, a .jpg stays a .jpg, images get EXIF/GPS
 // stripped). Delegates to internal/core.RedactFile — no new logic.
 //
 // The output is a real file safe to share; the original is never modified.

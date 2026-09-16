@@ -256,7 +256,7 @@ flowchart TD
     end
 
     %% Inline Redaction (happens during worker processing)
-    RedactionManager["🔒 Redaction Manager<br/>performInlineRedaction()<br/>4 Redactors: Text, PDF, Office, Image"]
+    RedactionManager["🔒 Redaction Manager<br/>performInlineRedaction()<br/>Text, Office, Image (JPEG/PNG),<br/>audio, video, SVG, RTF"]
 
     %% Output
     ValidationMatches["🎯 Validation Matches<br/>With context metadata<br/>and calibrated confidence"]
@@ -351,7 +351,7 @@ flowchart TD
 
         subgraph Redactors["🔒 Redactors"]
             PlainTextRedactor["📝 Plain Text Redactor"]
-            PDFRedactor["📄 PDF Redactor"]
+            PDFRedactor["📄 PDF Redactor<br/>(reports only, cannot rewrite)"]
             OfficeRedactor["📊 Office Redactor"]
             ImageRedactor["🖼️ Image Redactor"]
         end
@@ -632,7 +632,7 @@ Nineteen specialized validator bridges handle different data types (cloud resour
 
 ### **Integrated Redaction & Efficiency**
 
-A key architectural innovation is the inline redaction capability that occurs during worker processing rather than as a separate pipeline stage. This approach eliminates the need to re-extract content for redaction, significantly improving efficiency. The RedactionManager leverages the same extracted content used for validation, supporting four different redactor types (text, PDF, Office, image) while maintaining file structure and format integrity.
+A key architectural innovation is the inline redaction capability that occurs during worker processing rather than as a separate pipeline stage. This approach eliminates the need to re-extract content for redaction, significantly improving efficiency. The RedactionManager leverages the same extracted content used for validation, supporting redactors for text, Office documents, JPEG/PNG images, audio, video, SVG and RTF while maintaining file structure and format integrity. PDF, TIFF, GIF, BMP and WEBP are recognised and scanned but cannot be rewritten; such a file is reported with the cause "no redactor for this file type" and no output is written, rather than a copy that still holds the values. See `docs/redaction-support.md`.
 
 ### **Configuration-Driven Flexibility**
 

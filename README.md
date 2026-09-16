@@ -17,7 +17,7 @@
 
 ---
 
-A customer SSN pasted into a log line. An AWS access key committed in a diff. A support transcript archived to S3. A PDF with EXIF metadata attached to a ticket. Sensitive data leaks through the seams between systems — and once it lands in a log store or an object bucket, it is expensive to get back out. **ferret-scan is the control you put in front of those seams:** it finds the sensitive values, scores how likely each one is real, and redacts them so the rest of the data keeps flowing.
+A customer SSN pasted into a log line. An AWS access key committed in a diff. A support transcript archived to S3. A photo with EXIF location data attached to a ticket. Sensitive data leaks through the seams between systems — and once it lands in a log store or an object bucket, it is expensive to get back out. **ferret-scan is the control you put in front of those seams:** it finds the sensitive values, scores how likely each one is real, and redacts them so the rest of the data keeps flowing.
 
 ---
 
@@ -225,7 +225,8 @@ ok, reason := scan.CanProcessFile("archive.zip")  // false, "Unsupported file ty
 // Redact text in-place using pre-computed findings (no re-detection)
 redacted, _ := scan.RedactText(text, result.Findings, scan.StrategyFormatPreserving)
 
-// Redact a file (writes a redacted copy of the same type: .docx→.docx, .pdf→.pdf)
+// Redact a file (writes a redacted copy of the same type: .docx→.docx, .jpg→.jpg)
+// PDF, TIFF, GIF, BMP and WEBP are reported but cannot be rewritten — see docs/redaction-support.md
 fileResult, _ := scan.RedactFile("report.docx", scan.RedactFileOptions{
     OutputDir: "/tmp/redacted",
     Strategy:  scan.StrategyFormatPreserving,
