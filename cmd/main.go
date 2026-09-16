@@ -1781,7 +1781,19 @@ func main() {
 	}
 
 	// Parse confidence levels
-	confidenceFilter := parseConfidenceLevels(finalConfig.confidenceLevels)
+	// An unrecognised confidence level is a usage error, not a silently empty filter.
+	//
+	// Every unknown token used to be dropped, so the filter had every level false and the report was
+	// EMPTY while the same document's stats block reported findings. `--confidence hi` is an ordinary
+	// typo, and three spellings of the DOCUMENTED value — ALL, All, " all " — did it too. Same
+	// treatment as an unrecognised --checks name, which is already a hard error for the same reason:
+	// failing open there ran zero validators and reported clean (#683).
+	confidenceFilter, confErr := parseConfidenceLevels(finalConfig.confidenceLevels)
+	if confErr != nil {
+		printPrecommitError(precommitConfig, confErr.Error(),
+			"Pass one or more of high,medium,low — or \"all\" — separated by commas")
+		os.Exit(1)
+	}
 
 	// Initialize file router with observability
 	fileRouter := router.NewFileRouter(finalConfig.debug)
@@ -2714,7 +2726,7 @@ func main() {
 // parseConfidenceLevels delegates to core.ParseConfidenceLevels to avoid code duplication between CLI and web modes.
 // Converts a comma-separated string of confidence levels (e.g., "high,medium" or "all")
 // into a map of confidence level thresholds for filtering scan results.
-func parseConfidenceLevels(levels string) map[string]bool {
+func parseConfidenceLevels(levels string) (map[string]bool, error) {
 	return core.ParseConfidenceLevels(levels)
 }
 

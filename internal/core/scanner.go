@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 	"github.com/awslabs/ferret-scan/v2/internal/validators"
+	"sort"
 )
 
 // ScanConfig holds configuration for scanning operations.
@@ -521,28 +522,115 @@ func ParseChecksToRun(checks []string) map[string]bool {
 	return result
 }
 
-// ParseConfidenceLevels converts a comma-separated confidence level string into a map.
-// "all" or empty string enables every level.
-func ParseConfidenceLevels(levels string) map[string]bool {
+// confidenceLevelNames is the domain for a single confidence token.
+//
+// A LOCAL copy of the same domain internal/config/schema.go validates config files against, for the
+// reason its validCheckNames carries: config cannot import core, because core imports config.
+// TestConfidenceDomainsAgree compares the two so the copies cannot drift apart silently.
+var confidenceLevelNames = map[string]bool{
+	"high":   true,
+	"medium": true,
+	"low":    true,
+}
+
+// ConfidenceLevelNames returns the accepted confidence tokens, sorted.
+//
+// Exported so the drift test and the CLI's error text draw the list from one place rather than
+// restating it — a hand-written list in an error message is how an error tells a user to type
+// something the parser rejects.
+func ConfidenceLevelNames() []string {
+	out := make([]string, 0, len(confidenceLevelNames))
+	for k := range confidenceLevelNames {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ParseConfidenceLevels converts a comma-separated confidence level string into a map, and REJECTS a
+// token it does not recognise.
+//
+// # What silence cost
+//
+// Every unrecognised token used to be dropped by a switch with no default, so the filter it produced
+// had every level false and matched nothing. Measured on a file holding three findings, all of these
+// returned an empty report at exit 0 while the SAME document's stats block said total_findings 3:
+//
+//	--confidence nonsense    results 0, stats total 3
+//	--confidence hi          results 0, stats total 3
+//	--confidence ALL         results 0, stats total 3   <- the DOCUMENTED value, wrong case
+//	--confidence All         results 0, stats total 3
+//	--confidence " all "     results 0, stats total 3   <- the documented value, with spaces
+//	--confidence all,high    results 1, stats total 3   <- "all" ignored inside a list
+//
+// The document contradicted itself, so which half a consumer believes decided whether the scan looked
+// clean: a CI job reading `results` saw a clean tree while one reading `stats` saw three findings. In
+// text output the same run prints "No matches found at the specified confidence levels", which reads
+// as a statement about the file. `--confidence hi` is an ordinary typo.
+//
+// Three of those six are the documented value `all` in a spelling the code did not accept, because the
+// wildcard was compared with == against the raw string while the loop below lowercased and trimmed.
+//
+// # Why an error and not a lenient default
+//
+// The precedent is `--checks`, where an unrecognised name is already a hard error: failing open there
+// meant running ZERO validators and reporting clean. This is the reporting-side twin of that bug, and
+// under the sink rule the consequence is the same — a value the report omits is a value nobody
+// redacts.
+//
+// Normalisation applies to every token INCLUDING the wildcard, so `ALL`, ` all `, `All` and
+// `all,high` all mean the same thing, which is what the help text has always said.
+func ParseConfidenceLevels(levels string) (map[string]bool, error) {
 	result := map[string]bool{
 		"high":   false,
 		"medium": false,
 		"low":    false,
 	}
-
-	if levels == "all" || levels == "" {
-		result["high"] = true
-		result["medium"] = true
-		result["low"] = true
-		return result
+	all := func() (map[string]bool, error) {
+		for k := range result {
+			result[k] = true
+		}
+		return result, nil
 	}
 
-	for _, level := range strings.Split(levels, ",") {
-		switch strings.ToLower(strings.TrimSpace(level)) {
-		case "high", "medium", "low":
-			result[strings.ToLower(strings.TrimSpace(level))] = true
+	if strings.TrimSpace(levels) == "" {
+		return all()
+	}
+
+	for _, raw := range strings.Split(levels, ",") {
+		token := strings.ToLower(strings.TrimSpace(raw))
+		switch {
+		case token == "":
+			// A trailing or doubled comma. Harmless and not worth refusing a scan over.
+			continue
+		case token == "all":
+			// Accepted anywhere in the list, not only alone: "all,high" plainly means all.
+			return all()
+		case confidenceLevelNames[token]:
+			result[token] = true
+		default:
+			return nil, fmt.Errorf("invalid confidence level %q: valid values are %s, or \"all\"",
+				strings.TrimSpace(raw), strings.Join(ConfidenceLevelNames(), ", "))
 		}
 	}
 
-	return result
+	// A value made only of separators — "," or ", ," — selected NOTHING, which is the all-false
+	// filter this function exists to stop producing. Unknown tokens have already errored above, so
+	// the only way to arrive here with nothing selected is that every token was empty, i.e. the
+	// caller specified no level. That means the same as an empty value: everything.
+	//
+	// Fail-safe direction on purpose. Reporting more than asked costs review noise; reporting
+	// nothing hides findings, and under the sink rule a value the report omits is a value nobody
+	// redacts.
+	selected := false
+	for _, on := range result {
+		if on {
+			selected = true
+			break
+		}
+	}
+	if !selected {
+		return all()
+	}
+	return result, nil
 }
