@@ -764,6 +764,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 Features
 
+- **suppressions (expiry):** a generated rule expired **one week** after it was created, always, and
+  there was no way to ask for anything else. Because `IsSuppressed` skips an expired rule with a bare
+  `continue`, a committed baseline simply stopped working seven days later with nothing to indicate it.
+  Generated rules no longer expire; expiry is opt-in via `--suppression-expires <duration>`.
+  ([#696](https://github.com/awslabs/ferret-scan/issues/696))
+
+  Measured on this repository's own `.ferret-scan-suppressions.yaml`: **all 245 rules** — 92 of them
+  `enabled: true` and hand-reviewed — carried `expires_at: 2026-05-28`, so the file had been inert for
+  about **four months** while its own header said contributors and CI shared it as a baseline. Nothing
+  in any run said so, and `suppressed` read 0 whichever suppression file was passed.
+
+  A suppression is a decision someone made deliberately, so it should last until someone changes it.
+  The default was removed at all three creation sites — `AddSuppression`, the batch
+  `--generate-suppressions` path, and the web-UI undo path — and an explicit `expires_at` written by
+  hand still wins. Removing a default must not remove a capability, so `--suppression-expires` keeps
+  expiry available for a team that wants suppressions to lapse and be revisited.
+
+  **And skipping an expired rule is no longer silent.** A run in which a rule *would* have suppressed a
+  finding but had lapsed now warns with the count and the oldest expiry date. The count is taken at the
+  moment of **matching** rather than by walking the file, because that is the number an operator can act
+  on: "3 findings are in your report that your own rules were meant to suppress" is actionable, where
+  "the file contains 245 expired rules" does not say whether any of them mattered.
+
+  Two implementation details worth recording. The counter is **atomic** and its date is guarded by its
+  **own** mutex rather than `indexMu` — `IsSuppressed` holds `indexMu` read-locked across the match loop
+  and the counter is incremented from inside it, so reusing that lock would deadlock on the write side,
+  which would present as a hung CI job rather than a failure. And the redaction filter added for
+  [#697](https://github.com/awslabs/ferret-scan/issues/697) calls `IsSuppressed` from worker goroutines,
+  so the concurrency is real rather than hypothetical; a test drives 8 goroutines × 50 matches under
+  `-race` and requires the count to be exact, since a lost increment would silently under-report.
+
+  The committed baseline is **deliberately not regenerated here**. A regeneration is not the 245 rules
+  the file holds: measured, `--generate-suppressions` over `internal/validators` alone produces **3,489**
+  rules and over the whole repository **9,658** (135,214 lines). The existing 245 was a curated subset,
+  and re-deriving it is a judgement about which findings in this codebase are acceptable — not something
+  to land alongside a mechanism change. The file stays as it is; with this change, regenerating it will
+  at least produce rules that do not lapse.
+
+  **The option is settable in config, and it no longer speaks only Go durations.** The first version was
+  a bare `time.Duration`, and Go's duration syntax has no `d` and no `w` — so `720h` was the only way to
+  say 30 days, and `30d`, `4w`, `30` and `2026-12-31` were all `parse error`. That is the wrong
+  vocabulary for a review interval measured in weeks. One parser, `suppressions.ParseExpirySpec`, now
+  reads every form and is shared by the flag and the config key so they cannot disagree:
+
+  | what you write | means |
+  |---|---|
+  | `never` (or omitted, or `0`) | no expiry — the default |
+  | `30` | 30 days |
+  | `30d` / `4w` | 30 days / 4 weeks |
+  | `720h` / `90m` | any Go duration |
+  | `2026-12-31` | an absolute date — every rule from that run lapses the same day |
+
+  A bare number means **days** deliberately: nobody sets a suppression to lapse in 30 seconds, and
+  reading it that way would silently expire every rule in the run. An absolute date is accepted because
+  "expire these before the next audit" is not expressible as a duration — every rule should lapse on the
+  same day, not N days after whenever the run happened. Anything unparseable is refused with the list of
+  forms rather than turned into some lifetime nobody asked for. `d` is 24h and `w` is 168h, wall-clock
+  rather than calendar, which is stated in the code and the docs rather than hidden — an hour of DST
+  drift does not matter to a review interval, and calendar arithmetic would mean carrying a timezone in
+  a file shared across machines.
+
+  Config: `suppressions.expires_in`, a profile's `suppression_expires_in`, or `--suppression-expires`,
+  resolving in that order with the flag winning — the same shape `generate_suppressions` already uses.
+  Both shipped example configs carry the key, annotated, and both ship `never`: the examples are copied
+  as a starting point, so any other default would hand the one-week-inert-baseline defect to everyone
+  who copies one.
+
+  **The alignment is a guard, not an edit.** Five assertions hold the four surfaces together — the
+  parser, the flag's help line, both example configs, and each documentation page separately — because a
+  reader lands on one page and "it is documented somewhere" is not the same as "the page you are reading
+  is correct". The documented forms are asserted against `ParseExpirySpec` itself, so the test cannot
+  pass by agreeing with a stale list, and precedence must be stated in the order it actually resolves:
+  silence there reads as "these are equivalent", and a reader who sets the config key and watches the
+  flag win concludes the config key is broken.
+
+  That guard earned itself immediately: **the flag was registered and absent from `--help`**, so it was
+  undiscoverable. `internal/help/help.go` is hand-written prose, which is exactly the drift
+  `documented_flags_test.go` records ("40 flags are registered and 37 appear in the help text"), and
+  widening the parser without widening the help would have produced #686's defect in reverse — a
+  capability nobody can find rather than one that does not exist.
+
+  Five assertions, and the third is the floor: a generated rule carries no expiry; opting in produces
+  one of the requested length and zero still means none; **a rule with no expiry still suppresses** —
+  without which "removed the expiry" could have meant "broke matching"; an expired rule is counted and
+  dated, with an older expiry moving the reported date backwards; and the counting is race-free.
+  Restoring the one-week default fails the first two with the exact dates.
+
 - **person-name:** expand name database coverage with 53 unambiguous names from South Asian, West African, Eastern European, Middle Eastern, Japanese, and Italian backgrounds
 
 ### 📚 Documentation

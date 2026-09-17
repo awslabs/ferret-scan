@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -84,6 +85,19 @@ type SuppressionManager struct {
 	// which we preserve here. Rebuilt on every load/save under indexMu.
 	rulesByHash map[string][]int
 	indexMu     sync.RWMutex
+	// expiryMu guards the two fields below. Deliberately NOT indexMu: IsSuppressed holds
+	// indexMu.RLock() across its match loop, and noteExpiredSkip is called from inside that loop, so
+	// reusing indexMu would deadlock on the write lock.
+	expiryMu sync.RWMutex
+	// generatedExpirySpec is the lifetime given to newly generated rules; the zero value means none.
+	// A spec rather than a duration so an absolute date is expressible (#696).
+	generatedExpirySpec ExpirySpec
+
+	// expiredSkips counts rules that matched a finding but had expired. Atomic: IsSuppressed runs on
+	// worker goroutines as well as the report path.
+	expiredSkips int64
+	// oldestExpired is the earliest expiry among those skips, for the disclosure.
+	oldestExpired *time.Time
 }
 
 // NewSuppressionManager creates a new suppression manager
@@ -415,6 +429,8 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 					continue
 				}
 				if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
+					// Record it: this rule matched by hash and would have suppressed the finding.
+					sm.noteExpiredSkip(*rule.ExpiresAt)
 					continue
 				}
 				sm.indexMu.RUnlock()
@@ -482,10 +498,22 @@ func (sm *SuppressionManager) AddSuppression(match detector.Match, reason, creat
 	}
 	id := fmt.Sprintf("SUP-%08d", maxID+1)
 
-	// Set default expiration to 1 week if not provided
+	// NO DEFAULT EXPIRY. A nil expiresAt means the rule does not expire.
+	//
+	// This used to default to one week, which made a committed, hand-reviewed baseline inert seven
+	// days after it was generated — silently, because IsSuppressed skips an expired rule with a bare
+	// continue. Measured on this repository's own .ferret-scan-suppressions.yaml: all 245 rules
+	// (92 of them enabled: true and hand-reviewed) carried expires_at 2026-05-28, and had therefore
+	// been doing nothing for about four months. The file's own header says it exists "so all
+	// contributors and CI share the same baseline" (#696).
+	//
+	// A suppression is a decision someone made deliberately; it should last until someone changes it.
+	// Expiry is still available — pass a non-nil expiresAt, or --suppression-expires on the CLI — but
+	// it is now something you ask for rather than something you get without knowing.
+	//
+	// An explicit expiresAt from the caller always wins; SetGeneratedExpiry only fills a nil.
 	if expiresAt == nil {
-		defaultExpiry := time.Now().AddDate(0, 0, 7) // 1 week from now
-		expiresAt = &defaultExpiry
+		expiresAt = sm.generatedExpiry(time.Now())
 	}
 
 	rule := SuppressionRule{
@@ -709,9 +737,6 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		// Generate unique ID with sequential number
 		id := fmt.Sprintf("SUP-%08d", maxID+addedCount+1)
 
-		// Set default expiration to 1 week
-		defaultExpiry := now.AddDate(0, 0, 7)
-
 		// Prefer the per-finding drafted reason from --explain when present;
 		// it states WHY this specific finding looks suppressible (e.g. "Test
 		// fixture ... not a real VISA"). Fall back to the caller's generic
@@ -729,7 +754,7 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 			Enabled:    enabled,
 			CreatedAt:  now,
 			LastSeenAt: &now,
-			ExpiresAt:  &defaultExpiry,
+			ExpiresAt:  sm.generatedExpiry(now),
 			Metadata: map[string]string{
 				"finding_type": match.Type,
 				"filename":     filepath.Base(match.Filename),
@@ -954,9 +979,6 @@ func (sm *SuppressionManager) CreateSuppressionFromFindingWithState(hash, reason
 		"confidence":   fmt.Sprintf("%.2f", getFloat(findingData, "confidence")),
 	}
 
-	// Set default expiration to 1 week
-	defaultExpiry := time.Now().AddDate(0, 0, 7)
-
 	rule := SuppressionRule{
 		ID:        id,
 		Hash:      hash,
@@ -964,10 +986,72 @@ func (sm *SuppressionManager) CreateSuppressionFromFindingWithState(hash, reason
 		Enabled:   enabled, // Use provided enabled state
 		CreatedBy: "web-ui-undo",
 		CreatedAt: time.Now(),
-		ExpiresAt: &defaultExpiry,
+		ExpiresAt: sm.generatedExpiry(time.Now()),
 		Metadata:  metadata,
 	}
 
 	sm.config.Rules = append(sm.config.Rules, rule)
 	return sm.saveConfig()
+}
+
+// SetGeneratedExpiry makes rules created from now on expire after d.
+//
+// Opt-in, and the reason it exists is that removing the one-week default removed a capability along
+// with the defect. A team that wants suppressions to lapse so they get revisited can still have that;
+// what they can no longer have is a baseline that lapses without anyone asking for it (#696).
+//
+// A zero or negative d means no expiry, which is the default.
+func (sm *SuppressionManager) SetGeneratedExpiry(d time.Duration) {
+	sm.SetGeneratedExpirySpec(ExpirySpec{relative: d, source: d.String()})
+}
+
+// SetGeneratedExpirySpec is the form the CLI and the config file both use, because both carry the
+// user's own spelling — "30d", "4w", "2026-12-31" — and ParseExpirySpec is the single place that reads
+// it. A duration-only setter could not express an absolute date, and an absolute date is the only way
+// to say "expire every rule from this run on the same day".
+func (sm *SuppressionManager) SetGeneratedExpirySpec(spec ExpirySpec) {
+	sm.expiryMu.Lock()
+	defer sm.expiryMu.Unlock()
+	sm.generatedExpirySpec = spec
+}
+
+// generatedExpiry returns the ExpiresAt a newly generated rule should carry, or nil for none.
+func (sm *SuppressionManager) generatedExpiry(now time.Time) *time.Time {
+	sm.expiryMu.RLock()
+	defer sm.expiryMu.RUnlock()
+	return sm.generatedExpirySpec.Resolve(now)
+}
+
+// ExpiredSkips reports how many times a rule that WOULD have suppressed a finding was skipped because
+// it had expired, and the oldest such expiry seen.
+//
+// Counted at the moment of matching rather than by walking the file, because that is the number an
+// operator can act on: "3 findings are in your report that your own rules were meant to suppress" is
+// actionable, while "the file contains 245 expired rules" does not say whether any of them mattered.
+//
+// This is what was missing when the whole committed baseline lapsed: IsSuppressed skips an expired
+// rule with a bare `continue`, so a baseline could stop working entirely and every run looked normal.
+//
+// Atomic because IsSuppressed is called from the worker pool's redaction filter as well as from the
+// report path, so matching happens on several goroutines at once.
+func (sm *SuppressionManager) ExpiredSkips() (count int, oldest *time.Time) {
+	n := atomic.LoadInt64(&sm.expiredSkips)
+	sm.expiryMu.RLock()
+	defer sm.expiryMu.RUnlock()
+	if sm.oldestExpired != nil {
+		t := *sm.oldestExpired
+		oldest = &t
+	}
+	return int(n), oldest
+}
+
+// noteExpiredSkip records that an otherwise-matching rule was skipped for being expired.
+func (sm *SuppressionManager) noteExpiredSkip(expiredAt time.Time) {
+	atomic.AddInt64(&sm.expiredSkips, 1)
+	sm.expiryMu.Lock()
+	defer sm.expiryMu.Unlock()
+	if sm.oldestExpired == nil || expiredAt.Before(*sm.oldestExpired) {
+		t := expiredAt
+		sm.oldestExpired = &t
+	}
 }

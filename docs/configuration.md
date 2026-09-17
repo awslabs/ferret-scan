@@ -236,6 +236,11 @@ Profiles now support all command-line options and include specialized configurat
 - `show_suppressed`: Include suppressed findings in output
 - `respect_gitignore`: Honor `.gitignore` files when scanning (opt-in; see [File Exclusion Patterns](#file-exclusion-patterns))
 - `generate_suppressions`: Auto-generate suppression rules
+- `suppressions.expires_in`: how long a generated rule lives — `never` (default), a number of days
+  (`30`), days or weeks (`30d`, `4w`), a Go duration (`720h`), or an absolute date (`2026-12-31`).
+  A profile can override it with `suppression_expires_in`, and `--suppression-expires` overrides both.
+  Rules previously expired after one week unconditionally, which made a committed baseline inert
+  without warning (#696).
 - `fail_on_incomplete`: Exit with code `3` when any file was not fully scanned — either its validator coverage was cut short (timeout, cancellation, or a per-validator budget) or the file could not be opened at all (permissions, a dangling symlink, deletion mid-scan). Off by default; equivalent to the `--fail-on-incomplete` flag, which overrides this setting. See the README [Exit Codes](../README.md#exit-codes).
 
 ### CLI-Only Options (Not Configurable in YAML)

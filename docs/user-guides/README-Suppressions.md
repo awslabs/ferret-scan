@@ -36,6 +36,75 @@ The suppression system uses **cryptographic hashing** to uniquely identify findi
   ([#673](https://github.com/awslabs/ferret-scan/issues/673)); existing rule files keep matching,
   because the identity hash is unchanged.
 
+## Expiry
+
+**A generated rule does not expire.** It stays in force until you remove or disable it.
+
+That is a change. Rules used to expire **one week** after generation, always, and there was no way to
+ask for anything else. Because `IsSuppressed` skips an expired rule silently, a committed baseline
+would simply stop working seven days later with nothing to indicate it. Measured on this repository's
+own `.ferret-scan-suppressions.yaml`: all 245 rules — 92 of them `enabled: true` and hand-reviewed —
+carried `expires_at: 2026-05-28` and had been inert for about four months, while the file's own header
+said contributors and CI shared it as a baseline
+([#696](https://github.com/awslabs/ferret-scan/issues/696)).
+
+### Asking for an expiry
+
+If you want suppressions to lapse so they get revisited, say so:
+
+```bash
+ferret-scan --file . --recursive --generate-suppressions --suppression-expires 30d
+```
+
+| what you write | means |
+|---|---|
+| `never` (or omitted, or `0`) | **no expiry** — the default |
+| `30` | 30 days |
+| `30d` / `4w` | 30 days / 4 weeks |
+| `720h` / `90m` | any Go duration |
+| `2026-12-31` | an absolute date — every rule from this run lapses on that day |
+
+A bare number means **days**, not seconds — nobody sets a suppression to lapse in 30 seconds, and
+reading it that way would silently expire every rule in the run.
+
+Note that Go's own duration syntax has no `d` or `w`, so `720h` was originally the only way to say 30
+days. Both are accepted now.
+
+Set it once in config instead of on every invocation:
+
+```yaml
+suppressions:
+  expires_in: 30d          # or never (the default), 4w, 720h, 2026-12-31
+
+profiles:
+  audit:
+    suppression_expires_in: "2026-12-31"   # everything lapses before the next audit
+```
+
+Precedence is **`suppressions.expires_in` → profile `suppression_expires_in` → `--suppression-expires`**,
+with the flag winning. An explicit `expires_at` you write into a rule by hand always wins over all of
+them. An unparseable value is refused with the list of accepted forms rather than silently ignored.
+
+`d` is 24 hours and `w` is 168 hours — wall-clock, not calendar, so a `30d` expiry set the day before a
+DST change lands an hour off. That does not matter to a review interval measured in weeks, and calendar
+arithmetic would mean carrying a timezone in a file shared across machines.
+
+### An expired rule is now reported
+
+Skipping an expired rule is no longer silent. When a rule *would* have suppressed a finding but has
+lapsed, the run says so:
+
+```
+WARNING: 3 finding(s) are reported because their suppression rule has EXPIRED, oldest expired
+2026-05-28. An expired rule is skipped, so a baseline can stop working without any other sign.
+Remove the expires_at field, regenerate the rules, or run `ferret-scan-suppress --action cleanup`
+to drop them.
+```
+
+The count is taken at the moment of matching, not by reading the file, because that is the number you
+can act on — three findings in your report that your own rules were meant to suppress, rather than
+"the file contains 245 expired rules", which does not tell you whether any of them mattered.
+
 ## Configuration Files
 
 Ferret Scan resolves the suppression file path in this order:
