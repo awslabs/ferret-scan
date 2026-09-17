@@ -1,0 +1,371 @@
+# Metadata key census: the widest finding of each type, over the real validator set.
+# Regenerate with UPDATE_GOLDEN=1. A changed count is a per-finding memory change:
+# see the band boundaries logged by TestMetadataKeyCensusOverTheRealValidatorSet and #621.
+# Counts and key names only -- no byte figures, which are allocator-dependent.
+ABA_ROUTING	keys=9	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	federal_reserve_district
+	original_confidence
+	semantic_context
+	validation_path
+AMERICAN_EXPRESS	keys=13	band=1
+	card_type
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+	vendor
+AWS_ACCESS_KEY	keys=14	band=1
+	confidence_adjustment
+	confidence_ceiling
+	context_confidence
+	context_doc_type
+	context_doctype
+	context_domain
+	detection_method
+	environment_type
+	original_confidence
+	secret_type
+	semantic_context
+	source
+	validation_checks
+	validation_path
+AWS_ARN	keys=13	band=1
+	account_id
+	confidence_adjustment
+	confidence_factors
+	context_confidence
+	context_doctype
+	context_domain
+	original_confidence
+	provider
+	resource_type
+	semantic_context
+	service
+	validation_checks
+	validation_path
+AWS_SECRET_ACCESS_KEY	keys=13	band=1
+	confidence_adjustment
+	confidence_ceiling
+	context_confidence
+	context_doctype
+	context_domain
+	detection_method
+	example_embedded
+	original_confidence
+	secret_type
+	semantic_context
+	source
+	validation_checks
+	validation_path
+BUSINESS	keys=15	band=2
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	domain
+	email_provider
+	original_confidence
+	original_file
+	semantic_context
+	source
+	tld
+	username
+	validation_checks
+	validation_path
+DATE_OF_BIRTH	keys=11	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+DEA_NUMBER	keys=13	band=1
+	checksum_valid
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	last_name_initial
+	original_confidence
+	registrant_type
+	semantic_context
+	subtype
+	validation_checks
+	validation_path
+DRIVERS_LICENSE	keys=13	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	format
+	normalized
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+GMAIL	keys=15	band=2
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	domain
+	email_provider
+	original_confidence
+	original_file
+	semantic_context
+	source
+	tld
+	username
+	validation_checks
+	validation_path
+IBAN	keys=11	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	country
+	normalized
+	original_confidence
+	semantic_context
+	validation_checks
+	validation_path
+INSURANCE_MEMBER_ID	keys=10	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	semantic_context
+	subtype
+	validation_checks
+	validation_path
+INTELLECTUAL_PROPERTY	keys=31	band=3
+	analysis_confidence
+	confidence_adjustment
+	confidence_boost
+	confidence_boost_percentage
+	consolidated_count
+	context_confidence
+	context_doctype
+	context_domain
+	ip_types
+	legal_notice_type
+	match_text_truncated
+	notice_classification
+	original_confidence
+	original_confidences
+	original_context_impacts
+	original_file
+	original_match_count
+	original_match_texts
+	original_match_types
+	original_validation_checks
+	primary_match_index
+	proximity_score
+	reconstruction_algorithm
+	reconstruction_reason
+	reconstruction_timestamp
+	reconstruction_type
+	reconstruction_version
+	semantic_context
+	semantic_groups
+	source
+	validation_path
+MASTERCARD	keys=13	band=1
+	card_type
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+	vendor
+MEDICARE_MBI	keys=11	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	normalized
+	original_confidence
+	semantic_context
+	subtype
+	validation_checks
+	validation_path
+MRN	keys=10	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	semantic_context
+	subtype
+	validation_checks
+	validation_path
+OTP_SECRET	keys=11	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+PASSPORT	keys=12	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	country
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+PERSON_NAME	keys=14	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	context_keywords
+	cultural_context
+	name_components
+	original_confidence
+	pattern
+	pattern_priority
+	semantic_context
+	validation_checks
+	validation_path
+PHONE	keys=15	band=2
+	clean_number
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	country
+	format
+	original_confidence
+	original_file
+	pattern_name
+	semantic_context
+	source
+	validation_checks
+	validation_path
+SSN	keys=11	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+US_MILITARY_ADDRESS	keys=9	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_path
+US_RURAL_ROUTE	keys=10	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	original_confidence
+	original_file
+	semantic_context
+	short_form
+	source
+	validation_path
+US_STREET_ADDRESS	keys=11	band=1
+	case_relaxed
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+VIN	keys=11	band=1
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	manufacturer
+	original_confidence
+	semantic_context
+	source
+	validation_checks
+	validation_path
+VISA	keys=13	band=1
+	card_type
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	context_impact
+	original_confidence
+	original_file
+	semantic_context
+	source
+	validation_checks
+	validation_path
+	vendor
+# histogram of key counts across all findings carrying metadata
+# 9 keys: 3 findings (band 1)
+# 10 keys: 24 findings (band 1)
+# 11 keys: 19 findings (band 1)
+# 12 keys: 13 findings (band 1)
+# 13 keys: 16 findings (band 1)
+# 14 keys: 7 findings (band 1)
+# 15 keys: 25 findings (band 2)
+# 31 keys: 1 findings (band 3)
