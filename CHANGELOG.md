@@ -636,6 +636,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- **cloudresources, driverslicense:** two more sites took a byte offset from a `strings.ToLower` copy
+  and applied it to the **original** string — the class that has already produced four shipped bugs
+  (#658's two panics, #660's two silent misreads). `strings.ToLower` is not length-preserving: 25 runes
+  shrink and 2 grow, so a length-changing rune before the match shifts every subsequent offset. Both now
+  use `internal/bytefold`, which preserves byte positions.
+  ([#659](https://github.com/awslabs/ferret-scan/issues/659))
+
+  **`extractAzureResourceType` corrupted or lost its answer.** Measured on an Azure resource path with a
+  single length-changing rune before `/providers/`:
+
+  | `resourcePath` | returned |
+  |---|---|
+  | ASCII | `Microsoft.Compute/virtualMachines` ✓ |
+  | one `K` (U+212A) | `s/Microsoft.Compute` — shifted two bytes |
+  | one `İ` (U+0130) | `""` — **the resource type is lost** |
+  | forty `İ` | `"\xb0İİİİ…/providers"` — mojibake carrying an **invalid UTF-8 byte** |
+
+  **`markerModifiesLabel` returned the wrong answer.** Its offset was handed to
+  `markerOpensAsideAfter`, which indexes the original line, so the aside window landed elsewhere: on
+  `Driver License<rune> D1234567 (test record)` the bytes inspected were `"7 (see note)"` — a digit of
+  the value — with one `İ`, and `"\xb0İİİİİ "` with forty. Measured with the fold reverted, the verdict
+  flips **true → false** for U+0130, U+023A, U+023E and U+1E9E. True means "an aside marks this as a
+  test value, suppress it"; false means it is reported — the same silent shape as #660.
+
+  **Reachability through the CLI is not demonstrated for either site, and that is stated rather than
+  glossed.** An Azure resource ID whose subscription segment holds one of these runes yields **zero**
+  findings on both builds — the upstream matcher rejects it before the helper is reached, since such a
+  segment is not a valid GUID. And the driver's-licence line is suppressed on both builds, because
+  `strongSuppressKeywords` fires on "test" anywhere on the line "regardless of how strong" the positive
+  signal is, independently of this offset path. So both are wrong **answers from their functions**
+  rather than measured changes in what the tool reports. The fix stands on two other things: the
+  functions being correct, and the class — an offset applied to a string it was not computed from is a
+  defect whatever happens to mask it today, and two of the four earlier instances were panics that took
+  a whole file to 0 findings. This is the same position #659 records for the video extractor:
+  "confirmed mechanism, reachability UNTESTED".
+
+  **The class is now gated by an AST guard, not a grep.** Any `strings.Index`/`LastIndex`/`IndexAny`/
+  `IndexByte`/`IndexRune` whose **haystack** is a `strings.ToLower`/`ToUpper` call fails
+  `TestNoProductionCodeIndexesAToLoweredCopy`. The AST matters twice over: three previous regexp guards
+  in this repository matched their own explanatory comments, including a comment quoting the defective
+  call in order to explain it — and a grep cannot tell `strings.ToLower(x) == y` (fine, no offsets) from
+  `strings.Index(strings.ToLower(x), y)` (the defect), which the tree distinguishes exactly. It walks
+  246 production files and 18,625 call expressions, with floors on both counts so a walk that finds
+  nothing cannot read as a clean tree, and the root is located by climbing to `go.mod` rather than
+  `filepath.Abs("..")` — a previous guard resolved its root that way, landed one level short, and
+  checked one site instead of three while reporting success.
+
+  Seven controls accompany it: the two real shapes, `LastIndex`, `ToUpper`, and three that must **not**
+  fire — a folded *needle* alone, a comparison, and `strings.Contains`, none of which uses an offset.
+  Reverting the two fixes makes the guard name both sites by file and line.
+
+  Behaviour is pinned separately, because a guard on the *shape* cannot tell whether the replacement is
+  correct. Both tests sweep **every** rune below U+3000 whose lowercase differs in byte length, at one
+  and at forty repetitions, and both carry a non-vacuity floor requiring that set to be non-empty. The
+  driverslicense test asserts **invariance** rather than a fixed verdict — what the aside rule decides is
+  its own business; what must not happen is the answer depending on a rune the rule is not about — and it
+  requires its two line shapes to produce **different** verdicts, so it cannot pass on a rule that always
+  returns one value.
+
+  Note the earlier item of #659 needs no change: the video extractor was already converted to
+  `bytefold`, and its own comment records that the correction is what made the adjacent guard bite.
+
 - **pre-commit:** fix hook failing with "Executable not found" after pre-built binaries
   were removed from the repository. Switched from `language:script` to `language:python`
   so pre-commit automatically installs ferret-scan from PyPI into an isolated virtualenv.

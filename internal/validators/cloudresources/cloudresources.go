@@ -16,6 +16,7 @@ package cloudresources
 import (
 	stdctx "context"
 	"fmt"
+	"github.com/awslabs/ferret-scan/v2/internal/bytefold"
 	"regexp"
 	"sort"
 	"strings"
@@ -968,7 +969,19 @@ func extractAzureResourceGroup(resourcePath string) string {
 // extractAzureResourceType returns "namespace/type" after "/providers/".
 func extractAzureResourceType(resourcePath string) string {
 	const seg = "/providers/"
-	idx := strings.Index(strings.ToLower(resourcePath), strings.ToLower(seg))
+	// bytefold.Lower, not strings.ToLower: idx is an offset into the FOLDED copy and is then used to
+	// slice the ORIGINAL, so the fold must preserve byte positions. strings.ToLower does not — 25 runes
+	// shrink and 2 grow — and the effect here is not subtle. Measured on an Azure resource path with a
+	// single length-changing rune before "/providers/":
+	//
+	//	ascii                        -> "Microsoft.Compute/virtualMachines"   (correct)
+	//	one U+212A KELVIN SIGN       -> "s/Microsoft.Compute"                 (shifted)
+	//	one U+0130 dotted capital I  -> ""                                    (type LOST)
+	//	forty U+0130                 -> "\xb0İİİİ…/providers"                 (mojibake, invalid UTF-8)
+	//
+	// This is the fourth confirmed site of the class #659 tracks; the panic-shaped ones were fixed in
+	// #658 and the silent ones in #660, both by this same substitution.
+	idx := strings.Index(bytefold.Lower(resourcePath), bytefold.Lower(seg))
 	if idx == -1 {
 		return ""
 	}
