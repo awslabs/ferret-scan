@@ -29,7 +29,7 @@
             }
           ],
           "message": {
-            "text": "MASTERCARD Detected in <golden:context_soft_negative_labels> at line 2 (confidence: 100.0% - HIGH). Matched text: '5425233430109903'"
+            "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 2 (confidence: 100.0% - HIGH). Matched text: '5425233430109903'"
           },
           "properties": {
             "confidence": 100,
@@ -65,7 +65,7 @@
             },
             "validator": "creditcard"
           },
-          "rank": 75,
+          "rank": 100,
           "ruleId": "MASTERCARD"
         },
         {
@@ -94,7 +94,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:context_soft_negative_labels> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532015112830366'"
+            "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532015112830366'"
           },
           "properties": {
             "confidence": 100,
@@ -130,7 +130,7 @@
             },
             "validator": "creditcard"
           },
-          "rank": 75,
+          "rank": 100,
           "ruleId": "VISA"
         },
         {
@@ -159,7 +159,7 @@
             }
           ],
           "message": {
-            "text": "MRN Detected in <golden:context_soft_negative_labels> at line 3 (confidence: 65.0% - MEDIUM). Matched text: '1234567'"
+            "text": "Medical Identifier Detected in <golden:context_soft_negative_labels> at line 3 (confidence: 65.0% - MEDIUM). Matched text: '1234567'"
           },
           "properties": {
             "confidence": 65,
@@ -196,7 +196,7 @@
             ],
             "validator": "medicalid"
           },
-          "rank": 57.5,
+          "rank": 72.5,
           "ruleId": "MRN"
         },
         {
@@ -225,7 +225,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:context_soft_negative_labels> at line 4 (confidence: 15.0% - LOW). Matched text: '490154203237518'"
+            "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 4 (confidence: 15.0% - LOW). Matched text: '490154203237518'"
           },
           "properties": {
             "confidence": 15,
@@ -261,7 +261,7 @@
             },
             "validator": "creditcard"
           },
-          "rank": 32.5,
+          "rank": 57.5,
           "ruleId": "VISA"
         },
         {
@@ -290,7 +290,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in <golden:context_soft_negative_labels> at line 5 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
+            "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 5 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
           },
           "properties": {
             "confidence": 15,
@@ -326,7 +326,7 @@
             },
             "validator": "creditcard"
           },
-          "rank": 32.5,
+          "rank": 57.5,
           "ruleId": "VISA"
         }
       ],
@@ -337,41 +337,41 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type MASTERCARD was detected in the scanned content."
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mastercard",
               "id": "MASTERCARD",
               "shortDescription": {
-                "text": "MASTERCARD Detected"
+                "text": "Credit Card Number Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type MRN was detected in the scanned content."
+                "text": "A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mrn",
               "id": "MRN",
               "shortDescription": {
-                "text": "MRN Detected"
+                "text": "Medical Identifier Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Credit Card Number Detected"
               }
             }
           ],

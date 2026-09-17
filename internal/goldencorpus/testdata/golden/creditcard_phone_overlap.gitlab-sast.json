@@ -49,7 +49,7 @@
         "start_line": 1
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Critical"
     },
     {

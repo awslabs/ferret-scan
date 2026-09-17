@@ -504,6 +504,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snapshot holds a chart title, a comment author and SmartArt text while the chart's numeric cache stays
   absent.
 
+- **sarif, gitlab-sast, docs (`checks.md`):** **49 of 64** detection types had no description, so every
+  report about them said only *"<TYPE> Detected / Sensitive data of type <TYPE> was detected in the
+  scanned content"* — the entire explanation a reviewer gets in a code-scanning UI. Now **0 of 64**.
+  ([#662](https://github.com/awslabs/ferret-scan/issues/662))
+
+  Recounted at HEAD first, because both of the issue's headline numbers were wrong: it says 24
+  documented and 40 undocumented; the real split was **15** with a `SARIFShort` and **49** without, and
+  **37 types had nothing in any field**. 45 of 64 had no GitLab check description, 49 no remediation,
+  56 no display name. Every figure here is from the registry, and `core.TypesWithoutDescription()` now
+  reports it so the gate and the documentation cannot drift into two hand-counts.
+
+  **The gap was systematic, not 49 separate omissions, and the registry proves it: 10 of its 37 keys
+  are not detection types at all.** `SECRETS`, `METADATA`, `SOCIAL_MEDIA`, `SOCIAL_MEDIA_CLUSTER`,
+  `API_KEY`, `CLOUD_RESOURCE_ID`, `GPS`, `PII_PERSON`, `PII_LOCATION` and `PII_ORGANIZATION` are
+  validator-level family names that no finding ever carries. The map is keyed by the **sub-type** a
+  validator emits, but it was **populated at validator level** — so carefully written copy sat on keys
+  nothing looks up, while the sub-types that actually reach a report looked up nothing. `CREDIT_CARD`
+  had copy and a sensitivity weight of 10; `VISA` had neither.
+
+  **So the fix is inheritance, not 49 bespoke strings.** Writing prose per type is the per-instance fix
+  and cannot stay complete — sub-types are minted by validators, so the next one arrives with no copy
+  and nothing notices, which is how this reached 49. `core.DescribeType` resolves a sub-type to its
+  family **field by field**, because the registry's key sets differ per consumer by design: a type can
+  have its own SARIF copy while inheriting a GitLab remediation, and taking the parent wholesale on the
+  first empty field would overwrite copy the type does define. The pattern was already here —
+  `sarifCloudDesc` is one shared descriptor reused across every cloud sub-type — and this generalises
+  it. **49 of 64 types now resolve their description through a family.**
+
+  Six families had no descriptor anywhere and got one written: `BANK_ACCOUNT`, `MEDICAL_ID`,
+  `PHYSICAL_ADDRESS`, `OTP`, plus `DATE_OF_BIRTH` and `DRIVERS_LICENSE`, which have no family. These are
+  the types where the generic string was worst: a routing number with an account number is enough to
+  move money and the report did not say so; an MFA **seed** is a permanent second factor, so the remedy
+  is to re-enrol the account rather than delete the line; an NPI identifies a practitioner and is
+  published in a public registry, while an MRN identifies a patient — the report could not tell a
+  reviewer which of those they were looking at. Weights are set against the scale already in use
+  (`CREDIT_CARD` 10, `SECRETS` 9, `CLOUD_RESOURCE_ID` 7, `EMAIL` 5, `METADATA` 3) rather than invented,
+  and a test pins the ordering that matters: a credential outranks an address.
+
+  **`typeDescriptors` is untouched.** Its contract says *"Do NOT collapse the empty fields into shared
+  values"* and `typemeta_mirror_test.go` asserts it is a byte-for-byte mirror of the legacy formatter
+  maps — that mirror is what proves the migration lost nothing, so resolution happens in a new accessor
+  instead, and the registry wins any field it defines. Supplementary copy can only ever **fill** a gap,
+  which a test asserts directly.
+
+  The knock-on is the visible half: **`docs/checks.md` grows from 26KB to 43KB**, generated from the
+  same registry, so filling a description improves the SARIF rule, the GitLab vulnerability entry and
+  the documentation page in one edit. `SARIFSensitivityWeight` coverage also goes to 64 of 64, which
+  matters because 49 types were previously ranked at the default 5.0 — including every card brand,
+  whose family carries 10, and every token type, whose family carries 9.
+
+  **The gate's allowlist is empty, deliberately.** `TestEveryKnownTypeHasADescription` fails for any type
+  with no copy, and `typesAwaitingDescription` exists so that a future type that genuinely cannot be
+  described is recorded in one visible place that can only shrink — rather than the guard being deleted,
+  which is what happens to a test that blocks unrelated work. A stale exemption fails too. Five more
+  guards hold the mechanism: inheritance must carry at least 30 types (so nobody can satisfy the gate by
+  pasting 64 strings), every family named must be able to supply copy, inheritance must stay a single
+  hop, the registry must win every field it defines, and an unknown type must still resolve to nothing
+  so its consumer falls back as documented. Two compiling mutations — emptying the family map, and
+  dropping the six new descriptors — fail the gate with 47 and 18 undescribed types respectively.
+
 - **web:** cache `SuppressionManager` on the `WebServer` with mtime-based reload — eliminates the per-request YAML re-parse that previously dominated `/scan` and `/suppressions` latency. With a 5,000-rule (45k-line) suppression file across 50 sequential requests:
   - `/scan`: 68.7 ms → 28.5 ms per request (**2.4×**)
   - `/suppressions`: 67.3 ms → 29.6 ms per request (**2.3×**)

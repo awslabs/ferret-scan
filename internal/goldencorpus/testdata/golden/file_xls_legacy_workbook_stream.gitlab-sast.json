@@ -75,13 +75,13 @@
         "start_line": 3
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/budget.xls (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/budget.xls (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -101,7 +101,7 @@
         "start_line": 1
       },
       "message": "Author information detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Author Info Detected",
+      "name": "Sensitive Metadata Detected",
       "severity": "High"
     }
   ]

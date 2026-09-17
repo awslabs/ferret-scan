@@ -148,7 +148,8 @@ func (m *VulnerabilityMapper) generateVulnerabilityName(checkType string) string
 	// 3.3, name tier). Keyed by validator name (CREDIT_CARD, …); sub-types like
 	// VISA have no GitLabName entry and hit the title-case fallback below,
 	// byte-identical to the former local nameMap behavior.
-	if d, ok := core.TypeMeta(strings.ToUpper(checkType)); ok && d.GitLabName != "" {
+	// DescribeType: see #662 — the registry is keyed by sub-type but was populated at validator level.
+	if d := core.DescribeType(strings.ToUpper(checkType)); d.GitLabName != "" {
 		return d.GitLabName
 	}
 

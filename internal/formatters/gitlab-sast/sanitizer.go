@@ -196,7 +196,8 @@ func (s *DataSanitizer) GetCheckTypeDescription(checkType string) string {
 	// Human-readable per-type description from the central type-metadata
 	// registry (core.TypeMeta — v2 gap 3.3). Types without an entry fall back to
 	// the readable-format conversion below, unchanged.
-	if d, ok := core.TypeMeta(checkType); ok && d.GitLabCheckDesc != "" {
+	// DescribeType: see #662.
+	if d := core.DescribeType(checkType); d.GitLabCheckDesc != "" {
 		return d.GitLabCheckDesc
 	}
 
@@ -265,7 +266,8 @@ func (s *DataSanitizer) getRemediationGuidance(checkType string) string {
 	// than GetCheckTypeDescription (e.g. no SLACK_TOKEN/AUTHOR_INFO), so those
 	// types correctly fall through to the generic guidance below — the registry
 	// leaves GitLabRemediation empty for them, preserving that behavior.
-	if d, ok := core.TypeMeta(checkType); ok && d.GitLabRemediation != "" {
+	// DescribeType: see #662.
+	if d := core.DescribeType(checkType); d.GitLabRemediation != "" {
 		return d.GitLabRemediation
 	}
 

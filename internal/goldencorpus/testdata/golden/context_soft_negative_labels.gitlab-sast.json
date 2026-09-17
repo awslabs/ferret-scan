@@ -49,7 +49,7 @@
         "start_line": 2
       },
       "message": "Mastercard credit card detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Mastercard Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Critical"
     },
     {
@@ -75,13 +75,13 @@
         "start_line": 1
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Critical"
     },
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive data (mrn) in this file.\n\n**Location:** <golden:context_soft_negative_labels> (line 3)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nPatient account number: 1234567 on chart\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nReview the detected sensitive data and remove or replace it with appropriate test data or placeholders.",
+      "description": "Ferret Scan detected medical or healthcare identifier in this file.\n\n**Location:** <golden:context_soft_negative_labels> (line 3)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nPatient account number: 1234567 on chart\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nRemove patient identifiers (MRN, Medicare MBI, insurance member ID) or replace them with synthetic values, and confirm the record's handling requirements. A DEA number is also a prescribing credential. An NPI is published publicly and is usually safe alone.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -100,8 +100,8 @@
         "file": "<golden:context_soft_negative_labels>",
         "start_line": 3
       },
-      "message": "Sensitive data (mrn) detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Mrn Detected",
+      "message": "Medical or healthcare identifier detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Medical Identifier Detected",
       "severity": "High"
     },
     {
@@ -127,7 +127,7 @@
         "start_line": 4
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: LOW)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Medium"
     },
     {
@@ -153,7 +153,7 @@
         "start_line": 5
       },
       "message": "Visa credit card detected: [HIDDEN] (confidence: LOW)",
-      "name": "Visa Detected",
+      "name": "Credit Card Number Detected",
       "severity": "Medium"
     }
   ]

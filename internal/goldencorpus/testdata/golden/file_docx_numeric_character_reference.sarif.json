@@ -287,7 +287,7 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in numrefs.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+            "text": "Sensitive Metadata Detected in numrefs.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
           "properties": {
             "confidence": 60,
@@ -323,7 +323,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 55,
+          "rank": 45,
           "ruleId": "AUTHOR_INFO"
         },
         {
@@ -346,7 +346,7 @@
             }
           ],
           "message": {
-            "text": "LAST_MODIFIED_BY Detected in numrefs.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+            "text": "Sensitive Metadata Detected in numrefs.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
           },
           "properties": {
             "confidence": 60,
@@ -382,7 +382,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 55,
+          "rank": 45,
           "ruleId": "LAST_MODIFIED_BY"
         }
       ],
@@ -393,28 +393,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type AUTHOR_INFO was detected in the scanned content."
+                "text": "Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#author_info",
               "id": "AUTHOR_INFO",
               "shortDescription": {
-                "text": "AUTHOR_INFO Detected"
+                "text": "Sensitive Metadata Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type LAST_MODIFIED_BY was detected in the scanned content."
+                "text": "Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#last_modified_by",
               "id": "LAST_MODIFIED_BY",
               "shortDescription": {
-                "text": "LAST_MODIFIED_BY Detected"
+                "text": "Sensitive Metadata Detected"
               }
             },
             {

@@ -375,7 +375,10 @@ func (m *VulnerabilityMapper) calculateRank(match detector.Match) float64 {
 	// missing/zero weight defaults to 5.0 (byte-identical to the prior map-miss
 	// behavior).
 	sensitivity := 5.0
-	if d, ok := core.TypeMeta(match.Type); ok && d.SARIFSensitivityWeight != 0 {
+	// DescribeType so a sub-type inherits its family's weight: 49 types reached the default 5.0,
+	// including every card brand, whose family CREDIT_CARD carries 10, and every token type, whose
+	// family SECRETS carries 9 (#662).
+	if d := core.DescribeType(match.Type); d.SARIFSensitivityWeight != 0 {
 		sensitivity = d.SARIFSensitivityWeight
 	}
 

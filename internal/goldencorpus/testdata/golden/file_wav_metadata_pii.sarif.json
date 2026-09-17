@@ -23,7 +23,7 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in clip.wav at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'john.doe@example.com'"
+            "text": "Sensitive Metadata Detected in clip.wav at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'john.doe@example.com'"
           },
           "properties": {
             "confidence": 80,
@@ -62,7 +62,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 65,
+          "rank": 55,
           "ruleId": "AUTHOR_INFO"
         },
         {
@@ -85,7 +85,7 @@
             }
           ],
           "message": {
-            "text": "DOCUMENT_COMMENTS Detected in clip.wav at line 7 (confidence: 65.0% - MEDIUM). Matched text: 'contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE'"
+            "text": "Sensitive Metadata Detected in clip.wav at line 7 (confidence: 65.0% - MEDIUM). Matched text: 'contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE'"
           },
           "properties": {
             "confidence": 65,
@@ -122,7 +122,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 57.5,
+          "rank": 47.5,
           "ruleId": "DOCUMENT_COMMENTS"
         },
         {
@@ -151,7 +151,7 @@
             }
           ],
           "message": {
-            "text": "BUSINESS Detected in clip.wav at line 6 (confidence: 25.0% - LOW). Matched text: 'john.doe@example.com'"
+            "text": "Email Address Detected in clip.wav at line 6 (confidence: 25.0% - LOW). Matched text: 'john.doe@example.com'"
           },
           "properties": {
             "confidence": 25,
@@ -222,7 +222,7 @@
             }
           ],
           "message": {
-            "text": "AWS_ACCESS_KEY Detected in clip.wav at line 7 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
+            "text": "Secret or API Key Detected in clip.wav at line 7 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
           },
           "properties": {
             "confidence": 15,
@@ -260,7 +260,7 @@
             },
             "validator": "secrets"
           },
-          "rank": 32.5,
+          "rank": 52.5,
           "ruleId": "AWS_ACCESS_KEY"
         },
         {
@@ -346,54 +346,54 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type AUTHOR_INFO was detected in the scanned content."
+                "text": "Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#author_info",
               "id": "AUTHOR_INFO",
               "shortDescription": {
-                "text": "AUTHOR_INFO Detected"
+                "text": "Sensitive Metadata Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type AWS_ACCESS_KEY was detected in the scanned content."
+                "text": "A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#aws_access_key",
               "id": "AWS_ACCESS_KEY",
               "shortDescription": {
-                "text": "AWS_ACCESS_KEY Detected"
+                "text": "Secret or API Key Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type BUSINESS was detected in the scanned content."
+                "text": "An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#business",
               "id": "BUSINESS",
               "shortDescription": {
-                "text": "BUSINESS Detected"
+                "text": "Email Address Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type DOCUMENT_COMMENTS was detected in the scanned content."
+                "text": "Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#document_comments",
               "id": "DOCUMENT_COMMENTS",
               "shortDescription": {
-                "text": "DOCUMENT_COMMENTS Detected"
+                "text": "Sensitive Metadata Detected"
               }
             },
             {

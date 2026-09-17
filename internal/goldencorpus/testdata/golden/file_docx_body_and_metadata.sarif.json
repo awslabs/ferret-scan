@@ -95,7 +95,7 @@
             }
           ],
           "message": {
-            "text": "VISA Detected in report.docx at line 5 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
+            "text": "Credit Card Number Detected in report.docx at line 5 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
           "properties": {
             "confidence": 100,
@@ -131,7 +131,7 @@
             },
             "validator": "creditcard"
           },
-          "rank": 75,
+          "rank": 100,
           "ruleId": "VISA"
         },
         {
@@ -154,7 +154,7 @@
             }
           ],
           "message": {
-            "text": "AUTHOR_INFO Detected in report.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+            "text": "Sensitive Metadata Detected in report.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
           "properties": {
             "confidence": 60,
@@ -190,7 +190,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 55,
+          "rank": 45,
           "ruleId": "AUTHOR_INFO"
         },
         {
@@ -213,7 +213,7 @@
             }
           ],
           "message": {
-            "text": "LAST_MODIFIED_BY Detected in report.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+            "text": "Sensitive Metadata Detected in report.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
           },
           "properties": {
             "confidence": 60,
@@ -249,7 +249,7 @@
             },
             "validator": "metadata"
           },
-          "rank": 55,
+          "rank": 45,
           "ruleId": "LAST_MODIFIED_BY"
         }
       ],
@@ -260,28 +260,28 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "Sensitive data of type AUTHOR_INFO was detected in the scanned content."
+                "text": "Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#author_info",
               "id": "AUTHOR_INFO",
               "shortDescription": {
-                "text": "AUTHOR_INFO Detected"
+                "text": "Sensitive Metadata Detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type LAST_MODIFIED_BY was detected in the scanned content."
+                "text": "Sensitive metadata was detected in file properties. This may include author names, organization information, document history, or other potentially sensitive information embedded in file metadata."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#last_modified_by",
               "id": "LAST_MODIFIED_BY",
               "shortDescription": {
-                "text": "LAST_MODIFIED_BY Detected"
+                "text": "Sensitive Metadata Detected"
               }
             },
             {
@@ -299,15 +299,15 @@
             },
             {
               "fullDescription": {
-                "text": "Sensitive data of type VISA was detected in the scanned content."
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
               },
               "help": {
-                "text": "Review this finding to determine if the detected data should be present in the code. Consider whether it should be stored in a secure configuration system instead."
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
               "id": "VISA",
               "shortDescription": {
-                "text": "VISA Detected"
+                "text": "Credit Card Number Detected"
               }
             }
           ],
