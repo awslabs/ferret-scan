@@ -2107,6 +2107,15 @@ func main() {
 			RedactionOutputDir: finalConfig.redactionOutputDir,
 			ValidatorBudgets:   validatorBudgets,
 			MaxLiveBytes:       maxLiveBytesVal,
+			// Redaction must not rewrite a span the user suppressed. Redaction happens INSIDE the
+			// worker pool (deliberately, so the extracted content is not re-derived), and suppression
+			// used to be applied afterwards — so the redactor saw every match. The --stdin path
+			// already filtered first, which is why the two channels disagreed on identical input and
+			// identical rules (#697).
+			SuppressionFilter: func(m detector.Match) bool {
+				suppressed, _ := suppressionManager.IsSuppressed(m)
+				return suppressed
+			},
 		}
 
 		// Show initial progress
@@ -2271,6 +2280,25 @@ func main() {
 		} else {
 			unsuppressedMatches = append(unsuppressedMatches, match)
 		}
+	}
+
+	// Say when a suppression kept a value out of the redacted output.
+	//
+	// Suppressing a finding excludes it from redaction as well as from the report — that is the
+	// intended rule, and it is what makes "unsuppress to include it in redaction" the remedy. But
+	// under the sink rule the consequence is that a suppressed value stays in the redacted copy in
+	// cleartext, and a rule that is wrong (or has outlived its reason) is then invisible: the report
+	// shows nothing and the output file still holds the value. So it is disclosed rather than silent.
+	//
+	// stderr and not the structured output, deliberately: this is not a gap in what the tool did, it
+	// is the user's own decision being honoured, and adding a stats key would change the output
+	// schema for every consumer. --show-suppressed already lists the individual findings.
+	if suppressedCount > 0 && finalConfig.enableRedaction {
+		fmt.Fprintf(os.Stderr,
+			"Note: %d suppressed finding(s) were left in the redacted output — suppressing a finding "+
+				"excludes it from redaction as well as from the report. Unsuppress it to have the value "+
+				"rewritten, or use --show-suppressed to see which findings these are.\n",
+			suppressedCount)
 	}
 
 	if suppressedCount > 0 {

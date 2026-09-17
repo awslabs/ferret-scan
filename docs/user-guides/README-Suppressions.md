@@ -320,3 +320,40 @@ ferret-scan --file . --suppression-file prod-suppressions.yaml
 ```
 
 This suppression system provides a secure, auditable way to manage false positives while maintaining the privacy of sensitive data.
+
+## Suppression and redaction
+
+**Suppressing a finding excludes it from redaction as well as from the report. Unsuppress it to have
+the value rewritten.**
+
+That is worth stating plainly because the two halves used to disagree. A suppressed finding was left
+out of the report and its span was rewritten anyway, so the report said nothing was found while the
+output file had been modified:
+
+```
+report:   results: []                      suppressed: 2
+artifact: Employee SSN: [SSN-REDACTED]     <- rewritten despite being suppressed
+```
+
+Worse, the `--file` and `--stdin` paths disagreed: `--stdin` filtered before redacting and `--file` did
+not, so the same input with the same rules produced different output depending on which channel you
+used. Both now honour the suppression.
+
+### What this costs, and why it is disclosed
+
+A suppressed value **stays in the redacted copy in cleartext**. That is the point — you told the tool
+the finding was not a problem — but it means a rule that is wrong, or that has outlived its reason, is
+invisible in the report while the value is still in a file you might forward. So a redaction run says
+so:
+
+```
+Note: 2 suppressed finding(s) were left in the redacted output — suppressing a finding excludes it
+from redaction as well as from the report. Unsuppress it to have the value rewritten, or use
+--show-suppressed to see which findings these are.
+```
+
+Use `--show-suppressed` to list them. If a suppressed value should be redacted after all, remove or
+disable its rule: there is no way to suppress a finding from the report while still redacting it, and
+deliberately so — a report and an output file that disagree about the same document is the condition
+this change removed.
+
