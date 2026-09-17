@@ -130,6 +130,11 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --explain\t\tAnnotate each finding with a plain-language rationale, a verdict (likely real/test/uncertain), and a drafted suppression reason. Fully offline; no data leaves the host.")
 	fmt.Fprintln(w, "  --suppression-file\t<path>\tPath to suppression configuration file (default: .ferret-scan-suppressions.yaml)")
 	fmt.Fprintln(w, "  --generate-suppressions\t\tGenerate suppression rules for all findings (disabled by default)")
+	// Listed here as well as registered, because a registered flag absent from this text is a
+	// capability nobody discovers. cmd/suppression_expiry_alignment_test.go asserts that this line
+	// names every form the parser accepts AND the config key, which is how the omission was caught:
+	// the flag shipped registered and unmentioned.
+	fmt.Fprintln(w, "  --suppression-expires\t<spec>\tLifetime for rules written by --generate-suppressions: 30 (days), 30d, 4w, 720h, an absolute date 2026-12-31, or never (default). Config: suppressions.expires_in")
 	fmt.Fprintln(w, "  --quiet\t\tSuppress progress output (useful for scripts and CI/CD)")
 	fmt.Fprintln(w, "  --pre-commit-mode\t\tEnable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
 	fmt.Fprintln(w, "  --fail-on-incomplete\t\tExit non-zero (3) if any file was not fully scanned -- coverage cut short (timeout, cancellation, or budget) or the file could not be opened at all. Default off: both conditions only warn on stderr.")

@@ -199,6 +199,16 @@ validators:
 suppressions:
   file: .ferret-scan-suppressions.yaml
   generate_on_scan: false
+  # How long a generated rule lives. Accepts a number of days (30), days or weeks
+  # (30d, 4w), a Go duration (720h, 90m), an absolute date (2026-12-31), or "never".
+  # Default: never — a rule stays in force until you remove or disable it.
+  #
+  # Rules used to expire one week after generation, unconditionally, which made a
+  # committed baseline silently inert seven days later: an expired rule is skipped,
+  # so nothing looked wrong. Set this only if you WANT suppressions to lapse so they
+  # get revisited; a run in which an expired rule would have matched says so.
+  # Overridden by a profile's suppression_expires_in, and by --suppression-expires.
+  expires_in: never
   show_suppressed: false
 
 # ─────────────────────────────────────────────────────────────────────────────

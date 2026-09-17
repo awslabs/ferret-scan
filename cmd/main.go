@@ -243,6 +243,7 @@ type configFlags struct {
 	generateSuppressions bool
 	failOnIncomplete     bool
 	suppressionFile      string
+	suppressionExpiresIn string
 	// Redaction flags
 	enableRedaction    bool
 	redactionOutputDir string
@@ -276,6 +277,7 @@ type finalConfiguration struct {
 	generateSuppressions bool
 	failOnIncomplete     bool
 	suppressionFile      string
+	suppressionExpiresIn string
 	disableIPTypes       string
 }
 
@@ -514,6 +516,23 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 	}
 	if isFlagSet("generate-suppressions") {
 		final.generateSuppressions = flags.generateSuppressions
+	}
+
+	// Suppression expiry: config suppressions section -> profile -> flag (flag wins).
+	//
+	// Same shape as generate_suppressions above. The value is kept as the user's STRING rather than a
+	// parsed duration, because ParseExpirySpec is the single place that reads the spelling and its
+	// error message is the one a user should see — parsing in three places would mean three different
+	// error messages for "30 days".
+	final.suppressionExpiresIn = ""
+	if cfg != nil {
+		final.suppressionExpiresIn = cfg.Suppressions.ExpiresIn
+	}
+	if activeProfile != nil && activeProfile.SuppressionExpiresIn != "" {
+		final.suppressionExpiresIn = activeProfile.SuppressionExpiresIn
+	}
+	if isFlagSet("suppression-expires") {
+		final.suppressionExpiresIn = flags.suppressionExpiresIn
 	}
 
 	// Fail on incomplete coverage: config default -> profile -> flag (flag wins).
@@ -953,6 +972,7 @@ type extractedFlags struct {
 	redactionStrategy    string
 	redactionAuditLog    string
 	suppressionFile      string
+	suppressionExpiresIn string
 	excludePatterns      []string
 	respectGitignore     bool
 	disableIPTypes       string
@@ -980,21 +1000,22 @@ type flagPointers struct {
 	respectGitignore     *bool
 
 	// String flags
-	webPort            *string
-	webBind            *string
-	inputFile          *string
-	configFile         *string
-	profileName        *string
-	outputFormat       *string
-	confidenceLevels   *string
-	checksToRun        *string
-	redactionOutputDir *string
-	redactionStrategy  *string
-	redactionAuditLog  *string
-	outputFile         *string
-	suppressionFile    *string
-	excludePatterns    *string
-	disableIPTypes     *string
+	webPort              *string
+	webBind              *string
+	inputFile            *string
+	configFile           *string
+	profileName          *string
+	outputFormat         *string
+	confidenceLevels     *string
+	checksToRun          *string
+	redactionOutputDir   *string
+	redactionStrategy    *string
+	redactionAuditLog    *string
+	outputFile           *string
+	suppressionFile      *string
+	suppressionExpiresIn *string
+	excludePatterns      *string
+	disableIPTypes       *string
 }
 
 // extractAllFlags safely extracts all flag values once to avoid repeated nil checks
@@ -1028,6 +1049,7 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 		redactionAuditLog:    getStringFlag(flags.redactionAuditLog),
 		outputFile:           getStringFlag(flags.outputFile),
 		suppressionFile:      getStringFlag(flags.suppressionFile),
+		suppressionExpiresIn: getStringFlag(flags.suppressionExpiresIn),
 		excludePatterns:      parseExcludePatterns(getStringFlag(flags.excludePatterns)),
 		respectGitignore:     getBoolFlag(flags.respectGitignore),
 		disableIPTypes:       getStringFlag(flags.disableIPTypes),
@@ -1078,7 +1100,7 @@ func main() {
 	// committed baseline inert seven days later — this repository's own 245-rule baseline had been
 	// doing nothing for four months. Rules now last until someone changes them, and a team that wants
 	// them to lapse asks for it here (#696).
-	suppressionExpires := flag.Duration("suppression-expires", 0, "Lifetime for rules written by --generate-suppressions, e.g. 720h (default: no expiry; an expired rule is skipped, and skips are reported)")
+	suppressionExpires := flag.String("suppression-expires", "", "Lifetime for rules written by --generate-suppressions: days (30), days or weeks (30d, 4w), a Go duration (720h), an absolute date (2026-12-31), or 'never'. Default: never. Config: suppressions.expires_in")
 
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
 	quiet := flag.Bool("quiet", false, "Suppress progress output (useful for scripts and CI/CD)")
@@ -1157,21 +1179,22 @@ func main() {
 		respectGitignore:     respectGitignore,
 
 		// String flags
-		webPort:            webPort,
-		webBind:            webBind,
-		inputFile:          inputFile,
-		configFile:         configFile,
-		profileName:        profileName,
-		outputFormat:       outputFormat,
-		confidenceLevels:   confidenceLevels,
-		checksToRun:        checksToRun,
-		redactionOutputDir: redactionOutputDir,
-		redactionStrategy:  redactionStrategy,
-		redactionAuditLog:  redactionAuditLog,
-		outputFile:         outputFile,
-		suppressionFile:    suppressionFile,
-		excludePatterns:    excludePatterns,
-		disableIPTypes:     disableIPTypes,
+		webPort:              webPort,
+		webBind:              webBind,
+		inputFile:            inputFile,
+		configFile:           configFile,
+		profileName:          profileName,
+		outputFormat:         outputFormat,
+		confidenceLevels:     confidenceLevels,
+		checksToRun:          checksToRun,
+		redactionOutputDir:   redactionOutputDir,
+		redactionStrategy:    redactionStrategy,
+		redactionAuditLog:    redactionAuditLog,
+		outputFile:           outputFile,
+		suppressionFile:      suppressionFile,
+		suppressionExpiresIn: suppressionExpires,
+		excludePatterns:      excludePatterns,
+		disableIPTypes:       disableIPTypes,
 	})
 
 	// Handle web mode early - validate flags and start web server if requested
@@ -1269,6 +1292,7 @@ func main() {
 		generateSuppressions: flags.generateSuppressions,
 		failOnIncomplete:     flags.failOnIncomplete,
 		suppressionFile:      flags.suppressionFile,
+		suppressionExpiresIn: flags.suppressionExpiresIn,
 		disableIPTypes:       flags.disableIPTypes,
 	})
 
@@ -1781,8 +1805,15 @@ func main() {
 	// Initialize suppression manager. The path comes from resolveConfiguration so
 	// that suppressions.file in the config file is honored, not just the flag.
 	suppressionManager := suppressions.NewSuppressionManager(finalConfig.suppressionFile)
-	if *suppressionExpires > 0 {
-		suppressionManager.SetGeneratedExpiry(*suppressionExpires)
+	if finalConfig.suppressionExpiresIn != "" {
+		spec, err := suppressions.ParseExpirySpec(finalConfig.suppressionExpiresIn)
+		if err != nil {
+			printPrecommitError(precommitConfig, err.Error(),
+				"Use a number of days (30), days or weeks (30d, 4w), a Go duration (720h), an "+
+					"absolute date (2026-12-31), or 'never'")
+			os.Exit(1)
+		}
+		suppressionManager.SetGeneratedExpirySpec(spec)
 	}
 	if mainDebugObs != nil {
 		mainDebugObs.LogDetail("main", "Suppression manager initialized")

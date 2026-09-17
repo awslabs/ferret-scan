@@ -36,11 +36,41 @@ said contributors and CI shared it as a baseline
 If you want suppressions to lapse so they get revisited, say so:
 
 ```bash
-ferret-scan --file . --recursive --generate-suppressions --suppression-expires 720h   # 30 days
+ferret-scan --file . --recursive --generate-suppressions --suppression-expires 30d
 ```
 
-Any Go duration works (`24h`, `720h`, `2160h`). An explicit `expires_at` you write into the file by
-hand always wins.
+| what you write | means |
+|---|---|
+| `never` (or omitted, or `0`) | **no expiry** — the default |
+| `30` | 30 days |
+| `30d` / `4w` | 30 days / 4 weeks |
+| `720h` / `90m` | any Go duration |
+| `2026-12-31` | an absolute date — every rule from this run lapses on that day |
+
+A bare number means **days**, not seconds — nobody sets a suppression to lapse in 30 seconds, and
+reading it that way would silently expire every rule in the run.
+
+Note that Go's own duration syntax has no `d` or `w`, so `720h` was originally the only way to say 30
+days. Both are accepted now.
+
+Set it once in config instead of on every invocation:
+
+```yaml
+suppressions:
+  expires_in: 30d          # or never (the default), 4w, 720h, 2026-12-31
+
+profiles:
+  audit:
+    suppression_expires_in: "2026-12-31"   # everything lapses before the next audit
+```
+
+Precedence is **`suppressions.expires_in` → profile `suppression_expires_in` → `--suppression-expires`**,
+with the flag winning. An explicit `expires_at` you write into a rule by hand always wins over all of
+them. An unparseable value is refused with the list of accepted forms rather than silently ignored.
+
+`d` is 24 hours and `w` is 168 hours — wall-clock, not calendar, so a `30d` expiry set the day before a
+DST change lands an hour off. That does not matter to a review interval measured in weeks, and calendar
+arithmetic would mean carrying a timezone in a file shared across machines.
 
 ### An expired rule is now reported
 

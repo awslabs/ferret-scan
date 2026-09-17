@@ -88,6 +88,10 @@ type Config struct {
 		File           string `yaml:"file"`
 		GenerateOnScan bool   `yaml:"generate_on_scan"`
 		ShowSuppressed bool   `yaml:"show_suppressed"`
+		// ExpiresIn is how long a generated rule lives: "30d", "4w", "720h", "2026-12-31", or
+		// "never". Empty means never, which is the default — a rule used to expire after one week
+		// unconditionally, which quietly made a committed baseline inert (#696).
+		ExpiresIn string `yaml:"expires_in"`
 	} `yaml:"suppressions"`
 
 	// Platform-specific configurations
@@ -169,6 +173,7 @@ type Profile struct {
 	Quiet                bool                              `yaml:"quiet"`
 	ShowSuppressed       bool                              `yaml:"show_suppressed"`
 	GenerateSuppressions bool                              `yaml:"generate_suppressions"`
+	SuppressionExpiresIn string                            `yaml:"suppression_expires_in"`
 	FailOnIncomplete     bool                              `yaml:"fail_on_incomplete"`
 	Description          string                            `yaml:"description"`
 	Validators           map[string]map[string]interface{} `yaml:"validators"`

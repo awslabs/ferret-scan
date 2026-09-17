@@ -89,8 +89,9 @@ type SuppressionManager struct {
 	// indexMu.RLock() across its match loop, and noteExpiredSkip is called from inside that loop, so
 	// reusing indexMu would deadlock on the write lock.
 	expiryMu sync.RWMutex
-	// generatedExpiryFor is the lifetime given to newly generated rules; zero means none (#696).
-	generatedExpiryFor time.Duration
+	// generatedExpirySpec is the lifetime given to newly generated rules; the zero value means none.
+	// A spec rather than a duration so an absolute date is expressible (#696).
+	generatedExpirySpec ExpirySpec
 
 	// expiredSkips counts rules that matched a finding but had expired. Atomic: IsSuppressed runs on
 	// worker goroutines as well as the report path.
@@ -993,20 +994,24 @@ func (sm *SuppressionManager) CreateSuppressionFromFindingWithState(hash, reason
 //
 // A zero or negative d means no expiry, which is the default.
 func (sm *SuppressionManager) SetGeneratedExpiry(d time.Duration) {
+	sm.SetGeneratedExpirySpec(ExpirySpec{relative: d, source: d.String()})
+}
+
+// SetGeneratedExpirySpec is the form the CLI and the config file both use, because both carry the
+// user's own spelling — "30d", "4w", "2026-12-31" — and ParseExpirySpec is the single place that reads
+// it. A duration-only setter could not express an absolute date, and an absolute date is the only way
+// to say "expire every rule from this run on the same day".
+func (sm *SuppressionManager) SetGeneratedExpirySpec(spec ExpirySpec) {
 	sm.expiryMu.Lock()
 	defer sm.expiryMu.Unlock()
-	sm.generatedExpiryFor = d
+	sm.generatedExpirySpec = spec
 }
 
 // generatedExpiry returns the ExpiresAt a newly generated rule should carry, or nil for none.
 func (sm *SuppressionManager) generatedExpiry(now time.Time) *time.Time {
 	sm.expiryMu.RLock()
 	defer sm.expiryMu.RUnlock()
-	if sm.generatedExpiryFor <= 0 {
-		return nil
-	}
-	t := now.Add(sm.generatedExpiryFor)
-	return &t
+	return sm.generatedExpirySpec.Resolve(now)
 }
 
 // ExpiredSkips reports how many times a rule that WOULD have suppressed a finding was skipped because

@@ -219,3 +219,95 @@ func (sm *SuppressionManager) rebuildIndexIfNeeded(t *testing.T) {
 		t.Fatalf("the rule index is empty after a rebuild; no rule can match and the test is vacuous")
 	}
 }
+
+// TestParseExpirySpecCoversEveryForm is the parser's own table.
+//
+// Separate from the alignment guard in cmd/: that one asserts the documented forms parse, this one
+// asserts what each form MEANS. A parser that accepted "4w" and returned 4 hours would satisfy the
+// alignment test perfectly.
+func TestParseExpirySpecCoversEveryForm(t *testing.T) {
+	now := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		in      string
+		wantDur time.Duration // for relative specs
+		wantAbs string        // YYYY-MM-DD for absolute specs
+		wantNil bool          // no expiry
+	}{
+		{in: "", wantNil: true},
+		{in: "0", wantNil: true},
+		{in: "never", wantNil: true},
+		{in: "NEVER", wantNil: true},
+		{in: "none", wantNil: true},
+		{in: "30", wantDur: 30 * 24 * time.Hour},
+		{in: "30d", wantDur: 30 * 24 * time.Hour},
+		{in: "1d", wantDur: 24 * time.Hour},
+		{in: "4w", wantDur: 28 * 24 * time.Hour},
+		{in: "720h", wantDur: 720 * time.Hour},
+		{in: "90m", wantDur: 90 * time.Minute},
+		{in: "1h30m", wantDur: 90 * time.Minute},
+		{in: " 30d ", wantDur: 30 * 24 * time.Hour},
+		{in: "2026-12-31", wantAbs: "2026-12-31"},
+		{in: "2026-12-31T00:00:00Z", wantAbs: "2026-12-31"},
+	}
+	for _, tc := range cases {
+		spec, err := ParseExpirySpec(tc.in)
+		if err != nil {
+			t.Errorf("ParseExpirySpec(%q): %v", tc.in, err)
+			continue
+		}
+		got := spec.Resolve(now)
+		switch {
+		case tc.wantNil:
+			if got != nil {
+				t.Errorf("ParseExpirySpec(%q) resolved to %v, want no expiry", tc.in, got)
+			}
+		case tc.wantAbs != "":
+			if got == nil || got.Format("2006-01-02") != tc.wantAbs {
+				t.Errorf("ParseExpirySpec(%q) resolved to %v, want the date %s", tc.in, got, tc.wantAbs)
+			}
+		default:
+			if got == nil {
+				t.Errorf("ParseExpirySpec(%q) resolved to no expiry, want %s from now", tc.in, tc.wantDur)
+				continue
+			}
+			if d := got.Sub(now); d != tc.wantDur {
+				t.Errorf("ParseExpirySpec(%q) = %s from now, want %s", tc.in, d, tc.wantDur)
+			}
+		}
+	}
+
+	// "30" must mean DAYS. If it ever means seconds, every rule in a run expires before the scan ends,
+	// and the run looks like it suppressed nothing.
+	spec, err := ParseExpirySpec("30")
+	if err != nil {
+		t.Fatalf("ParseExpirySpec(\"30\"): %v", err)
+	}
+	if d := spec.Resolve(now).Sub(now); d < 24*time.Hour {
+		t.Errorf("a bare \"30\" resolved to %s; it must mean 30 DAYS, not seconds or minutes", d)
+	}
+}
+
+// TestParseExpirySpecRefusesWhatItCannotUnderstand — silently choosing a lifetime is the worse failure.
+func TestParseExpirySpecRefusesWhatItCannotUnderstand(t *testing.T) {
+	for _, bad := range []string{"thirty days", "bogus", "30x", "0d", "-5", "-1h", "2026-13-45", "d", "w"} {
+		if spec, err := ParseExpirySpec(bad); err == nil {
+			t.Errorf("ParseExpirySpec(%q) was accepted and resolved to %v; an unparseable value must be "+
+				"refused with the accepted forms, not turned into some lifetime nobody asked for",
+				bad, spec.Resolve(time.Now()))
+		}
+	}
+}
+
+// TestAnExpirySpecRoundTripsItsOwnSpelling keeps error messages and config echoes readable.
+func TestAnExpirySpecRoundTripsItsOwnSpelling(t *testing.T) {
+	for _, in := range []string{"30d", "4w", "720h", "2026-12-31", "never"} {
+		spec, err := ParseExpirySpec(in)
+		if err != nil {
+			t.Fatalf("ParseExpirySpec(%q): %v", in, err)
+		}
+		if got := spec.String(); got != in {
+			t.Errorf("ParseExpirySpec(%q).String() = %q; a spec should echo what the user wrote, so an "+
+				"error message quotes their spelling rather than a normalised one", in, got)
+		}
+	}
+}

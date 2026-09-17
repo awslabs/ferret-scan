@@ -568,6 +568,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to land alongside a mechanism change. The file stays as it is; with this change, regenerating it will
   at least produce rules that do not lapse.
 
+  **The option is settable in config, and it no longer speaks only Go durations.** The first version was
+  a bare `time.Duration`, and Go's duration syntax has no `d` and no `w` — so `720h` was the only way to
+  say 30 days, and `30d`, `4w`, `30` and `2026-12-31` were all `parse error`. That is the wrong
+  vocabulary for a review interval measured in weeks. One parser, `suppressions.ParseExpirySpec`, now
+  reads every form and is shared by the flag and the config key so they cannot disagree:
+
+  | what you write | means |
+  |---|---|
+  | `never` (or omitted, or `0`) | no expiry — the default |
+  | `30` | 30 days |
+  | `30d` / `4w` | 30 days / 4 weeks |
+  | `720h` / `90m` | any Go duration |
+  | `2026-12-31` | an absolute date — every rule from that run lapses the same day |
+
+  A bare number means **days** deliberately: nobody sets a suppression to lapse in 30 seconds, and
+  reading it that way would silently expire every rule in the run. An absolute date is accepted because
+  "expire these before the next audit" is not expressible as a duration — every rule should lapse on the
+  same day, not N days after whenever the run happened. Anything unparseable is refused with the list of
+  forms rather than turned into some lifetime nobody asked for. `d` is 24h and `w` is 168h, wall-clock
+  rather than calendar, which is stated in the code and the docs rather than hidden — an hour of DST
+  drift does not matter to a review interval, and calendar arithmetic would mean carrying a timezone in
+  a file shared across machines.
+
+  Config: `suppressions.expires_in`, a profile's `suppression_expires_in`, or `--suppression-expires`,
+  resolving in that order with the flag winning — the same shape `generate_suppressions` already uses.
+  Both shipped example configs carry the key, annotated, and both ship `never`: the examples are copied
+  as a starting point, so any other default would hand the one-week-inert-baseline defect to everyone
+  who copies one.
+
+  **The alignment is a guard, not an edit.** Five assertions hold the four surfaces together — the
+  parser, the flag's help line, both example configs, and each documentation page separately — because a
+  reader lands on one page and "it is documented somewhere" is not the same as "the page you are reading
+  is correct". The documented forms are asserted against `ParseExpirySpec` itself, so the test cannot
+  pass by agreeing with a stale list, and precedence must be stated in the order it actually resolves:
+  silence there reads as "these are equivalent", and a reader who sets the config key and watches the
+  flag win concludes the config key is broken.
+
+  That guard earned itself immediately: **the flag was registered and absent from `--help`**, so it was
+  undiscoverable. `internal/help/help.go` is hand-written prose, which is exactly the drift
+  `documented_flags_test.go` records ("40 flags are registered and 37 appear in the help text"), and
+  widening the parser without widening the help would have produced #686's defect in reverse — a
+  capability nobody can find rather than one that does not exist.
+
   Five assertions, and the third is the floor: a generated rule carries no expiry; opting in produces
   one of the requested length and zero still means none; **a rule with no expiry still suppresses** —
   without which "removed the expiry" could have meant "broke matching"; an expired rule is counted and

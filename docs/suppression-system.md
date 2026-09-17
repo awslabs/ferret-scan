@@ -178,7 +178,17 @@ rules:
 ## Rule expiry
 
 Generated rules **do not expire** by default; they last until removed or disabled. Expiry is opt-in via
-`--suppression-expires <duration>` (or an explicit `expires_at` in the file).
+`suppressions.expires_in` in config, a profile's `suppression_expires_in`, or `--suppression-expires`
+(flag wins). An explicit `expires_at` written into a rule by hand always wins.
+
+| what you write | means |
+|---|---|
+| `never` (or omitted, or `0`) | **no expiry** — the default |
+| `30` | 30 days |
+| `30d` / `4w` | 30 days / 4 weeks |
+| `720h` / `90m` | any Go duration |
+| `2026-12-31` | an absolute date — every rule from this run lapses on that day |
+
 
 Rules previously expired one week after generation unconditionally, which made a committed baseline
 inert a week later without any indication — `IsSuppressed` skips an expired rule silently. A run in
