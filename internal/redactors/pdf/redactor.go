@@ -60,6 +60,21 @@ func (pr *PDFRedactor) GetSupportedTypes() []string {
 	return []string{"pdf", ".pdf"}
 }
 
+// UnimplementedTypes declares that this redactor is registered for .pdf but cannot rewrite it.
+//
+// It stays REGISTERED rather than being removed, deliberately. Registration is what routes a .pdf
+// here so the refusal below can happen; an unregistered type would fall out of the redaction path
+// entirely and the operator would be told nothing about the file at all. The declaration is what
+// lets the rest of the tree — the documentation guards, and anything that wants to tell a user up
+// front what can be redacted — know that this registration is a recognition rather than a promise.
+//
+// Both spellings are declared for symmetry with GetSupportedTypes; NormalizeType collapses them.
+func (pr *PDFRedactor) UnimplementedTypes() map[string]string {
+	const reason = "PDF content redaction is not implemented; findings are reported but the file " +
+		"cannot be rewritten, and no output is written rather than a copy that still holds the values"
+	return map[string]string{"pdf": reason, ".pdf": reason}
+}
+
 // GetSupportedStrategies returns the redaction strategies this redactor supports
 func (pr *PDFRedactor) GetSupportedStrategies() []redactors.RedactionStrategy {
 	return []redactors.RedactionStrategy{

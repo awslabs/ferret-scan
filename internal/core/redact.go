@@ -188,6 +188,24 @@ func copyFile(src, dst string) error {
 // Adding a new redactor or changing manager tuning is a one-line change here.
 // It returns the manager and its output manager (callers need the latter to
 // compute mirrored output paths).
+// RedactionCapabilities reports which file types this build can actually redact.
+//
+// Built from the SAME registry the scan path builds, by constructing the default manager and asking
+// it — so a redactor added, removed or re-declared shows up here without a second list to maintain.
+// That is the point: the documentation guards read this, and the previous arrangement had the
+// capability implied by code in one package while four documentation files asserted it in prose,
+// with nothing connecting the two (#686).
+//
+// outputDir is a scratch directory the manager needs in order to exist; nothing is written to it by
+// this call, which only reads declarations.
+func RedactionCapabilities(outputDir string) (redactors.Capabilities, error) {
+	manager, _, err := NewDefaultRedactionManager(outputDir, redactors.RedactionSimple, nil)
+	if err != nil {
+		return redactors.Capabilities{}, err
+	}
+	return manager.Capabilities(), nil
+}
+
 func NewDefaultRedactionManager(outputDir string, strategy redactors.RedactionStrategy,
 	observer observability.Observer) (*redactors.RedactionManager, *redactors.OutputStructureManager, error) {
 

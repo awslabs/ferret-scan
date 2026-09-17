@@ -167,7 +167,14 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Println()
 	h.colors["header"].Println("Redaction Examples:")
 	h.colors["example"].Println("  ferret-scan --file document.txt --enable-redaction  # Redact sensitive data")
-	h.colors["example"].Println("  ferret-scan --file *.pdf --enable-redaction --redaction-output-dir ./safe-docs")
+	// A .docx and not a *.pdf. PDF content redaction is not implemented and every attempt refuses, so
+	// the previous example here could never succeed — a user following it got one refusal per file and
+	// no way to tell a limitation from a bug. cmd/documented_redaction_test.go now fails if any
+	// documented redaction command names a type internal/redactors reports it cannot rewrite (#686).
+	h.colors["example"].Println("  ferret-scan --file report.docx --enable-redaction --redaction-output-dir ./safe-docs")
+	h.colors["example"].Println("  # Redaction rewrites the file in place-of-type: .docx->.docx, .jpg->.jpg.")
+	h.colors["example"].Println("  # PDF, TIFF, GIF, BMP and WEBP are scanned and reported but cannot be rewritten;")
+	h.colors["example"].Println("  # those files are named in the report with the cause \"no redactor for this file type\".")
 
 	fmt.Println()
 	h.colors["header"].Println("Stdin / Streaming Examples:")

@@ -18,7 +18,7 @@ sequenceDiagram
     participant Suppression as Suppression Manager
     participant Formatter as Output Formatter
 
-    User->>CLI: ferret-scan --file input.pdf --format json --enable-redaction
+    User->>CLI: ferret-scan --file input.docx --format json --enable-redaction
 
     Note over CLI: Alternative Flow for Stdin / Streaming Mode
     alt Stdin Mode (--stdin or --file -)
@@ -93,7 +93,7 @@ sequenceDiagram
     alt Redaction enabled
         CLI->>RedactionMgr: NewRedactionManagerWithConfig()
         CLI->>RedactionMgr: RegisterDefaultRedactors()
-        Note over RedactionMgr: Plain text, PDF, Office, Image redactors
+        Note over RedactionMgr: Plain text, Office, Image (JPEG/PNG), audio, video, SVG, RTF redactors
     end
 
     Note over CLI: 7. Get files to process and filter supported types
@@ -262,7 +262,9 @@ sequenceDiagram
 - Progress tracking and performance metrics
 
 ### 6. **Redaction System** (`internal/redactors`)
-- Multi-format document redaction (text, PDF, Office, images)
+- Multi-format document redaction (text, Office, images (JPEG/PNG), audio, video, SVG, RTF)
+- PDF, TIFF, GIF, BMP and WEBP are scanned and reported but **cannot be rewritten**; those files are
+  named in the report with the cause "no redactor for this file type". See `docs/redaction-support.md`.
 - Multiple strategies: simple, format-preserving, synthetic data
 - Maintains original document structure and creates audit trails
 

@@ -2538,7 +2538,12 @@ Keyword patterns automatically detect common secret assignment formats in variou
 			"ferret-scan --file config.json --checks SECRETS",
 			"ferret-scan --file .env --checks SECRETS --confidence high",
 			"ferret-scan --file app.py --checks SECRETS --verbose",
-			"ferret-scan --file *.js --checks SECRETS --format json",
+			// A quoted directory, not an unquoted *.js. The shell expands a glob before the binary
+			// sees it, so with two or more matches `--file` takes the first, the rest become
+			// positional paths, Go's flag parsing stops, and `--checks` and `--format` are dropped —
+			// measured: every validator ran and the output was text, not JSON, at exit 0. The same
+			// shape in the general help advertised PDF redaction that can never succeed (#686).
+			"ferret-scan --file ./src --recursive --checks SECRETS --format json",
 		},
 	}
 }
