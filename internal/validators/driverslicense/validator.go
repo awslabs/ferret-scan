@@ -5,6 +5,7 @@ package driverslicense
 
 import (
 	stdctx "context"
+	"github.com/awslabs/ferret-scan/v2/internal/bytefold"
 	"regexp"
 	"strings"
 
@@ -814,7 +815,18 @@ func markerModifiesLabel(line, match string, labelKeywords []string) bool {
 	if match == "" {
 		return false
 	}
-	vi := strings.Index(strings.ToLower(line), strings.ToLower(match))
+	// bytefold.Lower, not strings.ToLower: vi is an offset into the FOLDED copy and is handed to
+	// markerOpensAsideAfter, which indexes the ORIGINAL line. strings.ToLower does not preserve byte
+	// positions, so a length-changing rune anywhere BEFORE the value shifts the window. Measured on
+	// "Driver License<rune> D1234567 (see note)", the bytes the aside check actually inspected:
+	//
+	//	ascii                        " (see note)"     (correct — the aside marker is found)
+	//	one U+0130 dotted capital I  "7 (see note)"    (one byte early, reading INTO the value)
+	//	forty U+0130                 "\xb0İİİİİ "      (far off, and not even valid UTF-8)
+	//
+	// Same shape as the dob site #660 fixed, where the misread produced a silent false positive at
+	// confidence 90 — the window lands somewhere plausible and the verdict flips with no error.
+	vi := strings.Index(bytefold.Lower(line), bytefold.Lower(match))
 	if vi < 0 {
 		return false
 	}
