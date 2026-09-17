@@ -58,24 +58,35 @@ import (
 // flaked on a runner nobody had measured (#509, #546). A deterministic statistic that covers the
 // layers is worth more than a noisy one that covers the total.
 
-// THE METADATA MAP IS AT A BUCKET CLIFF, which is the most useful thing this guard knows and it was
-// only found by trying to fix it. A finding's Metadata reaches exactly 8 keys — one key from the
-// validator plus the seven the bridge writes — and 8 is exactly the capacity of one Go map bucket.
-// Measured against this guard:
+// THE METADATA MAP AND THE BUCKET CLIFF — AND WHAT THIS PROBE CANNOT SEE.
+//
+// A map[string]any grows at 9, 15 and 29 keys on go1.27.1, measured; the first step costs +329 B and
+// the second +576 B per map, whatever the values are. Against THIS guard, whose probe validator emits
+// exactly one metadata key so a finding here carries 8 — one from the validator plus the seven the
+// bridge writes:
 //
 //	as it is, 8 keys                                     670 B/finding
 //	a NINTH key holding a 25-byte value                 1012 B/finding   (+342, a second bucket)
 //	all four DOCUMENT-LEVEL keys removed                 630 B/finding   (-40, only 6%)
 //	the map pre-sized with make(..., 10)                  998 B/finding   (+328, 49% WORSE)
 //
-// Two conclusions worth writing down because the profile suggests the opposite of both. First, a
-// heap profile attributes the bucket allocation to the LAST key written, so
-// dual_path_bridge.go:926's "13.51 MB, 39% of retained heap" is the cost of the whole map, not of
-// that key — removing the four document-level values saves 6%, not 39%. Second, pre-sizing is a
-// PESSIMISATION here: a hint of 10 forces two buckets where 8 keys fit in one.
+// Pre-sizing is a PESSIMISATION and that stands: a hint of 10 forces two buckets where 8 keys fit in
+// one. A heap profile also attributes the whole bucket allocation to the LAST key written, so
+// dual_path_bridge.go:926's "13.51 MB" is the cost of the entire map rather than of that key.
 //
-// So the lever is not trimming keys and not sizing hints; it is whether a per-finding map should
-// exist at all. Filed as #621 with these numbers.
+// BUT THE OTHER TWO ROWS DESCRIBE THE PROBE, NOT A REAL FINDING, and this comment used not to say so.
+// Measured over the golden corpus with the real validator set — see
+// internal/goldencorpus/metadata_key_census_test.go — every one of the 108 findings carries 9 to 31
+// metadata keys. Not one is at 8. So:
+//
+//	the cliff is not ahead of the tool, it is behind it: 100% of real findings are already past it
+//	the most common real shape, 25 of 108 findings, sits at 15 keys — one key past the SECOND band
+//	"trimming keys saves only 6%" is an artifact of a probe that never crosses a band. On the real
+//	   population, dropping the four document-level keys takes 821 -> 498 B/finding: 39.3%
+//
+// That 6% is what made #621 conclude trimming was not worth doing. It was measured here, at 8 keys,
+// where removing four crosses no band and so recovers only the value bytes. #621 carries the
+// corrected numbers and the argument for hoisting.
 
 // WHAT MUTATIONS THIS CATCHES. Five, each verified to be a real assertion failure rather than a
 // build error -- the first attempt at two of them read as CAUGHT when they had simply failed to
@@ -189,10 +200,11 @@ func TestFindingRetentionPerFindingStaysBounded(t *testing.T) {
 		if m.bridgePerFinding > bridgeRetentionBudget {
 			t.Errorf("%d findings retain %.0f B each through the document bridge, over the %d B "+
 				"budget. This budget catches a LARGE value, not one extra small key -- the bucket "+
-				"cliff belongs to TestFindingMetadataStaysBelowTheBucketCliff, because a ninth key "+
-				"lands at 1012 B/f and would PASS here. A finding's map carries "+
-				"exactly 8 keys today, which is exactly one Go bucket, so the ninth costs a whole "+
-				"second bucket — measured at +342 B PER FINDING for a 25-byte value. Check "+
+				"cliff belongs to TestBridgeMetadataContributionStaysBelowTheBucketCliff, because a "+
+				"ninth key lands at 1012 B/f and would PASS here. A finding ON THIS PROBE carries "+
+				"exactly 8 keys, which is exactly one Go bucket, so the ninth costs a whole "+
+				"second bucket — measured at +342 B PER FINDING for a 25-byte value. Real findings "+
+				"carry 9-31 keys and are all already past it (metadata_key_census_test.go). Check "+
 				"dual_path_bridge.go's context block. Do NOT try to fix it by pre-sizing the map: "+
 				"a hint of 10 forces two buckets where 8 keys need one, and measured 49%% WORSE "+
 				"(670 -> 998 B/finding). See #467 and #621.",
@@ -230,7 +242,7 @@ type retentionMeasurement struct {
 	// maxMetadataKeys is the largest metadata key count on any single finding.
 	//
 	// Carried separately from the byte budgets because the bucket cliff is a COUNT question and the
-	// byte budgets cannot see it -- see TestFindingMetadataStaysBelowTheBucketCliff.
+	// byte budgets cannot see it -- see TestBridgeMetadataContributionStaysBelowTheBucketCliff.
 	maxMetadataKeys int
 	// keysOnWidestFinding names them, so a failure says WHICH key was added rather than only that one was.
 	keysOnWidestFinding []string
@@ -336,11 +348,25 @@ func measureRetention(t *testing.T, lines int) retentionMeasurement {
 // boundary itself rather than a budget anyone chose.
 const metadataBucketCapacity = 8
 
-// TestFindingMetadataStaysBelowTheBucketCliff catches the one regression the byte budgets cannot see.
+// TestBridgeMetadataContributionStaysBelowTheBucketCliff bounds THE BRIDGE'S OWN CONTRIBUTION to a
+// finding's metadata. It does not bound a real finding, and the name says which so that nobody reads
+// it as the second thing again.
 //
-// A finding's Metadata reaches exactly 8 keys -- one from the validator plus the seven
-// dual_path_bridge.go writes -- and 8 is exactly one Go map bucket. The NINTH key costs a whole second
-// bucket: measured +342 B PER FINDING for a 25-byte value, which is 58 MB on a 168,645-finding scan.
+// WHAT IT ACTUALLY MEASURES. retentionProbeValidator emits one metadata key by construction, so a
+// finding here carries 1 + the seven dual_path_bridge.go writes = 8, and 8 is exactly one Go map
+// bucket on go1.27.1. An EIGHTH bridge write would take it to 9 and cost a whole second bucket:
+// measured +342 B PER FINDING for a 25-byte value, 58 MB on a 168,645-finding scan. That is a real
+// thing to gate and this gates it.
+//
+// WHAT IT DOES NOT MEASURE, WHICH IS WHERE ITS OLD NAME MISLED. The probe's own comment says the
+// synthetic validator is deliberate, "so the budgets below measure the RETENTION mechanism and not
+// that validator's own vocabulary, which changes for unrelated reasons". That is right for the byte
+// budgets and fatal for a cliff, because THE CLIFF IS VOCABULARY: the count is exactly what the
+// fixture pins. Over the golden corpus with the real validator set, every one of 108 findings carries
+// 9 to 31 keys -- so the cliff this test is named for was crossed by 100% of real findings before the
+// test was written, and it passes. The real population is bounded by
+// internal/goldencorpus/metadata_key_census_test.go, which drives the real validators; the two guards
+// cover different populations and both are needed.
 //
 // WHY A SEPARATE TEST, AND WHY A COUNT. bridgeRetentionBudget is 1200 B/f against 634-669 measured, and
 // a ninth key lands at 1012 -- UNDER the budget. So the byte guard cannot fire for the cause its own
@@ -355,10 +381,9 @@ const metadataBucketCapacity = 8
 //
 // IF THIS FAILS, do not raise the constant and do not pre-size the map. Pre-sizing is a PESSIMISATION
 // here -- make(..., 10) forces two buckets where 8 keys need one, measured 49% worse at 998 B/f.
-// Either drop a key or accept the second bucket deliberately, with the per-finding cost written down.
-// #621 has the full table and the argument for hoisting the four document-level values, which would
-// take the map to 4 keys and make the next two additions free.
-func TestFindingMetadataStaysBelowTheBucketCliff(t *testing.T) {
+// Either drop a bridge key or accept the second bucket deliberately, with the per-finding cost written
+// down. #621 has the corrected table and the argument for hoisting the four document-level values.
+func TestBridgeMetadataContributionStaysBelowTheBucketCliff(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drives the document bridge over a ~2MB fixture; skipped in -short")
 	}
@@ -386,11 +411,12 @@ func TestFindingMetadataStaysBelowTheBucketCliff(t *testing.T) {
 		m.maxMetadataKeys, metadataBucketCapacity, m.keysOnWidestFinding)
 
 	if m.maxMetadataKeys > metadataBucketCapacity {
-		t.Errorf("a finding's metadata now carries %d keys, over the %d that fit in one Go map bucket, "+
-			"so every finding pays for a SECOND bucket -- measured +342 B per finding, 58 MB on a "+
-			"168,645-finding scan. Keys on the widest finding: %v. Drop one, or accept the second "+
-			"bucket deliberately and write the cost down; do NOT pre-size the map, which measured 49%% "+
-			"worse. See #621.",
+		t.Errorf("the bridge's contribution plus the probe's one key now reaches %d keys, over the %d "+
+			"that fit in one Go map bucket, so every finding pays for a SECOND bucket -- measured "+
+			"+342 B per finding, 58 MB on a 168,645-finding scan. Keys on the widest finding: %v. Drop "+
+			"one, or accept the second bucket deliberately and write the cost down; do NOT pre-size the "+
+			"map, which measured 49%% worse. Note this bounds the BRIDGE, not a real finding: real "+
+			"findings carry 9-31 keys (internal/goldencorpus/metadata_key_census_test.go). See #621.",
 			m.maxMetadataKeys, metadataBucketCapacity, m.keysOnWidestFinding)
 	}
 }
