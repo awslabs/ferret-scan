@@ -315,11 +315,16 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 		fmt.Sprintf("%d", match.LineNumber),
 	)
 
-	// Add context for uniqueness but hash it for privacy
+	// Context contributes to IDENTITY, digested so the composite stays a bounded length and the
+	// raw surrounding text is not embedded. Not a privacy measure, and the comment used to say it
+	// was: this digest is a component of the identity hash below, which is what makes a rule match
+	// the same finding on a teammate's machine. It cannot be dropped or salted — the file is
+	// committed, so any salt travels with it — which is precisely why the two INFORMATIONAL copies
+	// of these digests were removed from rule metadata instead (#673).
 	contextHash := sm.hashSensitiveData(ctx.BeforeText + ctx.AfterText)
 	components = append(components, contextHash)
 
-	// Hash the match text separately for privacy
+	// Likewise a component of identity, not a privacy measure.
 	matchHash := sm.hashSensitiveData(match.Text)
 	components = append(components, matchHash)
 
@@ -368,7 +373,18 @@ func (sm *SuppressionManager) hashMatchesFinding(ruleHash string, match detector
 	return false
 }
 
-// hashSensitiveData creates a hash of sensitive data
+// hashSensitiveData returns the first 16 hex characters of the SHA-256 of data.
+//
+// SIXTY-FOUR BITS, UNSALTED, and that is not a privacy control — it is an identity component. The
+// search space that matters is the space of VALUES, not the space of digests: measured, the full
+// 10^9 US SSN space falls in 367 seconds single-threaded, a date of birth (10^4) is instant, and a
+// search bounded to one area and group number (10^4 serials) recovered a planted SSN in 5 ms.
+//
+// So a digest of a value is as sensitive as the value for any low-entropy value, and the only
+// legitimate reason to write one into a file a team COMMITS is that the rule cannot be matched
+// without it. That is true of findingHashVersion's composite and was NOT true of the
+// `context_hash` and `match_text_hash` entries this used to put in every rule's metadata: nothing
+// in the tree ever read them (#673).
 func (sm *SuppressionManager) hashSensitiveData(data string) string {
 	if data == "" {
 		return ""
@@ -481,12 +497,10 @@ func (sm *SuppressionManager) AddSuppression(match detector.Match, reason, creat
 		CreatedAt: time.Now(),
 		ExpiresAt: expiresAt,
 		Metadata: map[string]string{
-			"finding_type":    match.Type,
-			"filename":        filepath.Base(match.Filename),
-			"line_number":     fmt.Sprintf("%d", match.LineNumber),
-			"confidence":      fmt.Sprintf("%.2f", match.Confidence),
-			"context_hash":    sm.hashSensitiveData(match.Context.BeforeText + match.Context.AfterText),
-			"match_text_hash": sm.hashSensitiveData(match.Text),
+			"finding_type": match.Type,
+			"filename":     filepath.Base(match.Filename),
+			"line_number":  fmt.Sprintf("%d", match.LineNumber),
+			"confidence":   fmt.Sprintf("%.2f", match.Confidence),
 		},
 	}
 
@@ -717,12 +731,10 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 			LastSeenAt: &now,
 			ExpiresAt:  &defaultExpiry,
 			Metadata: map[string]string{
-				"finding_type":    match.Type,
-				"filename":        filepath.Base(match.Filename),
-				"line_number":     fmt.Sprintf("%d", match.LineNumber),
-				"confidence":      fmt.Sprintf("%.2f", match.Confidence),
-				"context_hash":    sm.hashSensitiveData(match.Context.BeforeText + match.Context.AfterText),
-				"match_text_hash": sm.hashSensitiveData(match.Text),
+				"finding_type": match.Type,
+				"filename":     filepath.Base(match.Filename),
+				"line_number":  fmt.Sprintf("%d", match.LineNumber),
+				"confidence":   fmt.Sprintf("%.2f", match.Confidence),
 			},
 		}
 
@@ -848,12 +860,10 @@ func (sm *SuppressionManager) CreateSuppressionFromFindingWithExpiration(hash, r
 
 	// Extract metadata from finding data with proper hashes
 	metadata := map[string]string{
-		"finding_type":    getString(findingData, "type"),
-		"filename":        filepath.Base(getString(findingData, "filename")),
-		"line_number":     fmt.Sprintf("%.0f", getFloat(findingData, "line_number")),
-		"confidence":      fmt.Sprintf("%.2f", getFloat(findingData, "confidence")),
-		"context_hash":    sm.hashSensitiveData(""), // Empty context for web UI
-		"match_text_hash": sm.hashSensitiveData(getString(findingData, "text")),
+		"finding_type": getString(findingData, "type"),
+		"filename":     filepath.Base(getString(findingData, "filename")),
+		"line_number":  fmt.Sprintf("%.0f", getFloat(findingData, "line_number")),
+		"confidence":   fmt.Sprintf("%.2f", getFloat(findingData, "confidence")),
 	}
 
 	rule := SuppressionRule{
@@ -938,12 +948,10 @@ func (sm *SuppressionManager) CreateSuppressionFromFindingWithState(hash, reason
 
 	// Extract metadata from finding data
 	metadata := map[string]string{
-		"finding_type":    getString(findingData, "type"),
-		"filename":        filepath.Base(getString(findingData, "filename")),
-		"line_number":     fmt.Sprintf("%.0f", getFloat(findingData, "line_number")),
-		"confidence":      fmt.Sprintf("%.2f", getFloat(findingData, "confidence")),
-		"context_hash":    "",
-		"match_text_hash": sm.hashSensitiveData(getString(findingData, "text")),
+		"finding_type": getString(findingData, "type"),
+		"filename":     filepath.Base(getString(findingData, "filename")),
+		"line_number":  fmt.Sprintf("%.0f", getFloat(findingData, "line_number")),
+		"confidence":   fmt.Sprintf("%.2f", getFloat(findingData, "confidence")),
 	}
 
 	// Set default expiration to 1 week
