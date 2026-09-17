@@ -174,3 +174,14 @@ rules:
 - **Import/Export**: Bulk rule management capabilities
 - **Rule Sharing**: Team-based suppression rule sharing
 - **Audit Logging**: Comprehensive suppression activity tracking
+
+## Rule expiry
+
+Generated rules **do not expire** by default; they last until removed or disabled. Expiry is opt-in via
+`--suppression-expires <duration>` (or an explicit `expires_at` in the file).
+
+Rules previously expired one week after generation unconditionally, which made a committed baseline
+inert a week later without any indication — `IsSuppressed` skips an expired rule silently. A run in
+which an expired rule would otherwise have matched now warns, with the count and the oldest expiry
+date (#696).
+

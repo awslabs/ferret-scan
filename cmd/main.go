@@ -1074,6 +1074,11 @@ func main() {
 	explainFindings := flag.Bool("explain", false, "Annotate each finding with a plain-language rationale, a verdict (likely real/test/uncertain), and a drafted suppression reason. Fully offline; no data leaves the host.")
 	suppressionFile := flag.String("suppression-file", "", "Path to suppression configuration file (default: $XDG_CONFIG_HOME/ferret-scan/suppressions.yaml on Unix, %APPDATA%\\ferret-scan\\suppressions.yaml on Windows)")
 	generateSuppressions := flag.Bool("generate-suppressions", false, "Generate suppression rules for all findings (disabled by default, can be enabled in YAML)")
+	// Opt-in expiry. Generated rules used to expire after one week ALWAYS, which quietly made a
+	// committed baseline inert seven days later — this repository's own 245-rule baseline had been
+	// doing nothing for four months. Rules now last until someone changes them, and a team that wants
+	// them to lapse asks for it here (#696).
+	suppressionExpires := flag.Duration("suppression-expires", 0, "Lifetime for rules written by --generate-suppressions, e.g. 720h (default: no expiry; an expired rule is skipped, and skips are reported)")
 
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
 	quiet := flag.Bool("quiet", false, "Suppress progress output (useful for scripts and CI/CD)")
@@ -1776,6 +1781,9 @@ func main() {
 	// Initialize suppression manager. The path comes from resolveConfiguration so
 	// that suppressions.file in the config file is honored, not just the flag.
 	suppressionManager := suppressions.NewSuppressionManager(finalConfig.suppressionFile)
+	if *suppressionExpires > 0 {
+		suppressionManager.SetGeneratedExpiry(*suppressionExpires)
+	}
 	if mainDebugObs != nil {
 		mainDebugObs.LogDetail("main", "Suppression manager initialized")
 	}
@@ -2480,6 +2488,32 @@ func main() {
 	// bottom of main. Before this, the formatter derived its own answer from `Confidence >= 90`
 	// while the exit code came from FERRET_PRECOMMIT_EXIT_ON, so `EXIT_ON=none` printed
 	// "commit blocked for security" and exited 0.
+	// Say when a rule that WOULD have suppressed a finding was skipped for being expired.
+	//
+	// IsSuppressed passes over an expired rule with a bare `continue`, so a baseline could stop working
+	// entirely and every run still looked normal. That is exactly what happened to this repository's
+	// own committed baseline: all 245 rules carried a one-week expiry, and had been inert for about
+	// four months while the file's header claimed contributors and CI shared it (#696).
+	//
+	// Counted at MATCH time rather than by walking the file, because this is the number an operator can
+	// act on: "3 findings are in your report that your own rules were meant to suppress" is actionable,
+	// where "the file holds 245 expired rules" does not say whether any of them mattered.
+	//
+	// Emitted here, well after the suppression loop, rather than beside it: the loop's neighbourhood is
+	// where the redaction disclosure for #697 lives, and two independent notes inserted at the same
+	// anchor is a merge conflict for no reason.
+	if n, oldest := suppressionManager.ExpiredSkips(); n > 0 {
+		when := ""
+		if oldest != nil {
+			when = fmt.Sprintf(", oldest expired %s", oldest.Format("2006-01-02"))
+		}
+		fmt.Fprintf(os.Stderr,
+			"WARNING: %d finding(s) are reported because their suppression rule has EXPIRED%s. "+
+				"An expired rule is skipped, so a baseline can stop working without any other sign. "+
+				"Remove the expires_at field, regenerate the rules, or run `ferret-scan-suppress "+
+				"--action cleanup` to drop them.\n", n, when)
+	}
+
 	precommitDecision := precommit.Resolve(unsuppressedMatches, precommitConfig)
 	formatterOptions.PrecommitBlockMessage = precommitDecision.Message
 

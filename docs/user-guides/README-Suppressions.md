@@ -19,6 +19,45 @@ The suppression system uses **cryptographic hashing** to uniquely identify findi
 
 - **Privacy Protection**: Sensitive data is hashed before storage, so suppression files don't contain actual sensitive information.
 
+## Expiry
+
+**A generated rule does not expire.** It stays in force until you remove or disable it.
+
+That is a change. Rules used to expire **one week** after generation, always, and there was no way to
+ask for anything else. Because `IsSuppressed` skips an expired rule silently, a committed baseline
+would simply stop working seven days later with nothing to indicate it. Measured on this repository's
+own `.ferret-scan-suppressions.yaml`: all 245 rules — 92 of them `enabled: true` and hand-reviewed —
+carried `expires_at: 2026-05-28` and had been inert for about four months, while the file's own header
+said contributors and CI shared it as a baseline
+([#696](https://github.com/awslabs/ferret-scan/issues/696)).
+
+### Asking for an expiry
+
+If you want suppressions to lapse so they get revisited, say so:
+
+```bash
+ferret-scan --file . --recursive --generate-suppressions --suppression-expires 720h   # 30 days
+```
+
+Any Go duration works (`24h`, `720h`, `2160h`). An explicit `expires_at` you write into the file by
+hand always wins.
+
+### An expired rule is now reported
+
+Skipping an expired rule is no longer silent. When a rule *would* have suppressed a finding but has
+lapsed, the run says so:
+
+```
+WARNING: 3 finding(s) are reported because their suppression rule has EXPIRED, oldest expired
+2026-05-28. An expired rule is skipped, so a baseline can stop working without any other sign.
+Remove the expires_at field, regenerate the rules, or run `ferret-scan-suppress --action cleanup`
+to drop them.
+```
+
+The count is taken at the moment of matching, not by reading the file, because that is the number you
+can act on — three findings in your report that your own rules were meant to suppress, rather than
+"the file contains 245 expired rules", which does not tell you whether any of them mattered.
+
 ## Configuration Files
 
 Ferret Scan resolves the suppression file path in this order:

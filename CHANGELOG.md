@@ -530,6 +530,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 Features
 
+- **suppressions (expiry):** a generated rule expired **one week** after it was created, always, and
+  there was no way to ask for anything else. Because `IsSuppressed` skips an expired rule with a bare
+  `continue`, a committed baseline simply stopped working seven days later with nothing to indicate it.
+  Generated rules no longer expire; expiry is opt-in via `--suppression-expires <duration>`.
+  ([#696](https://github.com/awslabs/ferret-scan/issues/696))
+
+  Measured on this repository's own `.ferret-scan-suppressions.yaml`: **all 245 rules** — 92 of them
+  `enabled: true` and hand-reviewed — carried `expires_at: 2026-05-28`, so the file had been inert for
+  about **four months** while its own header said contributors and CI shared it as a baseline. Nothing
+  in any run said so, and `suppressed` read 0 whichever suppression file was passed.
+
+  A suppression is a decision someone made deliberately, so it should last until someone changes it.
+  The default was removed at all three creation sites — `AddSuppression`, the batch
+  `--generate-suppressions` path, and the web-UI undo path — and an explicit `expires_at` written by
+  hand still wins. Removing a default must not remove a capability, so `--suppression-expires` keeps
+  expiry available for a team that wants suppressions to lapse and be revisited.
+
+  **And skipping an expired rule is no longer silent.** A run in which a rule *would* have suppressed a
+  finding but had lapsed now warns with the count and the oldest expiry date. The count is taken at the
+  moment of **matching** rather than by walking the file, because that is the number an operator can act
+  on: "3 findings are in your report that your own rules were meant to suppress" is actionable, where
+  "the file contains 245 expired rules" does not say whether any of them mattered.
+
+  Two implementation details worth recording. The counter is **atomic** and its date is guarded by its
+  **own** mutex rather than `indexMu` — `IsSuppressed` holds `indexMu` read-locked across the match loop
+  and the counter is incremented from inside it, so reusing that lock would deadlock on the write side,
+  which would present as a hung CI job rather than a failure. And the redaction filter added for
+  [#697](https://github.com/awslabs/ferret-scan/issues/697) calls `IsSuppressed` from worker goroutines,
+  so the concurrency is real rather than hypothetical; a test drives 8 goroutines × 50 matches under
+  `-race` and requires the count to be exact, since a lost increment would silently under-report.
+
+  The committed baseline is **deliberately not regenerated here**. A regeneration is not the 245 rules
+  the file holds: measured, `--generate-suppressions` over `internal/validators` alone produces **3,489**
+  rules and over the whole repository **9,658** (135,214 lines). The existing 245 was a curated subset,
+  and re-deriving it is a judgement about which findings in this codebase are acceptable — not something
+  to land alongside a mechanism change. The file stays as it is; with this change, regenerating it will
+  at least produce rules that do not lapse.
+
+  Five assertions, and the third is the floor: a generated rule carries no expiry; opting in produces
+  one of the requested length and zero still means none; **a rule with no expiry still suppresses** —
+  without which "removed the expiry" could have meant "broke matching"; an expired rule is counted and
+  dated, with an older expiry moving the reported date backwards; and the counting is race-free.
+  Restoring the one-week default fails the first two with the exact dates.
+
 - **person-name:** expand name database coverage with 53 unambiguous names from South Asian, West African, Eastern European, Middle Eastern, Japanese, and Italian backgrounds
 
 ### 📚 Documentation
