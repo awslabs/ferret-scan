@@ -25,7 +25,7 @@ type Formatter struct {
 
 // VulnerabilityMapperInterface defines the contract for vulnerability mapping
 type VulnerabilityMapperInterface interface {
-	MapToGitLabVulnerability(match detector.Match) (*GitLabVulnerability, error)
+	MapToGitLabVulnerability(match detector.Match, sourceRoot string) (*GitLabVulnerability, error)
 	GenerateVulnerabilityID(match detector.Match) string
 	MapConfidenceLevelToSeverity(confidenceLevel string) string
 	ValidateMapping(match detector.Match) error
@@ -205,7 +205,7 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		}
 
 		// Map to GitLab vulnerability format
-		vuln, err := f.mapper.MapToGitLabVulnerability(match)
+		vuln, err := f.mapper.MapToGitLabVulnerability(match, options.SourceRoot)
 		if err != nil {
 			errorCount++
 			if options.Verbose {

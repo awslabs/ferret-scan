@@ -28,6 +28,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -528,6 +529,15 @@ var FileCases = []FileCase{
 			"AWS key AKIAIOSFODNN7EXAMPLE in the config.\n" +
 			"SSN 449-87-4100 on file.\n" +
 			"Card 4532-0151-1283-0366 expires soon.\n"),
+		Tier1Parity: true,
+	},
+	{
+		Name:        "file_nested_path",
+		Description: "Tier 1: a file two directories below the scan root. Locks how each format renders a NESTED path: gitlab-sast must keep the segments below the root (#705 collapsed them to the basename), and the others must not start.",
+		Checks:      []string{"SECRETS", "SSN"},
+		Filename:    filepath.Join("src", "nested", "config.py"),
+		Content: []byte("AWS_KEY = \"AKIAIOSFODNN7EXAMPLE\"\n" +
+			"# owner ssn 449-87-4100\n"),
 		Tier1Parity: true,
 	},
 	{

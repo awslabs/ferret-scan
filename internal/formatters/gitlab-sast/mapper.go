@@ -22,7 +22,7 @@ func NewVulnerabilityMapper() *VulnerabilityMapper {
 }
 
 // MapToGitLabVulnerability converts a Ferret Scan match to GitLab vulnerability format
-func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match) (*GitLabVulnerability, error) {
+func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match, sourceRoot string) (*GitLabVulnerability, error) {
 	if match.Filename == "" {
 		return nil, NewMappingError("match filename is required")
 	}
@@ -58,7 +58,7 @@ func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match) (*G
 	// their synthetic label as-is; only filesystem paths get normalized.
 	locationFile := match.Filename
 	if !match.IsVirtual() {
-		locationFile = m.normalizeFilePath(match.Filename)
+		locationFile = m.normalizeFilePath(match.Filename, sourceRoot)
 	}
 	location := GitLabLocation{
 		File:      locationFile,
@@ -245,27 +245,85 @@ func (m *VulnerabilityMapper) mapConfidenceToGitLabConfidence(confidence float64
 	}
 }
 
-// normalizeFilePath normalizes file paths for consistent reporting
-func (m *VulnerabilityMapper) normalizeFilePath(filePath string) string {
-	// Clean the path and ensure it's relative
+// normalizeFilePath renders a scanned file's path as the repository-relative POSIX path GitLab
+// expects in location.file.
+//
+// The CLI hands the formatter ABSOLUTE paths — cmd/main.go resolves every input with
+// filepath.Abs before walking it — so this is the only place the report learns where the
+// repository is. Before #705 an absolute path was replaced with filepath.Base, which put every
+// finding at the repository root: two files named config.py in different directories were one
+// location, and the Security Dashboard's link opened the wrong file or a 404.
+//
+// An absolute path INSIDE sourceRoot is made relative to it and keeps every segment below it.
+// Anything else — no root known, a path on another volume, a path that would climb out of the
+// root — keeps the basename behaviour every earlier release had. That is a lossy answer and it
+// is chosen deliberately over refusing: this mapper's error return is consumed by a loop in
+// formatter.go that `continue`s past the finding and logs it only under --verbose, and #562
+// already measured what that produces — a report with "status": "success" and a real finding
+// missing from it. A finding at the wrong path can still be found; a finding that is not in
+// the report cannot.
+func (m *VulnerabilityMapper) normalizeFilePath(filePath, sourceRoot string) string {
 	cleaned := filepath.Clean(filePath)
 
-	// Remove leading "./" if present
-	if strings.HasPrefix(cleaned, "./") {
-		cleaned = cleaned[2:]
+	if filepath.IsAbs(cleaned) {
+		cleaned = relativeToRootOrBase(cleaned, sourceRoot)
 	}
 
-	// Handle parent directory references by removing leading "../"
+	cleaned = strings.TrimPrefix(cleaned, "./")
 	for strings.HasPrefix(cleaned, "../") {
 		cleaned = cleaned[3:]
 	}
 
-	// Ensure we don't have absolute paths in reports
-	if filepath.IsAbs(cleaned) {
-		cleaned = filepath.Base(cleaned)
-	}
+	// GitLab wants forward slashes. filepath.ToSlash is the whole answer: it converts the host
+	// separator and nothing else. On POSIX a backslash is an ordinary filename character, and
+	// rewriting it would report `we\ird.txt` as a directory that does not exist — the class
+	// #637 fixed in the redaction path.
+	return filepath.ToSlash(cleaned)
+}
 
-	return cleaned
+// relativeToRootOrBase returns abs relative to root when abs lies inside root, and its basename
+// otherwise.
+//
+// The lexical spellings are tried first, then both sides resolved with EvalSymlinks, as
+// withinRoot in cmd does: on macOS /tmp is a link to /private/tmp, and a container volume mount
+// routinely is one, so a root spelled one way and a path the walker resolved the other way look
+// unrelated to Rel. Measured on the first revision of this change, CI_PROJECT_DIR=/tmp/sym/link
+// against a scan of /tmp/sym/real: 2 vulnerabilities became 0.
+//
+// Lexical FIRST, not resolved-only, because resolution can succeed on one side and fail on the
+// other — a root under /var resolves to /private/var while a file that has since been removed
+// does not — and Rel between a resolved root and an unresolved path is exactly the mismatch
+// being avoided.
+func relativeToRootOrBase(abs, root string) string {
+	if root == "" {
+		return filepath.Base(abs)
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return filepath.Base(abs)
+	}
+	if rel, ok := relInside(absRoot, abs); ok {
+		return rel
+	}
+	resolvedRoot, errRoot := filepath.EvalSymlinks(absRoot)
+	resolvedAbs, errAbs := filepath.EvalSymlinks(abs)
+	if errRoot != nil || errAbs != nil {
+		return filepath.Base(abs)
+	}
+	if rel, ok := relInside(resolvedRoot, resolvedAbs); ok {
+		return rel
+	}
+	return filepath.Base(abs)
+}
+
+// relInside is filepath.Rel with "outside the root" folded into the ok result. Rel yields ".." or
+// a "../" prefix exactly when target sits outside root.
+func relInside(root, target string) (string, bool) {
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
 }
 
 // ValidateMapping validates that a mapping operation can be performed
