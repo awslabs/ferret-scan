@@ -43,6 +43,10 @@ func TestGoldenFileScanFormats(t *testing.T) {
 				ConfidenceLevel: map[string]bool{"high": true, "medium": true, "low": true},
 				NoColor:         true,
 				ShowMatch:       true,
+				// The CLI passes the working directory; here the fixture's root plays that
+				// part. For a flat fixture the gitlab-sast path is the basename either way;
+				// file_nested_path is the case where SourceRoot decides the output (#705).
+				SourceRoot: tmpDir,
 			}
 
 			for _, format := range goldenFormats {
@@ -109,8 +113,9 @@ func TestFileContentParity(t *testing.T) {
 	}
 }
 
-// writeFixture writes a FileCase's content into tmpDir under its basename and
-// returns the path to scan, FORWARD-SLASH normalized (filepath.ToSlash).
+// writeFixture writes a FileCase's content into tmpDir at its Filename — which may carry a
+// directory, see file_nested_path — and returns the path to scan, FORWARD-SLASH normalized
+// (filepath.ToSlash).
 //
 // Why forward slashes: the text formatter's getSmartFilename and the path
 // rendering in several formatters split on "/" only, so a native Windows path
@@ -123,6 +128,9 @@ func TestFileContentParity(t *testing.T) {
 func writeFixture(t *testing.T, tmpDir string, fc FileCase) string {
 	t.Helper()
 	nativePath := filepath.Join(tmpDir, fc.Filename) // native separators for the write
+	if err := os.MkdirAll(filepath.Dir(nativePath), 0o755); err != nil {
+		t.Fatalf("mkdir for fixture %q: %v", fc.Filename, err)
+	}
 	if err := os.WriteFile(nativePath, fc.Content, 0o644); err != nil {
 		t.Fatalf("write fixture %q: %v", fc.Filename, err)
 	}
