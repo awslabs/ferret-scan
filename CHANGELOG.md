@@ -394,6 +394,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔨 Internal
 
+- **A guard on the ASH integration contract, which nothing in this repository referenced before** ([#702](https://github.com/awslabs/ferret-scan/issues/702))
+  - AWS Labs' `automated-security-helper` (ASH) ships a first-party plugin that runs this binary as a
+    subprocess and parses its SARIF. Nothing here referenced ASH, so every CLI-surface change shipped
+    with no signal that a downstream consumer parses it. ASH's own source records what that cost:
+    `pip install ferret-scan` picked up a build whose new `API_KEY_OR_SECRET` detector matched
+    `session: Optional[Session]` in generated Pydantic schemas at HIGH confidence, and **every open ASH
+    PR went red with no source change**. Its `spec/` log records four more rounds of chasing us — the
+    version window, the check inventory (20 → 19 checks, `KEYWORD_MATCH` dropped), empty results
+    changing from `null` to `[]`, and narrowing its accepted exit codes from `{0,1,3}` to `{0,3}`.
+  - Adds `cmd/ash_integration_contract_test.go`: twelve tests pinning only what ASH actually observes —
+    the flag surface, exit codes, and the SARIF fields it parses. The contract is **vendored as
+    constants taken from ASH's plugin source rather than its prose**, because the two disagree: the doc
+    names three hardcoded flags and leaves four spellings unstated, while the code emits **23**.
+  - **Found a live break, reproduced on merged `main`.** Pre-commit detection fires from the
+    environment alone (`PRE_COMMIT`, `_PRE_COMMIT_RUNNING`, `PRE_COMMIT_HOME`, `PRE_COMMIT_HOOK`,
+    `GIT_HOOK_TYPE`). With ASH's flag set byte-identical and only the environment changing, the exit
+    code goes **0 → 1** — outside ASH's success set, so ASH reports the scanner as FAILED rather than
+    reporting findings — and the result set shrinks from `AWS_ACCESS_KEY, VISA` to `VISA`, because
+    detection also switches the active profile. `PRE_COMMIT_HOME` is the likely one to bite:
+    `pre-commit` sets it, so any CI image or shell with pre-commit installed carries it into an
+    unrelated ASH run.
+  - The remedy is one line on ASH's side, `FERRET_PRECOMMIT=0`, which measurably restores exit 0 and
+    the full result set for all five signals. Because that remedy is invisible from ASH's side, a
+    dedicated test ties the opt-out to every one of the five signals it has to cover: if it stopped
+    covering one, ASH would keep setting the variable, keep believing it was protected, and silently
+    report failed scans again.
+  - **A disclosure boundary, pinned.** ASH aggregates our SARIF into a report commonly archived as a
+    CI artifact for a whole organisation, and it warns operators about `--show-match` **only** — not
+    about `--explain`, which it also emits. Measured: `--explain` reveals no matched values and
+    `--show-match` reveals all three test values, so ASH's warning is on the right flag and only that
+    flag. A test now holds that line, using `--show-match` as its positive control so a run that
+    stopped detecting cannot read as "no leak".
+  - Also pinned: `--format sarif` beating a contending config `format:`; `results` being an empty
+    ARRAY and never `null` on a clean file; a non-empty `ruleId` on every result (ASH's suppressions
+    key on `(path, rule_id)`, so a rename silently voids them); exit 0 on a scan that **found**
+    data; and the set of config keys this binary reports as unknown — ASH's bundled config already has
+    four inert ones, and since we only warn while ASH passes `--quiet`, a renamed key makes a user's
+    setting stop working with no error anywhere.
+  - The version check reads the **git tag**, not the built binary. Its first form ran the binary's
+    `--version` and skipped on the dev default — which made it skip **100% of runs**, because the test
+    builds with a plain `go build` and no `-ldflags`, so `internal/version.Version` is always
+    `0.0.0-development`. A guard that can never fire is worse than no guard, since its comment stands
+    in for coverage that does not exist. The tag is the real source of truth: releases are cut by
+    pushing `v*` and goreleaser derives the version from it. Verified in both directions — it passes on
+    `v2.4.5` and fails on a throwaway local `v2.5.0` tag naming the exact consequence.
+  - **Stated limitation rather than papered over: this cannot gate a release as CI stands.**
+    `go-test.yml` checks out with the default depth and fetches **no tags**, and does not run on tag
+    pushes; `release.yml` checks out with `fetch-depth: 0` but runs goreleaser with **no test job and
+    no `needs:` on tests**. So nothing test-shaped can block a tag today. Making this effective needs a
+    workflow change, tracked separately.
+  - Test-only. No production code changed and no output moves.
+
 - **Metadata key census over the real validator set, correcting the numbers #621 was reasoning from** ([#621](https://github.com/awslabs/ferret-scan/issues/621))
   - The existing bucket-cliff guard bounds a finding's metadata key count against the point where a
     Go map allocates a second bucket. It drives a synthetic probe validator that emits exactly ONE
