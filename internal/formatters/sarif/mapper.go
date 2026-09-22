@@ -119,7 +119,7 @@ func (m *VulnerabilityMapper) MapSuppressedMatch(suppressed detector.SuppressedM
 func (m *VulnerabilityMapper) buildLocation(match detector.Match, options formatters.FormatterOptions) SARIFLocation {
 	location := SARIFLocation{
 		PhysicalLocation: SARIFPhysicalLocation{
-			ArtifactLocation: m.buildArtifactLocation(match),
+			ArtifactLocation: m.buildArtifactLocation(match, options),
 			Region:           m.buildRegion(match, options),
 		},
 	}
@@ -136,33 +136,46 @@ func (m *VulnerabilityMapper) buildLocation(match detector.Match, options format
 	return location
 }
 
-// buildArtifactLocation creates the artifact location with file:// URI scheme
-func (m *VulnerabilityMapper) buildArtifactLocation(match detector.Match) SARIFArtifactLocation {
-	// Virtual sources (stdin, in-memory buffers) don't map to a filesystem
-	// location, so emit the label verbatim with no URI scheme or %SRCROOT%
-	// prefix. This keeps SARIF output valid while signalling that the
-	// "path" is synthetic.
+// buildArtifactLocation renders a finding's file as SARIF's two-field location: a uri relative
+// to a symbolic base, plus the uriBaseId naming that base.
+//
+// That mechanism existed here and was UNREACHABLE from the CLI. The %SRCROOT% branch was
+// conditioned on `!filepath.IsAbs(match.Filename)`, and cmd/main.go resolves every input with
+// filepath.Abs before the walk, so the else branch always won and the whole absolute path
+// landed in uri. Measured on main, scanning ./src/nested/config.py with
+// `--file . --recursive --format sarif`:
+//
+//	"artifactLocation": {"uri": "file:///tmp/p2/src/nested/config.py"}
+//
+// with no uriBaseId anywhere. GitHub code scanning, Azure DevOps and every other consumer
+// resolve a result through uriBaseId, so with an absolute file: URI and no base, none of them
+// can map the result to a source file (#711).
+//
+// The base is now decided by CONTAINMENT rather than by spelling: a path inside
+// FormatterOptions.SourceRoot is emitted relative with uriBaseId %SRCROOT%, which
+// run.originalUriBaseIds defines (see buildOriginalURIBaseIDs — without that definition
+// %SRCROOT% was a dangling reference, the second half of #711).
+//
+// Two behaviours are kept exactly as they were:
+//
+//   - Virtual sources (stdin, in-memory buffers) have no filesystem location, so the synthetic
+//     label is emitted verbatim with no scheme and no base.
+//   - A path the root does not contain still becomes an absolute file: URI through
+//     absoluteFileURI. That is the #633 fix and its percent-encoding and empty-authority
+//     handling are still needed there. It is also the only resolvable fallback: a basename is
+//     neither root-relative-with-a-base nor absolute, so no consumer could resolve it.
+func (m *VulnerabilityMapper) buildArtifactLocation(match detector.Match, options formatters.FormatterOptions) SARIFArtifactLocation {
 	if match.IsVirtual() {
 		return SARIFArtifactLocation{URI: match.Filename}
 	}
 
-	// Convert file path to URI using file:// scheme
-	// Clean the path and convert to forward slashes for URI
-	cleanPath := filepath.ToSlash(filepath.Clean(match.Filename))
-
-	location := SARIFArtifactLocation{
-		URI: cleanPath,
+	if rel, ok := formatters.RelativeToRootOK(match.Filename, options.SourceRoot); ok {
+		return SARIFArtifactLocation{URI: rel, URIBaseID: srcRootBaseID}
 	}
 
-	// For relative paths, use %SRCROOT% uriBaseId to map to repository root
-	// This enables tools like GitHub Security to properly map file locations
-	if !filepath.IsAbs(match.Filename) {
-		location.URIBaseID = "%SRCROOT%"
-	} else {
-		location.URI = absoluteFileURI(cleanPath)
+	return SARIFArtifactLocation{
+		URI: absoluteFileURI(filepath.ToSlash(filepath.Clean(match.Filename))),
 	}
-
-	return location
 }
 
 // absoluteFileURI renders an absolute filesystem path as a file: URI with an EMPTY authority and a
@@ -412,8 +425,16 @@ func (m *VulnerabilityMapper) buildMessage(match detector.Match, options formatt
 	// Start with the short description
 	message.WriteString(desc.Short)
 
-	// Add file and line information
-	message.WriteString(fmt.Sprintf(" in %s at line %d", filepath.Base(match.Filename), match.LineNumber))
+	// Add file and line information.
+	//
+	// The SAME path the result's own artifactLocation carries, not filepath.Base: a result
+	// whose prose names a different file than its location is self-contradicting, and #712
+	// filed both halves of that together. A path outside SourceRoot keeps the basename here
+	// while artifactLocation falls back to an absolute file: URI — the one place the two
+	// deliberately differ, because the URI has to be resolvable where the message is prose,
+	// and prose repeating an absolute host path is the disclosure #715 is about.
+	message.WriteString(fmt.Sprintf(" in %s at line %d",
+		formatters.RelativeToRoot(match.Filename, options.SourceRoot), match.LineNumber))
 
 	// Add confidence information
 	confidenceLevel := shared.GetConfidenceLevel(match.Confidence)

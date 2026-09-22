@@ -640,6 +640,13 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		return
 	}
 
+	// No SourceRoot, deliberately: by the time a formatter sees these matches their Filename
+	// is already the sanitized name the operator UPLOADED, not the random temp path the scan
+	// read (runFullCLIScan rewrites it, so suppression hashes keep matching the upload
+	// identity). A relative path is what every machine format wants and
+	// formatters.RelativeToRoot returns one untouched, consulting no root — so naming the
+	// temp directory as the root would change no output byte while implying the temp path
+	// still reaches a report. TestWebReportPathsAreTheUploadedName pins both halves.
 	formatterOptions := formatters.FormatterOptions{
 		ConfidenceLevel: confidenceFilter,
 		Verbose:         true, // Include context fields (needed for suppression creation)
@@ -1025,7 +1032,13 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 		matches = append(matches, match)
 	}
 
-	// Set up formatter options
+	// Set up formatter options.
+	//
+	// No SourceRoot here either, and for a second reason on top of the one in handleScan:
+	// these filenames arrive in the REQUEST BODY, posted back from the browser's copy of a
+	// /scan response. A root chosen by this server has no relationship to a path chosen by
+	// the caller, and the path that arrives is already the upload name. See
+	// TestWebReportPathsAreTheUploadedName.
 	formatterOptions := formatters.FormatterOptions{
 		ConfidenceLevel: map[string]bool{"high": true, "medium": true, "low": true}, // Export all levels
 		Verbose:         exportRequest.Verbose,

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/awslabs/ferret-scan/v2/internal/paths"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
@@ -125,27 +125,18 @@ func classifySymlink(linkPath, scanRoot string) (d symlinkDisposition, resolved,
 
 // withinRoot reports whether target is inside root.
 //
-// Both sides are resolved with EvalSymlinks first: on macOS the scan root is routinely
-// given as /tmp/... which is itself a link to /private/tmp, so a purely lexical compare
-// would call every in-tree target "outside" and disclose the whole directory as skipped.
+// Symlink resolution is load-bearing here: on macOS the scan root is routinely given as
+// /tmp/... which is itself a link to /private/tmp, so a purely lexical compare would call
+// every in-tree target "outside" and disclose the whole directory as skipped.
+//
+// paths.RelInside now holds that logic for the whole tool — four copies of `Rel` plus a
+// ".." test had drifted apart on exactly this point. It tries the lexical spellings FIRST
+// and resolves only when they disagree, which strictly widens what this function accepts:
+// the version here resolved unconditionally and kept the unresolved side when only one
+// resolved, so a target inside the root whose own resolution failed — a file removed
+// between the walk and this check — compared against a RESOLVED root and was refused.
 func withinRoot(target, root string) bool {
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return false
-	}
-	if r, err := filepath.EvalSymlinks(absRoot); err == nil {
-		absRoot = r
-	}
-	if t, err := filepath.EvalSymlinks(target); err == nil {
-		target = t
-	}
-
-	rel, err := filepath.Rel(absRoot, target)
-	if err != nil {
-		return false
-	}
-	// Rel yields ".." or a "../" prefix exactly when target sits outside absRoot.
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return paths.Inside(root, target)
 }
 
 // symlinkCandidate is a symlink seen during a walk, held until the walk finishes.

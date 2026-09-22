@@ -76,12 +76,12 @@ func TestGitLabSAST_RevealsValueWithoutFullLine(t *testing.T) {
 	}
 	s := NewDataSanitizer()
 
-	hidden := s.SanitizeDescription(match, false)
+	hidden := s.SanitizeDescription(match, match.Filename, false)
 	if strings.Contains(hidden, awsKey) {
 		t.Errorf("gitlab-sast revealed the value without --show-match:\n%s", hidden)
 	}
 
-	shown := s.SanitizeDescription(match, true)
+	shown := s.SanitizeDescription(match, match.Filename, true)
 	if !strings.Contains(shown, awsKey) {
 		t.Errorf("gitlab-sast should reveal the matched value with --show-match even when "+
 			"Context.FullLine is empty (secrets-style finding):\n%s", shown)

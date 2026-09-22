@@ -319,11 +319,13 @@ func TestStdin_SARIFNoSrcRoot(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d. stderr=%s", code, stderr)
 	}
-	// SARIF emits a document-level versionControlProvenance.mappedTo
-	// reference to %SRCROOT% regardless of whether the result is virtual,
-	// so we can't simply forbid the literal in the output. What we *can*
-	// guarantee is that no per-result artifactLocation carries the
-	// uriBaseId — that's the Phase 1b contract.
+	// A stdin scan declares no scan root, so nothing in the document should mention
+	// %SRCROOT% at all now: the document-level reference used to come from a
+	// versionControlProvenance block that was emitted unconditionally and described the
+	// WRONG repository (#713), and run.originalUriBaseIds replaces it only when a root is
+	// known. The contract asserted below is still the narrow one — no per-result
+	// artifactLocation carries a uriBaseId, because a virtual source has no root to resolve
+	// against — so it holds whether or not a root is ever declared for piped input.
 	var doc struct {
 		Runs []struct {
 			Results []struct {

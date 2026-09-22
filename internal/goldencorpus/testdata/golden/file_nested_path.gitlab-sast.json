@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/src/nested/config.py (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\n# owner ssn 449-87-4100\n```\n\n**Additional Information:**\n- context_impact: 25\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** src/nested/config.py (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\n# owner ssn 449-87-4100\n```\n\n**Additional Information:**\n- context_impact: 25\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "Low",
-      "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** <TMPDIR>/src/nested/config.py (line 1)\n**Confidence:** LOW (15.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nAWS_KEY = \"AKIAIOSFODNN7EXAMPLE\"\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
+      "description": "Ferret Scan detected aws access key in this file.\n\n**Location:** src/nested/config.py (line 1)\n**Confidence:** LOW (15.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nAWS_KEY = \"AKIAIOSFODNN7EXAMPLE\"\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove AWS credentials immediately and rotate them. Use IAM roles or environment variables instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

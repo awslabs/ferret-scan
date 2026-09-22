@@ -34,7 +34,7 @@ type VulnerabilityMapperInterface interface {
 // DataSanitizerInterface defines the contract for data sanitization
 type DataSanitizerInterface interface {
 	SanitizeMessage(match detector.Match) string
-	SanitizeDescription(match detector.Match, showMatch bool) string
+	SanitizeDescription(match detector.Match, reportedPath string, showMatch bool) string
 	EnsureNoSensitiveData(text string) string
 }
 
@@ -214,9 +214,14 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 			continue
 		}
 
-		// Sanitize the vulnerability data to ensure no sensitive information is exposed
+		// Sanitize the vulnerability data to ensure no sensitive information is exposed.
+		//
+		// The description is handed the location the mapper just produced, not match.Filename:
+		// a vulnerability whose free text names a different path than its own location.file is
+		// internally inconsistent, and the absolute spelling is the host layout disclosure
+		// location.file exists to keep out of the report (#712).
 		vuln.Message = f.sanitizer.SanitizeMessage(match)
-		vuln.Description = f.sanitizer.SanitizeDescription(match, options.ShowMatch)
+		vuln.Description = f.sanitizer.SanitizeDescription(match, vuln.Location.File, options.ShowMatch)
 
 		// See idSeen: a repeat id would be dropped by the consumer, so suffix it.
 		baseID := vuln.ID

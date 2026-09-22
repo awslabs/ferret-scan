@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/alt_case.docx (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** alt_case.docx (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** <TMPDIR>/alt_case.docx (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nCard 4532-0151-1283-0366 expires soon.\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 15\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** alt_case.docx (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nCard 4532-0151-1283-0366 expires soon.\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 15\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/alt_case.docx (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** alt_case.docx (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -107,7 +107,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive metadata in this file.\n\n**Location:** <TMPDIR>/alt_case.docx (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
+      "description": "Ferret Scan detected sensitive metadata in this file.\n\n**Location:** alt_case.docx (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

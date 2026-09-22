@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "Low",
-      "description": "Ferret Scan detected email address in this file.\n\n**Location:** <TMPDIR>/settings.json (line 2)\n**Confidence:** LOW (36.0%)\n**Detected by:** email validator\n\n**Context:**\n```\n  \"admin_email\": \"admin@example.com\",\n```\n\n**Additional Information:**\n- context_impact: -4\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** settings.json (line 2)\n**Confidence:** LOW (36.0%)\n**Detected by:** email validator\n\n**Context:**\n```\n  \"admin_email\": \"admin@example.com\",\n```\n\n**Additional Information:**\n- context_impact: -4\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

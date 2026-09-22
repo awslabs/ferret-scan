@@ -176,16 +176,7 @@
           "semanticVersion": "0.0.0-development",
           "version": "0.0.0-development"
         }
-      },
-      "versionControlProvenance": [
-        {
-          "mappedTo": {
-            "uriBaseId": "%SRCROOT%"
-          },
-          "repositoryUri": "https://github.com/awslabs/ferret-scan",
-          "revisionId": "0.0.0-development"
-        }
-      ]
+      }
     }
   ],
   "version": "2.1.0"

@@ -27,6 +27,15 @@ const (
 	ToolInformationURI = version.RepositoryURL
 )
 
+// srcRootBaseID is the symbolic name for the scan root, used both as every result's
+// artifactLocation.uriBaseId and as the single key of run.originalUriBaseIds that defines it.
+//
+// %SRCROOT% is the conventional spelling — SARIF 2.1.0's own examples use it and GitHub code
+// scanning recognises it — and the two sites MUST agree, which is why it is one constant: the
+// mapper emitted the literal while nothing defined it, and a uriBaseId with no matching
+// originalUriBaseIds key is unresolvable (#711).
+const srcRootBaseID = "%SRCROOT%"
+
 // SARIF level constants
 const (
 	// LevelError indicates a serious issue that should be addressed
