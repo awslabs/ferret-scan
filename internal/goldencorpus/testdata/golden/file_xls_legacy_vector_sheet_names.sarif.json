@@ -2,6 +2,11 @@
   "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
   "runs": [
     {
+      "originalUriBaseIds": {
+        "%SRCROOT%": {
+          "uri": "file://<TMPDIR>/"
+        }
+      },
       "results": [
         {
           "level": "error",
@@ -9,7 +14,8 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "file://<TMPDIR>/sheetnames.xls"
+                  "uri": "sheetnames.xls",
+                  "uriBaseId": "%SRCROOT%"
                 },
                 "contextRegion": {
                   "snippet": {
@@ -76,7 +82,8 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "file://<TMPDIR>/sheetnames.xls"
+                  "uri": "sheetnames.xls",
+                  "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
                   "endColumn": 28,
@@ -165,16 +172,7 @@
           "semanticVersion": "0.0.0-development",
           "version": "0.0.0-development"
         }
-      },
-      "versionControlProvenance": [
-        {
-          "mappedTo": {
-            "uriBaseId": "%SRCROOT%"
-          },
-          "repositoryUri": "https://github.com/awslabs/ferret-scan",
-          "revisionId": "0.0.0-development"
-        }
-      ]
+      }
     }
   ],
   "version": "2.1.0"

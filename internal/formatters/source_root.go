@@ -38,15 +38,31 @@ import (
 // backslash is an ordinary character — reporting `we\ird.txt` as a directory that does not
 // exist, the class #637 fixed in the redaction path.
 func RelativeToRoot(path, root string) string {
+	if rel, ok := RelativeToRootOK(path, root); ok {
+		return rel
+	}
+	return filepath.Base(filepath.Clean(path))
+}
+
+// RelativeToRootOK is RelativeToRoot without the basename fallback: ok is false when the path
+// could NOT be expressed relative to the root, leaving the choice of fallback to the caller.
+//
+// SARIF is why this is separate. There, a path outside the root falls back to an absolute
+// file: URI rather than to a basename, because SARIF's artifactLocation.uri is only resolvable
+// by a consumer if it is either root-relative WITH a uriBaseId or absolute — a bare basename is
+// neither, and #633 exists because that URI has to be well-formed. A relative input path is
+// reported as root-relative (ok true) with nothing changed: a library caller passing relative
+// paths has already expressed them against its own root, which is what %SRCROOT% names.
+func RelativeToRootOK(path, root string) (string, bool) {
 	cleaned := filepath.Clean(path)
 
 	if !filepath.IsAbs(cleaned) {
-		return filepath.ToSlash(cleaned)
+		return filepath.ToSlash(cleaned), true
 	}
 	if rel, inside := paths.RelInside(root, cleaned); inside {
-		return filepath.ToSlash(rel)
+		return filepath.ToSlash(rel), true
 	}
-	return filepath.Base(cleaned)
+	return "", false
 }
 
 // ReportPath is RelativeToRoot bound to these options' SourceRoot, for the common call.

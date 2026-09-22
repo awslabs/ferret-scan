@@ -149,11 +149,20 @@ func TestNoTopLevelSliceMarshalsToNull(t *testing.T) {
 
 	runs := decoded["runs"].([]any)
 	run := runs[0].(map[string]any)
-	for _, key := range []string{"results", "versionControlProvenance", "artifacts", "invocations"} {
+	// versionControlProvenance is deliberately gone from this list rather than incidentally:
+	// the block is no longer emitted at all, because it described OUR repository and the TOOL
+	// version instead of the scanned tree (#713). originalUriBaseIds takes its place as the
+	// %SRCROOT% declaration. It is an OBJECT rather than an array, but a nil Go map marshals
+	// to null exactly as a nil slice does, so it belongs under the same rule.
+	for _, key := range []string{"results", "artifacts", "invocations", "originalUriBaseIds"} {
 		if v, present := run[key]; present && v == nil {
-			t.Errorf("runs[0].%s is JSON null; a nil Go slice must be omitted (omitempty) "+
-				"or initialised empty. SARIF types every one of these as an array.", key)
+			t.Errorf("runs[0].%s is JSON null; a nil Go slice or map must be omitted "+
+				"(omitempty) or initialised empty.", key)
 		}
+	}
+	if _, present := run["versionControlProvenance"]; present {
+		t.Error("runs[0].versionControlProvenance is emitted again; it named ferret-scan's own " +
+			"repository and version as the ANALYZED source (#713)")
 	}
 
 	if strings.Contains(string(raw), `: null`) {

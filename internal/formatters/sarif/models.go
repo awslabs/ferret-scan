@@ -13,9 +13,21 @@ type SARIFReport struct {
 
 // SARIFRun represents a single analysis run
 type SARIFRun struct {
-	Tool                     SARIFTool             `json:"tool"`
-	Results                  []SARIFResult         `json:"results"`
-	VersionControlProvenance []SARIFVersionControl `json:"versionControlProvenance,omitempty"`
+	Tool    SARIFTool     `json:"tool"`
+	Results []SARIFResult `json:"results"`
+
+	// OriginalURIBaseIDs defines the symbolic bases every result's uriBaseId refers to —
+	// for this tool, the single entry %SRCROOT% naming FormatterOptions.SourceRoot.
+	//
+	// SARIF 2.1.0 §3.14.14 types it as a dictionary of artifactLocation objects. Without it
+	// a uriBaseId is a dangling reference: the field was absent from this struct entirely
+	// while the mapper emitted %SRCROOT%, so a consumer had a symbol it could not resolve
+	// (#711). It replaced a versionControlProvenance block that named OUR repository and the
+	// TOOL's version rather than the scanned tree's (#713); see buildOriginalURIBaseIDs.
+	//
+	// omitempty: a run with no known root emits nothing rather than an empty object, and
+	// every result in such a run carries an absolute uri that needs no base.
+	OriginalURIBaseIDs map[string]SARIFArtifactLocation `json:"originalUriBaseIds,omitempty"`
 
 	// Invocations carries the not-examined disclosure. omitempty, so a scan that
 	// examined every file emits nothing new and existing consumers see no change.
@@ -30,19 +42,6 @@ type SARIFRun struct {
 	// tool-specific metadata, so it is where the disclosure goes rather than
 	// inventing a non-standard top-level key that would fail schema validation.
 	Properties map[string]interface{} `json:"properties,omitempty"`
-}
-
-// SARIFVersionControl represents version control information
-type SARIFVersionControl struct {
-	RepositoryURI string         `json:"repositoryUri"`
-	RevisionID    string         `json:"revisionId,omitempty"`
-	Branch        string         `json:"branch,omitempty"`
-	MappedTo      *SARIFMappedTo `json:"mappedTo,omitempty"`
-}
-
-// SARIFMappedTo represents the mapping of repository root to a URI base ID
-type SARIFMappedTo struct {
-	URIBaseID string `json:"uriBaseId"`
 }
 
 // SARIFTool represents the analysis tool that produced the results

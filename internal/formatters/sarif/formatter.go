@@ -6,6 +6,8 @@ package sarif
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
@@ -137,13 +139,13 @@ func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleMa
 	// Build tool driver with metadata and rules
 	driver := f.buildDriver(ruleManager)
 
-	// Create the SARIF run with version control provenance
+	// Create the SARIF run, declaring the base every result's uriBaseId refers to.
 	run := SARIFRun{
 		Tool: SARIFTool{
 			Driver: driver,
 		},
-		Results:                  results,
-		VersionControlProvenance: f.buildVersionControlProvenance(),
+		Results:            results,
+		OriginalURIBaseIDs: buildOriginalURIBaseIDs(options.SourceRoot),
 	}
 
 	// Say so when --limit dropped results.
@@ -201,20 +203,52 @@ func (f *Formatter) buildDriver(ruleManager *RuleManager) SARIFDriver {
 	return driver
 }
 
-// buildVersionControlProvenance constructs version control information for the SARIF report
-// This provides context about the repository being analyzed
-func (f *Formatter) buildVersionControlProvenance() []SARIFVersionControl {
-	// Return repository information for ferret-scan
-	// In a real-world scenario, this could be enhanced to detect the actual
-	// repository being scanned using git commands
-	return []SARIFVersionControl{
-		{
-			RepositoryURI: ToolInformationURI,
-			RevisionID:    version.Short(),
-			MappedTo: &SARIFMappedTo{
-				URIBaseID: "%SRCROOT%",
-			},
-		},
+// buildOriginalURIBaseIDs declares what %SRCROOT% means, so a consumer can resolve the
+// root-relative uri on every result.
+//
+// This replaces a hardcoded versionControlProvenance block that described the WRONG
+// repository. Measured on main, for every SARIF file the tool has ever emitted:
+//
+//	"versionControlProvenance": [{
+//	  "repositoryUri": "https://github.com/awslabs/ferret-scan",   <- OUR repository, not the
+//	                                                                  one being scanned
+//	  "revisionId": "0.0.0-development",                           <- the TOOL version, where
+//	                                                                  the field wants the
+//	                                                                  scanned repo's commit
+//	  "mappedTo": {"uriBaseId": "%SRCROOT%"}
+//	}]
+//
+// SARIF 2.1.0 §3.14.7 types versionControlDetails as the repository the analyzed source came
+// from, and mappedTo as where that repository's root sits in the local file system. Ours
+// described the analyzer, which made the %SRCROOT% binding misleading as well as wrong — every
+// report claimed the scanned source was awslabs/ferret-scan (#713).
+//
+// originalUriBaseIds (§3.14.14) is the direct mechanism and needs nothing from version control,
+// which matters because this tool deliberately does not discover repositories: it runs on
+// arbitrary directories and on phones, so there is no commit to report (see #710 for why the
+// root is the scan target rather than a discovered .git). Populating the provenance block
+// correctly would have required exactly the git knowledge #710 rejected.
+//
+// Empty when no root is known. The uri then appears only where a result fell back to an
+// absolute file: URI, which needs no base — and a %SRCROOT% with no definition is what #711
+// called a dangling reference.
+func buildOriginalURIBaseIDs(sourceRoot string) map[string]SARIFArtifactLocation {
+	if sourceRoot == "" {
+		return nil
+	}
+	abs, err := filepath.Abs(sourceRoot)
+	if err != nil {
+		return nil
+	}
+
+	// §3.14.14: the uri is absolute and, naming a directory, "SHOULD end with a slash".
+	slashRoot := filepath.ToSlash(abs)
+	if !strings.HasSuffix(slashRoot, "/") {
+		slashRoot += "/"
+	}
+
+	return map[string]SARIFArtifactLocation{
+		srcRootBaseID: {URI: absoluteFileURI(slashRoot)},
 	}
 }
 
