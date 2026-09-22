@@ -148,6 +148,17 @@ func loadConfiguration(configFile string) *config.Config {
 	return cfg
 }
 
+// workingDirectoryOrEmpty is os.Getwd with the error collapsed to "", for callers that have
+// a documented fallback for not knowing the working directory and nothing useful to do with
+// the error itself. See FormatterOptions.SourceRoot.
+func workingDirectoryOrEmpty() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return cwd
+}
+
 // reportConfigProvenance names a config file that was DISCOVERED next to the working
 // directory, so the user learns which file is governing the scan.
 //
@@ -1946,6 +1957,11 @@ func main() {
 		// otherwise stay silent. See FormatterOptions.OutputToFile (#353).
 		OutputToFile: *outputFile != "",
 		Limit:        *limitFlag,
+		// The working directory is the repository root a gitlab-sast report's locations are
+		// relative to. It is the CI checkout, and every documented invocation scans it
+		// (`--file .`). An error here leaves it empty, which the formatter treats as "root
+		// unknown" and reports by basename — the pre-#705 output, never a dropped finding.
+		SourceRoot: workingDirectoryOrEmpty(),
 	}
 
 	// Process all files using parallel processing

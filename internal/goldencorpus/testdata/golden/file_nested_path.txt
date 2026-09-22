@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                FILE
+----------------------------------------------------------------------------------------------
+[HIGH  ] ssn          SSN                   100.00% line     2 449-87-4100          config.py
+[LOW   ] secrets      AWS_ACCESS_KEY         15.00% line     1 AKIAIOSFODNN7EXAMPLE config.py

@@ -52,6 +52,19 @@ type FormatterOptions struct {
 	// a requested artifact exists (#353).
 	OutputToFile bool
 
+	// SourceRoot is the directory a machine report's file locations are made relative to.
+	//
+	// GitLab resolves a SAST report's location.file against the repository root, so an
+	// absolute scanner path has to keep every segment BELOW that root and lose everything
+	// above it. The CLI sets this to the working directory — that is what GitLab CI's
+	// checkout is, and what every documented gitlab-sast invocation scans (`--file .`). It
+	// is set here, by the caller, rather than read from CI_PROJECT_DIR inside a formatter:
+	// an environment variable steering a report's contents is the shape #704 is filing
+	// against, and a formatter should produce the same bytes for the same matches wherever
+	// it runs. Empty means no root is known, and an absolute path is then reported by its
+	// basename, which is what every release before this field did (#705).
+	SourceRoot string
+
 	// Limit caps how many findings are included in the output. 0 = unlimited.
 	// When the total exceeds Limit, a footer indicates how many were omitted.
 	Limit int
