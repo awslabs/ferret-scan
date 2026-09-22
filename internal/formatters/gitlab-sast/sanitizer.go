@@ -45,17 +45,35 @@ func (s *DataSanitizer) SanitizeMessage(match detector.Match) string {
 	return message
 }
 
-// SanitizeDescription creates a detailed but safe description for GitLab vulnerability reports
-func (s *DataSanitizer) SanitizeDescription(match detector.Match, showMatch bool) string {
+// SanitizeDescription creates a detailed but safe description for GitLab vulnerability reports.
+//
+// reportedPath is the path the vulnerability's own location.file carries. It is passed in rather
+// than recomputed so the two CANNOT disagree: this description used to splice in the raw
+// match.Filename, which after #707 made a single vulnerability contradict itself —
+//
+//	"location": {"file": "src/nested/config.py", "start_line": 2},
+//	"description": "...**Location:** /builds/group/project/src/nested/config.py (line 2)..."
+//
+// — and kept publishing the CI runner's group, project and checkout layout into the Security
+// Dashboard, which is exactly the disclosure location.file had just been cleaned up to avoid. An
+// empty reportedPath falls back to match.Filename, for a caller that assembles a description
+// without having mapped a location.
+func (s *DataSanitizer) SanitizeDescription(match detector.Match, reportedPath string, showMatch bool) string {
 	var description strings.Builder
 
 	// Start with check type description
 	checkTypeDescription := s.GetCheckTypeDescription(match.Type)
 	description.WriteString(fmt.Sprintf("Ferret Scan detected %s in this file.\n\n", strings.ToLower(checkTypeDescription)))
 
-	// Add location context
+	// Add location context. displaytext.SanitizeDisplayText stays on the path independently of
+	// where the path came from: hostile_content_test pins that control bytes in a filename cannot
+	// reach the description, and a root-relative path carries the same filename bytes.
+	locationPath := reportedPath
+	if locationPath == "" {
+		locationPath = match.Filename
+	}
 	description.WriteString(fmt.Sprintf("**Location:** %s (line %d)\n",
-		displaytext.SanitizeDisplayText(match.Filename), match.LineNumber))
+		displaytext.SanitizeDisplayText(locationPath), match.LineNumber))
 
 	// Add confidence information
 	confidenceLevel := s.GetConfidenceLevel(match.Confidence)

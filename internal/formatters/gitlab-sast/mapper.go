@@ -6,11 +6,11 @@ package gitlabsast
 import (
 	"crypto/sha256"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 )
 
 // VulnerabilityMapper handles mapping Ferret Scan matches to GitLab vulnerabilities
@@ -254,76 +254,24 @@ func (m *VulnerabilityMapper) mapConfidenceToGitLabConfidence(confidence float64
 // finding at the repository root: two files named config.py in different directories were one
 // location, and the Security Dashboard's link opened the wrong file or a 404.
 //
-// An absolute path INSIDE sourceRoot is made relative to it and keeps every segment below it.
-// Anything else — no root known, a path on another volume, a path that would climb out of the
-// root — keeps the basename behaviour every earlier release had. That is a lossy answer and it
-// is chosen deliberately over refusing: this mapper's error return is consumed by a loop in
-// formatter.go that `continue`s past the finding and logs it only under --verbose, and #562
-// already measured what that produces — a report with "status": "success" and a real finding
-// missing from it. A finding at the wrong path can still be found; a finding that is not in
-// the report cannot.
+// An absolute path INSIDE sourceRoot is made relative to it and keeps every segment below it;
+// anything else degrades to its basename. Both rules, the symlink handling they need and the
+// reasoning for degrading instead of refusing now live in formatters.RelativeToRoot, which every
+// machine format shares — this package held the only copy, and SARIF, json, yaml and csv have the
+// same problem with the same answer.
+//
+// What stays HERE is gitlab-specific: an already-relative path has its "./" and "../" prefixes
+// stripped, because GitLab resolves location.file from the repository root and a leading "../"
+// there addresses nothing it can open.
 func (m *VulnerabilityMapper) normalizeFilePath(filePath, sourceRoot string) string {
-	cleaned := filepath.Clean(filePath)
-
-	if filepath.IsAbs(cleaned) {
-		cleaned = relativeToRootOrBase(cleaned, sourceRoot)
-	}
+	cleaned := formatters.RelativeToRoot(filePath, sourceRoot)
 
 	cleaned = strings.TrimPrefix(cleaned, "./")
 	for strings.HasPrefix(cleaned, "../") {
 		cleaned = cleaned[3:]
 	}
 
-	// GitLab wants forward slashes. filepath.ToSlash is the whole answer: it converts the host
-	// separator and nothing else. On POSIX a backslash is an ordinary filename character, and
-	// rewriting it would report `we\ird.txt` as a directory that does not exist — the class
-	// #637 fixed in the redaction path.
-	return filepath.ToSlash(cleaned)
-}
-
-// relativeToRootOrBase returns abs relative to root when abs lies inside root, and its basename
-// otherwise.
-//
-// The lexical spellings are tried first, then both sides resolved with EvalSymlinks, as
-// withinRoot in cmd does: on macOS /tmp is a link to /private/tmp, and a container volume mount
-// routinely is one, so a root spelled one way and a path the walker resolved the other way look
-// unrelated to Rel. Measured on the first revision of this change, CI_PROJECT_DIR=/tmp/sym/link
-// against a scan of /tmp/sym/real: 2 vulnerabilities became 0.
-//
-// Lexical FIRST, not resolved-only, because resolution can succeed on one side and fail on the
-// other — a root under /var resolves to /private/var while a file that has since been removed
-// does not — and Rel between a resolved root and an unresolved path is exactly the mismatch
-// being avoided.
-func relativeToRootOrBase(abs, root string) string {
-	if root == "" {
-		return filepath.Base(abs)
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return filepath.Base(abs)
-	}
-	if rel, ok := relInside(absRoot, abs); ok {
-		return rel
-	}
-	resolvedRoot, errRoot := filepath.EvalSymlinks(absRoot)
-	resolvedAbs, errAbs := filepath.EvalSymlinks(abs)
-	if errRoot != nil || errAbs != nil {
-		return filepath.Base(abs)
-	}
-	if rel, ok := relInside(resolvedRoot, resolvedAbs); ok {
-		return rel
-	}
-	return filepath.Base(abs)
-}
-
-// relInside is filepath.Rel with "outside the root" folded into the ok result. Rel yields ".." or
-// a "../" prefix exactly when target sits outside root.
-func relInside(root, target string) (string, bool) {
-	rel, err := filepath.Rel(root, target)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	return rel, true
+	return cleaned
 }
 
 // ValidateMapping validates that a mapping operation can be performed

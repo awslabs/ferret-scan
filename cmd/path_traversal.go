@@ -76,6 +76,14 @@ func pathEscapesBase(p string) bool {
 // need EvalSymlinks because a link's target is only knowable by resolving it, is handled
 // separately by withinRoot in symlink_walk.go and disclosed as causeNotFollowed.
 //
+// So this does NOT call paths.RelInside, which every other containment site in the tool now
+// shares. Two reasons, and the first alone would settle it: here "outside" is a REFUSAL, and
+// RelInside escalates to EvalSymlinks when the lexical answer is outside — which would turn
+// some refusals into scans. Adopting it would be a security-relevant behaviour change in a
+// gate, not a de-duplication. Second, the paths reaching this can be relative (filepath.Walk
+// with a relative root yields relative paths) where RelInside resolves both sides against the
+// working directory first.
+//
 // A Rel error means the two paths cannot be expressed relative to one another at all —
 // one absolute and one relative, or different Windows volumes — and the safe answer to
 // "is this inside" is then no.

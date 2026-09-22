@@ -40,7 +40,11 @@ func TestTheDescriptionCarriesNoBorrowedControlBytes(t *testing.T) {
 				Filename:   payload,
 				Validator:  "ssn",
 				Context:    detector.ContextInfo{FullLine: "SSN: 449-87-4100"},
-			}, false)
+				// The hostile bytes are passed as the REPORTED path too, which is what the
+				// mapper produces for a relative filename: it preserves the filename bytes,
+				// so the description's escaping is still the only thing standing between a
+				// control sequence and the Security Dashboard.
+			}, payload, false)
 
 			// Non-vacuity: the description must actually mention the file.
 			if !strings.Contains(desc, "**Location:**") {
@@ -103,7 +107,7 @@ func TestTheFenceOutrunsAnInjectedFence(t *testing.T) {
 				Confidence: 95,
 				Filename:   "key.txt",
 				Validator:  "secrets",
-			}, true)
+			}, "key.txt", true)
 
 			if !strings.Contains(desc, "**Matched value:**") {
 				t.Fatalf("no Matched value block, so the fence is untested:\n%s", desc)
@@ -151,7 +155,7 @@ func TestAnOrdinaryValueStillGetsAThreeBacktickFence(t *testing.T) {
 		Filename:   "a.txt",
 		Validator:  "ssn",
 		Context:    detector.ContextInfo{FullLine: "SSN: 449-87-4100"},
-	}, true)
+	}, "a.txt", true)
 
 	if !strings.Contains(desc, "\n```\n") {
 		t.Errorf("an ordinary value no longer uses a plain three-backtick fence:\n%s", desc)
