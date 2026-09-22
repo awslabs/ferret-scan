@@ -43,6 +43,24 @@ ferret-scan --file . --recursive --format gitlab-sast --output gl-sast-report.js
 - **Location Information**: Precise file paths and line numbers
 - **Sanitized Output**: Sensitive data is never exposed in vulnerability descriptions
 
+#### Scan what GitLab will resolve the paths against
+
+`location.file` is reported **relative to what you pass to `--file`**, because that is the
+only root the tool can know on every platform — it never looks for a `.git` directory. GitLab
+resolves `location.file` from the repository root, so the two agree whenever the scan target
+*is* the repository root:
+
+```bash
+ferret-scan --file . --recursive --format gitlab-sast     # src/app/config.py  ✅
+ferret-scan --file src --recursive --format gitlab-sast   # app/config.py — the src/ prefix is
+                                                          # lost, so the dashboard link 404s
+```
+
+Scan `.` from the checkout, and in Docker mount the checkout at the path you scan
+(`-v $PWD:/data --file /data`). A single file target reports just that file's name, and a path
+outside the target — reachable through a symlink — degrades to its basename rather than being
+dropped from the report.
+
 ### Security Dashboard Integration
 
 Once configured, Ferret Scan findings appear in:

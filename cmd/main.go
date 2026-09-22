@@ -28,6 +28,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/help"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/paths"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/validators"
 
@@ -148,17 +149,6 @@ func loadConfiguration(configFile string) *config.Config {
 	return cfg
 }
 
-// workingDirectoryOrEmpty is os.Getwd with the error collapsed to "", for callers that have
-// a documented fallback for not knowing the working directory and nothing useful to do with
-// the error itself. See FormatterOptions.SourceRoot.
-func workingDirectoryOrEmpty() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return cwd
-}
-
 // reportConfigProvenance names a config file that was DISCOVERED next to the working
 // directory, so the user learns which file is governing the scan.
 //
@@ -197,12 +187,15 @@ func reportConfigProvenance(w io.Writer, cfg *config.Config, explicitConfigFlag 
 	if err != nil {
 		return
 	}
-	abs, err := filepath.Abs(cfg.SourcePath)
-	if err != nil {
-		return
-	}
-	rel, err := filepath.Rel(cwd, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	// paths.RelInside rather than a local Rel plus a ".." test, which is what stood here:
+	// it is the same predicate four places had grown separately, and this was the copy
+	// that did NO symlink resolution. That made the note disappear for a working
+	// directory spelled through a link — /tmp/x on macOS, where the config resolves to
+	// /private/tmp/x/config.yaml — which is the shape CI temp directories and container
+	// mounts routinely have. The note is a disclosure; it should not depend on how the
+	// directory was spelled.
+	rel, inside := paths.RelInside(cwd, cfg.SourcePath)
+	if !inside {
 		// Outside the working directory: the user config dir or similar. Expected.
 		return
 	}
@@ -1957,11 +1950,13 @@ func main() {
 		// otherwise stay silent. See FormatterOptions.OutputToFile (#353).
 		OutputToFile: *outputFile != "",
 		Limit:        *limitFlag,
-		// The working directory is the repository root a gitlab-sast report's locations are
-		// relative to. It is the CI checkout, and every documented invocation scans it
-		// (`--file .`). An error here leaves it empty, which the formatter treats as "root
-		// unknown" and reports by basename — the pre-#705 output, never a dropped finding.
-		SourceRoot: workingDirectoryOrEmpty(),
+		// The SCAN TARGET is the root a machine report's locations are relative to — the
+		// user named it, so a path relative to it is self-describing, where the working
+		// directory is wherever the shell happened to be. See resolveReportRoot for why
+		// that distinction is measurable rather than stylistic, and why the root is not
+		// discovered by walking up for .git. Empty means "root unknown", which a formatter
+		// degrades to a basename — never a dropped finding.
+		SourceRoot: resolveReportRoot(inputPaths),
 	}
 
 	// Process all files using parallel processing

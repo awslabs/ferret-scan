@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/numrefs.docx (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** numrefs.docx (line 1)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 449-87-4100 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/numrefs.docx (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 519-42-8836 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** numrefs.docx (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 519-42-8836 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/numrefs.docx (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 563-18-7249 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** numrefs.docx (line 5)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 563-18-7249 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -107,7 +107,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <TMPDIR>/numrefs.docx (line 7)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 607-31-9284 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** numrefs.docx (line 7)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nEmployee SSN 607-31-9284 on file.\n```\n\n**Additional Information:**\n- context_impact: 45\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -133,7 +133,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected author information in this file.\n\n**Location:** <TMPDIR>/numrefs.docx (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
+      "description": "Ferret Scan detected author information in this file.\n\n**Location:** numrefs.docx (line 1)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nAuthor: Jane Analyst\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -159,7 +159,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected sensitive metadata in this file.\n\n**Location:** <TMPDIR>/numrefs.docx (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
+      "description": "Ferret Scan detected sensitive metadata in this file.\n\n**Location:** numrefs.docx (line 2)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** metadata validator\n\n**Context:**\n```\nLastModifiedBy: Ops Reviewer\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nReview and remove sensitive metadata from files before committing to version control.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
