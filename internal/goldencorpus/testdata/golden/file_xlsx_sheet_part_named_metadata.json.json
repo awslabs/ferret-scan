@@ -3,7 +3,7 @@
     {
       "confidence": 100,
       "confidence_level": "HIGH",
-      "filename": "<TMPDIR>/books_named.xlsx",
+      "filename": "books_named.xlsx",
       "line_number": 2,
       "metadata": {
         "confidence_adjustment": 0,
@@ -12,7 +12,7 @@
         "context_domain": "HR_Payroll",
         "context_impact": 50,
         "original_confidence": 100,
-        "original_file": "<TMPDIR>/books_named.xlsx",
+        "original_file": "books_named.xlsx",
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -39,7 +39,7 @@
     {
       "confidence": 100,
       "confidence_level": "HIGH",
-      "filename": "<TMPDIR>/books_named.xlsx",
+      "filename": "books_named.xlsx",
       "line_number": 3,
       "metadata": {
         "card_type": "VISA",
@@ -49,7 +49,7 @@
         "context_domain": "HR_Payroll",
         "context_impact": 15,
         "original_confidence": 100,
-        "original_file": "<TMPDIR>/books_named.xlsx",
+        "original_file": "books_named.xlsx",
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -77,7 +77,7 @@
     {
       "confidence": 60.00000000000001,
       "confidence_level": "MEDIUM",
-      "filename": "<TMPDIR>/books_named.xlsx",
+      "filename": "books_named.xlsx",
       "line_number": 1,
       "metadata": {
         "confidence_adjustment": 0,
@@ -88,7 +88,7 @@
         "full_field": "Author: Jane Analyst",
         "metadata_type": "AUTHOR_INFO",
         "original_confidence": 60.00000000000001,
-        "original_file": "<TMPDIR>/books_named.xlsx",
+        "original_file": "books_named.xlsx",
         "preprocessor_adjustment": 0,
         "preprocessor_name": "Office Metadata Extractor",
         "preprocessor_type": "office_metadata",
@@ -100,7 +100,7 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
-        "source_file": "<TMPDIR>/books_named.xlsx",
+        "source_file": "books_named.xlsx",
         "source_preprocessor": "office_metadata",
         "total_adjustment": 0,
         "validation_checks": {

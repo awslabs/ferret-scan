@@ -99,7 +99,7 @@ func TestSanitizeMetadata_DenyByDefault(t *testing.T) {
 	}
 
 	// Hidden: only allowlisted keys remain.
-	hidden := SanitizeMetadata(meta, "Robert Aragon", false)
+	hidden := SanitizeMetadata(meta, "Robert Aragon", false, "")
 	allowed := map[string]bool{"card_type": true, "vendor": true, "validation_checks": true, "context_impact": true}
 	for k := range hidden {
 		if !allowed[k] {
@@ -119,7 +119,7 @@ func TestSanitizeMetadata_DenyByDefault(t *testing.T) {
 	}
 
 	// Shown: everything is returned.
-	shown := SanitizeMetadata(meta, "Robert Aragon", true)
+	shown := SanitizeMetadata(meta, "Robert Aragon", true, "")
 	for k := range meta {
 		if _, ok := shown[k]; !ok {
 			t.Errorf("key %q should be present when ShowMatch=true", k)
@@ -133,7 +133,7 @@ func TestSanitizeMetadata_DropsExplainKey(t *testing.T) {
 	meta := map[string]interface{}{"card_type": "VISA"}
 	meta[explain.MetadataKey] = "raw explain blob"
 	for _, show := range []bool{true, false} {
-		out := SanitizeMetadata(meta, "x", show)
+		out := SanitizeMetadata(meta, "x", show, "")
 		if _, ok := out[explain.MetadataKey]; ok {
 			t.Errorf("explain key must never be in sanitized metadata (showMatch=%v)", show)
 		}
@@ -172,7 +172,7 @@ func sampleSuppressed() []detector.SuppressedMatch {
 // block embedded the raw finding. The value, metadata, and context must be
 // withheld by default, while the structural and suppression fields are kept.
 func TestSanitizeSuppressedMatches_HidesValueByDefault(t *testing.T) {
-	out := SanitizeSuppressedMatches(sampleSuppressed(), false)
+	out := SanitizeSuppressedMatches(sampleSuppressed(), false, "")
 	if len(out) != 1 {
 		t.Fatalf("expected 1 suppressed match, got %d", len(out))
 	}
@@ -199,7 +199,7 @@ func TestSanitizeSuppressedMatches_HidesValueByDefault(t *testing.T) {
 
 	// The original input must not be mutated (we operate on copies).
 	orig := sampleSuppressed()[0]
-	_ = SanitizeSuppressedMatches([]detector.SuppressedMatch{orig}, false)
+	_ = SanitizeSuppressedMatches([]detector.SuppressedMatch{orig}, false, "")
 	if orig.Match.Text != sensitiveValue {
 		t.Error("SanitizeSuppressedMatches mutated the caller's input")
 	}
@@ -209,7 +209,7 @@ func TestSanitizeSuppressedMatches_HidesValueByDefault(t *testing.T) {
 // with ShowMatch the suppressed finding is returned intact so the client-side
 // reveal of suppressed findings still works.
 func TestSanitizeSuppressedMatches_RevealsWithShowMatch(t *testing.T) {
-	out := SanitizeSuppressedMatches(sampleSuppressed(), true)
+	out := SanitizeSuppressedMatches(sampleSuppressed(), true, "")
 	f := out[0].Match
 	if f.Text != sensitiveValue {
 		t.Errorf("suppressed Text = %q, want real value when ShowMatch=true", f.Text)

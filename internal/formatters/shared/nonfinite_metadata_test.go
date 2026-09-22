@@ -33,7 +33,7 @@ func TestNonFiniteMetadataIsDroppedSoTheDocumentSurvives(t *testing.T) {
 		"consolidated_count":    3,
 	}
 
-	out := SanitizeMetadata(meta, "some match", true)
+	out := SanitizeMetadata(meta, "some match", true, "")
 
 	for _, k := range []string{"confidence_boost_percentage", "negative_inf", "not_a_number",
 		"as_float32", "original_confidences"} {
@@ -65,7 +65,7 @@ func TestFiniteMetadataMarshalsBeforeAndAfter(t *testing.T) {
 		t.Fatal("encoding/json marshalled +Inf, so this whole guard is unnecessary — the premise " +
 			"of #520 no longer holds")
 	}
-	if out := SanitizeMetadata(unsafe, "m", true); len(out) != 0 {
+	if out := SanitizeMetadata(unsafe, "m", true, ""); len(out) != 0 {
 		t.Errorf("a map holding only a non-finite value should sanitize to nothing, got %v", out)
 	}
 }
@@ -112,7 +112,7 @@ func TestNonFiniteIsDroppedEvenWhenTheValueIsHidden(t *testing.T) {
 	// confidence_adjustment IS allowlisted, so it reaches output with showMatch=false.
 	meta := map[string]interface{}{"confidence_adjustment": math.Inf(1)}
 
-	out := SanitizeMetadata(meta, "m", false)
+	out := SanitizeMetadata(meta, "m", false, "")
 	if _, present := out["confidence_adjustment"]; present {
 		t.Error("a non-finite ALLOWLISTED value survived with showMatch=false; it would void the " +
 			"document on a default run")

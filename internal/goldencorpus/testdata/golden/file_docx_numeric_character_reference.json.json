@@ -3,7 +3,7 @@
     {
       "confidence": 100,
       "confidence_level": "HIGH",
-      "filename": "<TMPDIR>/numrefs.docx",
+      "filename": "numrefs.docx",
       "line_number": 1,
       "metadata": {
         "confidence_adjustment": 0,
@@ -12,7 +12,7 @@
         "context_domain": "HR_Payroll",
         "context_impact": 45,
         "original_confidence": 100,
-        "original_file": "<TMPDIR>/numrefs.docx",
+        "original_file": "numrefs.docx",
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -39,7 +39,7 @@
     {
       "confidence": 100,
       "confidence_level": "HIGH",
-      "filename": "<TMPDIR>/numrefs.docx",
+      "filename": "numrefs.docx",
       "line_number": 3,
       "metadata": {
         "confidence_adjustment": 0,
@@ -48,7 +48,7 @@
         "context_domain": "HR_Payroll",
         "context_impact": 45,
         "original_confidence": 100,
-        "original_file": "<TMPDIR>/numrefs.docx",
+        "original_file": "numrefs.docx",
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -75,7 +75,7 @@
     {
       "confidence": 100,
       "confidence_level": "HIGH",
-      "filename": "<TMPDIR>/numrefs.docx",
+      "filename": "numrefs.docx",
       "line_number": 5,
       "metadata": {
         "confidence_adjustment": 0,
@@ -84,7 +84,7 @@
         "context_domain": "HR_Payroll",
         "context_impact": 45,
         "original_confidence": 100,
-        "original_file": "<TMPDIR>/numrefs.docx",
+        "original_file": "numrefs.docx",
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -111,7 +111,7 @@
     {
       "confidence": 100,
       "confidence_level": "HIGH",
-      "filename": "<TMPDIR>/numrefs.docx",
+      "filename": "numrefs.docx",
       "line_number": 7,
       "metadata": {
         "confidence_adjustment": 0,
@@ -120,7 +120,7 @@
         "context_domain": "HR_Payroll",
         "context_impact": 45,
         "original_confidence": 100,
-        "original_file": "<TMPDIR>/numrefs.docx",
+        "original_file": "numrefs.docx",
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -147,7 +147,7 @@
     {
       "confidence": 60.00000000000001,
       "confidence_level": "MEDIUM",
-      "filename": "<TMPDIR>/numrefs.docx",
+      "filename": "numrefs.docx",
       "line_number": 1,
       "metadata": {
         "confidence_adjustment": 0,
@@ -158,7 +158,7 @@
         "full_field": "Author: Jane Analyst",
         "metadata_type": "AUTHOR_INFO",
         "original_confidence": 60.00000000000001,
-        "original_file": "<TMPDIR>/numrefs.docx",
+        "original_file": "numrefs.docx",
         "preprocessor_adjustment": 0,
         "preprocessor_name": "Office Metadata Extractor",
         "preprocessor_type": "office_metadata",
@@ -170,7 +170,7 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
-        "source_file": "<TMPDIR>/numrefs.docx",
+        "source_file": "numrefs.docx",
         "source_preprocessor": "office_metadata",
         "total_adjustment": 0,
         "validation_checks": {
@@ -185,7 +185,7 @@
     {
       "confidence": 60.00000000000001,
       "confidence_level": "MEDIUM",
-      "filename": "<TMPDIR>/numrefs.docx",
+      "filename": "numrefs.docx",
       "line_number": 2,
       "metadata": {
         "confidence_adjustment": 0,
@@ -196,7 +196,7 @@
         "full_field": "LastModifiedBy: Ops Reviewer",
         "metadata_type": "LAST_MODIFIED_BY",
         "original_confidence": 60.00000000000001,
-        "original_file": "<TMPDIR>/numrefs.docx",
+        "original_file": "numrefs.docx",
         "preprocessor_adjustment": 0,
         "preprocessor_name": "Office Metadata Extractor",
         "preprocessor_type": "office_metadata",
@@ -208,7 +208,7 @@
           "TestData": 0
         },
         "source": "preprocessed_content",
-        "source_file": "<TMPDIR>/numrefs.docx",
+        "source_file": "numrefs.docx",
         "source_preprocessor": "office_metadata",
         "total_adjustment": 0,
         "validation_checks": {

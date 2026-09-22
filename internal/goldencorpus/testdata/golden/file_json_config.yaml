@@ -4,7 +4,7 @@ results:
       type: BUSINESS
       confidence: 36
       confidence_level: LOW
-      filename: <TMPDIR>/settings.json
+      filename: settings.json
       validator: email
       metadata:
         confidence_adjustment: 0
@@ -15,7 +15,7 @@ results:
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 36
-        original_file: <TMPDIR>/settings.json
+        original_file: settings.json
         semantic_context:
             FinancialData: 0
             MedicalData: 0

@@ -47,7 +47,7 @@
               "context_domain": "HR_Payroll",
               "context_impact": 45,
               "original_confidence": 100,
-              "original_file": "<TMPDIR>/from_template.doc",
+              "original_file": "from_template.doc",
               "semantic_context": {
                 "FinancialData": 0,
                 "MedicalData": 0,
@@ -110,7 +110,7 @@
               "full_field": "Template: \\\\corp-fs01\\templates\\quarterly.dot",
               "metadata_type": "TEMPLATE_INFO",
               "original_confidence": 85,
-              "original_file": "<TMPDIR>/from_template.doc",
+              "original_file": "from_template.doc",
               "preprocessor_adjustment": 0,
               "preprocessor_name": "Office Metadata Extractor",
               "preprocessor_type": "office_metadata",
@@ -122,7 +122,7 @@
                 "TestData": 0
               },
               "source": "preprocessed_content",
-              "source_file": "<TMPDIR>/from_template.doc",
+              "source_file": "from_template.doc",
               "source_preprocessor": "office_metadata",
               "template_risk_factors": [
                 "Network path exposes infrastructure",
@@ -173,7 +173,7 @@
               "full_field": "Author: Jane Analyst",
               "metadata_type": "AUTHOR_INFO",
               "original_confidence": 60,
-              "original_file": "<TMPDIR>/from_template.doc",
+              "original_file": "from_template.doc",
               "preprocessor_adjustment": 0,
               "preprocessor_name": "Office Metadata Extractor",
               "preprocessor_type": "office_metadata",
@@ -185,7 +185,7 @@
                 "TestData": 0
               },
               "source": "preprocessed_content",
-              "source_file": "<TMPDIR>/from_template.doc",
+              "source_file": "from_template.doc",
               "source_preprocessor": "office_metadata",
               "total_adjustment": 0,
               "validation_checks": {

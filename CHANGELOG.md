@@ -163,6 +163,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- **json, yaml, csv (`filename`) — BREAKING for anything parsing these reports:** the per-finding path is now relative to the scan target instead of the absolute host path. `cmd/main.go` resolves every input with `filepath.Abs` before the walk, so every one of these formats printed the operator's home directory and checkout layout, and in CI the runner's group and project path — **none of which is information about the finding**, in a document people attach to tickets, commit, and upload ([#715](https://github.com/awslabs/ferret-scan/issues/715)). Measured, scanning a tree from an unrelated working directory:
+
+  | format | field | before | now |
+  |---|---|---|---|
+  | `json` / `yaml` | `filename` | `/Users/<name>/work/repo/src/config.py` | `src/config.py` |
+  | `csv` | `Filename` | same | same |
+  | `json` / `yaml` / `sarif` | `metadata.original_file` | same | `src/config.py` |
+  | `json` / `yaml` | `suppressed[].finding.filename` | same | `src/config.py` |
+
+  **Deliberately breaking, unlike the gitlab-sast change.** `location.file` was already a lossy basename, so relative paths only made it *less* wrong; `filename` here has always been the full absolute path, and anything parsing these reports gets different strings. That is why it ships on its own.
+
+  **`metadata.original_file` is included, which extends #715's stated scope.** The issue set it aside as validator-level archive provenance, but it is emitted through the formatters' own metadata allowlist — where it is justified *on the grounds that it is "already exposed via the top-level filename field"* — and 19 validators set it, not just `intellectualproperty`: an ordinary `.py` finding carried `"filename": "src/first/config.py"` next to `"original_file": "/tmp/probe/data/src/first/config.py"`. Fixing it separately would have meant a second breaking release for the same field class, so `source_file` and `original_file` now render exactly as the top-level path does.
+
+  **No absolute root is added to json/yaml/csv.** #715 left open whether the prefix should stay available somewhere as a run-level field a consumer could rejoin; it is not added, because a single field still carries the home directory into every attached artifact, which is the disclosure this change exists to remove — and a consumer that needs the absolute path already knows the target it passed to `--file`. SARIF is the one format that keeps a root declaration (`run.originalUriBaseIds`), because without it that format's per-result `%SRCROOT%` is unresolvable; a new test allows it there **once** and forbids the prefix anywhere else in json, yaml, csv, gitlab-sast and sarif. **Unchanged:** the `text` formatter (human output, already a smart basename), `junit` (`testcase name` is a basename, and changing it would regroup CI test history — the basename *collapse* there is [#705](https://github.com/awslabs/ferret-scan/issues/705)'s class in another format and is left as a follow-up), pre-commit CSV output, and suppression matching, which hashes `filepath.Base(match.Filename)` and so is unaffected by what the report prints. `tests/integration`'s file-mode guard is updated deliberately: it asserted the absolute path, and now asserts the file's own name plus the property it actually protects — that a `--file` scan is not reported as `<stdin>`. 62 goldens change. Mutation-verified 3 of 3. Closes [#715](https://github.com/awslabs/ferret-scan/issues/715).
 - **sarif (`artifactLocation`, `originalUriBaseIds`, `versionControlProvenance`):** results are now resolvable by the consumers that ingest them, through the two-field mechanism SARIF designed for exactly this and the tool never reached. Measured on `main`, scanning `./src/nested/config.py` with `--file . --recursive --format sarif`:
 
   ```diff

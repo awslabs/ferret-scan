@@ -1,3 +1,3 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
-<TMPDIR>/src/nested/config.py,SSN,HIGH,100.0,2,449-87-4100
-<TMPDIR>/src/nested/config.py,AWS_ACCESS_KEY,LOW,15.0,1,AKIAIOSFODNN7EXAMPLE
+src/nested/config.py,SSN,HIGH,100.0,2,449-87-4100
+src/nested/config.py,AWS_ACCESS_KEY,LOW,15.0,1,AKIAIOSFODNN7EXAMPLE
