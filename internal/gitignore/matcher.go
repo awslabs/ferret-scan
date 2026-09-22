@@ -14,6 +14,7 @@ package gitignore
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,8 +139,9 @@ func New(root string, opts ...Option) (*Matcher, error) {
 		return nil
 	})
 
-	// .git/info/exclude lives next to .git at the repo root. Find the nearest
-	// .git directory walking up from root.
+	// info/exclude belongs to the nearest repository walking up from root. That
+	// repository is marked by .git as a directory or as a `gitdir:` FILE (worktree,
+	// submodule); see findGitInfoExclude for where each form keeps the file.
 	if infoExclude, gitRoot := findGitInfoExclude(m.root); infoExclude != "" {
 		if ign, err := gi.CompileIgnoreFile(infoExclude); err == nil {
 			m.ignorers = append(m.ignorers, scopedIgnorer{dir: gitRoot, ignore: ign})
@@ -228,11 +230,6 @@ func fileExists(p string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func dirExists(p string) bool {
-	info, err := os.Stat(p)
-	return err == nil && info.IsDir()
-}
-
 func containsGitDir(abs string) bool {
 	parts := strings.Split(filepath.ToSlash(abs), "/")
 	for _, p := range parts {
@@ -243,28 +240,133 @@ func containsGitDir(abs string) bool {
 	return false
 }
 
-// findGitInfoExclude walks up from start looking for a .git directory, and
-// returns (path, repoRoot) for .git/info/exclude if it exists. The returned
-// repoRoot is the directory containing .git (used to scope the rules).
+// findGitInfoExclude walks up from start looking for a repository, and returns
+// (path, repoRoot) for its info/exclude if that file exists. The returned repoRoot is
+// the directory holding .git — the worktree the rules are scoped to, never the
+// directory the rules were READ from, which for a worktree or submodule is elsewhere.
+//
+// A repository is marked by .git being a directory OR A FILE. The file form holds a
+// `gitdir:` pointer and is what `git worktree add` and `git submodule add` write; this
+// helper previously required a directory, so both forms walked straight PAST their own
+// repository root. Two measured outcomes, neither of them "no rules, no harm":
+//
+//   - Not nested in another repository: the walk reached the filesystem root and
+//     returned nothing, so a file the user excluded was scanned.
+//   - Nested (the normal case for a submodule, and for a worktree placed beside its
+//     main checkout): the walk found the OUTER repository's .git and applied an
+//     unrelated project's exclude rules to this one.
+//
+// Where the rules live, measured with `git check-ignore -v` on git 2.x:
+//
+//	submodule   .git file "gitdir: ../.git/modules/sub" (RELATIVE), no commondir
+//	            -> <outer>/.git/modules/sub/info/exclude, and the outer repository's
+//	               own .git/info/exclude does NOT apply
+//	worktree    .git file "gitdir: /abs/repo/.git/worktrees/wt2" (ABSOLUTE) plus a
+//	            commondir file holding "../.."
+//	            -> the COMMON dir's exclude, /abs/repo/.git/info/exclude. A rule written
+//	               to .git/worktrees/wt2/info/exclude is ignored by git, so following the
+//	               pointer alone would read a file git does not read.
 func findGitInfoExclude(start string) (string, string) {
 	cur := start
 	for {
-		gitDir := filepath.Join(cur, ".git")
-		if dirExists(gitDir) {
+		gitPath := filepath.Join(cur, ".git")
+		// Stat, not Lstat: a .git SYMLINK to a real repository directory is the shape
+		// the previous dirExists accepted, and it stays accepted.
+		if info, err := os.Stat(gitPath); err == nil {
+			gitDir := gitPath
+			if !info.IsDir() {
+				gitDir = resolveGitDirPointer(gitPath)
+				if gitDir == "" {
+					// A .git file we cannot follow still marks a repository root, so the
+					// walk STOPS. Stopping yields "no rules", which is wrong but local;
+					// climbing past it yields another repository's rules, which is wrong
+					// and silent.
+					return "", ""
+				}
+				gitDir = gitCommonDir(gitDir)
+			}
 			candidate := filepath.Join(gitDir, "info", "exclude")
 			if fileExists(candidate) {
 				return candidate, cur
 			}
 			return "", ""
 		}
-		// Also support git worktrees where .git is a file pointing elsewhere,
-		// but don't try to follow — common case is a real directory.
 		parent := filepath.Dir(cur)
 		if parent == cur {
 			return "", ""
 		}
 		cur = parent
 	}
+}
+
+// maxGitDirPointerBytes caps the read of a .git file. The real thing is one short line;
+// the cap exists because the name is attacker-supplied in the threat model's
+// hostile-repository case and nothing else bounds it.
+const maxGitDirPointerBytes = 4096
+
+// resolveGitDirPointer reads a `.git` FILE and returns the absolute directory its
+// `gitdir:` line names, or "" if it does not name a readable directory.
+//
+// A relative pointer is resolved against the directory HOLDING the .git file, which is
+// what git does and the only interpretation that works for `gitdir: ../.git/modules/sub`.
+func resolveGitDirPointer(gitFile string) string {
+	f, err := os.Open(gitFile) //nolint:gosec // path is built from the walk, not from input content
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	var target string
+	scanner := bufio.NewScanner(io.LimitReader(f, maxGitDirPointerBytes))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		rest, ok := strings.CutPrefix(line, "gitdir:")
+		if !ok {
+			continue
+		}
+		target = strings.TrimSpace(rest)
+		break
+	}
+	if target == "" {
+		return ""
+	}
+
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(gitFile), target)
+	}
+	target = filepath.Clean(target)
+	if info, err := os.Stat(target); err != nil || !info.IsDir() {
+		return ""
+	}
+	return target
+}
+
+// gitCommonDir resolves a worktree's per-worktree git directory to the repository's
+// COMMON git directory, where info/exclude actually lives. A git directory with no
+// commondir file — a submodule's, or a plain repository's — is already the common one.
+func gitCommonDir(gitDir string) string {
+	f, err := os.Open(filepath.Join(gitDir, "commondir")) //nolint:gosec // path is derived from the walk
+	if err != nil {
+		return gitDir
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, maxGitDirPointerBytes))
+	if err != nil {
+		return gitDir
+	}
+	common := strings.TrimSpace(string(data))
+	if common == "" {
+		return gitDir
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(gitDir, common)
+	}
+	common = filepath.Clean(common)
+	if info, err := os.Stat(common); err != nil || !info.IsDir() {
+		return gitDir
+	}
+	return common
 }
 
 func globalExcludesPaths() []string {
