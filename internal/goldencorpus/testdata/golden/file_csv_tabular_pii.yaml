@@ -4,7 +4,7 @@ results:
       type: SSN
       confidence: 85
       confidence_level: MEDIUM
-      filename: <TMPDIR>/people.csv
+      filename: people.csv
       validator: ssn
       metadata:
         confidence_adjustment: 20
@@ -13,7 +13,7 @@ results:
         context_domain: HR_Payroll
         context_impact: -20
         original_confidence: 65
-        original_file: <TMPDIR>/people.csv
+        original_file: people.csv
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -35,7 +35,7 @@ results:
       type: SSN
       confidence: 85
       confidence_level: MEDIUM
-      filename: <TMPDIR>/people.csv
+      filename: people.csv
       validator: ssn
       metadata:
         confidence_adjustment: 20
@@ -44,7 +44,7 @@ results:
         context_domain: HR_Payroll
         context_impact: -20
         original_confidence: 65
-        original_file: <TMPDIR>/people.csv
+        original_file: people.csv
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -66,7 +66,7 @@ results:
       type: BUSINESS
       confidence: 75
       confidence_level: MEDIUM
-      filename: <TMPDIR>/people.csv
+      filename: people.csv
       validator: email
       metadata:
         confidence_adjustment: 20
@@ -77,7 +77,7 @@ results:
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 55
-        original_file: <TMPDIR>/people.csv
+        original_file: people.csv
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -102,7 +102,7 @@ results:
       type: BUSINESS
       confidence: 75
       confidence_level: MEDIUM
-      filename: <TMPDIR>/people.csv
+      filename: people.csv
       validator: email
       metadata:
         confidence_adjustment: 20
@@ -113,7 +113,7 @@ results:
         domain: example.org
         email_provider: BUSINESS
         original_confidence: 55
-        original_file: <TMPDIR>/people.csv
+        original_file: people.csv
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -138,7 +138,7 @@ results:
       type: MASTERCARD
       confidence: 25
       confidence_level: LOW
-      filename: <TMPDIR>/people.csv
+      filename: people.csv
       validator: creditcard
       metadata:
         card_type: MASTERCARD
@@ -148,7 +148,7 @@ results:
         context_domain: HR_Payroll
         context_impact: -100
         original_confidence: 5
-        original_file: <TMPDIR>/people.csv
+        original_file: people.csv
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -171,7 +171,7 @@ results:
       type: VISA
       confidence: 25
       confidence_level: LOW
-      filename: <TMPDIR>/people.csv
+      filename: people.csv
       validator: creditcard
       metadata:
         card_type: VISA
@@ -181,7 +181,7 @@ results:
         context_domain: HR_Payroll
         context_impact: -100
         original_confidence: 5
-        original_file: <TMPDIR>/people.csv
+        original_file: people.csv
         semantic_context:
             FinancialData: 0
             MedicalData: 0

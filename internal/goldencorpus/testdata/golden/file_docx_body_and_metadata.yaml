@@ -4,7 +4,7 @@ results:
       type: SSN
       confidence: 100
       confidence_level: HIGH
-      filename: <TMPDIR>/report.docx
+      filename: report.docx
       validator: ssn
       metadata:
         confidence_adjustment: 0
@@ -13,7 +13,7 @@ results:
         context_domain: HR_Payroll
         context_impact: 45
         original_confidence: 100
-        original_file: <TMPDIR>/report.docx
+        original_file: report.docx
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -35,7 +35,7 @@ results:
       type: VISA
       confidence: 100
       confidence_level: HIGH
-      filename: <TMPDIR>/report.docx
+      filename: report.docx
       validator: creditcard
       metadata:
         card_type: VISA
@@ -45,7 +45,7 @@ results:
         context_domain: HR_Payroll
         context_impact: 15
         original_confidence: 100
-        original_file: <TMPDIR>/report.docx
+        original_file: report.docx
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -68,7 +68,7 @@ results:
       type: AUTHOR_INFO
       confidence: 60.00000000000001
       confidence_level: MEDIUM
-      filename: <TMPDIR>/report.docx
+      filename: report.docx
       validator: metadata
       metadata:
         confidence_adjustment: 0
@@ -79,7 +79,7 @@ results:
         full_field: 'Author: Jane Analyst'
         metadata_type: AUTHOR_INFO
         original_confidence: 60.00000000000001
-        original_file: <TMPDIR>/report.docx
+        original_file: report.docx
         preprocessor_adjustment: 0
         preprocessor_name: Office Metadata Extractor
         preprocessor_type: office_metadata
@@ -90,7 +90,7 @@ results:
             Production: 0
             TestData: 0
         source: preprocessed_content
-        source_file: <TMPDIR>/report.docx
+        source_file: report.docx
         source_preprocessor: office_metadata
         total_adjustment: 0
         validation_checks:
@@ -101,7 +101,7 @@ results:
       type: LAST_MODIFIED_BY
       confidence: 60.00000000000001
       confidence_level: MEDIUM
-      filename: <TMPDIR>/report.docx
+      filename: report.docx
       validator: metadata
       metadata:
         confidence_adjustment: 0
@@ -112,7 +112,7 @@ results:
         full_field: 'LastModifiedBy: Ops Reviewer'
         metadata_type: LAST_MODIFIED_BY
         original_confidence: 60.00000000000001
-        original_file: <TMPDIR>/report.docx
+        original_file: report.docx
         preprocessor_adjustment: 0
         preprocessor_name: Office Metadata Extractor
         preprocessor_type: office_metadata
@@ -123,7 +123,7 @@ results:
             Production: 0
             TestData: 0
         source: preprocessed_content
-        source_file: <TMPDIR>/report.docx
+        source_file: report.docx
         source_preprocessor: office_metadata
         total_adjustment: 0
         validation_checks:

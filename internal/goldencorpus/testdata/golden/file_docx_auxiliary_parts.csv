@@ -1,7 +1,7 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
-<TMPDIR>/aux_parts.docx,PERSON_NAME,HIGH,100.0,10,Marion Reyes
-<TMPDIR>/aux_parts.docx,SSN,HIGH,100.0,3,449-87-4100
-<TMPDIR>/aux_parts.docx,SSN,HIGH,100.0,6,204-11-8830
-<TMPDIR>/aux_parts.docx,SSN,HIGH,100.0,14,225-66-9014
-<TMPDIR>/aux_parts.docx,AUTHOR_INFO,MEDIUM,60.0,1,Jane Analyst
-<TMPDIR>/aux_parts.docx,LAST_MODIFIED_BY,MEDIUM,60.0,2,Ops Reviewer
+aux_parts.docx,PERSON_NAME,HIGH,100.0,10,Marion Reyes
+aux_parts.docx,SSN,HIGH,100.0,3,449-87-4100
+aux_parts.docx,SSN,HIGH,100.0,6,204-11-8830
+aux_parts.docx,SSN,HIGH,100.0,14,225-66-9014
+aux_parts.docx,AUTHOR_INFO,MEDIUM,60.0,1,Jane Analyst
+aux_parts.docx,LAST_MODIFIED_BY,MEDIUM,60.0,2,Ops Reviewer

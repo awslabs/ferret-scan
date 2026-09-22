@@ -43,7 +43,7 @@
               "full_field": "Artist: john.doe@example.com",
               "metadata_type": "AUTHOR_INFO",
               "original_confidence": 80,
-              "original_file": "<TMPDIR>/clip.wav",
+              "original_file": "clip.wav",
               "preprocessor_adjustment": 0,
               "preprocessor_name": "Audio Metadata Extractor",
               "preprocessor_type": "audio_metadata",
@@ -55,7 +55,7 @@
                 "TestData": 0.1
               },
               "source": "preprocessed_content",
-              "source_file": "<TMPDIR>/clip.wav",
+              "source_file": "clip.wav",
               "source_preprocessor": "audio_metadata",
               "total_adjustment": 0,
               "validation_checks": {
@@ -106,7 +106,7 @@
               "full_field": "Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE",
               "metadata_type": "DOCUMENT_COMMENTS",
               "original_confidence": 65,
-              "original_file": "<TMPDIR>/clip.wav",
+              "original_file": "clip.wav",
               "preprocessor_adjustment": 0,
               "preprocessor_name": "Audio Metadata Extractor",
               "preprocessor_type": "audio_metadata",
@@ -118,7 +118,7 @@
                 "TestData": 0.1
               },
               "source": "preprocessed_content",
-              "source_file": "<TMPDIR>/clip.wav",
+              "source_file": "clip.wav",
               "source_preprocessor": "audio_metadata",
               "total_adjustment": 0,
               "validation_checks": {
@@ -173,7 +173,7 @@
               "domain": "example.com",
               "email_provider": "BUSINESS",
               "original_confidence": 25,
-              "original_file": "<TMPDIR>/clip.wav",
+              "original_file": "clip.wav",
               "semantic_context": {
                 "FinancialData": 0,
                 "MedicalData": 0,
@@ -314,7 +314,7 @@
               "country": "US/CA",
               "format": "XXX-XXX-XXXX",
               "original_confidence": 15,
-              "original_file": "<TMPDIR>/clip.wav",
+              "original_file": "clip.wav",
               "pattern_name": "US_Dashed",
               "semantic_context": {
                 "FinancialData": 0,

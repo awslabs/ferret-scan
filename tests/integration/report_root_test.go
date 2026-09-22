@@ -158,3 +158,135 @@ func TestReportedPathForASingleFileTargetIsItsName(t *testing.T) {
 		t.Errorf("got %v, want exactly [config.py]", got)
 	}
 }
+
+// TestMachineFormatsDoNotCarryTheHostLayout is #715's guarantee: a report is an artifact
+// people attach to tickets, commit and upload, and it should not carry the operator's home
+// directory, the checkout layout, or in CI the runner's group and project path. None of that
+// is information about the finding.
+//
+// The scan target's own absolute path is the whole prefix at issue here, so asserting its
+// absence is the direct test. SARIF is the documented exception: it declares the root ONCE in
+// run.originalUriBaseIds, because without that definition its per-result %SRCROOT% is a
+// dangling reference no consumer can resolve (#711) — the run-level field #715 itself floats as
+// the right shape for a consumer that needs to rejoin the prefix.
+func TestMachineFormatsDoNotCarryTheHostLayout(t *testing.T) {
+	bin := reportRootBinary(t)
+	root := twoNestedFindings(t)
+	workDir := t.TempDir()
+
+	for _, format := range []string{"json", "yaml", "csv", "gitlab-sast", "sarif"} {
+		t.Run(format, func(t *testing.T) {
+			cmd := exec.Command(bin, "--file", root, "--recursive", "--format", format,
+				"--checks", "SSN", "--confidence", "all")
+			cmd.Dir = workDir
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("scan failed: %v", err)
+			}
+			report := string(out)
+
+			// Non-vacuity first: the findings have to be in there for their absence of a
+			// prefix to mean anything.
+			if !strings.Contains(report, "src/first/config.py") {
+				t.Fatalf("the report does not name src/first/config.py at all:\n%s", report)
+			}
+
+			// Every spelling the prefix could take in a report: the native one, the
+			// forward-slashed one the formatters emit, and — on Windows — the
+			// backslash-escaped one a JSON encoder writes. Counting only one spelling
+			// would make this test pass vacuously on the platform whose spelling it missed.
+			occurrences := 0
+			for _, spelling := range pathSpellings(root) {
+				occurrences += strings.Count(report, spelling)
+			}
+			allowed := 0
+			if format == "sarif" {
+				allowed = 1 // run.originalUriBaseIds, once
+			}
+			if occurrences > allowed {
+				t.Errorf("the scan target's absolute path appears %d times (at most %d allowed "+
+					"for %s):\n%s", occurrences, allowed, format, report)
+			}
+		})
+	}
+}
+
+// The path is relative in the per-finding field of every format that has one, not just absent
+// from the prefix. Reads the value rather than the whole document, so a format that dropped the
+// field entirely would fail rather than pass by omission.
+func TestPerFindingPathsAreRootRelative(t *testing.T) {
+	bin := reportRootBinary(t)
+	root := twoNestedFindings(t)
+	workDir := t.TempDir()
+
+	run := func(t *testing.T, format string) string {
+		t.Helper()
+		cmd := exec.Command(bin, "--file", root, "--recursive", "--format", format,
+			"--checks", "SSN", "--confidence", "all")
+		cmd.Dir = workDir
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		return string(out)
+	}
+
+	t.Run("json", func(t *testing.T) {
+		var doc struct {
+			Results []struct {
+				Filename string `json:"filename"`
+			} `json:"results"`
+		}
+		if err := json.Unmarshal([]byte(run(t, "json")), &doc); err != nil {
+			t.Fatalf("json output is not JSON: %v", err)
+		}
+		if len(doc.Results) != 2 {
+			t.Fatalf("got %d results, want 2", len(doc.Results))
+		}
+		for _, r := range doc.Results {
+			if filepath.IsAbs(r.Filename) || !strings.HasPrefix(r.Filename, "src/") {
+				t.Errorf("filename = %q, want a path under src/", r.Filename)
+			}
+		}
+	})
+
+	t.Run("csv", func(t *testing.T) {
+		lines := strings.Split(strings.TrimSpace(run(t, "csv")), "\n")
+		if len(lines) < 3 {
+			t.Fatalf("csv has %d lines, want a header and two rows:\n%s", len(lines), lines)
+		}
+		for _, line := range lines[1:] {
+			first := strings.SplitN(line, ",", 2)[0]
+			if filepath.IsAbs(first) || !strings.HasPrefix(first, "src/") {
+				t.Errorf("Filename column = %q, want a path under src/", first)
+			}
+		}
+	})
+
+	t.Run("yaml", func(t *testing.T) {
+		out := run(t, "yaml")
+		if !strings.Contains(out, "filename: src/first/config.py") {
+			t.Errorf("yaml does not carry a root-relative filename:\n%s", out)
+		}
+	})
+}
+
+// pathSpellings returns the distinct ways an absolute path can appear in a report: as the host
+// writes it, forward-slashed as the formatters emit it, and JSON-escaped as an encoder writes a
+// Windows path.
+func pathSpellings(path string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range []string{
+		path,
+		filepath.ToSlash(path),
+		strings.ReplaceAll(path, `\`, `\\`),
+	} {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}

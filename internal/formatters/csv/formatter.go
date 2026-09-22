@@ -144,7 +144,13 @@ func (f *Formatter) createCSVRow(match detector.Match, options formatters.Format
 		}
 
 		row = []string{
-			f.escapeCSVField(match.Filename),
+			// Relative to FormatterOptions.SourceRoot, not the absolute path the walker
+			// used: a csv report is attached to tickets and committed, and this column
+			// carried the operator's home directory and checkout layout — in CI, the
+			// runner's group and project path (#715). The unredactedByPath lookup below
+			// deliberately keeps using the RAW path, because that map is keyed by what the
+			// redactor saw.
+			f.escapeCSVField(options.ReportPath(match.Filename)),
 			f.escapeCSVField(match.Type),
 			f.escapeCSVField(confidenceLevel),
 			fmt.Sprintf("%.1f", match.Confidence),
@@ -168,7 +174,7 @@ func (f *Formatter) createCSVRow(match detector.Match, options formatters.Format
 		// value that embeds the raw matched text (e.g. name_components,
 		// full_field), so --verbose CSV can't leak what displayText hid.
 		if options.Verbose {
-			sanitized := shared.SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch)
+			sanitized := shared.SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch, options.SourceRoot)
 			if sanitized != nil {
 				metadataJSON, err := json.Marshal(sanitized)
 				if err != nil {

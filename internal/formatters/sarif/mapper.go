@@ -333,7 +333,7 @@ func (m *VulnerabilityMapper) buildProperties(match detector.Match, options form
 	// drops the explanation key (surfaced as a first-class property below) and,
 	// when ShowMatch is false, redacts any value that embeds the raw matched
 	// text so metadata cannot leak what the snippet/message redaction hides.
-	sanitized := shared.SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch)
+	sanitized := shared.SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch, options.SourceRoot)
 	if len(sanitized) > 0 {
 		roundedMetadata := make(map[string]interface{}, len(sanitized))
 		for key, value := range sanitized {

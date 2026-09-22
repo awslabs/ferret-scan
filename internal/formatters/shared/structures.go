@@ -119,6 +119,14 @@ var safeMetadataKeys = map[string]bool{
 	"check_type":          true,
 }
 
+// pathValuedMetadataKeys are the allowlisted provenance keys whose value is a FILE PATH, and
+// which therefore have to be rendered the same way the top-level path field is. Everything else
+// in the allowlist is a label, a count or a level.
+var pathValuedMetadataKeys = map[string]bool{
+	"source_file":   true,
+	"original_file": true,
+}
+
 // SanitizeMetadata returns a copy of a finding's metadata that is safe to
 // serialize given the ShowMatch setting. It is the single, canonical path shared
 // by every formatter that emits the metadata map (JSON, YAML, SARIF, CSV), so
@@ -144,7 +152,7 @@ var safeMetadataKeys = map[string]bool{
 // flag-specific rather than general.
 //
 // Returns nil when nothing remains, so callers can omit an empty map.
-func SanitizeMetadata(meta map[string]interface{}, matchText string, showMatch bool) map[string]interface{} {
+func SanitizeMetadata(meta map[string]interface{}, matchText string, showMatch bool, sourceRoot string) map[string]interface{} {
 	if len(meta) == 0 {
 		return nil
 	}
@@ -161,6 +169,22 @@ func SanitizeMetadata(meta map[string]interface{}, matchText string, showMatch b
 		}
 		if !serializableNumber(v) {
 			continue
+		}
+		// A provenance PATH is reported the same way the top-level path field is.
+		//
+		// These keys are allowlisted above on the stated grounds that they are "already
+		// exposed via the top-level filename field" — and once that field became relative to
+		// the scan root (#715), an absolute value here both contradicted it and kept the
+		// operator's home directory, checkout layout and CI runner path in the document.
+		// Measured before this: an ordinary .py finding in json/yaml/sarif carried
+		// "filename": "src/first/config.py" next to
+		// "original_file": "/tmp/probe/data/src/first/config.py". These keys are provenance
+		// from 19 validators, not archive-only as #715 assumed.
+		if pathValuedMetadataKeys[k] {
+			if str, ok := v.(string); ok {
+				out[k] = formatters.RelativeToRoot(str, sourceRoot)
+				continue
+			}
 		}
 		out[k] = v
 	}
@@ -209,7 +233,7 @@ func serializableNumber(v interface{}) bool {
 //     fields redacted, while the structural/suppression fields (type, line,
 //     confidence, filename, validator, suppressed_by, rule_reason, expiry) are
 //     preserved so the entry is still useful.
-func SanitizeSuppressedMatches(suppressed []detector.SuppressedMatch, showMatch bool) []detector.SuppressedMatch {
+func SanitizeSuppressedMatches(suppressed []detector.SuppressedMatch, showMatch bool, sourceRoot string) []detector.SuppressedMatch {
 	if showMatch || len(suppressed) == 0 {
 		return suppressed
 	}
@@ -217,7 +241,7 @@ func SanitizeSuppressedMatches(suppressed []detector.SuppressedMatch, showMatch 
 	for i, s := range suppressed {
 		sanitized := s // copy the suppression envelope (SuppressedBy, RuleReason, ...)
 		m := s.Match   // copy the finding so we don't mutate the caller's slice
-		m.Metadata = SanitizeMetadata(m.Metadata, s.Match.Text, false)
+		m.Metadata = SanitizeMetadata(m.Metadata, s.Match.Text, false, sourceRoot)
 		m.Text = redactionPlaceholder
 		m.SecureText = nil
 		// Context holds the raw surrounding line and before/after text.
@@ -226,6 +250,23 @@ func SanitizeSuppressedMatches(suppressed []detector.SuppressedMatch, showMatch 
 		m.Context.AfterText = ""
 		sanitized.Match = m
 		out[i] = sanitized
+	}
+	return out
+}
+
+// withReportPaths returns suppressed matches whose finding Filename is the path the report
+// should carry, copying rather than mutating the caller's slice.
+//
+// Separate from SanitizeSuppressedMatches, which returns the input untouched under
+// --show-match: the path rewrite is not a redaction and applies either way.
+func withReportPaths(suppressed []detector.SuppressedMatch, options formatters.FormatterOptions) []detector.SuppressedMatch {
+	if len(suppressed) == 0 {
+		return suppressed
+	}
+	out := make([]detector.SuppressedMatch, len(suppressed))
+	for i, s := range suppressed {
+		out[i] = s
+		out[i].Match.Filename = options.ReportPath(s.Match.Filename)
 	}
 	return out
 }
@@ -473,7 +514,7 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 		// Sanitize metadata through the single shared path so a value duplicated
 		// inside metadata (e.g. name_components, full_field) cannot defeat the
 		// Text-field redaction below.
-		metadata := SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch)
+		metadata := SanitizeMetadata(match.Metadata, match.Text, options.ShowMatch, options.SourceRoot)
 
 		confidenceLevel := GetConfidenceLevel(match.Confidence)
 
@@ -491,9 +532,15 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 			Type:            match.Type,
 			Confidence:      match.Confidence,
 			ConfidenceLevel: confidenceLevel,
-			Filename:        match.Filename,
-			Validator:       match.Validator,
-			Metadata:        metadata,
+			// The path relative to FormatterOptions.SourceRoot, not the absolute path the
+			// walker used. cmd/main.go resolves every input with filepath.Abs, so this field
+			// carried the operator's home directory, the checkout layout, and in CI the
+			// runner's group/project path — none of which is information about the finding,
+			// in a document people attach to tickets and commit (#715). A path outside the
+			// root degrades to its basename; see formatters.RelativeToRoot.
+			Filename:  options.ReportPath(match.Filename),
+			Validator: match.Validator,
+			Metadata:  metadata,
 		}
 
 		if ex, ok := explain.FromMatch(match); ok {
@@ -529,7 +576,11 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 		// Suppressed matches embed the raw finding, so route them through the
 		// same deny-by-default redaction as active results: without --show-match
 		// the value, metadata, and surrounding context are withheld.
-		Suppressed: SanitizeSuppressedMatches(suppressedMatches, options.ShowMatch),
+		// Suppressed findings are serialized straight from detector.SuppressedMatch, so
+		// their Filename needs the same treatment as an active result's — otherwise the
+		// absolute path the `results` array no longer carries would still sit in
+		// `suppressed[].finding.filename`.
+		Suppressed: withReportPaths(SanitizeSuppressedMatches(suppressedMatches, options.ShowMatch, options.SourceRoot), options),
 		Stats:      options.Stats,
 	}
 	if truncated {

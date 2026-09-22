@@ -541,9 +541,19 @@ func TestStdin_FileModeRegression(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("expected file-mode results")
 	}
+	// The real file, not the stdin virtual label — that is what this test guards.
+	//
+	// It asserted the ABSOLUTE path until #715 made json/yaml/csv report relative to the
+	// scan target; a single-file target roots at its parent, so the reported name is the
+	// file's own. The property being protected is unchanged: a --file scan must not be
+	// reported as <stdin>.
+	want := filepath.Base(sample)
 	for _, r := range results {
-		if got := r["filename"]; got != sample {
-			t.Errorf("filename=%v, want %v", got, sample)
+		if got := r["filename"]; got != want {
+			t.Errorf("filename=%v, want %v", got, want)
+		}
+		if got, ok := r["filename"].(string); ok && strings.Contains(got, "stdin") {
+			t.Errorf("a --file scan was reported as a virtual stdin source: %q", got)
 		}
 	}
 }
