@@ -316,6 +316,49 @@ var knownDetectionTypes = []string{
 	"US_STREET_ADDRESS",   // generic SARIF copy today
 	"VIN",
 	"VISA", // generic SARIF copy today
+	// The 38 below were found by TestEverySourceEmittableTypeIsKnown, which harvests the
+	// SOURCE rather than the golden corpus: the corpus emits 32 types and cannot see a
+	// reachable type it never triggers. Reachability spot-checked through the binary
+	// (OUTLOOK, PROTONMAIL, CERTIFICATE emitted as SARIF ruleIds) and on real document
+	// scans (CUSTOM_PROPERTY, DOCUMENT_DESCRIPTION, MANAGER_INFO, METADATA). See #704.
+	"AOL",                   // EMAIL provider sub-type
+	"ATLASSIAN",             // EMAIL provider sub-type
+	"FASTMAIL",              // EMAIL provider sub-type
+	"GITLAB",                // EMAIL provider sub-type
+	"GOOGLE_WORKSPACE",      // EMAIL provider sub-type
+	"ICLOUD",                // EMAIL provider sub-type
+	"MAIL_RU",               // EMAIL provider sub-type
+	"MICROSOFT_365",         // EMAIL provider sub-type
+	"OUTLOOK",               // EMAIL provider sub-type
+	"PROTONMAIL",            // EMAIL provider sub-type
+	"SALESFORCE",            // EMAIL provider sub-type
+	"SLACK",                 // EMAIL provider sub-type
+	"TUTANOTA",              // EMAIL provider sub-type
+	"YAHOO",                 // EMAIL provider sub-type
+	"YANDEX",                // EMAIL provider sub-type
+	"ZOHO",                  // EMAIL provider sub-type
+	"MAESTRO",               // CREDIT_CARD brand sub-type
+	"UNIONPAY",              // CREDIT_CARD brand sub-type
+	"CERTIFICATE",           // SECRETS sub-type
+	"PGP_PRIVATE_KEY",       // SECRETS sub-type
+	"AUDIO_ARTIST_IDENTITY", // METADATA sub-type
+	"AUDIO_CONTACT_INFO",    // METADATA sub-type
+	"AUDIO_LOCATION_INFO",   // METADATA sub-type
+	"AUDIO_METADATA",        // METADATA sub-type
+	"CUSTOM_PROPERTY",       // METADATA sub-type
+	"DEVICE_INFO",           // METADATA sub-type
+	"DOCUMENT_DESCRIPTION",  // METADATA sub-type
+	"DOCUMENT_KEYWORDS",     // METADATA sub-type
+	"DOCUMENT_METADATA",     // METADATA sub-type
+	"GPS",                   // METADATA sub-type
+	"MANAGER_INFO",          // METADATA sub-type
+	"SOFTWARE_USER_PATH",    // METADATA sub-type
+	"VIDEO_CREATOR_INFO",    // METADATA sub-type
+	"VIDEO_DEVICE_INFO",     // METADATA sub-type
+	"VIDEO_METADATA",        // METADATA sub-type
+	"CLOUD_RESOURCE_ID",     // family type, emitted directly by its validator
+	"METADATA",              // family type, emitted directly by its validator
+	"SOCIAL_MEDIA_CLUSTER",  // SOCIAL_MEDIA cluster consolidation type
 }
 
 // KnownTypes returns every detection type this tool can report, sorted.

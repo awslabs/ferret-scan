@@ -163,6 +163,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- **sarif, docs:** 38 detection types the tool can emit were absent from `knownDetectionTypes`, from
+  `docs/checks.md` (whose first line claims to list *"Every type ferret-scan can report"*), and from
+  every SARIF `helpUri` — so a finding of any of them carried a documentation link that 404s, and a
+  consumer keying a suppression on the ruleId had no documented name to key on
+  ([#704](https://github.com/awslabs/ferret-scan/issues/704) §6, which counted six; six was a floor).
+  The 38: sixteen EMAIL provider sub-types (OUTLOOK, PROTONMAIL, ICLOUD, …), two CREDIT_CARD brands
+  (MAESTRO, UNIONPAY), CERTIFICATE and PGP_PRIVATE_KEY, fifteen METADATA sub-types (GPS, DEVICE_INFO,
+  the audio/video families, …), SOCIAL_MEDIA_CLUSTER, and the two family types METADATA and
+  CLOUD_RESOURCE_ID that their validators emit directly. All 36 sub-types inherit their family's
+  SARIF description via `typeParent`. Reachability was spot-checked through the binary, not assumed:
+  OUTLOOK, PROTONMAIL and CERTIFICATE emitted as SARIF ruleIds from a three-file fixture, and four of
+  the METADATA sub-types appear by the hundreds in real document scans.
+  - **The class is gated at the source now, not at the corpus.** The existing guard
+    (`TestEveryEmittedTypeIsKnown`) harvests the golden SARIF corpus — real output, but only the 32
+    types the corpus happens to trigger, so a reachable type it never emits is invisible to it; the
+    list's own header even records it was *"derived by enumerating the rules the tool ACTUALLY
+    emitted, not by reading validator source"*. The new `TestEverySourceEmittableTypeIsKnown` walks
+    the AST of every production file and harvests each string that can flow into
+    `detector.Match.Type` — direct literals, and one hop through helpers like
+    `return "CERTIFICATE"`, the shape all five originally-reported types used. Its first draft
+    harvested the `Type:` key of *every* composite literal and caught SECURITY_FINDINGS, a JUnit XML
+    failure-type attribute; it now requires the composite to be a `Match`, and carries floors
+    (150+ files parsed, 50+ types harvested) plus two controls (SSN for the direct arm, CERTIFICATE
+    for the helper arm) so a broken walk cannot read as a clean tree. Both guards stay: the corpus
+    guard proves emitted output is known, the source guard proves the reachable surface is.
+
 - **json, yaml, csv (`filename`) — BREAKING for anything parsing these reports:** the per-finding path is now relative to the scan target instead of the absolute host path. `cmd/main.go` resolves every input with `filepath.Abs` before the walk, so every one of these formats printed the operator's home directory and checkout layout, and in CI the runner's group and project path — **none of which is information about the finding**, in a document people attach to tickets, commit, and upload ([#715](https://github.com/awslabs/ferret-scan/issues/715)). Measured, scanning a tree from an unrelated working directory:
 
   | format | field | before | now |
