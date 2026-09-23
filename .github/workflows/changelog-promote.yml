@@ -1,0 +1,55 @@
+name: Promote CHANGELOG on release
+
+# #647: `## [Unreleased]` had swallowed 27 releases because nothing cut it at release time -- and
+# the one tool that ever tried (git-chglog, removed in #646) REGENERATED the file from commit
+# subjects, destroying the hand-written prose. This workflow does the additive alternative: after a
+# release is published, rename [Unreleased] to the released tag and insert a fresh empty
+# [Unreleased] above it. scripts/promote-changelog.sh owns the surgery and its guarantees
+# (byte-preservation, idempotence on a re-published release, no-op on an empty section, hard
+# failure on a missing anchor).
+#
+# `release: published` rather than the tag push, DELIBERATELY -- the ordering point #647 raises:
+# the tag must never point at a commit that got a post-hoc changelog edit, and the release job's
+# tree must never be dirtied mid-goreleaser. Promotion is documentation, so it lands as its own
+# commit on main after the artefacts exist. This also keeps the file OUT of release.yml, which
+# #733 edits concurrently.
+#
+# The push uses the workflow GITHUB_TOKEN like the weekly metrics commit does; GITHUB_TOKEN-authored
+# pushes do not trigger workflows, so this cannot loop.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to promote [Unreleased] under (vX.Y.Z), e.g. after a manual release"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Promote [Unreleased] to the released tag
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: ./scripts/promote-changelog.sh "$TAG"
+
+      - name: Commit and push if the file changed
+        run: |
+          if git diff --quiet CHANGELOG.md; then
+            echo "No changelog change to push (idempotent re-run or empty section)."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): promote [Unreleased] to ${{ github.event.release.tag_name || inputs.tag }} [skip ci]"
+          git push

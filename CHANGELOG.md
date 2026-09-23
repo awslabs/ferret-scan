@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <a name="unreleased"></a>
+> **Note on v1.7.0 → v2.5.1:** the 27 releases in that range were folded into `[Unreleased]` before
+> release-time promotion existed ([#647](https://github.com/awslabs/ferret-scan/issues/647)); their
+> per-version breakdown lives in the [GitHub release notes](https://github.com/awslabs/ferret-scan/releases).
+> Nothing here maps a bullet to its tag, and a half-accurate backfill would read as authoritative, so
+> none was attempted. Promotion is automatic from the next release onward.
+
 ## [Unreleased]
 
 ### 📚 Documentation
@@ -453,6 +459,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### 🔨 Internal
+
+- **changelog:** `[Unreleased]` had swallowed 27 releases because nothing cut it at release time, and
+  the only tool that ever tried (git-chglog, removed in #646) REGENERATED the file from commit
+  subjects — destroying the hand-written measurements it exists to carry
+  ([#647](https://github.com/awslabs/ferret-scan/issues/647)). Releases now promote instead:
+  `.github/workflows/changelog-promote.yml` fires on `release: published` (after goreleaser, so the
+  tag never points at a post-hoc edit and the release tree is never dirtied), runs
+  `scripts/promote-changelog.sh`, and pushes the rename + a fresh empty `[Unreleased]` to `main`.
+  The script's guarantees are tested against the real script on fixture changelogs: **byte
+  preservation** (removing the two inserted lines reproduces the original exactly — the strong form,
+  not "the bullets are still there somewhere"), idempotence on a re-published release, no-op on an
+  empty section, and a hard failure on a missing `[Unreleased]` anchor rather than a guess. The
+  27 already-folded releases are deliberately NOT backfilled — nothing maps a bullet to its tag, and
+  a half-accurate backfill reads as authoritative; a pointer to the GitHub release notes stands in
+  their place, per the issue's own recommendation.
 
 - **A guard on the ASH integration contract, which nothing in this repository referenced before** ([#702](https://github.com/awslabs/ferret-scan/issues/702))
   - AWS Labs' `automated-security-helper` (ASH) ships a first-party plugin that runs this binary as a

@@ -1,4 +1,4 @@
-.PHONY: score score-update score-mutation-check build clean vet vet-host fmt run install-config install check-go-version pr-checklist integration-branch test-compile-all-platforms
+.PHONY: score score-update score-mutation-check build clean vet vet-host fmt run install-config install check-go-version pr-checklist integration-branch test-compile-all-platforms promote-changelog
 
 # Default target
 all: check-go-version fmt vet build
@@ -772,6 +772,11 @@ check-go-version:
 	@./scripts/go-version.sh check
 
 # Sync Go version across all project files
+# Cut the hand-written [Unreleased] CHANGELOG section into a versioned heading (#647).
+# Normally run by .github/workflows/changelog-promote.yml when a release publishes.
+promote-changelog:
+	@./scripts/promote-changelog.sh $(TAG)
+
 sync-go-version:
 	@echo "🔄 Synchronizing Go version across project..."
 	@./scripts/go-version.sh all
