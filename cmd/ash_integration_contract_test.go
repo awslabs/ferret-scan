@@ -136,7 +136,13 @@ const (
 	// ashKnownLaggingRelease is the newest ferret-scan release KNOWN to sit outside ASH's window,
 	// with the consequence assessed and filed (#704 §7). The window test skips loudly at exactly
 	// this version and fails hard beyond it.
-	ashKnownLaggingRelease = "2.5.0"
+	//
+	// 2.5.1 (2026-09-22): assessed 2026-09-23. Same standing as 2.5.0 — outside ASH's <2.5.0 pin,
+	// PyPI latest, ASH users still resolved down to 2.4.5; nothing new to hand off beyond the
+	// range bump already written in #704 §7. It additionally shipped the breaking-flagged #721
+	// (fix(json, yaml, csv)!) under a PATCH version, which is #704 §7's tooling gap biting:
+	// determine_bump_type saw "none" where conventional commits said "major".
+	ashKnownLaggingRelease = "2.5.1"
 	ashSuccessExitCodesDoc = "{0, 3}"
 )
 
