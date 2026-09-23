@@ -85,6 +85,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **The class gates**, so none of the three can return by a different route: the block verdict must exist as a string literal in exactly **one** production file, so no output surface can invent its own; no pattern-deciding function may use `strings.Contains` on a user-supplied pattern; and every reason `CanProcessFile` can return must be assigned a ledger bucket, checked by **parsing** the router's returns rather than by triggering the reasons a fixture happens to reach — because the failure mode is precisely a reason nobody thought to trigger. All are AST-based after a first regexp cut was satisfied by the comments quoting the defect it forbids, and each is mutation-tested in both directions.
 
+- **config:** the `validators:` subtree was the unknown-key warning's one blind spot — it is a map
+  type, so the strict YAML pass that catches every other typo could not see inside it, and 4 of 14
+  probed unknown-key positions were silent, all in that subtree
+  ([#726](https://github.com/awslabs/ferret-scan/issues/726)). The measured worst case: a user
+  writing `disabled_types` under `secrets` — deliberately disabling a detection — got no error, no
+  warning, and no effect. Every validator's accepted keys are now declared once
+  (`validatorConfigKeys`: 3 sections, 11 keys), and the loader warns through the existing channel on
+  an unknown section (once, naming the sections that have config), an unknown key (naming the keys
+  that section honors), and misplaced `disabled_types` specifically (naming
+  `intellectual_property` as its one honoring section) — at the top level and inside every profile.
+  The declaration cannot rot in either direction: an AST guard harvests every
+  `cfg.Validators["…"]` consumer and every section-key read from the validator sources and fails on
+  any disagreement — a key read-but-undeclared would warn on a working knob, a key
+  declared-but-unread is the documentation fiction this fix exists to end. Shipped example configs
+  and the honored `intellectual_property.disabled_types` verified silent.
+
+
 ### ✨ New Features
 
 - **docs, cli, redaction:** `--help` advertised

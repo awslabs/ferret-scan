@@ -292,6 +292,9 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Collect (but do not fail on) keys the schema does not recognize, so a
 	// typo'd option is visible instead of silently ignored.
 	config.UnknownKeys = collectUnknownKeys(data)
+	// The strict pass above cannot see inside map-typed fields, so the validators subtree gets its
+	// own check against what the validators actually read (#726). Same warning channel on purpose.
+	config.UnknownKeys = append(config.UnknownKeys, collectUnknownValidatorKeys(config)...)
 
 	// Validate the configuration
 	if err := ValidateConfig(config); err != nil {
