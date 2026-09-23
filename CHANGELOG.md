@@ -163,21 +163,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
-- **release tooling:** `scripts/version-helper.sh` could not propose a version bump for any commit
-  this repository actually produces: its greps matched only UNSCOPED conventional prefixes
-  (`feat:`, `fix!`) while every commit here is scoped (`fix(scope):`). Measured consequence — with
-  twelve commits between v2.5.0 and HEAD, one of them breaking-flagged, `make version-next` proposed
-  the *current* tag; the release that followed was hand-cut as **v2.5.1 and shipped the
-  breaking-flagged #721 (`fix(json, yaml, csv)!:`) under a patch bump**
-  ([#704](https://github.com/awslabs/ferret-scan/issues/704) §7). Also fixed while testing it: a
-  `BREAKING CHANGE:` **footer** never reached the bump decision at all, because the commit list was
-  built with `--oneline` (subjects only). The type regexes now accept the scoped form, anchor on the
-  leading short sha so a subject *quoting* `feat:` in prose does not count as one, and the commit
-  list includes bodies so footers are seen — while the `status`/`release` displays stay
-  subject-only. Gated by a ten-case matrix that builds a scratch git repository per case and runs
-  the real script against it, covering both scoped breaking forms, the footer form, the quoted-in-prose
-  trap, and the no-release cases.
-
 - **json, yaml, csv (`filename`) — BREAKING for anything parsing these reports:** the per-finding path is now relative to the scan target instead of the absolute host path. `cmd/main.go` resolves every input with `filepath.Abs` before the walk, so every one of these formats printed the operator's home directory and checkout layout, and in CI the runner's group and project path — **none of which is information about the finding**, in a document people attach to tickets, commit, and upload ([#715](https://github.com/awslabs/ferret-scan/issues/715)). Measured, scanning a tree from an unrelated working directory:
 
   | format | field | before | now |
@@ -466,6 +451,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **The gate** is the issue's own acceptance test, as committed fixtures: minimal one-page PDFs whose coordinate systems are explicit, one standard and one with a flipped CTM, asserting that a token at the top of the page is extracted before a token at the bottom **and** that the two coordinate systems give the same reading order. On the parent commit the standard case fails, the flipped case passes, and the orientation-independence assertion fails — which is precisely the two-population problem, demonstrated rather than argued. The fixtures position text with `Tm` rather than `Td` deliberately: with `Td` the library reports Y=0 for every element, both tokens collapse into one row, and a first version of this test passed on the unfixed extractor. The golden corpus contains **zero** PDFs, which is why nothing caught this.
 
+
+
+- **release tooling:** `scripts/version-helper.sh` could not propose a version bump for any commit
+  this repository actually produces: its greps matched only UNSCOPED conventional prefixes
+  (`feat:`, `fix!`) while every commit here is scoped (`fix(scope):`). Measured consequence — with
+  twelve commits between v2.5.0 and HEAD, one of them breaking-flagged, `make version-next` proposed
+  the *current* tag; the release that followed was hand-cut as **v2.5.1 and shipped the
+  breaking-flagged #721 (`fix(json, yaml, csv)!:`) under a patch bump**
+  ([#704](https://github.com/awslabs/ferret-scan/issues/704) §7). Also fixed while testing it: a
+  `BREAKING CHANGE:` **footer** never reached the bump decision at all, because the commit list was
+  built with `--oneline` (subjects only). The type regexes now accept the scoped form, anchor on the
+  leading short sha so a subject *quoting* `feat:` in prose does not count as one, and the commit
+  list includes bodies so footers are seen — while the `status`/`release` displays stay
+  subject-only. Gated by a ten-case matrix that builds a scratch git repository per case and runs
+  the real script against it, covering both scoped breaking forms, the footer form, the quoted-in-prose
+  trap, and the no-release cases.
 
 ### 🔨 Internal
 
