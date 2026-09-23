@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔒 Security
 
+- **release:** releases were gated on **nothing**: `go-test.yml` never runs on a tag push and checks
+  out without tags, while `release.yml` had the tags and ran no tests — so a tag cut at a red commit
+  released anyway, and both v2.5.0 and v2.5.1 shipped outside the version range the ASH plugin pins
+  with no gate firing (ASH installs unconditionally, so an out-of-range release strands its users on
+  the last in-range version; v2.5.1 additionally shipped a breaking-flagged commit as a patch,
+  [#732](https://github.com/awslabs/ferret-scan/issues/732)). `release.yml` now runs the ASH
+  version-window test **before goreleaser publishes anything**
+  ([#730](https://github.com/awslabs/ferret-scan/issues/730)). Stated plainly: this **blocks every
+  release until ASH raises its range** — that is the gate working, since the coordination is supposed
+  to happen before the tag. The deliberate escape hatch is the repository variable
+  `SKIP_ASH_WINDOW_GATE=true`, which records the bypass in the run log instead of leaving the gate
+  unwired.
+
 - **build:** adopt the republished `golang:1.27.1-alpine` builder digest, which moved from Alpine
   **3.24.1 to 3.24.2**. `make check-go-version` caught the drift and refused to proceed — which is the
   digest pin doing its job (TM-10): a mutable upstream tag was republished under the same name.
