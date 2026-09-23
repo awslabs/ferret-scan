@@ -39,21 +39,38 @@ get_current_version() {
     echo "$tag" | sed 's/-.*$//'
 }
 
-# Get commits since last tag
+# Get commits since last tag: subject lines PLUS bodies.
+#
+# --oneline shows subjects only, so a "BREAKING CHANGE:" footer — the conventional-commits way to
+# mark a breaking change without the ! shorthand — never reached the grep below. The format keeps
+# the short sha in front of each SUBJECT so the type regexes can anchor on it; body lines carry no
+# sha, so a body line beginning "feat:" cannot be mistaken for a commit type.
 get_commits_since_tag() {
     local last_tag=$(get_current_version)
-    git log ${last_tag}..HEAD --oneline --no-merges
+    git log ${last_tag}..HEAD --no-merges --format='%h %s%n%b'
 }
 
-# Determine version bump type
+# Determine version bump type from conventional-commit subjects.
+#
+# The previous greps matched only UNSCOPED prefixes ("feat:", "fix!"), and every commit in this
+# repository uses the scoped form ("fix(scope):", "fix(json, yaml, csv)!:"). Measured on
+# 2026-09-23: twelve commits sat between v2.5.0 and HEAD, one of them breaking-flagged, and this
+# function answered "none" — `make version-next` proposed the CURRENT tag. The release that
+# followed was hand-cut as v2.5.1, shipping a breaking change under a patch bump.
+#
+# The scope group `(\([^)]*\))?` accepts both forms. Anchoring to the start of the subject
+# (--oneline puts the short sha first, so after "<sha> ") stops a prefix inside prose — a subject
+# QUOTING "feat:" — from counting as one. `!` before the colon is breaking regardless of type,
+# per the conventional-commits spec.
 determine_bump_type() {
     local commits=$(get_commits_since_tag)
+    local subject_re='^[0-9a-f]+ '
 
-    if echo "$commits" | grep -q "BREAKING CHANGE\|feat!\|fix!\|perf!"; then
+    if echo "$commits" | grep -qE "BREAKING CHANGE|${subject_re}[a-z]+(\([^)]*\))?!:"; then
         echo "major"
-    elif echo "$commits" | grep -q "feat:"; then
+    elif echo "$commits" | grep -qE "${subject_re}feat(\([^)]*\))?:"; then
         echo "minor"
-    elif echo "$commits" | grep -q "fix:\|perf:\|refactor:"; then
+    elif echo "$commits" | grep -qE "${subject_re}(fix|perf|refactor)(\([^)]*\))?:"; then
         echo "patch"
     else
         echo "none"
@@ -101,7 +118,7 @@ show_status() {
 
     echo ""
     echo "📝 Commits since last tag:"
-    get_commits_since_tag | head -10
+    get_commits_since_tag | grep -E '^[0-9a-f]+ ' | head -10
 
     if [ "$bump_type" = "none" ]; then
         print_warning "No significant changes found - no release needed"
@@ -123,7 +140,7 @@ create_tag() {
     print_info "Creating tag: $version"
 
     # Create annotated tag with changelog
-    local commits=$(get_commits_since_tag | head -10)
+    local commits=$(get_commits_since_tag | grep -E '^[0-9a-f]+ ' | head -10)
     git tag -a "$version" -m "Release $version
 
 Changes in this release:
