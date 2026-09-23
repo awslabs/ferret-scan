@@ -60,6 +60,31 @@ jobs:
       # So: do not add a `git push` here, and do not reinstate the generation. If you want the
       # [Unreleased] section cut into a versioned one at release time, that is a RENAME plus a fresh
       # empty [Unreleased] -- it preserves the prose. Tracked separately.
+      # THE ONLY TEST THAT RUNS BEFORE A RELEASE, AND WHY IT IS THIS ONE.
+      #
+      # Releases were gated on nothing: go-test.yml never runs on a tag push and checks out
+      # without tags, while this workflow had tags (fetch-depth: 0) and ran no tests. Both
+      # v2.5.0 and v2.5.1 shipped outside the range ASH's plugin pins (>=2.4.5,<2.5.0) with no
+      # gate firing -- and ASH installs UNCONDITIONALLY with pip, so an out-of-range release does
+      # not upgrade ASH users, it strands them on the last in-range version while they silently
+      # stop receiving fixes (#702, #730). v2.5.1 additionally shipped a breaking-flagged commit
+      # as a patch (#732).
+      #
+      # TestOurVersionIsInsideASHsSupportedWindow reads the git tag, so this job -- the one place
+      # with both tags and Go -- is where it can actually fire. On a tagged out-of-window commit
+      # it FAILS and the release stops before goreleaser publishes anything.
+      #
+      # THAT MEANS THIS STEP BLOCKS EVERY RELEASE until ASH raises its range (the exact constant
+      # diff ASH needs is written in #704 SS7 / #730). That is the gate working, not the gate
+      # broken: the coordination is supposed to happen BEFORE the tag, not after two of them.
+      # Deliberate escape hatch for a release that must ship anyway: set the repository variable
+      # SKIP_ASH_WINDOW_GATE=true (Settings -> Secrets and variables -> Actions -> Variables);
+      # the skip is then recorded in the run log instead of happening by nobody ever wiring the
+      # test in. Unset the variable afterwards or the gate stays off.
+      - name: ASH version-window gate
+        if: startsWith(github.ref, 'refs/tags/') && vars.SKIP_ASH_WINDOW_GATE != 'true'
+        run: go test ./cmd -run TestOurVersionIsInsideASHsSupportedWindow -count=1 -v
+
       - name: Run GoReleaser (Release)
         if: startsWith(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
