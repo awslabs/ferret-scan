@@ -110,6 +110,57 @@ type Growth struct {
 	// Samples is the per-pair ratio for every pair measured, so a failure message can show the
 	// spread rather than one number.
 	Samples []float64
+
+	// BaseReadings and BigReadings are every raw per-pair reading on the chosen clock, in
+	// measurement order. Ratio, the minima and Samples can all be derived from them; they are
+	// carried anyway because #649's diagnosis needed the BASE SPREAD (max/min across pairs) and
+	// had to reconstruct it by arithmetic from a log line: macos-latest's linear control read
+	// 6.40x not because either side was slow but because its two base readings were 1.7x apart
+	// while its big readings agreed within 3%. A spread that has to be reverse-engineered from a
+	// ratio is evidence nobody collects; these fields make it a log line.
+	BaseReadings, BigReadings []time.Duration
+}
+
+// BaseSpread and BigSpread report max/min across the per-pair readings of one side — 1.0 means
+// perfectly repeatable samples. The spread is the statistic that distinguishes "this runner is
+// slow" (both sides scale, ratio unaffected) from "this runner is UNSTABLE" (one side scatters,
+// ratio is an artefact of which sample the minimum picked). Zero-valued readings return 0 rather
+// than dividing by zero; the caller's resolution gate already refuses those measurements.
+func (g Growth) BaseSpread() float64 { return spread(g.BaseReadings) }
+func (g Growth) BigSpread() float64  { return spread(g.BigReadings) }
+
+func spread(rs []time.Duration) float64 {
+	if len(rs) == 0 {
+		return 0
+	}
+	lo, hi := rs[0], rs[0]
+	for _, r := range rs[1:] {
+		if r < lo {
+			lo = r
+		}
+		if r > hi {
+			hi = r
+		}
+	}
+	if lo <= 0 {
+		return 0
+	}
+	return float64(hi) / float64(lo)
+}
+
+// FormatDurations renders raw per-pair readings for a log line.
+func FormatDurations(rs []time.Duration) string {
+	if len(rs) == 0 {
+		return "[]"
+	}
+	out := "["
+	for i, r := range rs {
+		if i > 0 {
+			out += " "
+		}
+		out += r.String()
+	}
+	return out + "]"
 }
 
 // Time runs fn once and returns both clocks.
@@ -269,6 +320,8 @@ func Measure(pairs int, base, big func()) (Growth, error) {
 		if db := pick(bases[i]); db > 0 {
 			g.Samples = append(g.Samples, float64(pick(bigs[i]))/float64(db))
 		}
+		g.BaseReadings = append(g.BaseReadings, pick(bases[i]))
+		g.BigReadings = append(g.BigReadings, pick(bigs[i]))
 	}
 	if g.BaseMin <= 0 {
 		return Growth{}, fmt.Errorf("perfguard: every base reading was zero on the %s clock", g.Clock)

@@ -496,6 +496,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔨 Internal
 
+- **perfguard:** the evidence [#649](https://github.com/awslabs/ferret-scan/issues/649) says is the
+  only thing that can settle it is now collected on every CI run, instead of being reconstructed by
+  arithmetic from a ratio after the fact. `perfguard.Growth` carries the raw per-pair readings and
+  exposes the **base/big spread** (max/min across pairs) — the statistic that distinguishes "this
+  runner is slow" (both sides scale; the ratio is fine) from "this runner is unstable" (one side
+  scatters; the ratio is an artefact of which sample the minimum picked). macos-latest's 6.40x linear
+  reading was the second kind: two base readings 1.7x apart under big readings that agreed within 3%.
+  A new instrument test runs the two thin-margin controls and the genuine quadratic at **2 and 4
+  pairs** and logs spreads, raw readings, and the same-run **quad/linear quotient** (scale-invariant
+  by construction — a uniformly slow runner cancels out of it). Its name matches the existing CI
+  report step's `-run` pattern, so the numbers appear on all three runners every push with no
+  workflow change. Log-only with non-vacuity fatals — #620, #643 and #648 all came from tuning these
+  bounds against local measurements, and this is the refusal to do it a fourth time: the decision
+  between "more pairs" and "relative bound" gets made on runner evidence.
+
 - **A guard on the ASH integration contract, which nothing in this repository referenced before** ([#702](https://github.com/awslabs/ferret-scan/issues/702))
   - AWS Labs' `automated-security-helper` (ASH) ships a first-party plugin that runs this binary as a
     subprocess and parses its SARIF. Nothing here referenced ASH, so every CLI-surface change shipped
