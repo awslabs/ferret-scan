@@ -460,21 +460,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔨 Internal
 
-- **changelog:** `[Unreleased]` had swallowed 27 releases because nothing cut it at release time, and
-  the only tool that ever tried (git-chglog, removed in #646) REGENERATED the file from commit
-  subjects — destroying the hand-written measurements it exists to carry
-  ([#647](https://github.com/awslabs/ferret-scan/issues/647)). Releases now promote instead:
-  `.github/workflows/changelog-promote.yml` fires on `release: published` (after goreleaser, so the
-  tag never points at a post-hoc edit and the release tree is never dirtied), runs
-  `scripts/promote-changelog.sh`, and pushes the rename + a fresh empty `[Unreleased]` to `main`.
-  The script's guarantees are tested against the real script on fixture changelogs: **byte
-  preservation** (removing the two inserted lines reproduces the original exactly — the strong form,
-  not "the bullets are still there somewhere"), idempotence on a re-published release, no-op on an
-  empty section, and a hard failure on a missing `[Unreleased]` anchor rather than a guess. The
-  27 already-folded releases are deliberately NOT backfilled — nothing maps a bullet to its tag, and
-  a half-accurate backfill reads as authoritative; a pointer to the GitHub release notes stands in
-  their place, per the issue's own recommendation.
-
 - **A guard on the ASH integration contract, which nothing in this repository referenced before** ([#702](https://github.com/awslabs/ferret-scan/issues/702))
   - AWS Labs' `automated-security-helper` (ASH) ships a first-party plugin that runs this binary as a
     subprocess and parses its SARIF. Nothing here referenced ASH, so every CLI-surface change shipped
@@ -576,6 +561,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **build (go 1.27.1):** move every Go pin to **1.27.1** and fix the check that let one of them drift unnoticed. `.go-version` is the single source of truth and `make sync-go-version` propagates it, so the mechanical part is `echo 1.27.1 > .go-version` plus the tool: `go.mod` to `go 1.27`, `.gitlab-ci.yml` to `GO_VERSION=1.27.1` / `golang:1.27.1-alpine`, and the Dockerfile builder to `golang:1.27.1-alpine@sha256:3f6d04dc…`, whose digest the tool resolved from the registry and which was cross-checked independently against `public.ecr.aws` before trusting it — a hand-typed digest is a build that either fails to pull or pulls something unintended. **The check was validating a comment.** `check_dockerfile` greps the whole file for a `golang:<ver>-alpine` tag and takes the first match, and the header comment contains one (`crane digest …/golang:<ver>-alpine`). So the `FROM` line had drifted to **1.27.0 while `.go-version`, `go.mod` and `.gitlab-ci.yml` all still said 1.26.7**, and `check-go-version` printed a green tick for it — measured, and confirmed with a control: planting a 1.28.0 `FROM` line makes the old checker report `✅ Dockerfile tag: 1.27.1-alpine`, because that is what the comment says. Both the tag and digest greps are now anchored to `^FROM`, which is the only line that determines what gets built, and the planted drift is correctly rejected. Same defect class as the documented-flag work: a guard that reads the wrong thing reports on the wrong thing. Also refreshed: six documents that named a stale version as the current one, including `GO_VERSION_MANAGEMENT.md` (1.26.6 — already behind before this change) and the Windows install and cross-compile guides; the Dockerfile's CVE rationale is rewritten as history rather than as a claim about the current pin, since each step in it was a security fix worth keeping. Verified on 1.27.1: `go build`, `go vet` and the full suite all clean, and `check-go-version` green across every pin with the digest confirmed against the registry. **Deliberately not touched:** `docs/deployment/GITLAB_CI_SETUP.md` claims a `test:go-1.24` / `1.25` / `1.26` matrix, and measurement shows **all 10 job names it lists are absent** from `.gitlab-ci.yml` while **all 8 real jobs go unmentioned** — refreshing those version numbers would only make the fiction more current, so it is filed as [#575](https://github.com/awslabs/ferret-scan/issues/575) instead.
 
 <a name="v1.7.0"></a>
+
+- **changelog:** `[Unreleased]` had swallowed 27 releases because nothing cut it at release time, and
+  the only tool that ever tried (git-chglog, removed in #646) REGENERATED the file from commit
+  subjects — destroying the hand-written measurements it exists to carry
+  ([#647](https://github.com/awslabs/ferret-scan/issues/647)). Releases now promote instead:
+  `.github/workflows/changelog-promote.yml` fires on `release: published` (after goreleaser, so the
+  tag never points at a post-hoc edit and the release tree is never dirtied), runs
+  `scripts/promote-changelog.sh`, and pushes the rename + a fresh empty `[Unreleased]` to `main`.
+  The script's guarantees are tested against the real script on fixture changelogs: **byte
+  preservation** (removing the two inserted lines reproduces the original exactly — the strong form,
+  not "the bullets are still there somewhere"), idempotence on a re-published release, no-op on an
+  empty section, and a hard failure on a missing `[Unreleased]` anchor rather than a guess. The
+  27 already-folded releases are deliberately NOT backfilled — nothing maps a bullet to its tag, and
+  a half-accurate backfill reads as authoritative; a pointer to the GitHub release notes stands in
+  their place, per the issue's own recommendation.
+
 ## [v1.7.0] - 2026-05-08
 
 ### 🚀 Features
