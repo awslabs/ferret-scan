@@ -15,7 +15,13 @@ import (
 // at exactly one level — both silently. The matcher gets a scan root and real globstar; this test
 // is the truth table.
 func TestExcludeMatcherRelativeAndGlobstar(t *testing.T) {
-	root := filepath.Join(string(filepath.Separator)+"scan", "root")
+	// A REAL absolute directory, not a fabricated "/scan/root": on Windows the fabricated form
+	// has no drive letter, newExcludeMatcher absolutizes the root onto the current drive
+	// ("C:\scan\root") while the test's paths stay driveless, filepath.Rel errors on the mix,
+	// and the rel arm silently never runs — the truth table passed on POSIX and went red on
+	// windows-latest twice before this line explained why.
+	root := t.TempDir()
+	outside := t.TempDir()
 	path := func(parts ...string) string { return filepath.Join(append([]string{root}, parts...)...) }
 
 	cases := []struct {
@@ -41,7 +47,7 @@ func TestExcludeMatcherRelativeAndGlobstar(t *testing.T) {
 		{"*.pyc", path("a", "b", "c.pyc"), true},    // basename arm
 		{".git", path("digits", "mygit", "x"), false},
 		// Outside the root: the rel arm must not fire (and the other arms decide).
-		{"nest/sub", filepath.Join(string(filepath.Separator)+"elsewhere", "nest", "sub"), false},
+		{"nest/sub", filepath.Join(outside, "nest", "sub"), false},
 	}
 	for _, tc := range cases {
 		m := newExcludeMatcher([]string{tc.pattern}, root)
