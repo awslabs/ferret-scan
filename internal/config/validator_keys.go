@@ -14,8 +14,8 @@ import (
 // produces the unknown-key warnings cannot see inside it: any key under `validators:` was accepted
 // silently. Measured before this file existed (#726): `disabled_types` under `secrets` — a user
 // deliberately disabling a detection — produced no error, no warning, and no effect, and 4 of 14
-// probed unknown-key positions were silent, all inside this subtree. ASH hit the same wall and
-// documented the workaround on its side.
+// probed unknown-key positions were silent, all inside this subtree — and at least one downstream
+// consumer had independently hit the same wall and documented it as impossible to configure.
 //
 // WHY A HAND-WRITTEN MAP IS SAFE HERE, when this repository's own rule is that hand-maintained
 // lists cannot stay complete: TestValidatorConfigKeysMatchTheSource harvests every

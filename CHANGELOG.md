@@ -548,6 +548,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔨 Internal
 
+- **policy: no cross-tool compliance checks in this repository.** The ASH integration guard
+  (`cmd/ash_integration_contract_test.go`, twelve tests vendoring another tool's flag list, exit-code
+  set, version window and bundled-config keys) and the ASH version-window release gate in
+  `release.yml` are **removed**. Whether a downstream tool's integration still works is that tool's
+  test suite's job; carrying its contract here meant every release and every checklist answered for
+  constants we do not own — including a gate that would have blocked our releases until a third
+  party updated its pin. What stays is everything in that file that was **ferret-scan's own
+  contract** wearing borrowed framing, rewritten ferret-native in `cmd/cli_contract_test.go`:
+  findings exit 0 on the ordinary path (with `--pre-commit-mode` pinned opt-in), SARIF `results` an
+  array never `null` with a `ruleId` on every result, `--format` beating a config file's `format:`,
+  `--show-match` as the **only** value-revealing flag (probed against `--explain`, with
+  `--show-match` as the positive control), the `FERRET_PRECOMMIT=0` opt-out covering all five
+  environment signals (#353), and `--exclude` failing loudly on a malformed pattern and reporting a
+  zero-hit one (#729). Six tests, every non-vacuity check preserved.
+
 - **perfguard:** the evidence [#649](https://github.com/awslabs/ferret-scan/issues/649) says is the
   only thing that can settle it is now collected on every CI run, instead of being reconstructed by
   arithmetic from a ratio after the fact. `perfguard.Growth` carries the raw per-pair readings and
