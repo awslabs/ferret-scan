@@ -1678,7 +1678,19 @@ func main() {
 			}
 		}
 
-		result, err := getFilesToProcess(cleanPath, finalConfig.recursive, finalConfig.excludePatterns, ignoreMatcher, finalConfig.enablePreprocessors)
+		// One matcher for the whole discovery walk, so per-pattern hit counts survive the
+		// recursion and a pattern that matched nothing can be reported (#729). The scan root
+		// anchors relative multi-segment patterns; for a file or glob input the root is its
+		// directory.
+		exclRoot := cleanPath
+		if st, statErr := os.Stat(cleanPath); statErr != nil || !st.IsDir() {
+			exclRoot = filepath.Dir(cleanPath)
+		}
+		excl := newExcludeMatcher(finalConfig.excludePatterns, exclRoot)
+		result, err := getFilesToProcess(cleanPath, finalConfig.recursive, excl, ignoreMatcher, finalConfig.enablePreprocessors)
+		if note := excl.zeroHitNote(); note != "" {
+			fmt.Fprintln(os.Stderr, note)
+		}
 		if err != nil {
 			// stderr, not stdout: this is on the scan path, and a caller redirecting
 			// stdout to a machine artifact (--format json > report.json) would
@@ -2943,8 +2955,8 @@ func (r *ProcessingResult) recordExcluded(path, reason string) bool {
 //
 // The single entry point for the question "should this path be left out". Both reasons are handled
 // here so a call site cannot cover one and forget the other, which two of the six previous sites did.
-func (r *ProcessingResult) excludedBy(path string, excludePatterns []string, ignoreMatcher *gitignore.Matcher) bool {
-	if isExcluded(path, excludePatterns) {
+func (r *ProcessingResult) excludedBy(path string, excl *excludeMatcher, ignoreMatcher *gitignore.Matcher) bool {
+	if excl.match(path) {
 		return r.recordExcluded(path, "excluded by --exclude pattern")
 	}
 	if ignoreMatcher != nil && ignoreMatcher.Match(path) {
@@ -2953,44 +2965,11 @@ func (r *ProcessingResult) excludedBy(path string, excludePatterns []string, ign
 	return false
 }
 
+// isExcluded is the rootless form of excludeMatcher.match, kept for callers (and tests) that have
+// only a pattern list. It cannot apply the scan-root-relative arm, because it has no root — the
+// full behaviour lives on excludeMatcher (#729).
 func isExcluded(filePath string, excludePatterns []string) bool {
-	if len(excludePatterns) == 0 {
-		return false
-	}
-
-	cleanPath := filepath.Clean(filePath)
-	fileName := filepath.Base(cleanPath)
-	segments := strings.Split(cleanPath, string(filepath.Separator))
-
-	for _, pattern := range excludePatterns {
-		// A trailing "/" means "this is a directory name". Strip it and let the segment arm
-		// below do the work; keeping a separate arm for it would be a second spelling of the
-		// same rule.
-		trimmed := strings.TrimSuffix(pattern, "/")
-		if trimmed == "" {
-			continue
-		}
-
-		// The whole path, and the basename.
-		if matched, err := filepath.Match(trimmed, cleanPath); err == nil && matched {
-			return true
-		}
-		if matched, err := filepath.Match(trimmed, fileName); err == nil && matched {
-			return true
-		}
-
-		// Each path segment, which is what makes "--exclude .git" work at any depth.
-		for _, segment := range segments {
-			if segment == "" {
-				continue
-			}
-			if matched, err := filepath.Match(trimmed, segment); err == nil && matched {
-				return true
-			}
-		}
-	}
-
-	return false
+	return newExcludeMatcher(excludePatterns, "").match(filePath)
 }
 
 // validateExcludePatterns rejects a pattern the matcher could never apply.
@@ -3041,7 +3020,7 @@ func isAccessDenied(path string) bool {
 	return err != nil && errors.Is(err, fs.ErrPermission)
 }
 
-func getFilesToProcess(inputPath string, recursive bool, excludePatterns []string, ignoreMatcher *gitignore.Matcher, enablePreprocessors bool) (*ProcessingResult, error) {
+func getFilesToProcess(inputPath string, recursive bool, excl *excludeMatcher, ignoreMatcher *gitignore.Matcher, enablePreprocessors bool) (*ProcessingResult, error) {
 	result := &ProcessingResult{
 		FilesToProcess:  []string{},
 		SkippedFiles:    []SkippedFile{},
@@ -3075,7 +3054,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 		}
 		if info.Mode().IsRegular() {
 			if info.Size() <= maxScanSizeFor(inputPath) {
-				if result.excludedBy(inputPath, excludePatterns, ignoreMatcher) {
+				if result.excludedBy(inputPath, excl, ignoreMatcher) {
 					return result, nil
 				}
 				result.FilesToProcess = append(result.FilesToProcess, inputPath)
@@ -3173,7 +3152,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// which is exactly what the documentation asks for.
 			if info.IsDir() {
 				// Records the DIRECTORY: the subtree is not walked, so its files are unknown.
-				if result.excludedBy(cleanMatch, excludePatterns, ignoreMatcher) {
+				if result.excludedBy(cleanMatch, excl, ignoreMatcher) {
 					continue
 				}
 				if !recursive {
@@ -3189,7 +3168,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				// refusals and their disclosure — all of which a second implementation would
 				// have to keep in step. cleanMatch is a concrete path from Glob and exists,
 				// so the call takes the literal-path branch and cannot re-enter this one.
-				sub, subErr := getFilesToProcess(cleanMatch, recursive, excludePatterns,
+				sub, subErr := getFilesToProcess(cleanMatch, recursive, excl,
 					ignoreMatcher, enablePreprocessors)
 				if subErr != nil {
 					result.UnexaminedFiles = append(result.UnexaminedFiles, SkippedFile{
@@ -3207,7 +3186,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			}
 
 			if info.Mode().IsRegular() {
-				if result.excludedBy(cleanMatch, excludePatterns, ignoreMatcher) {
+				if result.excludedBy(cleanMatch, excl, ignoreMatcher) {
 					continue
 				}
 
@@ -3307,7 +3286,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			})
 			return result, nil
 		}
-		if result.excludedBy(cleanPath, excludePatterns, ignoreMatcher) {
+		if result.excludedBy(cleanPath, excl, ignoreMatcher) {
 			return result, nil
 		}
 		result.FilesToProcess = append(result.FilesToProcess, cleanPath)
@@ -3398,7 +3377,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 				//
 				// Path-based, so it works with a nil info: both predicates take strings.
 				outOfScope := isDir && !recursive && cleanWalkPath != cleanPath
-				if isExcluded(cleanWalkPath, excludePatterns) || ignoreMatcher.Match(cleanWalkPath) {
+				if excl.match(cleanWalkPath) || ignoreMatcher.Match(cleanWalkPath) {
 					outOfScope = true
 				}
 				if outOfScope {
@@ -3438,7 +3417,7 @@ func getFilesToProcess(inputPath string, recursive bool, excludePatterns []strin
 			// This is the site that recorded NOTHING: a bare return dropped every excluded file
 			// from the ledger, so a directory scan reported files_skipped 0 while excluding
 			// everything in it. excludedBy records as it decides.
-			if result.excludedBy(cleanWalkPath, excludePatterns, ignoreMatcher) {
+			if result.excludedBy(cleanWalkPath, excl, ignoreMatcher) {
 				if info.IsDir() {
 					return filepath.SkipDir // Skip entire directory
 				}
