@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -50,11 +51,18 @@ func (m *excludeMatcher) match(filePath string) bool {
 	fileName := filepath.Base(cleanPath)
 	segments := strings.Split(cleanPath, string(filepath.Separator))
 
+	// The rel arm works in SLASH form on every platform. On Windows filepath.Separator is '\\'
+	// while users write patterns with '/', so a separator-gate keyed on filepath.Separator never
+	// fired there — caught by this branch's own truth-table test going red on windows-latest.
+	// filepath.ToSlash converts the OS separator and nothing else: on Windows a pattern written
+	// either way normalizes to '/', and on POSIX it is the identity, so a literal backslash in a
+	// POSIX filename keeps exactly the semantics the other arms give it. path.Match (not
+	// filepath.Match) then gives identical glob semantics on every platform: '*' stops at '/'.
 	rel := ""
 	if m.root != "" {
 		if r, err := filepath.Rel(m.root, cleanPath); err == nil && r != ".." &&
 			!strings.HasPrefix(r, ".."+string(filepath.Separator)) && r != "." {
-			rel = r
+			rel = filepath.ToSlash(r)
 		}
 	}
 
@@ -97,20 +105,21 @@ func (m *excludeMatcher) match(filePath string) bool {
 		// work. The pattern is matched against the root-relative path, and against each ancestor
 		// prefix of it, so `nest/sub` excludes the directory and everything under it exactly as
 		// the segment arm does for single names.
-		if rel != "" && strings.ContainsRune(trimmed, filepath.Separator) {
-			if matchRelPattern(trimmed, rel) {
+		patSlash := filepath.ToSlash(trimmed)
+		if rel != "" && strings.Contains(patSlash, "/") {
+			if matchRelPattern(patSlash, rel) {
 				m.hits[i]++
 				return true
 			}
-			parts := strings.Split(rel, string(filepath.Separator))
+			parts := strings.Split(rel, "/")
 			prefix := ""
 			for _, p := range parts[:len(parts)-1] {
 				if prefix == "" {
 					prefix = p
 				} else {
-					prefix += string(filepath.Separator) + p
+					prefix += "/" + p
 				}
-				if matchRelPattern(trimmed, prefix) {
+				if matchRelPattern(patSlash, prefix) {
 					m.hits[i]++
 					return true
 				}
@@ -154,14 +163,14 @@ func (m *excludeMatcher) zeroHitNote() string {
 // Semantics: the pattern is split on the separator; `**` as a whole segment matches ZERO OR MORE
 // path segments; every other segment is a filepath.Match glob against exactly one path segment.
 // Classic doublestar recursion; both inputs are short (path depth), so the worst case is trivial.
+// Both inputs arrive in slash form; path.Match keeps the glob semantics identical on every
+// platform (filepath.Match on Windows lets '*' cross '/', because only '\\' is its separator).
 func matchRelPattern(pattern, rel string) bool {
 	if !strings.Contains(pattern, "**") {
-		ok, err := filepath.Match(pattern, rel)
+		ok, err := path.Match(pattern, rel)
 		return err == nil && ok
 	}
-	return matchSegments(
-		strings.Split(pattern, string(filepath.Separator)),
-		strings.Split(rel, string(filepath.Separator)))
+	return matchSegments(strings.Split(pattern, "/"), strings.Split(rel, "/"))
 }
 
 func matchSegments(pat, segs []string) bool {
@@ -178,7 +187,7 @@ func matchSegments(pat, segs []string) bool {
 	if len(segs) == 0 {
 		return false
 	}
-	ok, err := filepath.Match(pat[0], segs[0])
+	ok, err := path.Match(pat[0], segs[0])
 	if err != nil || !ok {
 		return false
 	}
