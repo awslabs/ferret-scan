@@ -161,6 +161,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **explain:** new `--explain` flag annotates each finding with a plain-language rationale, a verdict (`likely_real` / `likely_test` / `uncertain`), and a drafted suppression reason. Fully offline and deterministic — it only re-phrases signals the detection engine already computes (validation checks, vendor, context impact, file location); no network calls, no new dependencies, nothing leaves the host. Off by default. Renders in text (verbose + pre-commit), JSON/YAML (first-class `explanation` field), SARIF (result message + structured property), and gitlab-sast (description); with `--generate-suppressions`, generated rules carry the drafted per-finding reason. A HIGH-confidence finding is never glossed as `likely_test`, so the verdict can't talk a reviewer out of a real finding. New `internal/explain` package (`Explainer`, `SignalSynthesizer`).
 - **api (pkg/scan):** `TextOptions`, `FileOptions` and `RedactFileOptions` gain `ConfigPath string` and `DisableConfigDiscovery bool`, so an embedded consumer can pin the config or opt out of ambient discovery entirely. Previously all three called `config.LoadConfigOrDefault("")` unconditionally with no config field on the options structs, so detection depended on the calling process's **working directory** with no way to pin it, no way to request built-in defaults, and no way to write a hermetic test. Verified with an identical `ScanText` call differing only in CWD: `findings=1` from one directory, `findings=0` from another holding a `.ferret-scan.yaml` with `disabled_types`. Same shape as the `redact.ValidCheckNames()`/`SOCIAL_MEDIA` case — a successful call, an empty finding list, input treated as clean — except the cause was ambient rather than in the caller's arguments, so the caller could neither detect nor prevent it. Both fields default to zero, so **existing callers are unaffected**: an empty `ConfigPath` keeps the historical discovery behaviour. `DisableConfigDiscovery` takes precedence when both are set, being the stricter request.
 
+- **cli (--exclude):** a RELATIVE pattern containing a path separator was a **silent no-op** — every
+  input path is absolutized before matching and a glob `*` stops at separators, so `--exclude
+  nest/sub` excluded nothing and said nothing, while the same pattern spelled absolutely worked
+  ([#729](https://github.com/awslabs/ferret-scan/issues/729)). `**` was worse than unsupported: it
+  behaved as `*`, matching at exactly one directory level — enough to look like it worked, not
+  enough to do what it says. Three changes, matched against the **scan-root-relative** path:
+  relative multi-segment patterns now work (`nest/sub` excludes the subtree, `nest/*/a.txt` the
+  glob); `**` gets real any-depth semantics (`**/*.txt` excludes at every level, `**/sub/**` the
+  named subtree); and — closing the whole silent class rather than one shape — **a pattern that
+  matched nothing by scan end is reported**, one combined stderr line for all misses, so a shared
+  exclude list for trees this repo does not have stays quiet-ish instead of noisy. Exclusions remain
+  fully disclosed through `files_skipped` with their reason — a newly-effective pattern means fewer
+  files scanned, which is the user's stated intent, never a silent vanish. The single-segment arms
+  (`.git` at any depth, `*.pyc` by basename) are pinned unchanged.
+
+
 ### 🐛 Bug Fixes
 
 - **json, yaml, csv (`filename`) — BREAKING for anything parsing these reports:** the per-finding path is now relative to the scan target instead of the absolute host path. `cmd/main.go` resolves every input with `filepath.Abs` before the walk, so every one of these formats printed the operator's home directory and checkout layout, and in CI the runner's group and project path — **none of which is information about the finding**, in a document people attach to tickets, commit, and upload ([#715](https://github.com/awslabs/ferret-scan/issues/715)). Measured, scanning a tree from an unrelated working directory:

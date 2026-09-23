@@ -202,7 +202,7 @@ func TestExcludedUnreadableDirectoryIsNotReported(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(secret, 0o755) })
 	requireUnreadablePathsWork(t, secret)
 
-	res, err := getFilesToProcess(root, true, []string{"secret"}, nil, true)
+	res, err := getFilesToProcess(root, true, newExcludeMatcher([]string{"secret"}, root), nil, true)
 	if err != nil {
 		t.Fatalf("getFilesToProcess: %v", err)
 	}

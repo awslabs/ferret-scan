@@ -1096,18 +1096,27 @@ func TestASHFoldedExcludeFailureModes(t *testing.T) {
 		}
 	})
 
-	t.Run("globstar is a silent no-op", func(t *testing.T) {
+	t.Run("globstar excludes at every depth and a zero-hit pattern is reported", func(t *testing.T) {
+		// This subtest used to pin the OPPOSITE: '**/*.txt' as a silent no-op, with an
+		// instruction to update it when that improved. #729 improved it: relative patterns are
+		// matched against the scan-root-relative path with real '**' support, and a pattern that
+		// matched nothing by scan end is reported on stderr. Both halves matter to ASH, which
+		// folds user exclude_patterns verbatim into one --exclude value.
 		rc, out, wrote := runExclude("**/*.txt")
 		if rc != 0 || !wrote {
-			t.Fatalf("expected a globstar pattern to be accepted-and-ignored, got rc=%d "+
-				"written=%v.\noutput:\n%s", rc, wrote, out)
+			t.Fatalf("globstar exclusion should still be a successful run, got rc=%d written=%v.\n%s",
+				rc, wrote, out)
 		}
-		// Characterisation: if this ever starts warning, that is an improvement and the ASH-side note
-		// about globstar being unsupported can be softened.
-		if strings.Contains(out, "**") || strings.Contains(strings.ToLower(out), "globstar") {
-			t.Errorf("a globstar pattern now produces a diagnostic. That is an IMPROVEMENT — update "+
-				"this test and tell the ASH plugin owners that '**' patterns are no longer silent."+
-				"\noutput:\n%s", out)
+		if strings.Contains(out, "matched nothing") {
+			t.Errorf("'**/*.txt' matched the fixture; the zero-hit note must not fire.\n%s", out)
+		}
+		rc2, out2, _ := runExclude("**/*.nomatch")
+		if rc2 != 0 {
+			t.Fatalf("a zero-hit pattern must not fail the run (scanning MORE is the safe "+
+				"direction), got rc=%d.\n%s", rc2, out2)
+		}
+		if !strings.Contains(out2, "matched nothing") {
+			t.Errorf("a pattern that matched nothing must be reported, and was not.\n%s", out2)
 		}
 	})
 }
