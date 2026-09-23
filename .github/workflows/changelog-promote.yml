@@ -2,27 +2,36 @@ name: Promote CHANGELOG on release
 
 # #647: `## [Unreleased]` had swallowed 27 releases because nothing cut it at release time -- and
 # the one tool that ever tried (git-chglog, removed in #646) REGENERATED the file from commit
-# subjects, destroying the hand-written prose. This workflow does the additive alternative: after a
-# release is published, rename [Unreleased] to the released tag and insert a fresh empty
-# [Unreleased] above it. scripts/promote-changelog.sh owns the surgery and its guarantees
-# (byte-preservation, idempotence on a re-published release, no-op on an empty section, hard
-# failure on a missing anchor).
+# subjects, destroying the hand-written prose. This workflow does the additive alternative: when a
+# release tag is pushed, rename [Unreleased] to that tag and insert a fresh empty [Unreleased]
+# above it. scripts/promote-changelog.sh owns the surgery and its guarantees (byte-preservation,
+# idempotence on a re-run, no-op on an empty section, hard failure on a missing anchor).
 #
-# `release: published` rather than the tag push, DELIBERATELY -- the ordering point #647 raises:
-# the tag must never point at a commit that got a post-hoc changelog edit, and the release job's
-# tree must never be dirtied mid-goreleaser. Promotion is documentation, so it lands as its own
-# commit on main after the artefacts exist. This also keeps the file OUT of release.yml, which
-# #733 edits concurrently.
+# TRIGGER: the TAG PUSH, not `release: published` -- and that is load-bearing, not a style choice.
+# goreleaser publishes the release with the workflow-provided GITHUB_TOKEN, and events performed
+# with GITHUB_TOKEN do not trigger workflows (the same rule brew-smoke.yml documents for the
+# formula pushes). A `release: published` trigger here would therefore NEVER fire for a real
+# release; it was the first version of this file and was caught in review before ever running.
+# The tag push is a human action, so it always fires.
 #
-# The push uses the workflow GITHUB_TOKEN like the weekly metrics commit does; GITHUB_TOKEN-authored
-# pushes do not trigger workflows, so this cannot loop.
+# ORDERING: this runs concurrently with release.yml on the same tag push, and that is safe by
+# construction -- release.yml checks out the TAG while this job commits to MAIN, so the tag never
+# points at a post-hoc edit and the release job's tree is never dirtied (#647's two ordering
+# requirements). If the release fails and the tag is re-pushed, the promotion is a recorded no-op
+# ("heading already exists").
+#
+# The push can RACE goreleaser[bot]'s brew-formula commit to main, which lands right after the
+# release publishes -- hence the rebase-and-retry loop rather than a bare push. The promote commit
+# itself cannot re-trigger anything: this workflow fires on tags only, and GITHUB_TOKEN pushes
+# trigger no workflows anyway.
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to promote [Unreleased] under (vX.Y.Z), e.g. after a manual release"
+        description: "Tag to promote [Unreleased] under (vX.Y.Z)"
         required: true
 
 permissions:
@@ -36,13 +45,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
+          # Full history: the push below rebases onto whatever goreleaser[bot] has pushed in the
+          # meantime, and rebasing from a shallow clone fails with "unshallow" errors.
+          fetch-depth: 0
 
       - name: Promote [Unreleased] to the released tag
         env:
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: ./scripts/promote-changelog.sh "$TAG"
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: ./scripts/promote-changelog.sh "${TAG}"
 
       - name: Commit and push if the file changed
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           if git diff --quiet CHANGELOG.md; then
             echo "No changelog change to push (idempotent re-run or empty section)."
@@ -51,5 +65,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
-          git commit -m "chore(changelog): promote [Unreleased] to ${{ github.event.release.tag_name || inputs.tag }} [skip ci]"
-          git push
+          git commit -m "chore(changelog): promote [Unreleased] to ${TAG} [skip ci]"
+          # goreleaser[bot] pushes the brew formula to main in the same minute; retry over it.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push rejected (attempt ${attempt}); rebasing onto current main"
+            git pull --rebase origin main
+          done
+          echo "could not push after 5 attempts" >&2
+          exit 1
