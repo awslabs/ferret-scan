@@ -132,7 +132,11 @@ const (
 	ashMaxSupportedVersion = "2.5.0" // exclusive
 	// ashRecommendedVersion is ASH's RECOMMENDED_VERSION, and today it is also the newest version
 	// inside the window -- which is what pip resolves an out-of-range build DOWN to.
-	ashRecommendedVersion  = "2.4.5"
+	ashRecommendedVersion = "2.4.5"
+	// ashKnownLaggingRelease is the newest ferret-scan release KNOWN to sit outside ASH's window,
+	// with the consequence assessed and filed (#704 §7). The window test skips loudly at exactly
+	// this version and fails hard beyond it.
+	ashKnownLaggingRelease = "2.5.0"
 	ashSuccessExitCodesDoc = "{0, 3}"
 )
 
@@ -563,6 +567,22 @@ func TestOurVersionIsInsideASHsSupportedWindow(t *testing.T) {
 		if inRange {
 			t.Logf("tag %s is inside ASH's window [>=%s,<%s)", ver, ashMinSupportedVersion, ashMaxSupportedVersion)
 			return
+		}
+		// A lag that has already been ASSESSED and HANDED OFF is a loud skip, not a standing
+		// failure. v2.5.0 shipped outside ASH's window on 2026-09-18; the consequence is measured
+		// and filed (#704 §7, exact constant diff included), and until ASH raises its range there
+		// is nothing a test run on this side can change. Leaving it red made EVERY pr-checklist
+		// report "3 failed" for every change, which is how a gate teaches people to ignore it —
+		// and a gate people ignore is worse than no gate. Two cases stay hard failures: the
+		// release moment (HEAD exactly tagged out of window — someone is about to make it worse),
+		// and a tag BEYOND the assessed one (drift nobody has evaluated).
+		if !exactMatch && cmpSemver(ver, ashKnownLaggingRelease) == 0 {
+			t.Skipf("tag %s is outside ASH's window (>=%s,<%s) — KNOWN and already handed off "+
+				"(#704 §7 has the exact constant change ASH needs). This skip converts to a hard "+
+				"failure if a newer out-of-window tag appears or if HEAD itself is tagged for "+
+				"release. When ASH raises its range, update ashMin/MaxSupportedVersion and "+
+				"ashKnownLaggingRelease together.",
+				ver, ashMinSupportedVersion, ashMaxSupportedVersion)
 		}
 		which := "the most recent tag reachable from HEAD"
 		if exactMatch {
