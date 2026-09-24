@@ -279,8 +279,8 @@ This is an architecture the public API enables; ferret-scan itself ships the CLI
 | Code | Meaning |
 |---|---|
 | `0` | The scan ran. **Findings do not change the exit code** — they are reported in the output. |
-| `1` | The run failed: bad arguments, an unreadable config, an output file that cannot be written, or a report that could not be formatted. Nothing usable was produced. |
-| `2` | There were no files to process. |
+| `1` | The run failed: bad arguments (including an input path that does not exist), an unreadable config, an output file that cannot be written, or a report that could not be formatted. Nothing usable was produced. |
+| `2` | `--preprocess-only` only: there were no files to preprocess. (An ordinary scan of an empty directory, a glob with no matches, or a tree where every file was excluded exits `0` with `total_files: 0` — an honest empty report, not a failure.) |
 | `3` | `--fail-on-incomplete` only: the run completed but did not fully do what was asked — a file was not fully scanned, or findings were reported and not redacted. See [Coverage disclosure](docs/COVERAGE_DISCLOSURE.md). |
 
 Pre-commit mode (`--pre-commit-mode`) maps findings onto the exit code instead, so a

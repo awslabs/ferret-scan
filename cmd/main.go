@@ -1608,6 +1608,49 @@ func main() {
 		os.Exit(1)
 	}
 
+	// A named input that does not exist is a BAD ARGUMENT, and bad arguments exit 1 before any
+	// scanning -- README "Exit codes": "1 -- The run failed: bad arguments ... Nothing usable was
+	// produced." (#728). The discovery loop below already classified this case as "a usage error,
+	// a typo" and deliberately kept it out of the coverage counters so --fail-on-incomplete does
+	// not fire on misspellings -- but it then `continue`d and the run exited 0 with an empty report
+	// indistinguishable from scanning an empty directory. A pipeline step with a typo'd path
+	// passed, green, having examined nothing.
+	//
+	// Validated UP FRONT, all inputs at once, so "nothing usable was produced" is literally true
+	// and every typo is named in one message rather than one per run. Scope, deliberately:
+	//
+	//   - literal paths only: a glob that matched nothing ("scan *.pdf if there are any") is a
+	//     legitimate empty scan, reported by the loop and left alone;
+	//   - ErrNotExist only: a path that exists but cannot be read is lost COVERAGE, handled by
+	//     the loop's isAccessDenied branch and --fail-on-incomplete, unchanged;
+	//   - "-" is the stdin alias, never a filesystem path;
+	//   - a path that ESCAPES the working directory is the traversal gate's, below: it is refused,
+	//     disclosed in files_not_examined and fails --fail-on-incomplete WHETHER OR NOT it exists.
+	//     Validating it here first would pre-empt a security refusal with a usage error, and the
+	//     refusal is the stronger, more specific statement (TestT562 pins it).
+	//
+	// Lstat rather than Stat: a dangling symlink EXISTS as a named input; what happens when the
+	// walk follows it is the walk's concern, not argument validation's.
+	var missingInputs []string
+	for _, inputPath := range inputPaths {
+		if inputPath == "-" || strings.ContainsAny(inputPath, "*?[") || pathEscapesBase(inputPath) {
+			continue
+		}
+		if _, err := os.Lstat(inputPath); err != nil && errors.Is(err, fs.ErrNotExist) {
+			missingInputs = append(missingInputs, inputPath)
+		}
+	}
+	if len(missingInputs) > 0 {
+		noun := "Input path does not exist"
+		if len(missingInputs) > 1 {
+			noun = "Input paths do not exist"
+		}
+		printPrecommitError(precommitConfig,
+			fmt.Sprintf("%s: %s", noun, strings.Join(missingInputs, ", ")),
+			"Check the path for typos; nothing was scanned")
+		os.Exit(1)
+	}
+
 	// Get list of files to process (supports glob patterns like *.pdf)
 	var allFilesToProcess []string
 	var totalSkipped int
