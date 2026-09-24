@@ -50,7 +50,6 @@ var precommitTriggerEnv = []string{
 	// Set by pre-commit itself.
 	"PRE_COMMIT",
 	"_PRE_COMMIT_RUNNING",
-	"PRE_COMMIT_HOME",
 	// Hook-context indicators, cross-platform since #353.
 	"PRE_COMMIT_HOOK",
 	"GIT_HOOK_TYPE",

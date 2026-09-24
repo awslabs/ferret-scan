@@ -2014,7 +2014,7 @@ func main() {
 	// it said "CI is exactly where a config that silently fails to apply is most dangerous" and then
 	// switched the warning off in pre-commit mode — which IS the CI and git-hook path. Worse,
 	// IsPrecommitEnvironment() is true from ENVIRONMENT VARIABLES ALONE (PRE_COMMIT,
-	// _PRE_COMMIT_RUNNING, PRE_COMMIT_HOME, PRE_COMMIT_HOOK, GIT_HOOK_TYPE), so it did not even take
+	// _PRE_COMMIT_RUNNING, PRE_COMMIT_HOOK, GIT_HOOK_TYPE), so it did not even take
 	// a flag to silence them.
 	//
 	// Measured on main, scanning a file with a copyright notice next to a .ferret-scan.yaml that

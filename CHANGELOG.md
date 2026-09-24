@@ -215,6 +215,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
+- **pre-commit detection:** `PRE_COMMIT_HOME` switched **every** ferret-scan run in a shell that
+  exported it into pre-commit mode — hook exit codes, quiet output, and the pre-commit profile's
+  narrower result set — **silently dropping findings from ordinary reports**
+  ([#725](https://github.com/awslabs/ferret-scan/issues/725)). Measured with only that variable
+  exported: exit 1 and 1 finding, against exit 0 and 2 findings without it. The code, a test and two
+  docs pages all claimed pre-commit sets it; pre-commit's own source shows it only **reads** it (its
+  cache location, `pre_commit/store.py`), while the variable it actually sets for a hook run is
+  `PRE_COMMIT=1` (`pre_commit/commands/run.py`). Users export `PRE_COMMIT_HOME` persistently —
+  commonly in CI, to cache hook environments — so it named an *installation*, not an *invocation*,
+  which is exactly the class the detector's earlier removals (`MSYSTEM`, `GIT_EXEC_PATH`, …) already
+  rejected. Removed as a signal; the test that asserted the false belief now asserts the opposite;
+  genuine hook runs (`PRE_COMMIT=1`) still detect.
+
 - **sarif, docs:** 38 detection types the tool can emit were absent from `knownDetectionTypes`, from
   `docs/checks.md` (whose first line claims to list *"Every type ferret-scan can report"*), and from
   every SARIF `helpUri` — so a finding of any of them carried a documentation link that 404s, and a

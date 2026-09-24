@@ -342,9 +342,9 @@ profiles:
 
 **Automatic Pre-commit Detection:**
 Ferret Scan automatically detects pre-commit environments by checking for:
-- `PRE_COMMIT` environment variable
-- `_PRE_COMMIT_RUNNING` environment variable
-- `PRE_COMMIT_HOME` environment variable
+- `PRE_COMMIT` environment variable (set by pre-commit for the hook run)
+- `_PRE_COMMIT_RUNNING` environment variable (some pre-commit versions)
+- `PRE_COMMIT_HOOK` / `GIT_HOOK_TYPE` (name a hook invocation)
 
 When detected, it automatically enables:
 - Quiet mode (reduced output)

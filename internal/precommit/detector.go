@@ -87,11 +87,14 @@ func (pd *PrecommitDetector) detectEnvironment() {
 		return
 	}
 
-	// Tertiary detection: PRE_COMMIT_HOME (indicates pre-commit installation)
-	if os.Getenv("PRE_COMMIT_HOME") != "" {
-		pd.isPrecommitEnv = true
-		return
-	}
+	// PRE_COMMIT_HOME is deliberately NOT a signal (#725). pre-commit only READS it -- it is the
+	// user-configured cache location (pre_commit/store.py) -- and never sets it for a hook run;
+	// the variable pre-commit sets is PRE_COMMIT=1 (pre_commit/commands/run.py). Users export
+	// PRE_COMMIT_HOME persistently, commonly in CI to cache hook environments, so treating it as
+	// a signal switched EVERY ferret-scan run in that shell -- by hand, in a pipeline step, from
+	// any caller -- into pre-commit mode: quiet, colourless, hook exit codes, and the precommit
+	// profile's narrower result set. It names an installation, not an invocation, which is the
+	// exact class this function's other removals already rejected.
 
 	// Hook-specific detection, cross-platform.
 	//
@@ -234,9 +237,11 @@ func (pd *PrecommitConfig) ShouldExitOnFindings(confidenceLevel string) bool {
 // not making the inference in the first place.
 //
 // PRE_COMMIT_HOOK and GIT_HOOK_TYPE survive, in detectEnvironment and on every platform,
-// because they name a hook invocation rather than a Git installation. The cross-platform
-// PRE_COMMIT / _PRE_COMMIT_RUNNING / PRE_COMMIT_HOME are set by pre-commit itself and were
-// always the precise signals.
+// because they name a hook invocation rather than a Git installation. PRE_COMMIT is set by
+// pre-commit for the hook run itself (pre_commit/commands/run.py) and _PRE_COMMIT_RUNNING by
+// some versions. PRE_COMMIT_HOME was on this list too, described as "set by pre-commit
+// itself" -- that was never true: pre-commit only reads it, as its cache location. Removed
+// in #725; see detectEnvironment.
 
 // A BLOCKING FINDING OUTRANKS A PROCESSING ERROR.
 //

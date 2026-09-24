@@ -125,11 +125,13 @@ When `--pre-commit-mode` is enabled, Ferret Scan automatically:
 
 Ferret Scan automatically detects pre-commit environments by checking for:
 
-- `PRE_COMMIT` environment variable
-- `_PRE_COMMIT_RUNNING` environment variable
-- `PRE_COMMIT_HOME` environment variable
+- `PRE_COMMIT` environment variable (set by pre-commit for the hook run)
+- `_PRE_COMMIT_RUNNING` environment variable (some pre-commit versions)
+- `PRE_COMMIT_HOOK` / `GIT_HOOK_TYPE` (name a hook invocation)
 
 When detected, it automatically enables pre-commit optimizations even without the `--pre-commit-mode` flag.
+
+`PRE_COMMIT_HOME` is **not** a signal: it is pre-commit's cache location, which pre-commit reads but never sets, and which users commonly export persistently — treating it as a signal used to switch every scan in that shell into pre-commit mode.
 
 ## Configuration Options
 
@@ -189,7 +191,6 @@ disables colour, and applies pre-commit exit-code semantics. These are the only 
 |---|---|
 | `PRE_COMMIT` | pre-commit itself |
 | `_PRE_COMMIT_RUNNING` | pre-commit itself (some versions) |
-| `PRE_COMMIT_HOME` | pre-commit itself |
 | `PRE_COMMIT_HOOK` | a hook invocation |
 | `GIT_HOOK_TYPE` | a hook invocation |
 

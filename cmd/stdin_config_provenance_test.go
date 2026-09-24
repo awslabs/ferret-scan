@@ -14,7 +14,7 @@ import (
 // stdinPrecommitTriggers are the environment variables that put the binary into pre-commit mode.
 // Kept in sync with internal/precommit/detector.go by TestPrecommitTriggerListIsComplete.
 var stdinPrecommitTriggers = []string{
-	"PRE_COMMIT", "_PRE_COMMIT_RUNNING", "PRE_COMMIT_HOME", "PRE_COMMIT_HOOK", "GIT_HOOK_TYPE",
+	"PRE_COMMIT", "_PRE_COMMIT_RUNNING", "PRE_COMMIT_HOOK", "GIT_HOOK_TYPE",
 }
 
 // hostileConfigDir writes a project config that disables the types which would otherwise find
