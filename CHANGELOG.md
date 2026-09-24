@@ -546,6 +546,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the real script against it, covering both scoped breaking forms, the footer form, the quoted-in-prose
   trap, and the no-release cases.
 
+- **cli (exit codes):** a named input path that **does not exist** now exits `1` before scanning,
+  instead of `0` with an empty report ([#728](https://github.com/awslabs/ferret-scan/issues/728)).
+  The README already documented `1` as "bad arguments … nothing usable was produced", and the
+  discovery loop already classified the case as "a usage error, a typo" — then `continue`d, so a CI
+  step with a misspelled path passed green having examined nothing. All inputs are validated up
+  front and every missing one named in one message. Deliberately **unchanged**: an empty directory,
+  a glob with no matches, and an all-excluded tree still exit `0` with `total_files: 0` (legitimate
+  "scan whatever is there" steps); a path that exists but cannot be read is still lost *coverage*
+  (exit `3` under `--fail-on-incomplete`); and a path escaping the working directory is still the
+  traversal gate's to refuse, whether or not it exists. The README's exit table also claimed `2` for
+  "no files to process" — true only under `--preprocess-only`; corrected.
+
+
 ### 🔨 Internal
 
 - **policy: no cross-tool compliance checks in this repository.** The ASH integration guard
