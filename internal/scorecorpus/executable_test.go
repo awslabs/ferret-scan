@@ -76,7 +76,6 @@ type cliResult struct {
 var precommitOffEnv = []string{
 	"PRE_COMMIT=",
 	"_PRE_COMMIT_RUNNING=",
-	"PRE_COMMIT_HOME=",
 	"PRE_COMMIT_HOOK=",
 	"GIT_HOOK_TYPE=",
 	"MSYSTEM=",

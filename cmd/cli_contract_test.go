@@ -62,9 +62,9 @@ func machineInvocation(in, sarifPath string) []string {
 }
 
 // runContractScan runs the machine invocation under an explicit minimal environment and returns
-// the exit code and sorted ruleIds. The environment is built from scratch rather than inherited:
-// a developer machine with pre-commit installed exports PRE_COMMIT_HOME, which would silently
-// flip the binary into pre-commit mode and make the control runs meaningless.
+// the exit code and sorted ruleIds. The environment is built from scratch rather than inherited,
+// so no pre-commit signal in the developer's shell or the CI runner can flip the binary into
+// pre-commit mode and make the control runs meaningless.
 func runContractScan(t *testing.T, bin, in, sarifPath string, env []string) (int, []string) {
 	t.Helper()
 	cmd := exec.Command(bin, machineInvocation(in, sarifPath)...)
@@ -319,12 +319,11 @@ func TestOnlyShowMatchRevealsMatchedValues(t *testing.T) {
 
 // precommitEnvSignals are the environment variables that switch this binary into pre-commit
 // behaviour (internal/precommit/detector.go detectEnvironment) — from the ENVIRONMENT ALONE,
-// no flag involved. PRE_COMMIT_HOME is the one that bites in practice: pre-commit itself sets
-// it, so any CI image or shell with pre-commit installed carries it into unrelated runs.
+// no flag involved. PRE_COMMIT_HOME was a fifth until #725: pre-commit only reads it (its cache
+// location) and never sets it, so it named an installation rather than a hook run.
 var precommitEnvSignals = []string{
 	"PRE_COMMIT=1",
 	"_PRE_COMMIT_RUNNING=1",
-	"PRE_COMMIT_HOME=/tmp/pch",
 	"PRE_COMMIT_HOOK=1",
 	"GIT_HOOK_TYPE=pre-commit",
 }
@@ -332,7 +331,7 @@ var precommitEnvSignals = []string{
 // TestFerretPrecommitOptOutNeutralisesEveryPrecommitSignal protects the opt-out contract from
 // #353: FERRET_PRECOMMIT=0 declines pre-commit behaviour, whatever triggered it. A machine
 // consumer that sets it must get the ordinary exit code and the FULL result set for every one of
-// the five signals — if the opt-out silently stopped covering one, that consumer keeps believing
+// the four signals — if the opt-out silently stopped covering one, that consumer keeps believing
 // it is protected while its results quietly change with the ambient environment.
 func TestFerretPrecommitOptOutNeutralisesEveryPrecommitSignal(t *testing.T) {
 	bin := buildForCLIContract(t)
@@ -350,8 +349,8 @@ func TestFerretPrecommitOptOutNeutralisesEveryPrecommitSignal(t *testing.T) {
 		t.Fatalf("control run is rc=%d with %d finding(s) %v; this test needs a clean "+
 			"multi-finding baseline", baseRC, len(baseIDs), baseIDs)
 	}
-	if len(precommitEnvSignals) < 5 {
-		t.Fatalf("only %d signals listed; detectEnvironment checks five", len(precommitEnvSignals))
+	if len(precommitEnvSignals) < 4 {
+		t.Fatalf("only %d signals listed; detectEnvironment checks four", len(precommitEnvSignals))
 	}
 
 	for i, sig := range precommitEnvSignals {

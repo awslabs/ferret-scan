@@ -299,7 +299,7 @@ func runStdinScan(in stdinScanInputs) int {
 	//	--file, any of the five triggers   109 bytes, note present   (fixed by #603)
 	//	--stdin, no trigger                145 bytes, note present
 	//	--stdin + PRE_COMMIT=1               0 bytes, note ABSENT
-	//	  ... same for _PRE_COMMIT_RUNNING, PRE_COMMIT_HOME, PRE_COMMIT_HOOK, GIT_HOOK_TYPE,
+	//	  ... same for _PRE_COMMIT_RUNNING, PRE_COMMIT_HOOK, GIT_HOOK_TYPE,
 	//	      --pre-commit-mode and --quiet
 	//
 	// Which is TB-7 again on a different input path: a pull request that ships a config file silences

@@ -51,6 +51,10 @@ func TestAGitEnvironmentIsNotAHookInvocation(t *testing.T) {
 		{"MINGW_PREFIX", "also set by Git Bash"},
 		{"GIT_EXEC_PATH", "set by Git whenever git runs a subprocess, hook or not"},
 		{"GITHUB_DESKTOP", "indicates GitHub Desktop, not a hook"},
+		// #725: pre-commit only READS this (its cache location, pre_commit/store.py) and never
+		// sets it for a hook run. Users export it persistently -- in CI to cache hook envs -- so
+		// as a signal it hijacked every ferret-scan run in that shell into pre-commit mode.
+		{"PRE_COMMIT_HOME", "the pre-commit CACHE location, user-exported; pre-commit never sets it"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -94,8 +98,9 @@ func TestAllTheGitEnvironmentVariablesTogetherAreStillNotAHook(t *testing.T) {
 // stopped detecting genuine hooks would be worse than the bug.
 func TestTheRealSignalsStillDetect(t *testing.T) {
 	for _, k := range []string{
-		// Set by pre-commit itself.
-		"PRE_COMMIT", "_PRE_COMMIT_RUNNING", "PRE_COMMIT_HOME",
+		// Set by pre-commit itself for a hook run (PRE_COMMIT: pre_commit/commands/run.py;
+		// _PRE_COMMIT_RUNNING: some versions).
+		"PRE_COMMIT", "_PRE_COMMIT_RUNNING",
 		// Name a hook invocation directly.
 		"PRE_COMMIT_HOOK", "GIT_HOOK_TYPE",
 	} {

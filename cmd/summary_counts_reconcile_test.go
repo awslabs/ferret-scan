@@ -97,7 +97,7 @@ func runStats(t *testing.T, bin, dir string, extra ...string) (scanStats, string
 	// precommitFreeEnv in two files in one package would not merge. Once #356 is in, this
 	// becomes cmd.Env = precommitFreeEnv() and the list is covered by that PR's drift guard.
 	cmd.Env = append(os.Environ(),
-		"PRE_COMMIT=", "_PRE_COMMIT_RUNNING=", "PRE_COMMIT_HOME=",
+		"PRE_COMMIT=", "_PRE_COMMIT_RUNNING=",
 		"PRE_COMMIT_HOOK=", "GIT_HOOK_TYPE=", "GIT_EXEC_PATH=", "GITHUB_DESKTOP=",
 		"MSYSTEM=", "MINGW_PREFIX=",
 	)

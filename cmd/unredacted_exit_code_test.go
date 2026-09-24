@@ -42,7 +42,7 @@ import (
 // path has its own coverage; see TestPrecommitStillDisclosesARefusal.
 func hermeticEnv() []string {
 	drop := map[string]bool{
-		"PRE_COMMIT": true, "_PRE_COMMIT_RUNNING": true, "PRE_COMMIT_HOME": true,
+		"PRE_COMMIT": true, "_PRE_COMMIT_RUNNING": true,
 		"PRE_COMMIT_HOOK": true, "GIT_HOOK_TYPE": true,
 		"MSYSTEM": true, "MINGW_PREFIX": true, "GIT_EXEC_PATH": true, "GITHUB_DESKTOP": true,
 	}
