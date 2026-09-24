@@ -5,41 +5,41 @@
 class FerretScan < Formula
   desc "Find and redact sensitive data before it leaks — PII, secrets, credit cards, metadata"
   homepage "https://github.com/awslabs/ferret-scan"
-  version "2.5.1"
+  version "2.5.2"
   license "Apache-2.0"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.1/ferret-scan_2.5.1_darwin_amd64"
-      sha256 "a88e1d0c18ed8d9765db25cac1147abaa6339a2dc394a10d0897aa90916f4eb5"
+      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.2/ferret-scan_2.5.2_darwin_amd64"
+      sha256 "2def415d74540216886ede2ede158b157a45135d5bad4990b7f7a2f9e21e9c09"
 
       define_method(:install) do
-        bin.install "ferret-scan_2.5.1_darwin_amd64" => "ferret-scan"
+        bin.install "ferret-scan_2.5.2_darwin_amd64" => "ferret-scan"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.1/ferret-scan_2.5.1_darwin_arm64"
-      sha256 "5928437611ad1a67f8ece4a09e834bb0791885a8daaa2ef9cb40241b6d2b99ea"
+      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.2/ferret-scan_2.5.2_darwin_arm64"
+      sha256 "587addb958c9f28c45d6d3799cf8d69d8f29cbe31e7be5df6645b22b75763717"
 
       define_method(:install) do
-        bin.install "ferret-scan_2.5.1_darwin_arm64" => "ferret-scan"
+        bin.install "ferret-scan_2.5.2_darwin_arm64" => "ferret-scan"
       end
     end
   end
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.1/ferret-scan_2.5.1_linux_amd64"
-      sha256 "9e3de2aa318f0c073144b4c8af9ec5f6007b274fc2dea949f16420a7d276debb"
+      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.2/ferret-scan_2.5.2_linux_amd64"
+      sha256 "90260c22762caa7c3adee723ab6b451d5905e4b434ec75b9d3dda8d83b895bed"
       define_method(:install) do
-        bin.install "ferret-scan_2.5.1_linux_amd64" => "ferret-scan"
+        bin.install "ferret-scan_2.5.2_linux_amd64" => "ferret-scan"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.1/ferret-scan_2.5.1_linux_arm64"
-      sha256 "4128f77169524e0e3dd2182febc559290192f50d5d9a2439e428e36bf6752478"
+      url "https://github.com/awslabs/ferret-scan/releases/download/v2.5.2/ferret-scan_2.5.2_linux_arm64"
+      sha256 "85058d752158edaf9c7e36532241477982ea009a89e72f5e76a5a8893a9c74c1"
       define_method(:install) do
-        bin.install "ferret-scan_2.5.1_linux_arm64" => "ferret-scan"
+        bin.install "ferret-scan_2.5.2_linux_arm64" => "ferret-scan"
       end
     end
   end
