@@ -17,6 +17,7 @@ bin/
 .idea/
 .fleet/
 .vim/
+.fx/
 .atom/
 .eclipse/
 .sublime-*
