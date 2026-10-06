@@ -337,6 +337,14 @@ type Validator struct {
 	// compileUnquotedPatterns for why they are separate.
 	unquotedPatterns []*regexp.Regexp
 
+	// The #746 sets, all ADDITIVE to the three above: a plural key name, and a key whose value
+	// opens a bracketed collection. Kept as their own fields rather than appended to the sets
+	// above so an existing finding's span -- and therefore its suppression hash -- cannot move.
+	// See list_and_sequence.go.
+	pluralUnquotedPatterns []*regexp.Regexp
+	pluralQuotedPatterns   []*regexp.Regexp
+	listOpenerPatterns     []*regexp.Regexp
+
 	// Context keywords
 	positiveKeywords []string
 	negativeKeywords []string
@@ -376,6 +384,10 @@ func NewValidator() *Validator {
 
 		keywordPatterns:  compileKeywordPatterns(),
 		unquotedPatterns: compileUnquotedPatterns(),
+
+		pluralUnquotedPatterns: compilePluralUnquotedPatterns(),
+		pluralQuotedPatterns:   compilePluralQuotedPatterns(),
+		listOpenerPatterns:     compileListOpenerPatterns(),
 
 		// positiveKeywords corroborate that a nearby high-entropy string is a
 		// credential (lifting it past the M24 generic-entropy cap). Matched by
@@ -594,6 +606,23 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Then check line by line for other patterns
 	lines := strings.Split(content, "\n")
 
+	// #746 shape (c): a YAML block sequence puts the key on one line and each credential on its
+	// own later line, so no single line carries both and the per-line patterns have nothing to
+	// anchor on:
+	//
+	//	api_keys:
+	//	  - <secret>
+	//	  - <secret2>
+	//
+	// Tracked as O(1) forward state rather than by walking backwards from each item line. A
+	// backward walk would be O(n²) on a file that is one long sequence, and this package is
+	// guarded against exactly that (TestValidatorComplexityIsSubQuadratic, and the audit finding
+	// behind it). seqIndent is the indent of the governing key; the sequence ends at the first
+	// line that is neither a deeper-indented item nor blank.
+	inSecretSequence := false
+	seqIndent := 0
+	seqKeyLine := ""
+
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
 		if execguard.LineLoopCancelled(ctx, lineNum) {
@@ -623,7 +652,28 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		for _, c := range v.findKeywordSecrets(line) {
 			cands = append(cands, scopedCandidate{candidate: c, method: "keyword_pattern", threshold: 60})
 		}
-		lineResults := v.processScopedCandidates(dedupeScopedBySpan(cands), line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript)
+
+		// #746 shape (c), continued. Order matters: the state is advanced AFTER this line is
+		// examined, so the key line itself is never treated as an item of its own sequence.
+		govKeyLine := ""
+		if inSecretSequence {
+			if itemIndent, isItem := sequenceItemIndent(line); isItem && itemIndent > seqIndent {
+				for _, c := range v.findSequenceItemSecret(line) {
+					cands = append(cands, scopedCandidate{
+						candidate: candidate{text: c.text, start: c.start, end: c.end},
+						method:    "keyword_pattern", threshold: 60,
+					})
+				}
+				// The key governs this item's confidence even though it is on an earlier line.
+				govKeyLine = seqKeyLine
+			} else if strings.TrimSpace(line) != "" {
+				inSecretSequence = false
+			}
+		}
+		if indent, opens := lineOpensSecretStemSequence(line); opens {
+			inSecretSequence, seqIndent, seqKeyLine = true, indent, line
+		}
+		lineResults := v.processScopedCandidates(dedupeScopedBySpan(cands), line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
 
 		// Process AWS secret access keys (context-gated; see findAWSSecretKeys).
 		// Adjacent lines provide the AKIA-pairing context: credentials files list
@@ -1097,6 +1147,38 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 		}
 	}
 
+	// A plural key name — `tokens:`, `api_keys:` — matches no pattern above, because the stem has
+	// to sit immediately before the delimiter. Same two filters as their singular counterparts:
+	// the quoted set takes the value as written, the unquoted set must clear
+	// plausibleUnquotedSecret. See #746 shape (d).
+	for _, pattern := range v.pluralQuotedPatterns {
+		for _, m := range pattern.FindAllStringSubmatchIndex(line, -1) {
+			if len(m) > 3 && m[2] >= 0 && m[3]-m[2] >= 8 {
+				matches = append(matches, candidate{text: line[m[2]:m[3]], start: m[2], end: m[3]})
+			}
+		}
+	}
+	for _, pattern := range v.pluralUnquotedPatterns {
+		for _, m := range pattern.FindAllStringSubmatchIndex(line, -1) {
+			if len(m) > 3 && m[2] >= 0 && m[3]-m[2] >= 8 {
+				value := line[m[2]:m[3]]
+				if !plausibleUnquotedSecret(value) {
+					continue
+				}
+				matches = append(matches, candidate{text: value, start: m[2], end: m[3]})
+			}
+		}
+	}
+
+	// Collections, and the tail of a non-bracketed list — #746 shapes (b) and (a). Both carry
+	// their own element filters; see list_and_sequence.go.
+	for _, c := range v.findCollectionSecrets(line) {
+		matches = append(matches, candidate{text: c.text, start: c.start, end: c.end})
+	}
+	for _, c := range v.findListTailSecrets(line) {
+		matches = append(matches, candidate{text: c.text, start: c.start, end: c.end})
+	}
+
 	return matches
 }
 
@@ -1516,7 +1598,23 @@ func lineHasKeyword(text, kw string) bool {
 		// in "accessToken").
 		rightOK := end == n ||
 			!isKeywordAlnum(text[end]) ||
-			(isKeywordLowerOrDigit(text[end-1]) && isKeywordUpper(text[end]))
+			(isKeywordLowerOrDigit(text[end-1]) && isKeywordUpper(text[end])) ||
+			// A trailing plural "s" is the same context signal as the singular: `tokens:`,
+			// `secrets:` and `passwords:` name a collection of exactly the thing the keyword
+			// names. Without this the boundary check rejects them, and the consequence is not
+			// cosmetic — measured, `tokens = "<credential>"` scored 55 against the keyword
+			// path's threshold of 60 and was dropped, while `token = "<same credential>"`
+			// scored 97. `api_keys` escaped only by accident, because it also contains the
+			// standalone keyword "api".
+			//
+			// This is the same class of miss as the '_'-as-word-byte bug the corpus case
+			// context_keywords_snake_case was written to lock: a keyword that is really present
+			// going unrecognised because the boundary rule is stricter than the way identifiers
+			// are actually written. See #746.
+			//
+			// The plural must itself end at a boundary, so this admits `tokens:` but not
+			// `tokensize` or `secretsmanager`.
+			isPluralBoundary(text, end)
 		if rightOK {
 			return true
 		}
@@ -1862,13 +1960,30 @@ func (v *Validator) isObviousPlaceholderPattern(pattern string) bool {
 // be arbitrated against each other by span (see dedupeScopedBySpan) and still
 // be judged against their own confidence threshold and labelled with their own
 // detection_method.
-func (v *Validator) processScopedCandidates(matches []scopedCandidate, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, lineHasShellVars bool, envType string, isShellScript bool) []spannedMatch {
+// govKeyLine, when non-empty, is the line carrying the key that GOVERNS every candidate on this
+// line, for a value that does not sit on the same line as its key. Today that is only a YAML block
+// sequence (#746 shape (c)):
+//
+//	api_keys:          <- govKeyLine
+//	  - <secret>       <- line
+//
+// Without it the item scores as though no keyword were present anywhere, because on its own line
+// none is — which is wrong in substance, and measurably so: of two credentials under the same key,
+// `Sup3rS3cretDbPass!` reached 100 on its intrinsic character classes alone while
+// `AnotherS3cretValue99` fell below the reporting threshold and vanished. The key is what makes
+// both of them credentials; it just is not on their line.
+func (v *Validator) processScopedCandidates(matches []scopedCandidate, line string, lineNum int, originalPath string, content string, contextInsights context.ContextInsights, lineHasShellVars bool, envType string, isShellScript bool, govKeyLine string) []spannedMatch {
 	var results []spannedMatch
 
 	// Hoisted out of the candidate loop: the nearby-keyword answer depends only on the
 	// line, so computing it per candidate made the scan quadratic in the number of
 	// candidates on one line. See lineKeywordState for the measurement.
 	lineKw := v.lineHasAnyPositiveKeyword(line)
+	if lineKw != lineKeywordPresent && govKeyLine != "" {
+		if govKw := v.lineHasAnyPositiveKeyword(govKeyLine); govKw == lineKeywordPresent {
+			lineKw = govKw
+		}
+	}
 
 	for _, cand := range matches {
 		match := cand.text
