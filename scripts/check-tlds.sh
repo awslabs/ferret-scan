@@ -58,8 +58,40 @@ live_count=$(printf '%s\n' "$live" | grep -vc '^#')
 have=$(embedded_count)
 
 if [ "$MODE" = "update" ]; then
+  # Emit the regenerated GO FILE, which is what the usage text above has always promised. It used to
+  # print the bare TLD list, so "then regenerate internal/validators/email/tlds.go" was left as a
+  # manual step -- hand-formatting 1437 entries into a 6-per-line composite literal, for a refresh
+  # that recurs every time ICANN moves the root zone. A data file nobody can regenerate in one
+  # command is a data file that stays stale, which is the failure this script exists to catch.
+  #
+  # The prose doc comment on ianaTLDs is PRESERVED from the current file rather than reproduced here:
+  # it carries the reasoning for the ceiling and the history of the 48%-complete list it replaced, and
+  # a generator that reprinted it would quietly become its own stale copy. Only two things are
+  # rewritten -- the recorded IANA header line, and the map body.
+  #
+  # Verified faithful: run against an unchanged root zone this reproduces the committed file
+  # byte-for-byte, so a non-empty diff means the TLD set really moved.
   warn "regenerating from $live_version ($live_count TLDs)"
-  printf '%s\n' "$live" | grep -v '^#' | tr 'A-Z' 'a-z' | sort -u
+
+  live_header=$(printf '%s\n' "$live" | grep -m1 '^# Version')
+
+  # Everything up to and including the map's opening line, with the recorded header line refreshed.
+  awk -v hdr="$live_header" '
+    /^\/\/\t# Version / { print "//\t" hdr; next }
+    { print }
+    /^var ianaTLDs = map\[string\]struct\{\}\{$/ { exit }
+  ' "$TLD_FILE"
+
+  # The body: six entries per tab-indented line, sorted, every entry comma-terminated. Matches the
+  # committed layout exactly; see the fidelity note above.
+  #
+  # shellcheck disable=SC2018,SC2019 # same reason as the check path below: IANA publishes ASCII only
+  # (IDNs as punycode), and an explicit A-Z range is locale-independent where [:upper:] is not.
+  printf '%s\n' "$live" | grep -v '^#' | tr 'A-Z' 'a-z' | sort -u | awk '
+    { printf "%s\"%s\": {},", (n % 6 == 0 ? (n ? "\n" : "") "\t" : " "), $0; n++ }
+    END { if (n) printf "\n" }
+  '
+  printf '}\n'
   exit 0
 fi
 
