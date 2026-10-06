@@ -154,6 +154,14 @@ func TestPlausibleUnquotedSecret(t *testing.T) {
 		{"550e8400-e29b-41d4-a716-446655440000", false}, // UUID
 		{"550E8400-E29B-41D4-A716-446655440000", false}, // UUID, uppercase
 		{"short", false},                                // under the 8-char floor
+		// Language type annotations captured when the field name carries a secret
+		// stem (e.g. `session: Optional[Session]`). See #742.
+		{"Optional[Session]", false},
+		{"Optional[SecretStr]", false},
+		{"Optional[str]", false},
+		{"List[str]", false},
+		{"Dict[str,int]", false},
+		{"typing.Optional[str]", false},
 	}
 
 	for _, tc := range cases {

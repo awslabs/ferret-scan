@@ -1052,6 +1052,22 @@ func plausibleUnquotedSecret(v string) bool {
 		return false
 	}
 
+	// Language type annotation, e.g. `session: Optional[Session]`, `tokens: List[str]`,
+	// `creds: Dict[str,Secret]`. The unquoted capture grabs the annotation value when the
+	// field name carries a secret stem (session, password, api_key, ...), and a mixed-case
+	// Optional[Session] clears every other veto here, so it is scored a HIGH-confidence
+	// credential. This is the inverse of the #360/#395 fix: #395 taught the detector to catch
+	// unquoted assignments but never excluded the parameterized-type-annotation shape, which is
+	// pervasive in typed Python / TypeScript generics. See #742.
+	//
+	// Safe as a veto rather than a confidence ceiling because it is VALUE-INTRINSIC, like
+	// isAllMaskCharacters above: a value shaped Ident[...] carries no secret, so an author
+	// cannot relabel a real credential into this shape to hide it. Scoped to the unquoted
+	// path only; a quoted `token = "Optional[X]"` is still handled by the quoted patterns.
+	if typeAnnotationValue.MatchString(v) {
+		return false
+	}
+
 	var hasLower, hasUpper, hasDigit, hasOther bool
 	for _, r := range v {
 		switch {
@@ -1088,6 +1104,11 @@ func plausibleUnquotedSecret(v string) bool {
 var (
 	uuidLikeValue   = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 	digitsAndDashes = regexp.MustCompile(`^[0-9-]+$`)
+	// typeAnnotationValue matches a bare generic/parameterized type annotation such as
+	// Optional[Session], List[str], Dict[str,int] or typing.Optional[str] — a dotted-or-plain
+	// identifier followed by a single bracketed parameter list spanning the whole value. Used
+	// by plausibleUnquotedSecret to reject annotations the unquoted-assignment patterns capture.
+	typeAnnotationValue = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]*\[[^\]]*\]$`)
 )
 
 // isAllMaskCharacters reports whether a value consists ONLY of the character this tool masks with.
