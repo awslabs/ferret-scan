@@ -119,6 +119,76 @@ var Cases = []Case{
 			"just_a_word=hello\n",
 	},
 	{
+		Name: "secrets_collections_and_plural_keys",
+		Description: "The same-line #746 false NEGATIVES: a credential the assignment matcher " +
+			"could not reach. Every line here reported NOTHING before the fix, including the " +
+			"QUOTED ones — which is the sharp part, since quotes are the author marking the bytes " +
+			"as a literal value and are exactly what the quoted patterns exist to honour.\n" +
+			"  Lines 1-3 are shape (d), a plural key name. The stem has to sit immediately before " +
+			"the delimiter, so `tokens:` and `api_keys:` matched no pattern at all — and a plural " +
+			"is how a collection of credentials is naturally named.\n" +
+			"  Lines 4-7 are shape (b), a bracket or brace between the delimiter and the value. " +
+			"The unquoted value class excludes `[`, `(` and `{` as a FIRST character and the " +
+			"quoted patterns require a quote immediately after the delimiter, so a JSON array of " +
+			"API keys escaped both sets. Line 5 carries two elements; both must report.\n" +
+			"  Lines 8-9 are shape (a), a list tail. The capture class excludes ',' and ';' and " +
+			"the pattern is anchored on the key, so nothing re-anchored past the separator and a " +
+			"credential list reported only its head.\n" +
+			"  Lines 10-12 are the false positives this could have bought, and must stay EMPTY. " +
+			"REDACTED, PLACEHOLDER and CHANGEME all clear plausibleUnquotedSecret and none is " +
+			"caught by isObviousPlaceholder; before the fix they were saved only by the " +
+			"leading-bracket exclusion, i.e. by the very gap shape (b) closes, so the veto had to " +
+			"be made explicit (shoutySentinel). A regression that drops it shows up here as three " +
+			"new findings.\n" +
+			"  Line 13 is a non-secret key, establishing that the trigger is still the stem and " +
+			"not the collection shape. Line 14 pins that whitespace is NOT a list separator: a " +
+			"value after a space is as likely to be prose or a trailing comment as a second " +
+			"credential, so only the credential reports, never the words after it.",
+		Checks: []string{"SECRETS"},
+		Input: "api_keys: Sup3rS3cretDbPass!\n" +
+			"tokens = \"hunter2XYZsecretvalue123\"\n" +
+			"{\"api_keys\": \"pgAdmin!2024xValue\"}\n" +
+			"{\"api_keys\": [\"Tr0ub4dor&3Secret\"]}\n" +
+			"{\"secrets\": [\"FirstS3cretValue11\", \"SecondS3cretValue22\"]}\n" +
+			"{\"tokens\": {\"primary\": \"NestedS3cretValue33\"}}\n" +
+			"api_keys: [InlineSeqS3cret44]\n" +
+			"secret: HeadS3cretValue55,TailS3cretValue66\n" +
+			"password=SemiHeadS3cret77;SemiTailS3cret88\n" +
+			"api_key: [REDACTED]\n" +
+			"api_keys: [PLACEHOLDER]\n" +
+			"secret: (CHANGEME)\n" +
+			"items: [NotACredentialAtAll99]\n" +
+			"password: TrailingProseS3cret me see runbook\n",
+	},
+	{
+		Name: "secrets_block_sequence",
+		Description: "The cross-line #746 false negative, shape (c). A YAML block sequence puts " +
+			"the key on one line and each credential on its own later line, so no single line " +
+			"carries both and the per-line patterns had nothing to anchor on — the whole sequence " +
+			"reported nothing.\n" +
+			"  Both items under api_keys must report, and the SECOND one is the case worth " +
+			"watching. A sequence item carries no keyword on its own line, so it originally scored " +
+			"as though no key existed anywhere: the item with more character classes cleared the " +
+			"reporting threshold on intrinsic shape alone and its sibling fell below it and " +
+			"vanished. The key is what makes both of them credentials, which is why " +
+			"processScopedCandidates now takes govKeyLine. A regression that drops that shows up " +
+			"here as the weaker item disappearing while the stronger one stays.\n" +
+			"  The tail of the fixture pins that the sequence ENDS. `unrelated_field:` closes it, " +
+			"and the item under `other_list:` must NOT report — a value does not become a " +
+			"credential by inheriting a key it does not belong to, and treating it as one would be " +
+			"a false positive of our own making. The sequence state is tracked as O(1) forward " +
+			"state rather than by walking backwards from each item, because a backward walk is " +
+			"O(n^2) on a file that is one long sequence and this package is guarded against " +
+			"exactly that (TestValidatorComplexityIsSubQuadratic).",
+		Checks: []string{"SECRETS"},
+		Input: "api_keys:\n" +
+			"  - SeqFirstS3cretVal11\n" +
+			"  - SeqSecondS3cretVal22\n" +
+			"unrelated_field: plain\n" +
+			"other_list:\n" +
+			"  - NotUnderASecretKey33\n",
+	},
+	{
 		Name:        "ip_addresses",
 		Description: "Public vs private/loopback IPv4; locks IP_ADDRESS context handling.",
 		Checks:      []string{"IP_ADDRESS"},
