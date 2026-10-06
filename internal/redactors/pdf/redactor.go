@@ -4,6 +4,7 @@
 package pdf
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -151,7 +152,14 @@ func (pr *PDFRedactor) validatePDFFile(filePath string) error {
 		return fmt.Errorf("file does not exist: %s", filePath)
 	}
 
-	if err := api.ValidateFile(filePath, pr.pdfConfig); err != nil {
+	// pdfcpu v0.16.0 added a context and a progress-options parameter to ValidateFile. A nil
+	// options pointer disables progress reporting, which is what this call wants: it is a
+	// yes/no parseability check, not a long-running job with a UI.
+	//
+	// context.Background() rather than a threaded context because validatePDFFile has no caller
+	// that can cancel it — Redact returns an error before doing any PDF work (redaction is
+	// deliberately unimplemented). Thread a real context here if that changes.
+	if err := api.ValidateFile(context.Background(), filePath, pr.pdfConfig, nil); err != nil {
 		return fmt.Errorf("invalid PDF file: %w", err)
 	}
 
