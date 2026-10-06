@@ -189,6 +189,77 @@ var Cases = []Case{
 			"  - NotUnderASecretKey33\n",
 	},
 	{
+		Name: "secrets_type_annotations_negative",
+		Description: "Typed-language declarations whose field name carries a secret stem " +
+			"(session / password / api_key / token / secret) and whose value is a TYPE, not a " +
+			"credential. Must stay empty. This is the #742 false positive: the unquoted-assignment " +
+			"matcher added in #395 treats ':' as an assignment delimiter, so `session: " +
+			"Optional[Session]` captured the annotation and a mixed-case Optional[Session] cleared " +
+			"every value veto, scoring API_KEY_OR_SECRET at HIGH 100%. The last two lines are " +
+			"positive controls: a real quoted secret and a real unquoted one must still report, so " +
+			"a regression that over-corrects by disabling the unquoted path shows up here as those " +
+			"two vanishing rather than as a silent loss of coverage. The corpus previously had no " +
+			"source-code CONTENT shape at all — only .py/.go FileCases carrying quoted secrets to " +
+			"lock routing — which is why #395 could introduce this class unnoticed.",
+		Checks: []string{"SECRETS"},
+		Input: "session: Optional[Session] = None\n" +
+			"password: Optional[str] = None\n" +
+			"api_key: Optional[SecretStr] = None\n" +
+			"tokens: List[str] = []\n" +
+			"creds: Dict[str,int] = {}\n" +
+			"fallback_secret: typing.Optional[str] = None\n" +
+			"password = \"Sup3rS3cretDbPass!\"\n" +
+			"api_key=hunter2XYZsecretvalue123\n",
+	},
+	{
+		Name: "secrets_code_expression_known_fp",
+		Description: "The #742 shapes the #745 veto does NOT cover, recorded as CURRENT behavior " +
+			"rather than asserted correct — the same convention adversarial_single_long_line uses. " +
+			"#742's suggested guard names four shapes; #745's veto is anchored on square brackets " +
+			"(`Ident[...]`) and closes only that one. The other three still capture, and all of " +
+			"them are declarations whose value is a TYPE or a CALL, never a credential:\n" +
+			"  (1) bare capitalized identifier — `token: AuthToken` at 100%. The plainest " +
+			"annotation syntax there is, and the widest surface of the three: it is Java, Kotlin " +
+			"and C# fields as well as Python and TypeScript, not just the parameterized form.\n" +
+			"  (2) TypeScript generics — Promise<AuthToken> and Observable<string> at 100%. " +
+			"Record<string,string> arrives TRUNCATED to `Record<string` because the capture class " +
+			"excludes ',', which is why a value-shape veto alone cannot close it: by the time the " +
+			"filter sees the value, the closing bracket is gone. See the #745 discussion on " +
+			"widening the veto vs. excluding bracket characters from the capture's continuation " +
+			"class — the latter keeps every veto value-intrinsic, the former admits a form an " +
+			"author could wrap a live credential inside.\n" +
+			"  (3) bare function call — get_session() and loadSecret(ctx) at 75%. #742's own " +
+			"5-line repro fixture ends with `session = get_session()`, so this line is why that " +
+			"fixture still reports 1 finding after #745 rather than 0.\n" +
+			"The last line is NOT a false positive and is here as a control: `api_key: SecretStr` " +
+			"is clean today while `password: SecretProvider` is 100%, and the reason is neither " +
+			"length (AuthToken and SecretStr are both 9 chars) nor isObviousPlaceholder (false for " +
+			"both). Something further down suppresses values containing SecretStr specifically. " +
+			"The current behavior on bare identifiers is therefore partly ACCIDENTAL, which is the " +
+			"argument for an explicit guard rather than relying on whatever is incidentally " +
+			"catching some of them. If a future change makes this line fire, that is a real " +
+			"regression and not a widening of the veto.\n" +
+			"The redaction snapshots are the sharpest statement of the cost: under " +
+			"--enable-redaction every line here has its TYPE rewritten to " +
+			"[API_KEY_OR_SECRET-REDACTED], so running redaction over a typed codebase corrupts " +
+			"it. Line 5 shows the truncation damage directly — `secret: Record<string,string>` " +
+			"becomes `secret: [API_KEY_OR_SECRET-REDACTED],string>`, which is not even " +
+			"syntactically valid, because redaction can only rewrite the span that was reported " +
+			"and the capture stopped at the comma. #742 frames the impact as reddened PRs under a " +
+			"blocking gate; this is the worse failure mode and the corpus should carry it.\n" +
+			"When these are fixed, the lines leave this golden and the diff is the proof.",
+		Checks: []string{"SECRETS"},
+		Input: "token: AuthToken\n" +
+			"password: SecretProvider\n" +
+			"session: SessionFactory\n" +
+			"token: Promise<AuthToken>\n" +
+			"secret: Record<string,string>\n" +
+			"apiKey: Observable<string>\n" +
+			"session = get_session()\n" +
+			"api_key = loadSecret(ctx)\n" +
+			"api_key: SecretStr\n",
+	},
+	{
 		Name:        "ip_addresses",
 		Description: "Public vs private/loopback IPv4; locks IP_ADDRESS context handling.",
 		Checks:      []string{"IP_ADDRESS"},
