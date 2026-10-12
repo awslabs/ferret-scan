@@ -66,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MEDIUM 85%) and a bare call (`session = get_session()`, MEDIUM 75% — the last line of #742's own
   reproduction) still report on v2.5.3, and
   [#747](https://github.com/awslabs/ferret-scan/issues/747) records them in the golden corpus as
-  known false positives.
+  known false positives; they are tracked in
+  [#753](https://github.com/awslabs/ferret-scan/issues/753).
 - **secrets (lists, collections, plural keys):** four credential shapes were invisible to the
   assignment matcher — a plural key (`tokens: …`, `"api_keys": "…"`), a bracket between the
   delimiter and the value (`"api_keys": ["…"]`, an ordinary JSON config shape), a list tail
