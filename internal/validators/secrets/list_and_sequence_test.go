@@ -4,6 +4,7 @@
 package secrets
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -19,6 +20,9 @@ const (
 	secretA = "Sup3rS3cretDbPass!"
 	secretB = "AnotherS3cretValue99"
 )
+
+// secretC is assembled at run time, the push-protection-safe way fixtures added since are built.
+var secretC = buildTestToken("Third", "S3cret", "Value42x")
 
 // reports returns the texts ValidateContent produces for content.
 func reports(t *testing.T, content string) []string {
@@ -237,11 +241,12 @@ func TestNonSecretKeysAreUnaffected(t *testing.T) {
 
 // splitListElements must return EVERY element, including the first.
 //
-// It originally skipped the first on the theory that a caller had already reported it. That is
-// true for findListTailSecrets, which passes a string starting at the separator, and false for
+// It originally skipped the first on the theory that a caller had already reported it. That was
+// true for findListTailSecrets, which passed a string starting at the separator, and false for
 // findCollectionSecrets, where the whole point is that nothing reported the collection -- so
 // `api_keys: [<secret>]`, a single-element list, stayed missed. Pinned because the asymmetry is
-// the kind of thing a later edit would re-introduce.
+// the kind of thing a later edit would re-introduce. (findListTailSecrets no longer uses it: since
+// #754 it walks the tail element by element; see appendListTail.)
 func TestSplitListElementsKeepsTheFirstElement(t *testing.T) {
 	if got := splitListElements("onlyone"); len(got) != 1 {
 		t.Errorf("splitListElements(%q) returned %d spans, want 1", "onlyone", len(got))
@@ -249,8 +254,8 @@ func TestSplitListElementsKeepsTheFirstElement(t *testing.T) {
 	if got := splitListElements("a,b,c"); len(got) != 3 {
 		t.Errorf("splitListElements(%q) returned %d spans, want 3", "a,b,c", len(got))
 	}
-	// A leading separator yields an empty first element, which is how findListTailSecrets gets
-	// the "skip the head" behaviour without a flag.
+	// A leading separator yields an empty first element, which drops out rather than becoming a
+	// zero-length span.
 	if got := splitListElements(",tail"); len(got) != 1 {
 		t.Errorf("splitListElements(%q) returned %d spans, want 1 (the empty head drops out)",
 			",tail", len(got))
@@ -311,4 +316,168 @@ func TestIsPluralBoundary(t *testing.T) {
 			t.Errorf("isPluralBoundary(%q, %d) = %v, want %v", tc.text, tc.end, got, tc.want)
 		}
 	}
+}
+
+// #754: a list-tail element is a member only while it fits the head's own value grammar. These
+// pin the three boundaries that grammar draws, each of which the first version of the walk got
+// wrong, and the members it must keep.
+
+// The element ends at the first byte the head's capture would not take. A closing quote is one:
+// the first version split on separators only, so the last element of a list inside a string kept
+// the string's closing quote and reported `<v2>"` -- HIGH, as a credential with a quote in it.
+func TestListTailElementStopsAtTheHeadsValueClass(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{"double-quoted string", "S = \"secret: " + secretA + "," + secretB + "\"\n"},
+		{"single-quoted string", "S = 'password=" + secretA + ";" + secretB + "'\n"},
+		{"trailing comment", "secret: " + secretA + "," + secretB + "#rotate\n"},
+		{"trailing prose", "secret: " + secretA + "," + secretB + " see runbook\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reports(t, tc.content)
+			if !containsAll(got, secretA, secretB) {
+				t.Errorf("got %v, want both %q and %q exactly — the tail element must be cut at the "+
+					"first byte outside the value class, not carry it", got, secretA, secretB)
+			}
+			for _, g := range got {
+				if g != secretA && g != secretB {
+					t.Errorf("reported %q — a tail element must not run past the value class "+
+						"(a quote, '#' or whitespace ends it, and ends the tail)", g)
+				}
+			}
+		})
+	}
+}
+
+// A new `key=value` or `key: value` pair is the NEXT assignment, not a member of this list, so it
+// ends the list -- and nothing after it belongs to the head either. The first version reported the
+// pair itself, key and all, and every element after it.
+func TestListTailEndsAtANewAssignment(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{"key=value then a bare element", "secret: " + secretA + ",next_key=" + secretB + "," + secretC + "\n", []string{secretA}},
+		{"key:value, no space", "password=" + secretA + ";mode:" + secretB + ";" + secretC + "\n", []string{secretA}},
+		{"key: value, spaced", "secret: " + secretA + ",description: " + secretB + "\n", []string{secretA}},
+		{"comparison", "secret: " + secretA + ",state==" + secretB + "\n", []string{secretA}},
+		// A quote after `=` that OPENS a value is a pair, unlike the closing quote after padding.
+		{"key=\"quoted value\"", "secret: " + secretA + ",mode_name=\"cors\"," + secretB + "\n", []string{secretA}},
+		// The second pair is itself a head and reports through the ordinary pattern. The tail used
+		// to report its `token=<v2>` element as well, so every assignment after the first was
+		// reported twice, once with its key glued on.
+		{"the next pair is another head", "token=" + secretA + ";token=" + secretB + "\n", []string{secretA, secretB}},
+		// The stated cost of the rule. `root:<v2>` is shaped exactly like minified `expiresIn:n.x`,
+		// and nothing in the bytes tells them apart. Measured, letting `key:value` without a space
+		// through as a member returned 1,413 more JS/TS findings (1,309 HIGH), so a user:password
+		// element after a head ends the list. Pinned so the trade stays a decision.
+		{"user:password element reads as the next pair", "password=admin:" + secretA + ",root:" + secretB + "\n", []string{"admin:" + secretA}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reports(t, tc.content)
+			if !sameStrings(got, tc.want) {
+				t.Errorf("got %v, want exactly %v — an element that opens a new key=value or "+
+					"key: value pair ends the list, and nothing after it is a member", got, tc.want)
+			}
+		})
+	}
+}
+
+// An element whose first byte the head pattern would not start a value with ends the list: the
+// head never reports `password=$VAR`, `password=<placeholder>` or `password=[x]`, so a member shaped
+// like that is not a literal either. v2.5.3 reported each of these as a credential.
+func TestListTailEndsAtAnElementTheHeadCouldNotStart(t *testing.T) {
+	for _, content := range []string{
+		"secret: " + secretA + ",$OTHER_SECRET_VALUE," + secretB + "\n",
+		"secret: " + secretA + ",${VAULT_SECRET_REF}\n",
+		"secret: " + secretA + ",<placeholder-api-key>\n",
+		"secret: " + secretA + ",[" + secretB + "]\n",
+		"secret: " + secretA + ",(" + secretB + ")\n",
+		"secret: " + secretA + ",{" + secretB + "}\n",
+	} {
+		t.Run(strings.TrimSpace(content), func(t *testing.T) {
+			if got := reports(t, content); !sameStrings(got, []string{secretA}) {
+				t.Errorf("got %v, want exactly [%q] — a member must start the way the head's value "+
+					"does, and one that cannot ends the list", got, secretA)
+			}
+		})
+	}
+}
+
+// The members the grammar must KEEP, so the stopping rules cannot be satisfied by stopping early.
+func TestListTailKeepsRealMembers(t *testing.T) {
+	padded := base64.StdEncoding.EncodeToString([]byte("list member, padded")) // ends in '='
+	if !strings.HasSuffix(padded, "=") {
+		t.Fatalf("fixture %q is not padded; it would not exercise the padding rule", padded)
+	}
+	cases := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		// A member that fits the grammar but is not reported -- a sentinel, a short token -- is
+		// still a member: the walk passes over it rather than stopping.
+		{"past a sentinel", "secret: " + secretA + ",PLACEHOLDER," + secretB + "\n", []string{secretA, secretB}},
+		{"past a short element", "secret: " + secretA + ",ab," + secretB + "\n", []string{secretA, secretB}},
+		{"three members", "password=" + secretA + ";" + secretB + ";" + secretC + "\n", []string{secretA, secretB, secretC}},
+		// Spaces after the separator are skipped as the head skips them after its delimiter, so a
+		// hand-written list keeps its members.
+		{"space after the separator", "password: " + secretA + ", " + secretB + ",\t" + secretC + "\n", []string{secretA, secretB, secretC}},
+		// base64 padding is an identifier-shaped run followed by '=', but nothing follows the
+		// padding, so it is a value and not the next key.
+		{"base64 padding is not a key", "secret: " + secretA + "," + padded + "\n", []string{secretA, padded}},
+		{"base64 padding mid-list", "secret: " + secretA + "," + padded + "," + secretB + "\n", []string{secretA, padded, secretB}},
+		// A CRLF file leaves `\r` at the end of every line, after the padding.
+		{"base64 padding at the end of a CRLF line", "secret: " + secretA + "," + padded + "\r\n", []string{secretA, padded}},
+		// The list inside a string: the padding is followed by the string's CLOSING quote, which
+		// must not read as the opening quote of `key="value"`. v2.5.3 reported this one with the
+		// quote attached.
+		{"base64 padding before a closing quote", "S = \"secret: " + secretA + "," + padded + "\"\n", []string{secretA, padded}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reports(t, tc.content)
+			if !sameStrings(got, tc.want) {
+				t.Errorf("got %v, want exactly %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A minified line is the shape that made the first version report 136,290 non-credentials on
+// public JS/TS: one plausible head, then every statement and property fragment on the rest of the
+// line. The walk now yields the head's real list and stops at the first property.
+func TestMinifiedLineYieldsOnlyTheHeadsList(t *testing.T) {
+	line := "!function(){var e={token:" + secretA + "," + secretB +
+		",expiresIn:3600,scope:o.scope,onDone:function(t){return t.data},retry:n.retryPolicy,mode:\"cors\"};" +
+		"e.headerSet=Object.assign({},r.headerSet),e.timeoutMs=a.timeoutMs||3e4,module.exports=e}();\n"
+	got := reports(t, line)
+	if !sameStrings(got, []string{secretA, secretB}) {
+		t.Errorf("got %d findings %v, want exactly the head and its one real member [%q %q] — "+
+			"the list ends at the first property, and nothing after it belongs to the head",
+			len(got), got, secretA, secretB)
+	}
+}
+
+// sameStrings reports whether got and want hold the same strings with the same multiplicity.
+func sameStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	count := make(map[string]int, len(want))
+	for _, w := range want {
+		count[w]++
+	}
+	for _, g := range got {
+		count[g]--
+		if count[g] < 0 {
+			return false
+		}
+	}
+	return true
 }

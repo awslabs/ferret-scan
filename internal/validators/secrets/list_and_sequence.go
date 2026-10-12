@@ -223,8 +223,51 @@ func (v *Validator) findCollectionSecrets(line string) []collectionSecretCandida
 //
 // Whitespace is NOT treated as a separator here either, for the reason given in
 // findCollectionSecrets: `password: <secret> see runbook` would otherwise report "runbook".
+//
+// WHAT IS A LIST MEMBER (#754). The first version split the whole rest of the line at every `,`
+// and `;` and reported each piece that cleared plausibleUnquotedSecret. On a minified line that is
+// every statement and property fragment after the first plausible head: measured on 29,130 public
+// JS/TS files it produced 136,290 findings from 213 lines, up to 20,066 on one line, and none was a
+// credential. A tail element now belongs to the list only while it fits the HEAD'S OWN value
+// grammar -- the class compileUnquotedPatterns captures, first byte [^\s"';,#<${(\[] and the rest
+// [^\s"';,#] -- and the walk stops at the first element that does not:
+//
+//   - An element is the longest run of value-class bytes after the separator, so it is truncated
+//     at the first byte outside the class. That byte ends the TAIL unless it is itself a separator.
+//     This is what removes the stray closing quote: in `S = "secret: <v1>,<v2>"` the second element
+//     used to report as `<v2>"`, and the head's own capture would never have taken that quote.
+//   - Spaces and tabs straight after the separator are skipped, exactly as the head pattern skips
+//     `\s*` after its own delimiter, so `password: <v1>, <v2>` keeps its second member. Measured,
+//     refusing them instead would have lost that hand-written list shape to remove 52 more JS/TS
+//     and 3 more Python fragments that v2.5.3 already reported.
+//   - An element whose first byte the head could not start with -- a quote, `$`, `<`, `{`, `(`,
+//     `[` -- ends the list. `password=$VAR` does not report as a head, so `<secret>,$VAR` does
+//     not report `$VAR` as a member either.
+//   - An element that opens a new `key=value` or `key: value` pair ends the list (see
+//     startsListAssignment). That is the NEXT assignment, not a member of this one: in
+//     `token=<v1>;token=<v2>` the second head reports through the ordinary pattern, and its
+//     `token=<v2>` element used to report a second time, key and all.
+//
+// The grammar is a property of the bytes, not of the value, so the filters for what REPORTS are
+// unchanged: an element that fits but is short, prose-shaped or a shouty sentinel is still a member
+// -- the walk passes over it to the next one -- and is simply not reported.
+//
+// LINEAR, which the first version was not. Every head re-split the whole rest of the line, so K
+// heads on one line cost O(K^2): 0.80s, 2.62s and 11.13s at K = 2,000, 4,000 and 8,000
+// `;`-separated `token=<value>` assignments through the CLI, against 0.24s, 0.61s and 0.86s now
+// (median of three interleaved samples). Two things make it O(line length):
+//
+//   - The walk is LAZY. It reads one element at a time and stops at the first that is not a member,
+//     instead of splitting everything after the head before looking at any of it.
+//   - No separator is walked twice. A tail depends only on the separator it starts at -- every head
+//     shares one element grammar -- so a walk that reaches a separator an earlier walk has already
+//     passed stops there: everything after it was emitted by that walk. That holds whichever order
+//     the patterns find their heads in, which is pattern order and not line order.
 func (v *Validator) findListTailSecrets(line string) []collectionSecretCandidate {
 	var out []collectionSecretCandidate
+	// walked holds every separator a tail walk has passed on this line. Allocated on the first walk:
+	// most lines have no head followed by a separator and should not pay for a map.
+	var walked map[int]struct{}
 
 	for _, pattern := range v.unquotedPatterns {
 		for _, m := range pattern.FindAllStringSubmatchIndex(line, -1) {
@@ -237,28 +280,161 @@ func (v *Validator) findListTailSecrets(line string) []collectionSecretCandidate
 				continue
 			}
 			// A separator must come immediately after the captured value, with nothing between.
-			rest := line[m[3]:]
-			if rest == "" || (rest[0] != ',' && rest[0] != ';') {
+			if m[3] >= len(line) || !isListSeparator(line[m[3]]) {
 				continue
 			}
-			base := m[3]
-			for _, span := range splitListElements(rest) {
-				text := strings.TrimSpace(rest[span[0]:span[1]])
-				if len(text) < 8 || !plausibleUnquotedSecret(text) || shoutySentinel.MatchString(text) {
-					continue
-				}
-				off := strings.Index(rest[span[0]:span[1]], text)
-				if off < 0 {
-					continue
-				}
-				out = append(out, collectionSecretCandidate{
-					text: text, start: base + span[0] + off, end: base + span[0] + off + len(text),
-				})
+			if walked == nil {
+				walked = make(map[int]struct{})
 			}
+			out = appendListTail(out, line, m[3], walked)
 		}
 	}
 
 	return out
+}
+
+// appendListTail walks the list that continues at the separator line[sep], appending each member
+// that clears the reporting filters, and returns at the first byte that is not part of the list.
+// See findListTailSecrets for the grammar and for why walked makes the total work linear.
+func appendListTail(out []collectionSecretCandidate, line string, sep int, walked map[int]struct{}) []collectionSecretCandidate {
+	for sep < len(line) && isListSeparator(line[sep]) {
+		if _, done := walked[sep]; done {
+			return out
+		}
+		walked[sep] = struct{}{}
+
+		// Spaces or tabs may follow the separator, as `\s*` may follow the head's own delimiter:
+		// `password: <v1>, <v2>` is a list as written by hand.
+		start := sep + 1
+		for start < len(line) && (line[start] == ' ' || line[start] == '\t') {
+			start++
+		}
+		if start >= len(line) || !isUnquotedValueFirstByte(line[start]) || startsListAssignment(line, start) {
+			return out
+		}
+		end := start + 1
+		for end < len(line) && isUnquotedValueByte(line[end]) {
+			end++
+		}
+
+		if text := line[start:end]; len(text) >= 8 && plausibleUnquotedSecret(text) && !shoutySentinel.MatchString(text) {
+			out = append(out, collectionSecretCandidate{text: text, start: start, end: end})
+		}
+		// The byte that ended this element continues the list only if it is a separator.
+		sep = end
+	}
+	return out
+}
+
+// isListSeparator reports whether b separates list elements. Only `,` and `;`; see
+// findCollectionSecrets for why whitespace is not one.
+func isListSeparator(b byte) bool {
+	return b == ',' || b == ';'
+}
+
+// isUnquotedValueByte reports whether b may appear in an unquoted value: the class
+// [^\s"';,#] that compileUnquotedPatterns captures after the first character.
+//
+// A byte test is exact for that class. Every byte it excludes is ASCII, and a byte at or above
+// 0x80 is part of a multi-byte rune (or an invalid one, which the regexp reads as U+FFFD) that the
+// negated class admits. \s in Go's regexp is [\t\n\f\r ], which is the whitespace listed here --
+// deliberately not unicode.IsSpace, which would also exclude \v and so disagree with the head.
+func isUnquotedValueByte(b byte) bool {
+	switch b {
+	case '\t', '\n', '\f', '\r', ' ', '"', '\'', ';', ',', '#':
+		return false
+	}
+	return true
+}
+
+// isUnquotedValueFirstByte reports whether b may START an unquoted value: the class
+// [^\s"';,#<${(\[] that compileUnquotedPatterns requires of its first character. The extra
+// exclusions are a shell or template reference (`$`, `<`, `{`) and a collection or call (`(`, `[`),
+// none of which the head pattern will take as a literal.
+func isUnquotedValueFirstByte(b byte) bool {
+	switch b {
+	case '<', '$', '{', '(', '[':
+		return false
+	}
+	return isUnquotedValueByte(b)
+}
+
+// startsListAssignment reports whether the list element at line[start] opens a new assignment --
+// `key=value`, `key: value`, `key:value` -- rather than continuing the list. Such an element ends
+// the list; see findListTailSecrets.
+//
+// A key is an identifier-shaped run ([A-Za-z_] then [A-Za-z0-9_$.-]), optional spaces, then `=` or
+// `:`, then a VALUE: after optional spaces, some byte that is not a separator, not `#` and not the
+// end of the line. The delimiter may repeat (`==`, `::`), so a comparison or a scope path also
+// counts as code rather than a list member.
+//
+// The value requirement is what keeps a padded base64 element in the list. `QUJDREVG==` is an
+// identifier-shaped run followed by `=`, but nothing follows the padding, so it is a value and not a
+// key -- and the same holds when what follows is the closing quote of the string the list is in.
+//
+// The cost of this rule is stated rather than hidden: a `user:pass`-shaped element after a head
+// (`password=<v1>,root:<v2>`) is read as the next pair and ends the list. Nothing in the bytes tells
+// it from minified `expiresIn:n.expiresIn`, and measured on public JS/TS, letting `key:value` with
+// no space through as a member returned 1,413 findings (1,309 HIGH) that this removes.
+func startsListAssignment(line string, start int) bool {
+	b := line[start]
+	if !(b == '_' || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')) {
+		return false
+	}
+	i := start + 1
+	for i < len(line) && isAssignmentKeyByte(line[i]) {
+		i++
+	}
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	if i >= len(line) || (line[i] != '=' && line[i] != ':') {
+		return false
+	}
+	delim := line[i]
+	for i < len(line) && line[i] == delim {
+		i++
+	}
+	// A quote straight after `=` is either the OPENING quote of a quoted value (`mode="cors"`) or
+	// the CLOSING quote of a string the whole list sits in, after a padded value
+	// (`S = "secret: <v1>,QUJD=="`). The byte after the quote tells them apart: quoted content
+	// follows an opening quote, and the end of the string -- the end of the line, a separator,
+	// whitespace or a closing bracket -- follows a closing one.
+	if delim == '=' && i < len(line) && (line[i] == '"' || line[i] == '\'') {
+		if j := i + 1; j >= len(line) || closesAfterString(line[j]) {
+			return false
+		}
+		return true
+	}
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	if i >= len(line) {
+		return false
+	}
+	switch line[i] {
+	case ',', ';', '#', '\r', '\n', '\f':
+		// Nothing follows the delimiter on this line -- including the `\r` a CRLF file leaves at
+		// the end of every line -- so it was padding, or an empty assignment, not a key.
+		return false
+	}
+	return true
+}
+
+// closesAfterString reports whether b can follow a closing quote but not begin quoted content, for
+// startsListAssignment's padding test.
+func closesAfterString(b byte) bool {
+	switch b {
+	case ',', ';', ' ', '\t', '\r', ')', ']', '}':
+		return true
+	}
+	return false
+}
+
+// isAssignmentKeyByte reports whether b may continue an assignment key in startsListAssignment.
+func isAssignmentKeyByte(b byte) bool {
+	return b == '_' || b == '$' || b == '.' || b == '-' ||
+		(b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 // findSequenceItemSecret returns the credential-shaped value on a YAML block-sequence item line.
@@ -316,13 +492,18 @@ func sequenceItemIndent(line string) (indent int, ok bool) {
 	return len(m[1]), true
 }
 
-// splitListElements returns the spans of every non-empty `,`/`;`-separated element in s.
+// splitListElements returns the spans of every non-empty `,`/`;`-separated element in s. Used by
+// findCollectionSecrets, on the region between a collection's opening bracket and the first closing
+// one.
 //
-// No element is skipped, which is what makes the same helper correct for both callers. A
-// collection's first element has not been reported by anything — the whole point of shape (b) is
-// that the collection was unreachable — so skipping it would leave `api_keys: [<secret>]` missed.
-// findListTailSecrets instead passes a string that STARTS at the separator, so its first span is
-// empty and drops out here on its own.
+// No element is skipped. A collection's first element has not been reported by anything — the
+// whole point of shape (b) is that the collection was unreachable — so skipping it would leave
+// `api_keys: [<secret>]` missed.
+//
+// findListTailSecrets used this too until #754, splitting the whole rest of the line once per head.
+// That was the O(K^2), and it is why the tail now walks element by element in appendListTail
+// instead: an unbracketed list has no closing bracket to bound the split, so the walk has to stop
+// at the first element that is not a member rather than at the end of the line.
 func splitListElements(s string) [][2]int {
 	var spans [][2]int
 	start := 0
