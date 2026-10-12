@@ -78,12 +78,32 @@ const MinMeasurableCPU = 2 * time.Millisecond
 
 // DefaultPairs is how many base/big pairs Growth measures.
 //
-// 2, chosen against measured stability rather than guessed. Minimums converge fast because
-// contamination only ever adds, so the marginal sample buys little while each costs a full big
-// reading. On the 18-target complexity guard: 1 pair 22.4s, 2 pairs 45.8s with a worst correct-code
-// reading of 4.60x, 3 pairs 69.8s at 4.54x. Going from 2 to 3 moves the worst reading by 0.06x for
-// another 24 seconds. Two is still strictly more than one bad sample can defeat.
-const DefaultPairs = 2
+// 4, from 22 CI runs of #649's instrumentation (go-test.yml runs 35916152576 to 37529169889,
+// 2026-09-23 to 2026-10-06, every one on the same macos-26-arm64 image, so the comparison is not
+// confounded by an image change). It was 2, chosen on a developer machine where the worst correct
+// reading moved 0.06x from 2 pairs to 3 — true there, and the wrong population: a stable machine is
+// exactly the one where more samples buy nothing. macos-latest is not stable. Its readings are
+// inflated in bursts, and in both headline readings below BOTH samples of one side were inflated
+// together — both bigs for the linear 7.99x, both bases for the quadratic 9.72x — so a 2-sample
+// minimum had no clean reading to pick. Across the 22 runs, worst reading on macos-latest, against
+// the 8.0 bound (margin in brackets, rule ≥1.5x):
+//
+//	                                  2 pairs         4 pairs
+//	linear control, max               7.99x (1.00x)   4.68x (1.71x)
+//	genuine quadratic, min            9.72x (1.22x)   14.90x (1.86x)
+//	18 correct validators, max        7.06x (1.13x)   (first measured by this change)
+//
+// ubuntu-latest and windows-latest barely move (linear max 4.19x and 4.68x at either count), which
+// is the signature of runner instability rather than an estimator defect: more pairs fix the
+// unstable runner and cost nothing on the stable ones. #731's first reading was "the spread persists
+// at 4 pairs, so more pairs is refuted". The 22 runs confirm the first half and refute the second:
+// spread is max/min, a range, and widens with samples (2.29x worst at 2 pairs, 2.99x at 4), while
+// the minimum — which is what Ratio uses — still improves.
+//
+// The cost is small because the fixtures are: the whole complexity step took 9-16s per runner at
+// 2 pairs. ReportMargin reports every asserted reading's margin from here on, so if 4 stops being
+// enough it says so before a build goes red.
+const DefaultPairs = 4
 
 // Reading is one timed call.
 //

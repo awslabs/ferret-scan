@@ -161,12 +161,15 @@ func TestGrowthRatioStillCatchesAGenuineQuadratic(t *testing.T) {
 		t.Logf("quadratic control NOT asserted — %s", note)
 	} else if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("quadratic control NOT asserted — %s", g.ResolutionNote())
-	} else if g.Ratio <= maxGrowthRatio {
-		t.Errorf("a genuine O(n^2) validator measured %.2fx on the %s clock, at or below the %.1f "+
-			"threshold — the guard would no longer detect the regression it exists for. "+
-			"min base=%v big=%v, per-pair %s. %s",
-			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin,
-			perfguard.FormatRatios(g.Samples), g.ResolutionNote())
+	} else {
+		perfguard.ReportMargin(t, "quadratic control", g.Growth, maxGrowthRatio, perfguard.StayAbove)
+		if g.Ratio <= maxGrowthRatio {
+			t.Errorf("a genuine O(n^2) validator measured %.2fx on the %s clock, at or below the %.1f "+
+				"threshold — the guard would no longer detect the regression it exists for. "+
+				"min base=%v big=%v, per-pair %s. %s",
+				g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin,
+				perfguard.FormatRatios(g.Samples), g.ResolutionNote())
+		}
 	}
 }
 
@@ -194,10 +197,13 @@ func TestGrowthRatioStaysLowOnLinearCode(t *testing.T) {
 		t.Logf("linear control NOT asserted — %s", note)
 	} else if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("linear control NOT asserted — %s", g.ResolutionNote())
-	} else if g.Ratio > maxGrowthRatio {
-		t.Errorf("a single-pass validator measured %.2fx on the %s clock, above the %.1f "+
-			"threshold — this is #546, the guard failing on correct code. min base=%v big=%v, "+
-			"per-pair %s", g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
+	} else {
+		perfguard.ReportMargin(t, "linear control", g.Growth, maxGrowthRatio, perfguard.StayBelow)
+		if g.Ratio > maxGrowthRatio {
+			t.Errorf("a single-pass validator measured %.2fx on the %s clock, above the %.1f "+
+				"threshold — this is #546, the guard failing on correct code. min base=%v big=%v, "+
+				"per-pair %s", g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
+		}
 	}
 }
 
@@ -355,12 +361,15 @@ func TestGrowthRatioCatchesAnEmitPerMatchQuadratic(t *testing.T) {
 		t.Logf("emit-per-match quadratic control NOT asserted — %s", note)
 	} else if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("emit-per-match quadratic control NOT asserted — %s", g.ResolutionNote())
-	} else if g.Ratio <= maxGrowthRatio {
-		t.Errorf("a genuine O(n^2) validator that emits a Match per finding measured %.2fx on the "+
-			"%s clock, at or below the %.1f threshold — this is #599: the per-match emit cost "+
-			"dilutes the ratio enough to hide a real regression. min base=%v big=%v, per-pair %s. %s",
-			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin,
-			perfguard.FormatRatios(g.Samples), g.ResolutionNote())
+	} else {
+		perfguard.ReportMargin(t, "emit-per-match quadratic control", g.Growth, maxGrowthRatio, perfguard.StayAbove)
+		if g.Ratio <= maxGrowthRatio {
+			t.Errorf("a genuine O(n^2) validator that emits a Match per finding measured %.2fx on the "+
+				"%s clock, at or below the %.1f threshold — this is #599: the per-match emit cost "+
+				"dilutes the ratio enough to hide a real regression. min base=%v big=%v, per-pair %s. %s",
+				g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin,
+				perfguard.FormatRatios(g.Samples), g.ResolutionNote())
+		}
 	}
 }
 
@@ -466,6 +475,10 @@ func TestGrowthRatioMissesASparseQuadratic(t *testing.T) {
 		t.Fatalf("fixture is not scaling: base=%d big=%d matches", g.baseMatches, g.bigMatches)
 	}
 
+	// No perfguard.ReportMargin here, deliberately. This test's margin is set by arithmetic, not by
+	// tuning: its fixture reads ~5.0-5.3x by construction (ratio = 4*(1+3f)), so it sits at about the
+	// 1.5x rule at its median and a canary would warn on roughly half of all runs — noise that would
+	// teach people to ignore the warnings that matter. Its readings are logged above regardless.
 	if note := thresholdNotAssertableUnderRace(); note != "" {
 		t.Logf("sparse quadratic control NOT asserted — %s", note)
 	} else if _, resolvable := g.Ticks(); !resolvable {

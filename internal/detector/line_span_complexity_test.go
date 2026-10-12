@@ -339,7 +339,15 @@ func TestAssignLineColumnsMemoIsLoadBearing(t *testing.T) {
 	// mutates its argument: reusing a slice would time an already-assigned set on the second pair,
 	// and building inside the closure would charge each reading for a construction cost that differs
 	// between base and big by exactly the thing being measured — the line length.
-	const pairs = perfguard.DefaultPairs
+	//
+	// 2 pairs, not perfguard.DefaultPairs (4). Every pair holds two 96,000-match fixtures at once, and
+	// this guard runs under -race in the main suite, where that is measured at 458-495MB peak RSS for
+	// 2 pairs against 795-829MB for 4 — on the runner whose suite was once SIGTERM'd for memory. The
+	// macos instability that moved the default to 4 was measured on the goldencorpus controls, not
+	// here. ReportMargin logs this guard's margin every run in go-test.yml's report step, both plain
+	// and under -race (they are different populations, and the main suite asserts the -race one), so
+	// if 2 is thin here too, the evidence will say so before a red build does.
+	const pairs = 2
 	baseFixtures := make([][]Match, pairs)
 	bigFixtures := make([][]Match, pairs)
 	for i := 0; i < pairs; i++ {
@@ -375,13 +383,14 @@ func TestAssignLineColumnsMemoIsLoadBearing(t *testing.T) {
 	// noise, on correct code, blocking merges on PRs that do not touch this package.
 	//
 	// Measure fixes the three things that caused it: a CPU clock rather than wall (contention steals
-	// wall time without changing cycle count), a ratio of MINIMUMS over two pairs rather than one
+	// wall time without changing cycle count), a ratio of MINIMUMS over several pairs rather than one
 	// sample, and the tick gate below, which declines to divide a base the clock cannot resolve.
 	if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("memo guard NOT asserted — %s", g.ResolutionNote())
 		return
 	}
 
+	perfguard.ReportMargin(t, "line-id memo", g, 2.5, perfguard.StayBelow)
 	if g.Ratio > 2.5 {
 		t.Errorf("growing the LINE 8x at a fixed match count cost %.2fx more on the %s clock "+
 			"(base=%v big=%v, per-pair %s) — the per-match line hash is back: the line-id memo in "+
