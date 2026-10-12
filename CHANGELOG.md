@@ -14,6 +14,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **secrets (unquoted assignments in source code):** an unquoted right-hand side in **code**
+  position of a Python, JavaScript/TypeScript, Go or Terraform/HCL file is no longer reported
+  as a credential. The unquoted-assignment family (#395, plus the #746/#749 plural, collection,
+  list-tail and sequence paths) captured whatever followed `keyword[=:]` in every file. In
+  `.env`, shell, Dockerfile, ini and YAML that is the literal value. In an expression language it
+  is an identifier, member access, call or type, so `secret = config.secret_key`,
+  `password: this.form.value.password,` and `token: AuthToken` all reached HIGH 100. A value-shape
+  veto cannot close this: `token: AuthToken` is byte-identical in a `.ts` file, where it is a type,
+  and in a `.yaml` file, where it may be a value. So a **lexical gate** now reads the file's
+  grammar. One linear pass over the whole content marks strings (delimiters included), comments,
+  docstrings, regex literals and heredoc bodies. An unquoted-family candidate is dropped only if its
+  **value start** is outside all of them and it is not a literal token. A literal token is a
+  backtick string whose template has no `${`, or a hex literal. Anchoring on the value rather than
+  the keyword keeps a quoted `getenv` fallback or a quoted collection element after a code-position
+  head. The gate only drops candidates, never touches the quoted patterns, provider literals, the
+  entropy path, PEM blocks or the AWS secret-key path, and runs before the same-span dedupe, so a
+  quoted or entropy twin survives. It **fails open**, leaving the file exactly as before, when the
+  lexer ends outside code, a single-line string is unterminated, nesting is unbalanced or deeper
+  than 256, or the content exceeds 100 MB. The file type comes from the name on every channel, so
+  `--stdin-name app.ts` and a `ScanText`/`Redact` label `app.ts` are gated, and `<stdin>`,
+  `<text>`, `clipboard`, `.jsx`, `.tsx` and every other extension are not. Measured with the CLI,
+  `main` (3df48ac, the v2.5.3 code) against this build, on 58,055 content-deduplicated public
+  source files: **Python
+  3,403 → 1,796** findings (HIGH 631 → 131), **JS/TS 134,755 → 15,920** (HIGH 94,766 → 10,286),
+  **Go 5,693 → 5,627**, **HCL 197 → 94**. Nothing was added. Every one of the 120,611 removed
+  values starts in code: checked with the language's own tokenizer (Python `tokenize`, esprima,
+  `go/scanner`), and by hand for the 103 HCL values and the 14 Python values in files `tokenize`
+  rejects. All 36,983 non-source files gave identical findings. The #753 probe of 24 everyday code lines goes from 17 reported to 0, while connection
+  strings, `?token=` URLs, comments, docstrings, `.env` bodies in triple-quoted strings, Go raw
+  strings, backtick literals and hex keep their exact confidence. **Accepted loss:** a bare
+  credential pasted unquoted in code (`API_KEY = Xk9…` in a `.py`) is not reported. It is not a
+  string in these languages and the program would not run; the loss is pinned by a test.
+  **Residual:** a keyword inside a docstring still reports, e.g. the Sphinx field
+  `:type token: RequestToken` (36 in this corpus). The golden case
+  `secrets_code_expression_known_fp` is inverted: the same lines in `src/models.ts` and
+  `src/models.py` give zero findings beside in-file literal controls, a YAML control still
+  reports, and the extension-less case stays as the pin that untyped input is not gated. See
+  "Unquoted assignments in source code" in `internal/validators/secrets/README.md`
+  ([#753](https://github.com/awslabs/ferret-scan/issues/753)). Closes
+  [#753](https://github.com/awslabs/ferret-scan/issues/753).
+
 ## [v2.5.2] - 2026-09-24
 
 ### 📚 Documentation

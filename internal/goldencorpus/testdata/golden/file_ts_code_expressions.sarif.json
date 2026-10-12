@@ -1,0 +1,170 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "originalUriBaseIds": {
+        "%SRCROOT%": {
+          "uri": "file://<TMPDIR>/"
+        }
+      },
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/models.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "const DB_URL = \"Server=db;User Id=app;Password=\nconst DB_URL = \"Server=db;User Id=app;Password=ConnStrS3cretVal77;\";\n;\";"
+                  },
+                  "startLine": 29
+                },
+                "region": {
+                  "endColumn": 66,
+                  "snippet": {
+                    "text": "const DB_URL = \"Server=db;User Id=app;Password=ConnStrS3cretVal77;\";"
+                  },
+                  "startColumn": 48,
+                  "startLine": 29
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Secret or API Key Detected in src/models.ts at line 29 (confidence: 95.0% - HIGH). Matched text: 'ConnStrS3cretVal77'"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doc_type": "Unknown",
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "detection_method": "keyword_pattern",
+              "environment_type": "production",
+              "original_confidence": 95,
+              "secret_type": "API_KEY_OR_SECRET",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": true,
+                "prod_environment_boost": true,
+                "specific_pattern": false,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 92.5,
+          "ruleId": "API_KEY_OR_SECRET"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/models.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "// rotate before release: secret=\n// rotate before release: secret=CommentS3cretVal88"
+                  },
+                  "startLine": 30
+                },
+                "region": {
+                  "endColumn": 52,
+                  "snippet": {
+                    "text": "// rotate before release: secret=CommentS3cretVal88"
+                  },
+                  "startColumn": 34,
+                  "startLine": 30
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Secret or API Key Detected in src/models.ts at line 30 (confidence: 95.0% - HIGH). Matched text: 'CommentS3cretVal88'"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0,
+              "context_doc_type": "Unknown",
+              "context_doctype": "Unknown",
+              "context_domain": "Unknown",
+              "detection_method": "keyword_pattern",
+              "environment_type": "production",
+              "original_confidence": 95,
+              "secret_type": "API_KEY_OR_SECRET",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": true,
+                "prod_environment_boost": true,
+                "specific_pattern": false,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 92.5,
+          "ruleId": "API_KEY_OR_SECRET"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches."
+              },
+              "help": {
+                "text": "Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#api_key_or_secret",
+              "id": "API_KEY_OR_SECRET",
+              "shortDescription": {
+                "text": "Secret or API Key Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

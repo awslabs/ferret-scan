@@ -101,6 +101,115 @@ The validator detects various cryptographic key formats:
 - **Case Insensitive**: Matches regardless of case
 - **Flexible Separators**: Handles various assignment operators
 
+### Unquoted assignments in source code
+
+The keyword path also matches assignments whose value is **not** quoted —
+`password=Sup3rS3cret`, `token: abc123XYZ`, a list tail, a YAML block-sequence
+item. In `.env`, shell `export`, Dockerfile `ENV`, ini and unquoted YAML that is
+the literal value. In an expression language it is not: a string has to be
+quoted, so an unquoted right-hand side in code is an identifier, a member
+access, a call or a type. `secret = config.secret_key` in Python and
+`password: this.form.value.password` in TypeScript reported HIGH 100 before
+this gate existed (#753).
+
+**The rule.** An unquoted-family candidate is dropped only when all three hold:
+
+1. the file's extension is in the table below and the gate is active for the
+   file (see *Fail-open* below);
+2. the candidate's **value start** lies in CODE position, i.e. outside every
+   string (delimiters included), comment, docstring, regex literal and heredoc
+   body; and
+3. the value is not a literal token: a backtick string whose template closes
+   before any `${`, or a hex literal (`0x` followed by 8 or more hex digits).
+
+The value start is the anchor, not the keyword. In
+`password = os.getenv("DB_PASSWORD", "<value>")` the keyword is in code, and
+the quoted fallback is still a hard-coded credential. A quoted element of a
+collection after a code-position head works the same way. A template literal
+with `${` counts as code at its opening backtick, because the value captured
+there is an interpolated expression. Its text segments are still literal.
+
+Only the unquoted family is gated. It covers the unquoted and plural unquoted
+patterns, the collection and list-tail paths, and block-sequence items. Quoted
+keyword patterns, provider literals (`AKIA…`, `ghp_…`), the entropy path,
+PEM blocks and the AWS secret-key path are never gated. The gate runs before
+the same-span dedupe, so a quoted or entropy twin on the same bytes survives.
+No value shape is consulted, so the gate is justified by the grammar alone.
+Relabelling or reshaping a credential cannot hide it.
+
+| Language | Extensions | Literal syntax the lexer reads |
+|---|---|---|
+| Python | `.py` `.pyi` `.pyw` | `#` comments; `'…'` and `"…"` with escapes and backslash-newline continuation; triple-quoted strings and docstrings; `r b f u rb br fr rf` prefixes in any case. A raw prefix changes what a backslash means, not where the string ends, so boundaries match Python's own tokenizer. f-strings are literal as a whole. |
+| JavaScript / TypeScript | `.js` `.mjs` `.cjs` `.ts` `.mts` `.cts` | `//` and `/* */`; `'…'` and `"…"` with escapes and continuation; backtick templates across lines with `${ … }` read as code, including nested templates and braces; regex literals by the previous-byte heuristic. |
+| Go | `.go` | `//` and `/* */`; `"…"` with escapes; `'…'` runes; backtick raw strings across lines. |
+| Terraform / HCL | `.tf` `.tfvars` `.hcl` | `#`, `//` and `/* */`; `"…"` with `${ }` and `%{ }` read as code (`$${` and `%%{` are literal); `<<EOT` and `<<-EOT` heredoc bodies. |
+
+`.jsx` and `.tsx` are deliberately absent. JSX text between tags is neither
+code nor a JS string, and the lexer does not model it. Other languages are
+added by measurement. A missing entry keeps today's behaviour, which is the
+safe direction.
+
+**Fail-open.** The lexer makes one pass over the whole file, in linear time.
+If it cannot vouch for its own state, the gate is disabled for that file and
+the file behaves exactly as it did before the gate. That happens when:
+
+- the file ends inside anything but code: an unclosed block comment,
+  triple-quoted string, template, raw string, heredoc or interpolation;
+- a single-line string reaches the end of its line unterminated and without a
+  continuation backslash. That is a syntax error in all four languages, so
+  either the lexer is wrong about the file or the file is not what its
+  extension says. A JS regex literal that does not close on its line is
+  treated the same way;
+- template or interpolation nesting is unbalanced, or deeper than 256; or
+- the content is larger than 100 MB, the most this validator is handed in one
+  piece (`router.MaxFileSize`).
+
+Measured on 58,055 public source files, the gate failed open on 0.01% of
+Python, 0.02% of JS/TS (all JSX in `.js` files), 0% of Go and 0.07% of HCL
+(one deliberately broken test fixture).
+
+**Channels.** The file type comes from the name on every channel: a CLI path,
+`--stdin-name`, a `pkg/scan` `ScanFile` path, and a `ScanText` or `Redact`
+label. `--stdin-name app.ts` and a `ScanText` label `app.ts` are gated exactly
+like a file called `app.ts`. With no extension there is no gate: `<stdin>`,
+`<text>`, `<request>`, `clipboard`. An unlisted extension is not gated either:
+`.docx`, `.env.example`, `x.ts.txt`. Without a file type, `token: AuthToken` is
+as likely to be a YAML value as a TypeScript type, so untyped input keeps
+reporting it.
+
+**The accepted loss.** A bare credential pasted unquoted in code position is
+no longer reported, e.g. `API_KEY = Xk9…` in a `.py`. It is not a string in
+these languages and the program would not run. Telling it apart from an
+identifier would need a guess at the value, the kind of value-shape veto this
+gate avoids. Because it is not reported, it is not redacted either, and a
+redacted copy of that file still contains it. The loss is pinned by
+`TestSourceGateAcceptedLossIsPinned`.
+
+**Residual false positives.** Docstrings and comments are literal text, so a
+keyword inside one still reports. The common case is a Sphinx field,
+`:type token: RequestToken`: 36 findings in the measured Python corpus, about
+250 in the larger corpus #753 measured. A follow-up can key on Sphinx field
+syntax, which is a docstring-grammar marker rather than a guess at the value.
+
+**Measured** with the CLI on 58,055 content-deduplicated public source files
+(CPython 3.10 stdlib, Homebrew Python 3.14 site-packages, global npm packages,
+this repository's Go module dependencies, ASH, the pre-commit cache):
+
+| | before | after | removed |
+|---|---|---|---|
+| Python | 3,403 (HIGH 631) | 1,796 (HIGH 131) | 1,607 |
+| JS/TS | 134,755 (HIGH 94,766) | 15,920 (HIGH 10,286) | 118,835 |
+| Go | 5,693 (HIGH 519) | 5,627 (HIGH 505) | 66 |
+| HCL | 197 (HIGH 27) | 94 (HIGH 10) | 103 |
+
+Nothing was added. Every removed value was checked against the language's own
+tokenizer: Python's `tokenize`, esprima for JS/TS and `go/scanner`. The 14
+Python values in Handlebars-templated files that `tokenize` rejects, and all
+103 HCL removals, were read by hand. Every removed value starts in code. The
+36,983 non-source files in the same run (config, prose, JSX and every other
+type) gave identical findings: same file, line, type, text and confidence. The
+#753 probe of 24 everyday code lines went from 17 reported to 0.
+
 ## Confidence Scoring
 
 ### Base Confidence (85%)
