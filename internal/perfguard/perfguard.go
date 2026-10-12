@@ -344,7 +344,9 @@ func Measure(pairs int, base, big func()) (Growth, error) {
 		g.BigReadings = append(g.BigReadings, pick(bigs[i]))
 	}
 	if g.BaseMin <= 0 {
-		return Growth{}, fmt.Errorf("perfguard: every base reading was zero on the %s clock", g.Clock)
+		// One zero sample is enough: the minimum is then zero, and a ratio over it is meaningless. A
+		// zero means the clock did not advance across the call, not that the call took no time.
+		return Growth{}, fmt.Errorf("perfguard: a base reading was zero on the %s clock — it did not resolve this workload", g.Clock)
 	}
 	g.Ratio = float64(g.BigMin) / float64(g.BaseMin)
 	return g, nil

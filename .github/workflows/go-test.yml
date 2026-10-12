@@ -133,7 +133,11 @@ jobs:
               exit 1
             fi
           done
-          go test -count=1 -run "$COMPLEXITY_GUARDS" "${pkgs[@]}" 2>&1 | tee "$RUNNER_TEMP/complexity.out"
+          # -p 1: one test binary at a time. These are timing guards, and until #731 goldencorpus ran
+          # here effectively alone -- the other two packages matched no tests. The first run with all
+          # three concurrent hit a zero wall-clock reading on windows-latest that 44 earlier readings
+          # never had; serialising restores the condition the evidence was gathered under.
+          go test -p 1 -count=1 -run "$COMPLEXITY_GUARDS" "${pkgs[@]}" 2>&1 | tee "$RUNNER_TEMP/complexity.out"
           if grep 'no tests to run' "$RUNNER_TEMP/complexity.out"; then
             echo "::error title=complexity guards::a package above ran zero guards: COMPLEXITY_GUARDS no longer matches its tests"
             exit 1
@@ -179,7 +183,7 @@ jobs:
         # peak RSS for this one test).
         run: |
           read -r -a pkgs <<< "$COMPLEXITY_PKGS"
-          go test -v -count=1 -run "$COMPLEXITY_GUARDS" "${pkgs[@]}"
+          go test -p 1 -v -count=1 -run "$COMPLEXITY_GUARDS" "${pkgs[@]}"
           go test -race -v -count=1 -run 'TestAssignLineColumnsMemoIsLoadBearing' ./internal/detector/
         shell: bash
         continue-on-error: true
