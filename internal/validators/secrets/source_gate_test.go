@@ -724,16 +724,29 @@ func TestSourceGateKeepIsScopedToBacktickText(t *testing.T) {
 		{"a.py", "secret = base64.b64encode(b\"x\")\n", []string{"base64.b64encode(b"}},
 		{"a.ts", "const token = line.match(/^Bearer/)\n", []string{"line.match(/^Bearer/)"}},
 		{"a.ts", "const token = getToken()//rotateQuarterly\n", []string{"getToken()//rotateQuarterly"}},
-		// A list-tail element whose head is code and whose tail is a quoted string: the documented
-		// residual, measured above. Both the head and the element drop.
-		{"a.py", "token = first_token_value, decode(\"" + synth(11) + "\")\n",
-			[]string{"first_token_value", "decode("}},
-		{"a.ts", "const token = cfg.tokenValue9, enc(\"" + synth(11) + "\");\n",
-			[]string{"cfg.tokenValue9", "enc("}},
 	}
 	for _, c := range cases {
 		t.Run(c.path+" "+c.drop[0], func(t *testing.T) {
 			checkGateCase(t, gateCase{path: c.path, content: c.body, drop: c.drop})
+		})
+	}
+
+	// A list-tail element whose head is code and whose tail is a quoted string: the documented
+	// residual, measured above. The head always drops. The element drops with it wherever the
+	// list-tail walk produces it without the gate; a walk that cuts an element at its first quote
+	// (#754) produces it on no file type, so then there is nothing for the gate to drop, and
+	// checkGateCase still fails if the gate adds or removes anything else.
+	residual := []struct{ path, body, head, elem string }{
+		{"a.py", "token = first_token_value, decode(\"" + synth(11) + "\")\n", "first_token_value", "decode("},
+		{"a.ts", "const token = cfg.tokenValue9, enc(\"" + synth(11) + "\");\n", "cfg.tokenValue9", "enc("},
+	}
+	for _, c := range residual {
+		t.Run(c.path+" residual "+c.head, func(t *testing.T) {
+			drop := []string{c.head}
+			if _, ungated := scanBoth(t, c.body, c.path); len(withText(ungated, c.elem)) > 0 {
+				drop = append(drop, c.elem)
+			}
+			checkGateCase(t, gateCase{path: c.path, content: c.body, drop: drop})
 		})
 	}
 }
