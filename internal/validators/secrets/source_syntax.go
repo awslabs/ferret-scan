@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // The lexical gate on the unquoted-assignment family (#753).
@@ -347,9 +349,13 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 // lexSource makes one forward pass over the whole content and returns the literal bitset and its
 // backtick-text subset (see sourceGate), or a non-empty reason when the gate must fail open.
 //
-// One pass and no per-line rescans: every branch advances i, and the only backward looks (a Python
-// string prefix, the keyword ending at prevSig before a JS '/' or '<') are bounded by a constant.
-// See TestSourceLexerIsLinear.
+// One pass and no per-line rescans: every branch advances i, and every look away from i is bounded.
+// The backward looks -- a Python string prefix, the keyword ending at prevSig before a JS '/', '<'
+// or '(', the operand byte before a TypeScript '!', the rune a stray Windows-1252 quote byte may
+// belong to -- each read at most a constant number of bytes. The one forward look that can fail,
+// an HCL `<<ID` that is not a heredoc opener, stops at the first byte after the identifier that
+// decides it, not at the end of the line, so a rejected opener costs its own bytes and no more.
+// See TestSourceLexerIsLinear*.
 //
 // FAIL OPEN -- the gate is disabled for the whole file and it behaves exactly as today -- when:
 //
@@ -365,9 +371,14 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 //     (in .ts too, where it means the file is not TypeScript, e.g. a Qt Linguist translation), or
 //     in .js/.mjs/.cjs an opening tag `<Name` or `<>` where an operand is expected. JSX text
 //     between tags is neither code nor a string, so the file is treated like a .jsx file;
-//   - a typographic quote (U+2018 U+2019 U+201C U+201D) appears in code position. No grammar here
+//   - a typographic quote appears in code position: a non-ASCII Unicode quotation mark (“ ” ‘ ’ „ «
+//     » ‹ › ＂ 「 」 ...) or a Windows-1252 smart quote, see typographicQuoteAt. No grammar here
 //     accepts one there, so the file is not valid source -- typically a credential pasted with
-//     curly quotes -- and the lexer cannot know where the author meant a string to be.
+//     curly quotes, guillemets or full-width quotes -- and the lexer cannot know where the author
+//     meant a string to be;
+//   - the replacement character U+FFFD appears in code position. It stands for a byte a decoder
+//     could not read -- Redact turns every invalid UTF-8 sequence into one before the gate, a raw
+//     Windows-1252 quote included -- so the lexer cannot know whether that byte was a quote.
 //
 // Python note. A raw prefix (r, rb, br, fr, rf, tr, rt) changes what a backslash MEANS, not where
 // the string ENDS: Python's tokenizer still lets a backslash keep the next character inside a raw
@@ -380,8 +391,10 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 // depth 0 starts the format spec, which is text again (a quote there is a fill character); `{{` is
 // an escaped brace, and a backslash never escapes a brace.
 func lexSource(content string, lang sourceLanguage) (lit, tick literalSet, reason string) {
-	// TypeScript lexes exactly as JavaScript; only the JSX opener test differs.
+	// TypeScript lexes exactly as JavaScript but for two tests: the JSX opener, and a '!' that may
+	// be the postfix non-null assertion (regexCanStart).
 	jsxOpener := lang == langJS
+	ts := lang == langTS
 	if lang == langTS {
 		lang = langJS
 	}
@@ -403,6 +416,12 @@ func lexSource(content string, lang sourceLanguage) (lit, tick literalSet, reaso
 		// identifier byte, or the closing byte of a string, template or regex -- with whitespace,
 		// newlines and comments skipped. A JS '/' and '<' are judged by it; -1 before any.
 		prevSig = -1
+		// JS parens in code: parenDepth counts the open ones, headerDepths the depths at which an
+		// if/for/while/with header opened (capped, see maxHeaderParens), and headerClose is the
+		// ')' that last closed one. A '/' right after headerClose starts the body: a regex.
+		parenDepth   int
+		headerDepths []int
+		headerClose  = -1
 	)
 	continuation := lang == langPython || lang == langJS
 
@@ -457,14 +476,16 @@ func lexSource(content string, lang sourceLanguage) (lit, tick literalSet, reaso
 				mode, start = modeRaw, i
 				i++
 				continue
-			case c == '/' && lang == langJS && regexCanStart(content, prevSig):
+			case c == '/' && lang == langJS && regexCanStart(content, prevSig, ts, headerClose):
 				mode, start, inClass = modeRegex, i, false
 				i++
 				continue
-			case c == '<' && lang == langJS && jsxTagAt(content, i, prevSig, jsxOpener):
+			case c == '<' && lang == langJS && jsxTagAt(content, i, prevSig, headerClose, jsxOpener):
 				return nil, nil, "JSX element in a JavaScript file"
-			case c == 0xE2 && typographicQuoteAt(content, i):
+			case c >= utf8.RuneSelf && typographicQuoteAt(content, i):
 				return nil, nil, "typographic quote in code"
+			case c == 0xEF && strings.HasPrefix(content[i:], "\uFFFD"):
+				return nil, nil, "replacement character in code"
 			case c == '<' && lang == langHCL && i+1 < n && content[i+1] == '<':
 				if id, bodyStart, ok := hclHeredocOpener(content, i); ok {
 					mode, heredocID = modeHeredoc, id
@@ -498,6 +519,17 @@ func lexSource(content string, lang sourceLanguage) (lit, tick literalSet, reaso
 					stack = stack[:len(stack)-1]
 					start, textStart = i+1, i+1
 				}
+			}
+			if lang == langJS && c == '(' {
+				parenDepth++
+				if len(headerDepths) < maxHeaderParens && controlHeaderKeywordAt(content, prevSig) {
+					headerDepths = append(headerDepths, parenDepth)
+				}
+			} else if lang == langJS && c == ')' && parenDepth > 0 {
+				if k := len(headerDepths) - 1; k >= 0 && headerDepths[k] == parenDepth {
+					headerDepths, headerClose = headerDepths[:k], i
+				}
+				parenDepth--
 			}
 			if c != ' ' && c != '\t' && c != '\r' {
 				prevSig = i
@@ -797,15 +829,32 @@ const maxRegexKeywordLen = len("instanceof")
 // no semicolon before a '/': a '/' that leads its line after an operand is a division, and reading it
 // as a regex would close it at the first '/' of a trailing `//` or `/*` and leave that comment in
 // code. A regex read as a division leaves its body in code: a quote in it opens a string, which
-// normally runs off the end of the line and fails the file open.
-func regexCanStart(s string, prevSig int) bool {
+// normally runs off the end of the line and fails the file open -- but not when a later quote on
+// the line closes it, e.g. one in a trailing comment, whose text then lands in code.
+//
+// Two bytes are read in context:
+//
+//   - a ')' ends an operand unless it is headerClose, the ')' that closed an if/for/while/with
+//     header (lexSource tracks them). The body statement starts after it, so in `if (ok)` followed
+//     by `/re/.exec(s)` the '/' is a regex, on the same line or the next. A `for await (...)`
+//     header is not tracked and keeps the division reading;
+//   - in TypeScript (ts) a '!' straight after an operand is the postfix non-null assertion, which
+//     ends the operand: in `done! / total; // c` the '/' is a division. Only the one byte before
+//     the '!' is read (operandEndsAt), so `a!! / b` and `a ! / b` keep the regex reading. A '!'
+//     after a keyword (`return!/re/`), after headerClose, or after a space or a newline is a
+//     prefix '!'. JavaScript has no postfix '!', so there every '!' is a prefix.
+func regexCanStart(s string, prevSig int, ts bool, headerClose int) bool {
 	j := prevSig
 	if j < 0 {
 		return true
 	}
 	switch s[j] {
-	case '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';':
+	case '(', ',', '=', ':', '[', '&', '|', '?', '{', '}', ';':
 		return true
+	case '!':
+		return !ts || j == 0 || j-1 == headerClose || !operandEndsAt(s, j-1)
+	case ')':
+		return j == headerClose
 	case '>':
 		// Only as the arrow `=>`, whose body may be a regex: `(o) => /^--x=/.test(o)`. Found by
 		// the corpus probe, where it was the cause of 6 of the 7 regex fail-opens. A bare `>` is
@@ -825,19 +874,44 @@ func regexCanStart(s string, prevSig int) bool {
 	return regexKeywords[s[k+1:j+1]]
 }
 
+// operandEndsAt reports whether the byte at j ends an operand that a TypeScript postfix '!' can
+// follow: ')' or ']', or the last byte of an identifier that is not one of regexKeywords. It reads
+// that one byte, and for an identifier the keyword check's bounded look back.
+func operandEndsAt(s string, j int) bool {
+	switch {
+	case s[j] == ')' || s[j] == ']':
+		return true
+	case isIdentByte(s[j]):
+		return !regexCanStart(s, j, false, -1)
+	}
+	return false
+}
+
+// maxHeaderParens bounds lexSource's stack of open if/for/while/with headers. A header nested
+// deeper is not recorded, so a '/' after its ')' keeps the division reading.
+const maxHeaderParens = 256
+
+// controlHeaderKeywordAt reports whether the identifier ending at j is if, for, while or with --
+// the keywords whose '(' opens a header whose ')' is followed by a statement, never an operator.
+func controlHeaderKeywordAt(s string, j int) bool {
+	return keywordEndsAt(s, j, "if") || keywordEndsAt(s, j, "for") ||
+		keywordEndsAt(s, j, "while") || keywordEndsAt(s, j, "with")
+}
+
 // jsxTagAt reports whether the '<' at i, in JS code position, is a JSX tag:
 //
 //   - a closing tag, `</Name` or the fragment `</>`. Neither JavaScript nor TypeScript has `</`
 //     before a name outside JSX, short of comparing against a regex literal (`a </re/`), and JSX
 //     text lives only between an opening and a closing tag, so every file holding JSX text has one;
 //   - when opener is set (.js .mjs .cjs), an opening tag `<Name` or the fragment `<>` where an
-//     operand is expected -- regexCanStart's positions, plus after `export default`. Outside JSX a
-//     '<' is never valid there. This catches a closing tag the lexer cannot see, e.g. one hidden
-//     behind a `//` in the JSX text: `<p>token=<v> see https://wiki</p>`. In TypeScript `<T` there
-//     is a type parameter list or an assertion, so opener is unset for langTS.
+//     operand is expected -- regexCanStart's positions, an if/for/while/with header's ')'
+//     included, plus after `export default`. Outside JSX a '<' is never valid there. This catches
+//     a closing tag the lexer cannot see, e.g. one hidden behind a `//` in the JSX text:
+//     `<p>token=<v> see https://wiki</p>`. In TypeScript `<T` there is a type parameter list or an
+//     assertion, so opener is unset for langTS.
 //
 // A misfire only fails the file open, the safe direction.
-func jsxTagAt(s string, i, prevSig int, opener bool) bool {
+func jsxTagAt(s string, i, prevSig, headerClose int, opener bool) bool {
 	if i+1 >= len(s) {
 		return false
 	}
@@ -847,37 +921,73 @@ func jsxTagAt(s string, i, prevSig int, opener bool) bool {
 	if !opener || (s[i+1] != '>' && !jsxNameStart(s[i+1])) {
 		return false
 	}
-	return regexCanStart(s, prevSig) || keywordEndsAt(s, prevSig, "default")
+	return regexCanStart(s, prevSig, false, headerClose) || keywordEndsAt(s, prevSig, "default")
 }
 
 // jsxNameStart reports whether b can start a JSX element name.
 func jsxNameStart(b byte) bool { return isASCIILetter(b) || b == '_' || b == '$' || b >= 0x80 }
 
 // keywordEndsAt reports whether the identifier ending at j is exactly kw (and not a property
-// access such as x.default).
+// access such as x.default, or a private name such as this.#if).
 func keywordEndsAt(s string, j int, kw string) bool {
 	k := j - len(kw) + 1
 	if j < 0 || k < 0 || s[k:j+1] != kw {
 		return false
 	}
-	return k == 0 || (!isIdentByte(s[k-1]) && s[k-1] != '.')
+	return k == 0 || (!isIdentByte(s[k-1]) && s[k-1] != '.' && s[k-1] != '#')
 }
 
-// typographicQuoteAt reports whether a typographic quote starts at i: U+2018 ‘, U+2019 ’, U+201C “
-// or U+201D ”, UTF-8 E2 80 98/99/9C/9D.
+// typographicQuoteAt reports whether, at a byte >= 0x80 in code position, a quotation mark starts
+// that no gated grammar accepts there:
+//
+//   - a rune with the Unicode Quotation_Mark property, or in the quote punctuation categories Pi
+//     and Pf, other than ASCII " and ': “ ” ‘ ’ „ ‟ ‚ ‛ « » ‹ › ＂ ＇ 「 」 『 』 〝 〞 ｢ ｣ ⸂ ⸃ and the
+//     rest of those tables. None is an identifier or whitespace character in Python, JS/TS, Go or
+//     HCL;
+//   - a Windows-1252 smart quote (‚ „ ‹ ‘ ’ “ ” › « »), in either spelling the lexer is handed. A
+//     file or --stdin that is not UTF-8 is decoded as Latin-1, so 0x93 arrives as the C1 control
+//     U+0093; ScanText hands the bytes over as they are, and a raw 0x93 is a quote only when it is
+//     not a continuation byte of a valid rune (ë is C3 AB, 主 is E4 B8 BB). Redact's spelling,
+//     U+FFFD, is a fail-open condition of its own (lexSource).
+//
+// A prime (′ ″) or a dingbat ornament (❝ ❞) is not a quotation mark and does not fail the file
+// open. The look back for a raw byte's rune is at most utf8.UTFMax-1 bytes.
 func typographicQuoteAt(s string, i int) bool {
-	if i+2 >= len(s) || s[i] != 0xE2 || s[i+1] != 0x80 {
+	c := s[i]
+	if utf8.RuneStart(c) {
+		r, w := utf8.DecodeRuneInString(s[i:])
+		return w > 1 && (unicode.In(r, unicode.Quotation_Mark, unicode.Pi, unicode.Pf) ||
+			(r < 0x100 && cp1252Quote(byte(r))))
+	}
+	if !cp1252Quote(c) {
 		return false
 	}
-	switch s[i+2] {
-	case 0x98, 0x99, 0x9C, 0x9D:
+	for k := i - 1; k >= 0 && k >= i-(utf8.UTFMax-1); k-- {
+		if utf8.RuneStart(s[k]) {
+			_, w := utf8.DecodeRuneInString(s[k:])
+			return k+w <= i // the rune that starts at k ends before i: the byte is stray
+		}
+	}
+	return true // more continuation bytes in a row than any rune has
+}
+
+// cp1252Quote reports whether b, read as Windows-1252, is a quotation mark: 0x82 ‚, 0x84 „, 0x8B ‹,
+// 0x91 ‘, 0x92 ’, 0x93 “, 0x94 ”, 0x9B ›, 0xAB « or 0xBB ».
+func cp1252Quote(b byte) bool {
+	switch b {
+	case 0x82, 0x84, 0x8B, 0x91, 0x92, 0x93, 0x94, 0x9B, 0xAB, 0xBB:
 		return true
 	}
 	return false
 }
 
-// hclHeredocOpener parses `<<ID` or `<<-ID` at i followed by nothing but the end of the line, and
-// returns the identifier and the offset of the body's first byte.
+// hclHeredocOpener parses `<<ID` or `<<-ID` at i followed by nothing but whitespace and the end of
+// the line, and returns the identifier and the offset of the body's first byte.
+//
+// It reads only as far as the first byte after the identifier that is not whitespace, never to the
+// end of the line: a rejected opener costs its identifier and the whitespace after it, so a line
+// of thousands of `<<ID x` tokens is one pass, not one per token
+// (TestSourceLexerIsLinearOnHCLHeredocOpeners).
 func hclHeredocOpener(s string, i int) (id string, bodyStart int, ok bool) {
 	j := i + 2
 	if j < len(s) && s[j] == '-' {
@@ -890,9 +1000,14 @@ func hclHeredocOpener(s string, i int) (id string, bodyStart int, ok bool) {
 	if k == j {
 		return "", 0, false
 	}
-	eol := lineEnd(s, k)
-	if strings.TrimSpace(s[k:eol]) != "" {
-		return "", 0, false
+	// The same test as strings.TrimSpace(rest of line) == "", stopping at the first non-space rune.
+	eol := k
+	for eol < len(s) && s[eol] != '\n' {
+		r, size := utf8.DecodeRuneInString(s[eol:])
+		if !unicode.IsSpace(r) {
+			return "", 0, false
+		}
+		eol += size
 	}
 	if eol >= len(s) {
 		return s[j:k], len(s), true

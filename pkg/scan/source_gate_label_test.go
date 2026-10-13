@@ -42,3 +42,29 @@ func TestScanTextLabelDecidesTheSourceGate(t *testing.T) {
 		})
 	}
 }
+
+// A ScanText caller hands the bytes over as they are, so a Windows-1252 smart quote arrives as the
+// raw byte 0x93 rather than the U+0093 a file decodes to. In code position it is not valid source
+// in any gated grammar, so the gate fails open and both lines report exactly as on an ungated
+// label; the same text with ASCII quotes is valid Python, and the type annotation drops.
+func TestScanTextFailsOpenOnARawWindows1252Quote(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		want       int
+	}{
+		{"raw cp1252 quotes", "token: AuthToken\npassword = \x93MixedCaseNoDigits\x94\n", 2},
+		{"ASCII quotes", "token: AuthToken\npassword = \"MixedCaseNoDigits\"\n", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := ScanText(context.Background(), tc.body, TextOptions{
+				Checks: []string{"SECRETS"}, Label: "settings.py", DisableConfigDiscovery: true,
+			})
+			if err != nil {
+				t.Fatalf("ScanText: %v", err)
+			}
+			if len(res.Findings) != tc.want {
+				t.Errorf("%d findings, want %d: %+v", len(res.Findings), tc.want, res.Findings)
+			}
+		})
+	}
+}

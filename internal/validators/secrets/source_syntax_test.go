@@ -6,6 +6,8 @@ package secrets
 import (
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
@@ -119,6 +121,31 @@ func TestLexJSLiterals(t *testing.T) {
 		`  / 2; // after_string_div`,
 		`init(); // see a`,
 		`/^line_regex/.test(x);`,
+		// A ')' that closes an if/for/while/with header ends no operand: the body statement starts
+		// there, so a '/' after it is a regex even on the next line. Read as a division, the
+		// regex's quote would open a string closed by the comment's quote, leaving the comment
+		// text in code without failing open.
+		`if (ok)`,
+		`  /"/.exec(s) && go(); // the "if_body_comment`,
+		`for (const l of lines)`,
+		`  /"/.exec(l) && go(); // the "for_body_comment`,
+		`while (m)`,
+		`  /"/.exec(m) && go(); // the "while_body_comment`,
+		`with (o)`,
+		`  /"/.exec(m) && go(); // the "with_body_comment`,
+		`if (f(a) && (b))`,
+		`  /"/.exec(s) && go(); // the "nested_header_comment`,
+		`if (a) go(); else if (ok) /"/.exec(s) && go(); // the "same_line_header_comment`,
+		// A call's or a group's ')' is still an operand end, and so is a property named like a
+		// keyword (o.if, this.#if): the '/' after each is a division.
+		`const q = f(a)`,
+		`  / count; // after_call_div`,
+		`const g = (a + b)`,
+		`  / count; // after_group_div`,
+		`const p = o.if(a)`,
+		`  / count; // after_member_kw_div`,
+		`const p2 = this.#if(a)`,
+		`  / count; // after_private_kw_div`,
 	}, "\n") + "\n"
 	checkLex(t, langJS, content, []lexProbe{
 		{"#!/usr", true},
@@ -161,6 +188,16 @@ func TestLexJSLiterals(t *testing.T) {
 		{"after_member_div", true},
 		{"after_string_div", true},
 		{"line_regex", true},
+		{"if_body_comment", true},
+		{"for_body_comment", true},
+		{"while_body_comment", true},
+		{"with_body_comment", true},
+		{"nested_header_comment", true},
+		{"same_line_header_comment", true},
+		{"after_call_div", true},
+		{"after_group_div", true},
+		{"after_member_kw_div", true},
+		{"after_private_kw_div", true},
 	})
 }
 
@@ -262,6 +299,9 @@ func TestLexFailOpenConditions(t *testing.T) {
 		{"js JSX fragment close", langJS, "const a = (\n  <>\n    text\n  </>\n);\n", "JSX element in a JavaScript file"},
 		{"js JSX opener only", langJS, "const a = <p>see http://x</p>;\n", "JSX element in a JavaScript file"},
 		{"js JSX after export default", langJS, "export default <p>see http://x</p>;\n", "JSX element in a JavaScript file"},
+		// An if/for/while/with header's ')' ends no operand, so a '<' after it starts an element.
+		// The `//` in the URL hides the closing tag.
+		{"js JSX opener after an if header", langJS, "if (ok)\n  <p>see http://x</p>;\n", "JSX element in a JavaScript file"},
 		{"ts markup closing tag", langTS, "<?xml version=\"1.0\"?>\n<TS>\n<source>text</source>\n</TS>\n",
 			"JSX element in a JavaScript file"},
 		// A typographic quote in code position, in every grammar.
@@ -270,6 +310,27 @@ func TestLexFailOpenConditions(t *testing.T) {
 		{"ts typographic quote", langTS, "const p = \u201cabc\u201d;\n", "typographic quote in code"},
 		{"go typographic quote", langGo, "var p = \u201cabc\u201d\n", "typographic quote in code"},
 		{"hcl typographic quote", langHCL, "p = \u201cabc\u201d\n", "typographic quote in code"},
+		// Every other non-ASCII quotation mark -- guillemets, CJK corner brackets, full-width and
+		// low-9 forms, the Pi/Pf editorial marks -- is just as invalid in code position, and so is
+		// a Windows-1252 smart quote, raw (ScanText) or Latin-1-transcoded (a file or --stdin).
+		{"py guillemets", langPython, "PASSWORD = \u00ababc\u00bb\n", "typographic quote in code"},
+		{"py reversed guillemets", langPython, "PASSWORD = \u00bbabc\u00ab\n", "typographic quote in code"},
+		{"js single guillemets", langJS, "const p = \u2039abc\u203a;\n", "typographic quote in code"},
+		{"js editorial quote punctuation", langJS, "const p = \u2e02abc\u2e03;\n", "typographic quote in code"},
+		{"ts full-width double quote", langTS, "const p = \uff02abc\uff02;\n", "typographic quote in code"},
+		{"ts full-width apostrophe", langTS, "const p = \uff07abc\uff07;\n", "typographic quote in code"},
+		{"go corner brackets", langGo, "var p = \u300cabc\u300d\n", "typographic quote in code"},
+		{"go white corner brackets", langGo, "var p = \u300eabc\u300f\n", "typographic quote in code"},
+		{"hcl low-9 and reversed-9", langHCL, "p = \u201eabc\u201f\n", "typographic quote in code"},
+		{"hcl single low-9", langHCL, "p = \u201aabc\u201b\n", "typographic quote in code"},
+		{"py raw cp1252 smart quotes", langPython, "PASSWORD = \x93abc\x94\n", "typographic quote in code"},
+		{"ts raw cp1252 smart quotes", langTS, "const p = \x93abc\x94;\n", "typographic quote in code"},
+		{"go raw Latin-1 guillemets", langGo, "var p = \xababc\xbb\n", "typographic quote in code"},
+		{"py cp1252 quotes after Latin-1 transcoding", langPython, "PASSWORD = \u0093abc\u0094\n", "typographic quote in code"},
+		{"hcl cp1252 single quotes after Latin-1 transcoding", langHCL, "p = \u0091abc\u0092\n", "typographic quote in code"},
+		// Redact's spelling of a raw cp1252 quote: every invalid UTF-8 sequence becomes U+FFFD.
+		{"py replacement character", langPython, "PASSWORD = \ufffdabc\ufffd\n", "replacement character in code"},
+		{"ts replacement character", langTS, "const p = \ufffdabc\ufffd;\n", "replacement character in code"},
 		// PEP 701 f-strings: a format spec is text, so the f-string's own quote cannot close there.
 		{"py f-string closed in a format spec", langPython, "x = f\"{a:>10\"\n", "f-string closed inside a format spec"},
 		{"py newline in a format spec", langPython, "x = f\"{a:>10\n}\"\n", "newline in the format spec of a single-quoted f-string"},
@@ -281,6 +342,97 @@ func TestLexFailOpenConditions(t *testing.T) {
 				t.Errorf("fail-open reason = %q, want %q", reason, tc.reason)
 			}
 		})
+	}
+}
+
+// Non-ASCII that a gated grammar accepts must not fail the file open: letters, combining marks and
+// digits in identifiers, the punctuation and symbols that are identifier characters (connector
+// punctuation, Other_ID_Start and Other_ID_Continue: · ℘ ℮ ・ ‿), the whitespace JS accepts (NBSP,
+// BOM), and any quotation mark inside a string or a comment. The identifiers ë û Г Д 专 且 丫 主 𠂓
+// end in the bytes 0xAB 0xBB 0x93 0x94, the Windows-1252 quotes: inside a valid rune those bytes
+// are not quotes. 𠂓 (U+20093, F0 A0 82 93) puts a quote byte at the end of a four-byte rune, the
+// farthest the look back for its lead byte has to reach.
+func TestLexNonASCIICodeDoesNotFailOpen(t *testing.T) {
+	ids := "\u00eb, \u00fb, \u0413, \u0414, \u4e13, \u4e14, \u4e2b, \u4e3b, \U00020093"
+	cases := []struct {
+		name    string
+		lang    sourceLanguage
+		content string
+	}{
+		{"py identifiers", langPython, "(" + ids + ") = range(8)  # \u00abok\u00bb\nx = '\u300cok\u300d'\n"},
+		{"js identifiers", langJS, "let " + ids + ";\n// \uff02ok\uff02\nconst x = '\u2039ok\u203a';\n"},
+		{"ts identifiers", langTS, "let " + ids + ";\nconst x = `\u201eok\u201f`;\n"},
+		{"go identifiers", langGo, "var " + ids + " int\nvar x = \"\u00abok\u00bb\" // \u300eok\u300f\n"},
+		{"hcl string and comment", langHCL, "x = \"\u00abok\u00bb\" # \u201aok\u201b\n"},
+		{"replacement character in a string", langGo, "var x = \"\ufffd\" // \ufffd\n"},
+		{"py letters", langPython, "\u00e9t\u00e9 = \u03bb_\u03bc + \u4e16\u754c\n"},
+		{"py combining mark", langPython, "e\u0301 = 1\n"},
+		{"py middle dot", langPython, "a\u00b7b = 1\n"},
+		{"py weierstrass p", langPython, "\u2118 = 1\n"},
+		{"js katakana middle dot", langJS, "var a\u30fbb = 1;\n"},
+		{"js estimated sign", langJS, "var \u212e = 1;\n"},
+		{"js connector punctuation", langJS, "var a\u203fb = 1;\n"},
+		{"js NBSP and BOM", langJS, "\ufeffvar\u00a0a = 1;\n"},
+		{"ts letters", langTS, "const \u043f\u0430\u0440\u043e\u043b\u044c: string = x;\n"},
+		{"go letters", langGo, "var \u4e16\u754c = \u00b5s\n"},
+		{"hcl letters", langHCL, "p\u00e4ss = var.\u00e9\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, reason := lexLiterals(tc.content, tc.lang); reason != "" {
+				t.Errorf("fail-open reason = %q, want none", reason)
+			}
+		})
+	}
+}
+
+// The fail-open set is exactly the Unicode tables it names plus the Windows-1252 quotes, checked
+// over every rune: each non-ASCII Quotation_Mark, Pi or Pf rune fails the file open in code
+// position of every grammar and is legal inside a string, and no other rune fails it open. A Go
+// release that adds a rune to a table is covered without an edit here.
+func TestTypographicQuoteIsExactlyTheQuotationMarkTables(t *testing.T) {
+	isQuote := func(r rune) bool {
+		return r >= utf8.RuneSelf && (unicode.In(r, unicode.Quotation_Mark, unicode.Pi, unicode.Pf) ||
+			(r < 0x100 && cp1252Quote(byte(r))))
+	}
+	langs := []sourceLanguage{langPython, langJS, langTS, langGo, langHCL}
+	quotes := 0
+	for r := rune(utf8.RuneSelf); r <= unicode.MaxRune; r++ {
+		if !utf8.ValidRune(r) {
+			continue
+		}
+		q := string(r)
+		if got := typographicQuoteAt("p = "+q, 4); got != isQuote(r) {
+			t.Fatalf("typographicQuoteAt(%U) = %v, want %v", r, got, isQuote(r))
+		}
+		if !isQuote(r) {
+			continue
+		}
+		quotes++
+		for _, lang := range langs {
+			if _, reason := lexLiterals("p = "+q+"abc"+q+"\n", lang); reason != "typographic quote in code" {
+				t.Errorf("%s: %U in code: fail-open reason %q, want the typographic quote", lang, r, reason)
+			}
+			if _, reason := lexLiterals("p = \""+q+"abc"+q+"\"\n", lang); reason != "" {
+				t.Errorf("%s: %U inside a string failed the file open: %q", lang, r, reason)
+			}
+		}
+	}
+	if quotes < 40 {
+		t.Fatalf("only %d quotation marks enumerated; the tables did not load", quotes)
+	}
+}
+
+// A prime or a dingbat ornament used as a quote is not a quotation mark in Unicode, and the gate
+// does not treat it as one: the file stays gated and the value after it drops. Pinned because the
+// README and CHANGELOG state it.
+func TestLexPrimesAndOrnamentsDoNotFailOpen(t *testing.T) {
+	for _, q := range []string{"\u2032", "\u2033", "\u275d", "\u275e"} {
+		for _, lang := range []sourceLanguage{langPython, langJS, langGo, langHCL} {
+			if _, reason := lexLiterals("p = "+q+"abc"+q+"\n", lang); reason != "" {
+				t.Errorf("%s: %+q in code failed the file open (%q)", lang, q, reason)
+			}
+		}
 	}
 }
 
@@ -410,6 +562,42 @@ func TestLexJSXOpenerOnlyInJavaScript(t *testing.T) {
 	}, "\n") + "\n"
 	if _, reason := lexLiterals(comparisons, langJS); reason != "" {
 		t.Errorf("JS comparisons failed the gate open: %q", reason)
+	}
+}
+
+// In TypeScript a '!' straight after an operand is the postfix non-null assertion, which ends the
+// operand, so a '/' after it is a division. Read as a regex opener, the '/' closed at the first '/'
+// of a trailing comment and left the comment in code, with a clean end state. A prefix '!' still
+// opens a regex, and in JavaScript, which has no postfix '!', nothing changes.
+func TestLexTSNonNullAssertionEndsAnOperand(t *testing.T) {
+	content := strings.Join([]string{
+		`const pct = done! / total; // nonnull_ident_comment`,
+		`const w = getX()! / 2; /* nonnull_call_block */ const after_call = 1;`,
+		`const h = rows[0]!/2; // nonnull_index_comment`,
+		`const ok = !/prefix_regex/.exec(s);`,
+		`if (!/paren_regex/.exec(s)) { f(); }`,
+		`const both = a&&!/and_regex/.exec(s);`,
+		`function g(s: string) { return!/keyword_regex/.exec(s); }`,
+		// After the ')' of an if/for/while/with header a '!' starts the body: a prefix '!'.
+		`if (ok)!/"/.exec(s) && go(); // the "header_bang_comment`,
+	}, "\n") + "\n"
+	checkLex(t, langTS, content, []lexProbe{
+		{"nonnull_ident_comment", true},
+		{"nonnull_call_block", true},
+		{"after_call", false},
+		{"nonnull_index_comment", true},
+		{"prefix_regex", true},
+		{"paren_regex", true},
+		{"and_regex", true},
+		{"keyword_regex", true},
+		{"header_bang_comment", true},
+	})
+	// A '!' that is the file's first byte has no operand before it.
+	checkLex(t, langTS, `!/"/.exec(s) && go(); // the "file_start_bang_comment`+"\n",
+		[]lexProbe{{"file_start_bang_comment", true}})
+	js := "const r = a! / b; // js_comment\n"
+	if lit, reason := lexLiterals(js, langJS); reason != "" || !lit.has(strings.Index(js, "/ b")) {
+		t.Errorf("JavaScript has no postfix '!': the '/' after it should still open a regex (reason %q)", reason)
 	}
 }
 

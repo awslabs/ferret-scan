@@ -29,10 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docstrings, regex literals and heredoc bodies; Python f-string and t-string replacement fields
   are lexed as code, so a PEP 701 field holding the f-string's own quote (`f"{d["k"]}"`) does not
   end it early, and a JS `/` is read as regex or division from the last significant byte across
-  newlines and comments. An unquoted-family candidate is dropped only if its **value start** is
-  outside all of them, no byte of the captured value is the text of a backtick string (a JS
-  template or Go raw string, so `atob(`…`)` and `` `${PREFIX}…` `` keep reporting), and it is not a
-  hex literal. A template's opening backtick counts as code only when `${` follows it directly.
+  newlines and comments: a `)` closing an `if`/`for`/`while`/`with` header ends no operand (the
+  body's `/` is a regex), and in TypeScript a `!` straight after an operand is the non-null
+  assertion, which does (`done! / total` divides). An unquoted-family candidate is dropped only if
+  its **value start** is outside all of them, no byte of the captured value is the text of a
+  backtick string (a JS template or Go raw string, so `atob(`…`)` and `` `${PREFIX}…` `` keep
+  reporting), and it is not a hex literal. A template's opening backtick counts as code only when
+  `${` follows it directly.
   Anchoring on the value rather than the keyword keeps a quoted collection element, or a quoted
   `getenv` fallback after an unquoted env-var name (`os.getenv(NAME, "…")`), after a code-position
   head. The gate only drops candidates, never touches the quoted patterns, provider literals, the
@@ -41,10 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It **fails open**, leaving the file exactly as before, when the lexer ends outside code, a
   single-line string is unterminated, nesting is unbalanced or deeper than 256, a `.js`/`.mjs`/
   `.cjs` file contains JSX (or any of the six JS/TS extensions holds a closing tag, as a Qt
-  Linguist `.ts` file does), a typographic quote (`“ ” ‘ ’`) stands in code, or the content exceeds
-  100 MB. The file type comes from the name on every channel, so `--stdin-name app.ts` and a
-  `ScanText`/`Redact` label `app.ts` are gated, and `<stdin>`, `<text>`, `clipboard`, `.jsx`,
-  `.tsx` and every other extension are not. Measured with the CLI, `main` (3df48ac, the v2.5.3
+  Linguist `.ts` file does), a typographic quote stands in code (any Unicode quotation mark but
+  `"` and `'`, such as `“ ” ‘ ’ „ « » ‹ › ＂ 「 」`, or a Windows-1252 smart quote, raw or decoded),
+  so does the replacement character `U+FFFD` (what `Redact` makes of an undecodable byte), or the
+  content exceeds 100 MB. The file type comes from the name on every channel, so
+  `--stdin-name app.ts` and a `ScanText`/`Redact` label `app.ts` are gated, and `<stdin>`,
+  `<text>`, `clipboard`, `.jsx`, `.tsx` and every other extension are not. Measured with the CLI, `main` (3df48ac, the v2.5.3
   code) against this build, on 58,055 content-deduplicated public source files: **Python
   3,403 → 1,796** findings (HIGH 631 → 131), **JS/TS 134,755 → 16,735** (HIGH 94,766 → 10,812),
   **Go 5,693 → 5,628**, **HCL 197 → 94**. Nothing was added, and every surviving finding is
@@ -60,8 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   languages and the program would not run; the loss is pinned by a test. **Residual loss:** a
   collection or list-tail element that starts in code and runs into a quoted string,
   `token = first_token_value, decode("…")`, drops with its head; counting quoted text as well
-  would have kept 35,974 more JS/TS findings, all on minified lines. **Residual:** a keyword inside a docstring still
-  reports, e.g. the Sphinx field `:type token: RequestToken` (36 in this corpus). The golden case
+  would have kept 35,974 more JS/TS findings, all on minified lines; and a value between two
+  primes or dingbat ornaments (`″…″`, `❝…❞`), which are not quotation marks, drops like a bare
+  one. **Residual:** a keyword inside a docstring still reports, e.g. the Sphinx field
+  `:type token: RequestToken` (36 in this corpus). The golden case
   `secrets_code_expression_known_fp` is inverted: the same lines in `src/models.ts` and
   `src/models.py` give zero findings beside in-file literal controls, a YAML control still
   reports, a React component in `src/Help.js` reports its JSX-text credentials, and the

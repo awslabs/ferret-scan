@@ -329,8 +329,21 @@ func TestSourceGateKeepsLiteralContexts(t *testing.T) {
 			// comment: read as a regex it closed at the comment's first '/' and left the rest code.
 			`const avg = total`,
 			`  / count; // password=` + v[10],
+			// But a ')' closing an if/for/while header ends no operand: the body's '/' is a regex.
+			// Read as a division its quote opened a string the comment's quote closed, and the
+			// value after it was code. Valid JS (node --check); the file did not fail open.
+			`if (ok)`,
+			`  /"/.exec(s) && go(); // the "token=` + v[11],
+			`for (const l of lines)`,
+			`  /"/.exec(l) && go(); // the "token=` + v[12],
+			`while (m)`,
+			`  /"/.exec(m) && go(); // the "token=` + v[13],
+			// A TypeScript non-null assertion ends its operand, so the '/' after it is a division
+			// and the comment after that is a comment.
+			`const pct = done! / total; // token=` + v[14],
 		}, "\n") + "\n",
-			keep: []string{v[0], v[1], v[2], v[3], v[4], v[5], v[6], hex, long, v[9], v[7], v[8], v[10]},
+			keep: []string{v[0], v[1], v[2], v[3], v[4], v[5], v[6], hex, long, v[9], v[7], v[8], v[10], v[11], v[12], v[13],
+				v[14]},
 			drop: []string{"process.env.JWT_SECRET", "process.env.DB_PASSWORD", "getenv(DB_PASSWORD_ENV"}},
 		{name: "go", path: "settings.go", content: strings.Join([]string{
 			`package settings`,
@@ -527,6 +540,33 @@ func TestSourceGateFailsOpen(t *testing.T) {
 			"password = \u201c" + synth(3) + "\u201d\nsecret = var.secret_value\n",
 			"password = \"" + synth(3) + "\"\nsecret = var.secret_value\n",
 			"var.secret_value", "typographic quote in code"},
+		// The same paste with the quotes a French, Russian or Swiss layout or a CJK input method
+		// inserts, and with Windows-1252 smart quotes as a file decodes them (0x93 -> U+0093).
+		{"guillemets in a .py", "settings.py",
+			"PASSWORD = \u00ab" + synth(3) + "\u00bb\nsession = get_session()\n",
+			"PASSWORD = \"" + synth(3) + "\"  # \u00abfixed\u00bb\nsession = get_session()\n",
+			"get_session()", "typographic quote in code"},
+		{"guillemets in a .go", "a.go",
+			"var password = \u00ab" + synth(3) + "\u00bb\nvar secret = cfg.SecretValue\n",
+			"var password = \"" + synth(3) + "\"\nvar secret = cfg.SecretValue\n",
+			"cfg.SecretValue", "typographic quote in code"},
+		{"full-width quotes in a .tf", "main.tf",
+			"password = \uff02" + synth(3) + "\uff02\nsecret = var.secret_value\n",
+			"password = \"" + synth(3) + "\"\nsecret = var.secret_value\n",
+			"var.secret_value", "typographic quote in code"},
+		{"full-width quotes in a .ts", "a.ts",
+			"export const password = \uff02" + synth(3) + "\uff02;\nconst secret = process.env.JWT_SECRET;\n",
+			"export const password = '" + synth(3) + "';\nconst secret = process.env.JWT_SECRET;\n",
+			"process.env.JWT_SECRET", "typographic quote in code"},
+		{"cp1252 smart quotes in a .py, as a file decodes them", "settings.py",
+			"PASSWORD = \u0093" + synth(3) + "\u0094\nsession = get_session()\n",
+			"PASSWORD = \"" + synth(3) + "\"\nsession = get_session()\n",
+			"get_session()", "typographic quote in code"},
+		// Redact's spelling of the same bytes: invalid UTF-8 becomes U+FFFD before the gate.
+		{"replacement characters in a .py", "settings.py",
+			"PASSWORD = \ufffd" + synth(3) + "\ufffd\nsession = get_session()\n",
+			"PASSWORD = \"" + synth(3) + "\"\nsession = get_session()\n",
+			"get_session()", "replacement character in code"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -167,8 +167,8 @@ Relabelling or reshaping a credential cannot hide it.
 | Language | Extensions | Literal syntax the lexer reads |
 |---|---|---|
 | Python | `.py` `.pyi` `.pyw` | `#` comments; `'…'` and `"…"` with escapes and backslash-newline continuation; triple-quoted strings and docstrings; `r b f u t rb br fr rf tr rt` prefixes in any case. A raw prefix changes what a backslash means, not where the string ends, so boundaries match Python's own tokenizer. An f-string or t-string is literal as a whole, but its replacement fields are lexed as code, so a PEP 701 (3.12+) field holding a string in the f-string's own quote — `f"{d["k"]}"` — does not end the f-string early. A `:` at bracket depth 0 starts the format spec, which is text again. |
-| JavaScript | `.js` `.mjs` `.cjs` | `//` and `/* */`; `'…'` and `"…"` with escapes and continuation; backtick templates across lines with `${ … }` read as code, including nested templates and braces; regex literals by the previous-significant-byte heuristic, judged across newlines and comments, since JavaScript inserts no semicolon before a `/`. A JSX element in code position fails the file open (below). |
-| TypeScript | `.ts` `.mts` `.cts` | The same lexer. TypeScript accepts JSX only in `.tsx`, so `<T` at an expression start is a type parameter list or an assertion, not a tag, and does not fail the file open. |
+| JavaScript | `.js` `.mjs` `.cjs` | `//` and `/* */`; `'…'` and `"…"` with escapes and continuation; backtick templates across lines with `${ … }` read as code, including nested templates and braces; regex literals by the previous-significant-byte heuristic, judged across newlines and comments, since JavaScript inserts no semicolon before a `/`; a `)` reads as the end of an operand unless it closes an `if`/`for`/`while`/`with` header, after which a `/` starts the body and is a regex (a `for await (…)` header is not tracked and keeps the division reading). A JSX element in code position fails the file open (below). |
+| TypeScript | `.ts` `.mts` `.cts` | The same lexer, with two differences. TypeScript accepts JSX only in `.tsx`, so `<T` at an expression start is a type parameter list or an assertion, not a tag, and does not fail the file open. A `!` straight after an identifier, `)` or `]` is the non-null assertion, which ends the operand, so in `done! / total; // …` the `/` is a division and the comment stays a comment. Only the byte before the `!` is read, so `a!! / b` and `a ! / b` keep the regex reading. |
 | Go | `.go` | `//` and `/* */`; `"…"` with escapes; `'…'` runes; backtick raw strings across lines. |
 | Terraform / HCL | `.tf` `.tfvars` `.hcl` | `#`, `//` and `/* */`; `"…"` with `${ }` and `%{ }` read as code (`$${` and `%%{` are literal); `<<EOT` and `<<-EOT` heredoc bodies. |
 
@@ -199,11 +199,22 @@ the file behaves exactly as it did before the gate. That happens when:
   `.js`/`.mjs`/`.cjs` only, an opening tag (`<Name`, `<>`) where an operand is
   expected, which catches a closing tag the lexer cannot see because a `//` in
   the JSX text hides it;
-- a typographic quote (`“` `”` `‘` `’`) stands in code position. No grammar here
-  accepts one there — Python, node, `gofmt` and `terraform fmt` each reject it
-  with a diagnostic written for this mistake — so the file is not valid source,
-  typically a credential pasted from a page or a chat, and the lexer cannot know
-  where the author meant the string to be; or
+- a typographic quote stands in code position: any rune other than `"` and `'`
+  with the Unicode `Quotation_Mark` property or in the quote punctuation
+  categories `Pi` and `Pf` (`“` `”` `‘` `’` `„` `«` `»` `‹` `›` `＂` `＇` `「`
+  `」` `『` `』` …), or a Windows-1252 smart quote, whether it arrives
+  Latin-1-transcoded (`U+0093`, from a file or `--stdin`) or as the raw byte
+  (`0x93`, from `ScanText`). No grammar here accepts one there — Python, node,
+  `gofmt` and `terraform fmt` each reject it — so the file is not valid source,
+  typically a credential pasted from a page, a chat or a word processor, and the
+  lexer cannot know where the author meant the string to be. A prime (`′` `″`)
+  or a dingbat ornament (`❝` `❞`) is not a quotation mark, so a value written
+  between two of them in code still drops, like the bare value below
+  (`TestLexPrimesAndOrnamentsDoNotFailOpen`);
+- the replacement character `U+FFFD` stands in code position. It replaces a
+  byte a decoder could not read — `Redact` turns every invalid UTF-8 sequence
+  into one before the gate runs, a raw Windows-1252 quote included — so the
+  lexer cannot know whether that byte was a quote; or
 - the content is larger than 100 MB, the most this validator is handed in one
   piece (`router.MaxFileSize`).
 
@@ -212,7 +223,12 @@ Python files, 20 of 31,303 JS/TS files (0.06%), 0 of 3,714 Go files and 1 of
 1,500 HCL files (0.07%, a deliberately broken test fixture). All 20 JS/TS
 fail-opens are `.js` files holding JSX (semgrep test fixtures: 18 parse as
 JSX with `acorn-jsx`, the other 2 are TSX written into `.js`), and none is
-TypeScript. No file failed open on a typographic quote.
+TypeScript. No file failed open on a typographic quote. Over a wider set of
+the same public sources (65,710 content-distinct gated files, Go's own
+toolchain sources included) the lexer fails open on two more: a Go toolchain
+test fixture that uses `«` `»` as range markers, which gives 0 findings either
+way, and a gzip file named `.py` (a bandit test fixture), which the CLI does
+not scan as text at all.
 
 **Channels.** The file type comes from the name on every channel: a CLI path,
 `--stdin-name`, a `pkg/scan` `ScanFile` path, and a `ScanText` or `Redact`

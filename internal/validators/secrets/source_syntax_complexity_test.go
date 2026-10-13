@@ -13,13 +13,15 @@ import (
 
 // The #753 lexer runs over the WHOLE content of every gated file before the line loop, so its cost
 // is paid on every .py/.js/.ts/.go/.tf scan whether or not a single candidate exists. It must be
-// O(n), with no per-line rescans: one forward pass, and every backward look bounded by a constant
-// (see lexSource). The per-candidate gate test is O(1) for the value start plus the value's own
-// length over 64 for the backtick-text span check, both independent of the file.
+// O(n), with no per-line rescans: one forward pass, every backward look bounded by a constant, and
+// a forward look that fails stopping at the first byte that decides it (see lexSource). The
+// per-candidate gate test is O(1) for the value start plus the value's own length over 64 for the
+// backtick-text span check, both independent of the file.
 //
-// Three targets, each base vs 4x on perfguard.Measure, bound 8.0 -- linear is ~4x, quadratic ~16x,
-// so the bound sits between the two populations. Each catches a regression the others cannot, and
-// each was proven against a planted one:
+// Five targets, each base vs 4x on perfguard.Measure, bound 8.0 -- linear is ~4x, quadratic ~16x,
+// so the bound sits between the two populations. Each catches a regression the others cannot: the
+// first four were proven against a planted one, the HCL target against the opener check it
+// replaced:
 //
 //   - the gated VALIDATOR on a lexer-heavy .ts file, the path a user actually pays for. It catches
 //     an INTEGRATION quadratic: the content re-lexed once per line read 10.77x here, against 4.06x
@@ -29,10 +31,19 @@ import (
 //   - the LEXER alone on the same many-line file, where that per-quote rescan read 16.65x;
 //   - the LEXER alone on ONE long line, the shape that turns any per-line rescan -- a lookback to
 //     the line start, a re-scan for the line end -- into a quadratic. A lineEnd computed at every
-//     '/' read 15.74x here and 3.99x and 4.08x on the other two, whose lines are short.
+//     '/' read 15.74x here and 3.99x and 4.08x on the other two, whose lines are short;
+//   - the LEXER alone on Python f-string replacement fields, which push and pop a frame each. A
+//     rescan of the content so far at every field read 17.00x here, and 4.03x to 4.43x on the
+//     other four, which never reach the Python field code;
+//   - the LEXER alone on one long HCL line of rejected heredoc openers. None of the targets above
+//     is HCL. The opener check this replaced found the end of the line before it judged the bytes
+//     after `<<ID`, so every rejected opener re-read the rest of the line: 17.64x here (a 3.2MB
+//     .tf file took 18.1s through the CLI, against 0.86s on main).
 //
-// Measured on darwin/arm64, correct code: 4.05x, 3.92x and 3.99x; under -race the lexer targets
-// read 4.10x and 4.02x. The validator target is not timed under -race (see the test).
+// Measured on darwin/arm64, correct code, in target order: 4.02x, 4.19x, 4.15x, 4.14x and 4.23x,
+// and on a second run 3.96x, 4.05x, 4.26x, 4.13x and 4.37x. Under -race the four lexer targets
+// read 3.97x, 4.06x, 4.06x and 4.19x; the validator target is not timed under -race (see the
+// test).
 //
 // The fixtures are lexer-heavy on purpose: every line opens and closes templates with nested
 // interpolations, escaped quotes of all three kinds, a block comment, and a regex holding quote
@@ -205,6 +216,34 @@ func TestSourceLexerIsLinearOnOneLongLine(t *testing.T) {
 	const base = 20000
 	g := measureLexer(t, build(base), build(4*base))
 	assertGrowth(t, "the lexer on one long line", g)
+}
+
+// TestSourceLexerIsLinearOnHCLHeredocOpeners is the HCL target. Every `<<ID` in code position is
+// checked as a heredoc opener, and the opener is only valid when nothing but whitespace follows the
+// identifier on its line. A check that looks for that line's END before judging the bytes after
+// the identifier pays the rest of the line for every rejected opener, so one long line of them is
+// quadratic: `<<a ` x n read 4x per doubling, and a 3.2 MB .tf file took 18.1 s through the CLI
+// against 0.86 s on main. A --validator-budget cannot stop it, because the lexer runs before the
+// line loop polls the deadline: with SECRETS=2s the same file took 47.3 s (0.83 s with the fix).
+// The other targets cannot see it, because none of them is HCL.
+func TestSourceLexerIsLinearOnHCLHeredocOpeners(t *testing.T) {
+	if testing.Short() {
+		t.Skip("scaling measurement")
+	}
+	build := func(n int) string {
+		var b strings.Builder
+		b.WriteString("x = 1\n")
+		for i := 0; i < n; i++ {
+			fmt.Fprintf(&b, "<<a%d \"s%d\" <<-b%d ", i, i, i)
+		}
+		b.WriteString("x\ny = <<EOT\nbody\nEOT\n")
+		return b.String()
+	}
+	// 120,000 rejected openers on one 1.6MB line: the base reads ~8ms on the CPU clock, against
+	// ~1s for the opener check that read to the end of the line.
+	const base = 60000
+	g := measureLexerIn(t, langHCL, build(base), build(4*base))
+	assertGrowth(t, "the lexer on HCL heredoc openers", g)
 }
 
 // measureLexer times lexLiterals alone, after checking it lexes both inputs without failing open

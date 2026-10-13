@@ -44,6 +44,17 @@ func TestSourceGateFollowsTheNameOnEveryCLIChannel(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "plain.js"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// A value pasted between quotes no grammar here accepts is not valid source, so the file fails
+	// the gate open and reports both lines: Windows-1252 smart quotes (raw 0x93/0x94 bytes, which
+	// the file and stdin paths both decode to U+0093/U+0094) and guillemets.
+	const smartBody = "token: AuthToken\npassword = \x93MixedCaseNoDigits\x94\n"
+	const guillBody = "token: AuthToken\npassword = \u00abMixedCaseNoDigits\u00bb\n"
+	if err := os.WriteFile(filepath.Join(dir, "smart.py"), []byte(smartBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "guill.py"), []byte(guillBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name  string
@@ -60,6 +71,9 @@ func TestSourceGateFollowsTheNameOnEveryCLIChannel(t *testing.T) {
 		{"a .js path of plain code is gated", []string{"--file", filepath.Join(dir, "plain.js")}, "", 0},
 		{"a .js path holding JSX fails open", []string{"--file", filepath.Join(dir, "Help.js")}, "", 2},
 		{"--stdin-name x.js with JSX fails open", []string{"--stdin", "--stdin-name", "x.js"}, jsxBody, 2},
+		{"a .py path with cp1252 smart quotes fails open", []string{"--file", filepath.Join(dir, "smart.py")}, "", 2},
+		{"--stdin-name x.py with cp1252 smart quotes fails open", []string{"--stdin", "--stdin-name", "x.py"}, smartBody, 2},
+		{"a .py path with guillemets fails open", []string{"--file", filepath.Join(dir, "guill.py")}, "", 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
