@@ -307,7 +307,14 @@ var complexityTargets = []struct {
 //
 // The extremes are the same validators on both platforms: passport lowest, personname highest. So
 // 8.0 sits 1.72x above the worst correct reading and 1.90x-1.94x below the quadratic — the ≥1.5x
-// margin the repo asks for holds on BOTH sides on both platforms that assert. The measurement
+// margin the repo asks for holds on BOTH sides on both platforms that assert.
+//
+// IN THAT RUN. Over 22 runs at 2 pairs it did not hold on macos-latest: correct validators reached
+// 7.06x (driverslicense) and 6.93x (cloudresources), a 1.13x margin, while ubuntu-latest's worst was
+// 4.93x. The threshold was not the problem — the estimator's sample count on an unstable runner
+// was — so the fix was perfguard.DefaultPairs, not this number; its comment has the table. Every
+// asserted reading now logs its margin and the runner image (perfguard.ReportMargin), and a margin
+// under 1.5x is raised as a GitHub Actions warning, so the next drift is reported rather than found. The measurement
 // configuration is also no longer -race: this guard skips under the detector (see the Skip below),
 // so the population above is the plain one, which is what CI actually runs.
 //
@@ -470,11 +477,14 @@ func TestValidatorComplexityIsSubQuadratic(t *testing.T) {
 				// hole, because it can fail on correct code and pass a real regression.
 				if _, resolvable := g.Ticks(); !resolvable {
 					t.Logf("%s: growth ratio NOT asserted — %s", tgt.name, g.ResolutionNote())
-				} else if ratio > maxGrowthRatio {
-					t.Errorf("%s: 4x input took %.1fx longer on the %s clock (minimum of %d pairs, "+
-						"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression. %s",
-						tgt.name, ratio, clock, perfguard.DefaultPairs, gBase, gBig,
-						perfguard.FormatRatios(samples), g.ResolutionNote())
+				} else {
+					perfguard.ReportMargin(t, tgt.name, g.Growth, maxGrowthRatio, perfguard.StayBelow)
+					if ratio > maxGrowthRatio {
+						t.Errorf("%s: 4x input took %.1fx longer on the %s clock (minimum of %d pairs, "+
+							"base=%v big=%v, per-pair %v) — superlinear growth suggests an O(n^2) regression. %s",
+							tgt.name, ratio, clock, perfguard.DefaultPairs, gBase, gBig,
+							perfguard.FormatRatios(samples), g.ResolutionNote())
+					}
 				}
 			}
 		})

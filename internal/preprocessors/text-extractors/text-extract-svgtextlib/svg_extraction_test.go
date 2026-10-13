@@ -576,10 +576,13 @@ func TestCollapseSpaceIsLinear(t *testing.T) {
 	// 15.625ms at a time, and a 1-tick base makes any ratio an artefact. See perfguard.Growth.Ticks.
 	if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("growth ratio NOT asserted — %s", g.ResolutionNote())
-	} else if g.Ratio > 8.0 {
-		t.Errorf("collapseSpace scaled %s — linear over a 4x input is ~4x and quadratic ~16x, so "+
-			"this is a quadratic fold: repeated concatenation, or a regexp re-run per space run "+
-			"over the whole node", g)
+	} else {
+		perfguard.ReportMargin(t, "svg collapseSpace", g, 8.0, perfguard.StayBelow)
+		if g.Ratio > 8.0 {
+			t.Errorf("collapseSpace scaled %s — linear over a 4x input is ~4x and quadratic ~16x, so "+
+				"this is a quadratic fold: repeated concatenation, or a regexp re-run per space run "+
+				"over the whole node", g)
+		}
 	}
 }
 

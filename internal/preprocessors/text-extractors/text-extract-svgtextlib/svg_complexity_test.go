@@ -166,9 +166,12 @@ func TestManyTextNodesIsSubQuadratic(t *testing.T) {
 	// 15.625ms at a time, and a 1-tick base makes any ratio an artefact. See perfguard.Growth.Ticks.
 	if _, resolvable := g.Ticks(); !resolvable {
 		t.Logf("growth ratio NOT asserted — %s", g.ResolutionNote())
-	} else if g.Ratio > ceiling {
-		t.Errorf("extraction scaled %s over a 4x document — linear is ~4x and quadratic ~16x, so this "+
-			"is superlinear beyond noise", g)
+	} else {
+		perfguard.ReportMargin(t, "svg extraction, many text nodes", g, ceiling, perfguard.StayBelow)
+		if g.Ratio > ceiling {
+			t.Errorf("extraction scaled %s over a 4x document — linear is ~4x and quadratic ~16x, so this "+
+				"is superlinear beyond noise", g)
+		}
 	}
 }
 
