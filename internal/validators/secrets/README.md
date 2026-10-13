@@ -207,10 +207,14 @@ the file behaves exactly as it did before the gate. That happens when:
   (`0x93`, from `ScanText`). No grammar here accepts one there — Python, node,
   `gofmt` and `terraform fmt` each reject it — so the file is not valid source,
   typically a credential pasted from a page, a chat or a word processor, and the
-  lexer cannot know where the author meant the string to be. A prime (`′` `″`)
-  or a dingbat ornament (`❝` `❞`) is not a quotation mark, so a value written
-  between two of them in code still drops, like the bare value below
-  (`TestLexPrimesAndOrnamentsDoNotFailOpen`);
+  lexer cannot know where the author meant the string to be;
+- any other non-ASCII punctuation or symbol stands in code position — a prime
+  (`′` `″`), a dingbat ornament (`❝` `❞`), a dash, a math or currency sign, an
+  emoji — for the same reason. Excluded are the runes these grammars accept in
+  identifiers: connector punctuation (`‿`) and Unicode's `Other_ID_Start` and
+  `Other_ID_Continue` (`℘` `℮` `·` `・`), pinned by
+  `TestLexNonASCIICodeDoesNotFailOpen`. On the corpus below this changed no
+  finding;
 - the replacement character `U+FFFD` stands in code position. It replaces a
   byte a decoder could not read — `Redact` turns every invalid UTF-8 sequence
   into one before the gate runs, a raw Windows-1252 quote included — so the

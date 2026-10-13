@@ -486,6 +486,8 @@ func lexSource(content string, lang sourceLanguage) (lit, tick literalSet, reaso
 				return nil, nil, "typographic quote in code"
 			case c == 0xEF && strings.HasPrefix(content[i:], "\uFFFD"):
 				return nil, nil, "replacement character in code"
+			case c >= utf8.RuneSelf && strayPunctuationAt(content, i):
+				return nil, nil, "non-ASCII punctuation or symbol in code"
 			case c == '<' && lang == langHCL && i+1 < n && content[i+1] == '<':
 				if id, bodyStart, ok := hclHeredocOpener(content, i); ok {
 					mode, heredocID = modeHeredoc, id
@@ -871,7 +873,9 @@ func regexCanStart(s string, prevSig int, ts bool, headerClose int) bool {
 		}
 		k--
 	}
-	return regexKeywords[s[k+1:j+1]]
+	// `default` begins an expression after `export` (`export default /re/`), but it is checked
+	// apart from regexKeywords so the property `x.default / 2` keeps the division reading.
+	return regexKeywords[s[k+1:j+1]] || keywordEndsAt(s, j, "default")
 }
 
 // operandEndsAt reports whether the byte at j ends an operand that a TypeScript postfix '!' can
@@ -921,7 +925,7 @@ func jsxTagAt(s string, i, prevSig, headerClose int, opener bool) bool {
 	if !opener || (s[i+1] != '>' && !jsxNameStart(s[i+1])) {
 		return false
 	}
-	return regexCanStart(s, prevSig, false, headerClose) || keywordEndsAt(s, prevSig, "default")
+	return regexCanStart(s, prevSig, false, headerClose)
 }
 
 // jsxNameStart reports whether b can start a JSX element name.
@@ -950,8 +954,8 @@ func keywordEndsAt(s string, j int, kw string) bool {
 //     not a continuation byte of a valid rune (ë is C3 AB, 主 is E4 B8 BB). Redact's spelling,
 //     U+FFFD, is a fail-open condition of its own (lexSource).
 //
-// A prime (′ ″) or a dingbat ornament (❝ ❞) is not a quotation mark and does not fail the file
-// open. The look back for a raw byte's rune is at most utf8.UTFMax-1 bytes.
+// A prime (′ ″) or a dingbat ornament (❝ ❞) is not a quotation mark; strayPunctuationAt fails the
+// file open on those. The look back for a raw byte's rune is at most utf8.UTFMax-1 bytes.
 func typographicQuoteAt(s string, i int) bool {
 	c := s[i]
 	if utf8.RuneStart(c) {
@@ -969,6 +973,27 @@ func typographicQuoteAt(s string, i int) bool {
 		}
 	}
 	return true // more continuation bytes in a row than any rune has
+}
+
+// strayPunctuationAt reports whether a non-ASCII punctuation or symbol rune that is not a quotation
+// mark starts at i in code position: primes (′ ″), ornaments (❝ ❞), dashes, math and currency
+// signs, emoji. A value written between two of them is pasted text, not source -- python3, node,
+// gofmt and terraform fmt reject all of them in code -- so, as for a typographic quote, the lexer
+// cannot know where the author meant a string to be, and the file fails open.
+//
+// The runes these grammars DO accept in code are excluded: connector punctuation (Pc, ‿), and the
+// identifier extras Python and JS take from Unicode's Other_ID_Start and Other_ID_Continue (℘ ℮ ·
+// ・). U+FFFD has its own reason above. On the 58,055-file public corpus the README cites, adding this
+// changed no finding.
+func strayPunctuationAt(s string, i int) bool {
+	r, w := utf8.DecodeRuneInString(s[i:])
+	if w < 2 || r == utf8.RuneError {
+		return false
+	}
+	if !unicode.IsPunct(r) && !unicode.IsSymbol(r) {
+		return false
+	}
+	return !unicode.In(r, unicode.Pc, unicode.Other_ID_Start, unicode.Other_ID_Continue)
 }
 
 // cp1252Quote reports whether b, read as Windows-1252, is a quotation mark: 0x82 ‚, 0x84 „, 0x8B ‹,

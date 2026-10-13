@@ -45,7 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single-line string is unterminated, nesting is unbalanced or deeper than 256, a `.js`/`.mjs`/
   `.cjs` file contains JSX (or any of the six JS/TS extensions holds a closing tag, as a Qt
   Linguist `.ts` file does), a typographic quote stands in code (any Unicode quotation mark but
-  `"` and `'`, such as `“ ” ‘ ’ „ « » ‹ › ＂ 「 」`, or a Windows-1252 smart quote, raw or decoded),
+  `"` and `'`, such as `“ ” ‘ ’ „ « » ‹ › ＂ 「 」`, or a Windows-1252 smart quote, raw or decoded) or
+  any other non-ASCII punctuation or symbol does (primes, ornaments, dashes, emoji — but not the
+  connector punctuation and identifier extras Python and JS accept in names),
   so does the replacement character `U+FFFD` (what `Redact` makes of an undecodable byte), or the
   content exceeds 100 MB. The file type comes from the name on every channel, so
   `--stdin-name app.ts` and a `ScanText`/`Redact` label `app.ts` are gated, and `<stdin>`,
@@ -65,9 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   languages and the program would not run; the loss is pinned by a test. **Residual loss:** a
   collection or list-tail element that starts in code and runs into a quoted string,
   `token = first_token_value, decode("…")`, drops with its head; counting quoted text as well
-  would have kept 35,974 more JS/TS findings, all on minified lines; and a value between two
-  primes or dingbat ornaments (`″…″`, `❝…❞`), which are not quotation marks, drops like a bare
-  one. **Residual:** a keyword inside a docstring still reports, e.g. the Sphinx field
+  would have kept 35,974 more JS/TS findings, all on minified lines. **Residual:** a keyword inside a docstring still reports, e.g. the Sphinx field
   `:type token: RequestToken` (36 in this corpus). The golden case
   `secrets_code_expression_known_fp` is inverted: the same lines in `src/models.ts` and
   `src/models.py` give zero findings beside in-file literal controls, a YAML control still

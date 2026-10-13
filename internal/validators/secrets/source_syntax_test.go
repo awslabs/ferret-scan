@@ -423,15 +423,24 @@ func TestTypographicQuoteIsExactlyTheQuotationMarkTables(t *testing.T) {
 	}
 }
 
-// A prime or a dingbat ornament used as a quote is not a quotation mark in Unicode, and the gate
-// does not treat it as one: the file stays gated and the value after it drops. Pinned because the
-// README and CHANGELOG state it.
-func TestLexPrimesAndOrnamentsDoNotFailOpen(t *testing.T) {
-	for _, q := range []string{"\u2032", "\u2033", "\u275d", "\u275e"} {
-		for _, lang := range []sourceLanguage{langPython, langJS, langGo, langHCL} {
-			if _, reason := lexLiterals("p = "+q+"abc"+q+"\n", lang); reason != "" {
-				t.Errorf("%s: %+q in code failed the file open (%q)", lang, q, reason)
+// Non-ASCII punctuation and symbols are not quotation marks, but no gated grammar accepts them in
+// code position either, so a value written between primes or ornaments is not valid source and the
+// file fails open like one between typographic quotes. Connector punctuation is legal inside
+// identifiers, and in a string or a comment any of them is just text.
+func TestLexNonASCIIPunctuationInCodeFailsOpen(t *testing.T) {
+	for _, q := range []string{"\u2032", "\u2033", "\u275d", "\u275e", "\u2013", "\u00d7", "\u20ac", "\U0001f511"} {
+		for _, lang := range []sourceLanguage{langPython, langJS, langTS, langGo, langHCL} {
+			if _, reason := lexLiterals("p = "+q+"abc"+q+"\n", lang); reason != "non-ASCII punctuation or symbol in code" {
+				t.Errorf("%s: %+q in code: fail-open reason %q, want the punctuation reason", lang, q, reason)
 			}
+			if _, reason := lexLiterals("p = \""+q+"abc"+q+"\"\n", lang); reason != "" {
+				t.Errorf("%s: %+q inside a string failed the file open (%q)", lang, q, reason)
+			}
+		}
+	}
+	for _, lang := range []sourceLanguage{langPython, langJS, langTS} {
+		if _, reason := lexLiterals("a\u203fb = 1\n", lang); reason != "" {
+			t.Errorf("%s: connector punctuation in an identifier failed the file open (%q)", lang, reason)
 		}
 	}
 }
@@ -580,6 +589,10 @@ func TestLexTSNonNullAssertionEndsAnOperand(t *testing.T) {
 		`function g(s: string) { return!/keyword_regex/.exec(s); }`,
 		// After the ')' of an if/for/while/with header a '!' starts the body: a prefix '!'.
 		`if (ok)!/"/.exec(s) && go(); // the "header_bang_comment`,
+		// `default` begins an expression, so its '!' is a prefix too; a property named default
+		// is an operand.
+		`export default!/"/.exec(s); // the "default_bang_comment`,
+		`const q = x.default! / 2; // prop_default_comment`,
 	}, "\n") + "\n"
 	checkLex(t, langTS, content, []lexProbe{
 		{"nonnull_ident_comment", true},
@@ -591,7 +604,14 @@ func TestLexTSNonNullAssertionEndsAnOperand(t *testing.T) {
 		{"and_regex", true},
 		{"keyword_regex", true},
 		{"header_bang_comment", true},
+		{"default_bang_comment", true},
+		{"prop_default_comment", true},
 	})
+	// `export default` followed directly by a regex, in either language.
+	for _, lang := range []sourceLanguage{langJS, langTS} {
+		checkLex(t, lang, `export default /"default_regex/; // after "default_regex_comment`+"\n",
+			[]lexProbe{{"default_regex", true}, {"default_regex_comment", true}})
+	}
 	// A '!' that is the file's first byte has no operand before it.
 	checkLex(t, langTS, `!/"/.exec(s) && go(); // the "file_start_bang_comment`+"\n",
 		[]lexProbe{{"file_start_bang_comment", true}})
