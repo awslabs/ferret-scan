@@ -23,14 +23,24 @@ FROM public.ecr.aws/docker/library/golang:1.27.1-alpine@sha256:8a5910f31396cd4d8
 # Add ca-certificates back if you uncomment the COPY line below
 RUN apk add --no-cache git ca-certificates
 
-# Set Go environment - critical for module downloads
-# GOPROXY=direct fetches modules from upstream VCS hosts directly,
-# bypassing proxy.golang.org. The go.sum hash check still applies
-# (and GOSUMDB=sum.golang.org is left at the default), so the
-# integrity guarantee is unchanged. Tradeoff: no proxy caching, no
-# DOS protection for upstream hosts.
-ENV GOPROXY=direct
-RUN go env -w GOPROXY=direct
+# Module source. The default asks proxy.golang.org first and falls back to
+# the upstream VCS host on ANY proxy error ('|' rather than ',', which only
+# falls back on 404/410). This used to be GOPROXY=direct, which made every
+# image build depend on every upstream host being up: on 2026-10-13 both
+# dependabot PRs failed this build on an HTTP 502 from gopkg.in while the
+# proxy, which the Go test jobs use, served the same modules fine.
+#
+# Integrity is unchanged either way: go.sum pins every module's hash, and
+# GOSUMDB=sum.golang.org is left at its default.
+#
+# A network that blocks proxy.golang.org can still build, because '|direct'
+# falls back. But if the block makes the lookup hang rather than fail, every
+# module waits for that timeout, so pass the network's own setting instead:
+#   --build-arg GOPROXY=direct
+# scripts/container-build.sh does that automatically when the builder has
+# set GOPROXY explicitly (go env -changed).
+ARG GOPROXY=https://proxy.golang.org|direct
+ENV GOPROXY=${GOPROXY}
 
 # Create app directory
 WORKDIR /app

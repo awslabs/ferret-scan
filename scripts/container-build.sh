@@ -46,8 +46,19 @@ echo "  Git Commit: $GIT_COMMIT"
 echo "  Build Date: $BUILD_DATE"
 echo "  Container Runtime: $CONTAINER_CMD"
 
+# The Dockerfile's module source defaults to proxy.golang.org with a direct
+# fallback. A builder who has explicitly configured Go for their network (for
+# example GOPROXY=direct where the proxy is blocked) gets that setting inside
+# the image build too; anyone else gets the Dockerfile default.
+GOPROXY_ARGS=()
+if command -v go >/dev/null 2>&1 && [ -n "$(go env -changed GOPROXY 2>/dev/null)" ]; then
+    GOPROXY_ARGS=(--build-arg "GOPROXY=$(go env GOPROXY)")
+    echo "  GOPROXY: $(go env GOPROXY) (from your go env)"
+fi
+
 # Build the container image with build args
 $CONTAINER_CMD build \
+    "${GOPROXY_ARGS[@]}" \
     --build-arg VERSION="$VERSION" \
     --build-arg GIT_COMMIT="$GIT_COMMIT" \
     --build-arg BUILD_DATE="$BUILD_DATE" \
