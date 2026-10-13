@@ -695,11 +695,11 @@ func startsListAssignment(line string, start int) bool {
 //     passed over; then the line ends, or the next byte is one no `key=value` value starts with.
 //     That is whitespace (every rune unicode.IsSpace admits, so \v and a no-break space too), a
 //     separator, `#`, `)`, `]`, `}`, `<`, `|`, `&` or `\`, or a quote or backtick that does not
-//     open quoted content -- one not followed by [A-Za-z0-9_$] -- and does not close at once as an
-//     empty string. So a padded member is kept before prose, a tab column, `//`, a closing tag or
-//     bracket, the next query parameter, a closing quote, or a sentence's full stop; and
-//     `contentType="json"`, `baseUrl=""`, a template literal assigned with no space, `isValid=!0`,
-//     `scaleBy=.5` and `offsetY=-1` are still pairs.
+//     open quoted content -- one not followed by [A-Za-z0-9_$]. So a padded member is kept before
+//     prose, a tab column, `//`, a closing tag or bracket, the next query parameter, a closing quote
+//     or a doubled one (an RST inline literal's closing backticks, a CSV or SQL escaped quote), or a
+//     sentence's full stop; and `contentType="json"`, a template literal assigned with no space,
+//     `isValid=!0`, `scaleBy=.5` and `offsetY=-1` are still pairs.
 //
 // What it reads as a pair, so the member ends the list unreported, is padding followed straight away
 // by a byte that begins a value, or by punctuation and then one: `<P>>` (`>` is left out of the
@@ -708,8 +708,9 @@ func startsListAssignment(line string, start int) bool {
 //
 // What it cannot tell apart, and so reads as padding, is a mixed-case key whose length with its `=`
 // is a multiple of four, written with no space before the `=` and then a space (`contentType= json`),
-// a quote and punctuation (`contentType="/json"`), or punctuation and the end of the value
-// (`allowOrigin=*`). Such an element is reported as a member, cut where the value class ends
+// a quote and punctuation (`contentType="/json"`), an empty string (`baseUrl=""`, `redirectUri=```),
+// or punctuation and the end of the value (`allowOrigin=*`). Such an element is reported as a
+// member, cut where the value class ends
 // (`contentType=`, `allowOrigin=*`). TestListTailStatedCosts pins each; none of these shapes occurs
 // after a head and a separator in the public corpora this was measured on.
 func isBase64Padding(line string, elem, keyEnd, run, end int) bool {
@@ -724,9 +725,10 @@ func isBase64Padding(line string, elem, keyEnd, run, end int) bool {
 	}
 	switch b := line[end]; b {
 	case '"', '\'', '`':
-		if end+1 < len(line) && line[end+1] == b && endsAfterClosingQuote(line, end+2, b) {
-			return false // `baseUrl=""`: an empty string closed at once, so an empty assignment
-		}
+		// A doubled quote stays padding too: `<P>""` closes RST/Markdown ``…``, a CSV "" or an SQL
+		// ''. Reading it as an empty assignment (`baseUrl=""`) instead dropped 22-85% of padded
+		// members there, by the secret's own bytes -- the value-dependent suppression this function
+		// exists to remove -- so the empty assignment is the stated cost (TestListTailStatedCosts).
 		return end+1 >= len(line) || !opensQuotedContent(line[end+1])
 	case ')', ']', '}', '<', '|', '&', '\\':
 		return true

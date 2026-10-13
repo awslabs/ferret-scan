@@ -401,13 +401,6 @@ func TestListTailEndsAtANewAssignment(t *testing.T) {
 		{"negative number assigned", "secret: " + secretA + ",offsetY=-1," + secretB + "\n", []string{secretA}},
 		{"arrow function, spaced body", "secret: " + secretA + ",onClick=> run(" + secretB + ")\n", []string{secretA}},
 		{"empty array assigned", "secret: " + secretA + ",itemArr=[]," + secretB + "\n", []string{secretA}},
-		// An empty string closed at once is an empty assignment, not padding before a closing quote:
-		// v2.5.3 and 577905f6 reported `baseUrl=` (HIGH 100) here.
-		{"empty string assigned", "secret: " + secretA + ",baseUrl=\"\"\n", []string{secretA}},
-		{"empty single-quoted string, then a separator", "secret: " + secretA + ",accessToken=''," + secretB + "\n", []string{secretA}},
-		{"empty string inside an outer string", "x = \"secret: " + secretA + ",baseUrl=''\"\n", []string{secretA}},
-		{"empty string, then a closing paren", "f(secret: " + secretA + ",apiHost=\"\")\n", []string{secretA}},
-		{"empty template literal", "secret: " + secretA + ",redirectUri=``\n", []string{secretA}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -583,6 +576,11 @@ func TestListTailKeepsAPaddedMemberWhereItsValueEnds(t *testing.T) {
 		{"markdown strikethrough", "~~API_KEY=" + secretA + ",", "~~"},
 		{"double dash, then prose", "secret: " + secretA + ",", "-- rotate quarterly"},
 		{"bold, then a full stop", "Set **API_KEY=" + secretA + ",", "**."},
+		// Doubled closers: RST/Markdown inline literals, a CSV field's escaped quote, an SQL string's.
+		{"RST inline literal", "Set ``API_KEY=" + secretA + ",", "`` in the environment."},
+		{"RST inline literal at the end", "Set ``API_KEY=" + secretA + ",", "``"},
+		{"CSV escaped quote", "1,\"x=\"\"TOKEN=" + secretA + ",", "\"\" && run\""},
+		{"SQL escaped quote", "INSERT INTO t VALUES ('x=''TOKEN=" + secretA + ",", "'' y');"},
 	}
 	// Each byte isTrailingPunctuation passes over, alone after the padding and then the end of the
 	// line, so dropping any one of them from the set fails its own case.
@@ -684,6 +682,15 @@ func TestListTailStatedCosts(t *testing.T) {
 		{"a padding-shaped key, then a space, reads as padding", "secret: " + secretA + ",contentType= json\n", []string{secretA, "contentType="}},
 		{"a padding-shaped key, then a quote and punctuation, reads as padding", "secret: " + secretA + ",contentType=\"/json\"\n", []string{secretA, "contentType="}},
 		{"a padding-shaped key, then punctuation, reads as padding", "secret: " + secretA + ",allowOrigin=*\n", []string{secretA, "allowOrigin=*"}},
+		// The same ambiguity with a doubled quote: an empty assignment (`baseUrl=""`) cannot be told
+		// from padding closed by RST/Markdown ``…``, a CSV "" or an SQL '' (kept in
+		// TestListTailKeepsAPaddedMemberWhereItsValueEnds), and reading it as the assignment dropped
+		// 22-85% of real padded members there by their own bytes. So the key is reported.
+		{"an empty string assigned reads as padding", "secret: " + secretA + ",baseUrl=\"\"\n", []string{secretA, "baseUrl="}},
+		{"an empty single-quoted string, then a separator", "secret: " + secretA + ",accessToken=''," + secretB + "\n", []string{secretA, "accessToken="}},
+		{"an empty string inside an outer string", "x = \"secret: " + secretA + ",baseUrl=''\"\n", []string{secretA, "baseUrl="}},
+		{"an empty string, then a closing paren", "f(secret: " + secretA + ",apiHost=\"\")\n", []string{secretA, "apiHost="}},
+		{"an empty template literal", "secret: " + secretA + ",redirectUri=``\n", []string{secretA, "redirectUri=``"}},
 		// The other side of the same ambiguity: padding glued to a byte that begins a value, or to
 		// punctuation and then one, reads as the next pair, because those are the bytes of
 		// `onClick=>f`, `isValid=!0` and `scaleBy=.5` (TestListTailEndsAtANewAssignment).
