@@ -54,6 +54,33 @@ jobs:
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: ./scripts/promote-changelog.sh "${TAG}"
 
+      # Backstop for the PR-time check (changelog-check.yml). A no-op promotion is correct when the
+      # release really changed nothing user-visible, and a silent loss of the release notes when it
+      # did not — v2.5.3 was the second kind, and this step had nothing to say. A warning, not a
+      # failure: the tag is already public, and the remedy is a follow-up PR adding the entries under
+      # the new heading, which a red run here cannot do.
+      - name: Warn if a no-op promotion covered user-visible commits
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          # Promoted this run, or by an earlier run of the same tag (a re-push): not a no-op.
+          if ! git diff --quiet CHANGELOG.md || grep -qF "## [${TAG}]" CHANGELOG.md; then
+            exit 0
+          fi
+          git fetch --quiet --tags origin
+          if ! PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null); then
+            echo "No earlier tag before ${TAG}; nothing to compare."
+            exit 0
+          fi
+          NOTABLE=$(git log --format=%s "${PREV}..${TAG}" | grep -E '^(fix|feat|perf)(\([^)]*\))?!?:|^[a-z]+(\([^)]*\))?!:' || true)
+          if [ -n "${NOTABLE}" ]; then
+            COUNT=$(printf '%s\n' "${NOTABLE}" | wc -l | tr -d ' ')
+            echo "::warning title=CHANGELOG::${TAG} promoted nothing, but ${PREV}..${TAG} has ${COUNT} fix/feat/perf or breaking commit(s). Add their entries under '## [${TAG}]' in a follow-up PR."
+            # Subjects are contributor-written; the runner's legacy parser acts on "##[" anywhere in a
+            # line, so break the sequence before echoing them.
+            printf '%s\n' "${NOTABLE}" | sed 's/##\[/# #[/g'
+          fi
+
       - name: Commit and push if the file changed
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}

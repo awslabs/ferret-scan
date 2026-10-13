@@ -14,6 +14,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔨 Internal
+
+- **ci (changelog):** a pull request that changes what a release ships now fails unless it adds an
+  entry under `[Unreleased]`, or carries the `no-changelog` label as a recorded decision. v2.5.3
+  shipped four such PRs with no entry at all — nothing asked for one: there was no PR template,
+  `CONTRIBUTING.md` did not mention the file, and no check read it — so the release-time promotion
+  found `[Unreleased]` empty and, correctly, did nothing. "Ships" is derived from the import graph
+  for Go (`go list -deps ./cmd/... ./pkg/...`, unioned across linux, darwin and windows, embedded
+  files included, plus every buildable file under `cmd/` and `pkg/` so deleting a public package
+  counts), rather than from a path list, so a newly imported package is covered the day it is
+  imported and test support such as `internal/perfguard` never is. `go.mod`, `.go-version`, the
+  pre-commit hook definitions, the PyPI wrapper and a title marked breaking (`type!:`) also require
+  one; dependabot is exempt. **The entry must land under `[Unreleased]` on GitHub's merge result**,
+  not merely somewhere in the file, and a subsection heading on its own is not an entry — and that
+  half was measured to matter more than the first. Replayed over the 129 PRs merged 2026-08-28 to
+  2026-10-06, the check fails exactly 15 — the four v2.5.3 PRs, and **11 whose entries were filed
+  under releases from February and May** (`[v1.5.0]` to `[v1.7.0]`), where they still were — and
+  warns on one more, whose second entry sat under v1.7.0: so a September SARIF fix sat under
+  v1.7.0's *Performance*. All 12 were already misplaced on the PR's own head commit, so no merge
+  moved them: each bullet was placed beside a subsection heading that repeats in every release, and
+  in 6 of the 11 `[Unreleased]` had no such heading (`### ⚡ Performance`, or `### 🚀 Features`
+  where it uses `### ✨ New Features`), so the only match was in an old release. Nothing read which
+  section an entry landed in; placement is now checked on every PR that touches the file, required
+  or not. The 12 are moved, byte-for-byte (the file's multiset of non-blank lines is unchanged),
+  into `[v2.5.2]`, the section v1.7.0 to v2.5.2 were folded into; the four v2.5.3 PRs are
+  backfilled from their descriptions. **A PR-time result goes stale when a release lands while the
+  PR is open** — the check read the old layout and nothing re-runs it, and a clean three-way merge
+  then files its entry under the release just promoted — so an `after-merge` job re-checks on the
+  push to `main`, comparing where the PR's own branch put the entry with where the merge put it; a
+  deliberate backfill is filed under the release on its own branch too, and passes. A release-time
+  backstop warns when a tag's promotion is a no-op although its range contains `fix`, `feat` or
+  `perf` commits — it would have fired on v2.5.3. A pull-request template, a `CONTRIBUTING.md`
+  section and a `make pr-checklist` line state the rule where a contributor meets it.
+
+## [v2.5.3] - 2026-10-07
+
+### 🐛 Bug Fixes
+
+- **secrets (type annotations):** a typed field whose name carries a secret stem was reported as a
+  credential — `session: Optional[Session]` and `api_key: Optional[SecretStr]` at **HIGH 93%**,
+  `password: Optional[str]` at MEDIUM 68% — in every release since v2.3.3, when the
+  unquoted-assignment matcher shipped ([#395](https://github.com/awslabs/ferret-scan/issues/395)),
+  so a blocking gate on ordinary typed Python went red. The matcher captured the whole annotation as
+  the value. A captured value shaped as a bare parameterized type, `Ident[...]` (optionally dotted,
+  as in `typing.Optional[str]`), is now rejected; the veto is value-intrinsic, since a real
+  credential is not shaped like a type, and quoted assignments are unaffected
+  ([#745](https://github.com/awslabs/ferret-scan/issues/745)). This **narrows**
+  [#742](https://github.com/awslabs/ferret-scan/issues/742) rather than closing it in full: a bare
+  type (`token: AuthToken`, HIGH 100%), a TypeScript generic (`let token: Promise<AuthToken>`,
+  MEDIUM 85%) and a bare call (`session = get_session()`, MEDIUM 75% — the last line of #742's own
+  reproduction) still report on v2.5.3, and
+  [#747](https://github.com/awslabs/ferret-scan/issues/747) records them in the golden corpus as
+  known false positives; they are tracked in
+  [#753](https://github.com/awslabs/ferret-scan/issues/753).
+- **secrets (lists, collections, plural keys):** four credential shapes were invisible to the
+  assignment matcher — a plural key (`tokens: …`, `"api_keys": "…"`), a bracket between the
+  delimiter and the value (`"api_keys": ["…"]`, an ordinary JSON config shape), a list tail
+  (`secret: <first>,<second>`), and a cross-line sequence item under a secret key. A value in them
+  was reported only if it happened to be a quoted, high-entropy base64-like string, which the
+  separate entropy pass catches whatever its key; an unquoted value, or a password-like one such as
+  `Sup3rS3cretDbPass!`, reported **nothing at any confidence**. The new
+  matchers run **alongside** the existing ones, which are byte-for-byte unchanged, because a
+  finding's identity hash folds in its matched text: widening an existing capture would have
+  silently stopped every suppression rule written against it from matching. No pre-existing
+  golden case changed. A plural keyword now also counts as context for scoring (`tokens =` scored
+  55, under the threshold of 60, against 97 for `token =`), with the plural required to end at a
+  boundary so `tokensize` does not count
+  ([#749](https://github.com/awslabs/ferret-scan/issues/749)). Closes
+  [#746](https://github.com/awslabs/ferret-scan/issues/746).
+- **email (TLD snapshot):** the embedded IANA root zone is refreshed (1437 TLDs). The month-old
+  snapshot still recognised `juniper`, since withdrawn, so an address on it escaped the low-band
+  ceiling for unrecognised TLDs. `scripts/check-tlds.sh update` now prints the regenerated Go file
+  its usage text always promised, rather than a bare list to hand-format, so a refresh is one
+  command ([#750](https://github.com/awslabs/ferret-scan/issues/750)). Closes
+  [#741](https://github.com/awslabs/ferret-scan/issues/741).
+
+### 🔨 Internal
+
+- **deps (pdfcpu v0.16.0):** the bump in [#743](https://github.com/awslabs/ferret-scan/issues/743)
+  merged with every check red — `api.ValidateFile` gained a `context.Context` and a progress-options
+  parameter — leaving `main` unbuildable. The one call site is updated, with no change to detection
+  or redaction behaviour ([#748](https://github.com/awslabs/ferret-scan/issues/748)).
+
 ## [v2.5.2] - 2026-09-24
 
 ### 📚 Documentation
@@ -573,6 +656,403 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   traversal gate's to refuse, whether or not it exists. The README's exit table also claimed `2` for
   "no files to process" — true only under `--preprocess-only`; corrected.
 
+- **socialmedia (performance):** the validator recompiled regexes **once per match**, allocating **~34 KB per finding** and roughly **1,730× the size of the input**. Measured on the shipped `config.yaml`, without the race detector, so this is the path a user is on: a **126 KB** input producing 6,400 matches allocated **207.8 MB** across **2,384,151 allocations** — 372 per match — with `regexp.compile` accounting for **522 MB of an 861 MB** profile (60%). Two shapes caused it: **43 inline `regexp.MustCompile` calls over only 16 distinct literal patterns**, inside the per-platform username validators (`validateTwitterSpecific`, `validateGitHubSpecific`, `validateLinkedInSpecific`, and eight more, all reached once per finding); and **5 uses of the package-level `regexp.MatchString(pattern, s)`, which compiles its pattern on every call** — the harder one to see, because the call site reads like a plain predicate, and after the first fix the *remaining* 333 MB of 667 MB was all reached through it. Every literal pattern is now compiled once at package init. **Result: 217.4 MB → 84.4 MB (−61%), 2,384,151 → 689,928 allocations (−71%), ~34 KB → ~13.2 KB per match, 1,730× → 674× the input, and 24% faster (287 ms → 218 ms).** **No behaviour change, proven rather than asserted:** 3,087 findings **byte-identical** across 40 fixtures built with deliberately awkward usernames (1 and 2 characters, 101 characters, `...`, `___`, all-digits, `UC…` channel IDs, and the placeholder forms `[USERNAME]`, `{user}`, `<name>`, `${env}`, `{{tpl}}`), and `UPDATE_GOLDEN=1` changes 0 files. This is also what made CI fragile, which is how it was found: under `-race` the same allocation amplifies **~22×**, so the complexity guard's socialmedia target fell from **6,930-8,142 MB to 3,241 MB** as a side effect. A regression guard parses the file with **`go/ast`** and fails on any compile inside a function body — line-scanning was tried first and a re-inlined compile **survived** it, because a bare `}` ending an inner `if` reset its "am I in a function" flag, and brace counting cannot work here either since the patterns themselves contain literal braces (`{22}`, `\{.*\}`) inside backticks. Four functions are exempted **by name with a stated reason** — one genuinely dynamic pattern built with `regexp.QuoteMeta`, and three configure-time compile helpers whose results are cached — and a stale exemption is itself a failure, so an exemption cannot outlive its justification. Closes [#606](https://github.com/awslabs/ferret-scan/issues/606).
+
+- **pdf:** a PDF longer than 50 pages is no longer truncated **in silence** ([#626](https://github.com/awslabs/ferret-scan/issues/626)). The page budget stays at 50 — raising it is a cost decision that wants a measurement, and disclosure is correct at any value — but it now reaches every coverage channel instead of none. Measured on the parent commit, a 60-page PDF with an SSN on page 1 and six more on pages 55–60: **one finding, exit 0, `files_skipped: 0`, no `files_not_examined`, zero bytes of stderr.** Six cleartext SSNs neither reported nor, under the sink rule, redacted, with nothing anywhere saying the scan had stopped. Now: `files_not_examined: 1`, a stderr note naming the numbers (`only the first 50 of 60 pages ... the remaining 10 pages was NOT scanned`), and **exit code 3** under `--fail-on-incomplete` where it was 0. The cause is `CauseCutShort`, not `CauseNoText`, because it is defined for exactly this — *"a budget, size cap or timeout fired, so the file is PARTLY scanned"* — and the remedy differs: split the document or raise the budget, versus OCR an image-only PDF. **Truncation is tested before emptiness**, for the reason the SVG extractor already documents: a document whose first 50 pages carry no text layer is *both* truncated and empty, and testing emptiness first reports "the file parsed but held no document text" about a document that was cut short — a true disclosure under a false heading. The cap also stopped **overwriting** `PageCount`: `content.PageCount = maxPages` had destroyed the only record that the document was longer than what was read, so nothing — including the disclosure, which is why there wasn't one — could tell a 50-page document from the first 50 pages of a 200-page one. The real count stays in `PageCount` and the bound moves to `PagesScanned`. That change made a **latent path load-bearing**: `estimatePageNumber` distributes the *extracted text's* lines across a page count, so its denominator must be the pages that text spans, and while the two numbers were the same it was accidentally right — hence a `scannedPageSpan()` accessor rather than an inline conditional, so a second consumer of the extracted text cannot pick the wrong one of the two counts. Verified there is no other observable change: the same 60-page fixture reports the same 3 findings at the same lines under both binaries, and both report `PageCount: 60`. The source comment calling the literal "configurable" is also gone — it never was, with no flag, no config key and no override — and `docs/reference/quotas-and-limits.md` now lists the budget and explains why it is a **coverage** limit rather than only a performance one. **6 mutations, 6 caught**; two more were discarded as unsound rather than counted, one semantically null (`>=` and `>` both yield `min(PageCount, 50)`) and one a build error, and a seventh correctly survives because it is a benign rewording that keeps the numbers the assertion actually requires.
+
+- **office (redaction):** a value that Word split across two adjacent formatting runs is no longer **written out in cleartext in silence** ([#627](https://github.com/awslabs/ferret-scan/issues/627)). Reproduced: a `.docx` holding `<w:t>Employee SSN: 449-87-</w:t>` then `<w:t>4100</w:t>` — the split Word makes routinely at a bold, rsid or proof-error boundary — reported **SSN at confidence 100**, then wrote a "redacted" copy at **exit 0 with an empty stderr** whose text `textutil` reads back as `Employee SSN: 449-87-4100`. The email in the same part **was** masked, which is the positive control: the redactor ran and simply could not remove the SSN. Now the write is refused and disclosed — `refusing to write split.docx: 1 reported value(s) still present in the document's own parts (types: SSN)`, naming the **type** and never the value, since the message reaches stderr and every machine format without `--show-match`. Exit 0 by default and **3** under `--fail-on-incomplete`, as for any other refusal. Confirmed for `.odt` spans as well; the unsplit control still redacts, and the golden corpus regenerates with **0 files changed**. **Why the fail-closed guard was blind to it:** `decodedPartText` writes a newline after each character-data node, for a sound reason its comment gives — a separator stops two adjacent runs concatenating into a value that is in neither of them. But the *scanner's* extractor strips tags with a regex and inserts nothing between runs, and xlsx joins `<t>` runs directly, so the value that concatenates across runs is **exactly** the value the scanner reports, and the separated view could never see it. There is now a second view of every part — character data only, concatenated — and the residue probe checks both. It cannot manufacture a false refusal: a value is only ever probed for by having been **reported**, and if it was reported then some extraction produced it. **The first attempt at this failed silently, and the reason is now pinned by a test.** `encoding/xml` delivers tokens in document order, so a `w:t` element carrying `xml:space="preserve"` contributes `preserve` *between* the two runs — a view built from every token reads `449-87-preserve4100` and still finds nothing. Attributes stay in the separated view, which is what covers them, and are excluded from the run-text view. That was only caught by probing `decodedPartText` directly; end-to-end the fix looked like a no-op and offered no reason why. **5 mutations, 4 caught**, the fifth correctly surviving because any non-empty separator keeps the runs apart, so the specific byte is not load-bearing. This does **not** redact the split value — doing that needs a span map across XML tokens, as `internal/redactors/rtf/spanredact.go` already does for RTF (#604) — and #627 stays open for it, along with four other findings in the same file: a part `encoding/xml` refuses to tokenize is skipped by both the rewrite and the guard, `zipWriter.Close()` errors are discarded, the extract loop drops unreadable zip parts with only a debug log, and `parentPartResidue` polices every `.xml` part while the rewrite covers only a fixed few.
+
+- **pkg/scan:** `RedactText` no longer returns the input **unchanged** while reporting the value redacted ([#631](https://github.com/awslabs/ferret-scan/issues/631)). Measured with the plainest possible call — `ScanText(ctx, text, TextOptions{})` then `RedactText`, no config and no `Checks` — on one line holding six `Copyright (c) 2026 Acme Corporation … CONFIDENTIAL` notices: one INTELLECTUAL_PROPERTY finding at 98%, its reported `Text` a rendered summary ending `[+17 more matches on line]` that **does not occur in the document**, and `Count=1` with output **byte-identical to the input** for all three strategies — six values in cleartext, attested as redacted. A caller writing `if out.Count == len(res.Findings) { ship(out.Text) }` shipped the original. **The safety net was already on the path and could not fire:** `plaintext.RedactString` calls `redactors.RestoreBoundedMatchText`, whose gate needs both `Context.FullLine` and `Metadata[MatchTextTruncatedKey]`, and `apply.go` copied six fields from the public `Finding` with neither among them — so the match could not be located, was skipped at `continue`, and was counted anyway. `Context` is now carried across, and the truncation flag is **derived** rather than plumbed, because `Finding` carries no `Metadata` at all (`mapResult` discards it a layer earlier) and widening a public struct to pass one boolean is a compatibility cost for an internal detail. The condition is exactly where the restore is both needed and safe — the reported text is absent from the input while its own trimmed full line is present — so it cannot mis-fire on a locatable finding, which fails the first test. **`Count` is now the replacements actually made**, not the findings handed in: a match the redactor cannot locate never reaches `redactionMap`, so `Count < len(findings)` became a signal a caller can act on instead of a false attestation, and `Redacted.Count`'s doc comment now says so. **Scope, stated plainly:** the bounded-consolidation leak is closed (six of six masked, all three strategies), the `SOCIAL_MEDIA_CLUSTER` case is **reduced but not closed** — the member on the restorable line is now masked and one handle survives — and for clusters `Count` still cannot reveal the remainder, because one mapping genuinely occurred. `consolidated.go:77-80` already explains why a single `FullLine` cannot rescue a cluster whose members span several lines; carrying the members needs a public-API decision, which #631 keeps open. Not a pinned decision either way: `pkg/scan` contained no occurrence of `cluster`, `bounded`, `consolidat` or `truncat` in code, comments or tests, and `TestRedactText_FindingNotInText` deliberately asserted nothing about `Count`. **5 mutations, 4 caught**, the fifth correctly surviving because `isBoundedMatch` already requires a non-empty `FullLine` and an unlocatable restored value is skipped harmlessly, so the extra precondition is defensive rather than load-bearing — and two earlier attempts at those mutations were discarded as build errors rather than counted as survivals. The must-not-fire direction is covered too: a locatable finding must keep its surrounding prose, since a mis-fired restore would mask the whole line, which is data loss even though it is not a leak.
+
+- **sarif:** `artifactLocation.uri` is now built with an **empty authority and a percent-encoded path**, fixing three separate conformance defects in one expression ([#633](https://github.com/awslabs/ferret-scan/issues/633)). `"file://" + cleanPath` was correct on POSIX **only by accident** — the path's own leading slash supplied the third one. Fed to `net/url.Parse`, what it actually produced: a Windows path `C:/Users/a/report.txt` became `file://C:/Users/a/report.txt`, parsing to **host=`"C:"`** with the drive letter **gone from the path**, so no consumer resolves the file; `/tmp/a#b.txt` became `file:///tmp/a#b.txt`, whose path parses as **`/tmp/a`** — the `#` starts a fragment and the filename is truncated, so a consumer resolves a *different* file with nothing to indicate it, and `#` is legal in a POSIX filename; and `/tmp/100% done.txt` produced a URI that **does not parse at all** (`invalid URL escape "% d"`), so a strict consumer rejects the artifact location outright. Both specifications are explicit: **SARIF 2.1.0 §3.10.2** says that for a path which is not network-accessible the producer *"SHOULD NOT include the host name"* and that on omitting the authority the URI *"SHOULD start with `file:///`"* — its own example is `file:///C:/src` — while **§3.10.1** requires the value to be *"a string in the format specified by the standard [RFC3986]"*, which an unencoded space or percent violates. **RFC 8089 §2** states that `file:///c:/path/to/file` is *"already supported by the `path-absolute` rule"*, **Appendix D.2** that *"the drive letter (e.g., "c:") is typically mapped into the first path segment"*, and **Appendix B** calls the empty-authority form *"the most common format in use today"*. The construction now goes through `url.URL.String`, so the escaping rules live in the standard library rather than becoming a hand-written character set, and it is verified to **round-trip**: for every case the parsed path equals the original filename exactly. **Only malformed output changes.** Relative paths never reach the line — they take the `%SRCROOT%` `uriBaseId` branch — and an ordinary absolute POSIX path is byte-identical (`file:///tmp/report.txt` either way), asserted against the old expression rather than claimed, with the golden corpus agreeing at **0 files changed** despite containing `file://` artifact locations. Verified that no other site in the tree concatenates `"file://"`, so `gitlab-sast` does not share the pattern. **4 mutations, 4 caught** (dropping the path rooting, adding a host, the opaque `file:/path` form, and reverting to concatenation), plus a test that pins the *old* behaviour in runnable form using `t.Skipf` rather than `t.Errorf` — it documents a defect rather than asserting a requirement, so a future standard-library change should not read as a regression here. **Worth recording about how this was found:** an earlier audit raised it and both of its verifiers **failed to reproduce it**, because on a POSIX developer machine the expression genuinely is correct. A Windows-only formatting defect is invisible to any amount of local end-to-end testing; the cheap proof is a unit test on the mapping function, which is what this ships.
+
+- **office (container parts):** **eleven** container parts that hold text a person typed were read by
+  nothing, so their values were reported by no validator and — under the sink rule, where only reported
+  findings reach the redactor — written to the "redacted" copy in cleartext at exit 0 with an empty
+  stderr. Verified by planting a detectable value in each part of real LibreOffice-produced containers.
+  ([#680](https://github.com/awslabs/ferret-scan/issues/680))
+
+  Six were the parts [#680](https://github.com/awslabs/ferret-scan/issues/680) named: PowerPoint review
+  comments (`ppt/comments/modernComment_*.xml`), `ppt/tags/`, `ppt/presentation.xml`, `xl/tables/`
+  column headings, and chart titles in `xl/charts/` and `word/charts/`. `ppt/presentation.xml` is the
+  instructive one — it was always *resolved*, since every slide is found through its relationships, so
+  it sat in the package map while no pass ever extracted its own text. Resolved and scanned are
+  different things.
+
+  **The other five were found by the new guard, not by the issue.** Classifying every XML part name
+  observed across 399 real `.docx`/`.xlsx`/`.pptx` left 23 unclassified, and five of those hold authored
+  text: `word/people.xml`, `ppt/authors.xml` and `ppt/commentAuthors.xml` carry comment authors'
+  **display names** (present in 47, 13 and 26 containers), the Word and PowerPoint `diagrams/data*.xml`
+  parts carry SmartArt — an org chart is a diagram full of names — and `word/glossary/document.xml`
+  carries saved building blocks. Reading them reports **+152 real personal names** on that corpus that
+  the tool previously missed entirely, +140 of them in the HIGH band. The tool already reported authors
+  out of `docProps`, so missing them here was an inconsistency as well as a leak.
+
+  **The gate is that no part may be unclassified.** Coverage had been decided by an allowlist of the
+  parts somebody had thought of, and nothing asserted the list was complete — which is why this class
+  has now been fixed seven times, each fix guaranteeing the next. Every part is now *read*, or
+  *deliberately skipped with a recorded reason*; a part that is neither fails
+  `TestEveryKnownOOXMLPartIsClassified`, which walks a committed inventory of the 90 part-name families
+  observed in the wild. When a new Office release adds a part, someone has to decide about it instead of
+  it being silently unread. The inventory holds schema conventions only — digit runs normalised — so it
+  carries no content or file names from any document.
+
+  **Reading everything was tried first, and measured, and rejected.** It cost **+3,348 findings
+  (+47.7%), +680 HIGH**, dominated by template parts rather than content: `ppt/slideLayouts/*` alone
+  re-reported a deck's copyright boilerplate once per layout, up to 26 times, plus layout ids as `PHONE`;
+  `xl/externalLinks/*` gave `Hong Kong` and `Middle East` as `PERSON_NAME` at confidence 92-100. That is
+  the `customXml` result ([#679](https://github.com/awslabs/ferret-scan/issues/679): 403 findings, false
+  positives throughout) at eight times the scale. Each such part is now an exclusion carrying the number
+  that put it there.
+
+  **Two false-positive sources were found and closed by measurement during this change, not after it.**
+  Taking all character data pulled in chart *numeric caches* — a 17-digit cached datum as `VIN` at
+  confidence 90, 10-digit values as `PHONE`, 9-digit as `SSN` — so extraction now takes only DrawingML
+  `<a:t>` runs and label-bearing attributes, never arbitrary character data. And the attribute allowlist
+  is keyed on **(element, attribute)** rather than attribute name, because `val` is OOXML's universal
+  scalar attribute: keyed on the name alone it matched `<c:axId val="1829252287"/>` and reported 24 chart
+  axis identifiers as `PHONE`/`SSN`. Notably this refutes the reason #680 gave for reading chart parts at all
+  — "`word/chartN.xml` held `PERSON_NAME` and `VIN` on the real corpus" — because both of those were
+  themselves cache false positives; the row stands on chart titles, which are authored text.
+  `p15:presenceInfo/@userId` is excluded for the same reason: a name in one container, a numeric
+  internal id in 18, and 21 `SSN` false positives.
+
+  Corpus accounting, because the first pass got it wrong: of 452 candidate containers, 17 could not be
+  read at all and the tool reported a further 36 as `files_not_examined`. Those 53 were being counted as
+  zero-finding files, inflating every percentage. All figures here are over the **399** the scanner
+  reports it examined in full, with `files_not_examined == 0` asserted per file — the tool had been
+  disclosing this on stderr all along ("NOT FULLY EXAMINED: 1 of 1 file"), and the measurement script
+  was discarding stderr.
+
+  Final measurement: **+152 findings, every one `PERSON_NAME`**, with the LOW band unchanged at 3,031 and no new `PHONE`, `SSN`, `VIN` or `DATE_OF_BIRTH`. `customXml/item*.xml`
+  remains excluded and still has no precision story.
+
+  The per-part redaction contract gains **12 rows**, one per newly-read part, each asserting both
+  directions — the value is REPORTED, and it is absent from every member of the redacted output read
+  decompressed. All 14 pre-existing rows pass on the parent commit and exactly the 12 new ones fail
+  there, which is the signature of a tool fix rather than a fixture change. And the golden corpus, which
+  had no case whose subject was which parts are read — the structural reason "0 golden files changed"
+  was the result for a change that altered extraction on hundreds of real documents — gains one, whose
+  snapshot holds a chart title, a comment author and SmartArt text while the chart's numeric cache stays
+  absent.
+
+- **ipaddress (`--confidence`):** a LibreOffice document's own producer signature was reported as
+  `IP_ADDRESS` at **75 — inside MEDIUM**, the band reviewers filter to. The signature is
+  `LibreOffice/26.8.0.3$MacOSX_AARCH64 LibreOffice_project/bce0998a…`, and its four-part version is
+  structurally identical to a dotted quad. It is **unconditional**: measured on all six formats
+  LibreOffice writes — `.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, `.odp` — 10 of 10 containers reported
+  it, and in a document with no PII that was **half of all findings**. The producer ceiling for a
+  product-token version is now 55, inside LOW.
+  ([#681](https://github.com/awslabs/ferret-scan/issues/681))
+
+  One label covers more than the issue says: the office metadata block emits `Application:` for
+  **three** container families — OOXML `docProps/app.xml <Application>`, ODF `meta.xml
+  <meta:generator>` and legacy OLE `SummaryInformation/AppName` — so the same finding appeared in
+  `.doc`/`.xls`/`.ppt` too. The rule here is keyed on the value's shape rather than on the label, so it
+  covers all of them without naming any. Conversely **OpenOffice is not affected**, contrary to the
+  issue's "LibreOffice/OpenOffice": its signature is `OpenOffice.org/3.4.1$Unix`, and a three-part
+  version is not a dotted quad — measured at zero findings.
+
+  **It also made measurement baselines vacuous, which is how it cost real time.** During
+  [#670](https://github.com/awslabs/ferret-scan/issues/670) verification a probe read "the same 2
+  findings as the unplanted base file" as a meaningful zero-delta baseline; those two findings were this
+  one plus the `APPLICATION_INFO` from the same element, so the baseline was measuring nothing and
+  nearly hid a genuine leak.
+
+  **A ceiling, not the veto the issue proposed — because neither half of "veto a dotted quad in a
+  producer metadata field" is available here.** The field is not knowable: a metadata value reaches the
+  validator as an ordinary line of document text, and measured, a value in `docProps/app.xml` and the
+  identical text written as a **body paragraph** produce byte-identical findings, both with
+  `validation_path: document`. So "in a metadata field" would really mean "on a line starting with a
+  label", which a document's own body can write — the direction the `secrets` validator explicitly
+  rejects, because a negative list of identifier field names lets an author suppress a real value by
+  relabelling, and the reason `ipaddress` deliberately has no "header contradicts" arm. And a veto would
+  remove the value from the report, which under the sink rule is the one thing that stops it being
+  redacted. So the predicate is the RFC 9110 product-token shape already tested by
+  `isProductVersionAt` — bytes adjacent to the value, unreachable by relabelling — and the consequence
+  is a ceiling inside LOW. 55 is the number four other validators already use for "the surroundings
+  contradict the value" (`secrets`, `ssn`, `email`, `socialmedia`).
+
+  **Measured for recall rather than assumed.** A fresh sweep of **26,010** files under `/Applications`,
+  `/Library` and `/System/Library` found 11 occurrences of this shape and 4 distinct values, **every one
+  a software version** — `IslandUpdater/150.1.96.29` and `/151.1.97.29`, `Chrome/102.0.0.0`,
+  `Framework.framework/Versions/153.1.100.18`. Zero genuine addresses. Across **623 real documents**
+  (399 Office containers + 224 PDFs) the change loses and gains **no findings at all** — a ceiling moves
+  a confidence, never a count, so the value is still reported and still redacted — the **HIGH band is
+  unchanged** in both populations, and exactly **3 findings move 75 → 55**. A port or CIDR suffix still
+  outranks the ceiling, because such a suffix is welded to the value: `Gateway/52.94.236.248:8080` stays
+  HIGH. The URL-authority shape cannot match at all, since in `https://52.94.236.248` the byte before
+  the quad is another `/` rather than a letter.
+
+  **The honest residual:** a genuine address written immediately after a name and a slash with no port —
+  `Server/52.94.236.248` — moves from 75 to 55. That shape occurred in neither sweep, and it is a
+  demotion, so it costs a confidence band rather than the value.
+
+  Not fixed here, and filed separately: the same provenance values reach **100 HIGH with no ceiling at
+  all** when the product name happens to contain a validator's positive keyword — `Application: Acme
+  Server Manager 26.8.0.3` → `IP_ADDRESS` 100, and the same escape exists in `ssn`, `creditcard`,
+  `phone`, `vin` and `intellectualproperty`. That is not fixable value-intrinsically (`Acme Server
+  Manager 26.8.0.3` is indistinguishable from `Server 10.0.0.1 is down`), so it needs the metadata-field
+  context that no content validator currently has.
+
+- **sarif, gitlab-sast, docs (`checks.md`):** **49 of 64** detection types had no description, so every
+  report about them said only *"<TYPE> Detected / Sensitive data of type <TYPE> was detected in the
+  scanned content"* — the entire explanation a reviewer gets in a code-scanning UI. Now **0 of 64**.
+  ([#662](https://github.com/awslabs/ferret-scan/issues/662))
+
+  Recounted at HEAD first, because both of the issue's headline numbers were wrong: it says 24
+  documented and 40 undocumented; the real split was **15** with a `SARIFShort` and **49** without, and
+  **37 types had nothing in any field**. 45 of 64 had no GitLab check description, 49 no remediation,
+  56 no display name. Every figure here is from the registry, and `core.TypesWithoutDescription()` now
+  reports it so the gate and the documentation cannot drift into two hand-counts.
+
+  **The gap was systematic, not 49 separate omissions, and the registry proves it: 10 of its 37 keys
+  are not detection types at all.** `SECRETS`, `METADATA`, `SOCIAL_MEDIA`, `SOCIAL_MEDIA_CLUSTER`,
+  `API_KEY`, `CLOUD_RESOURCE_ID`, `GPS`, `PII_PERSON`, `PII_LOCATION` and `PII_ORGANIZATION` are
+  validator-level family names that no finding ever carries. The map is keyed by the **sub-type** a
+  validator emits, but it was **populated at validator level** — so carefully written copy sat on keys
+  nothing looks up, while the sub-types that actually reach a report looked up nothing. `CREDIT_CARD`
+  had copy and a sensitivity weight of 10; `VISA` had neither.
+
+  **So the fix is inheritance, not 49 bespoke strings.** Writing prose per type is the per-instance fix
+  and cannot stay complete — sub-types are minted by validators, so the next one arrives with no copy
+  and nothing notices, which is how this reached 49. `core.DescribeType` resolves a sub-type to its
+  family **field by field**, because the registry's key sets differ per consumer by design: a type can
+  have its own SARIF copy while inheriting a GitLab remediation, and taking the parent wholesale on the
+  first empty field would overwrite copy the type does define. The pattern was already here —
+  `sarifCloudDesc` is one shared descriptor reused across every cloud sub-type — and this generalises
+  it. **49 of 64 types now resolve their description through a family.**
+
+  Six families had no descriptor anywhere and got one written: `BANK_ACCOUNT`, `MEDICAL_ID`,
+  `PHYSICAL_ADDRESS`, `OTP`, plus `DATE_OF_BIRTH` and `DRIVERS_LICENSE`, which have no family. These are
+  the types where the generic string was worst: a routing number with an account number is enough to
+  move money and the report did not say so; an MFA **seed** is a permanent second factor, so the remedy
+  is to re-enrol the account rather than delete the line; an NPI identifies a practitioner and is
+  published in a public registry, while an MRN identifies a patient — the report could not tell a
+  reviewer which of those they were looking at. Weights are set against the scale already in use
+  (`CREDIT_CARD` 10, `SECRETS` 9, `CLOUD_RESOURCE_ID` 7, `EMAIL` 5, `METADATA` 3) rather than invented,
+  and a test pins the ordering that matters: a credential outranks an address.
+
+  **`typeDescriptors` is untouched.** Its contract says *"Do NOT collapse the empty fields into shared
+  values"* and `typemeta_mirror_test.go` asserts it is a byte-for-byte mirror of the legacy formatter
+  maps — that mirror is what proves the migration lost nothing, so resolution happens in a new accessor
+  instead, and the registry wins any field it defines. Supplementary copy can only ever **fill** a gap,
+  which a test asserts directly.
+
+  The knock-on is the visible half: **`docs/checks.md` grows from 26KB to 43KB**, generated from the
+  same registry, so filling a description improves the SARIF rule, the GitLab vulnerability entry and
+  the documentation page in one edit. `SARIFSensitivityWeight` coverage also goes to 64 of 64, which
+  matters because 49 types were previously ranked at the default 5.0 — including every card brand,
+  whose family carries 10, and every token type, whose family carries 9.
+
+  **The gate's allowlist is empty, deliberately.** `TestEveryKnownTypeHasADescription` fails for any type
+  with no copy, and `typesAwaitingDescription` exists so that a future type that genuinely cannot be
+  described is recorded in one visible place that can only shrink — rather than the guard being deleted,
+  which is what happens to a test that blocks unrelated work. A stale exemption fails too. Five more
+  guards hold the mechanism: inheritance must carry at least 30 types (so nobody can satisfy the gate by
+  pasting 64 strings), every family named must be able to supply copy, inheritance must stay a single
+  hop, the registry must win every field it defines, and an unknown type must still resolve to nothing
+  so its consumer falls back as documented. Two compiling mutations — emptying the family map, and
+  dropping the six new descriptors — fail the gate with 47 and 18 undescribed types respectively.
+
+- **suppressions, redaction:** a finding suppressed by a rule was **still redacted**. The report said
+  nothing was found while the output file had been rewritten in the suppressed spans:
+
+  ```
+  report:   results: []                    suppressed: 2
+  artifact: Employee SSN: [SSN-REDACTED]   <- rewritten despite being suppressed
+  ```
+
+  Suppressing a finding now excludes it from redaction as well as from the report; **unsuppress it to
+  have the value rewritten**. ([#697](https://github.com/awslabs/ferret-scan/issues/697))
+
+  **The two channels disagreed, and `--stdin` was already right.** `cmd/stdin.go` filters before
+  redacting, so on identical input with identical rules the stdin path left the values intact and the
+  file path rewrote them. That is what makes this a consistency fix rather than a fresh behaviour
+  decision: the file path was brought to the channel that already did the agreed thing. The
+  disagreement was invisible by reading, because each path looks correct on its own.
+
+  The cause is an ordering one. Redaction happens **inside the worker pool**, deliberately, so the
+  extracted content is not derived a second time — and suppression was applied afterwards, in `cmd`, so
+  the redactor received every match. `JobConfig.SuppressionFilter` now carries the predicate into the
+  pool. A **func value** rather than the suppression manager: `internal/parallel` has no business
+  importing `internal/suppressions`, and a predicate is the whole of what redaction needs. Nil means
+  "nothing is suppressed", so every embedder that does not set it keeps its current behaviour.
+
+  **What it costs, and why it is disclosed.** A suppressed value now stays in the redacted copy in
+  cleartext. That is the intent — the user said the finding was not a problem — but under the sink rule
+  it means a rule that is wrong, or that has outlived its reason, is invisible in the report while the
+  value is still in a file they might forward. So a redaction run that skipped anything for this reason
+  says so on stderr with the count and names the remedy. Deliberately **stderr rather than the
+  structured output**: this is not a gap in what the tool did, it is the user's own decision being
+  honoured, and a new `stats` key would change the output schema for every consumer.
+  `--show-suppressed` already lists the individual findings.
+
+  Five assertions, and the two controls are the load-bearing ones. Both-suppressed keeps both values;
+  **nothing-suppressed** must rewrite both — without which a build that redacted nothing at all would
+  pass the first case perfectly; and the **mixed** case pins the shape a blanket implementation gets
+  wrong in either direction: the suppressed SSN survives while the unsuppressed card is still rewritten,
+  so one suppression cannot become a silent hole in the whole file. A fourth asserts the two channels
+  agree, and a fifth pins the disclosure — including that it does **not** fire when there is nothing to
+  disclose, since a note that always appears is a note nobody reads.
+
+  One measurement trap worth recording, because the first attempt at the cross-channel test fell into
+  it: a rule's identity includes the source **basename**, so suppressions generated from a file scan do
+  not match stdin findings at all. Comparing the channels with one shared rule file measures nothing —
+  the rules simply fail to apply and both sides look unsuppressed. Each channel's rules are generated
+  from that channel.
+
+- **suppressions (expiry):** a generated rule expired **one week** after it was created, always, and
+  there was no way to ask for anything else. Because `IsSuppressed` skips an expired rule with a bare
+  `continue`, a committed baseline simply stopped working seven days later with nothing to indicate it.
+  Generated rules no longer expire; expiry is opt-in via `--suppression-expires <duration>`.
+  ([#696](https://github.com/awslabs/ferret-scan/issues/696))
+
+  Measured on this repository's own `.ferret-scan-suppressions.yaml`: **all 245 rules** — 92 of them
+  `enabled: true` and hand-reviewed — carried `expires_at: 2026-05-28`, so the file had been inert for
+  about **four months** while its own header said contributors and CI shared it as a baseline. Nothing
+  in any run said so, and `suppressed` read 0 whichever suppression file was passed.
+
+  A suppression is a decision someone made deliberately, so it should last until someone changes it.
+  The default was removed at all three creation sites — `AddSuppression`, the batch
+  `--generate-suppressions` path, and the web-UI undo path — and an explicit `expires_at` written by
+  hand still wins. Removing a default must not remove a capability, so `--suppression-expires` keeps
+  expiry available for a team that wants suppressions to lapse and be revisited.
+
+  **And skipping an expired rule is no longer silent.** A run in which a rule *would* have suppressed a
+  finding but had lapsed now warns with the count and the oldest expiry date. The count is taken at the
+  moment of **matching** rather than by walking the file, because that is the number an operator can act
+  on: "3 findings are in your report that your own rules were meant to suppress" is actionable, where
+  "the file contains 245 expired rules" does not say whether any of them mattered.
+
+  Two implementation details worth recording. The counter is **atomic** and its date is guarded by its
+  **own** mutex rather than `indexMu` — `IsSuppressed` holds `indexMu` read-locked across the match loop
+  and the counter is incremented from inside it, so reusing that lock would deadlock on the write side,
+  which would present as a hung CI job rather than a failure. And the redaction filter added for
+  [#697](https://github.com/awslabs/ferret-scan/issues/697) calls `IsSuppressed` from worker goroutines,
+  so the concurrency is real rather than hypothetical; a test drives 8 goroutines × 50 matches under
+  `-race` and requires the count to be exact, since a lost increment would silently under-report.
+
+  The committed baseline is **deliberately not regenerated here**. A regeneration is not the 245 rules
+  the file holds: measured, `--generate-suppressions` over `internal/validators` alone produces **3,489**
+  rules and over the whole repository **9,658** (135,214 lines). The existing 245 was a curated subset,
+  and re-deriving it is a judgement about which findings in this codebase are acceptable — not something
+  to land alongside a mechanism change. The file stays as it is; with this change, regenerating it will
+  at least produce rules that do not lapse.
+
+  **The option is settable in config, and it no longer speaks only Go durations.** The first version was
+  a bare `time.Duration`, and Go's duration syntax has no `d` and no `w` — so `720h` was the only way to
+  say 30 days, and `30d`, `4w`, `30` and `2026-12-31` were all `parse error`. That is the wrong
+  vocabulary for a review interval measured in weeks. One parser, `suppressions.ParseExpirySpec`, now
+  reads every form and is shared by the flag and the config key so they cannot disagree:
+
+  | what you write | means |
+  |---|---|
+  | `never` (or omitted, or `0`) | no expiry — the default |
+  | `30` | 30 days |
+  | `30d` / `4w` | 30 days / 4 weeks |
+  | `720h` / `90m` | any Go duration |
+  | `2026-12-31` | an absolute date — every rule from that run lapses the same day |
+
+  A bare number means **days** deliberately: nobody sets a suppression to lapse in 30 seconds, and
+  reading it that way would silently expire every rule in the run. An absolute date is accepted because
+  "expire these before the next audit" is not expressible as a duration — every rule should lapse on the
+  same day, not N days after whenever the run happened. Anything unparseable is refused with the list of
+  forms rather than turned into some lifetime nobody asked for. `d` is 24h and `w` is 168h, wall-clock
+  rather than calendar, which is stated in the code and the docs rather than hidden — an hour of DST
+  drift does not matter to a review interval, and calendar arithmetic would mean carrying a timezone in
+  a file shared across machines.
+
+  Config: `suppressions.expires_in`, a profile's `suppression_expires_in`, or `--suppression-expires`,
+  resolving in that order with the flag winning — the same shape `generate_suppressions` already uses.
+  Both shipped example configs carry the key, annotated, and both ship `never`: the examples are copied
+  as a starting point, so any other default would hand the one-week-inert-baseline defect to everyone
+  who copies one.
+
+  **The alignment is a guard, not an edit.** Five assertions hold the four surfaces together — the
+  parser, the flag's help line, both example configs, and each documentation page separately — because a
+  reader lands on one page and "it is documented somewhere" is not the same as "the page you are reading
+  is correct". The documented forms are asserted against `ParseExpirySpec` itself, so the test cannot
+  pass by agreeing with a stale list, and precedence must be stated in the order it actually resolves:
+  silence there reads as "these are equivalent", and a reader who sets the config key and watches the
+  flag win concludes the config key is broken.
+
+  That guard earned itself immediately: **the flag was registered and absent from `--help`**, so it was
+  undiscoverable. `internal/help/help.go` is hand-written prose, which is exactly the drift
+  `documented_flags_test.go` records ("40 flags are registered and 37 appear in the help text"), and
+  widening the parser without widening the help would have produced #686's defect in reverse — a
+  capability nobody can find rather than one that does not exist.
+
+  Five assertions, and the third is the floor: a generated rule carries no expiry; opting in produces
+  one of the requested length and zero still means none; **a rule with no expiry still suppresses** —
+  without which "removed the expiry" could have meant "broke matching"; an expired rule is counted and
+  dated, with an older expiry moving the reported date backwards; and the counting is race-free.
+  Restoring the one-week default fails the first two with the exact dates.
+
+- **cloudresources, driverslicense:** two more sites took a byte offset from a `strings.ToLower` copy
+  and applied it to the **original** string — the class that has already produced four shipped bugs
+  (#658's two panics, #660's two silent misreads). `strings.ToLower` is not length-preserving: 25 runes
+  shrink and 2 grow, so a length-changing rune before the match shifts every subsequent offset. Both now
+  use `internal/bytefold`, which preserves byte positions.
+  ([#659](https://github.com/awslabs/ferret-scan/issues/659))
+
+  **`extractAzureResourceType` corrupted or lost its answer.** Measured on an Azure resource path with a
+  single length-changing rune before `/providers/`:
+
+  | `resourcePath` | returned |
+  |---|---|
+  | ASCII | `Microsoft.Compute/virtualMachines` ✓ |
+  | one `K` (U+212A) | `s/Microsoft.Compute` — shifted two bytes |
+  | one `İ` (U+0130) | `""` — **the resource type is lost** |
+  | forty `İ` | `"\xb0İİİİ…/providers"` — mojibake carrying an **invalid UTF-8 byte** |
+
+  **`markerModifiesLabel` returned the wrong answer.** Its offset was handed to
+  `markerOpensAsideAfter`, which indexes the original line, so the aside window landed elsewhere: on
+  `Driver License<rune> D1234567 (test record)` the bytes inspected were `"7 (see note)"` — a digit of
+  the value — with one `İ`, and `"\xb0İİİİİ "` with forty. Measured with the fold reverted, the verdict
+  flips **true → false** for U+0130, U+023A, U+023E and U+1E9E. True means "an aside marks this as a
+  test value, suppress it"; false means it is reported — the same silent shape as #660.
+
+  **Reachability through the CLI is not demonstrated for either site, and that is stated rather than
+  glossed.** An Azure resource ID whose subscription segment holds one of these runes yields **zero**
+  findings on both builds — the upstream matcher rejects it before the helper is reached, since such a
+  segment is not a valid GUID. And the driver's-licence line is suppressed on both builds, because
+  `strongSuppressKeywords` fires on "test" anywhere on the line "regardless of how strong" the positive
+  signal is, independently of this offset path. So both are wrong **answers from their functions**
+  rather than measured changes in what the tool reports. The fix stands on two other things: the
+  functions being correct, and the class — an offset applied to a string it was not computed from is a
+  defect whatever happens to mask it today, and two of the four earlier instances were panics that took
+  a whole file to 0 findings. This is the same position #659 records for the video extractor:
+  "confirmed mechanism, reachability UNTESTED".
+
+  **The class is now gated by an AST guard, not a grep.** Any `strings.Index`/`LastIndex`/`IndexAny`/
+  `IndexByte`/`IndexRune` whose **haystack** is a `strings.ToLower`/`ToUpper` call fails
+  `TestNoProductionCodeIndexesAToLoweredCopy`. The AST matters twice over: three previous regexp guards
+  in this repository matched their own explanatory comments, including a comment quoting the defective
+  call in order to explain it — and a grep cannot tell `strings.ToLower(x) == y` (fine, no offsets) from
+  `strings.Index(strings.ToLower(x), y)` (the defect), which the tree distinguishes exactly. It walks
+  246 production files and 18,625 call expressions, with floors on both counts so a walk that finds
+  nothing cannot read as a clean tree, and the root is located by climbing to `go.mod` rather than
+  `filepath.Abs("..")` — a previous guard resolved its root that way, landed one level short, and
+  checked one site instead of three while reporting success.
+
+  Seven controls accompany it: the two real shapes, `LastIndex`, `ToUpper`, and three that must **not**
+  fire — a folded *needle* alone, a comparison, and `strings.Contains`, none of which uses an offset.
+  Reverting the two fixes makes the guard name both sites by file and line.
+
+  Behaviour is pinned separately, because a guard on the *shape* cannot tell whether the replacement is
+  correct. Both tests sweep **every** rune below U+3000 whose lowercase differs in byte length, at one
+  and at forty repetitions, and both carry a non-vacuity floor requiring that set to be non-empty. The
+  driverslicense test asserts **invariance** rather than a fixed verdict — what the aside rule decides is
+  its own business; what must not happen is the answer depending on a rune the rule is not about — and it
+  requires its two line shapes to produce **different** verdicts, so it cannot pass on a rule that always
+  returns one value.
+
+  Note the earlier item of #659 needs no change: the video extractor was already converted to
+  `bytefold`, and its own comment records that the correction is what made the adjacent guard bite.
+
+- **tests (detector):** the line-memo complexity guard now measures on the CPU clock with a fixture large enough to resolve, ending a macos-latest flake that made unrelated PRs look red. `TestAssignLineColumnsMemoIsLoadBearing` failed at **2.90x against its 2.5 bound on CORRECT code**, with `base=1.690ms` — a single wall-clock reading below `perfguard.MinMeasurableCPU`, so mostly scheduling noise. Its own comment had predicted this and named the remedy: *"either this fixture grows until it clears the clock, or the pair moves onto `internal/perfguard.Measure`"* — and the answer is **both**, where doing only the second would have looked like a fix while changing nothing. At the old size the base CPU reading is **242µs**, under the floor, so `Measure` falls back to the wall clock on every platform and the statistic is still the contended one that flaked: measured on darwin/arm64, 4,000 matches → 242µs (wall), 16,000 → 1.000ms (wall), 48,000 → 3.400ms (cpu), **96,000 → 9.025ms (cpu)**. 96,000 is the first size with real *margin* above the floor rather than the first to cross it. `Measure` supplies the three things whose absence caused the failure: a CPU clock rather than wall (contention steals wall time without changing cycle count), a ratio of **minimums** over two pairs rather than one sample, and the tick gate, which declines to divide a base the clock cannot resolve instead of reporting noise as a regression. **The regression is still caught, verified by forcing the memo hit false in `ResolveLineSpans`: correct code reads 0.99x–1.05x and the defect reads 8.18x**, so the unchanged 2.5 bound now sits 2.38x below the worst correct reading and 3.27x above the regressed one — both wider than before and both over the repo's 1.5x convention. Correct-code cost is 0.48s; the 42s regressed run is only ever paid when the defect is present. Fixtures are built **outside** the timed region, one per timed call, because `AssignLineColumns` mutates its argument — reusing a slice would time an already-assigned set on the second pair, and building inside the closure would charge each reading for a construction cost differing between base and big by exactly the thing being measured, the line length. The column validation moved out of the timed path and now runs on **every** fixture rather than one, because an assignment that silently stopped happening is fast and would report a beautifully flat ratio.
+
 
 ### 🔨 Internal
 
@@ -731,11 +1211,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **web:** wire `--config`, `--suppression-file`, and `--exclude` through web mode so the server uses the same configuration as the CLI instead of always reading `~/.ferret-scan/suppressions.yaml`. New `/config-info` endpoint surfaces configured exclude patterns to the front-end.
 - **suppressions:** append `# pragma: allowlist secret` to `hash:` lines in the suppression YAML so the file itself doesn't trigger secret-scanner false positives. Idempotent on re-save.
 - **web:** suppression expiration bulk operations — Make Permanent / Renew 30 Days actions on selected rules, backed by `POST /suppressions/bulk-update-expiration`.
-- **pdf:** a PDF longer than 50 pages is no longer truncated **in silence** ([#626](https://github.com/awslabs/ferret-scan/issues/626)). The page budget stays at 50 — raising it is a cost decision that wants a measurement, and disclosure is correct at any value — but it now reaches every coverage channel instead of none. Measured on the parent commit, a 60-page PDF with an SSN on page 1 and six more on pages 55–60: **one finding, exit 0, `files_skipped: 0`, no `files_not_examined`, zero bytes of stderr.** Six cleartext SSNs neither reported nor, under the sink rule, redacted, with nothing anywhere saying the scan had stopped. Now: `files_not_examined: 1`, a stderr note naming the numbers (`only the first 50 of 60 pages ... the remaining 10 pages was NOT scanned`), and **exit code 3** under `--fail-on-incomplete` where it was 0. The cause is `CauseCutShort`, not `CauseNoText`, because it is defined for exactly this — *"a budget, size cap or timeout fired, so the file is PARTLY scanned"* — and the remedy differs: split the document or raise the budget, versus OCR an image-only PDF. **Truncation is tested before emptiness**, for the reason the SVG extractor already documents: a document whose first 50 pages carry no text layer is *both* truncated and empty, and testing emptiness first reports "the file parsed but held no document text" about a document that was cut short — a true disclosure under a false heading. The cap also stopped **overwriting** `PageCount`: `content.PageCount = maxPages` had destroyed the only record that the document was longer than what was read, so nothing — including the disclosure, which is why there wasn't one — could tell a 50-page document from the first 50 pages of a 200-page one. The real count stays in `PageCount` and the bound moves to `PagesScanned`. That change made a **latent path load-bearing**: `estimatePageNumber` distributes the *extracted text's* lines across a page count, so its denominator must be the pages that text spans, and while the two numbers were the same it was accidentally right — hence a `scannedPageSpan()` accessor rather than an inline conditional, so a second consumer of the extracted text cannot pick the wrong one of the two counts. Verified there is no other observable change: the same 60-page fixture reports the same 3 findings at the same lines under both binaries, and both report `PageCount: 60`. The source comment calling the literal "configurable" is also gone — it never was, with no flag, no config key and no override — and `docs/reference/quotas-and-limits.md` now lists the budget and explains why it is a **coverage** limit rather than only a performance one. **6 mutations, 6 caught**; two more were discarded as unsound rather than counted, one semantically null (`>=` and `>` both yield `min(PageCount, 50)`) and one a build error, and a seventh correctly survives because it is a benign rewording that keeps the numbers the assertion actually requires.
 
 ### ⚡ Performance
-
-- **socialmedia (performance):** the validator recompiled regexes **once per match**, allocating **~34 KB per finding** and roughly **1,730× the size of the input**. Measured on the shipped `config.yaml`, without the race detector, so this is the path a user is on: a **126 KB** input producing 6,400 matches allocated **207.8 MB** across **2,384,151 allocations** — 372 per match — with `regexp.compile` accounting for **522 MB of an 861 MB** profile (60%). Two shapes caused it: **43 inline `regexp.MustCompile` calls over only 16 distinct literal patterns**, inside the per-platform username validators (`validateTwitterSpecific`, `validateGitHubSpecific`, `validateLinkedInSpecific`, and eight more, all reached once per finding); and **5 uses of the package-level `regexp.MatchString(pattern, s)`, which compiles its pattern on every call** — the harder one to see, because the call site reads like a plain predicate, and after the first fix the *remaining* 333 MB of 667 MB was all reached through it. Every literal pattern is now compiled once at package init. **Result: 217.4 MB → 84.4 MB (−61%), 2,384,151 → 689,928 allocations (−71%), ~34 KB → ~13.2 KB per match, 1,730× → 674× the input, and 24% faster (287 ms → 218 ms).** **No behaviour change, proven rather than asserted:** 3,087 findings **byte-identical** across 40 fixtures built with deliberately awkward usernames (1 and 2 characters, 101 characters, `...`, `___`, all-digits, `UC…` channel IDs, and the placeholder forms `[USERNAME]`, `{user}`, `<name>`, `${env}`, `{{tpl}}`), and `UPDATE_GOLDEN=1` changes 0 files. This is also what made CI fragile, which is how it was found: under `-race` the same allocation amplifies **~22×**, so the complexity guard's socialmedia target fell from **6,930-8,142 MB to 3,241 MB** as a side effect. A regression guard parses the file with **`go/ast`** and fails on any compile inside a function body — line-scanning was tried first and a re-inlined compile **survived** it, because a bare `}` ending an inner `if` reset its "am I in a function" flag, and brace counting cannot work here either since the patterns themselves contain literal braces (`{22}`, `\{.*\}`) inside backticks. Four functions are exempted **by name with a stated reason** — one genuinely dynamic pattern built with `regexp.QuoteMeta`, and three configure-time compile helpers whose results are cached — and a stale exemption is itself a failure, so an exemption cannot outlive its justification. Closes [#606](https://github.com/awslabs/ferret-scan/issues/606).
 
 - **suppressions:** `IsSuppressed` is now O(1) via a hash index rebuilt on load and on every save. Per-call microbench (no-op match against a non-matching rule set):
 
@@ -746,142 +1223,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     | 10,000 | 23,236 ns  |  640 ns  |  36×    |
     | 50,000 | 113,155 ns |  619 ns  | 183×    |
 
-- **office (container parts):** **eleven** container parts that hold text a person typed were read by
-  nothing, so their values were reported by no validator and — under the sink rule, where only reported
-  findings reach the redactor — written to the "redacted" copy in cleartext at exit 0 with an empty
-  stderr. Verified by planting a detectable value in each part of real LibreOffice-produced containers.
-  ([#680](https://github.com/awslabs/ferret-scan/issues/680))
-
-  Six were the parts [#680](https://github.com/awslabs/ferret-scan/issues/680) named: PowerPoint review
-  comments (`ppt/comments/modernComment_*.xml`), `ppt/tags/`, `ppt/presentation.xml`, `xl/tables/`
-  column headings, and chart titles in `xl/charts/` and `word/charts/`. `ppt/presentation.xml` is the
-  instructive one — it was always *resolved*, since every slide is found through its relationships, so
-  it sat in the package map while no pass ever extracted its own text. Resolved and scanned are
-  different things.
-
-  **The other five were found by the new guard, not by the issue.** Classifying every XML part name
-  observed across 399 real `.docx`/`.xlsx`/`.pptx` left 23 unclassified, and five of those hold authored
-  text: `word/people.xml`, `ppt/authors.xml` and `ppt/commentAuthors.xml` carry comment authors'
-  **display names** (present in 47, 13 and 26 containers), the Word and PowerPoint `diagrams/data*.xml`
-  parts carry SmartArt — an org chart is a diagram full of names — and `word/glossary/document.xml`
-  carries saved building blocks. Reading them reports **+152 real personal names** on that corpus that
-  the tool previously missed entirely, +140 of them in the HIGH band. The tool already reported authors
-  out of `docProps`, so missing them here was an inconsistency as well as a leak.
-
-  **The gate is that no part may be unclassified.** Coverage had been decided by an allowlist of the
-  parts somebody had thought of, and nothing asserted the list was complete — which is why this class
-  has now been fixed seven times, each fix guaranteeing the next. Every part is now *read*, or
-  *deliberately skipped with a recorded reason*; a part that is neither fails
-  `TestEveryKnownOOXMLPartIsClassified`, which walks a committed inventory of the 90 part-name families
-  observed in the wild. When a new Office release adds a part, someone has to decide about it instead of
-  it being silently unread. The inventory holds schema conventions only — digit runs normalised — so it
-  carries no content or file names from any document.
-
-  **Reading everything was tried first, and measured, and rejected.** It cost **+3,348 findings
-  (+47.7%), +680 HIGH**, dominated by template parts rather than content: `ppt/slideLayouts/*` alone
-  re-reported a deck's copyright boilerplate once per layout, up to 26 times, plus layout ids as `PHONE`;
-  `xl/externalLinks/*` gave `Hong Kong` and `Middle East` as `PERSON_NAME` at confidence 92-100. That is
-  the `customXml` result ([#679](https://github.com/awslabs/ferret-scan/issues/679): 403 findings, false
-  positives throughout) at eight times the scale. Each such part is now an exclusion carrying the number
-  that put it there.
-
-  **Two false-positive sources were found and closed by measurement during this change, not after it.**
-  Taking all character data pulled in chart *numeric caches* — a 17-digit cached datum as `VIN` at
-  confidence 90, 10-digit values as `PHONE`, 9-digit as `SSN` — so extraction now takes only DrawingML
-  `<a:t>` runs and label-bearing attributes, never arbitrary character data. And the attribute allowlist
-  is keyed on **(element, attribute)** rather than attribute name, because `val` is OOXML's universal
-  scalar attribute: keyed on the name alone it matched `<c:axId val="1829252287"/>` and reported 24 chart
-  axis identifiers as `PHONE`/`SSN`. Notably this refutes the reason #680 gave for reading chart parts at all
-  — "`word/chartN.xml` held `PERSON_NAME` and `VIN` on the real corpus" — because both of those were
-  themselves cache false positives; the row stands on chart titles, which are authored text.
-  `p15:presenceInfo/@userId` is excluded for the same reason: a name in one container, a numeric
-  internal id in 18, and 21 `SSN` false positives.
-
-  Corpus accounting, because the first pass got it wrong: of 452 candidate containers, 17 could not be
-  read at all and the tool reported a further 36 as `files_not_examined`. Those 53 were being counted as
-  zero-finding files, inflating every percentage. All figures here are over the **399** the scanner
-  reports it examined in full, with `files_not_examined == 0` asserted per file — the tool had been
-  disclosing this on stderr all along ("NOT FULLY EXAMINED: 1 of 1 file"), and the measurement script
-  was discarding stderr.
-
-  Final measurement: **+152 findings, every one `PERSON_NAME`**, with the LOW band unchanged at 3,031 and no new `PHONE`, `SSN`, `VIN` or `DATE_OF_BIRTH`. `customXml/item*.xml`
-  remains excluded and still has no precision story.
-
-  The per-part redaction contract gains **12 rows**, one per newly-read part, each asserting both
-  directions — the value is REPORTED, and it is absent from every member of the redacted output read
-  decompressed. All 14 pre-existing rows pass on the parent commit and exactly the 12 new ones fail
-  there, which is the signature of a tool fix rather than a fixture change. And the golden corpus, which
-  had no case whose subject was which parts are read — the structural reason "0 golden files changed"
-  was the result for a change that altered extraction on hundreds of real documents — gains one, whose
-  snapshot holds a chart title, a comment author and SmartArt text while the chart's numeric cache stays
-  absent.
-
-- **sarif, gitlab-sast, docs (`checks.md`):** **49 of 64** detection types had no description, so every
-  report about them said only *"<TYPE> Detected / Sensitive data of type <TYPE> was detected in the
-  scanned content"* — the entire explanation a reviewer gets in a code-scanning UI. Now **0 of 64**.
-  ([#662](https://github.com/awslabs/ferret-scan/issues/662))
-
-  Recounted at HEAD first, because both of the issue's headline numbers were wrong: it says 24
-  documented and 40 undocumented; the real split was **15** with a `SARIFShort` and **49** without, and
-  **37 types had nothing in any field**. 45 of 64 had no GitLab check description, 49 no remediation,
-  56 no display name. Every figure here is from the registry, and `core.TypesWithoutDescription()` now
-  reports it so the gate and the documentation cannot drift into two hand-counts.
-
-  **The gap was systematic, not 49 separate omissions, and the registry proves it: 10 of its 37 keys
-  are not detection types at all.** `SECRETS`, `METADATA`, `SOCIAL_MEDIA`, `SOCIAL_MEDIA_CLUSTER`,
-  `API_KEY`, `CLOUD_RESOURCE_ID`, `GPS`, `PII_PERSON`, `PII_LOCATION` and `PII_ORGANIZATION` are
-  validator-level family names that no finding ever carries. The map is keyed by the **sub-type** a
-  validator emits, but it was **populated at validator level** — so carefully written copy sat on keys
-  nothing looks up, while the sub-types that actually reach a report looked up nothing. `CREDIT_CARD`
-  had copy and a sensitivity weight of 10; `VISA` had neither.
-
-  **So the fix is inheritance, not 49 bespoke strings.** Writing prose per type is the per-instance fix
-  and cannot stay complete — sub-types are minted by validators, so the next one arrives with no copy
-  and nothing notices, which is how this reached 49. `core.DescribeType` resolves a sub-type to its
-  family **field by field**, because the registry's key sets differ per consumer by design: a type can
-  have its own SARIF copy while inheriting a GitLab remediation, and taking the parent wholesale on the
-  first empty field would overwrite copy the type does define. The pattern was already here —
-  `sarifCloudDesc` is one shared descriptor reused across every cloud sub-type — and this generalises
-  it. **49 of 64 types now resolve their description through a family.**
-
-  Six families had no descriptor anywhere and got one written: `BANK_ACCOUNT`, `MEDICAL_ID`,
-  `PHYSICAL_ADDRESS`, `OTP`, plus `DATE_OF_BIRTH` and `DRIVERS_LICENSE`, which have no family. These are
-  the types where the generic string was worst: a routing number with an account number is enough to
-  move money and the report did not say so; an MFA **seed** is a permanent second factor, so the remedy
-  is to re-enrol the account rather than delete the line; an NPI identifies a practitioner and is
-  published in a public registry, while an MRN identifies a patient — the report could not tell a
-  reviewer which of those they were looking at. Weights are set against the scale already in use
-  (`CREDIT_CARD` 10, `SECRETS` 9, `CLOUD_RESOURCE_ID` 7, `EMAIL` 5, `METADATA` 3) rather than invented,
-  and a test pins the ordering that matters: a credential outranks an address.
-
-  **`typeDescriptors` is untouched.** Its contract says *"Do NOT collapse the empty fields into shared
-  values"* and `typemeta_mirror_test.go` asserts it is a byte-for-byte mirror of the legacy formatter
-  maps — that mirror is what proves the migration lost nothing, so resolution happens in a new accessor
-  instead, and the registry wins any field it defines. Supplementary copy can only ever **fill** a gap,
-  which a test asserts directly.
-
-  The knock-on is the visible half: **`docs/checks.md` grows from 26KB to 43KB**, generated from the
-  same registry, so filling a description improves the SARIF rule, the GitLab vulnerability entry and
-  the documentation page in one edit. `SARIFSensitivityWeight` coverage also goes to 64 of 64, which
-  matters because 49 types were previously ranked at the default 5.0 — including every card brand,
-  whose family carries 10, and every token type, whose family carries 9.
-
-  **The gate's allowlist is empty, deliberately.** `TestEveryKnownTypeHasADescription` fails for any type
-  with no copy, and `typesAwaitingDescription` exists so that a future type that genuinely cannot be
-  described is recorded in one visible place that can only shrink — rather than the guard being deleted,
-  which is what happens to a test that blocks unrelated work. A stale exemption fails too. Five more
-  guards hold the mechanism: inheritance must carry at least 30 types (so nobody can satisfy the gate by
-  pasting 64 strings), every family named must be able to supply copy, inheritance must stay a single
-  hop, the registry must win every field it defines, and an unknown type must still resolve to nothing
-  so its consumer falls back as documented. Two compiling mutations — emptying the family map, and
-  dropping the six new descriptors — fail the gate with 47 and 18 undescribed types respectively.
-
 - **web:** cache `SuppressionManager` on the `WebServer` with mtime-based reload — eliminates the per-request YAML re-parse that previously dominated `/scan` and `/suppressions` latency. With a 5,000-rule (45k-line) suppression file across 50 sequential requests:
   - `/scan`: 68.7 ms → 28.5 ms per request (**2.4×**)
   - `/suppressions`: 67.3 ms → 29.6 ms per request (**2.3×**)
 
 - **validators:** hoist hot-path regex compilations to package level. Per-call microbench:
-- **pkg/scan:** `RedactText` no longer returns the input **unchanged** while reporting the value redacted ([#631](https://github.com/awslabs/ferret-scan/issues/631)). Measured with the plainest possible call — `ScanText(ctx, text, TextOptions{})` then `RedactText`, no config and no `Checks` — on one line holding six `Copyright (c) 2026 Acme Corporation … CONFIDENTIAL` notices: one INTELLECTUAL_PROPERTY finding at 98%, its reported `Text` a rendered summary ending `[+17 more matches on line]` that **does not occur in the document**, and `Count=1` with output **byte-identical to the input** for all three strategies — six values in cleartext, attested as redacted. A caller writing `if out.Count == len(res.Findings) { ship(out.Text) }` shipped the original. **The safety net was already on the path and could not fire:** `plaintext.RedactString` calls `redactors.RestoreBoundedMatchText`, whose gate needs both `Context.FullLine` and `Metadata[MatchTextTruncatedKey]`, and `apply.go` copied six fields from the public `Finding` with neither among them — so the match could not be located, was skipped at `continue`, and was counted anyway. `Context` is now carried across, and the truncation flag is **derived** rather than plumbed, because `Finding` carries no `Metadata` at all (`mapResult` discards it a layer earlier) and widening a public struct to pass one boolean is a compatibility cost for an internal detail. The condition is exactly where the restore is both needed and safe — the reported text is absent from the input while its own trimmed full line is present — so it cannot mis-fire on a locatable finding, which fails the first test. **`Count` is now the replacements actually made**, not the findings handed in: a match the redactor cannot locate never reaches `redactionMap`, so `Count < len(findings)` became a signal a caller can act on instead of a false attestation, and `Redacted.Count`'s doc comment now says so. **Scope, stated plainly:** the bounded-consolidation leak is closed (six of six masked, all three strategies), the `SOCIAL_MEDIA_CLUSTER` case is **reduced but not closed** — the member on the restorable line is now masked and one handle survives — and for clusters `Count` still cannot reveal the remainder, because one mapping genuinely occurred. `consolidated.go:77-80` already explains why a single `FullLine` cannot rescue a cluster whose members span several lines; carrying the members needs a public-API decision, which #631 keeps open. Not a pinned decision either way: `pkg/scan` contained no occurrence of `cluster`, `bounded`, `consolidat` or `truncat` in code, comments or tests, and `TestRedactText_FindingNotInText` deliberately asserted nothing about `Count`. **5 mutations, 4 caught**, the fifth correctly surviving because `isBoundedMatch` already requires a non-empty `FullLine` and an unlocatable restored value is skipped harmlessly, so the extra precondition is defensive rather than load-bearing — and two earlier attempts at those mutations were discarded as build errors rather than counted as survivals. The must-not-fire direction is covered too: a locatable finding must keep its surrounding prose, since a mis-fired restore would mask the whole line, which is data loss even though it is not a leak.
 
     | function                      | before     | after     | speedup | allocs   |
     |-------------------------------|-----------:|----------:|--------:|---------:|
@@ -899,7 +1245,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **suppressions:** the web flow's hash mismatch — `getString` defaulted missing finding fields to `"Unknown"`, so `mockMatch.Context.AfterText` became the literal string `"Unknown"` when re-creating from a JSON body that omitted empty fields. Returns `""` now, so suppress-then-rescan in the web UI correctly suppresses the finding.
 - **web:** suppressions inside `core.ScanFile` ran against the random temp filename, then matches were renamed to the upload's display name *after*. Suppressions now apply after the rename, so cross-mode rules (CLI rule applied to web scan and vice versa) match consistently.
-- **tests (detector):** the line-memo complexity guard now measures on the CPU clock with a fixture large enough to resolve, ending a macos-latest flake that made unrelated PRs look red. `TestAssignLineColumnsMemoIsLoadBearing` failed at **2.90x against its 2.5 bound on CORRECT code**, with `base=1.690ms` — a single wall-clock reading below `perfguard.MinMeasurableCPU`, so mostly scheduling noise. Its own comment had predicted this and named the remedy: *"either this fixture grows until it clears the clock, or the pair moves onto `internal/perfguard.Measure`"* — and the answer is **both**, where doing only the second would have looked like a fix while changing nothing. At the old size the base CPU reading is **242µs**, under the floor, so `Measure` falls back to the wall clock on every platform and the statistic is still the contended one that flaked: measured on darwin/arm64, 4,000 matches → 242µs (wall), 16,000 → 1.000ms (wall), 48,000 → 3.400ms (cpu), **96,000 → 9.025ms (cpu)**. 96,000 is the first size with real *margin* above the floor rather than the first to cross it. `Measure` supplies the three things whose absence caused the failure: a CPU clock rather than wall (contention steals wall time without changing cycle count), a ratio of **minimums** over two pairs rather than one sample, and the tick gate, which declines to divide a base the clock cannot resolve instead of reporting noise as a regression. **The regression is still caught, verified by forcing the memo hit false in `ResolveLineSpans`: correct code reads 0.99x–1.05x and the defect reads 8.18x**, so the unchanged 2.5 bound now sits 2.38x below the worst correct reading and 3.27x above the regressed one — both wider than before and both over the repo's 1.5x convention. Correct-code cost is 0.48s; the 42s regressed run is only ever paid when the defect is present. Fixtures are built **outside** the timed region, one per timed call, because `AssignLineColumns` mutates its argument — reusing a slice would time an already-assigned set on the second pair, and building inside the closure would charge each reading for a construction cost differing between base and big by exactly the thing being measured, the line length. The column validation moved out of the timed path and now runs on **every** fixture rather than one, because an assignment that silently stopped happening is fast and would report a beautifully flat ratio.
 - **parallel:** fix goroutine leak in `AdaptiveProcessor.adaptiveScalingLoop` — `Stop()` only stopped the ticker; the loop kept blocking on a channel that would never close. Now gated on a `done` chan closed via `sync.Once`. Also fixes a pre-existing data race in `Stop()` between the scaling loop's `adjustWorkerCount` (which swaps the worker pool) and the teardown's pool stop, via `sync.WaitGroup`.
 - **suppressions:** parse errors on a malformed YAML file no longer silently produce an empty rule set — a stderr warning now names the file and the underlying error so users notice that their rules aren't being applied. Missing-file remains silent (the legitimate first-run case).
 - **suppressions:** `RWMutex` around the new hash index makes `IsSuppressed` safe for concurrent use; previously the manager had no synchronization around shared state.
@@ -938,7 +1283,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Bug Fixes
 
 - **pdf:** recover from PDF library panics on corrupted files — `zlib: invalid header`
-- **sarif:** `artifactLocation.uri` is now built with an **empty authority and a percent-encoded path**, fixing three separate conformance defects in one expression ([#633](https://github.com/awslabs/ferret-scan/issues/633)). `"file://" + cleanPath` was correct on POSIX **only by accident** — the path's own leading slash supplied the third one. Fed to `net/url.Parse`, what it actually produced: a Windows path `C:/Users/a/report.txt` became `file://C:/Users/a/report.txt`, parsing to **host=`"C:"`** with the drive letter **gone from the path**, so no consumer resolves the file; `/tmp/a#b.txt` became `file:///tmp/a#b.txt`, whose path parses as **`/tmp/a`** — the `#` starts a fragment and the filename is truncated, so a consumer resolves a *different* file with nothing to indicate it, and `#` is legal in a POSIX filename; and `/tmp/100% done.txt` produced a URI that **does not parse at all** (`invalid URL escape "% d"`), so a strict consumer rejects the artifact location outright. Both specifications are explicit: **SARIF 2.1.0 §3.10.2** says that for a path which is not network-accessible the producer *"SHOULD NOT include the host name"* and that on omitting the authority the URI *"SHOULD start with `file:///`"* — its own example is `file:///C:/src` — while **§3.10.1** requires the value to be *"a string in the format specified by the standard [RFC3986]"*, which an unencoded space or percent violates. **RFC 8089 §2** states that `file:///c:/path/to/file` is *"already supported by the `path-absolute` rule"*, **Appendix D.2** that *"the drive letter (e.g., "c:") is typically mapped into the first path segment"*, and **Appendix B** calls the empty-authority form *"the most common format in use today"*. The construction now goes through `url.URL.String`, so the escaping rules live in the standard library rather than becoming a hand-written character set, and it is verified to **round-trip**: for every case the parsed path equals the original filename exactly. **Only malformed output changes.** Relative paths never reach the line — they take the `%SRCROOT%` `uriBaseId` branch — and an ordinary absolute POSIX path is byte-identical (`file:///tmp/report.txt` either way), asserted against the old expression rather than claimed, with the golden corpus agreeing at **0 files changed** despite containing `file://` artifact locations. Verified that no other site in the tree concatenates `"file://"`, so `gitlab-sast` does not share the pattern. **4 mutations, 4 caught** (dropping the path rooting, adding a host, the opaque `file:/path` form, and reverting to concatenation), plus a test that pins the *old* behaviour in runnable form using `t.Skipf` rather than `t.Errorf` — it documents a defect rather than asserting a requirement, so a future standard-library change should not read as a regression here. **Worth recording about how this was found:** an earlier audit raised it and both of its verifiers **failed to reproduce it**, because on a POSIX developer machine the expression genuinely is correct. A Windows-only formatting defect is invisible to any amount of local end-to-end testing; the cheap proof is a unit test on the mapping function, which is what this ships.
   errors in `ledongthuc/pdf` now return a graceful error instead of crashing the scan.
   Two-layer fix: `ExtractText()` catches panics via defer/recover, and the file router
   goroutines also wrap preprocessor calls in a recover as a safety net.
@@ -947,68 +1291,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v1.5.1] - 2026-02-18
 
 ### 🐛 Bug Fixes
-
-- **cloudresources, driverslicense:** two more sites took a byte offset from a `strings.ToLower` copy
-  and applied it to the **original** string — the class that has already produced four shipped bugs
-  (#658's two panics, #660's two silent misreads). `strings.ToLower` is not length-preserving: 25 runes
-  shrink and 2 grow, so a length-changing rune before the match shifts every subsequent offset. Both now
-  use `internal/bytefold`, which preserves byte positions.
-  ([#659](https://github.com/awslabs/ferret-scan/issues/659))
-
-  **`extractAzureResourceType` corrupted or lost its answer.** Measured on an Azure resource path with a
-  single length-changing rune before `/providers/`:
-
-  | `resourcePath` | returned |
-  |---|---|
-  | ASCII | `Microsoft.Compute/virtualMachines` ✓ |
-  | one `K` (U+212A) | `s/Microsoft.Compute` — shifted two bytes |
-  | one `İ` (U+0130) | `""` — **the resource type is lost** |
-  | forty `İ` | `"\xb0İİİİ…/providers"` — mojibake carrying an **invalid UTF-8 byte** |
-
-  **`markerModifiesLabel` returned the wrong answer.** Its offset was handed to
-  `markerOpensAsideAfter`, which indexes the original line, so the aside window landed elsewhere: on
-  `Driver License<rune> D1234567 (test record)` the bytes inspected were `"7 (see note)"` — a digit of
-  the value — with one `İ`, and `"\xb0İİİİİ "` with forty. Measured with the fold reverted, the verdict
-  flips **true → false** for U+0130, U+023A, U+023E and U+1E9E. True means "an aside marks this as a
-  test value, suppress it"; false means it is reported — the same silent shape as #660.
-
-  **Reachability through the CLI is not demonstrated for either site, and that is stated rather than
-  glossed.** An Azure resource ID whose subscription segment holds one of these runes yields **zero**
-  findings on both builds — the upstream matcher rejects it before the helper is reached, since such a
-  segment is not a valid GUID. And the driver's-licence line is suppressed on both builds, because
-  `strongSuppressKeywords` fires on "test" anywhere on the line "regardless of how strong" the positive
-  signal is, independently of this offset path. So both are wrong **answers from their functions**
-  rather than measured changes in what the tool reports. The fix stands on two other things: the
-  functions being correct, and the class — an offset applied to a string it was not computed from is a
-  defect whatever happens to mask it today, and two of the four earlier instances were panics that took
-  a whole file to 0 findings. This is the same position #659 records for the video extractor:
-  "confirmed mechanism, reachability UNTESTED".
-
-  **The class is now gated by an AST guard, not a grep.** Any `strings.Index`/`LastIndex`/`IndexAny`/
-  `IndexByte`/`IndexRune` whose **haystack** is a `strings.ToLower`/`ToUpper` call fails
-  `TestNoProductionCodeIndexesAToLoweredCopy`. The AST matters twice over: three previous regexp guards
-  in this repository matched their own explanatory comments, including a comment quoting the defective
-  call in order to explain it — and a grep cannot tell `strings.ToLower(x) == y` (fine, no offsets) from
-  `strings.Index(strings.ToLower(x), y)` (the defect), which the tree distinguishes exactly. It walks
-  246 production files and 18,625 call expressions, with floors on both counts so a walk that finds
-  nothing cannot read as a clean tree, and the root is located by climbing to `go.mod` rather than
-  `filepath.Abs("..")` — a previous guard resolved its root that way, landed one level short, and
-  checked one site instead of three while reporting success.
-
-  Seven controls accompany it: the two real shapes, `LastIndex`, `ToUpper`, and three that must **not**
-  fire — a folded *needle* alone, a comparison, and `strings.Contains`, none of which uses an offset.
-  Reverting the two fixes makes the guard name both sites by file and line.
-
-  Behaviour is pinned separately, because a guard on the *shape* cannot tell whether the replacement is
-  correct. Both tests sweep **every** rune below U+3000 whose lowercase differs in byte length, at one
-  and at forty repetitions, and both carry a non-vacuity floor requiring that set to be non-empty. The
-  driverslicense test asserts **invariance** rather than a fixed verdict — what the aside rule decides is
-  its own business; what must not happen is the answer depending on a rune the rule is not about — and it
-  requires its two line shapes to produce **different** verdicts, so it cannot pass on a rule that always
-  returns one value.
-
-  Note the earlier item of #659 needs no change: the video extractor was already converted to
-  `bytefold`, and its own comment records that the correction is what made the adjacent guard bite.
 
 - **pre-commit:** fix hook failing with "Executable not found" after pre-built binaries
   were removed from the repository. Switched from `language:script` to `language:python`
@@ -1020,115 +1302,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
-- **ipaddress (`--confidence`):** a LibreOffice document's own producer signature was reported as
-  `IP_ADDRESS` at **75 — inside MEDIUM**, the band reviewers filter to. The signature is
-  `LibreOffice/26.8.0.3$MacOSX_AARCH64 LibreOffice_project/bce0998a…`, and its four-part version is
-  structurally identical to a dotted quad. It is **unconditional**: measured on all six formats
-  LibreOffice writes — `.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, `.odp` — 10 of 10 containers reported
-  it, and in a document with no PII that was **half of all findings**. The producer ceiling for a
-  product-token version is now 55, inside LOW.
-  ([#681](https://github.com/awslabs/ferret-scan/issues/681))
-
-  One label covers more than the issue says: the office metadata block emits `Application:` for
-  **three** container families — OOXML `docProps/app.xml <Application>`, ODF `meta.xml
-  <meta:generator>` and legacy OLE `SummaryInformation/AppName` — so the same finding appeared in
-  `.doc`/`.xls`/`.ppt` too. The rule here is keyed on the value's shape rather than on the label, so it
-  covers all of them without naming any. Conversely **OpenOffice is not affected**, contrary to the
-  issue's "LibreOffice/OpenOffice": its signature is `OpenOffice.org/3.4.1$Unix`, and a three-part
-  version is not a dotted quad — measured at zero findings.
-
-  **It also made measurement baselines vacuous, which is how it cost real time.** During
-  [#670](https://github.com/awslabs/ferret-scan/issues/670) verification a probe read "the same 2
-  findings as the unplanted base file" as a meaningful zero-delta baseline; those two findings were this
-  one plus the `APPLICATION_INFO` from the same element, so the baseline was measuring nothing and
-  nearly hid a genuine leak.
-
-  **A ceiling, not the veto the issue proposed — because neither half of "veto a dotted quad in a
-  producer metadata field" is available here.** The field is not knowable: a metadata value reaches the
-  validator as an ordinary line of document text, and measured, a value in `docProps/app.xml` and the
-  identical text written as a **body paragraph** produce byte-identical findings, both with
-  `validation_path: document`. So "in a metadata field" would really mean "on a line starting with a
-  label", which a document's own body can write — the direction the `secrets` validator explicitly
-  rejects, because a negative list of identifier field names lets an author suppress a real value by
-  relabelling, and the reason `ipaddress` deliberately has no "header contradicts" arm. And a veto would
-  remove the value from the report, which under the sink rule is the one thing that stops it being
-  redacted. So the predicate is the RFC 9110 product-token shape already tested by
-  `isProductVersionAt` — bytes adjacent to the value, unreachable by relabelling — and the consequence
-  is a ceiling inside LOW. 55 is the number four other validators already use for "the surroundings
-  contradict the value" (`secrets`, `ssn`, `email`, `socialmedia`).
-
-  **Measured for recall rather than assumed.** A fresh sweep of **26,010** files under `/Applications`,
-  `/Library` and `/System/Library` found 11 occurrences of this shape and 4 distinct values, **every one
-  a software version** — `IslandUpdater/150.1.96.29` and `/151.1.97.29`, `Chrome/102.0.0.0`,
-  `Framework.framework/Versions/153.1.100.18`. Zero genuine addresses. Across **623 real documents**
-  (399 Office containers + 224 PDFs) the change loses and gains **no findings at all** — a ceiling moves
-  a confidence, never a count, so the value is still reported and still redacted — the **HIGH band is
-  unchanged** in both populations, and exactly **3 findings move 75 → 55**. A port or CIDR suffix still
-  outranks the ceiling, because such a suffix is welded to the value: `Gateway/52.94.236.248:8080` stays
-  HIGH. The URL-authority shape cannot match at all, since in `https://52.94.236.248` the byte before
-  the quad is another `/` rather than a letter.
-
-  **The honest residual:** a genuine address written immediately after a name and a slash with no port —
-  `Server/52.94.236.248` — moves from 75 to 55. That shape occurred in neither sweep, and it is a
-  demotion, so it costs a confidence band rather than the value.
-
-  Not fixed here, and filed separately: the same provenance values reach **100 HIGH with no ceiling at
-  all** when the product name happens to contain a validator's positive keyword — `Application: Acme
-  Server Manager 26.8.0.3` → `IP_ADDRESS` 100, and the same escape exists in `ssn`, `creditcard`,
-  `phone`, `vin` and `intellectualproperty`. That is not fixable value-intrinsically (`Acme Server
-  Manager 26.8.0.3` is indistinguishable from `Server 10.0.0.1 is down`), so it needs the metadata-field
-  context that no content validator currently has.
-
-- **suppressions, redaction:** a finding suppressed by a rule was **still redacted**. The report said
-  nothing was found while the output file had been rewritten in the suppressed spans:
-
-  ```
-  report:   results: []                    suppressed: 2
-  artifact: Employee SSN: [SSN-REDACTED]   <- rewritten despite being suppressed
-  ```
-
-  Suppressing a finding now excludes it from redaction as well as from the report; **unsuppress it to
-  have the value rewritten**. ([#697](https://github.com/awslabs/ferret-scan/issues/697))
-
-  **The two channels disagreed, and `--stdin` was already right.** `cmd/stdin.go` filters before
-  redacting, so on identical input with identical rules the stdin path left the values intact and the
-  file path rewrote them. That is what makes this a consistency fix rather than a fresh behaviour
-  decision: the file path was brought to the channel that already did the agreed thing. The
-  disagreement was invisible by reading, because each path looks correct on its own.
-
-  The cause is an ordering one. Redaction happens **inside the worker pool**, deliberately, so the
-  extracted content is not derived a second time — and suppression was applied afterwards, in `cmd`, so
-  the redactor received every match. `JobConfig.SuppressionFilter` now carries the predicate into the
-  pool. A **func value** rather than the suppression manager: `internal/parallel` has no business
-  importing `internal/suppressions`, and a predicate is the whole of what redaction needs. Nil means
-  "nothing is suppressed", so every embedder that does not set it keeps its current behaviour.
-
-  **What it costs, and why it is disclosed.** A suppressed value now stays in the redacted copy in
-  cleartext. That is the intent — the user said the finding was not a problem — but under the sink rule
-  it means a rule that is wrong, or that has outlived its reason, is invisible in the report while the
-  value is still in a file they might forward. So a redaction run that skipped anything for this reason
-  says so on stderr with the count and names the remedy. Deliberately **stderr rather than the
-  structured output**: this is not a gap in what the tool did, it is the user's own decision being
-  honoured, and a new `stats` key would change the output schema for every consumer.
-  `--show-suppressed` already lists the individual findings.
-
-  Five assertions, and the two controls are the load-bearing ones. Both-suppressed keeps both values;
-  **nothing-suppressed** must rewrite both — without which a build that redacted nothing at all would
-  pass the first case perfectly; and the **mixed** case pins the shape a blanket implementation gets
-  wrong in either direction: the suppressed SSN survives while the unsuppressed card is still rewritten,
-  so one suppression cannot become a silent hole in the whole file. A fourth asserts the two channels
-  agree, and a fifth pins the disclosure — including that it does **not** fire when there is nothing to
-  disclose, since a note that always appears is a note nobody reads.
-
-  One measurement trap worth recording, because the first attempt at the cross-channel test fell into
-  it: a rule's identity includes the source **basename**, so suppressions generated from a file scan do
-  not match stdin findings at all. Comparing the channels with one shared rule file measures nothing —
-  the rules simply fail to apply and both sides look unsuppressed. Each channel's rules are generated
-  from that channel.
-
 - **redaction:** fix synthetic strategy silently skipping SECRETS, PASSPORT, SOCIAL_MEDIA, and INTELLECTUAL_PROPERTY — added type-aware generators for all four types
 - **redaction:** fix synthetic person name generation producing random character strings — now draws from embedded name databases (~5200 first names, ~2100 last names)
-- **office (redaction):** a value that Word split across two adjacent formatting runs is no longer **written out in cleartext in silence** ([#627](https://github.com/awslabs/ferret-scan/issues/627)). Reproduced: a `.docx` holding `<w:t>Employee SSN: 449-87-</w:t>` then `<w:t>4100</w:t>` — the split Word makes routinely at a bold, rsid or proof-error boundary — reported **SSN at confidence 100**, then wrote a "redacted" copy at **exit 0 with an empty stderr** whose text `textutil` reads back as `Employee SSN: 449-87-4100`. The email in the same part **was** masked, which is the positive control: the redactor ran and simply could not remove the SSN. Now the write is refused and disclosed — `refusing to write split.docx: 1 reported value(s) still present in the document's own parts (types: SSN)`, naming the **type** and never the value, since the message reaches stderr and every machine format without `--show-match`. Exit 0 by default and **3** under `--fail-on-incomplete`, as for any other refusal. Confirmed for `.odt` spans as well; the unsplit control still redacts, and the golden corpus regenerates with **0 files changed**. **Why the fail-closed guard was blind to it:** `decodedPartText` writes a newline after each character-data node, for a sound reason its comment gives — a separator stops two adjacent runs concatenating into a value that is in neither of them. But the *scanner's* extractor strips tags with a regex and inserts nothing between runs, and xlsx joins `<t>` runs directly, so the value that concatenates across runs is **exactly** the value the scanner reports, and the separated view could never see it. There is now a second view of every part — character data only, concatenated — and the residue probe checks both. It cannot manufacture a false refusal: a value is only ever probed for by having been **reported**, and if it was reported then some extraction produced it. **The first attempt at this failed silently, and the reason is now pinned by a test.** `encoding/xml` delivers tokens in document order, so a `w:t` element carrying `xml:space="preserve"` contributes `preserve` *between* the two runs — a view built from every token reads `449-87-preserve4100` and still finds nothing. Attributes stay in the separated view, which is what covers them, and are excluded from the run-text view. That was only caught by probing `decodedPartText` directly; end-to-end the fix looked like a no-op and offered no reason why. **5 mutations, 4 caught**, the fifth correctly surviving because any non-empty separator keeps the runs apart, so the specific byte is not load-bearing. This does **not** redact the split value — doing that needs a span map across XML tokens, as `internal/redactors/rtf/spanredact.go` already does for RTF (#604) — and #627 stays open for it, along with four other findings in the same file: a part `encoding/xml` refuses to tokenize is skipped by both the rewrite and the guard, `zipWriter.Close()` errors are discarded, the extract loop drops unreadable zip parts with only a debug log, and `parentPartResidue` polices every `.xml` part while the rewrite covers only a fixed few.
 - **redaction:** fix PDF and Office redactors using their own duplicate replacement logic instead of the shared implementation
 
 ### 📦 Code Refactoring
@@ -1137,93 +1312,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - reduce duplication across scanner, suppress count fix, exponential retry backoff, 47 new tests
 
 ### 🚀 Features
-
-- **suppressions (expiry):** a generated rule expired **one week** after it was created, always, and
-  there was no way to ask for anything else. Because `IsSuppressed` skips an expired rule with a bare
-  `continue`, a committed baseline simply stopped working seven days later with nothing to indicate it.
-  Generated rules no longer expire; expiry is opt-in via `--suppression-expires <duration>`.
-  ([#696](https://github.com/awslabs/ferret-scan/issues/696))
-
-  Measured on this repository's own `.ferret-scan-suppressions.yaml`: **all 245 rules** — 92 of them
-  `enabled: true` and hand-reviewed — carried `expires_at: 2026-05-28`, so the file had been inert for
-  about **four months** while its own header said contributors and CI shared it as a baseline. Nothing
-  in any run said so, and `suppressed` read 0 whichever suppression file was passed.
-
-  A suppression is a decision someone made deliberately, so it should last until someone changes it.
-  The default was removed at all three creation sites — `AddSuppression`, the batch
-  `--generate-suppressions` path, and the web-UI undo path — and an explicit `expires_at` written by
-  hand still wins. Removing a default must not remove a capability, so `--suppression-expires` keeps
-  expiry available for a team that wants suppressions to lapse and be revisited.
-
-  **And skipping an expired rule is no longer silent.** A run in which a rule *would* have suppressed a
-  finding but had lapsed now warns with the count and the oldest expiry date. The count is taken at the
-  moment of **matching** rather than by walking the file, because that is the number an operator can act
-  on: "3 findings are in your report that your own rules were meant to suppress" is actionable, where
-  "the file contains 245 expired rules" does not say whether any of them mattered.
-
-  Two implementation details worth recording. The counter is **atomic** and its date is guarded by its
-  **own** mutex rather than `indexMu` — `IsSuppressed` holds `indexMu` read-locked across the match loop
-  and the counter is incremented from inside it, so reusing that lock would deadlock on the write side,
-  which would present as a hung CI job rather than a failure. And the redaction filter added for
-  [#697](https://github.com/awslabs/ferret-scan/issues/697) calls `IsSuppressed` from worker goroutines,
-  so the concurrency is real rather than hypothetical; a test drives 8 goroutines × 50 matches under
-  `-race` and requires the count to be exact, since a lost increment would silently under-report.
-
-  The committed baseline is **deliberately not regenerated here**. A regeneration is not the 245 rules
-  the file holds: measured, `--generate-suppressions` over `internal/validators` alone produces **3,489**
-  rules and over the whole repository **9,658** (135,214 lines). The existing 245 was a curated subset,
-  and re-deriving it is a judgement about which findings in this codebase are acceptable — not something
-  to land alongside a mechanism change. The file stays as it is; with this change, regenerating it will
-  at least produce rules that do not lapse.
-
-  **The option is settable in config, and it no longer speaks only Go durations.** The first version was
-  a bare `time.Duration`, and Go's duration syntax has no `d` and no `w` — so `720h` was the only way to
-  say 30 days, and `30d`, `4w`, `30` and `2026-12-31` were all `parse error`. That is the wrong
-  vocabulary for a review interval measured in weeks. One parser, `suppressions.ParseExpirySpec`, now
-  reads every form and is shared by the flag and the config key so they cannot disagree:
-
-  | what you write | means |
-  |---|---|
-  | `never` (or omitted, or `0`) | no expiry — the default |
-  | `30` | 30 days |
-  | `30d` / `4w` | 30 days / 4 weeks |
-  | `720h` / `90m` | any Go duration |
-  | `2026-12-31` | an absolute date — every rule from that run lapses the same day |
-
-  A bare number means **days** deliberately: nobody sets a suppression to lapse in 30 seconds, and
-  reading it that way would silently expire every rule in the run. An absolute date is accepted because
-  "expire these before the next audit" is not expressible as a duration — every rule should lapse on the
-  same day, not N days after whenever the run happened. Anything unparseable is refused with the list of
-  forms rather than turned into some lifetime nobody asked for. `d` is 24h and `w` is 168h, wall-clock
-  rather than calendar, which is stated in the code and the docs rather than hidden — an hour of DST
-  drift does not matter to a review interval, and calendar arithmetic would mean carrying a timezone in
-  a file shared across machines.
-
-  Config: `suppressions.expires_in`, a profile's `suppression_expires_in`, or `--suppression-expires`,
-  resolving in that order with the flag winning — the same shape `generate_suppressions` already uses.
-  Both shipped example configs carry the key, annotated, and both ship `never`: the examples are copied
-  as a starting point, so any other default would hand the one-week-inert-baseline defect to everyone
-  who copies one.
-
-  **The alignment is a guard, not an edit.** Five assertions hold the four surfaces together — the
-  parser, the flag's help line, both example configs, and each documentation page separately — because a
-  reader lands on one page and "it is documented somewhere" is not the same as "the page you are reading
-  is correct". The documented forms are asserted against `ParseExpirySpec` itself, so the test cannot
-  pass by agreeing with a stale list, and precedence must be stated in the order it actually resolves:
-  silence there reads as "these are equivalent", and a reader who sets the config key and watches the
-  flag win concludes the config key is broken.
-
-  That guard earned itself immediately: **the flag was registered and absent from `--help`**, so it was
-  undiscoverable. `internal/help/help.go` is hand-written prose, which is exactly the drift
-  `documented_flags_test.go` records ("40 flags are registered and 37 appear in the help text"), and
-  widening the parser without widening the help would have produced #686's defect in reverse — a
-  capability nobody can find rather than one that does not exist.
-
-  Five assertions, and the third is the floor: a generated rule carries no expiry; opting in produces
-  one of the requested length and zero still means none; **a rule with no expiry still suppresses** —
-  without which "removed the expiry" could have meant "broke matching"; an expired rule is counted and
-  dated, with an older expiry moving the reported date backwards; and the counting is race-free.
-  Restoring the one-week default fails the first two with the exact dates.
 
 - **person-name:** expand name database coverage with 53 unambiguous names from South Asian, West African, Eastern European, Middle Eastern, Japanese, and Italian backgrounds
 

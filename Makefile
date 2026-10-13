@@ -773,7 +773,7 @@ check-go-version:
 
 # Sync Go version across all project files
 # Cut the hand-written [Unreleased] CHANGELOG section into a versioned heading (#647).
-# Normally run by .github/workflows/changelog-promote.yml when a release publishes.
+# Normally run by .github/workflows/changelog-promote.yml when a release tag is pushed.
 promote-changelog:
 	@./scripts/promote-changelog.sh $(TAG)
 

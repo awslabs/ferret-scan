@@ -54,6 +54,25 @@ echo
 
 echo "=== dimensions ==="
 
+# CHANGELOG. The same check CI runs on the PR (.github/workflows/changelog-check.yml), here so the
+# requirement is visible before the PR exists. Locally it reads the branch tip rather than GitHub's
+# merge result, and it cannot see the PR's labels, so a miss is NEEDS-MANUAL, not FAIL: the answer is
+# either an entry under [Unreleased] or the `no-changelog` label, and only the author knows which.
+# Built, not `go run`: go run reports any non-zero child exit as its own 1, which would turn the
+# tool's "could not run" (2) into an ordinary miss.
+clbin="$(mktemp -d)/changelogcheck"
+if ! clout=$(go build -o "$clbin" ./internal/tools/changelogcheck 2>&1); then
+  bad "-- changelog" "check could not build: $(echo "$clout" | tail -1)"
+else
+  clout=$("$clbin" -base "$(git merge-base "$BASE" HEAD)" -head HEAD 2>&1)
+  case $? in
+    0) ok "-- changelog" "$(echo "$clout" | tail -1 | sed 's/^notice: //' | cut -c1-90)" ;;
+    1) todo "-- changelog" "$(echo "$clout" | grep '^error: ' | sed 's/^error: //' | cut -c1-200)" ;;
+    *) bad "-- changelog" "check could not run: $(echo "$clout" | tail -1)" ;;
+  esac
+  rm -rf "$(dirname "$clbin")"
+fi
+
 # 1. build / vet / gofmt
 unf=$(gofmt -l ./cmd ./internal ./pkg 2>/dev/null)
 if [ -n "$unf" ]; then bad "1 gofmt" "$(echo "$unf" | tr '\n' ' ')"; else ok "1 gofmt" "clean"; fi
