@@ -767,6 +767,33 @@ var FileCases = []FileCase{
 		Tier1Parity: true,
 	},
 	{
+		Name: "file_js_jsx_fails_open",
+		Description: "Tier 1, #753: a React component saved as .js -- the default for Create React App, " +
+			"Next.js pages and React Native -- that prints a credential as JSX TEXT. JSX text between " +
+			"tags is neither code nor a JS string, which is why .jsx and .tsx are not in the gate's " +
+			"table at all; .js is, so a JSX element in code position fails the gate open for the whole " +
+			"file and it behaves exactly as if it were named .jsx. Both credentials must report. The " +
+			"code-position control (process.env.JWT_SECRET) is NOT dropped here, deliberately: it is " +
+			"what proves the file failed open rather than being lexed as plain JavaScript, where the " +
+			"JSX text would be read as code and the two credentials would be dropped and never " +
+			"redacted.",
+		Checks:   []string{"SECRETS"},
+		Filename: filepath.Join("src", "Help.js"),
+		Content: []byte("import React from \"react\";\n\n" +
+			"export default function Help() {\n" +
+			"  const secret = process.env.JWT_SECRET;\n" +
+			"  return (\n" +
+			"    <div className=\"help\">\n" +
+			"      <pre>\n" +
+			"        API_KEY=" + "JsxText" + "S3cretVal55" + "\n" +
+			"      </pre>\n" +
+			"      <code>password: " + "JsxChild" + "PassVal66" + "</code>\n" +
+			"    </div>\n" +
+			"  );\n" +
+			"}\n"),
+		Tier1Parity: true,
+	},
+	{
 		Name: "file_yaml_config_control",
 		Description: "Tier 1, #753: the YAML control for the two source-file cases above. `token: " +
 			"AuthToken` is byte-identical here and in src/models.ts, where the gate drops it as a " +

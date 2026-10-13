@@ -26,34 +26,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   veto cannot close this: `token: AuthToken` is byte-identical in a `.ts` file, where it is a type,
   and in a `.yaml` file, where it may be a value. So a **lexical gate** now reads the file's
   grammar. One linear pass over the whole content marks strings (delimiters included), comments,
-  docstrings, regex literals and heredoc bodies. An unquoted-family candidate is dropped only if its
-  **value start** is outside all of them and it is not a literal token. A literal token is a
-  backtick string whose template has no `${`, or a hex literal. Anchoring on the value rather than
-  the keyword keeps a quoted `getenv` fallback or a quoted collection element after a code-position
+  docstrings, regex literals and heredoc bodies; Python f-string and t-string replacement fields
+  are lexed as code, so a PEP 701 field holding the f-string's own quote (`f"{d["k"]}"`) does not
+  end it early, and a JS `/` is read as regex or division from the last significant byte across
+  newlines and comments. An unquoted-family candidate is dropped only if its **value start** is
+  outside all of them, no byte of the captured value is the text of a backtick string (a JS
+  template or Go raw string, so `atob(`…`)` and `` `${PREFIX}…` `` keep reporting), and it is not a
+  hex literal. A template's opening backtick counts as code only when `${` follows it directly.
+  Anchoring on the value rather than the keyword keeps a quoted collection element, or a quoted
+  `getenv` fallback after an unquoted env-var name (`os.getenv(NAME, "…")`), after a code-position
   head. The gate only drops candidates, never touches the quoted patterns, provider literals, the
-  entropy path, PEM blocks or the AWS secret-key path, and runs before the same-span dedupe, so a
-  quoted or entropy twin survives. It **fails open**, leaving the file exactly as before, when the
-  lexer ends outside code, a single-line string is unterminated, nesting is unbalanced or deeper
-  than 256, or the content exceeds 100 MB. The file type comes from the name on every channel, so
-  `--stdin-name app.ts` and a `ScanText`/`Redact` label `app.ts` are gated, and `<stdin>`,
-  `<text>`, `clipboard`, `.jsx`, `.tsx` and every other extension are not. Measured with the CLI,
-  `main` (3df48ac, the v2.5.3 code) against this build, on 58,055 content-deduplicated public
-  source files: **Python
-  3,403 → 1,796** findings (HIGH 631 → 131), **JS/TS 134,755 → 15,920** (HIGH 94,766 → 10,286),
-  **Go 5,693 → 5,627**, **HCL 197 → 94**. Nothing was added. Every one of the 120,611 removed
-  values starts in code: checked with the language's own tokenizer (Python `tokenize`, esprima,
-  `go/scanner`), and by hand for the 103 HCL values and the 14 Python values in files `tokenize`
-  rejects. All 36,983 non-source files gave identical findings. The #753 probe of 24 everyday code lines goes from 17 reported to 0, while connection
-  strings, `?token=` URLs, comments, docstrings, `.env` bodies in triple-quoted strings, Go raw
-  strings, backtick literals and hex keep their exact confidence. **Accepted loss:** a bare
-  credential pasted unquoted in code (`API_KEY = Xk9…` in a `.py`) is not reported. It is not a
-  string in these languages and the program would not run; the loss is pinned by a test.
-  **Residual:** a keyword inside a docstring still reports, e.g. the Sphinx field
-  `:type token: RequestToken` (36 in this corpus). The golden case
+  entropy path, PEM blocks or the AWS secret-key path, and does not gate a candidate one of those
+  claims on exactly the same span, so every surviving finding keeps `main`'s type and confidence.
+  It **fails open**, leaving the file exactly as before, when the lexer ends outside code, a
+  single-line string is unterminated, nesting is unbalanced or deeper than 256, a `.js`/`.mjs`/
+  `.cjs` file contains JSX (or any of the six JS/TS extensions holds a closing tag, as a Qt
+  Linguist `.ts` file does), a typographic quote (`“ ” ‘ ’`) stands in code, or the content exceeds
+  100 MB. The file type comes from the name on every channel, so `--stdin-name app.ts` and a
+  `ScanText`/`Redact` label `app.ts` are gated, and `<stdin>`, `<text>`, `clipboard`, `.jsx`,
+  `.tsx` and every other extension are not. Measured with the CLI, `main` (3df48ac, the v2.5.3
+  code) against this build, on 58,055 content-deduplicated public source files: **Python
+  3,403 → 1,796** findings (HIGH 631 → 131), **JS/TS 134,755 → 16,735** (HIGH 94,766 → 10,812),
+  **Go 5,693 → 5,628**, **HCL 197 → 94**. Nothing was added, and every surviving finding is
+  identical to `main`'s, confidence and detection method included. Every one of the 119,795
+  removed values starts in code: checked with the language's own tokenizer (Python `tokenize`,
+  esprima, `go/scanner`), and by hand for the 103 HCL values and the 14 Python values in files
+  `tokenize` rejects. All 36,983 non-source files gave identical findings. The gate failed open on
+  0 Python, 20 JS/TS (all JSX in `.js`), 0 Go and 1 HCL file. The #753 probe of 24 everyday code
+  lines goes from 17 reported to 0, while connection strings, `?token=` URLs, comments,
+  docstrings, `.env` bodies in triple-quoted strings, Go raw strings, backtick literals, hex and
+  JSX text in `.js` keep their exact confidence. **Accepted loss:** a bare credential pasted
+  unquoted in code (`API_KEY = Xk9…` in a `.py`) is not reported. It is not a string in these
+  languages and the program would not run; the loss is pinned by a test. **Residual loss:** a
+  collection or list-tail element that starts in code and runs into a quoted string,
+  `token = first_token_value, decode("…")`, drops with its head; counting quoted text as well
+  would have kept 35,974 more JS/TS findings, all on minified lines. **Residual:** a keyword inside a docstring still
+  reports, e.g. the Sphinx field `:type token: RequestToken` (36 in this corpus). The golden case
   `secrets_code_expression_known_fp` is inverted: the same lines in `src/models.ts` and
   `src/models.py` give zero findings beside in-file literal controls, a YAML control still
-  reports, and the extension-less case stays as the pin that untyped input is not gated. See
-  "Unquoted assignments in source code" in `internal/validators/secrets/README.md`
+  reports, a React component in `src/Help.js` reports its JSX-text credentials, and the
+  extension-less case stays as the pin that untyped input is not gated. See "Unquoted assignments
+  in source code" in `internal/validators/secrets/README.md`
   ([#753](https://github.com/awslabs/ferret-scan/issues/753)). Closes
   [#753](https://github.com/awslabs/ferret-scan/issues/753).
 

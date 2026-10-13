@@ -112,40 +112,71 @@ access, a call or a type. `secret = config.secret_key` in Python and
 `password: this.form.value.password` in TypeScript reported HIGH 100 before
 this gate existed (#753).
 
-**The rule.** An unquoted-family candidate is dropped only when all three hold:
+**The rule.** An unquoted-family candidate is dropped only when all four hold:
 
 1. the file's extension is in the table below and the gate is active for the
    file (see *Fail-open* below);
 2. the candidate's **value start** lies in CODE position, i.e. outside every
    string (delimiters included), comment, docstring, regex literal and heredoc
-   body; and
-3. the value is not a literal token: a backtick string whose template closes
-   before any `${`, or a hex literal (`0x` followed by 8 or more hex digits).
+   body;
+3. no byte of the captured value is the **text of a backtick string** — a
+   JavaScript template segment or a Go raw string. A capture that starts in
+   code can run into one (`atob(`…`)`, `strings.TrimSpace(`…`)`,
+   `` `${PREFIX}…` ``) and then it carries a literal the lexer itself
+   classified, so it is kept, exactly as on `main`. For the unquoted and plural
+   patterns a backtick string is the only kind there is to run into, because
+   their value class stops at `'` and `"`. A collection or list-tail element
+   can also run into a quoted string, and that still drops (see *Residual
+   loss* below); and
+4. the value is not a literal token: a hex literal (`0x` followed by 8 or more
+   hex digits), or — in Python and HCL, where a backtick opens no string — a
+   backtick-delimited value that closes before any `${`.
 
 The value start is the anchor, not the keyword. In
-`password = os.getenv("DB_PASSWORD", "<value>")` the keyword is in code, and
-the quoted fallback is still a hard-coded credential. A quoted element of a
-collection after a code-position head works the same way. A template literal
-with `${` counts as code at its opening backtick, because the value captured
-there is an interpolated expression. Its text segments are still literal.
+`password = os.getenv(DB_PASSWORD_ENV, "<value>")` the unquoted capture
+`os.getenv(DB_PASSWORD_ENV` starts in code and is dropped, while the list-tail
+candidate that starts at the fallback's opening quote is kept, because a
+hard-coded fallback is still a credential. A quoted element of a collection
+after a code-position head works the same way. (With a **quoted** env-var name,
+`os.getenv("DB_PASSWORD", "<value>")`, the unquoted capture stops at the first
+quote, so no keyword candidate reaches the fallback at all — on `main` or here.
+Only the ungated entropy path reports it, and only at 20+ characters above its
+entropy floor. The gate neither causes nor closes that gap.)
+
+A template literal whose first byte after the backtick is `${` counts as code
+at that backtick, because the value captured from there starts with an
+interpolated expression. With literal text before the first `${` the backtick
+stays literal, like the opening quote of `"<value>" + suffix`. Either way the
+template's text segments are backtick text (condition 3), so a credential
+written inside them keeps reporting.
 
 Only the unquoted family is gated. It covers the unquoted and plural unquoted
 patterns, the collection and list-tail paths, and block-sequence items. Quoted
 keyword patterns, provider literals (`AKIA…`, `ghp_…`), the entropy path,
-PEM blocks and the AWS secret-key path are never gated. The gate runs before
-the same-span dedupe, so a quoted or entropy twin on the same bytes survives.
-No value shape is consulted, so the gate is justified by the grammar alone.
+PEM blocks and the AWS secret-key path are never gated. A gateable candidate
+that the entropy path, a quoted pattern, a provider literal or the AWS
+secret-key path claims on **exactly the same span** is not gated either:
+dropping it would remove nothing, but the AWS path's same-span merge takes the
+highest confidence any candidate on the span reached, so gating the twin would
+lower what that span reports (an unquoted 40-character AWS secret in code would
+go from 100 to 95). The gate runs before the same-span dedupe, so a quoted or
+entropy twin survives. No
+value shape is consulted, so the gate is justified by the grammar alone.
 Relabelling or reshaping a credential cannot hide it.
 
 | Language | Extensions | Literal syntax the lexer reads |
 |---|---|---|
-| Python | `.py` `.pyi` `.pyw` | `#` comments; `'…'` and `"…"` with escapes and backslash-newline continuation; triple-quoted strings and docstrings; `r b f u rb br fr rf` prefixes in any case. A raw prefix changes what a backslash means, not where the string ends, so boundaries match Python's own tokenizer. f-strings are literal as a whole. |
-| JavaScript / TypeScript | `.js` `.mjs` `.cjs` `.ts` `.mts` `.cts` | `//` and `/* */`; `'…'` and `"…"` with escapes and continuation; backtick templates across lines with `${ … }` read as code, including nested templates and braces; regex literals by the previous-byte heuristic. |
+| Python | `.py` `.pyi` `.pyw` | `#` comments; `'…'` and `"…"` with escapes and backslash-newline continuation; triple-quoted strings and docstrings; `r b f u t rb br fr rf tr rt` prefixes in any case. A raw prefix changes what a backslash means, not where the string ends, so boundaries match Python's own tokenizer. An f-string or t-string is literal as a whole, but its replacement fields are lexed as code, so a PEP 701 (3.12+) field holding a string in the f-string's own quote — `f"{d["k"]}"` — does not end the f-string early. A `:` at bracket depth 0 starts the format spec, which is text again. |
+| JavaScript | `.js` `.mjs` `.cjs` | `//` and `/* */`; `'…'` and `"…"` with escapes and continuation; backtick templates across lines with `${ … }` read as code, including nested templates and braces; regex literals by the previous-significant-byte heuristic, judged across newlines and comments, since JavaScript inserts no semicolon before a `/`. A JSX element in code position fails the file open (below). |
+| TypeScript | `.ts` `.mts` `.cts` | The same lexer. TypeScript accepts JSX only in `.tsx`, so `<T` at an expression start is a type parameter list or an assertion, not a tag, and does not fail the file open. |
 | Go | `.go` | `//` and `/* */`; `"…"` with escapes; `'…'` runes; backtick raw strings across lines. |
 | Terraform / HCL | `.tf` `.tfvars` `.hcl` | `#`, `//` and `/* */`; `"…"` with `${ }` and `%{ }` read as code (`$${` and `%%{` are literal); `<<EOT` and `<<-EOT` heredoc bodies. |
 
-`.jsx` and `.tsx` are deliberately absent. JSX text between tags is neither
-code nor a JS string, and the lexer does not model it. Other languages are
+`.jsx` and `.tsx` are deliberately absent. JSX text between tags is neither code
+nor a JS string, and the lexer does not model it. JSX is just as common in `.js`
+files — Create React App, Next.js pages and React Native all default to `.js` —
+so there a JSX element in code position fails the gate open for the whole file,
+which makes it behave exactly as if it were named `.jsx`. Other languages are
 added by measurement. A missing entry keeps today's behaviour, which is the
 safe direction.
 
@@ -156,17 +187,32 @@ the file behaves exactly as it did before the gate. That happens when:
 - the file ends inside anything but code: an unclosed block comment,
   triple-quoted string, template, raw string, heredoc or interpolation;
 - a single-line string reaches the end of its line unterminated and without a
-  continuation backslash. That is a syntax error in all four languages, so
+  continuation backslash. That is a syntax error in all five grammars, so
   either the lexer is wrong about the file or the file is not what its
-  extension says. A JS regex literal that does not close on its line is
-  treated the same way;
-- template or interpolation nesting is unbalanced, or deeper than 256; or
+  extension says. A JS regex literal that does not close on its line, and an
+  f-string whose own quote or a newline turns up in a format spec, are treated
+  the same way;
+- template or interpolation nesting is unbalanced, or deeper than 256;
+- a JSX element stands in code position: a closing tag (`</Name`, `</>`) in any
+  of the six JS/TS extensions — in a `.ts` file that means the bytes are not
+  TypeScript at all, for instance a Qt Linguist `.ts` translation file — or, in
+  `.js`/`.mjs`/`.cjs` only, an opening tag (`<Name`, `<>`) where an operand is
+  expected, which catches a closing tag the lexer cannot see because a `//` in
+  the JSX text hides it;
+- a typographic quote (`“` `”` `‘` `’`) stands in code position. No grammar here
+  accepts one there — Python, node, `gofmt` and `terraform fmt` each reject it
+  with a diagnostic written for this mistake — so the file is not valid source,
+  typically a credential pasted from a page or a chat, and the lexer cannot know
+  where the author meant the string to be; or
 - the content is larger than 100 MB, the most this validator is handed in one
   piece (`router.MaxFileSize`).
 
-Measured on 58,055 public source files, the gate failed open on 0.01% of
-Python, 0.02% of JS/TS (all JSX in `.js` files), 0% of Go and 0.07% of HCL
-(one deliberately broken test fixture).
+Measured on 58,055 public source files, the gate failed open on 0 of 21,538
+Python files, 20 of 31,303 JS/TS files (0.06%), 0 of 3,714 Go files and 1 of
+1,500 HCL files (0.07%, a deliberately broken test fixture). All 20 JS/TS
+fail-opens are `.js` files holding JSX (semgrep test fixtures: 18 parse as
+JSX with `acorn-jsx`, the other 2 are TSX written into `.js`), and none is
+TypeScript. No file failed open on a typographic quote.
 
 **Channels.** The file type comes from the name on every channel: a CLI path,
 `--stdin-name`, a `pkg/scan` `ScanFile` path, and a `ScanText` or `Redact`
@@ -185,6 +231,17 @@ gate avoids. Because it is not reported, it is not redacted either, and a
 redacted copy of that file still contains it. The loss is pinned by
 `TestSourceGateAcceptedLossIsPinned`.
 
+**Residual loss.** A collection or list-tail element that starts in code and
+runs into a quoted string drops with its head: in
+`token = first_token_value, decode("<value>")` neither `first_token_value` nor
+`decode("<value>")` is reported, and the quoted value is found only if a
+never-gated path finds it on its own (the entropy path can, from 20
+characters up). Counting
+quoted-string text the way backtick text is counted would keep it, but on the
+measured corpus it also kept 35,974 more JS/TS findings, every one on a
+minified line of 200 or more characters (`HZ="X-Amzn-Bedrock-…"`), and 5 in
+Python. The shape is pinned by `TestSourceGateKeepIsScopedToBacktickText`.
+
 **Residual false positives.** Docstrings and comments are literal text, so a
 keyword inside one still reports. The common case is a Sphinx field,
 `:type token: RequestToken`: 36 findings in the measured Python corpus, about
@@ -198,16 +255,18 @@ this repository's Go module dependencies, ASH, the pre-commit cache):
 | | before | after | removed |
 |---|---|---|---|
 | Python | 3,403 (HIGH 631) | 1,796 (HIGH 131) | 1,607 |
-| JS/TS | 134,755 (HIGH 94,766) | 15,920 (HIGH 10,286) | 118,835 |
-| Go | 5,693 (HIGH 519) | 5,627 (HIGH 505) | 66 |
+| JS/TS | 134,755 (HIGH 94,766) | 16,735 (HIGH 10,812) | 118,020 |
+| Go | 5,693 (HIGH 519) | 5,628 (HIGH 505) | 65 |
 | HCL | 197 (HIGH 27) | 94 (HIGH 10) | 103 |
 
-Nothing was added. Every removed value was checked against the language's own
+Nothing was added, and every finding that survives is identical to `main`'s:
+same file, line, type, text, confidence and detection method. Only
+`API_KEY_OR_SECRET` findings were removed; every other type is unchanged.
+Every removed value starts in code, checked against the language's own
 tokenizer: Python's `tokenize`, esprima for JS/TS and `go/scanner`. The 14
 Python values in Handlebars-templated files that `tokenize` rejects, and all
-103 HCL removals, were read by hand. Every removed value starts in code. The
-36,983 non-source files in the same run (config, prose, JSX and every other
-type) gave identical findings: same file, line, type, text and confidence. The
+103 HCL removals, were read by hand. The 36,983 non-source files in the same
+run (config, prose, JSX and every other type) gave identical findings. The
 #753 probe of 24 everyday code lines went from 17 reported to 0.
 
 ## Confidence Scoring

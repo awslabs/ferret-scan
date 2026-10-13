@@ -27,29 +27,44 @@ import (
 // byte-identical in a .ts file, where it is a type, and in a .yaml file, where it may be a value.
 // What differs is the grammar of the file, so the gate reads the grammar.
 //
-// THE RULE. An unquoted-family candidate is dropped iff all three hold:
+// THE RULE. An unquoted-family candidate is dropped iff all of these hold:
 //
 //  1. the file's extension is in the table below, and the gate is active for this file (it fails
-//     open -- see lexLiterals -- when the lexer cannot vouch for its own state);
+//     open -- see lexSource -- when the lexer cannot vouch for its own state);
 //  2. the candidate's VALUE START lies in CODE position: outside every string (delimiters
 //     included), comment, docstring, regex literal and heredoc body;
-//  3. the value is not a literal token: a backtick string whose template contains no `${` before
-//     it closes, or a hex literal (isLiteralToken).
+//  3. no byte of the captured value is the TEXT of a backtick string -- a JS template segment or
+//     a Go raw string. A capture that starts in code can run into one -- atob(`<v>`),
+//     strings.TrimSpace(`<v>`), `${PREFIX}<v>` -- and then the value is not a code expression: it
+//     carries a literal the lexer itself classified, and is kept exactly as on main. For the
+//     unquoted and plural patterns a backtick string is the only kind there is to run into, since
+//     their value class stops at ' and ". A collection or list-tail ELEMENT can also run into a
+//     QUOTED string, `token = head, decode("<v>")`, and that still drops: counting quoted text as
+//     well costs tens of thousands of minified-code findings (see sourceGate.tick), so a short
+//     credential in that one shape is reported only if a never-gated path finds it;
+//  4. the value is not a literal token: a hex literal, or (where a backtick opens no string,
+//     Python and HCL) a backtick string closed before any `${` (isLiteralToken).
 //
-// Anchored on the value start, not on the keyword. `password = os.getenv("DB_PASSWORD", "<v>")`
-// has its keyword in code, and the quoted fallback is still a hard-coded credential; a quoted
-// collection element after a code-position head is the same case. The candidates whose value
-// starts inside quotes keep reporting, which is the point.
+// Anchored on the value start, not on the keyword. In `password = os.getenv(DB_PASSWORD_ENV,
+// "<v>")` the keyword is in code; the unquoted capture `os.getenv(DB_PASSWORD_ENV` starts in code
+// and is dropped, while the list-tail candidate that starts at the fallback's opening quote is
+// kept. A quoted collection element after a code-position head is the same case. (With a QUOTED
+// env-var name, `os.getenv("DB_PASSWORD", "<v>")`, the unquoted capture stops at the first quote
+// and no keyword candidate reaches the fallback at all, on main or here; only the ungated entropy
+// path can report it. The gate neither causes nor closes that gap.)
 //
-// A template literal that contains `${` counts as CODE at its opening backtick: the value the
-// unquoted capture takes from it, `${prefix}...`, is an interpolated expression. Its text
-// segments are still literal, so a credential written inside the template text keeps reporting.
+// A template literal whose FIRST byte after the backtick is `${` counts as CODE at its opening
+// backtick: the value the unquoted capture takes from there, `${prefix}...`, starts with an
+// interpolated expression. With literal text before the first `${` the backtick stays literal,
+// like the opening quote of `"<v>" + suffix`. Template text segments are literal and backtick
+// text (condition 3) either way, so a credential written inside the template text keeps reporting.
 //
 // THIS ONLY EVER DROPS CANDIDATES, and only from the unquoted family. Quoted keyword patterns,
 // provider literals, the entropy path, the multi-line PEM path and the AWS secret-key path are
-// never gated, and a quoted or entropy twin on the same span survives because the gate runs
-// before the same-span dedupe. The justification is the language grammar, never the value: no
-// value shape is consulted, so an author cannot make a credential disappear by choosing one.
+// never gated, and a candidate that a single-line one of them claims on exactly the same span is
+// not gated either (validateContentCtx), so every span a never-gated path reports keeps main's
+// type and confidence. The justification is the language grammar, never the value: no value shape is
+// consulted, so an author cannot make a credential disappear by choosing one.
 //
 // THE ACCEPTED LOSS: a bare credential pasted unquoted in code position, `API_KEY = <value>` in a
 // .py. That is not a string in these languages and the program would not run; it is pinned by
@@ -61,7 +76,12 @@ type sourceLanguage uint8
 const (
 	langNone sourceLanguage = iota
 	langPython
+	// langJS is JavaScript, where JSX may occur. A JSX element fails the gate open (lexSource).
 	langJS
+	// langTS is TypeScript, lexed exactly as langJS but for one test: `<T` at an expression start
+	// is a type parameter list or a type assertion there, never a JSX element, because TypeScript
+	// accepts JSX only in .tsx. It is not a JSX opener, so it does not fail the file open.
+	langTS
 	langGo
 	langHCL
 )
@@ -72,6 +92,8 @@ func (l sourceLanguage) String() string {
 		return "python"
 	case langJS:
 		return "js"
+	case langTS:
+		return "ts"
 	case langGo:
 		return "go"
 	case langHCL:
@@ -90,13 +112,18 @@ func (l sourceLanguage) String() string {
 // entry is the safe direction: it keeps today's behaviour.
 //
 // .jsx and .tsx are deliberately absent. JSX text between tags is neither code nor a JS string, and
-// this lexer does not model it. Other languages are added by measurement, not by guess.
+// this lexer does not model it. JSX is just as common in .js, .mjs and .cjs files (Create React
+// App, Next.js and React Native default to .js), so there a JSX element in code position fails the
+// gate open for the whole file instead, which makes it behave exactly as if it were named .jsx.
+// Other languages are added by measurement, not by guess.
 func sourceLanguageFor(originalPath string) sourceLanguage {
 	switch strings.ToLower(filepath.Ext(originalPath)) {
 	case ".py", ".pyi", ".pyw":
 		return langPython
-	case ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts":
+	case ".js", ".mjs", ".cjs":
 		return langJS
+	case ".ts", ".mts", ".cts":
+		return langTS
 	case ".go":
 		return langGo
 	case ".tf", ".tfvars", ".hcl":
@@ -137,14 +164,20 @@ func (s literalSet) clear(off int) {
 	}
 }
 
-// setRange marks [from, to). Word-at-a-time, so a long literal costs its length over 64.
-func (s literalSet) setRange(from, to int) {
+// clampRange limits [from, to) to the offsets the set covers.
+func (s literalSet) clampRange(from, to int) (int, int) {
 	if from < 0 {
 		from = 0
 	}
 	if max := len(s) << 6; to > max {
 		to = max
 	}
+	return from, to
+}
+
+// setRange marks [from, to). Word-at-a-time, so a long literal costs its length over 64.
+func (s literalSet) setRange(from, to int) {
+	from, to = s.clampRange(from, to)
 	for from < to && from&63 != 0 {
 		s[from>>6] |= 1 << (uint(from) & 63)
 		from++
@@ -159,10 +192,50 @@ func (s literalSet) setRange(from, to int) {
 	}
 }
 
+// hasAny reports whether any offset in [from, to) is set. Word-at-a-time, like setRange, so a
+// candidate costs its length over 64.
+func (s literalSet) hasAny(from, to int) bool {
+	from, to = s.clampRange(from, to)
+	for from < to && from&63 != 0 {
+		if s.has(from) {
+			return true
+		}
+		from++
+	}
+	for from+64 <= to {
+		if s[from>>6] != 0 {
+			return true
+		}
+		from += 64
+	}
+	for from < to {
+		if s.has(from) {
+			return true
+		}
+		from++
+	}
+	return false
+}
+
 // sourceGate is the per-file decision. A nil *sourceGate keeps every candidate, which is what an
 // untyped file, an unlisted extension and every fail-open condition all reduce to.
 type sourceGate struct {
+	// lit is every literal byte: strings with their delimiters and prefixes, comments, docstrings,
+	// regex literals, heredoc bodies. It decides condition (2), the value start.
 	lit literalSet
+	// tick is the subset of lit that is the text of a BACKTICK string: each text segment of a JS
+	// template (interpolations excluded) and the body of a Go raw string. It decides condition
+	// (3): a value that carries written backtick text is not a code expression.
+	//
+	// Scoped to backtick strings because they are the only string kind the unquoted and plural
+	// patterns can run INTO -- their value class stops at ' and ". The collection and list-tail
+	// ELEMENT classes do admit quotes, and `a, b="text"` in minified JS is extremely common:
+	// marking the text of quoted strings as well kept 35,974 more JS/TS findings than this set on
+	// the measured corpus, every one on a source line of 200 or more characters and 35,963 of
+	// them on lines of 1,000 or more (`HZ="X-Amzn-Bedrock-..."`, `AL=ae.enum(["Bedrock"`), plus 5
+	// in Python (`name="proxy_auth")`). A quoted member of a collection is still reported on its
+	// own span, by the element that starts at its opening quote.
+	tick literalSet
 }
 
 // newSourceGate lexes content once for lang and returns the gate, or nil when the file is not
@@ -175,11 +248,11 @@ func newSourceGate(content string, lang sourceLanguage) (*sourceGate, string) {
 	if len(content) > maxLexBytes {
 		return nil, "content larger than maxLexBytes"
 	}
-	lit, reason := lexLiterals(content, lang)
+	lit, tick, reason := lexSource(content, lang)
 	if reason != "" {
 		return nil, reason
 	}
-	return &sourceGate{lit: lit}, ""
+	return &sourceGate{lit: lit, tick: tick}, ""
 }
 
 // drops reports whether an unquoted-family candidate whose value starts at valueStart on a line
@@ -188,8 +261,12 @@ func (g *sourceGate) drops(line string, lineStart, valueStart int, value string)
 	if g == nil {
 		return false
 	}
-	if g.lit.has(lineStart + valueStart) {
-		return false
+	at := lineStart + valueStart
+	if g.lit.has(at) {
+		return false // (2): the value starts inside a literal
+	}
+	if g.tick.hasAny(at, at+len(value)) {
+		return false // (3): the value carries backtick-string text, so it is not a code expression
 	}
 	return !isLiteralToken(line, valueStart, value)
 }
@@ -198,15 +275,15 @@ func (g *sourceGate) drops(line string, lineStart, valueStart int, value string)
 // written as one is a literal credential: `secret_key = 0x...` keeps reporting.
 var hexLiteralToken = regexp.MustCompile(`^0[xX][0-9a-fA-F]{8,}$`)
 
-// isLiteralToken is condition (3): a value that is a literal even though it starts in code
+// isLiteralToken is condition (4): a value that is a literal even though it starts in code
 // position.
 //
-// A backtick value is a literal when the template it opens closes before any `${`. In JS the lexer
-// already marks such a template literal at its opening backtick, so this matters for the grammars
-// where a backtick opens nothing (Python, HCL): there the decision is made from the line, and an
-// unclosed backtick is not a literal. The scan stops at the first backtick or `${`, and every value
-// it is asked about starts with a backtick, so the scans of distinct values never overlap: linear in
-// the line.
+// A backtick value is a literal when the template it opens closes before any `${`. In JS and Go the
+// lexer already reads a backtick as a string, so such a value is kept by condition (2) or (3)
+// before this is asked; this matters for the grammars where a backtick opens nothing (Python, HCL):
+// there the decision is made from the line, and an unclosed backtick is not a literal. The scan
+// stops at the first backtick or `${`, and every value it is asked about starts with a backtick, so
+// the scans of distinct values never overlap: linear in the line.
 func isLiteralToken(line string, valueStart int, value string) bool {
 	if hexLiteralToken.MatchString(value) {
 		return true
@@ -242,21 +319,37 @@ const (
 	modeHCLString // HCL quoted template text
 	modeRegex     // a JS regex literal
 	modeHeredoc   // an HCL heredoc body
+	modeFmtSpec   // the format spec of a Python f-string replacement field, after its top-level ':'
 )
 
-// lexFrame is one open interpolation: `${` inside a JS template or an HCL quoted string.
+// lexFrame is one open interpolation: `${` inside a JS template or an HCL quoted string, or a
+// replacement field of a Python f-string or t-string.
 type lexFrame struct {
 	ret          lexMode // the text mode its closing brace returns to
-	depth        int     // unmatched '{' inside the interpolation
+	depth        int     // unmatched brackets inside the interpolation ('{' only, for JS and HCL)
 	templateOpen int     // offset of the backtick that opened the enclosing JS template
+
+	// A Python replacement field. The f-string stays literal as a whole, fields included, so the
+	// frame only carries the string's own state across the field: its quote, whether it is
+	// triple-quoted, and its first byte. depth counts every bracket, not just '{', because a ':'
+	// at depth 0 starts the format spec.
+	pyQuote  byte
+	pyTriple bool
+	pyStart  int
 }
 
-// lexLiterals makes one forward pass over the whole content and returns the literal bitset, or a
-// non-empty reason when the gate must fail open.
+// lexLiterals is lexSource without the backtick-text set, for the tests that pin the literal set.
+func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
+	lit, _, reason := lexSource(content, lang)
+	return lit, reason
+}
+
+// lexSource makes one forward pass over the whole content and returns the literal bitset and its
+// backtick-text subset (see sourceGate), or a non-empty reason when the gate must fail open.
 //
 // One pass and no per-line rescans: every branch advances i, and the only backward looks (a Python
-// string prefix, the byte before a JS '/') are bounded by a constant or by the whitespace run they
-// skip, which is never revisited. See TestSourceLexerIsLinear.
+// string prefix, the keyword ending at prevSig before a JS '/' or '<') are bounded by a constant.
+// See TestSourceLexerIsLinear.
 //
 // FAIL OPEN -- the gate is disabled for the whole file and it behaves exactly as today -- when:
 //
@@ -265,27 +358,51 @@ type lexFrame struct {
 //   - a single-line string reaches the end of its line unterminated and without a continuation
 //     backslash. That is a syntax error in every language here, so either this lexer is wrong
 //     about the file or the file is not what its extension claims; a JS regex literal that does
-//     not close on its line is treated the same way;
-//   - template or interpolation nesting is unbalanced, or deeper than maxInterpolationDepth.
+//     not close on its line is treated the same way, and so is an f-string closed inside, or a
+//     single-quoted one broken across lines in, a format spec;
+//   - template or interpolation nesting is unbalanced, or deeper than maxInterpolationDepth;
+//   - a JSX element appears in code position of a JavaScript file: a closing tag `</Name` or `</>`
+//     (in .ts too, where it means the file is not TypeScript, e.g. a Qt Linguist translation), or
+//     in .js/.mjs/.cjs an opening tag `<Name` or `<>` where an operand is expected. JSX text
+//     between tags is neither code nor a string, so the file is treated like a .jsx file;
+//   - a typographic quote (U+2018 U+2019 U+201C U+201D) appears in code position. No grammar here
+//     accepts one there, so the file is not valid source -- typically a credential pasted with
+//     curly quotes -- and the lexer cannot know where the author meant a string to be.
 //
-// Python note. A raw prefix (r, rb, br, fr, rf) changes what a backslash MEANS, not where the
-// string ENDS: Python's tokenizer still lets a backslash keep the next character inside a raw
+// Python note. A raw prefix (r, rb, br, fr, rf, tr, rt) changes what a backslash MEANS, not where
+// the string ENDS: Python's tokenizer still lets a backslash keep the next character inside a raw
 // literal, which is why r"\"" is a valid string. The boundary rule is therefore the same for raw
 // and non-raw strings, and lexing r"[\"']" as no-escape would end it one byte early and fail open
-// on valid code. An f-string is literal as a whole, replacement fields included.
-func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
+// on valid code. An f-string (or 3.14 t-string) is literal as a whole, replacement fields
+// included, but its fields are LEXED as code: since PEP 701 (3.12) a field may hold a string in the
+// f-string's own quote, f"{d["k"]}", and ending the f-string at that inner quote would read the
+// inner text as code while the quotes still pair up, so nothing would fail open. A ':' at bracket
+// depth 0 starts the format spec, which is text again (a quote there is a fill character); `{{` is
+// an escaped brace, and a backslash never escapes a brace.
+func lexSource(content string, lang sourceLanguage) (lit, tick literalSet, reason string) {
+	// TypeScript lexes exactly as JavaScript; only the JSX opener test differs.
+	jsxOpener := lang == langJS
+	if lang == langTS {
+		lang = langJS
+	}
 	n := len(content)
-	lit := newLiteralSet(n)
+	lit = newLiteralSet(n)
+	tick = newLiteralSet(n)
 
 	var (
 		stack     []lexFrame
 		mode      = modeCode
 		start     int  // first byte of the literal span currently open
+		textStart int  // first byte of the JS template text segment currently open
 		quote     byte // closing delimiter of modeString / modeTriple
 		tmplOpen  = -1 // backtick of the innermost open JS template
 		inClass   bool // inside [...] of a regex
-		lineStart int
 		heredocID string
+		fstr      bool // the Python string open in modeString/modeTriple is an f- or t-string
+		// prevSig is the last significant byte the lexer has passed in code -- an operator, an
+		// identifier byte, or the closing byte of a string, template or regex -- with whitespace,
+		// newlines and comments skipped. A JS '/' and '<' are judged by it; -1 before any.
+		prevSig = -1
 	)
 	continuation := lang == langPython || lang == langJS
 
@@ -297,7 +414,6 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 			switch {
 			case c == '\n':
 				i++
-				lineStart = i
 				continue
 			case (c == '#' && (lang == langPython || lang == langHCL)) ||
 				(c == '#' && lang == langJS && i == 0 && i+1 < n && content[1] == '!') ||
@@ -321,6 +437,7 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 				}
 				if lang == langPython {
 					start = pythonPrefixStart(content, i)
+					fstr = strings.ContainsAny(content[start:i], "fFtT")
 					if i+2 < n && content[i+1] == c && content[i+2] == c {
 						mode, quote = modeTriple, c
 						i += 3
@@ -333,23 +450,41 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 				i++
 				continue
 			case c == '`' && lang == langJS:
-				mode, start, tmplOpen = modeTemplate, i, i
+				mode, start, textStart, tmplOpen = modeTemplate, i, i+1, i
 				i++
 				continue
 			case c == '`' && lang == langGo:
 				mode, start = modeRaw, i
 				i++
 				continue
-			case c == '/' && lang == langJS && regexCanStart(content, lineStart, i):
+			case c == '/' && lang == langJS && regexCanStart(content, prevSig):
 				mode, start, inClass = modeRegex, i, false
 				i++
 				continue
+			case c == '<' && lang == langJS && jsxTagAt(content, i, prevSig, jsxOpener):
+				return nil, nil, "JSX element in a JavaScript file"
+			case c == 0xE2 && typographicQuoteAt(content, i):
+				return nil, nil, "typographic quote in code"
 			case c == '<' && lang == langHCL && i+1 < n && content[i+1] == '<':
 				if id, bodyStart, ok := hclHeredocOpener(content, i); ok {
 					mode, heredocID = modeHeredoc, id
 					i = bodyStart
-					lineStart = i
 					continue
+				}
+			case lang == langPython && len(stack) > 0 && strings.IndexByte("([{)]}:", c) >= 0:
+				// Inside a Python replacement field (only fields push frames in Python).
+				top := &stack[len(stack)-1]
+				switch {
+				case c == '(' || c == '[' || c == '{':
+					top.depth++
+				case (c == ')' || c == ']' || c == '}') && top.depth > 0:
+					top.depth--
+				case c == '}':
+					// The field ends; the f-string's own state resumes.
+					mode, quote, start, fstr = top.ret, top.pyQuote, top.pyStart, true
+					stack = stack[:len(stack)-1]
+				case c == ':' && top.depth == 0:
+					mode = modeFmtSpec
 				}
 			case (c == '{' || c == '}') && len(stack) > 0:
 				top := &stack[len(stack)-1]
@@ -361,8 +496,11 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 					// The brace that closes the interpolation is code; the text resumes after it.
 					mode, tmplOpen = top.ret, top.templateOpen
 					stack = stack[:len(stack)-1]
-					start = i + 1
+					start, textStart = i+1, i+1
 				}
+			}
+			if c != ' ' && c != '\t' && c != '\r' {
+				prevSig = i
 			}
 			i++
 
@@ -373,46 +511,64 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 				i += 2
 				continue
 			}
-			if c == '\n' {
-				lineStart = i + 1
-			}
 			i++
 
 		case modeString:
 			switch c {
 			case '\\':
+				if fstr && i+1 < n && content[i+1] == '{' {
+					i++ // a backslash never escapes a brace in an f-string: rf'\{{' and f'\{x}'
+					continue
+				}
 				if nl := newlineAt(content, i+1); nl > 0 {
 					if !continuation {
-						return nil, "string continued past the end of its line"
+						return nil, nil, "string continued past the end of its line"
 					}
 					i += 1 + nl
-					lineStart = i
 					continue
 				}
 				i += 2
 				continue
 			case '\n':
-				return nil, "unterminated single-line string"
+				return nil, nil, "unterminated single-line string"
 			case quote:
 				lit.setRange(start, i+1)
-				mode = modeCode
+				mode, prevSig = modeCode, i
+			case '{':
+				if fstr {
+					opened, why := openPyField(content, &i, &stack, quote, false, start)
+					if why != "" {
+						return nil, nil, why
+					}
+					if opened {
+						mode = modeCode
+					}
+					continue
+				}
 			}
 			i++
 
 		case modeTriple:
 			switch {
+			case c == '\\' && fstr && i+1 < n && content[i+1] == '{':
+				i++
+				continue
 			case c == '\\':
-				if i+1 < n && content[i+1] == '\n' {
-					lineStart = i + 2
-				}
 				i += 2
 				continue
-			case c == '\n':
-				lineStart = i + 1
 			case c == quote && i+2 < n && content[i+1] == quote && content[i+2] == quote:
 				lit.setRange(start, i+3)
 				mode = modeCode
 				i += 3
+				continue
+			case c == '{' && fstr:
+				opened, why := openPyField(content, &i, &stack, quote, true, start)
+				if why != "" {
+					return nil, nil, why
+				}
+				if opened {
+					mode = modeCode
+				}
 				continue
 			}
 			i++
@@ -420,33 +576,32 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 		case modeRaw:
 			if c == '`' {
 				lit.setRange(start, i+1)
+				tick.setRange(start+1, i)
 				mode = modeCode
-			} else if c == '\n' {
-				lineStart = i + 1
 			}
 			i++
 
 		case modeTemplate:
 			switch {
 			case c == '\\':
-				if i+1 < n && content[i+1] == '\n' {
-					lineStart = i + 2
-				}
 				i += 2
 				continue
-			case c == '\n':
-				lineStart = i + 1
 			case c == '`':
 				lit.setRange(start, i+1)
-				mode = modeCode
+				tick.setRange(textStart, i)
+				mode, prevSig = modeCode, i
 			case c == '$' && i+1 < n && content[i+1] == '{':
 				if len(stack) >= maxInterpolationDepth {
-					return nil, "interpolation nested deeper than maxInterpolationDepth"
+					return nil, nil, "interpolation nested deeper than maxInterpolationDepth"
 				}
-				// The text so far is literal; the template's OPENING backtick is code, because
-				// the value an unquoted capture takes from here is an interpolated expression.
+				// The text so far is literal. The template's OPENING backtick is code only when
+				// the template starts with `${`: the value an unquoted capture takes from there
+				// starts with an interpolated expression. After literal text it stays literal.
 				lit.setRange(start, i)
-				lit.clear(tmplOpen)
+				tick.setRange(textStart, i)
+				if i == tmplOpen+1 {
+					lit.clear(tmplOpen)
+				}
 				stack = append(stack, lexFrame{ret: modeTemplate, templateOpen: tmplOpen})
 				mode = modeCode
 				i += 2
@@ -458,12 +613,12 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 			switch {
 			case c == '\\':
 				if newlineAt(content, i+1) > 0 {
-					return nil, "string continued past the end of its line"
+					return nil, nil, "string continued past the end of its line"
 				}
 				i += 2
 				continue
 			case c == '\n':
-				return nil, "unterminated single-line string"
+				return nil, nil, "unterminated single-line string"
 			case c == '"':
 				lit.setRange(start, i+1)
 				mode = modeCode
@@ -472,7 +627,7 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 				continue
 			case (c == '$' || c == '%') && i+1 < n && content[i+1] == '{':
 				if len(stack) >= maxInterpolationDepth {
-					return nil, "interpolation nested deeper than maxInterpolationDepth"
+					return nil, nil, "interpolation nested deeper than maxInterpolationDepth"
 				}
 				lit.setRange(start, i)
 				stack = append(stack, lexFrame{ret: modeHCLString, templateOpen: -1})
@@ -486,12 +641,12 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 			switch c {
 			case '\\':
 				if newlineAt(content, i+1) > 0 {
-					return nil, "regex literal continued past the end of its line"
+					return nil, nil, "regex literal continued past the end of its line"
 				}
 				i += 2
 				continue
 			case '\n':
-				return nil, "regex literal not closed on its line"
+				return nil, nil, "regex literal not closed on its line"
 			case '[':
 				inClass = true
 			case ']':
@@ -503,9 +658,34 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 						i++
 					}
 					lit.setRange(start, i)
-					mode = modeCode
+					mode, prevSig = modeCode, i-1
 					continue
 				}
+			}
+			i++
+
+		case modeFmtSpec:
+			// Text, like the f-string around it, except that '{' opens a nested field and '}' ends
+			// this one. A quote here is a fill character, not a delimiter.
+			top := &stack[len(stack)-1]
+			switch {
+			case c == '\\':
+				i += 2
+				continue
+			case c == '\n' && !top.pyTriple:
+				return nil, nil, "newline in the format spec of a single-quoted f-string"
+			case c == top.pyQuote && (!top.pyTriple || (i+2 < n && content[i+1] == c && content[i+2] == c)):
+				return nil, nil, "f-string closed inside a format spec"
+			case c == '{':
+				if len(stack) >= maxInterpolationDepth {
+					return nil, nil, "interpolation nested deeper than maxInterpolationDepth"
+				}
+				stack = append(stack, lexFrame{ret: modeFmtSpec, templateOpen: -1,
+					pyQuote: top.pyQuote, pyTriple: top.pyTriple, pyStart: top.pyStart})
+				mode = modeCode
+			case c == '}':
+				mode, quote, start, fstr = top.ret, top.pyQuote, top.pyStart, true
+				stack = stack[:len(stack)-1]
 			}
 			i++
 
@@ -522,17 +702,40 @@ func lexLiterals(content string, lang sourceLanguage) (literalSet, string) {
 				continue
 			}
 			i = eol + 1
-			lineStart = i
 		}
 	}
 
 	if mode != modeCode {
-		return nil, "content ends inside a literal"
+		return nil, nil, "content ends inside a literal"
 	}
 	if len(stack) > 0 {
-		return nil, "unbalanced interpolation"
+		return nil, nil, "unbalanced interpolation"
 	}
-	return lit, ""
+	return lit, tick, ""
+}
+
+// openPyField handles a '{' at *i inside a Python f-string or t-string: `{{` is an escaped brace
+// and stays text; anything else opens a replacement field, which PEP 701 (Python 3.12) lets
+// contain any expression, including strings in the SAME quote as the f-string around it. The
+// field is lexed as code so that such a string is found and the f-string does not end at its
+// first quote; the f-string is still marked literal as a whole when its own closing quote is
+// reached, so the drop set inside it does not change.
+func openPyField(content string, i *int, stack *[]lexFrame, quote byte, triple bool, start int) (opened bool, reason string) {
+	if *i+1 < len(content) && content[*i+1] == '{' {
+		*i += 2
+		return false, ""
+	}
+	if len(*stack) >= maxInterpolationDepth {
+		return false, "interpolation nested deeper than maxInterpolationDepth"
+	}
+	ret := modeString
+	if triple {
+		ret = modeTriple
+	}
+	*stack = append(*stack, lexFrame{ret: ret, templateOpen: -1,
+		pyQuote: quote, pyTriple: triple, pyStart: start})
+	*i++
+	return true, ""
 }
 
 // lineEnd returns the offset of the '\n' ending the line containing i, or len(s).
@@ -554,18 +757,18 @@ func newlineAt(s string, i int) int {
 	return 0
 }
 
-// pythonPrefixStart returns where the string whose quote is at q starts: at a preceding r/b/f/u
-// prefix (r, b, f, u, rb, br, fr, rf, any case) when there is one, else at q.
+// pythonPrefixStart returns where the string whose quote is at q starts: at a preceding r/b/f/u/t
+// prefix (r, b, f, u, t, rb, br, fr, rf, tr, rt, any case) when there is one, else at q.
 func pythonPrefixStart(s string, q int) int {
 	k := q
-	for k > 0 && q-k < 2 && strings.IndexByte("rRbBfFuU", s[k-1]) >= 0 {
+	for k > 0 && q-k < 2 && strings.IndexByte("rRbBfFuUtT", s[k-1]) >= 0 {
 		k--
 	}
 	if k == q {
 		return q
 	}
 	switch strings.ToLower(s[k:q]) {
-	case "r", "b", "f", "u", "rb", "br", "fr", "rf":
+	case "r", "b", "f", "u", "t", "rb", "br", "fr", "rf", "tr", "rt":
 	default:
 		return q
 	}
@@ -585,20 +788,19 @@ var regexKeywords = map[string]bool{
 // maxRegexKeywordLen is the length of the longest entry in regexKeywords.
 const maxRegexKeywordLen = len("instanceof")
 
-// regexCanStart reports whether a JS '/' at i begins a regex literal rather than a division.
+// regexCanStart reports whether a JS '/' begins a regex literal rather than a division, judged by
+// prevSig, the last significant byte before it (see lexSource; -1 at the start of the file).
 //
-// The usual previous-significant-byte heuristic, and deliberately conservative: a regex is assumed
-// only after a byte that cannot end an operand -- ( , = : [ ! & | ? { } ; and the arrow => -- after
-// a keyword that begins an expression, or as the first significant byte of its line. Getting it wrong is safe in
-// both directions. A division read as a regex either closes at a later '/' and marks text literal,
-// which keeps candidates, or does not close on its line and fails the file open; a regex read as a
-// division leaves its quote bytes in code, which ends in an unterminated string and fails open.
-func regexCanStart(s string, lineStart, i int) bool {
-	j := i - 1
-	for j >= lineStart && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r') {
-		j--
-	}
-	if j < lineStart {
+// The usual previous-significant-token heuristic, and deliberately conservative: a regex is assumed
+// only after a byte that cannot end an operand -- ( , = : [ ! & | ? { } ; and the arrow => -- or
+// after a keyword that begins an expression. prevSig skips newlines and comments, because JS inserts
+// no semicolon before a '/': a '/' that leads its line after an operand is a division, and reading it
+// as a regex would close it at the first '/' of a trailing `//` or `/*` and leave that comment in
+// code. A regex read as a division leaves its body in code: a quote in it opens a string, which
+// normally runs off the end of the line and fails the file open.
+func regexCanStart(s string, prevSig int) bool {
+	j := prevSig
+	if j < 0 {
 		return true
 	}
 	switch s[j] {
@@ -608,19 +810,70 @@ func regexCanStart(s string, lineStart, i int) bool {
 		// Only as the arrow `=>`, whose body may be a regex: `(o) => /^--x=/.test(o)`. Found by
 		// the corpus probe, where it was the cause of 6 of the 7 regex fail-opens. A bare `>` is
 		// left as division, the conservative reading.
-		return j > lineStart && s[j-1] == '='
+		return j > 0 && s[j-1] == '='
 	}
 	if !isIdentByte(s[j]) {
 		return false
 	}
 	k := j
-	for k >= lineStart && isIdentByte(s[k]) {
+	for k >= 0 && isIdentByte(s[k]) {
 		if j-k >= maxRegexKeywordLen {
 			return false // longer than any keyword
 		}
 		k--
 	}
 	return regexKeywords[s[k+1:j+1]]
+}
+
+// jsxTagAt reports whether the '<' at i, in JS code position, is a JSX tag:
+//
+//   - a closing tag, `</Name` or the fragment `</>`. Neither JavaScript nor TypeScript has `</`
+//     before a name outside JSX, short of comparing against a regex literal (`a </re/`), and JSX
+//     text lives only between an opening and a closing tag, so every file holding JSX text has one;
+//   - when opener is set (.js .mjs .cjs), an opening tag `<Name` or the fragment `<>` where an
+//     operand is expected -- regexCanStart's positions, plus after `export default`. Outside JSX a
+//     '<' is never valid there. This catches a closing tag the lexer cannot see, e.g. one hidden
+//     behind a `//` in the JSX text: `<p>token=<v> see https://wiki</p>`. In TypeScript `<T` there
+//     is a type parameter list or an assertion, so opener is unset for langTS.
+//
+// A misfire only fails the file open, the safe direction.
+func jsxTagAt(s string, i, prevSig int, opener bool) bool {
+	if i+1 >= len(s) {
+		return false
+	}
+	if s[i+1] == '/' {
+		return i+2 < len(s) && (s[i+2] == '>' || jsxNameStart(s[i+2]))
+	}
+	if !opener || (s[i+1] != '>' && !jsxNameStart(s[i+1])) {
+		return false
+	}
+	return regexCanStart(s, prevSig) || keywordEndsAt(s, prevSig, "default")
+}
+
+// jsxNameStart reports whether b can start a JSX element name.
+func jsxNameStart(b byte) bool { return isASCIILetter(b) || b == '_' || b == '$' || b >= 0x80 }
+
+// keywordEndsAt reports whether the identifier ending at j is exactly kw (and not a property
+// access such as x.default).
+func keywordEndsAt(s string, j int, kw string) bool {
+	k := j - len(kw) + 1
+	if j < 0 || k < 0 || s[k:j+1] != kw {
+		return false
+	}
+	return k == 0 || (!isIdentByte(s[k-1]) && s[k-1] != '.')
+}
+
+// typographicQuoteAt reports whether a typographic quote starts at i: U+2018 ‘, U+2019 ’, U+201C “
+// or U+201D ”, UTF-8 E2 80 98/99/9C/9D.
+func typographicQuoteAt(s string, i int) bool {
+	if i+2 >= len(s) || s[i] != 0xE2 || s[i+1] != 0x80 {
+		return false
+	}
+	switch s[i+2] {
+	case 0x98, 0x99, 0x9C, 0x9D:
+		return true
+	}
+	return false
 }
 
 // hclHeredocOpener parses `<<ID` or `<<-ID` at i followed by nothing but the end of the line, and

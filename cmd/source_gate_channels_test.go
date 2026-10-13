@@ -32,18 +32,34 @@ func TestSourceGateFollowsTheNameOnEveryCLIChannel(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A React component saved as .js: JSX text is neither code nor a JS string, so the file fails
+	// the gate open and reports both lines, through the file path and through --stdin-name alike.
+	// Written with no credential-shaped literal in this file: the two values are the same bytes as
+	// above, inside JSX children.
+	const jsxBody = "export default () => (\n  <pre>\n    token: AuthToken\n" +
+		"    password: MixedCaseNoDigits\n  </pre>\n);\n"
+	if err := os.WriteFile(filepath.Join(dir, "Help.js"), []byte(jsxBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plain.js"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
-		name string
-		args []string
-		want int
+		name  string
+		args  []string
+		stdin string
+		want  int
 	}{
-		{"--stdin-name x.ts is gated", []string{"--stdin", "--stdin-name", "x.ts"}, 0},
-		{"--stdin-name with no extension is not", []string{"--stdin", "--stdin-name", "notes"}, 2},
-		{"bare --stdin (<stdin>) is not", []string{"--stdin"}, 2},
-		{"--stdin-name x.yaml is not", []string{"--stdin", "--stdin-name", "x.yaml"}, 2},
-		{"a .ts path is gated", []string{"--file", filepath.Join(dir, "models.ts")}, 0},
-		{"a .yaml path is not", []string{"--file", filepath.Join(dir, "settings.yaml")}, 2},
+		{"--stdin-name x.ts is gated", []string{"--stdin", "--stdin-name", "x.ts"}, "", 0},
+		{"--stdin-name with no extension is not", []string{"--stdin", "--stdin-name", "notes"}, "", 2},
+		{"bare --stdin (<stdin>) is not", []string{"--stdin"}, "", 2},
+		{"--stdin-name x.yaml is not", []string{"--stdin", "--stdin-name", "x.yaml"}, "", 2},
+		{"a .ts path is gated", []string{"--file", filepath.Join(dir, "models.ts")}, "", 0},
+		{"a .yaml path is not", []string{"--file", filepath.Join(dir, "settings.yaml")}, "", 2},
+		{"a .js path of plain code is gated", []string{"--file", filepath.Join(dir, "plain.js")}, "", 0},
+		{"a .js path holding JSX fails open", []string{"--file", filepath.Join(dir, "Help.js")}, "", 2},
+		{"--stdin-name x.js with JSX fails open", []string{"--stdin", "--stdin-name", "x.js"}, jsxBody, 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -52,7 +68,11 @@ func TestSourceGateFollowsTheNameOnEveryCLIChannel(t *testing.T) {
 			cmd := exec.Command(bin, args...)
 			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "FERRET_PRECOMMIT=0"}
 			cmd.Dir = dir
-			cmd.Stdin = strings.NewReader(body)
+			in := body
+			if tc.stdin != "" {
+				in = tc.stdin
+			}
+			cmd.Stdin = strings.NewReader(in)
 			out, err := cmd.Output()
 			if err != nil {
 				t.Fatalf("%v: %v\n%s", args, err, out)

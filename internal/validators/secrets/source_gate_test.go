@@ -289,13 +289,22 @@ func TestSourceGateKeepsLiteralContexts(t *testing.T) {
 			`DB_PASSWORD=` + v[6],
 			`"""`,
 			`SECRET_KEY = ` + hex,
+			// An entropy-path item: synthLong is found by the never-gated entropy path on its own,
+			// so this line passes whatever the gate anchors on. With a quoted env-var name the
+			// unquoted capture stops at the first quote and no keyword candidate reaches the
+			// fallback, on main or here.
 			`password = os.getenv("DB_PASSWORD", "` + long + `")`,
+			// The anchor item: after an UNQUOTED env-var name the unquoted capture is
+			// os.getenv(DB_PASSWORD_ENV (code, dropped) and the list-tail candidate starts at the
+			// fallback's opening quote (literal, kept). synth is under the entropy floor, so only
+			// that keyword candidate can report it: anchoring on the keyword would drop it.
+			`password = os.getenv(DB_PASSWORD_ENV, "` + v[10] + `")`,
 			`API_KEYS = ["` + v[7] + `", "` + v[8] + `"]`,
 			`MSG = "connect with token=` + v[9] + ` \`,
 			`and retry"`,
 			`session = get_session()`,
 		}, "\n") + "\n",
-			keep: []string{v[0], v[1], v[2], v[3], v[4], v[5], v[6], hex, long, v[7], v[8], v[9]},
+			keep: []string{v[0], v[1], v[2], v[3], v[4], v[5], v[6], hex, long, v[10], v[7], v[8], v[9]},
 			drop: []string{"get_session()", "os.getenv("}},
 		{name: "typescript", path: "settings.ts", content: strings.Join([]string{
 			`const conn = "Server=db;User Id=sa;Password=` + v[0] + `;";`,
@@ -310,14 +319,19 @@ func TestSourceGateKeepsLiteralContexts(t *testing.T) {
 			"`;",
 			"const token = `" + v[6] + "`;",
 			`const secret_key = ` + hex + `;`,
-			`const password = process.env.DB_PASSWORD || "` + long + `";`,
+			`const password = process.env.DB_PASSWORD || "` + long + `";`, // an entropy-path item
+			`const dbPassword = getenv(DB_PASSWORD_ENV, "` + v[9] + `");`, // the anchor item
 			`const apiKeys = ["` + v[7] + `"];`,
 			`const msg = "token=` + v[8] + ` \`,
 			`continued";`,
 			`const secret = process.env.JWT_SECRET;`,
+			// A line-leading '/' after an operand is a division, so the comment after it is a
+			// comment: read as a regex it closed at the comment's first '/' and left the rest code.
+			`const avg = total`,
+			`  / count; // password=` + v[10],
 		}, "\n") + "\n",
-			keep: []string{v[0], v[1], v[2], v[3], v[4], v[5], v[6], hex, long, v[7], v[8]},
-			drop: []string{"process.env.JWT_SECRET", "process.env.DB_PASSWORD"}},
+			keep: []string{v[0], v[1], v[2], v[3], v[4], v[5], v[6], hex, long, v[9], v[7], v[8], v[10]},
+			drop: []string{"process.env.JWT_SECRET", "process.env.DB_PASSWORD", "getenv(DB_PASSWORD_ENV"}},
 		{name: "go", path: "settings.go", content: strings.Join([]string{
 			`package settings`,
 			``,
@@ -393,11 +407,35 @@ func TestSourceGateBacktickTwinsReportLikeQuotes(t *testing.T) {
 		}
 	}
 
-	interp := "const token = `${prefix}" + synth(3) + "`;\n"
+	// A template with ${ is a quoted literal with code inside it. Its text is backtick text, so a
+	// hard-coded part of the value is kept wherever the ${ sits -- rule (3). (An all-interpolation
+	// template is reported by nothing even ungated, so there is no drop twin to pin here; the
+	// classification of the opening backtick itself is pinned by TestLexJSLiterals.)
 	for _, ext := range []string{".js", ".ts"} {
-		t.Run("interpolated template is code"+ext, func(t *testing.T) {
-			checkGateCase(t, gateCase{path: "interp" + ext, content: interp, drop: []string{"${prefix}"}})
+		t.Run("interpolated template keeps its hard-coded text"+ext, func(t *testing.T) {
+			checkGateCase(t, gateCase{path: "interp" + ext,
+				content: "const token = `${prefix}" + synth(3) + "`;\nsecret = config.secret_value\n",
+				keep:    []string{synth(3)}, drop: []string{"config.secret_value"}})
 		})
+		for i, tmpl := range []string{
+			"const password = @ + suffix;\n",
+			"let apiKey = @ + suffix;\n",
+			"const cfg = { token: @ + '-' + env, };\n",
+			"const password = @ +\n  suffix;\n",
+		} {
+			t.Run(fmt.Sprintf("literal text before the first interpolation%s/%d", ext, i), func(t *testing.T) {
+				v := synth(10 + i)
+				quoted := strings.ReplaceAll(tmpl, "@", `"`+v+`"`)
+				tick := strings.ReplaceAll(tmpl, "@ + suffix", "`"+v+"${suffix}`")
+				tick = strings.ReplaceAll(tick, "@ + '-' + env", "`"+v+"-${env}`")
+				tick = strings.ReplaceAll(tick, "@ +\n  suffix", "`"+v+"\n${suffix}`")
+				if _, u := scanBoth(t, quoted, "q"+ext); len(withText(u, v)) == 0 {
+					t.Fatalf("fixture is vacuous: the quoted twin %q does not report", quoted)
+				}
+				checkGateCase(t, gateCase{path: "tick" + ext, content: tick + "secret = config.secret_value\n",
+					keep: []string{v}, drop: []string{"config.secret_value"}})
+			})
+		}
 	}
 	t.Run("the same bytes in a Go raw string are literal", func(t *testing.T) {
 		checkGateCase(t, gateCase{path: "interp.go", content: "var token = `${prefix}" + synth(3) + "`\n" +
@@ -455,6 +493,40 @@ func TestSourceGateFailsOpen(t *testing.T) {
 		{"non-code end state", "a.go",
 			"password = os.Getenv(\"DB_PASSWORD\")\n/* never closed\n",
 			"password = os.Getenv(\"DB_PASSWORD\")\n/* closed */\n", "os.Getenv(", "content ends inside a literal"},
+		// JSX text in a .js file is neither code nor a string. No apostrophe anywhere, so nothing
+		// else fails the file open: without the JSX test the FP is dropped along with the
+		// credential in the <pre>.
+		{"JSX in a .js file", "Help.js",
+			"const secret = process.env.JWT_SECRET;\nexport default function Help() {\n  return (\n" +
+				"    <pre>\n      API_KEY=" + synth(1) + "\n    </pre>\n  );\n}\n",
+			"const secret = process.env.JWT_SECRET;\nexport default function Help() {\n  return null;\n}\n",
+			"process.env.JWT_SECRET", "JSX element in a JavaScript file"},
+		// A Qt Linguist translation shares the .ts extension and is XML. TypeScript has no `</`
+		// before a name, so a closing tag in code position means the file is not TypeScript.
+		{"markup behind a .ts extension", "app_de.ts",
+			"<?xml version=\"1.0\"?>\n<TS>\n<source>password: " + synth(2) + "</source>\n" +
+				"secret = process.env.JWT_SECRET\n</TS>\n",
+			"const p = \"password: " + synth(2) + "\";\nsecret = process.env.JWT_SECRET\n",
+			"process.env.JWT_SECRET", "JSX element in a JavaScript file"},
+		// A credential pasted with typographic quotes: invalid source in every gated grammar, and
+		// the lexer cannot know where the author meant the string to be. The repaired twin keeps
+		// a typographic quote in a comment, where it is legal and changes nothing.
+		{"typographic quotes in a .py", "settings.py",
+			"PASSWORD = \u201c" + synth(3) + "\u201d\nsession = get_session()\n",
+			"PASSWORD = \"" + synth(3) + "\"  # don\u2019t paste \u201csmart\u201d quotes\nsession = get_session()\n",
+			"get_session()", "typographic quote in code"},
+		{"typographic quotes in a .ts", "a.ts",
+			"export const password = \u2018" + synth(3) + "\u2019;\nconst secret = process.env.JWT_SECRET;\n",
+			"export const password = '" + synth(3) + "'; // it\u2019s fixed\nconst secret = process.env.JWT_SECRET;\n",
+			"process.env.JWT_SECRET", "typographic quote in code"},
+		{"typographic quotes in a .go", "a.go",
+			"var password = \u201c" + synth(3) + "\u201d\nvar secret = cfg.SecretValue\n",
+			"var password = \"" + synth(3) + "\"\nvar secret = cfg.SecretValue\n",
+			"cfg.SecretValue", "typographic quote in code"},
+		{"typographic quotes in a .tf", "main.tf",
+			"password = \u201c" + synth(3) + "\u201d\nsecret = var.secret_value\n",
+			"password = \"" + synth(3) + "\"\nsecret = var.secret_value\n",
+			"var.secret_value", "typographic quote in code"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -517,5 +589,159 @@ func TestSourceGateNeverDropsProviderLiterals(t *testing.T) {
 	}
 	if len(withText(gated, "get_session()")) > 0 {
 		t.Error("the code-position control still reports; the gate is not active on this file")
+	}
+}
+
+// JSX in .js, .mjs and .cjs: a file holding a JSX element behaves exactly as a .jsx file -- the gate
+// fails open and every candidate reports as on main. Each body puts a credential in JSX TEXT, which
+// the lexer would otherwise read as code. The last body hides its only closing tag behind a `//` in
+// the JSX text, so only the opening-tag test catches it.
+func TestSourceGateJSXInJavaScriptBehavesLikeJSX(t *testing.T) {
+	v := synth(8)
+	bodies := map[string]string{
+		"multi-line pre": "export default function Help() {\n  return (\n    <pre>\n      API_KEY=" + v +
+			"\n    </pre>\n  );\n}\n",
+		"inline return":  "export function Help() { return <pre>API_KEY=" + v + "</pre>; }\n",
+		"export default": "export default <pre>API_KEY=" + v + "</pre>;\n",
+		"fragment":       "export const Help = () => <>\n  API_KEY=" + v + "\n</>;\n",
+		"conditional":    "export const Help = ({ show }) => show && <code>API_KEY=" + v + "</code>;\n",
+		"closing tag hidden by a URL": "export const Help = () => <p>API_KEY=" + v +
+			" see https://wiki.corp.internal/keys</p>;\n",
+	}
+	control := "const secret = process.env.JWT_SECRET;\n"
+	for name, body := range bodies {
+		for _, ext := range []string{".js", ".mjs", ".cjs"} {
+			t.Run(name+ext, func(t *testing.T) {
+				path := "Help" + ext
+				if _, reason := newSourceGate(control+body, sourceLanguageFor(path)); reason != "JSX element in a JavaScript file" {
+					t.Errorf("fail-open reason %q, want the JSX one", reason)
+				}
+				gated, ungated := scanBoth(t, control+body, path)
+				if len(withText(ungated, v)) == 0 || len(withText(ungated, "process.env.JWT_SECRET")) == 0 {
+					t.Fatalf("fixture is vacuous: ungated %v", ungated)
+				}
+				if d := append(subtract(gated, ungated), subtract(ungated, gated)...); len(d) > 0 {
+					t.Errorf("a .js file holding JSX must behave exactly as a .jsx file; differs by %v", d)
+				}
+			})
+		}
+	}
+	// The contrast: the gate stays active on .js comparisons and on TypeScript generics, which use
+	// the same '<' bytes without being JSX.
+	t.Run("comparisons in a .js file stay gated", func(t *testing.T) {
+		checkGateCase(t, gateCase{path: "loop.js", content: "for (let i = 0; i<n; i++) { if (a <b) {} }\n" +
+			"const ok = total\n  <limit;\n" + control, drop: []string{"process.env.JWT_SECRET"}})
+	})
+	t.Run("generics in a .ts file stay gated", func(t *testing.T) {
+		checkGateCase(t, gateCase{path: "parse.ts", content: "export const parse = <T extends Schema>(s: T) => s;\n" +
+			"const n = <number>value;\nlet token: Promise<AuthToken>;\n" + control,
+			drop: []string{"process.env.JWT_SECRET", "Promise<AuthToken>"}})
+	})
+}
+
+// (3) of the rule: a capture that starts in code but runs INTO a backtick string holds a literal
+// the lexer itself classified, so it is kept at its ungated confidence -- in a call, a conversion,
+// a tagged template, a Go raw string, and a template with an interpolation on either side of its
+// text. Each file also carries a code-position control that must drop, so each row fails both with
+// the gate removed and with this keep removed.
+func TestSourceGateKeepsBacktickTextInsideCode(t *testing.T) {
+	v := synth(9)
+	control := "\nsecret = config.secret_value\n"
+	cases := []struct{ name, path, body string }{
+		{"js call", "a.js", "const cfg = {\n  password: atob(`" + v + "`),\n};\n"},
+		{"ts call with a second argument", "a.ts", "const secret = Buffer.from(`" + v + "`, \"utf8\");\n"},
+		{"js tagged template", "a.js", "const token = String.raw`" + v + "`;\n"},
+		{"go call", "a.go", "package main\n\nvar password = strings.TrimSpace(`" + v + "`)\n"},
+		{"go conversion", "a.go", "package main\n\nvar password = string(`" + v + "`)\n"},
+		{"go format string", "a.go", "package main\n\nvar token = fmt.Sprintf(`" + v + "%s`, suffix)\n"},
+		// The capture stops at the space, so only a text segment -- not the closing backtick -- is
+		// inside it: this row is what fails if the ${ branch stops marking its text.
+		{"js text then interpolation", "a.js", "const apiKey = `" + v + "${process.env.STAGE} tail`;\n"},
+		{"ts interpolation then text", "a.ts", "const apiKey = `${PREFIX}" + v + "`;\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name+" "+c.path, func(t *testing.T) {
+			checkGateCase(t, gateCase{path: c.path, content: c.body + control,
+				keep: []string{v}, drop: []string{"config.secret_value"}})
+		})
+	}
+}
+
+// The keep in (3) is scoped to the text of a BACKTICK string. A capture that merely touches another
+// literal -- the f or b prefix of a Python string, a JS regex, a comment, a template's delimiters
+// with no text of its own -- holds no written value and still drops. So does one that runs into a
+// QUOTED string, which only the collection and list-tail ELEMENT classes can do: marking the text
+// of quoted strings too kept 35,974 more JS/TS findings than (3) does on the measured corpus, every
+// one on a minified line of 200+ characters (`HZ="X-Amzn-Bedrock-…"`), and 5 more in Python
+// (`name="proxy_auth")`). This test is what fails if (3) is widened that way, or to "any literal
+// byte in the span", which keeps a superset of those.
+func TestSourceGateKeepIsScopedToBacktickText(t *testing.T) {
+	cases := []struct {
+		path, body string
+		drop       []string
+	}{
+		{"a.py", "password = getpass(f\"Password for {user}: \")\n", []string{"getpass(f"}},
+		{"a.py", "secret = base64.b64encode(b\"x\")\n", []string{"base64.b64encode(b"}},
+		{"a.ts", "const token = line.match(/^Bearer/)\n", []string{"line.match(/^Bearer/)"}},
+		{"a.ts", "const token = getToken()//rotateQuarterly\n", []string{"getToken()//rotateQuarterly"}},
+		// A list-tail element whose head is code and whose tail is a quoted string: the documented
+		// residual, measured above. Both the head and the element drop.
+		{"a.py", "token = first_token_value, decode(\"" + synth(11) + "\")\n",
+			[]string{"first_token_value", "decode("}},
+		{"a.ts", "const token = cfg.tokenValue9, enc(\"" + synth(11) + "\");\n",
+			[]string{"cfg.tokenValue9", "enc("}},
+	}
+	for _, c := range cases {
+		t.Run(c.path+" "+c.drop[0], func(t *testing.T) {
+			checkGateCase(t, gateCase{path: c.path, content: c.body, drop: c.drop})
+		})
+	}
+}
+
+// A Python 3.12+ f-string (PEP 701) and a 3.14 t-string (PEP 750) may hold a string in their OWN
+// quote inside a replacement field. The quotes still pair up, so a lexer that ends the f-string at
+// the first inner quote does not fail open; it reads the inner string's text as CODE and drops the
+// credential in it. Every line here is valid Python 3.14.
+func TestSourceGateKeepsPEP701NestedStrings(t *testing.T) {
+	v := make([]string, 8)
+	for i := range v {
+		v[i] = synth(i)
+	}
+	checkGateCase(t, gateCase{name: "pep701", path: "pep701.py", content: strings.Join([]string{
+		`import os`,
+		`dsn = f"{os.environ.get("DSN", "postgres://u@h/db?password=` + v[0] + `")}"`,
+		`a = f"{cfg["token=` + v[1] + `"]}"`,
+		`b = f'{os.environ.get('DSN', 'postgres://u@h/db?password=` + v[2] + `')}'`,
+		`c = f"{x:{"password=` + v[3] + `"}}"`,
+		`d = f"{f"{x}" + "token=` + v[4] + `"}"`,
+		`e = t"{cfg["password=` + v[5] + `"]}"`,
+		`g = f"""{x + """`,
+		`password=` + v[6],
+		`"""}"""`,
+		`session = get_session()`,
+	}, "\n") + "\n",
+		keep: []string{v[0], v[1], v[2], v[3], v[4], v[5], v[6]},
+		drop: []string{"get_session()"}})
+}
+
+// An unquoted 40-char AWS secret in code is claimed by the gateable keyword path AND by the
+// never-gated AWS secret-key path on the same span, and mergeBySpanKeepStrongest raises the AWS
+// finding to the higher confidence of the two. Gating the keyword twin dropped nothing -- the span
+// still reported -- but lowered the survivor from main's confidence to the AWS path's own (100 to
+// 95 measured at the CLI), which the subset oracle in checkGateCase reports as an ADDED finding.
+func TestSourceGateKeepsAWSPathTwinConfidence(t *testing.T) {
+	akia := buildTestToken("AKIA", "Z7QW3XK9", "PL2MN4RT")
+	sec := buildTestToken("wq7Zp2Lm", "9Xw4/Rt6", "Vb1+Nc8K", "s3Jd5Fg0", "Ab12Cd34")
+	for _, path := range []string{"creds.py", "main.tf", "creds.ts", "creds.go"} {
+		t.Run(path, func(t *testing.T) {
+			checkGateCase(t, gateCase{
+				path: path,
+				content: "aws_access_key_id = " + akia + "\n" +
+					"aws_secret_access_key = " + sec + "\n" +
+					"session = get_session()\n",
+				keep: []string{akia, sec},
+				drop: []string{"get_session()"},
+			})
+		})
 	}
 }

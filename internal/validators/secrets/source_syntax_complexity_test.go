@@ -14,7 +14,8 @@ import (
 // The #753 lexer runs over the WHOLE content of every gated file before the line loop, so its cost
 // is paid on every .py/.js/.ts/.go/.tf scan whether or not a single candidate exists. It must be
 // O(n), with no per-line rescans: one forward pass, and every backward look bounded by a constant
-// or by a whitespace run that is never revisited (see lexLiterals).
+// (see lexSource). The per-candidate gate test is O(1) for the value start plus the value's own
+// length over 64 for the backtick-text span check, both independent of the file.
 //
 // Three targets, each base vs 4x on perfguard.Measure, bound 8.0 -- linear is ~4x, quadratic ~16x,
 // so the bound sits between the two populations. Each catches a regression the others cannot, and
@@ -43,6 +44,14 @@ import (
 func lexHeavyTSLine(i int) string {
 	return fmt.Sprintf("const t%d = `head ${user.n%d + `inner ${k%d}`} tail` + 'it\\'s %d' + "+
 		"\"q\\\"%d\" /* c%d */ + (/[\"'`]x%d/g.test(s) ? a%d / b : c); // n%d", i, i, i, i, i, i, i, i, i)
+}
+
+// lexHeavyPyLine exercises the Python-only states, PEP 701 replacement fields included: a field
+// holding a string in the f-string's own quote, a nested field in a format spec, and a t-string.
+// A frame is pushed and popped per field, so a quadratic in that handling shows up as growth.
+func lexHeavyPyLine(i int) string {
+	return fmt.Sprintf("v%d = f\"{cfg[\"k%d\"]} {n%d:{w%d}} tail\" + t\"{d[\"t%d\"]}\" + "+
+		"rf'(\\{{)%d' + '''tri%d''' + b\"b%d\"  # c%d", i, i, i, i, i, i, i, i, i)
 }
 
 // distinctCredential is a credential-shaped value unique to i, built at runtime.
@@ -159,6 +168,26 @@ func TestSourceLexerIsLinearOnManyLines(t *testing.T) {
 	assertGrowth(t, "the lexer on many lines", g)
 }
 
+// The Python lexer, whose PEP 701 field handling is the one state machine that pushes a frame per
+// construct, measured on its own: the JS fixtures above never reach it.
+func TestSourceLexerIsLinearOnPythonFStringFields(t *testing.T) {
+	if testing.Short() {
+		t.Skip("scaling measurement")
+	}
+	build := func(n int) string {
+		var b strings.Builder
+		b.Grow(n * 120)
+		for i := 0; i < n; i++ {
+			b.WriteString(lexHeavyPyLine(i))
+			b.WriteString("\n")
+		}
+		return b.String()
+	}
+	const base = 20000
+	g := measureLexerIn(t, langPython, build(base), build(4*base))
+	assertGrowth(t, "the lexer on Python f-string fields", g)
+}
+
 func TestSourceLexerIsLinearOnOneLongLine(t *testing.T) {
 	if testing.Short() {
 		t.Skip("scaling measurement")
@@ -182,11 +211,16 @@ func TestSourceLexerIsLinearOnOneLongLine(t *testing.T) {
 // and marks a literal fraction that grows with them.
 func measureLexer(t *testing.T, small, large string) perfguard.Growth {
 	t.Helper()
-	litBase, reason := lexLiterals(small, langJS)
+	return measureLexerIn(t, langJS, small, large)
+}
+
+func measureLexerIn(t *testing.T, lang sourceLanguage, small, large string) perfguard.Growth {
+	t.Helper()
+	litBase, reason := lexLiterals(small, lang)
 	if reason != "" {
 		t.Fatalf("base fixture fails open: %s", reason)
 	}
-	litBig, reason := lexLiterals(large, langJS)
+	litBig, reason := lexLiterals(large, lang)
 	if reason != "" {
 		t.Fatalf("big fixture fails open: %s", reason)
 	}
@@ -195,8 +229,8 @@ func measureLexer(t *testing.T, small, large string) perfguard.Growth {
 	}
 	var sink int
 	g, err := perfguard.Measure(perfguard.DefaultPairs,
-		func() { l, _ := lexLiterals(small, langJS); sink += len(l) },
-		func() { l, _ := lexLiterals(large, langJS); sink += len(l) })
+		func() { l, _ := lexLiterals(small, lang); sink += len(l) },
+		func() { l, _ := lexLiterals(large, lang); sink += len(l) })
 	if err != nil {
 		t.Fatalf("measuring the lexer: %v", err)
 	}
