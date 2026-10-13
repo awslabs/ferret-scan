@@ -288,9 +288,12 @@ func runListGuard(t *testing.T, targets []listGuardTarget) {
 				t.Logf("%s: growth ratio NOT asserted — %s", tgt.name, note)
 			} else if _, resolvable := g.Ticks(); !resolvable {
 				t.Logf("%s: growth ratio NOT asserted — %s", tgt.name, g.ResolutionNote())
-			} else if g.Ratio > listGuardMaxGrowthRatio {
-				t.Errorf("%s: 4x heads on one line cost %s — linear is ~4x and quadratic ~16x: %s",
-					tgt.name, g, tgt.regressed)
+			} else {
+				perfguard.ReportMargin(t, "secrets "+tgt.name, g, listGuardMaxGrowthRatio, perfguard.StayBelow)
+				if g.Ratio > listGuardMaxGrowthRatio {
+					t.Errorf("%s: 4x heads on one line cost %s — linear is ~4x and quadratic ~16x: %s",
+						tgt.name, g, tgt.regressed)
+				}
 			}
 
 			// The exact counts, after the ratio so a regression reports its timing as well, and

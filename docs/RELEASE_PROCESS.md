@@ -2,8 +2,9 @@
 
 This document describes the Go-native release process for Ferret Scan using GoReleaser.
 
-> **CHANGELOG.md is hand-maintained.** It is not generated. Add your entry, as prose, in the same PR
-> that makes the change — see the PR checklist. `git-chglog` was removed on 2026-09-09: it was
+> **CHANGELOG.md is hand-maintained.** It is not generated. Add your entry, as prose, under
+> `## [Unreleased]` in the same PR that makes the change — a PR that changes what a release ships
+> fails the `CHANGELOG` check without one (see [CONTRIBUTING.md](../CONTRIBUTING.md#changelog-entries)). `git-chglog` was removed on 2026-09-09: it was
 > configured to rewrite the whole file from commit subjects with no `[Unreleased]` section, so running
 > it replaced ~43,000 words of measurements and reasoning with one-line subjects. Nothing generates
 > this file, and nothing should.
@@ -29,7 +30,7 @@ git push origin v1.2.3
 
 # GitLab CI will automatically:
 # 1. Build binaries for all platforms
-# 2. Generate changelog
+# 2. Generate release notes from commit subjects (GoReleaser; CHANGELOG.md is not touched)
 # 3. Create GitLab release with assets
 # 4. Build and push container images
 ```
@@ -102,11 +103,9 @@ make release-test
 # Build snapshot (no release)
 make release-snapshot
 
-# Generate changelog
-make changelog
-
-# Generate changelog for specific version
-make changelog-next TAG=v1.2.3
+# Cut [Unreleased] into a version heading in CHANGELOG.md (normally done by
+# changelog-promote.yml when the tag is pushed)
+make promote-changelog TAG=v1.2.3
 
 # Check Go version consistency
 make check-go-version
@@ -193,9 +192,19 @@ goreleaser release --debug
 
 ### CHANGELOG.md
 
-There is no tool to run. If an entry is missing from a release, it was missing from the PR — add it by
-hand under `## [Unreleased]`. Note that `[Unreleased]` currently holds everything since v1.7.0; cutting
-it into per-version sections at release time is tracked separately.
+There is no tool to run by hand. Pushing a release tag runs `.github/workflows/changelog-promote.yml`,
+which renames `## [Unreleased]` to `## [<tag>] - <date>` and inserts a fresh empty `[Unreleased]` above
+it (`scripts/promote-changelog.sh`). An empty `[Unreleased]` is a no-op — and if the tag's range
+contains `fix`, `feat` or `perf` commits, the run says so with a warning, because that is a release
+whose notes are missing.
+
+Entries are required at PR time, where the author still knows what changed: the `CHANGELOG` check
+(`.github/workflows/changelog-check.yml`, `internal/tools/changelogcheck`) fails a PR that changes
+what a release ships without an entry under `[Unreleased]`, unless it carries the `no-changelog`
+label. Its `after-merge` job runs again on the push to main and fails if a release promoted while
+the PR was open moved the entry into the released section. The check reports; whether it blocks a
+merge is the branch-protection setting for required status checks. If an entry is missing from a
+release anyway, add it under that release's heading in a follow-up PR.
 
 ### CI/CD Issues
 
