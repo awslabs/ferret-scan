@@ -5,6 +5,7 @@ package secrets
 
 import (
 	"encoding/base64"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -376,6 +377,22 @@ func TestListTailEndsAtANewAssignment(t *testing.T) {
 		// through as a member returned 1,413 more JS/TS findings (1,309 HIGH), so a user:password
 		// element after a head ends the list. Pinned so the trade stays a decision.
 		{"user:password element reads as the next pair", "password=admin:" + secretA + ",root:" + secretB + "\n", []string{"admin:" + secretA}},
+		// A command-line flag is a key too. As a member, `--password=<v2>` was reported a second time
+		// with its key glued on, next to the <v2> the password head reports on its own.
+		{"the next pair is a flag", "ARGS=--token=" + secretA + ",--password=" + secretB + "\n", []string{secretA, secretB}},
+		{"the next pair is a single-dash flag", "token=" + secretA + ";-token=" + secretB + "\n", []string{secretA, secretB}},
+		// Controls for the base64-padding reading (isBase64Padding). Each breaks exactly one of its
+		// conditions, so each is still the next pair and ends the list.
+		{"key with no upper-case letter", "secret: " + secretA + ",statements1= x\n", []string{secretA}},
+		{"quoted pair, key with no upper-case letter", "secret: " + secretA + ",credentials=\"include\"\n", []string{secretA}},
+		{"quote opening quoted content", "secret: " + secretA + ",mySecretKey=\"cors\"\n", []string{secretA}},
+		{"key not a multiple of four long", "secret: " + secretA + ",Key2Name= cors\n", []string{secretA}},
+		{"a value straight after the =", "secret: " + secretA + ",Ke1=" + secretB + "\n", []string{secretA}},
+		{"spaced comparison", "secret: " + secretA + ",Abcdef123 == ok\n", []string{secretA}},
+		{"strict equality", "secret: " + secretA + ",Abcdefg12=== ok\n", []string{secretA}},
+		{"template literal assigned", "secret: " + secretA + ",nextKey=`" + secretB + "`\n", []string{secretA}},
+		{"arrow function", "secret: " + secretA + ",onClick=>onClick.run(" + secretB + ")\n", []string{secretA}},
+		{"spaced assignment", "secret: " + secretA + ",backupKey2 = " + secretB + "\n", []string{secretA}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -394,11 +411,23 @@ func TestListTailEndsAtANewAssignment(t *testing.T) {
 func TestListTailEndsAtAnElementTheHeadCouldNotStart(t *testing.T) {
 	for _, content := range []string{
 		"secret: " + secretA + ",$OTHER_SECRET_VALUE," + secretB + "\n",
+		// A `${NAME}` reference is passed over rather than ending the list (TestListTailKeepsRealMembers
+		// pins the member after one), but it is never reported itself.
 		"secret: " + secretA + ",${VAULT_SECRET_REF}\n",
 		"secret: " + secretA + ",<placeholder-api-key>\n",
 		"secret: " + secretA + ",[" + secretB + "]\n",
 		"secret: " + secretA + ",(" + secretB + ")\n",
 		"secret: " + secretA + ",{" + secretB + "}\n",
+		// Only a bare `${NAME}` is passed over; anything more is not a reference this can read.
+		"secret: " + secretA + ",${OLD_SECRET:-x}," + secretB + "\n",
+		"secret: " + secretA + ",${OLD_SECRET}x," + secretB + "\n",
+		"secret: " + secretA + ",${OLD_SECRET ," + secretB + "\n",
+		// A quote that does not close as a member: a key, two words, a concatenation.
+		"secret: " + secretA + ",\"" + secretB + "\":x\n",
+		"secret: " + secretA + ",\"two words\"," + secretB + "\n",
+		// Quoted or not, a new pair is the next assignment.
+		"secret: " + secretA + ",\"next_key=" + secretB + "\"," + secretC + "\n",
+		"secret: " + secretA + ",\"" + secretB + "\"+x," + secretC + "\n",
 	} {
 		t.Run(strings.TrimSpace(content), func(t *testing.T) {
 			if got := reports(t, content); !sameStrings(got, []string{secretA}) {
@@ -424,6 +453,24 @@ func TestListTailKeepsRealMembers(t *testing.T) {
 		// still a member: the walk passes over it rather than stopping.
 		{"past a sentinel", "secret: " + secretA + ",PLACEHOLDER," + secretB + "\n", []string{secretA, secretB}},
 		{"past a short element", "secret: " + secretA + ",ab," + secretB + "\n", []string{secretA, secretB}},
+		// An empty element is the degenerate short one: a hole in the list, not its end. v2.5.3's
+		// splitter dropped it and reported the member after it.
+		{"past an empty element", "SECRET=" + secretA + ",," + secretB + "\n", []string{secretA, secretB}},
+		{"past a blank element", "SECRET=" + secretA + ", ," + secretB + "\n", []string{secretA, secretB}},
+		{"past an empty ;-element", "PASSWORD=" + secretA + ";;" + secretB + "\n", []string{secretA, secretB}},
+		// Whitespace before a separator belongs to it, as whitespace after one does.
+		{"space before the separator", "password: " + secretA + "," + secretB + " ," + secretC + "\n", []string{secretA, secretB, secretC}},
+		{"tab before the separator", "password: " + secretA + "," + secretB + "\t;" + secretC + "\n", []string{secretA, secretB, secretC}},
+		// A closed quoted member is a member, reported without its quotes as the quoted patterns
+		// report `API_KEY="<v>"`. v2.5.3 reported it with them.
+		{"double-quoted member", "API_KEY=" + secretA + ",\"" + secretB + "\"\n", []string{secretA, secretB}},
+		{"single-quoted members, spaced", "secret: " + secretA + ", '" + secretB + "', '" + secretC + "'\n", []string{secretA, secretB, secretC}},
+		{"quoted member before prose", "secret: " + secretA + ",\"" + secretB + "\" rotate\n", []string{secretA, secretB}},
+		// A `${NAME}` reference is passed over, unreported, and the literal after it is reached.
+		{"past a ${NAME} reference", "TOKEN=" + secretA + ",${OLD_TOKEN}," + secretB + "\n", []string{secretA, secretB}},
+		{"past a spaced ${NAME} reference", "TOKEN=" + secretA + ", ${OLD_TOKEN} , " + secretB + "\n", []string{secretA, secretB}},
+		// A leading dash with no assignment after it is still a value byte, not a flag.
+		{"a dash-led member", "password=" + secretA + ",-" + secretB + "\n", []string{secretA, "-" + secretB}},
 		{"three members", "password=" + secretA + ";" + secretB + ";" + secretC + "\n", []string{secretA, secretB, secretC}},
 		// Spaces after the separator are skipped as the head skips them after its delimiter, so a
 		// hand-written list keeps its members.
@@ -447,6 +494,204 @@ func TestListTailKeepsRealMembers(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A padded base64 member stays in the list whatever follows its padding on the line, and whether it
+// stays must not depend on the value's own bytes. A padded value with no `+` or `/` is an
+// identifier-shaped run followed by `=`, so startsListAssignment read `<P>== rotate` as the next
+// `key == value` and dropped <P> -- left in cleartext under redaction -- while the same line with
+// a `/` in the value kept it. That is about a fifth of `openssl rand -base64 32` keys and most
+// base64url ones. Each shape runs both twins.
+func TestListTailKeepsAPaddedMemberWhateverFollowsIt(t *testing.T) {
+	ident := base64.StdEncoding.EncodeToString([]byte("list member, padded")) // letters and digits, then '='
+	if strings.ContainsAny(ident, "+/") || !strings.HasSuffix(ident, "=") {
+		t.Fatalf("fixture %q must be identifier-shaped and padded", ident)
+	}
+	slashed := ident[:6] + "/" + ident[7:]
+	urlsafe := base64.URLEncoding.EncodeToString([]byte("url safe~~ member"))
+	if !strings.HasSuffix(urlsafe, "=") || !strings.ContainsAny(urlsafe, "-_") {
+		t.Fatalf("fixture %q must be padded base64url", urlsafe)
+	}
+	cases := []struct{ name, before, after string }{
+		{"trailing prose", "secret: " + secretA + ",", " rotate quarterly"},
+		// Value-class bytes that unicode.IsSpace admits: a space to a reader, and so the end of the
+		// padding, though the head's ASCII \s would run on through them.
+		{"no-break space, then prose", "secret: " + secretA + ",", "\u00a0rotate"},
+		{"vertical tab, then prose", "secret: " + secretA + ",", "\vrotate"},
+		{"tab column", "password=" + secretA + ",", "\tprod"},
+		{"// comment", "token: " + secretA + ",", " // rotate"},
+		{"next shell word", "ENV API_KEY=" + secretA + ",", " REGION=us-east-1"},
+		{"shell command", "TOKEN=" + secretA + ",", " node app.js"},
+		{"line continuation", "  --set auth.password=" + secretA + ",", " \\"},
+		{"markdown table cell", "| prod | API_KEY=" + secretA + ",", " |"},
+		{"closing backtick", "Set `API_KEY=" + secretA + ",", "` in the environment."},
+		{"closing paren", "ARGS=(--token=" + secretA + ",", ")"},
+		{"closing brace", "env: {password: " + secretA + ",", "}"},
+		{"closing bracket", "args: [--token=" + secretA + ",", "]"},
+		{"JSON-escaped newline", "{\"env\": \"TOKEN=" + secretA + ",", "\\nMODE=prod\"}"},
+		{"closing tag", "<value>token=" + secretA + ",", "</value>"},
+		{"next query parameter", "curl \"https://api.corp.net/v1?token=" + secretA + ",", "&page=2\""},
+		{"shell pipe", "export TOKEN=" + secretA + ",", "|./run.sh"},
+		{"attribute, then the tag ends", "<meta content=\"token=" + secretA + ",", "\">"},
+		{"attribute, then the tag self-closes", "<add value=\"password=" + secretA + ";", "\"/>"},
+		{"string, then concatenation", "x = \"token=" + secretA + ",", "\"+suffix;"},
+		{"string, then a method call", "x = \"secret: " + secretA + ",", "\".split(\",\");"},
+	}
+	for _, tc := range cases {
+		for _, v := range []struct{ shape, value string }{{"identifier-shaped", ident}, {"with-slash", slashed}, {"base64url", urlsafe}} {
+			t.Run(tc.name+"/"+v.shape, func(t *testing.T) {
+				got := reports(t, tc.before+v.value+tc.after+"\n")
+				for _, g := range got {
+					if strings.HasPrefix(g, v.value) {
+						return
+					}
+				}
+				t.Errorf("got %v, want a finding that starts with the padded member — padding "+
+					"followed by %q was read as the next key", got, tc.after)
+			})
+		}
+	}
+}
+
+// The whitespace v2.5.3 trimmed from each element -- strings.TrimSpace, so every rune
+// unicode.IsSpace admits -- is still trimmed, so these members report the same text, and keep the
+// same identity hash, as they did there. The walk skipped only spaces and tabs at first: a no-break
+// space or \v after the separator joined the reported text (`\u00a0<v2>`), hid the element's
+// first byte from the pair and first-byte rules (`\u00a0token=<v2>` and `\u00a0${REF}` reported),
+// and \f after a separator ended the list.
+func TestListTailTrimsTheWhitespaceV253Trimmed(t *testing.T) {
+	for _, ws := range []struct{ name, s string }{
+		{"no-break space", "\u00a0"}, {"vertical tab", "\v"}, {"em space", "\u2003"},
+		{"ideographic space", "\u3000"}, {"next line", "\u0085"}, {"form feed", "\f"},
+	} {
+		for _, tc := range []struct {
+			name, content string
+			want          []string
+		}{
+			{"before a member", "secret: " + secretA + "," + ws.s + secretB + "\n", []string{secretA, secretB}},
+			{"after a member", "secret: " + secretA + "," + secretB + ws.s + "\n", []string{secretA, secretB}},
+			{"before a separator", "secret: " + secretA + "," + secretB + ws.s + "," + secretC + "\n", []string{secretA, secretB, secretC}},
+			{"before the next pair", "token=" + secretA + ";" + ws.s + "token=" + secretB + "\n", []string{secretA, secretB}},
+			{"before a reference", "secret: " + secretA + "," + ws.s + "${VAULT_SECRET_REF}\n", []string{secretA}},
+		} {
+			t.Run(ws.name+"/"+tc.name, func(t *testing.T) {
+				if got := reports(t, tc.content); !sameStrings(got, tc.want) {
+					t.Errorf("got %q, want exactly %q", got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+// What the grammar still costs, pinned so each stays a decision.
+func TestListTailStatedCosts(t *testing.T) {
+	cases := []struct {
+		name, content string
+		want          []string
+	}{
+		// The space inside an annotated member is followed by `(`, not a separator, so it ends the
+		// tail. The same rule is what cuts minified fragments at whitespace.
+		{"an annotated member ends the list", "TOKEN=" + secretA + ", " + secretB + " (old), " + secretC + "\n", []string{secretA, secretB}},
+		// `$` begins ordinary identifiers in minified JavaScript, so a bare `$NAME` is not passed
+		// over the way `${NAME}` is.
+		{"a bare $NAME ends the list", "TOKEN=" + secretA + ",$OLD_TOKEN," + secretB + "\n", []string{secretA}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reports(t, tc.content); !sameStrings(got, tc.want) {
+				t.Errorf("got %v, want exactly %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A collection ends where the next collection's key begins, if no closing bracket comes first
+// (#754). v2.5.3 gave a bracket that never closes the rest of the line as its region, so every
+// later collection was part of it too, and the reported elements were the rest of the line.
+func TestCollectionEndsAtTheNextCollectionsKey(t *testing.T) {
+	cases := []struct {
+		name, content string
+		want          []string
+	}{
+		// v2.5.3: `<v1> token=[<v2>` and <v2>.
+		{"unclosed, joined by spaces", "token=[" + secretA + " token=[" + secretB + "\n", []string{secretA, secretB}},
+		// v2.5.3: <v1>, <v2> and `token=[<v2>`, key and bracket included.
+		{"unclosed, joined by commas", "token=[" + secretA + ", token=[" + secretB + "\n", []string{secretA, secretB}},
+		// v2.5.3: <v1>, <v2> and `token: [<v1>`.
+		{"nested", "secrets: {token: [" + secretA + ", " + secretB + "]}\n", []string{secretA, secretB}},
+		// The keyword is the tail of a longer key: the region stops before all of `client_secret`,
+		// not at the `secret` the pattern matched.
+		{"keyword inside a longer key", "token=[" + secretA + " client_secret: [" + secretB + "]\n", []string{secretA, secretB}},
+		// One bracket opened by two keywords (access_token and token): scanned once, cut before
+		// all of `access_token`.
+		{"overlapping keywords", "token=[" + secretA + " access_token: [" + secretB + "]\n", []string{secretA, secretB}},
+		// The next key is quoted: the region stops before its opening quote too.
+		{"quoted next key", "token=[" + secretA + " \"client_secret\": [" + secretB + "]\n", []string{secretA, secretB}},
+		// Controls: closed collections are untouched.
+		{"closed, then another", "{\"api_keys\": [\"" + secretA + "\"], \"tokens\": [\"" + secretB + "\"]}\n", []string{secretA, secretB}},
+		{"closed, one element", "api_keys: [" + secretA + "]\n", []string{secretA}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reports(t, tc.content); !sameStrings(got, tc.want) {
+				t.Errorf("got %q, want exactly %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// appendCollectionElements answers "does this element overlap a quoted span" with one forward
+// cursor. Checked against the obvious all-pairs test, which was O(n^2) in a collection of n quoted
+// elements, on regions built from the bytes that decide it.
+func TestCollectionOverlapCursorMatchesAllPairs(t *testing.T) {
+	rng := rand.New(rand.NewSource(754))
+	alphabet := []string{"\"", "'", ",", ";", " ", "Qx7aB9", "cD3eF5gH", "z"}
+	for n := 0; n < 20000; n++ {
+		var sb strings.Builder
+		for k := rng.Intn(24); k > 0; k-- {
+			sb.WriteString(alphabet[rng.Intn(len(alphabet))])
+		}
+		region := sb.String()
+		got := appendCollectionElements(nil, region, 0)
+		want := collectionElementsAllPairs(region)
+		if len(got) != len(want) {
+			t.Fatalf("region %q: cursor gave %v, all-pairs gave %v", region, got, want)
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("region %q: cursor gave %v, all-pairs gave %v", region, got, want)
+			}
+		}
+	}
+}
+
+// collectionElementsAllPairs is appendCollectionElements as v2.5.3 wrote it: every element tested
+// against every quoted span. The oracle for TestCollectionOverlapCursorMatchesAllPairs.
+func collectionElementsAllPairs(region string) []collectionSecretCandidate {
+	var out []collectionSecretCandidate
+	var covered [][2]int
+	for _, q := range quotedListElement.FindAllStringSubmatchIndex(region, -1) {
+		out = append(out, collectionSecretCandidate{text: region[q[2]:q[3]], start: q[2], end: q[3]})
+		covered = append(covered, [2]int{q[0], q[1]})
+	}
+	for _, span := range splitListElements(region) {
+		overlaps := false
+		for _, c := range covered {
+			if span[0] < c[1] && c[0] < span[1] {
+				overlaps = true
+			}
+		}
+		if overlaps {
+			continue
+		}
+		text := strings.TrimSpace(region[span[0]:span[1]])
+		if len(text) < 8 || !plausibleUnquotedSecret(text) || shoutySentinel.MatchString(text) {
+			continue
+		}
+		off := strings.Index(region[span[0]:span[1]], text)
+		out = append(out, collectionSecretCandidate{text: text, start: span[0] + off, end: span[0] + off + len(text)})
+	}
+	return out
 }
 
 // A minified line is the shape that made the first version report 136,290 non-credentials on

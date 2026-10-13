@@ -156,6 +156,31 @@ jobs:
         run: go test -race -count=1 $(go list ./... | grep -v /tests/integration)
         shell: bash
 
+      - name: Secrets list complexity guards (no race detector)
+        # The list-tail and collection guards in internal/validators/secrets
+        # (list_and_sequence_complexity_test.go, #754) compare a growth ratio against 8.0 only
+        # without -race, as the goldencorpus guard does: the race detector compresses the ratio of a
+        # regressed walk toward the bound. The step above still runs them under -race, for the race
+        # detector and for their exact candidate counts, which need no clock. This step is where the
+        # ratio is asserted; without it no CI run would assert it.
+        #
+        # TestListGuardRaceGateIsNotTakenWithoutRace runs here too: it pins the gate's polarity and
+        # asserts the opposite thing in each build, and the step above only ever runs its -race half.
+        #
+        # -v so the readings are in the log. The loop fails the step unless each test printed its
+        # top-level `--- PASS: <name> (` line, so a rename cannot leave this step green while running
+        # nothing. `shell: bash` runs with -eo pipefail on every runner, so a failing go test fails the
+        # step through the tee.
+        run: |
+          go test -v -count=1 -run '^(TestListTailIsLinearInLineLength|TestCollectionIsLinearInLineLength|TestListGuardRaceGateIsNotTakenWithoutRace)$' ./internal/validators/secrets/ | tee "$RUNNER_TEMP/list-guards.out"
+          for g in TestListTailIsLinearInLineLength TestCollectionIsLinearInLineLength TestListGuardRaceGateIsNotTakenWithoutRace; do
+            if ! grep -q -- "--- PASS: $g " "$RUNNER_TEMP/list-guards.out"; then
+              echo "::error title=list complexity guards::$g did not run"
+              exit 1
+            fi
+          done
+        shell: bash
+
       - name: Report this runner's clock granularity
         # internal/perfguard measures algorithmic growth as a ratio of CPU-time readings, and the
         # threshold it will divide by (MinMeasurableCPU) is a fixed 2ms on every platform. Whether
