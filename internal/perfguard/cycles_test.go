@@ -166,8 +166,9 @@ func TestWindowsCycleCounterIsUsableForRatios(t *testing.T) {
 	}
 }
 
-// cycleRatio measures work(base) and work(4*base) and returns the ratio of the minimum of two pairs,
-// the same statistic Measure uses, so the number is comparable to the guard's own output.
+// cycleRatio measures work(base) and work(4*base) and returns the ratio of the minimum over
+// DefaultPairs pairs, the same statistic Measure uses, so the number is comparable to the guard's own
+// output.
 func cycleRatio(t *testing.T, work func(n int), base int) float64 {
 	t.Helper()
 

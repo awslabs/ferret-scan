@@ -47,6 +47,17 @@ jobs:
         go-version: ['']  # use .go-version file
     runs-on: ${{ matrix.os }}
 
+    # The growth-ratio guards, named once for the gate step and the report step below. The gate step
+    # fails unless every alternative in the pattern matches a test, and every listed package has
+    # tests and runs at least one. That check exists because this list once named the detector and
+    # SVG packages under a pattern none of their guards matched, so both ran zero tests here and the
+    # listing read as coverage that did not exist -- and per-package alone is not enough, because
+    # goldencorpus has several TestGrowthRatio* tests, so renaming the 18-validator guard would leave
+    # the package "ok" while the guard ran nowhere (it skips under the main suite's -race).
+    env:
+      COMPLEXITY_GUARDS: 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio|TestAssignLineColumnsMemoIsLoadBearing|TestManyTextNodesIsSubQuadratic|TestCollapseSpaceIsLinear'
+      COMPLEXITY_PKGS: './internal/goldencorpus/ ./internal/detector/ ./internal/preprocessors/text-extractors/text-extract-svgtextlib/'
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,7 +119,29 @@ jobs:
         # reporting FAIL; sampling the machine showed goldencorpus.test growing 1.2GB -> 14.4GB in 45
         # seconds and exhausting 16GB of RAM plus all 3GB of swap. Not a gate that can be dropped --
         # without this step the guards would not run at all.
-        run: go test -count=1 -run 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio' ./internal/goldencorpus/ ./internal/detector/ ./internal/preprocessors/text-extractors/text-extract-svgtextlib/
+        run: |
+          read -r -a pkgs <<< "$COMPLEXITY_PKGS"
+          go test -list "$COMPLEXITY_GUARDS" "${pkgs[@]}" > "$RUNNER_TEMP/complexity.list"
+          if grep -F '[no test files]' "$RUNNER_TEMP/complexity.list"; then
+            echo "::error title=complexity guards::a package in COMPLEXITY_PKGS has no test files"
+            exit 1
+          fi
+          IFS='|' read -r -a guards <<< "$COMPLEXITY_GUARDS"
+          for g in "${guards[@]}"; do
+            if ! grep -q "^${g}" "$RUNNER_TEMP/complexity.list"; then
+              echo "::error title=complexity guards::COMPLEXITY_GUARDS alternative '${g}' matches no test"
+              exit 1
+            fi
+          done
+          # -p 1: one test binary at a time. These are timing guards, and until #731 goldencorpus ran
+          # here effectively alone -- the other two packages matched no tests. The first run with all
+          # three concurrent hit a zero wall-clock reading on windows-latest that 44 earlier readings
+          # never had; serialising restores the condition the evidence was gathered under.
+          go test -p 1 -count=1 -run "$COMPLEXITY_GUARDS" "${pkgs[@]}" 2>&1 | tee "$RUNNER_TEMP/complexity.out"
+          if grep 'no tests to run' "$RUNNER_TEMP/complexity.out"; then
+            echo "::error title=complexity guards::a package above ran zero guards: COMPLEXITY_GUARDS no longer matches its tests"
+            exit 1
+          fi
         shell: bash
 
       - name: Report the complexity guard's measured ratios
@@ -137,8 +170,21 @@ jobs:
         # with a real merge, not guessed. Running before the main suite is equivalent for a
         # continue-on-error reporting step.
         #
+        # Every asserted reading also prints a "margin" line naming its distance from the bound and the
+        # runner image, and a margin under 1.5x is raised as a ::warning annotation on the run
+        # (perfguard.ReportMargin). That is printed straight to stdout, and like t.Logf it is visible
+        # for a passing package only under -v -- which is why the detector and SVG guards are listed
+        # here too: until #731 their readings had never appeared in any log.
+        #
         # continue-on-error: this is observation, not a gate. The assertions run in the suite proper.
-        run: go test -v -count=1 -run 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio' ./internal/goldencorpus/
+        #
+        # The detector line-memo guard is also read under -race, because the main suite asserts it
+        # there and a -race margin is a different population from the plain one (measured: 458-495MB
+        # peak RSS for this one test).
+        run: |
+          read -r -a pkgs <<< "$COMPLEXITY_PKGS"
+          go test -p 1 -v -count=1 -run "$COMPLEXITY_GUARDS" "${pkgs[@]}"
+          go test -race -v -count=1 -run 'TestAssignLineColumnsMemoIsLoadBearing' ./internal/detector/
         shell: bash
         continue-on-error: true
 

@@ -1,0 +1,98 @@
+name: CHANGELOG
+
+# Fails a pull request that changes what a release ships without an entry under [Unreleased]. The
+# rules and the evidence for them live in internal/tools/changelogcheck/check.go; this file only
+# feeds it the PR.
+#
+# WHY AT PR TIME. The release-time promotion (changelog-promote.yml) can only stamp what is already
+# written, and v2.5.3 shipped four binary-changing PRs with nothing written: promotion found
+# [Unreleased] empty and correctly did nothing. The author of the PR is the one person who knows
+# what changed, and this is the last moment they are looking.
+#
+# WHY THE MERGE RESULT. actions/checkout on a pull_request event checks out refs/pull/N/merge, so
+# HEAD^1 is the base tip and HEAD is what main will contain after the merge — the view that catches
+# an entry placed beside a subsection heading in an old release.
+#
+# WHY ALSO AFTER THE MERGE. A pull_request result is computed once, against the main of that moment,
+# and nothing re-runs it when main moves. So a PR whose check passed before a release was promoted
+# can still merge its entry into the section that release just promoted — a clean three-way merge,
+# measured. The `after-merge` job closes that: on the push to main it compares where the PR's own
+# branch put the entry with where the merge put it, and fails on the main commit, which notifies the
+# person who merged it.
+on:
+  pull_request:
+    # edited: the title (a `type!:` breaking marker) and the base branch are inputs.
+    # labeled/unlabeled: `no-changelog`.
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the merge result and its base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: '.go-version'
+
+      # PR fields go through env, never through ${{ }} inside `run:` — a title is attacker-chosen
+      # text on a fork PR, and interpolating it into the script is shell injection.
+      - name: Check
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: go run ./internal/tools/changelogcheck
+
+  after-merge:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # to find the PR this push merged
+    steps:
+      - name: Checkout main with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The PR's merge-base with the old main can be arbitrarily far back.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: '.go-version'
+
+      - name: Find the pull request this push merged
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          number=$(gh api "repos/${REPO}/commits/${SHA}/pulls" --jq '[.[] | select(.merged_at != null)][0].number // empty')
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+          if [ -z "${number}" ]; then
+            echo "No merged pull request for ${SHA} (a direct push); nothing to compare."
+          fi
+
+      - name: Compare the branch's placement with the merge's
+        if: steps.pr.outputs.number != ''
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          git fetch --no-tags --quiet origin "refs/pull/${NUMBER}/head"
+          go run ./internal/tools/changelogcheck -base "${BEFORE}" -head "${AFTER}" -pr-head "$(git rev-parse FETCH_HEAD)"

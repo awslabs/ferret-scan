@@ -76,7 +76,7 @@ jobs:
         # (prerelease) prevents committing it to main, so prereleases get
         # smoke-tested too.
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: homebrew-formula
           # goreleaser layout under dist/homebrew/ varies by version
@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload Snapshot Artifacts
         if: github.event.inputs.snapshot == 'true' || (github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: snapshot-binaries
           path: dist/*
@@ -126,7 +126,7 @@ jobs:
       HOMEBREW_NO_ENV_HINTS: "1"
     steps:
       - name: Download generated Homebrew formula
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: homebrew-formula
           path: formula-artifact
