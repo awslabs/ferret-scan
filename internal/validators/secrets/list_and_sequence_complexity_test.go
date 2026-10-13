@@ -18,10 +18,10 @@ import (
 // three interleaved samples:
 //
 //	                                                            K = 2,000   4,000    8,000
-//	`token=<v>` joined by `;` (findListTailSecrets)     v2.5.3     0.83s    2.62s    8.99s
-//	                                                    now        0.26s    0.40s    0.76s
-//	`token=[<v>` joined by ` ` (findCollectionSecrets)  v2.5.3     1.44s    5.66s   23.98s
-//	                                                    now        0.22s    0.39s    0.76s
+//	`token=<v>` joined by `;` (findListTailSecrets)     v2.5.3     0.81s    2.53s    9.96s
+//	                                                    now        0.23s    0.39s    0.82s
+//	`token=[<v>` joined by ` ` (findCollectionSecrets)  v2.5.3     1.51s    6.02s   25.04s
+//	                                                    now        0.23s    0.41s    0.81s
 //
 // TestValidatorComplexityIsSubQuadratic in internal/goldencorpus could not see either. Its secrets
 // input separates assignments with SPACES and closes what it opens, so no head is followed by a
@@ -50,18 +50,19 @@ import (
 // regressed tail ratio read 9.75x-10.78x there, a 1.2x-1.35x margin over this bound. A ratio needs
 // the guarded term to dominate the base reading.
 //
-// Measured on darwin/arm64, CPU clock, 4x input, minimum of perfguard.DefaultPairs, in two sets
-// taken hours apart at load averages of 5 to 200 and reported here as their union: correct code 16
-// runs plain and 8 under -race, each regression 8 runs plain and 4 under -race:
+// Measured on darwin/arm64, CPU clock, 4x input, minimum of perfguard.DefaultPairs, in three sets
+// taken hours apart at load averages of 5 to 200 and reported here as their union: correct code 22
+// runs plain and 11 under -race, each regression 14 runs plain and 7 under -race. The v2.5.3
+// regions column is both of its forms, the old region bound alone and the old function whole:
 //
 //	                                       correct        no `walked`     v2.5.3 tail     v2.5.3 regions
-//	separated lists                plain   3.81x-4.41x    (linear)        14.22x-15.98x   (linear)
+//	separated lists                plain   3.81x-4.41x    (linear)        14.22x-16.02x   (linear)
 //	                               -race   3.70x-4.07x    (linear)        12.54x-13.81x   (linear)
-//	heads nested in members        plain   3.63x-4.20x    12.78x-14.15x   13.03x-14.59x   (linear)
-//	                               -race   3.71x-4.10x    10.37x-14.51x   10.85x-18.67x   (linear)
-//	unclosed, joined by spaces     plain   3.75x-4.18x    (linear)        (linear)        17.77x-21.96x
-//	                               -race   3.38x-4.05x    (linear)        (linear)        18.26x-19.72x
-//	unclosed, joined by commas     plain   3.66x-4.16x    (linear)        (linear)        17.10x-20.76x
+//	heads nested in members        plain   3.63x-4.20x    12.78x-14.43x   12.77x-14.59x   (linear)
+//	                               -race   3.71x-4.17x    10.37x-14.51x   10.85x-18.67x   (linear)
+//	unclosed, joined by spaces     plain   3.75x-4.18x    (linear)        (linear)        17.39x-21.96x
+//	                               -race   3.38x-4.13x    (linear)        (linear)        18.26x-21.24x
+//	unclosed, joined by commas     plain   3.66x-4.16x    (linear)        (linear)        16.96x-20.76x
 //	                               -race   3.57x-4.11x    (linear)        (linear)        16.67x-19.79x
 //
 //	(linear): that regression does not reach this target; another target is the one that catches it.
@@ -324,7 +325,7 @@ func runListGuard(t *testing.T, targets []listGuardTarget) {
 // scale a ratio, it distorts it, and here it compresses the regressed side.
 //
 // Measured on darwin/arm64 (table at listGuardMaxGrowthRatio): under -race correct code reads as it
-// does without it, 3.38x-4.11x, but a regressed walk fell to 10.37x, 1.30x from the bound -- under
+// does without it, 3.38x-4.17x, but a regressed walk fell to 10.37x, 1.30x from the bound -- under
 // the repo's 1.5x rule. A bound with 1.5x on both sides under both builds would have to sit between
 // 6.6x and 6.9x on that one machine's readings, and the goldencorpus guard measured ubuntu-latest
 // compressing quadratics further still, so the ratio is left to the build that ships. go-test.yml

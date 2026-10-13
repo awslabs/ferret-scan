@@ -393,6 +393,21 @@ func TestListTailEndsAtANewAssignment(t *testing.T) {
 		{"template literal assigned", "secret: " + secretA + ",nextKey=`" + secretB + "`\n", []string{secretA}},
 		{"arrow function", "secret: " + secretA + ",onClick=>onClick.run(" + secretB + ")\n", []string{secretA}},
 		{"spaced assignment", "secret: " + secretA + ",backupKey2 = " + secretB + "\n", []string{secretA}},
+		// Punctuation that begins a code value: isBase64Padding passes over a run of it, then asks the
+		// byte after, and a value byte there is still a pair.
+		{"negation assigned", "secret: " + secretA + ",isValid=!0," + secretB + "\n", []string{secretA}},
+		{"double negation assigned", "secret: " + secretA + ",isReady=!!x," + secretB + "\n", []string{secretA}},
+		{"fraction assigned", "secret: " + secretA + ",scaleBy=.5," + secretB + "\n", []string{secretA}},
+		{"negative number assigned", "secret: " + secretA + ",offsetY=-1," + secretB + "\n", []string{secretA}},
+		{"arrow function, spaced body", "secret: " + secretA + ",onClick=> run(" + secretB + ")\n", []string{secretA}},
+		{"empty array assigned", "secret: " + secretA + ",itemArr=[]," + secretB + "\n", []string{secretA}},
+		// An empty string closed at once is an empty assignment, not padding before a closing quote:
+		// v2.5.3 and 577905f6 reported `baseUrl=` (HIGH 100) here.
+		{"empty string assigned", "secret: " + secretA + ",baseUrl=\"\"\n", []string{secretA}},
+		{"empty single-quoted string, then a separator", "secret: " + secretA + ",accessToken=''," + secretB + "\n", []string{secretA}},
+		{"empty string inside an outer string", "x = \"secret: " + secretA + ",baseUrl=''\"\n", []string{secretA}},
+		{"empty string, then a closing paren", "f(secret: " + secretA + ",apiHost=\"\")\n", []string{secretA}},
+		{"empty template literal", "secret: " + secretA + ",redirectUri=``\n", []string{secretA}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -422,9 +437,12 @@ func TestListTailEndsAtAnElementTheHeadCouldNotStart(t *testing.T) {
 		"secret: " + secretA + ",${OLD_SECRET:-x}," + secretB + "\n",
 		"secret: " + secretA + ",${OLD_SECRET}x," + secretB + "\n",
 		"secret: " + secretA + ",${OLD_SECRET ," + secretB + "\n",
-		// A quote that does not close as a member: a key, two words, a concatenation.
+		// A quote that does not close as a member: a key, two words, a concatenation, the same quote
+		// again, a division.
 		"secret: " + secretA + ",\"" + secretB + "\":x\n",
 		"secret: " + secretA + ",\"two words\"," + secretB + "\n",
+		"secret: " + secretA + ",\"" + secretB + "\"\"\n",
+		"secret: " + secretA + ",\"" + secretB + "\"/2\n",
 		// Quoted or not, a new pair is the next assignment.
 		"secret: " + secretA + ",\"next_key=" + secretB + "\"," + secretC + "\n",
 		"secret: " + secretA + ",\"" + secretB + "\"+x," + secretC + "\n",
@@ -466,6 +484,19 @@ func TestListTailKeepsRealMembers(t *testing.T) {
 		{"double-quoted member", "API_KEY=" + secretA + ",\"" + secretB + "\"\n", []string{secretA, secretB}},
 		{"single-quoted members, spaced", "secret: " + secretA + ", '" + secretB + "', '" + secretC + "'\n", []string{secretA, secretB, secretC}},
 		{"quoted member before prose", "secret: " + secretA + ",\"" + secretB + "\" rotate\n", []string{secretA, secretB}},
+		// A quoted member that closes what the list sits in -- a bracket, a tag, a pipe or query, an
+		// escape, or the outer string -- is a member too, as its unquoted twin `<v2>)` is. 577905f6
+		// dropped each of these, and left it in cleartext under redaction.
+		{"quoted member, then a closing paren", "ARGS=(--token=" + secretA + ",\"" + secretB + "\")\n", []string{secretA, secretB}},
+		{"quoted member, then a closing bracket", "args: [--token=" + secretA + ",\"" + secretB + "\"]\n", []string{secretA, secretB}},
+		{"quoted member, then a closing brace", "env: {password: " + secretA + ", '" + secretB + "'}\n", []string{secretA, secretB}},
+		{"quoted member, then the outer string's quote", "x = 'token=" + secretA + ",\"" + secretB + "\"'\n", []string{secretA, secretB}},
+		{"quoted member, then the tag ends", "<p token=" + secretA + ",\"" + secretB + "\">x</p>\n", []string{secretA, secretB}},
+		{"quoted member, then the tag self-closes", "<param token=" + secretA + ",\"" + secretB + "\"/>\n", []string{secretA, secretB}},
+		{"quoted member, then a closing tag", "<value>token=" + secretA + ",\"" + secretB + "\"</value>\n", []string{secretA, secretB}},
+		{"quoted member, then a pipe", "echo token=" + secretA + ",\"" + secretB + "\"|sh\n", []string{secretA, secretB}},
+		{"quoted member, then the next query parameter", "u?token=" + secretA + ",\"" + secretB + "\"&x=1\n", []string{secretA, secretB}},
+		{"quoted member, then an escape", "s = \"token=" + secretA + ",'" + secretB + "'\\n\"\n", []string{secretA, secretB}},
 		// A `${NAME}` reference is passed over, unreported, and the literal after it is reached.
 		{"past a ${NAME} reference", "TOKEN=" + secretA + ",${OLD_TOKEN}," + secretB + "\n", []string{secretA, secretB}},
 		{"past a spaced ${NAME} reference", "TOKEN=" + secretA + ", ${OLD_TOKEN} , " + secretB + "\n", []string{secretA, secretB}},
@@ -496,13 +527,13 @@ func TestListTailKeepsRealMembers(t *testing.T) {
 	}
 }
 
-// A padded base64 member stays in the list whatever follows its padding on the line, and whether it
-// stays must not depend on the value's own bytes. A padded value with no `+` or `/` is an
-// identifier-shaped run followed by `=`, so startsListAssignment read `<P>== rotate` as the next
-// `key == value` and dropped <P> -- left in cleartext under redaction -- while the same line with
-// a `/` in the value kept it. That is about a fifth of `openssl rand -base64 32` keys and most
-// base64url ones. Each shape runs both twins.
-func TestListTailKeepsAPaddedMemberWhateverFollowsIt(t *testing.T) {
+// A padded base64 member stays in the list wherever its padding ends the value, and whether it stays
+// must not depend on the value's own bytes. A padded value with no `+` or `/` is an identifier-shaped
+// run followed by `=`, so startsListAssignment read `<P>== rotate` and `<P>.` as the next
+// `key == value` and dropped <P> -- left in cleartext under redaction -- while the same line with a
+// `/` in the value kept it. That is about a fifth of `openssl rand -base64 32` keys and most
+// base64url ones. Each shape runs all three twins; the slash twin is the control, kept either way.
+func TestListTailKeepsAPaddedMemberWhereItsValueEnds(t *testing.T) {
 	ident := base64.StdEncoding.EncodeToString([]byte("list member, padded")) // letters and digits, then '='
 	if strings.ContainsAny(ident, "+/") || !strings.HasSuffix(ident, "=") {
 		t.Fatalf("fixture %q must be identifier-shaped and padded", ident)
@@ -536,6 +567,27 @@ func TestListTailKeepsAPaddedMemberWhateverFollowsIt(t *testing.T) {
 		{"attribute, then the tag self-closes", "<add value=\"password=" + secretA + ";", "\"/>"},
 		{"string, then concatenation", "x = \"token=" + secretA + ",", "\"+suffix;"},
 		{"string, then a method call", "x = \"secret: " + secretA + ",", "\".split(\",\");"},
+		// Sentence and markup punctuation straight after the padding, then what ends a value: the
+		// run is passed over (isTrailingPunctuation) and the byte after it decides.
+		{"full stop", "Rotate to API_KEY=" + secretA + ",", "."},
+		{"full stop, then a sentence", "Rotate to API_KEY=" + secretA + ",", ". Then restart."},
+		{"full stop, then a comment", "secret: " + secretA + ",", ". # rotated"},
+		{"full stop, then a closing quote", "x = \"token=" + secretA + ",", ".\";"},
+		{"full stop, then a closing paren", "(set API_KEY=" + secretA + ",", ".)"},
+		{"exclamation mark", "Set API_KEY=" + secretA + ",", "!"},
+		{"question mark", "Is it API_KEY=" + secretA + ",", "?"},
+		{"colon", "Rotate to API_KEY=" + secretA + ",", ":"},
+		{"colon, then prose", "secret: " + secretA + ",", ": rotate quarterly"},
+		{"markdown bold", "**API_KEY=" + secretA + ",", "**"},
+		{"markdown italic", "_API_KEY=" + secretA + ",", "_"},
+		{"markdown strikethrough", "~~API_KEY=" + secretA + ",", "~~"},
+		{"double dash, then prose", "secret: " + secretA + ",", "-- rotate quarterly"},
+		{"bold, then a full stop", "Set **API_KEY=" + secretA + ",", "**."},
+	}
+	// Each byte isTrailingPunctuation passes over, alone after the padding and then the end of the
+	// line, so dropping any one of them from the set fails its own case.
+	for _, b := range ".!?:*_~-+%@^/" {
+		cases = append(cases, struct{ name, before, after string }{"punctuation " + string(b) + ", then the end", "Rotate to API_KEY=" + secretA + ",", string(b)})
 	}
 	for _, tc := range cases {
 		for _, v := range []struct{ shape, value string }{{"identifier-shaped", ident}, {"with-slash", slashed}, {"base64url", urlsafe}} {
@@ -583,12 +635,71 @@ func TestListTailTrimsTheWhitespaceV253Trimmed(t *testing.T) {
 	}
 }
 
-// What the grammar still costs, pinned so each stays a decision.
-func TestListTailStatedCosts(t *testing.T) {
+// A URL is a value the head itself captures (`PASSWORD=postgres://app:<v>@db` reports the whole
+// URL), so as a list member it is a member, not the next `key:value` pair. Its scheme is an
+// identifier followed by `:`, which startsListAssignment read as a pair, so 577905f6 dropped the URL
+// and every member after it, and left them unredacted; v2.5.3 reported both.
+func TestListTailKeepsAURLMember(t *testing.T) {
+	pg := "postgres://app:" + secretB + "@db.internal:5432/app"
+	redis := "redis://:" + secretB + "@cache:6379/0"
+	hook := "https://hooks.example.net/services/" + secretB
 	cases := []struct {
 		name, content string
 		want          []string
 	}{
+		{"postgres URL mid-list", "DB_PASSWORD=" + secretA + "," + pg + "," + secretC + "\n", []string{secretA, pg, secretC}},
+		{"redis URL with an empty user", "REDIS_PASSWORD=" + secretA + "," + redis + "\n", []string{secretA, redis}},
+		{"webhook URL, spaced", "TOKEN=" + secretA + ", " + hook + ", " + secretC + "\n", []string{secretA, hook, secretC}},
+		{"quoted webhook URL", "TOKEN=" + secretA + ",\"" + hook + "\"," + secretC + "\n", []string{secretA, hook, secretC}},
+		// The head reports the same URL whole, which is why the member is one.
+		{"the URL as the head", "PASSWORD=" + pg + "\n", []string{pg}},
+		// Controls: a key whose VALUE is a URL is still the next pair, and so are a `::` scope path
+		// and a key whose value is a path.
+		{"a key whose value is a URL", "secret: " + secretA + ",endpoint:" + hook + "," + secretC + "\n", []string{secretA}},
+		{"a scope path", "secret: " + secretA + ",Scope:://" + secretB + "\n", []string{secretA}},
+		{"a key whose value is a path", "secret: " + secretA + ",mount:/var/lib/" + secretB + "\n", []string{secretA}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reports(t, tc.content); !sameStrings(got, tc.want) {
+				t.Errorf("got %v, want exactly %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// What the grammar still costs, pinned so each stays a decision. The CHANGELOG lists these.
+func TestListTailStatedCosts(t *testing.T) {
+	padded := base64.StdEncoding.EncodeToString([]byte("list member, padded")) // letters and digits, then '='
+	if strings.ContainsAny(padded, "+/") || !strings.HasSuffix(padded, "=") {
+		t.Fatalf("fixture %q must be identifier-shaped and padded", padded)
+	}
+	cases := []struct {
+		name, content string
+		want          []string
+	}{
+		// isBase64Padding cannot tell a mixed-case key a multiple of four long with its `=` from a padded
+		// body when what follows the `=` ends a padded value. Such an element is read as a member and
+		// reported, cut where the value class ends; v2.5.3 reported the first two uncut.
+		{"a padding-shaped key, then a space, reads as padding", "secret: " + secretA + ",contentType= json\n", []string{secretA, "contentType="}},
+		{"a padding-shaped key, then a quote and punctuation, reads as padding", "secret: " + secretA + ",contentType=\"/json\"\n", []string{secretA, "contentType="}},
+		{"a padding-shaped key, then punctuation, reads as padding", "secret: " + secretA + ",allowOrigin=*\n", []string{secretA, "allowOrigin=*"}},
+		// The other side of the same ambiguity: padding glued to a byte that begins a value, or to
+		// punctuation and then one, reads as the next pair, because those are the bytes of
+		// `onClick=>f`, `isValid=!0` and `scaleBy=.5` (TestListTailEndsAtANewAssignment).
+		{"padding glued to `>` ends the list", "secret: " + secretA + "," + padded + ">x\n", []string{secretA}},
+		{"padding glued to a path ends the list", "secret: " + secretA + "," + padded + "/path\n", []string{secretA}},
+		{"padding glued to a host ends the list", "secret: " + secretA + "," + padded + "@host\n", []string{secretA}},
+		{"padding glued to a sum ends the list", "secret: " + secretA + "," + padded + "+x\n", []string{secretA}},
+		{"padding before punctuation and a value byte ends the list", "secret: " + secretA + "," + padded + ".x\n", []string{secretA}},
+		// A quoted member must hold what an unquoted one could, so one with a space, `#` or `;` in
+		// it, or a leading `(`, ends the list -- though the quoted patterns report the same quoted
+		// text as a head, which the last row shows.
+		{"a quoted member with a space ends the list", "PASSWORD=" + secretA + ",\"" + secretB + " " + secretC + "\"\n", []string{secretA}},
+		{"a quoted member with a # ends the list", "PASSWORD=" + secretA + ",\"" + secretB + "#" + secretC + "\"\n", []string{secretA}},
+		{"a quoted member with a ; ends the list", "PASSWORD=" + secretA + ",\"" + secretB + ";" + secretC + "\"\n", []string{secretA}},
+		{"a quoted member opening with ( ends the list", "PASSWORD=" + secretA + ",\"(" + secretB + "\"\n", []string{secretA}},
+		{"the same quoted text as a head reports", "PASSWORD=\"(" + secretB + "\"\n", []string{"(" + secretB}},
 		// The space inside an annotated member is followed by `(`, not a separator, so it ends the
 		// tail. The same rule is what cuts minified fragments at whitespace.
 		{"an annotated member ends the list", "TOKEN=" + secretA + ", " + secretB + " (old), " + secretC + "\n", []string{secretA, secretB}},
@@ -603,6 +714,24 @@ func TestListTailStatedCosts(t *testing.T) {
 			}
 		})
 	}
+
+	// The CHANGELOG states the padding misread's level too: the shorter `contentType=` scores HIGH,
+	// where v2.5.3's `contentType= json`, spaces and all, scored MEDIUM.
+	t.Run("a padding-shaped key reports at HIGH", func(t *testing.T) {
+		matches, err := NewValidator().ValidateContent("secret: "+secretA+",contentType= json\n", "fixture.yaml")
+		if err != nil {
+			t.Fatalf("ValidateContent: %v", err)
+		}
+		for _, m := range matches {
+			if m.Text == "contentType=" {
+				if m.Confidence < 90 {
+					t.Errorf("contentType= scored %.0f, want HIGH (>= 90) as stated", m.Confidence)
+				}
+				return
+			}
+		}
+		t.Errorf("no contentType= finding among %d", len(matches))
+	})
 }
 
 // A collection ends where the next collection's key begins, if no closing bracket comes first

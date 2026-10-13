@@ -176,13 +176,16 @@ type collectionSecretCandidate struct {
 // closes otherwise made every collection after it on the line part of its region:
 //
 //   - The work was O(K x line length) for K openers. One line of K space-joined `token=[<value>`
-//     openers cost 1.44s, 5.66s and 23.98s through the CLI at K = 2,000, 4,000 and 8,000 in v2.5.3,
-//     and costs 0.22s, 0.39s and 0.76s now (median of three interleaved samples).
+//     openers cost 1.51s, 6.02s and 25.04s through the CLI at K = 2,000, 4,000 and 8,000 in v2.5.3,
+//     and costs 0.23s, 0.41s and 0.81s now (median of three interleaved samples).
 //   - The elements were the rest of the line. Joined by spaces, each opener's one element ran to the
-//     end of the line, `<v1> token=[<v2> token=[<v3> ...`: at K = 4,000 v2.5.3 reported the last four
-//     openers' rest of the line as 4 findings and none of the other 3,996 values, which are now each
-//     reported (3,998 of them; the value filters and scoring every finding goes through reject the
-//     other two, as they do on v2.5.3's comma-joined line). Joined by `, `, every later
+//     end of the line, `<v1> token=[<v2> token=[<v3> ...`, and those texts lost 25 points to their
+//     length and their spaces, so v2.5.3 reported them only when a file-wide classifier lifted the
+//     file: no `dev` substring among the random values, or a "Financial" domain. At K = 4,000 that
+//     was 4 findings, the last four openers' rest of the line, on 7 of 12 draws of 16-character
+//     values, and all 4,000 rest-of-line texts, up to 95,992 bytes each, on the other 5. Each value
+//     is now reported on its own: 3,997 to 4,000 of them across those draws, the value filters and
+//     scoring every finding goes through rejecting the rest. Joined by `, `, every later
 //     `token=[<v>` was an element of every earlier opener, key and bracket included, and 1,999 of
 //     v2.5.3's 3,999 findings at K = 2,000 were `token=[<v>`; now there are 2,000, each a value.
 //
@@ -336,9 +339,11 @@ func appendCollectionElements(out []collectionSecretCandidate, region string, ba
 //     also why an annotated member ends the list: in `<v1>, <v2> (old), <v3>` the space after <v2> is
 //     followed by `(`, so <v3> is not reached. That same rule is what cuts minified fragments.
 //   - A CLOSED quoted element -- a quote, what an unquoted member could be, the same quote, then
-//     whitespace, a separator or the end of the line -- is a member, reported without its quotes the
-//     way the quoted patterns report `API_KEY="<v>"`. v2.5.3 reported `API_KEY=<v1>,"<v2>"` as
-//     `"<v2>"`. A quote that does not close that way (`"x":`, `"two words"`) ends the list.
+//     whitespace, a separator, the end of the line or a byte that closes what the list sits in
+//     (`ARGS=(--token=<v1>,"<v2>")`, `x = 'token=<v1>,"<v2>"'`) -- is a member, reported without its
+//     quotes the way the quoted patterns report `API_KEY="<v>"`. v2.5.3 reported
+//     `API_KEY=<v1>,"<v2>"` as `"<v2>"`. A quote that does not close that way (`"x":`,
+//     `"two words"`, `"<v2>"+x`) ends the list.
 //   - A `${NAME}` element is a reference, not a literal: it is passed over unreported and the walk
 //     goes on. A bare `$NAME` still ends the list, because `$` begins ordinary identifiers in minified
 //     JavaScript (`$e`, `$scope`) and passing over those would walk on through code.
@@ -348,15 +353,16 @@ func appendCollectionElements(out []collectionSecretCandidate, region string, ba
 //   - An element that opens a new `key=value`, `key: value`, `key:value` or `--flag=value` pair ends
 //     the list (see startsListAssignment). That is the NEXT assignment, not a member of this one: in
 //     `token=<v1>;token=<v2>` the second head reports through the ordinary pattern, and its
-//     `token=<v2>` element used to report a second time, key and all. Padded base64 is not a pair.
+//     `token=<v2>` element used to report a second time, key and all. Padded base64 is not a pair,
+//     and neither is a URL (`postgres://app:<v2>@db`), whose scheme only looks like a key.
 //
 // The grammar is a property of the bytes, not of the value, so the filters for what REPORTS are
 // unchanged: an element that fits but is short, prose-shaped or a shouty sentinel is still a member
 // -- the walk passes over it to the next one -- and is simply not reported.
 //
 // LINEAR, which the first version was not. Every head re-split the whole rest of the line, so K
-// heads on one line cost O(K^2): 0.83s, 2.62s and 8.99s at K = 2,000, 4,000 and 8,000
-// `;`-separated `token=<value>` assignments through the CLI, against 0.26s, 0.40s and 0.76s now
+// heads on one line cost O(K^2): 0.81s, 2.53s and 9.96s at K = 2,000, 4,000 and 8,000
+// `;`-separated `token=<value>` assignments through the CLI, against 0.23s, 0.39s and 0.82s now
 // (median of three interleaved samples). Two things make it O(line length):
 //
 //   - The walk is LAZY. It reads one element at a time and stops at the first that is not a member,
@@ -457,10 +463,16 @@ func appendTailMember(out []collectionSecretCandidate, line string, start, end i
 // line[start], or -1 if the element is not a closed quoted member.
 //
 // Between the quotes must be exactly what an unquoted member could be -- a first byte the head could
-// start with, then value-class bytes, and not a new pair -- and after the closing quote must come
-// whitespace, a separator or the end of the line. So `"<v>"` is a member and `"Content-Type":`
-// (a key), `"two words"` and `"<v>"+x` are not, and neither is `"it's"`: the value class excludes
-// both quote characters, so the content cannot hold the other one.
+// start with, then value-class bytes, and not a new pair -- and after the closing quote must come what
+// ends a quoted string (endsAfterClosingQuote): the end of the line, whitespace, a separator, or a
+// byte that closes what the list sits in, such as the `)` of `ARGS=(--token=<v1>,"<v2>")` or the
+// outer string's quote in `x = 'token=<v1>,"<v2>"'`. So `"<v>"` is a member and `"Content-Type":`
+// (a key), `"two words"`, `"<v>"+x` and `"<v>""` are not, and neither is `"it's"`: the value class
+// excludes both quote characters, so the content cannot hold the other one.
+//
+// That content rule is narrower than the quoted patterns, which take any bytes but the quotes: a
+// quoted member holding a space, `#` or `;`, or starting with `(`, `[`, `{`, `<` or `$`, is not a
+// member, and it ends the list (TestListTailStatedCosts).
 func closedQuotedMember(line string, start int) int {
 	q, inner := line[start], start+1
 	if inner >= len(line) || !isUnquotedValueFirstByte(line[inner]) || startsListAssignment(line, inner) {
@@ -470,13 +482,35 @@ func closedQuotedMember(line string, start int) int {
 	for i < len(line) && isUnquotedValueByte(line[i]) {
 		i++
 	}
-	if i >= len(line) || line[i] != q {
-		return -1
-	}
-	if after := i + 1; after < len(line) && !isListSeparator(line[after]) && skipSpaceRunes(line, after) == after {
+	if i >= len(line) || line[i] != q || !endsAfterClosingQuote(line, i+1, q) {
 		return -1
 	}
 	return i
+}
+
+// endsAfterClosingQuote reports whether line[after:], straight after a closing quote q, ends the
+// quoted string rather than continuing an expression: the end of the line, whitespace (every rune
+// unicode.IsSpace admits), a separator, or a byte that closes what the string sits in
+// (closesEnclosing).
+func endsAfterClosingQuote(line string, after int, q byte) bool {
+	return after >= len(line) || isListSeparator(line[after]) || skipSpaceRunes(line, after) != after ||
+		closesEnclosing(line, after, q)
+}
+
+// closesEnclosing reports whether line[after], straight after a closing quote q, closes what the
+// quoted string sits in: a bracket (`)`, `]`, `}`), a tag (`>`, `/>`, `<`), a pipe or query (`|`,
+// `&`), an escape (`\`, as in a JSON-escaped `\n`), or an outer string written with the other quote.
+// A lone `/`, `+`, `:` or the same quote again continues an expression or a key, and does not.
+func closesEnclosing(line string, after int, q byte) bool {
+	switch c := line[after]; c {
+	case ')', ']', '}', '>', '<', '|', '&', '\\':
+		return true
+	case '/':
+		return after+1 < len(line) && line[after+1] == '>'
+	case '"', '\'':
+		return c != q
+	}
+	return false
 }
 
 // braceReferenceEnd returns the index just past a `${NAME}` list element at line[start], or -1 if
@@ -577,10 +611,13 @@ func isUnquotedValueFirstByte(b byte) bool {
 // Padded base64 is the one identifier-shaped value followed by `=`: a body with no `+` or `/`
 // (about a fifth of `openssl rand -base64 32` keys, and most base64url ones) is a valid key run, and
 // its padding a valid delimiter. Whether the element is a member must not depend on those random
-// bytes, so isBase64Padding reads it by the shape of the padding, whatever follows on the line. Two
-// readings remain without it: at the end of the line or before a separator, `#`, `\r` or `\f` there
-// is no value, and before a quote that closes rather than opens a string (closesAfterString) there
-// is none either.
+// bytes, so isBase64Padding reads it by the shape of the padding and by whether the value ends after
+// it -- not by whether the body happens to hold a `+` or `/`. Two readings remain without it: at the
+// end of the line or before a separator, `#`, `\r` or `\f` there is no value, and before a quote that
+// closes rather than opens a string (closesAfterString) there is none either.
+//
+// A URL is the one identifier-shaped value followed by `:`: its scheme (`postgres://`, `https://`) is
+// a member, not a key, because the `//` after a single `:` is what no `key:value` pair has.
 //
 // The cost of this rule is stated rather than hidden: a `user:pass`-shaped element after a head
 // (`password=<v1>,root:<v2>`) is read as the next pair and ends the list. Nothing in the bytes tells
@@ -612,6 +649,13 @@ func startsListAssignment(line string, start int) bool {
 	if delim == '=' && isBase64Padding(line, elem, keyEnd, run, i) {
 		return false
 	}
+	// A URL's scheme -- `postgres://`, `redis://`, `https://` -- is one `:` written straight after the
+	// key and followed by `//`. That is a value the head itself captures (`PASSWORD=postgres://app:<v>@db`
+	// reports the whole URL), and the `//` is what tells it from minified `expiresIn:n.expiresIn`, so
+	// it is a member, not the next pair.
+	if delim == ':' && i-run == 1 && strings.HasPrefix(line[i:], "//") {
+		return false
+	}
 	// A quote straight after `=` is either the OPENING quote of a quoted value (`mode="cors"`) or
 	// the CLOSING quote of a string the whole list sits in, after a padded value
 	// (`S = "secret: <v1>,QUJD=="`). The byte after the quote tells them apart: quoted content
@@ -639,36 +683,50 @@ func startsListAssignment(line string, start int) bool {
 }
 
 // isBase64Padding reports whether the `=` run line[run:end] is the padding of a base64 value
-// line[elem:end], for startsListAssignment. Every condition but the last is a property of padding
-// itself, so a padded member is kept whatever follows it on the line -- prose, a tab column, `//`,
-// a closing tag, `)`, the next query parameter:
+// line[elem:end], for startsListAssignment. The first three conditions are properties of padding
+// itself, and the last asks only that the value end after it:
 //
 //   - one or two `=`, written straight after the body (run == keyEnd: no space before them);
 //   - body and padding together a multiple of four bytes long;
 //   - a body of base64 or base64url bytes holding both an upper- and a lower-case letter, as an
 //     encoding of random bytes does with overwhelming odds and `credentials` or `state` does not;
-//   - and the padding ends the VALUE: the line ends, or the next byte is one no `key=value` value
-//     starts with. That is whitespace (every rune unicode.IsSpace admits, so \v and a no-break
-//     space too), a separator, `#`, `)`, `]`, `}`, `<`, `|`, `&` or `\`, or a quote or backtick
-//     that does not open quoted content -- one not followed by [A-Za-z0-9_$].
-//     So `contentType="json"` and a template literal assigned with no space are still pairs, and
-//     `"token=<v1>,<P>"+suffix`, `content="token=<v1>,<P>">` and a padded member before the closing
-//     backtick of markdown inline code are padding. `>` is left out for `x=>y`.
+//   - and the padding ends the VALUE. A run of sentence or markup punctuation straight after it
+//     (isTrailingPunctuation: `<P>.`, `**<P>**`, `_<P>_`, `<P>?`, `<P>: rotate`, `<P>--`) is
+//     passed over; then the line ends, or the next byte is one no `key=value` value starts with.
+//     That is whitespace (every rune unicode.IsSpace admits, so \v and a no-break space too), a
+//     separator, `#`, `)`, `]`, `}`, `<`, `|`, `&` or `\`, or a quote or backtick that does not
+//     open quoted content -- one not followed by [A-Za-z0-9_$] -- and does not close at once as an
+//     empty string. So a padded member is kept before prose, a tab column, `//`, a closing tag or
+//     bracket, the next query parameter, a closing quote, or a sentence's full stop; and
+//     `contentType="json"`, `baseUrl=""`, a template literal assigned with no space, `isValid=!0`,
+//     `scaleBy=.5` and `offsetY=-1` are still pairs.
+//
+// What it reads as a pair, so the member ends the list unreported, is padding followed straight away
+// by a byte that begins a value, or by punctuation and then one: `<P>>` (`>` is left out of the
+// punctuation for `onClick=> run(`), `<P>/path`, `<P>@host`, `<P>+x`, `<P>.x`. In those positions the
+// bytes are those of `onClick=>f`, `isValid=!0`, `scaleBy=.5` and `offsetY=-1`, which are pairs.
 //
 // What it cannot tell apart, and so reads as padding, is a mixed-case key whose length with its `=`
-// is a multiple of four, written with no space before the `=` and either a space after it
-// (`contentType= json`) or a quote followed by punctuation (`contentType="/json"`). Such an element
-// is then reported as a member; neither shape occurs after a head and a separator in the public
-// corpora this was measured on.
+// is a multiple of four, written with no space before the `=` and then a space (`contentType= json`),
+// a quote and punctuation (`contentType="/json"`), or punctuation and the end of the value
+// (`allowOrigin=*`). Such an element is reported as a member, cut where the value class ends
+// (`contentType=`, `allowOrigin=*`). TestListTailStatedCosts pins each; none of these shapes occurs
+// after a head and a separator in the public corpora this was measured on.
 func isBase64Padding(line string, elem, keyEnd, run, end int) bool {
 	if run != keyEnd || end-run > 2 || (end-elem)%4 != 0 || !isMixedCaseBase64Body(line[elem:keyEnd]) {
 		return false
+	}
+	for end < len(line) && isTrailingPunctuation(line[end]) {
+		end++
 	}
 	if end >= len(line) {
 		return true
 	}
 	switch b := line[end]; b {
 	case '"', '\'', '`':
+		if end+1 < len(line) && line[end+1] == b && endsAfterClosingQuote(line, end+2, b) {
+			return false // `baseUrl=""`: an empty string closed at once, so an empty assignment
+		}
 		return end+1 >= len(line) || !opensQuotedContent(line[end+1])
 	case ')', ']', '}', '<', '|', '&', '\\':
 		return true
@@ -681,6 +739,19 @@ func isBase64Padding(line string, elem, keyEnd, run, end int) bool {
 		r, _ := utf8.DecodeRuneInString(line[end:])
 		return unicode.IsSpace(r)
 	}
+}
+
+// isTrailingPunctuation reports whether b is sentence or markup punctuation that isBase64Padding
+// passes over before it asks whether the value has ended: `.`, `!`, `?`, `:`, `*`, `_`, `~`, `-`,
+// `+`, `%`, `@`, `^` or `/`. Some of them also begin code values (`=!0`, `=.5`, `=-1`), and those
+// stay pairs because the byte after the run is still asked. Left out are `>`, which would make
+// `onClick=> run(` padding, and the opening brackets, which `()`, `[]` and `{}` would close at once.
+func isTrailingPunctuation(b byte) bool {
+	switch b {
+	case '.', '!', '?', ':', '*', '_', '~', '-', '+', '%', '@', '^', '/':
+		return true
+	}
+	return false
 }
 
 // opensQuotedContent reports whether b, straight after a quote, reads as the first byte of quoted
