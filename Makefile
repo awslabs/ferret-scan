@@ -748,11 +748,11 @@ version-release:
 
 check-commits:
 	@echo "Checking commit message format..."
-	@./scripts/check-commit-format.sh 2>/dev/null || echo "Commit format checker not found"
+	@./scripts/check-commit-format.sh
 
 check-commits-range:
 	@echo "Checking commit message format for range: $(RANGE)"
-	@./scripts/check-commit-format.sh $(RANGE) 2>/dev/null || echo "Commit format checker not found"
+	@./scripts/check-commit-format.sh $(RANGE)
 
 version:
 	@echo "Current version information:"
