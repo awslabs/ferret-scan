@@ -1,0 +1,168 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "originalUriBaseIds": {
+        "%SRCROOT%": {
+          "uri": "file://<TMPDIR>/"
+        }
+      },
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/models.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "API_KEY=\nAPI_KEY=TripleEnvS3cretVal99"
+                  },
+                  "startLine": 31
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "API_KEY=TripleEnvS3cretVal99"
+                  },
+                  "startColumn": 9,
+                  "startLine": 31
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Secret or API Key Detected in src/models.py at line 31 (confidence: 85.0% - MEDIUM). Matched text: 'TripleEnvS3cretVal99'"
+          },
+          "properties": {
+            "confidence": 85,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doc_type": "Unknown",
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "detection_method": "keyword_pattern",
+              "environment_type": "unknown",
+              "original_confidence": 85,
+              "secret_type": "API_KEY_OR_SECRET",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": true,
+                "specific_pattern": false,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 87.5,
+          "ruleId": "API_KEY_OR_SECRET"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/models.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "DB_PASSWORD=\nDB_PASSWORD=TripleEnvPassVal42"
+                  },
+                  "startLine": 32
+                },
+                "region": {
+                  "endColumn": 31,
+                  "snippet": {
+                    "text": "DB_PASSWORD=TripleEnvPassVal42"
+                  },
+                  "startColumn": 13,
+                  "startLine": 32
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Secret or API Key Detected in src/models.py at line 32 (confidence: 85.0% - MEDIUM). Matched text: 'TripleEnvPassVal42'"
+          },
+          "properties": {
+            "confidence": 85,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doc_type": "Unknown",
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "detection_method": "keyword_pattern",
+              "environment_type": "unknown",
+              "original_confidence": 85,
+              "secret_type": "API_KEY_OR_SECRET",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": true,
+                "specific_pattern": false,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 87.5,
+          "ruleId": "API_KEY_OR_SECRET"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches."
+              },
+              "help": {
+                "text": "Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#api_key_or_secret",
+              "id": "API_KEY_OR_SECRET",
+              "shortDescription": {
+                "text": "Secret or API Key Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

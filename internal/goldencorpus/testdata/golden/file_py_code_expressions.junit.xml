@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="models.py" classname="security-scan" time="0.001">
+      <failure message="2 security findings detected" type="SECURITY_FINDINGS">Line 31: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: TripleEnvS3cretVal99&#xA;Validator: secrets&#xA;Line 32: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: TripleEnvPassVal42&#xA;Validator: secrets</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

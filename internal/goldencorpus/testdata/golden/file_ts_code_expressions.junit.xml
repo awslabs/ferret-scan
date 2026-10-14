@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="models.ts" classname="security-scan" time="0.001">
+      <failure message="2 security findings detected" type="SECURITY_FINDINGS">Line 29: API_KEY_OR_SECRET detected with 95.0% confidence (HIGH)&#xA;Match: ConnStrS3cretVal77&#xA;Validator: secrets&#xA;Line 30: API_KEY_OR_SECRET detected with 95.0% confidence (HIGH)&#xA;Match: CommentS3cretVal88&#xA;Validator: secrets</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

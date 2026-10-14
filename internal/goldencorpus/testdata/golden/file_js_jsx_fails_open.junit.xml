@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="Help.js" classname="security-scan" time="0.001">
+      <failure message="3 security findings detected" type="SECURITY_FINDINGS">Line 4: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: process.env.JWT_SECRET&#xA;Validator: secrets&#xA;Line 8: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: JsxTextS3cretVal55&#xA;Validator: secrets&#xA;Line 10: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: JsxChildPassVal66&lt;/code&gt;&#xA;Validator: secrets</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
