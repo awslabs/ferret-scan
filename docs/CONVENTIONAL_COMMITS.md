@@ -87,5 +87,7 @@ commit that changes what leaks. Two conventions follow from that:
 ./scripts/check-commit-format.sh HEAD~5..HEAD # a range
 ```
 
-The script prints a verdict per commit. Note that it reports problems but exits 0,
-so read the output rather than relying on the exit status.
+The script prints a verdict per commit and exits 1 if any commit fails, or 2 if git
+cannot read the range (a typo, or `HEAD~1` in a one-commit or shallow clone). Merge
+commits are skipped, as the release tooling skips them. `make check-commits` and
+`make check-commits-range RANGE=HEAD~5..HEAD` run the same check.

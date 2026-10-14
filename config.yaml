@@ -123,26 +123,6 @@ validators:
       # - "http[s]?:\\/\\/.*\\.elasticache\\..*\\.amazonaws\\.com" # ElastiCache endpoints
       # - "http[s]?:\\/\\/.*\\.es\\.amazonaws\\.com"            # Elasticsearch Service
 
-      # Amazon/AWS Internal Infrastructure Patterns
-      # Internal Amazon/AWS tools and systems (using optional host patterns for efficiency)
-      - "w\\.amazon\\.com" # Internal Wiki (exact match)
-      - "(.*\\.)?aws\\.dev" # AWS development tools (aws.dev + *.aws.dev)
-      - "(.*\\.)?amazon\\.dev" # Amazon development tools (amazon.dev + *.amazon.dev)
-      - "(.*\\.)?a2z\\.com" # Amazon A2Z systems (a2z.com + *.a2z.com)
-      - "isengard\\.amazon\\.com" # Internal tool (Isengard - exact match)
-      - "(.*\\.)?corp\\.amazon\\.com" # Corporate tools (corp.amazon.com + *.corp.amazon.com)
-      - "river\\.amazon\\.com" # Internal workflows (exact match)
-      - "issues\\.amazon\\.com" # Internal ticketing system (exact match)
-      - "hack\\.amazon\\.com" # Amazon hack events (exact match)
-      - "(.*\\.)?pulse\\.aws" # AWS Pulse (pulse.aws + *.pulse.aws)
-      - "admin\\.jam\\.awsevents\\.com" # AWS Events admin (exact match)
-      - "proservecrm\\.my\\.salesforce\\.com" # ProServe CRM Salesforce (exact match)
-      - "(.*\\.)?aws-border\\.cn" # AWS China border (aws-border.cn + *.aws-border.cn)
-      - "(.*\\.)?aws-border\\.com" # AWS border service (aws-border.com + *.aws-border.com)
-      - "(.*\\.)?awsc-integ\\.aws\\.amazon\\.com" # AWS integration tools (awsc-integ.aws.amazon.com + *.awsc-integ.aws.amazon.com)
-      - "(.*\\.)?a2z\\.org\\.cn" # Amazon China A2Z (a2z.org.cn + *.a2z.org.cn)
-      - "(.*\\.)?amazon\\.enterprise\\..*" # Amazon Enterprise systems (amazon.enterprise.* + *.amazon.enterprise.*)
-
       # Microsoft Azure Patterns
       # Uncomment and customize if you use Microsoft Azure
       # - "http[s]?:\\/\\/.*\\.blob\\.core\\.windows\\.net"    # Azure Blob Storage
