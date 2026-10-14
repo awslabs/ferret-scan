@@ -242,6 +242,35 @@ func WithGCOff(fn func()) {
 // A cold reading needs no separate warm-up, because a minimum discards it for free: a first-touch
 // cost that inflates a sample makes it the maximum, not the minimum. The wall-clock version of this
 // needed an explicit warm-up only because a median gives the cold sample a vote.
+// maxZeroWallRetries bounds how often Measure re-takes a reading whose wall clock did not advance.
+const maxZeroWallRetries = 8
+
+// timeCall is Time, as a variable so a test can hand Measure readings the real clocks only produce
+// sometimes.
+var timeCall = Time
+
+// timeResolved is Time, re-taken while the WALL clock reads zero, up to maxZeroWallRetries more times.
+//
+// A zero wall reading is not a fast call; it is a clock that did not advance across it, which
+// windows-latest does for a workload of about 1.5ms (its wall clock moves in coarse steps there). And
+// one zero sample was enough to fail a whole measurement: the minimum is then zero, Measure returns an
+// error, and every guard treats that as fatal. TestGrowthRatioStillCatchesAGenuineQuadratic failed
+// exactly so on a #761 run, and the #752 instrumentation before it, both on correct code. More pairs
+// (DefaultPairs is 4) meant more chances to draw one.
+//
+// Dropping the zero is not a bias: it was never a measurement. Only the wall clock is checked, since
+// the CPU clock reading zero for small work is normal on Windows (15.625ms ticks) and is what makes
+// Measure fall back to wall in the first place. A workload too small for the wall clock on every try
+// still reads zero, and Measure still refuses it, as TestATinyWorkloadDoesNotDivideAQuantisedCPUReading
+// requires.
+func timeResolved(fn func()) (Reading, error) {
+	r, err := timeCall(fn)
+	for i := 0; err == nil && r.Wall <= 0 && i < maxZeroWallRetries; i++ {
+		r, err = timeCall(fn)
+	}
+	return r, err
+}
+
 func Measure(pairs int, base, big func()) (Growth, error) {
 	if pairs < 1 {
 		pairs = DefaultPairs
@@ -253,7 +282,7 @@ func Measure(pairs int, base, big func()) (Growth, error) {
 	WithGCOff(func() {
 		for i := 0; i < pairs; i++ {
 			var b, g Reading
-			if b, err = Time(base); err != nil {
+			if b, err = timeResolved(base); err != nil {
 				return
 			}
 			// Collect BETWEEN readings, never inside one.
@@ -275,7 +304,7 @@ func Measure(pairs int, base, big func()) (Growth, error) {
 			// So the peak is now ONE reading's working set rather than four, at the cost of a collection
 			// in each gap, which nothing times.
 			runtime.GC()
-			if g, err = Time(big); err != nil {
+			if g, err = timeResolved(big); err != nil {
 				return
 			}
 			runtime.GC()
