@@ -16,6 +16,7 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'Makefile'
+      - 'scripts/container-redaction-smoke.sh'
   pull_request:
     branches:
       - main
@@ -29,6 +30,7 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'Makefile'
+      - 'scripts/container-redaction-smoke.sh'
   workflow_dispatch:
     inputs:
       platforms:
@@ -157,6 +159,32 @@ jobs:
             # Full multi-arch build for main branch and tags
             echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
           fi
+
+      # Redaction inside the image, run the way a user runs it, BEFORE anything is pushed (#776).
+      # Every --enable-redaction run in the shipped image panicked at exit 2, and nothing here saw
+      # it: the image test below runs only --version and --help, only after a push, and treats a
+      # failure as a warning. This loads the amd64 image into the runner's daemon on every event,
+      # pull requests included, with the same build arguments as the build below so the two
+      # share the builder's layer cache.
+      - name: Build image for the redaction smoke test
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ferret-scan:smoke
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          cache-from: type=gha
+          provenance: false
+          sbom: false
+
+      - name: Smoke-test redaction in the image
+        run: scripts/container-redaction-smoke.sh ferret-scan:smoke
 
       - name: Build and push Docker image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
