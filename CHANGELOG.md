@@ -47,6 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backstop warns when a tag's promotion is a no-op although its range contains `fix`, `feat` or
   `perf` commits — it would have fired on v2.5.3. A pull-request template, a `CONTRIBUTING.md`
   section and a `make pr-checklist` line state the rule where a contributor meets it.
+- **tooling (commit format):** `scripts/check-commit-format.sh`, which
+  `docs/CONVENTIONAL_COMMITS.md` tells contributors to run before they push, could not fail. A
+  subject that broke the format printed ❌ and the script still exited 0; the oldest commit of
+  every range was never read, so the default range (`HEAD~1..HEAD`, one commit) checked nothing;
+  and a range git could not read passed. `make check-commits` and `make check-commits-range`
+  reported any failure as "Commit format checker not found". The script now checks every commit,
+  exits 1 when one fails and 2 when git cannot read the range, and skips merge commits as
+  `scripts/version-helper.sh` does; the make targets pass its exit status through.
 
 ## [v2.5.3] - 2026-10-07
 
