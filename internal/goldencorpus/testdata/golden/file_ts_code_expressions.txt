@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH              FILE
+--------------------------------------------------------------------------------------------
+[HIGH  ] secrets      API_KEY_OR_SECRET      95.00% line    29 ConnStrS3cretVal77 models.ts
+[HIGH  ] secrets      API_KEY_OR_SECRET      95.00% line    30 CommentS3cretVal88 models.ts

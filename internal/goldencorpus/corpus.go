@@ -213,41 +213,29 @@ var Cases = []Case{
 	},
 	{
 		Name: "secrets_code_expression_known_fp",
-		Description: "The #742 shapes the #745 veto does NOT cover, recorded as CURRENT behavior " +
-			"rather than asserted correct — the same convention adversarial_single_long_line uses. " +
-			"#742's suggested guard names four shapes; #745's veto is anchored on square brackets " +
-			"(`Ident[...]`) and closes only that one. The other three still capture, and all of " +
-			"them are declarations whose value is a TYPE or a CALL, never a credential:\n" +
-			"  (1) bare capitalized identifier — `token: AuthToken` at 100%. The plainest " +
-			"annotation syntax there is, and the widest surface of the three: it is Java, Kotlin " +
-			"and C# fields as well as Python and TypeScript, not just the parameterized form.\n" +
-			"  (2) TypeScript generics — Promise<AuthToken> and Observable<string> at 100%. " +
-			"Record<string,string> arrives TRUNCATED to `Record<string` because the capture class " +
-			"excludes ',', which is why a value-shape veto alone cannot close it: by the time the " +
-			"filter sees the value, the closing bracket is gone. See the #745 discussion on " +
-			"widening the veto vs. excluding bracket characters from the capture's continuation " +
-			"class — the latter keeps every veto value-intrinsic, the former admits a form an " +
-			"author could wrap a live credential inside.\n" +
-			"  (3) bare function call — get_session() and loadSecret(ctx) at 75%. #742's own " +
-			"5-line repro fixture ends with `session = get_session()`, so this line is why that " +
-			"fixture still reports 1 finding after #745 rather than 0.\n" +
-			"The last line is NOT a false positive and is here as a control: `api_key: SecretStr` " +
-			"is clean today while `password: SecretProvider` is 100%, and the reason is neither " +
-			"length (AuthToken and SecretStr are both 9 chars) nor isObviousPlaceholder (false for " +
-			"both). Something further down suppresses values containing SecretStr specifically. " +
-			"The current behavior on bare identifiers is therefore partly ACCIDENTAL, which is the " +
-			"argument for an explicit guard rather than relying on whatever is incidentally " +
-			"catching some of them. If a future change makes this line fire, that is a real " +
-			"regression and not a widening of the veto.\n" +
-			"The redaction snapshots are the sharpest statement of the cost: under " +
-			"--enable-redaction every line here has its TYPE rewritten to " +
-			"[API_KEY_OR_SECRET-REDACTED], so running redaction over a typed codebase corrupts " +
-			"it. Line 5 shows the truncation damage directly — `secret: Record<string,string>` " +
-			"becomes `secret: [API_KEY_OR_SECRET-REDACTED],string>`, which is not even " +
-			"syntactically valid, because redaction can only rewrite the span that was reported " +
-			"and the capture stopped at the comma. #742 frames the impact as reddened PRs under a " +
-			"blocking gate; this is the worse failure mode and the corpus should carry it.\n" +
-			"When these are fixed, the lines leave this golden and the diff is the proof.",
+		Description: "The #742/#753 code-expression shapes as UNTYPED input, and the pin that untyped " +
+			"input is not gated. Every line is a declaration whose value is a TYPE or a CALL, never a " +
+			"credential, and in an expression-language file every one of them is now dropped by the #753 " +
+			"lexical gate: the same lines in src/models.ts and src/models.py " +
+			"(file_ts_code_expressions, file_py_code_expressions) produce zero findings. This case " +
+			"scans them under the extension-less label <golden:...>, which names no grammar, so the " +
+			"gate stays off and they report exactly as before — deliberately. Without a file type the " +
+			"bytes `token: AuthToken` are as likely to be a YAML value as a TypeScript type, and the " +
+			"gate's justification is the language grammar, never the value. Stdin without " +
+			"--stdin-name, a ScanText or Redact label without an extension, and any other untyped " +
+			"channel take this path.\n" +
+			"  The shapes, for the record of why a value veto could not close them: (1) a bare " +
+			"capitalized identifier, `token: AuthToken` at 100%, the plainest annotation syntax there " +
+			"is; (2) TypeScript generics, Promise<AuthToken> and Observable<string>, with " +
+			"Record<string,string> arriving TRUNCATED to `Record<string` because the capture class " +
+			"excludes ',' — by the time a value filter sees it the closing bracket is gone; (3) a bare " +
+			"function call, get_session() and loadSecret(ctx) at 75%, the last line of #742's own " +
+			"repro. The last line, `api_key: SecretStr`, is a control that is clean for an unrelated " +
+			"reason (something downstream suppresses values containing SecretStr).\n" +
+			"  The redaction snapshots keep the cost of reporting these in untyped input visible: every " +
+			"line has its TYPE rewritten to [API_KEY_OR_SECRET-REDACTED], and line 5 becomes `secret: " +
+			"[API_KEY_OR_SECRET-REDACTED],string>`. If a change makes this case go EMPTY, the gate has " +
+			"started firing without a file type, which is a regression and not a fix.",
 		Checks: []string{"SECRETS"},
 		Input: "token: AuthToken\n" +
 			"password: SecretProvider\n" +
@@ -690,6 +678,130 @@ var FileCases = []FileCase{
 			"// owner: ops@example.com\n" +
 			"const AWSKey = \"AKIAIOSFODNN7EXAMPLE\"\n" +
 			"const Secret = \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n"),
+		Tier1Parity: true,
+	},
+	// --- Tier 1: the #753 lexical gate, typed source files ---------------------------------
+	//
+	// The extension decides whether the unquoted-assignment family is gated, so these three are
+	// FileCases (a real filename on disk) rather than Cases (an extension-less label). The two
+	// source files must report ONLY their in-file literal-context controls; the YAML file holds
+	// the same bytes a .ts file would call a type, and must keep reporting them.
+	{
+		Name: "file_ts_code_expressions",
+		Description: "Tier 1, #753: a TypeScript file of everyday code whose right-hand sides are types, " +
+			"member accesses and calls — #753's three shapes, the TS rows of the 24-line #753 probe " +
+			"(Java and C# rows read as TS), and an object literal whose second field is a list tail. " +
+			"On v2.5.3 these reported up to HIGH 100; in a .ts file they are expressions, so the " +
+			"lexical gate drops them and the file must report ONLY its two in-file literal-context " +
+			"controls: a connection string inside a quoted literal, and a credential in a // comment. " +
+			"Those two are what keep the case from going green on a gate that drops everything in a " +
+			"source file.",
+		Checks:   []string{"SECRETS"},
+		Filename: filepath.Join("src", "models.ts"),
+		Content: []byte("import { Injectable } from \"@angular/core\";\n\n" +
+			"export interface Credentials {\n" +
+			"  token: AuthToken\n" +
+			"  password: SecretProvider\n" +
+			"  session: SessionFactory\n" +
+			"  apiKey: Observable<string>\n" +
+			"}\n\n" +
+			"let token: Promise<AuthToken>;\n\n" +
+			"@Injectable()\n" +
+			"export class AuthService {\n" +
+			"  private readonly tokenService: TokenService\n" +
+			"  private String password = getPassword();\n" +
+			"  async login(form: FormGroup, response: ApiResponse) {\n" +
+			"    const session = await getSession();\n" +
+			"    const secret = process.env.JWT_SECRET;\n" +
+			"    const body = {\n" +
+			"      password: this.form.value.password,\n" +
+			"    };\n" +
+			"    const creds = { password: this.password, token: session.accessToken };\n" +
+			"    token = response.data.accessToken\n" +
+			"    String token = tokenProvider.createToken(auth);\n" +
+			"    var credential = new ClientSecretCredential(tenantId, clientId, secret);\n" +
+			"  }\n" +
+			"}\n\n" +
+			"const DB_URL = \"Server=db;User Id=app;Password=" + "ConnStr" + "S3cretVal77" + ";\";\n" +
+			"// rotate before release: secret=" + "Comment" + "S3cretVal88" + "\n"),
+		Tier1Parity: true,
+	},
+	{
+		Name: "file_py_code_expressions",
+		Description: "Tier 1, #753: a Python module of everyday code — #753's shapes, the Python rows of " +
+			"the 24-line #753 probe (the Ruby row read as Python), class-level annotations whose " +
+			"type carries a secret stem, call keyword arguments, and a tuple whose second element is " +
+			"a list tail. Every right-hand side is an expression, so in a .py file the lexical gate " +
+			"drops them all and the module must report ONLY its in-file control: a .env body " +
+			"embedded in a triple-quoted string, whose two credentials are literal text and must " +
+			"keep reporting. The control is what stops this case passing on a gate that simply " +
+			"turned the unquoted family off for source files.",
+		Checks:   []string{"SECRETS"},
+		Filename: filepath.Join("src", "models.py"),
+		Content: []byte("import os\nfrom typing import Optional\n\n\n" +
+			"class Settings:\n" +
+			"    token: AuthToken\n" +
+			"    password: SecretProvider\n" +
+			"    session: SessionFactory\n" +
+			"    password: SecretStr\n" +
+			"    session: Optional[Session] = None\n\n\n" +
+			"def connect(self, request, config, payload, key, params, ctx):\n" +
+			"    session = get_session()\n" +
+			"    token = request.headers.get(\"Authorization\")\n" +
+			"    password = os.environ[\"DB_PASSWORD\"]\n" +
+			"    api_key = os.getenv(\"API_KEY\")\n" +
+			"    self.token = token_value\n" +
+			"    secret = config.secret_key\n" +
+			"    token = jwt.encode(payload, key)\n" +
+			"    credential = DefaultAzureCredential()\n" +
+			"    session = boto3.session.Session()\n" +
+			"    session = Session.find(params[:id])\n" +
+			"    api_key = loadSecret(ctx)\n" +
+			"    client = Client(password=settings.DB_PASSWORD, token=auth.token_value)\n" +
+			"    token = first_token_value, second_token_value\n" +
+			"    return client\n\n\n" +
+			"DOTENV_BODY = \"\"\"\n" +
+			"API_KEY=" + "TripleEnv" + "S3cretVal99" + "\n" +
+			"DB_PASSWORD=" + "TripleEnv" + "PassVal42" + "\n" +
+			"\"\"\"\n"),
+		Tier1Parity: true,
+	},
+	{
+		Name: "file_js_jsx_fails_open",
+		Description: "Tier 1, #753: a React component saved as .js -- the default for Create React App, " +
+			"Next.js pages and React Native -- that prints a credential as JSX TEXT. JSX text between " +
+			"tags is neither code nor a JS string, which is why .jsx and .tsx are not in the gate's " +
+			"table at all; .js is, so a JSX element in code position fails the gate open for the whole " +
+			"file and it behaves exactly as if it were named .jsx. Both credentials must report. The " +
+			"code-position control (process.env.JWT_SECRET) is NOT dropped here, deliberately: it is " +
+			"what proves the file failed open rather than being lexed as plain JavaScript, where the " +
+			"JSX text would be read as code and the two credentials would be dropped and never " +
+			"redacted.",
+		Checks:   []string{"SECRETS"},
+		Filename: filepath.Join("src", "Help.js"),
+		Content: []byte("import React from \"react\";\n\n" +
+			"export default function Help() {\n" +
+			"  const secret = process.env.JWT_SECRET;\n" +
+			"  return (\n" +
+			"    <div className=\"help\">\n" +
+			"      <pre>\n" +
+			"        API_KEY=" + "JsxText" + "S3cretVal55" + "\n" +
+			"      </pre>\n" +
+			"      <code>password: " + "JsxChild" + "PassVal66" + "</code>\n" +
+			"    </div>\n" +
+			"  );\n" +
+			"}\n"),
+		Tier1Parity: true,
+	},
+	{
+		Name: "file_yaml_config_control",
+		Description: "Tier 1, #753: the YAML control for the two source-file cases above. `token: " +
+			"AuthToken` is byte-identical here and in src/models.ts, where the gate drops it as a " +
+			"type; in YAML an unquoted scalar IS the value, so both lines must keep reporting " +
+			"exactly as before. The gate reads the file's grammar, and .yaml is not in its table.",
+		Checks:      []string{"SECRETS"},
+		Filename:    filepath.Join("config", "settings.yaml"),
+		Content:     []byte("token: AuthToken\npassword: MixedCaseNoDigits\n"),
 		Tier1Parity: true,
 	},
 	{

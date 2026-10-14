@@ -1,0 +1,5 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                    FILE
+--------------------------------------------------------------------------------------------------
+[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line     4 process.env.JWT_SECRET   Help.js
+[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line     8 JsxTextS3cretVal55       Help.js
+[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line    10 JsxChildPassVal66</code> Help.js

@@ -26,17 +26,19 @@ import (
 // SCOPE — the veto is PARTIAL, and deliberately so here.
 //
 // #742's suggested guard names four shapes. typeAnnotationValue is anchored on square brackets,
-// so it closes the parameterized form only. Three sibling shapes still report, every one a
-// declaration whose value is a type or a call:
+// so it closes the parameterized form only. Three sibling shapes are not value-shape vetoed,
+// every one a declaration whose value is a type or a call:
 //
-//	token: AuthToken               bare capitalized identifier  100%
+//	token: AuthToken               bare capitalized identifier  100% on v2.5.3
 //	token: Promise<AuthToken>      TypeScript generic           100%
 //	session = get_session()        bare function call            75%
 //
-// They are not asserted here, because asserting current-but-wrong behavior in a unit test
-// invites someone to "fix the test" instead of the bug. They are recorded as a golden snapshot
-// in internal/goldencorpus — case secrets_code_expression_known_fp — where closing them shows
-// up as a reviewable corpus diff. That case carries the full reasoning, including why the
+// In a typed source file they are closed by the file's GRAMMAR instead (#753): the lexical gate
+// drops an unquoted value that starts in code position, whatever its shape. That is asserted in
+// source_gate_test.go (TestSourceGateDropsCodeExpressions) and by the golden FileCases
+// file_ts_code_expressions and file_py_code_expressions. With no file type they still report,
+// and the golden case secrets_code_expression_known_fp pins exactly that: without an extension
+// the bytes `token: AuthToken` may as well be a YAML value. That case also carries why the
 // comma-truncated `Record<string` capture means a value-shape veto alone cannot close shape 2.
 
 // typedDeclarations are ordinary declarations whose field name carries a secret stem. Every one

@@ -49,6 +49,12 @@ type candidate struct {
 	text  string
 	start int
 	end   int
+	// gateable marks a candidate from the UNQUOTED-assignment family -- the unquoted and plural
+	// unquoted patterns, the collection and list-tail paths, and block-sequence items. Only these
+	// are subject to the lexical gate in expression-language files (#753, source_syntax.go). A
+	// quoted pattern, a provider literal or an entropy hit is never gateable: quotes are the
+	// author's statement that the bytes are a literal.
+	gateable bool
 }
 
 // scopedCandidate is a candidate tagged with the detection path that produced
@@ -582,6 +588,14 @@ func (v *Validator) ValidateContent(content string, originalPath string) ([]dete
 // (SECRETS' DoS shape is many dense lines) is reclaimed promptly (v2 Phase 3). On
 // cancellation it returns the matches gathered so far plus ctx.Err().
 func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, originalPath string) ([]detector.Match, error) {
+	return v.validateContentCtx(ctx, content, originalPath, sourceLanguageFor(originalPath))
+}
+
+// validateContentCtx is ValidateContentCtx with the lexical gate's grammar passed in rather than
+// derived from originalPath. Production always derives it; tests pass langNone to get the exact
+// behaviour of the same path with the gate removed, which is the oracle the gate's "everything
+// else behaves exactly as today" promise is checked against.
+func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, originalPath string, lang sourceLanguage) ([]detector.Match, error) {
 	var matches []detector.Match
 
 	// Entry-level cancellation check (v2 Phase 3): the whole-content passes below
@@ -623,13 +637,38 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	seqIndent := 0
 	seqKeyLine := ""
 
+	// #753: in a file whose extension names an expression language, an unquoted-family candidate
+	// whose value starts in CODE position is an expression, not a literal, and is dropped here --
+	// before dedupeScopedBySpan, so a quoted or entropy twin claiming the same span survives, and
+	// never when a never-gated path claims exactly its span (gateDrops below). One whole-content
+	// lex, then per candidate O(1) for the value start plus the value's length over 64 for the
+	// backtick-text check. nil (no gate) for every other file and for every fail-open condition,
+	// which keeps those files exactly as they were. See source_syntax.go.
+	gate, _ := newSourceGate(content, lang)
+	lineOffset := 0
+
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
 		if execguard.LineLoopCancelled(ctx, lineNum) {
 			return matches, ctx.Err()
 		}
+		lineStart := lineOffset
+		lineOffset += len(line) + 1
 		// Pre-check if this line contains shell variable references to optimize performance
 		lineHasShellVars := v.LineContainsShellVariableReferences(line)
+
+		// Process AWS secret access keys (context-gated; see findAWSSecretKeys).
+		// Adjacent lines provide the AKIA-pairing context: credentials files list
+		// aws_access_key_id and aws_secret_access_key on consecutive lines. Found
+		// before the gate runs, because the gate must know which spans it claims.
+		var prevLine, nextLine string
+		if lineNum > 0 {
+			prevLine = lines[lineNum-1]
+		}
+		if lineNum+1 < len(lines) {
+			nextLine = lines[lineNum+1]
+		}
+		awsResults := v.findAWSSecretKeys(line, prevLine, nextLine, lineNum, originalPath)
 
 		// Collect this line's candidates from both single-line detection paths
 		// and collapse claims on identical bytes. One secret is routinely
@@ -645,11 +684,49 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// the two, so every span main reported is still reported here. Type and
 		// confidence derive from the matched text alone, so the surviving
 		// finding is identical apart from detection_method.
+		entropy := v.findHighEntropyStrings(line)
+		keyword := v.findKeywordSecrets(line)
+
+		// gateDrops is the #753 gate for one unquoted-family candidate, with one exemption: a
+		// span that a NEVER-gated path also claims on exactly the same bytes -- the entropy path,
+		// a quoted pattern or provider literal, the AWS secret-key path -- is not gated. Dropping
+		// such a twin removes nothing, since the span is still reported, but it can change what is
+		// reported: mergeBySpanKeepStrongest below raises the AWS finding to the highest
+		// confidence any candidate on its span reached, so an unquoted 40-char secret in code went
+		// from main's 100 to the AWS path's own 95. Exempt, the span reports exactly as on main.
+		// The claimed set is built only when a candidate would otherwise drop, so an ungated file
+		// and a line with nothing to drop pay nothing for it.
+		var claimed map[[2]int]struct{}
+		gateDrops := func(start, end int, text string) bool {
+			if !gate.drops(line, lineStart, start, text) {
+				return false
+			}
+			if claimed == nil {
+				claimed = make(map[[2]int]struct{}, len(entropy)+len(keyword)+len(awsResults))
+				for _, c := range entropy {
+					claimed[[2]int{c.start, c.end}] = struct{}{}
+				}
+				for _, c := range keyword {
+					if !c.gateable {
+						claimed[[2]int{c.start, c.end}] = struct{}{}
+					}
+				}
+				for _, a := range awsResults {
+					claimed[[2]int{a.start, a.end}] = struct{}{}
+				}
+			}
+			_, twin := claimed[[2]int{start, end}]
+			return !twin
+		}
+
 		cands := make([]scopedCandidate, 0, 8)
-		for _, c := range v.findHighEntropyStrings(line) {
+		for _, c := range entropy {
 			cands = append(cands, scopedCandidate{candidate: c, method: "high_entropy", threshold: 50})
 		}
-		for _, c := range v.findKeywordSecrets(line) {
+		for _, c := range keyword {
+			if c.gateable && gateDrops(c.start, c.end, c.text) {
+				continue
+			}
 			cands = append(cands, scopedCandidate{candidate: c, method: "keyword_pattern", threshold: 60})
 		}
 
@@ -659,8 +736,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		if inSecretSequence {
 			if itemIndent, isItem := sequenceItemIndent(line); isItem && itemIndent > seqIndent {
 				for _, c := range v.findSequenceItemSecret(line) {
+					if gateDrops(c.start, c.end, c.text) {
+						continue
+					}
 					cands = append(cands, scopedCandidate{
-						candidate: candidate{text: c.text, start: c.start, end: c.end},
+						candidate: candidate{text: c.text, start: c.start, end: c.end, gateable: true},
 						method:    "keyword_pattern", threshold: 60,
 					})
 				}
@@ -675,21 +755,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		}
 		lineResults := v.processScopedCandidates(dedupeScopedBySpan(cands), line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
 
-		// Process AWS secret access keys (context-gated; see findAWSSecretKeys).
-		// Adjacent lines provide the AKIA-pairing context: credentials files list
-		// aws_access_key_id and aws_secret_access_key on consecutive lines.
-		var prevLine, nextLine string
-		if lineNum > 0 {
-			prevLine = lines[lineNum-1]
-		}
-		if lineNum+1 < len(lines) {
-			nextLine = lines[lineNum+1]
-		}
 		// The AWS path can claim bytes the entropy path already claimed (a
 		// quoted 40-char secret is both), so merge rather than concatenate: the
 		// specific, higher-confidence AWS_SECRET_ACCESS_KEY row replaces the
 		// generic API_KEY_OR_SECRET row for that span instead of joining it.
-		lineResults = mergeBySpanKeepStrongest(lineResults, v.findAWSSecretKeys(line, prevLine, nextLine, lineNum, originalPath))
+		lineResults = mergeBySpanKeepStrongest(lineResults, awsResults)
 
 		for _, r := range lineResults {
 			m := r.match
@@ -993,6 +1063,13 @@ var secretAssignmentKeywords = []string{
 // file-path false positives, because a real AWS secret access key contains it: the reference
 // value wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY has two. Losing a real credential class to
 // tidy up a cosmetic one is the wrong trade.
+//
+// SCOPE. The config grammars above are where an unquoted right-hand side is a literal, and in
+// those files -- and in any input with no file type -- these patterns run everywhere on the line.
+// In a file whose extension names an expression language (Python, JS/TS, Go, Terraform/HCL), a
+// candidate whose value starts in CODE position is an identifier, call or type rather than a
+// literal, and ValidateContentCtx drops it before dedupe (#753, source_syntax.go). The patterns
+// themselves are unchanged, so every span they report keeps its text and its suppression hash.
 func compileUnquotedPatterns() []*regexp.Regexp {
 	patterns := make([]*regexp.Regexp, 0, len(secretAssignmentKeywords))
 	for _, keyword := range secretAssignmentKeywords {
@@ -1032,6 +1109,13 @@ func compileUnquotedPatterns() []*regexp.Regexp {
 //   - entirely mask characters, which is this tool's OWN redacted output rather than a secret.
 //
 // A genuinely all-lowercase short secret is rejected, and that is a deliberate, stated cost.
+//
+// SCOPE. This filter judges the VALUE and runs on every unquoted candidate, on every channel. It
+// is the only defence in config, prose and untyped input. In expression-language source files the
+// broader class it was chasing there -- types, calls and member accesses captured as values -- is
+// closed by the file's grammar instead (#753): a code-position value is dropped whatever its
+// shape. In a .py both now exclude `session: Optional[Session]`; the Ident[...] veto below is what
+// still excludes it from a file the gate cannot type.
 func plausibleUnquotedSecret(v string) bool {
 	if len(v) < 8 {
 		return false
@@ -1163,7 +1247,7 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 				if !plausibleUnquotedSecret(value) {
 					continue
 				}
-				matches = append(matches, candidate{text: value, start: m[2], end: m[3]})
+				matches = append(matches, candidate{text: value, start: m[2], end: m[3], gateable: true})
 			}
 		}
 	}
@@ -1186,18 +1270,23 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 				if !plausibleUnquotedSecret(value) {
 					continue
 				}
-				matches = append(matches, candidate{text: value, start: m[2], end: m[3]})
+				matches = append(matches, candidate{text: value, start: m[2], end: m[3], gateable: true})
 			}
 		}
 	}
 
 	// Collections, and the tail of a non-bracketed list — #746 shapes (b) and (a). Both carry
 	// their own element filters; see list_and_sequence.go.
+	//
+	// All of them are unquoted-family candidates for the #753 lexical gate, the QUOTED collection
+	// elements included: the gate anchors on the value start, and a quoted element's value starts
+	// inside its quotes, so it keeps reporting after a code-position head. Marked here rather than
+	// in list_and_sequence.go so the gate does not depend on how those paths are built.
 	for _, c := range v.findCollectionSecrets(line) {
-		matches = append(matches, candidate{text: c.text, start: c.start, end: c.end})
+		matches = append(matches, candidate{text: c.text, start: c.start, end: c.end, gateable: true})
 	}
 	for _, c := range v.findListTailSecrets(line) {
-		matches = append(matches, candidate{text: c.text, start: c.start, end: c.end})
+		matches = append(matches, candidate{text: c.text, start: c.start, end: c.end, gateable: true})
 	}
 
 	return matches
@@ -2669,7 +2758,9 @@ Entropy Thresholds:
 - Base64 strings: 4.5 (20+ characters)
 - Hex strings: 3.0 (16+ characters)
 
-Keyword patterns automatically detect common secret assignment formats in various programming languages and configuration files.`,
+Keyword patterns automatically detect common secret assignment formats in various programming languages and configuration files.
+
+Unquoted assignments in source code: in Python (.py .pyi .pyw), JavaScript (.js .mjs .cjs), TypeScript (.ts .mts .cts), Go (.go) and Terraform/HCL (.tf .tfvars .hcl) files, an unquoted value that starts in code position, such as secret = config.secret_key, is an expression rather than a credential and is not reported. Values inside strings, comments, docstrings and heredocs still are, and so is a value that runs into a backtick string. A file the lexer cannot read as source is scanned as before: a .js file containing JSX, and any of these files holding a typographic quote in code position. The file type comes from the file name, --stdin-name, or a library label; input with no extension is scanned as before.`,
 		Examples: []string{
 			"ferret-scan --file config.json --checks SECRETS",
 			"ferret-scan --file .env --checks SECRETS --confidence high",

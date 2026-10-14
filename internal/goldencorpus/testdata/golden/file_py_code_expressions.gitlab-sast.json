@@ -1,0 +1,82 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected secret or api key in this file.\n\n**Location:** src/models.py (line 31)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nAPI_KEY=TripleEnvS3cretVal99\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nTreat the value as compromised: rotate or revoke the credential first, then remove it from the file. Deleting the text does not undo the exposure. Store the replacement in a secret manager or an environment variable, never in source or logs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "API_KEY_OR_SECRET"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "secrets"
+        }
+      ],
+      "location": {
+        "end_line": 31,
+        "file": "src/models.py",
+        "start_line": 31
+      },
+      "message": "Secret or API key detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Secret/API Key Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected secret or api key in this file.\n\n**Location:** src/models.py (line 32)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\nDB_PASSWORD=TripleEnvPassVal42\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nTreat the value as compromised: rotate or revoke the credential first, then remove it from the file. Deleting the text does not undo the exposure. Store the replacement in a secret manager or an environment variable, never in source or logs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "API_KEY_OR_SECRET"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "secrets"
+        }
+      ],
+      "location": {
+        "end_line": 32,
+        "file": "src/models.py",
+        "start_line": 32
+      },
+      "message": "Secret or API key detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Secret/API Key Detected",
+      "severity": "High"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+src/Help.js,API_KEY_OR_SECRET,MEDIUM,85.0,4,process.env.JWT_SECRET
+src/Help.js,API_KEY_OR_SECRET,MEDIUM,85.0,8,JsxTextS3cretVal55
+src/Help.js,API_KEY_OR_SECRET,MEDIUM,85.0,10,JsxChildPassVal66</code>
