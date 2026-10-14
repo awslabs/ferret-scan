@@ -63,13 +63,25 @@ digest must be set manually (`crane digest <registry>/golang:<ver>-alpine`),
 and `check` validates the tag but only warns on an unverifiable digest.
 
 ### 3. Pre-commit Hook
-The `go-version-check` hook runs `go-version-check` on any commit touching
-`.go-version`, `go.mod`, `.gitlab-ci.yml`, or `Dockerfile`, so drift is caught
-before it lands:
+The `go-version-check` hook (a `repo: local` hook in `.pre-commit-config.yaml`)
+runs `scripts/go-version.sh check` on any commit touching `.go-version`,
+`go.mod`, `.gitlab-ci.yml`, `Dockerfile` or the script itself, so drift is
+caught before it lands:
 ```bash
 pre-commit install
 pre-commit run go-version-check --all-files   # manual check
 ```
+
+### 4. CI
+`.github/workflows/go-version-check.yml` runs `make check-go-version` on every
+pull request that touches a pinned file, with network, so the Dockerfile digest
+is compared against the registry too. A dependabot bump of the builder image
+stays red until `.go-version` follows it:
+```bash
+echo "<new version>" > .go-version && make sync-go-version
+```
+This is deliberate: `.go-version` is what the release, PyPI and test workflows
+install, and the builder image is the only pin dependabot moves on its own.
 
 ## Updating Go Version
 

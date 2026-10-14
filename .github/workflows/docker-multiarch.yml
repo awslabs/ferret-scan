@@ -62,6 +62,10 @@ jobs:
       packages: write # Required for GHCR push
       id-token: write # Required for AWS OIDC
       security-events: write
+    outputs:
+      # The tag this run pushed (`main` on a main push, the semver on a tag). security-scan
+      # reads it so the vulnerability scan covers the image this commit built.
+      image_version: ${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout
@@ -305,11 +309,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Scan the tag THIS run pushed, not `:latest`. `:latest` only moves on a release tag, so on
+      # a push to main the old target was the previous release: its findings were filed against
+      # the main commit that had just been built, and a fix on main could never clear them. That is
+      # how nine Go 1.27.1 stdlib alerts sat on `main` for a week after the builder moved to 1.27.2
+      # (#755) -- the `:main` image was already clean. The Trivy step above has always scanned the
+      # built tag; this now matches it.
       - name: Run Grype vulnerability scanner on GHCR
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         id: scan-ghcr
         with:
-          image: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:latest
+          image: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPOSITORY }}:${{ needs.docker.outputs.image_version }}
           fail-build: false
           severity-cutoff: high
           # Load accepted-vuln ignore rules (see .grype.yaml for rationale).

@@ -47,6 +47,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backstop warns when a tag's promotion is a no-op although its range contains `fix`, `feat` or
   `perf` commits — it would have fired on v2.5.3. A pull-request template, a `CONTRIBUTING.md`
   section and a `make pr-checklist` line state the rule where a contributor meets it.
+- **ci (go pins, container scan):** two gaps that let the Go 1.27.1 advisories sit on `main` for a
+  week after the fix for them had landed. **Nothing ran `make check-go-version`**, so dependabot's
+  builder bump (#755) left `.go-version` — the pin the release, PyPI and test workflows install —
+  one patch release behind the image; `go-version-check.yml` now runs it on every pull request that
+  touches a pinned file, online, so the Dockerfile digest is compared with the registry too, and a
+  builder bump stays red until `.go-version` follows it. The `go-version-check` pre-commit hook that
+  `docs/GO_VERSION_MANAGEMENT.md` has described all along is now defined. **The Grype job scanned
+  `:latest` on every push to `main`**, and `:latest` only moves on a release tag — so each push
+  re-scanned the previous release and filed its findings against the main commit just built, which
+  no fix on `main` could clear (the Trivy step beside it has always scanned the built tag and
+  reported zero). It now scans the tag the run pushed, passed from the build job as an output.
+  Reviewing those findings also showed Grype reporting 9 of the 12 stdlib advisories that
+  `govulncheck -mode=binary` finds in the same binary.
 
 ### 🔒 Security
 
