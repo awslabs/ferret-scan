@@ -8,7 +8,7 @@
 # Pinned to digest for supply-chain integrity (TM-10). The trailing tag
 # is informational; the @sha256:... digest is what determines what's
 # pulled. To update, run:
-#   crane digest public.ecr.aws/docker/library/golang:1.27.1-alpine
+#   crane digest public.ecr.aws/docker/library/golang:1.27.2-alpine
 # or use `docker manifest inspect` and replace both the tag and digest.
 # Keep in sync with .go-version; `make check-go-version` enforces it and
 # `make sync-go-version` rewrites both the tag and the digest.

@@ -69,10 +69,20 @@ resolve_digest() {
     fi
 
     if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-        docker manifest inspect "$ref" >/dev/null 2>&1 \
-            && docker buildx imagetools inspect "$ref" 2>/dev/null \
-                | awk '/Digest:/ {print $2; exit}' \
-            && return 0
+        # Capture first, parse second. This used to be `inspect | awk '... exit'` guarded by
+        # `&& return 0`: awk's early exit closed the pipe before docker finished writing, docker
+        # exited non-zero on the failed write, and under pipefail the branch had already PRINTED the
+        # digest yet reported failure -- so the HTTP fallback below printed it a second time. Callers
+        # saw two lines: `check` reported digest drift against a registry serving the pinned digest,
+        # and `update` fed the newline into sed ("unterminated `s' command") and left the pin alone.
+        local out digest
+        if out=$(docker buildx imagetools inspect "$ref" 2>/dev/null); then
+            digest=$(printf '%s\n' "$out" | awk '/^Digest:/ {print $2; exit}')
+            if [[ -n "$digest" ]]; then
+                echo "$digest"
+                return 0
+            fi
+        fi
     fi
 
     # Registry HTTP API fallback: anonymous bearer token + manifest HEAD.
