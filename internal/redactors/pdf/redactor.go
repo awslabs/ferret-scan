@@ -46,8 +46,23 @@ func NewPDFRedactor(outputManager *redactors.OutputStructureManager, observer ob
 	}
 
 	return &PDFRedactor{
-		observer:  observer,
-		pdfConfig: model.NewDefaultConfiguration(),
+		observer: observer,
+		// Stateless: pdfcpu's built-in defaults, with no configuration directory read, written
+		// or required (#776). model.NewDefaultConfiguration ensures <os.UserConfigDir()>/pdfcpu
+		// exists, seeds it with config.yml and a font file, and panics through pdfcpu's
+		// fault.Fail when it cannot. PDF redaction is not implemented (docs/redaction-support.md),
+		// so this redactor exists to refuse .pdf, but the default manager registers it for every
+		// redaction, PDF or not, so its constructor runs every time: that killed every redaction
+		// in a container whose home is not writable, and left about 188 KB in every other user's
+		// home. The only use of the configuration is the parseability check in validatePDFFile,
+		// which picks the error a refusal carries, and the settings it reads (relaxed validation,
+		// the file-extension check, the resource limits) are the built-ins config.yml is seeded
+		// with.
+		//
+		// Not api.DisableConfigDir: pdfcpu deprecates it in favour of this stateless mode, and it
+		// works by setting the process-wide model.ConfigPath, which would change pdfcpu's
+		// behaviour for everything else in the process, including a program embedding this one.
+		pdfConfig: model.NewStatelessConfiguration(),
 	}
 }
 

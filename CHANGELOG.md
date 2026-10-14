@@ -14,6 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **redaction (container, unusable home):** every `--enable-redaction` run in the shipped container
+  image panicked with a stack trace at exit 2 before reading its input, whatever the file type
+  (`panic: config problem: mkdir /home/ferret/.config: permission denied`), and so did any host run
+  whose home could not be created; on every other host each redaction run left pdfcpu's
+  configuration tree, 187,758 bytes measured, in `~/.config/pdfcpu/`
+  ([#776](https://github.com/awslabs/ferret-scan/issues/776)). The PDF redactor, registered for
+  every redaction although PDF redaction is not implemented, built its pdfcpu configuration in a
+  mode that creates that directory and panics when it cannot. It now uses pdfcpu's stateless
+  configuration, which reads and writes nothing on disk; the redactor still declines PDFs exactly as
+  `docs/redaction-support.md` documents. Separately, the image's `/tmp` and `/home/ferret` were
+  `root:root 0755`, because a `COPY` of a directory does not carry the directory's own mode or
+  owner, so the image's user could write neither; they are now `1777` and `1000:1000`. The docker
+  workflow now runs a redaction inside the image on every pull request, before anything is pushed
+  (`scripts/container-redaction-smoke.sh`); it ran only `--version` and `--help` before, only after
+  a push, and never failed. No finding, suppression hash or redacted byte changes.
+- **config discovery (untraversable home):** a run without `--config` died with a nil-pointer panic
+  at exit 2, scan or redaction, when a discovery candidate could not be stat'ed for a reason other
+  than its absence, such as a home the process cannot traverse (`HOME` left pointing at another
+  account's home, permission denied) or a path running through a regular file. Such a candidate is
+  now skipped like an absent one (#776).
+
 ### 🔨 Internal
 
 - **ci (changelog):** a pull request that changes what a release ships now fails unless it adds an

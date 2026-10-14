@@ -95,12 +95,15 @@ FROM scratch
 # Copy CA certificates for HTTPS calls (uncomment if needed for AWS SDK or external APIs)
 # COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-# Create necessary directories and user files in scratch image
-# Copy the directory structure we created in the builder stage
-COPY --from=builder /scratch-fs/tmp /tmp
-COPY --from=builder /scratch-fs/home/ferret /home/ferret
-COPY --from=builder /scratch-fs/etc/passwd /etc/passwd
-COPY --from=builder /scratch-fs/etc/group /etc/group
+# Create necessary directories and user files in scratch image.
+#
+# One COPY of the whole tree, so tmp/ and home/ferret/ arrive as copied entries and keep the mode
+# and owner the builder gave them. COPY of a directory copies its contents, and the destination
+# directory it creates for them is root:root 0755 whatever the source was: copied one by one,
+# /tmp lost its 1777 and /home/ferret its 1000:1000, so user ferret could write neither (#776).
+# --chmod/--chown on those COPYs is not a fix: measured under docker 25's BuildKit, --chmod=1777
+# left /tmp at 0755, and --chown=1000:1000 handed /home itself to ferret as well.
+COPY --from=builder /scratch-fs/ /
 
 # Copy static binary (single executable with embedded web template)
 COPY --from=builder /app/ferret-scan /ferret-scan

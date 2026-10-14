@@ -520,12 +520,19 @@ func findUnixConfigFile() string {
 	return ""
 }
 
-// fileExists checks if a file exists and is not a directory
+// fileExists checks if a file exists and is not a directory.
+//
+// Any Stat error means "no usable file here", not only "does not exist". A home directory the
+// process cannot traverse (EACCES, e.g. HOME left pointing at another account's 0700 home) or a
+// candidate path running through a regular file (ENOTDIR) used to fall through to info.IsDir()
+// on a nil FileInfo, so every run without --config, scan or redaction, died in discovery with a
+// nil-pointer panic at exit 2 before reading any input (#776). Discovery skips such a candidate
+// and goes on to the next, as it does for one that is absent.
 func fileExists(filename string) bool {
 	// #nosec G703 -- filename is the operator-supplied --config / --suppression-file
 	// path; no untrusted input reaches Stat.
 	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+	if err != nil {
 		return false
 	}
 	return !info.IsDir()
