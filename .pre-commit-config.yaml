@@ -95,3 +95,20 @@ repos:
         args: ["--format", "ansi", "--zero"]
         # Note: licensecheck will automatically detect pyproject.toml or requirements.txt
         # Configure allowed/blocked licenses in licensecheck.toml
+
+  # ============================================================================
+  # GO VERSION PINS
+  # ============================================================================
+  # docs/GO_VERSION_MANAGEMENT.md has described this hook since the check was
+  # written; it was never defined. Runs `scripts/go-version.sh check` when a
+  # pinned file is staged. Offline, the digest comparison warns instead of
+  # failing (the script's own rule); CI (go-version-check.yml) runs it online.
+  - repo: local
+    hooks:
+      - id: go-version-check
+        name: Go version pins agree with .go-version
+        entry: scripts/go-version.sh
+        args: [check]
+        language: script
+        pass_filenames: false
+        files: ^(\.go-version|go\.mod|Dockerfile|\.gitlab-ci\.yml|scripts/go-version\.sh)$

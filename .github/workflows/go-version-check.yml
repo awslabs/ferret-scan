@@ -1,0 +1,60 @@
+name: Go version pins
+
+# Fails a pull request whose Go pins disagree with .go-version, by running the check the repo has
+# had since #576 -- `make check-go-version` -- which until now nothing in CI ran.
+#
+# WHY. .go-version is what release.yml, pypi-publish.yml and go-test.yml install; the Dockerfile
+# builder is pinned separately. Dependabot bumps only the Dockerfile. #755 moved the builder to
+# golang:1.27.2-alpine while .go-version stayed at 1.27.1, and for a week `main` was set to release
+# a container on 1.27.2 next to GitHub release binaries, a Homebrew formula and a PyPI wheel still
+# built with 1.27.1 -- the toolchain with twelve open stdlib advisories. `make check-go-version`
+# exited 1 on that main the whole time. A dependabot builder bump now stays red until .go-version
+# follows it (`echo <ver> > .go-version && make sync-go-version` on its branch), which is the only
+# order in which the pins can move that leaves every artifact on the same toolchain.
+#
+# WHAT IS CHECKED. go.mod's `go` directive (major.minor), the Dockerfile FROM tag and that its
+# @sha256 digest is what the registry serves for that tag, .gitlab-ci.yml, and that no workflow
+# pins a literal go-version. The digest check reaches public.ecr.aws anonymously; a republished
+# upstream tag (same Go version, new digest) therefore fails here too, by design (TM-10): the
+# script's message says how to confirm and adopt it. Only PRs that touch a pinned file run this.
+on:
+  pull_request:
+    paths:
+      - ".go-version"
+      - "go.mod"
+      - "Dockerfile"
+      - ".gitlab-ci.yml"
+      - "scripts/go-version.sh"
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+    paths:
+      - ".go-version"
+      - "go.mod"
+      - "Dockerfile"
+      - ".gitlab-ci.yml"
+      - "scripts/go-version.sh"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The toolchain this installs is the one every other workflow installs, so the script's
+      # "local toolchain" line doubles as a check that .go-version is a real release.
+      - name: Set up Go from .go-version
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ".go-version"
+          cache: false
+
+      - name: Every Go pin agrees with .go-version
+        run: make check-go-version
