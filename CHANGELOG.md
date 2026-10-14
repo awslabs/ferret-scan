@@ -14,6 +14,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **config (internal_urls):** the shipped `config.yaml` enabled 17 `intellectual_property.internal_urls`
+  patterns that name one organisation's own hosts rather than a naming convention. `make install-config`
+  and `docs/INSTALLATION.md` copy that file into every new user's config, and every profile that does not
+  override `internal_urls` (10 of the shipped profiles) inherits the list, so every other organisation's
+  users got irrelevant `INTELLECTUAL_PROPERTY` detections for hostnames they will never see, and the
+  default published hostnames that are nobody else's business. The 17 are removed; the generic naming
+  conventions (`.*\.internal\..*`, `.*\.corp\..*`, `-internal`, `internal-`) and the public S3 endpoints
+  stay, and an organisation that wants its own hosts detected adds them to its own config, as the
+  surrounding comments already say. A guard test now classifies every shipped `internal_urls` pattern by
+  shape — a naming convention, a private-use top-level label, a documented placeholder domain, or a
+  public cloud provider's endpoint — and fails on any other literal registrable domain, so the shipped
+  default cannot name a specific organisation again. No finding's Text, line or type changes for anyone
+  who did not have those hosts in their files; a user who did, and relies on the default, should move
+  the patterns into their own `internal_urls`.
+
 ### 🔨 Internal
 
 - **ci (changelog):** a pull request that changes what a release ships now fails unless it adds an
