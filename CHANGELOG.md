@@ -17,8 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Bug Fixes
 
 - **config (internal_urls):** the shipped `config.yaml` enabled 17 `intellectual_property.internal_urls`
-  patterns that name one organisation's own hosts — an internal wiki, a ticketing system, corporate
-  subdomains, a CRM tenant — under the heading "Internal Infrastructure Patterns". `make install-config`
+  patterns that name one organisation's own hosts rather than a naming convention. `make install-config`
   and `docs/INSTALLATION.md` copy that file into every new user's config, and every profile that does not
   override `internal_urls` (10 of the shipped profiles) inherits the list, so every other organisation's
   users got irrelevant `INTELLECTUAL_PROPERTY` detections for hostnames they will never see, and the

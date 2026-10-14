@@ -187,13 +187,13 @@ func TestRegistrableDomainsClassifier(t *testing.T) {
 		{`http[s]?:\/\/.*\.corp\.company\.com`, []string{"company.com"}},
 		{`http[s]?:\/\/.*\.s3-.*\.amazonaws\.com`, []string{"amazonaws.com"}},
 		{`http[s]?:\/\/.*\.blob\.core\.windows\.net`, []string{"windows.net"}},
-		// a specific organisation, in the shapes the shipped config has used
-		{`wiki\.example-org\.com`, []string{"example-org.com"}},
-		{`(.*\.)?example-org\.dev`, []string{"example-org.dev"}},
-		{`(.*\.)?tools\.example-org\.com`, []string{"example-org.com"}},
-		{`(.*\.)?example-org\.org\.cn`, []string{"example-org.org.cn"}},
-		{`tenant\.my\.saas-vendor\.com`, []string{"saas-vendor.com"}},
-		{`(.*\.)?example-org\.enterprise\..*`, []string{"example-org.enterprise"}},
+		// an organisation's own hosts, in the shapes a config can spell them: a literal host, an
+		// optional-subdomain prefix, a registrable domain under a public second level, a
+		// hostname with a path tail
+		{`http[s]?:\/\/intranet\.acme-corp\.com`, []string{"acme-corp.com"}},
+		{`(.*\.)?acme-corp\.io`, []string{"acme-corp.io"}},
+		{`(.*\.)?acme-corp\.co\.uk`, []string{"acme-corp.co.uk"}},
+		{`http[s]?:\/\/.*\.acme-corp\.com\/.*`, []string{"acme-corp.com"}},
 	}
 	for _, c := range cases {
 		got := registrableDomains(c.pattern)
