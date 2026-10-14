@@ -48,6 +48,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `perf` commits — it would have fired on v2.5.3. A pull-request template, a `CONTRIBUTING.md`
   section and a `make pr-checklist` line state the rule where a contributor meets it.
 
+### 🔒 Security
+
+- **build (go 1.27.2):** move every Go pin to **1.27.2**, which carries the fixes for the twelve Go
+  1.27.1 standard-library advisories published 2026-10-08 — GO-2026-6599, -6600, -6603, -6605,
+  -6607 through -6613 and -6617, in `net/http` and its HTTP/2 implementation, `net/textproto`,
+  `crypto/tls` and `html/template`. The Dockerfile builder was already on 1.27.2 — dependabot moved
+  it in #755 — but **`.go-version` was not**, and `.go-version` is what `release.yml`,
+  `pypi-publish.yml` and `go-test.yml` install. So the next tag would have published a clean
+  container beside GitHub release binaries, a Homebrew formula and a PyPI wheel still built with
+  1.27.1, while the test matrix kept exercising a toolchain the image no longer used.
+  `make check-go-version` exists to report exactly that split, and does — it exits 1 on `main` —
+  but no workflow runs it. **`make sync-go-version` could not repair it either.** `resolve_digest`
+  piped `docker buildx imagetools inspect` into an `awk` that exits at the first `Digest:` line, so
+  docker died on the closed pipe, `pipefail` marked the branch failed after it had already printed,
+  and the HTTP fallback printed the digest a second time: two lines, which `check` reported as
+  digest drift against a registry serving the pinned digest, and which `update` fed into `sed` as
+  an unterminated expression before `set -e` stopped the script with the Dockerfile untouched and
+  `.gitlab-ci.yml` never reached. The branch now captures the output and parses it, and
+  `tests/integration/go_version_digest_test.go` drives the real script against fake `docker`,
+  `crane`, `curl` and `jq` that reproduce the write-after-exit: both cases fail on the old script
+  with that two-line verdict and pass on this one. The resolved digest, `sha256:f92b6ef8…`, was
+  cross-checked by hand against `public.ecr.aws`: `GOLANG_VERSION=1.27.2`, linux/amd64 and
+  linux/arm64 both present. **The nine open code-scanning alerts (#3833–#3841) do not close on
+  merge.** They are Grype readings of `ghcr.io/awslabs/ferret-scan:latest`, which is still the
+  v2.5.3 image — `go version -m` on its binary says go1.27.1 — so they close when the next release
+  is cut from this pin; `govulncheck -mode=binary` on the `:main` image built after #755 already
+  reports only the accepted GO-2026-5932. Docs that named 1.27.1 as the current version are
+  refreshed, and `THREAT_MODEL.md`'s TM-10 row names the tag shape instead of a version.
+
 ## [v2.5.3] - 2026-10-07
 
 ### 🐛 Bug Fixes
