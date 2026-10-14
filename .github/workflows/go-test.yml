@@ -55,7 +55,7 @@ jobs:
     # goldencorpus has several TestGrowthRatio* tests, so renaming the 18-validator guard would leave
     # the package "ok" while the guard ran nowhere (it skips under the main suite's -race).
     env:
-      COMPLEXITY_GUARDS: 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio|TestAssignLineColumnsMemoIsLoadBearing|TestManyTextNodesIsSubQuadratic|TestCollapseSpaceIsLinear|TestListTailIsLinearInLineLength|TestCollectionIsLinearInLineLength|TestListGuardRaceGateIsNotTakenWithoutRace'
+      COMPLEXITY_GUARDS: 'TestValidatorComplexityIsSubQuadratic|TestGrowthRatio|TestAssignLineColumnsMemoIsLoadBearing|TestManyTextNodesIsSubQuadratic|TestCollapseSpaceIsLinear|TestListTailIsLinearInLineLength|TestCollectionIsLinearInLineLength|TestListGuardRaceGateIsNotTakenWithoutRace|TestQueryParamSplitIsLinear'
       COMPLEXITY_PKGS: './internal/goldencorpus/ ./internal/detector/ ./internal/preprocessors/text-extractors/text-extract-svgtextlib/ ./internal/validators/secrets/'
 
     steps:

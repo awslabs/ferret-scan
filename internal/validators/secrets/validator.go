@@ -1080,6 +1080,16 @@ func compileUnquotedPatterns() []*regexp.Regexp {
 	return patterns
 }
 
+// queryParamSeparator is a run of `&` that begins a new query-string parameter: followed by a
+// key and `=`. A bare `&` inside a credential (`P&ss...`) does not match. The run is taken whole
+// so that an empty parameter (`a=1&&b=2`) does not leave a trailing `&` on the previous value.
+var queryParamSeparator = regexp.MustCompile(`&+[A-Za-z_][\w.-]*=`)
+
+// isQueryKeyByte reports whether b can appear in a query-string key: [A-Za-z0-9_.-].
+func isQueryKeyByte(b byte) bool {
+	return b == '_' || b == '.' || b == '-' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
 // plausibleUnquotedSecret reports whether an unquoted captured value could be a secret.
 //
 // This is the whole reason the unquoted patterns are a separate set. Measured on 400 real
@@ -1242,12 +1252,48 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 	// plausibleUnquotedSecret and the quoted ones must not — quotes are evidence of intent.
 	for _, pattern := range v.unquotedPatterns {
 		for _, m := range pattern.FindAllStringSubmatchIndex(line, -1) {
-			if len(m) > 3 && m[2] >= 0 && m[3]-m[2] >= 8 {
-				value := line[m[2]:m[3]]
-				if !plausibleUnquotedSecret(value) {
-					continue
+			if len(m) <= 3 || m[2] < 0 || m[3]-m[2] < 8 {
+				continue
+			}
+			keyStart := m[0]
+			for keyStart > 0 && isQueryKeyByte(line[keyStart-1]) {
+				keyStart--
+			}
+			if keyStart == 0 || strings.IndexByte("?&#;", line[keyStart-1]) < 0 {
+				// Not a query-string parameter: the value is taken whole, as before #758, because
+				// outside a query string a credential may contain `&x=`.
+				if value := line[m[2]:m[3]]; plausibleUnquotedSecret(value) {
+					matches = append(matches, candidate{text: value, start: m[2], end: m[3], gateable: true})
 				}
-				matches = append(matches, candidate{text: value, start: m[2], end: m[3], gateable: true})
+				continue
+			}
+			// A query-string parameter. The pattern's greedy value runs over every later `&key=`
+			// in the same query string, so split that one span at its separators: the first
+			// segment is this parameter's value, and each later `key=value` segment is matched on
+			// its own. The segments are disjoint, so the whole line costs one pass however many
+			// parameters it holds; resuming the regex after each '&' instead re-scanned to the end
+			// of the line every time (quadratic).
+			appendValue := func(start, end int) {
+				if end-start >= 8 {
+					if value := line[start:end]; plausibleUnquotedSecret(value) {
+						matches = append(matches, candidate{text: value, start: start, end: end, gateable: true})
+					}
+				}
+			}
+			seps := queryParamSeparator.FindAllStringIndex(line[m[2]:m[3]], -1)
+			segEnd := m[3]
+			if len(seps) > 0 {
+				segEnd = m[2] + seps[0][0]
+			}
+			appendValue(m[2], segEnd)
+			for k, sep := range seps {
+				segStart, segStop := m[2]+sep[0]+1, m[3]
+				if k+1 < len(seps) {
+					segStop = m[2] + seps[k+1][0]
+				}
+				if sm := pattern.FindStringSubmatchIndex(line[segStart:segStop]); sm != nil && len(sm) > 3 && sm[2] >= 0 {
+					appendValue(segStart+sm[2], segStart+sm[3])
+				}
 			}
 		}
 	}
