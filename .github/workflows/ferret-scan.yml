@@ -62,7 +62,7 @@ jobs:
 
   ferret-scan:
     name: Sensitive Data Detection
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
 
     # Set permissions for the job
