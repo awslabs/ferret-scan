@@ -42,14 +42,14 @@ jobs:
       # Don't cancel the rest when one platform fails — we want full
       # cross-platform coverage on every run.
       fail-fast: false
-      # Linux is pinned to ubuntu-24.04, here and in every other workflow, because GitHub moves the
+      # Linux is pinned to ubuntu-26.04, here and in every other workflow, because GitHub moves the
       # ubuntu-latest label to Ubuntu 26.04 a few jobs at a time between 19 Oct and 19 Nov 2026
       # (actions/runner-images#14748). Under the label the same push could land on either image for
       # a month, which is noise the growth-ratio guards below cannot tell from a regression. Bump the
       # pin deliberately, after a trial run on ubuntu-26.04 is green. The gofmt step's `if` names
       # the same value and must move with it.
       matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+        os: [ubuntu-26.04, macos-latest, windows-latest]
         go-version: ['']  # use .go-version file
     runs-on: ${{ matrix.os }}
 
@@ -98,7 +98,7 @@ jobs:
         # `gofmt -l` prints offending files and exits 0, so the exit status alone
         # proves nothing — the output has to be inspected. Restricted to first-party
         # trees so a vendored or generated file cannot fail the build.
-        if: matrix.os == 'ubuntu-24.04'
+        if: matrix.os == 'ubuntu-26.04'
         run: |
           unformatted="$(gofmt -l ./cmd ./internal ./pkg)"
           if [ -n "$unformatted" ]; then

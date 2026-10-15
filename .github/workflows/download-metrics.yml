@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   collect:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # Do not run on forks (no upstream data to commit; avoids failed cron noise).
     if: github.repository == 'awslabs/ferret-scan'
     steps:

@@ -174,13 +174,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reported zero). It now scans the tag the run pushed, passed from the build job as an output.
   Reviewing those findings also showed Grype reporting 9 of the 12 stdlib advisories that
   `govulncheck -mode=binary` finds in the same binary.
-- **ci (runners):** every Linux job now runs on `ubuntu-24.04` instead of the `ubuntu-latest`
-  label, which GitHub moves to Ubuntu 26.04 a few jobs at a time between 19 October and 19 November
-  2026 (actions/runner-images#14748). Under the label a single push could have landed on either
-  image for a month, with Docker 28→29, jq 1.7→1.8 and make 4.3→4.4 changing underneath the
-  workflows and the growth-ratio guards unable to tell runner noise from a regression. The pin is
-  bumped deliberately once a trial run on `ubuntu-26.04` is green. macOS and Windows are unchanged:
-  `macos-latest` and `windows-latest` already resolve to macOS 26 and Windows Server 2025.
 
 ### 🔒 Security
 

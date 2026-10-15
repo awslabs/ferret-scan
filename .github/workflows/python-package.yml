@@ -24,7 +24,7 @@ jobs:
       contents: read
 
   test-and-release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: build
     permissions:
       contents: write # Needed for creating releases
@@ -100,7 +100,7 @@ jobs:
 
   # Publish to PyPI for tag pushes (trusted publisher should be configured for this workflow)
   publish-to-pypi:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: test-and-release
     if: startsWith(github.ref, 'refs/tags/')
     environment: pypi
@@ -156,7 +156,7 @@ jobs:
   # delays the real publish, and it uses the same `python-package-release` artefact -- the mirror is the
   # same bytes that went to PyPI, not a rebuild that could differ.
   publish-to-testpypi:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: test-and-release
     if: startsWith(github.ref, 'refs/tags/')
     # NEVER fail a release because the mirror failed. TestPyPI is a convenience index with no
