@@ -183,3 +183,102 @@ func TestUnquotedPatternsCoverEveryKeyword(t *testing.T) {
 		t.Fatal("no unquoted patterns compiled")
 	}
 }
+
+// An unquoted value ends at an `&` that starts the next query-string parameter, but a credential
+// that merely contains `&` is still captured whole. See #758.
+func TestUnquotedValueEndsAtQueryParameter(t *testing.T) {
+	v := NewValidator()
+	cases := []struct {
+		line string
+		want string
+	}{
+		{"url = https://h.example/cb?token=Xk9Lm2Qp7Rt4&next=Zz8Yy7Ww6Vv5", "Xk9Lm2Qp7Rt4"},
+		{"password=P&ss9Wd7Kq2Lm", "P&ss9Wd7Kq2Lm"},
+	}
+	for _, tc := range cases {
+		var got []string
+		for _, c := range v.findKeywordSecrets(tc.line) {
+			got = append(got, c.text)
+			if c.text != tc.line[c.start:c.end] {
+				t.Errorf("%q: span %d:%d does not match text %q", tc.line, c.start, c.end, c.text)
+			}
+		}
+		found := false
+		for _, g := range got {
+			if g == tc.want {
+				found = true
+			}
+			if strings.Contains(g, "&next=") {
+				t.Errorf("%q: value ran past the query separator: %q", tc.line, g)
+			}
+		}
+		if !found {
+			t.Errorf("%q: want candidate %q, got %q", tc.line, tc.want, got)
+		}
+	}
+}
+
+// Trimming at `&` must not hide a later parameter whose key holds the same keyword: the scan
+// resumes at the `&`, so each value is its own candidate. Outside a query string a value that
+// contains `&x=` is still captured whole.
+func TestUnquotedQueryParametersEachReported(t *testing.T) {
+	v := NewValidator()
+	cases := []struct {
+		line string
+		want []string
+	}{
+		{"redirect: https://app.example/cb?access_token=Qw7Er4Ty1Ui8Op5As2Df&refresh_token=Zx9Cv6Bn3Mq0Wp7Lk4Jh&expires_in=3600",
+			[]string{"Qw7Er4Ty1Ui8Op5As2Df", "Zx9Cv6Bn3Mq0Wp7Lk4Jh"}},
+		{"GET /api?token=Hg5Fd2Sa9Lk6Jh3Gf0Dq&token=Mn8Bv5Cx2Zl9Kj6Hg3Fw",
+			[]string{"Hg5Fd2Sa9Lk6Jh3Gf0Dq", "Mn8Bv5Cx2Zl9Kj6Hg3Fw"}},
+		{"POST /oauth?client_id=abc&client_secret=Rt4Yu7Io0Pa3Sd6Fg9Hk&secret=Lz2Xc5Vb8Nm1Qw4Er7Ty",
+			[]string{"Rt4Yu7Io0Pa3Sd6Fg9Hk", "Lz2Xc5Vb8Nm1Qw4Er7Ty"}},
+		{"password=Ab1cD2eF&Xy=Gh3iJ4kL", []string{"Ab1cD2eF&Xy=Gh3iJ4kL"}},
+		// Not query strings: a commented-out assignment or a `;`-delimited connection string keeps
+		// its whole value, `&x=` included (#760 review).
+		{"#password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz", []string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{"    #db_password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz", []string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{";password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz", []string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{"jdbc:postgresql://db.example:5432/app;user=svc;password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz;ssl=true",
+			[]string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{"Server=db.example;Database=app;User Id=svc;Password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz;Encrypt=true",
+			[]string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+	}
+	for _, tc := range cases {
+		got := map[string]bool{}
+		for _, c := range v.findKeywordSecrets(tc.line) {
+			got[c.text] = true
+			if c.text != tc.line[c.start:c.end] {
+				t.Errorf("%q: span %d:%d does not match text %q", tc.line, c.start, c.end, c.text)
+			}
+		}
+		for _, w := range tc.want {
+			if !got[w] {
+				t.Errorf("%q: want candidate %q, got %v", tc.line, w, got)
+			}
+		}
+	}
+}
+
+// An empty parameter (`&&`) must not leave a trailing `&` on the previous value's match text.
+func TestUnquotedQueryValueDoubleAmpersand(t *testing.T) {
+	v := NewValidator()
+	line := "https://h.example/x?token=7G5IfQHeVVEqZe2qpUWn&&secret=oVPDF2yeE6RsXcNOPmeM"
+	want := map[string]bool{"7G5IfQHeVVEqZe2qpUWn": false, "oVPDF2yeE6RsXcNOPmeM": false}
+	for _, c := range v.findKeywordSecrets(line) {
+		if line[c.start:c.end] != c.text {
+			t.Errorf("span %d:%d does not match text %q", c.start, c.end, c.text)
+		}
+		if strings.Contains(c.text, "&") {
+			t.Errorf("candidate %q carries a separator", c.text)
+		}
+		if _, ok := want[c.text]; ok {
+			want[c.text] = true
+		}
+	}
+	for w, ok := range want {
+		if !ok {
+			t.Errorf("missing candidate %q", w)
+		}
+	}
+}

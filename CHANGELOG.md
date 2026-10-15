@@ -111,6 +111,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than its absence, such as a home the process cannot traverse (`HOME` left pointing at another
   account's home, permission denied) or a path running through a regular file. Such a candidate is
   now skipped like an absent one (#776).
+- **secrets:** an unquoted value whose key is itself a query-string parameter (preceded by `?` or
+  `&`) now ends at the `&` that starts the next parameter, and every later parameter is matched on
+  its own; elsewhere a value is taken whole, as before, so a credential containing `&x=` is
+  unchanged. In particular, `;`-delimited connection strings (JDBC, ADO.NET, ODBC) and
+  commented-out assignments (`#password=…`, `;password=…`) keep their whole value and therefore
+  their hashes. This changes the matched text, and therefore the finding hash, for affected
+  findings: suppression rules written against the old, longer value stop matching and need to be
+  re-created ([#758](https://github.com/awslabs/ferret-scan/issues/758)).
 
 ### 🔨 Internal
 
