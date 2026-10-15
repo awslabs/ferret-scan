@@ -1259,9 +1259,10 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 			for keyStart > 0 && isQueryKeyByte(line[keyStart-1]) {
 				keyStart--
 			}
-			if keyStart == 0 || strings.IndexByte("?&#;", line[keyStart-1]) < 0 {
+			if keyStart == 0 || strings.IndexByte("?&", line[keyStart-1]) < 0 {
 				// Not a query-string parameter: the value is taken whole, as before #758, because
-				// outside a query string a credential may contain `&x=`.
+				// outside a query string a credential may contain `&x=`. `;` delimits connection
+				// strings and a leading `#` or `;` marks a commented-out assignment, so neither counts.
 				if value := line[m[2]:m[3]]; plausibleUnquotedSecret(value) {
 					matches = append(matches, candidate{text: value, start: m[2], end: m[3], gateable: true})
 				}

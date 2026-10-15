@@ -227,13 +227,22 @@ func TestUnquotedQueryParametersEachReported(t *testing.T) {
 		line string
 		want []string
 	}{
-		{"redirect: https://app.example/cb#access_token=Qw7Er4Ty1Ui8Op5As2Df&refresh_token=Zx9Cv6Bn3Mq0Wp7Lk4Jh&expires_in=3600",
+		{"redirect: https://app.example/cb?access_token=Qw7Er4Ty1Ui8Op5As2Df&refresh_token=Zx9Cv6Bn3Mq0Wp7Lk4Jh&expires_in=3600",
 			[]string{"Qw7Er4Ty1Ui8Op5As2Df", "Zx9Cv6Bn3Mq0Wp7Lk4Jh"}},
 		{"GET /api?token=Hg5Fd2Sa9Lk6Jh3Gf0Dq&token=Mn8Bv5Cx2Zl9Kj6Hg3Fw",
 			[]string{"Hg5Fd2Sa9Lk6Jh3Gf0Dq", "Mn8Bv5Cx2Zl9Kj6Hg3Fw"}},
 		{"POST /oauth?client_id=abc&client_secret=Rt4Yu7Io0Pa3Sd6Fg9Hk&secret=Lz2Xc5Vb8Nm1Qw4Er7Ty",
 			[]string{"Rt4Yu7Io0Pa3Sd6Fg9Hk", "Lz2Xc5Vb8Nm1Qw4Er7Ty"}},
 		{"password=Ab1cD2eF&Xy=Gh3iJ4kL", []string{"Ab1cD2eF&Xy=Gh3iJ4kL"}},
+		// Not query strings: a commented-out assignment or a `;`-delimited connection string keeps
+		// its whole value, `&x=` included (#760 review).
+		{"#password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz", []string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{"    #db_password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz", []string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{";password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz", []string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{"jdbc:postgresql://db.example:5432/app;user=svc;password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz;ssl=true",
+			[]string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
+		{"Server=db.example;Database=app;User Id=svc;Password=Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz;Encrypt=true",
+			[]string{"Zq8vTtq2Lm4pQ&x=9yHgRrWw7Kz"}},
 	}
 	for _, tc := range cases {
 		got := map[string]bool{}

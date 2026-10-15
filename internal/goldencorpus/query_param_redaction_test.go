@@ -14,9 +14,10 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 )
 
-// TestQueryParamRedactionSink checks the sink for an OAuth implicit-flow redirect. Each
-// token-keyed parameter must be redacted: trimming one value at `&` once left the next,
-// same-keyword parameter in cleartext, which a candidate-level test alone does not show.
+// TestQueryParamRedactionSink checks the sink for an OAuth redirect query string. Each
+// token-keyed parameter must be redacted on its own: trimming one value at `&` once left the
+// next, same-keyword parameter in cleartext, and the greedy value on main swallowed the later
+// parameters whole, which a candidate-level test alone does not show.
 func TestQueryParamRedactionSink(t *testing.T) {
 	const (
 		access  = "Qw7Er4Ty1Ui8Op5As2Df"
@@ -24,7 +25,7 @@ func TestQueryParamRedactionSink(t *testing.T) {
 	)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "redirect.txt")
-	line := "redirect: https://app.example/cb#access_token=" + access + "&refresh_token=" + refresh + "&expires_in=3600\n"
+	line := "redirect: https://app.example/cb?access_token=" + access + "&refresh_token=" + refresh + "&expires_in=3600\n"
 	if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +56,13 @@ func TestQueryParamRedactionSink(t *testing.T) {
 	for name, v := range map[string]string{"access_token": access, "refresh_token": refresh} {
 		if strings.Contains(string(body), v) {
 			t.Errorf("%s value survives in the redacted output", name)
+		}
+	}
+	// The separators and the non-secret parameter must stand: a value that runs to the end of
+	// the line redacts them too.
+	for _, keep := range []string{"&refresh_token=", "&expires_in=3600"} {
+		if !strings.Contains(string(body), keep) {
+			t.Errorf("redacted output lost %q: %q", keep, body)
 		}
 	}
 }
