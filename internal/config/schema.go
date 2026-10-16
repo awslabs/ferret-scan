@@ -37,7 +37,11 @@ var validFormats = map[string]bool{
 	"sarif":       true,
 }
 
-// validRedactionStrategies mirrors redactors.ParseRedactionStrategy.
+// validRedactionStrategies mirrors redactors.RedactionStrategyNames. The domain
+// is a local copy rather than an import: internal/redactors pulls the
+// preprocessors into config loading. TestRedactionStrategySpellingsAgreeWithTheRedactor
+// (schema_registry_test.go) fails if the two drift, in either the names or the
+// matching rule -- which is EXACT for this field, see validateExactEnumField.
 var validRedactionStrategies = map[string]bool{
 	"simple":            true,
 	"format_preserving": true,
@@ -101,7 +105,7 @@ func ValidateSchema(config *Config) error {
 	if err := validateEnumField("defaults.checks", config.Defaults.Checks, validCheckNames, "all"); err != nil {
 		return err
 	}
-	if err := validateEnumField("redaction.strategy", config.Redaction.Strategy, validRedactionStrategies); err != nil {
+	if err := validateExactEnumField("redaction.strategy", config.Redaction.Strategy, validRedactionStrategies); err != nil {
 		return err
 	}
 
@@ -124,7 +128,7 @@ func ValidateSchema(config *Config) error {
 		if err := validateEnumField(prefix+".checks", p.Checks, validCheckNames, "all"); err != nil {
 			return err
 		}
-		if err := validateEnumField(prefix+".redaction.strategy", p.Redaction.Strategy, validRedactionStrategies); err != nil {
+		if err := validateExactEnumField(prefix+".redaction.strategy", p.Redaction.Strategy, validRedactionStrategies); err != nil {
 			return err
 		}
 	}
@@ -168,6 +172,30 @@ func validateConfidenceLevels(fieldName, value string) error {
 			return fmt.Errorf("invalid value %q for %s: valid values are %s, or \"all\"",
 				strings.TrimSpace(raw), fieldName, sortedKeys(validConfidenceLevels))
 		}
+	}
+	return nil
+}
+
+// validateExactEnumField is validateEnumField without the leniencies: no trimming,
+// no comma list, and only the literal empty string means unset. It is the rule
+// for a field whose downstream parser matches the value exactly, which today is
+// redaction.strategy (#772). Under the lenient rule " simple ", "simple," and
+// "simple,synthetic" passed the schema and then reached a parser that matched
+// none of them and fell back to format_preserving -- the strategy is the one
+// enum where the leniency reached the output. --format has the same leniency and
+// still exits 1 downstream, so it keeps the lenient rule; a value accepted here
+// must be a value the parser accepts, and that is what the agreement test pins.
+func validateExactEnumField(fieldName, value string, domain map[string]bool) error {
+	if value == "" {
+		return nil
+	}
+	if !domain[value] {
+		hint := ""
+		if folded := strings.ToLower(strings.TrimSpace(value)); folded != value && domain[folded] {
+			hint = fmt.Sprintf(" (did you mean %q?)", folded)
+		}
+		return fmt.Errorf("invalid value %q for %s: valid values are %s%s (exact spelling, no list)",
+			value, fieldName, sortedKeys(domain), hint)
 	}
 	return nil
 }

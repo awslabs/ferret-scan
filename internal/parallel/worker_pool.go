@@ -62,8 +62,15 @@ type JobConfig struct {
 	EnableDualPath bool
 
 	// Redaction configuration
-	EnableRedaction    bool
-	RedactionStrategy  string
+	EnableRedaction bool
+	// RedactionStrategy is the parsed strategy, not its name. Every edge that
+	// accepts a name (the CLI flag, a config file, FERRET_* variables, pkg/scan)
+	// parses it strictly once and hands the typed value down, so no site in this
+	// pool re-parses a string and falls back to a default on a typo (#772). The
+	// zero value is RedactionSimple, the strategy that keeps nothing of the
+	// original; performInlineRedaction still refuses a value outside the
+	// definition.
+	RedactionStrategy  redactors.RedactionStrategy
 	RedactionOutputDir string
 
 	// SuppressionFilter reports whether a match is suppressed by a rule. When set, redaction is
@@ -456,8 +463,13 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 
 // performInlineRedaction performs redaction using the already-extracted content
 func (wp *WorkerPool) performInlineRedaction(job *Job, matches []detector.Match, processedContent *preprocessors.ProcessedContent) (*redactors.RedactionResult, string, error) {
-	// Parse redaction strategy
-	strategy := redactors.ParseRedactionStrategy(job.Config.RedactionStrategy)
+	// The strategy arrives parsed (see JobConfig.RedactionStrategy). A value
+	// outside the definition is a caller bug, and the one thing it must not do is
+	// quietly become some other strategy.
+	strategy := job.Config.RedactionStrategy
+	if !strategy.Valid() {
+		return nil, "", fmt.Errorf("redaction strategy %d is not one of %v", int(strategy), redactors.RedactionStrategyNames)
+	}
 
 	// Create output path
 	outputPath, err := job.RedactionManager.GetOutputManager().CreateMirroredPath(job.FilePath)

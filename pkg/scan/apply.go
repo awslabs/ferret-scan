@@ -4,6 +4,7 @@
 package scan
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -53,6 +54,11 @@ type Redacted struct {
 // Only findings whose Text field is non-empty can be redacted (they must contain
 // the matched substring to locate it in the source text).
 func RedactText(text string, findings []Finding, strategy RedactStrategy) (*Redacted, error) {
+	// An out-of-range strategy is a caller bug and is refused before anything is
+	// rewritten; it used to be mapped to format_preserving silently (#772).
+	if !strategy.valid() {
+		return nil, fmt.Errorf("scan: invalid RedactStrategy %d (use StrategySimple, StrategyFormatPreserving or StrategySynthetic)", int(strategy))
+	}
 	if len(findings) == 0 {
 		return &Redacted{Text: text, Count: 0}, nil
 	}

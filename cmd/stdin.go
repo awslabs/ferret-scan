@@ -22,7 +22,6 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 	"github.com/awslabs/ferret-scan/v2/internal/precommit"
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
-	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	plaintextredactor "github.com/awslabs/ferret-scan/v2/internal/redactors/plaintext"
 	"github.com/awslabs/ferret-scan/v2/internal/redactverify"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
@@ -137,6 +136,7 @@ func runStdinScan(in stdinScanInputs) int {
 	var precommitConfig *precommit.PrecommitConfig
 	if precommitDetector.IsPrecommitEnvironment() {
 		precommitConfig = precommitDetector.GetOptimizedConfig()
+		refusePrecommitConfigError(precommitDetector)
 	}
 
 	effectiveProfileName := in.flags.profileName
@@ -175,7 +175,12 @@ func runStdinScan(in stdinScanInputs) int {
 		respectGitignore:     false,
 		excludePatterns:      nil,
 		disableIPTypes:       in.flags.disableIPTypes,
+		activeProfileName:    effectiveProfileName,
 	})
+
+	// Same helper as the --file path, same place: a strategy typo is refused here,
+	// before the findings table or any redacted bytes reach stdout/stderr (#772).
+	applyRedactionStrategy(finalCfg, precommitConfig)
 
 	// Apply pre-commit overrides for non-color/format defaults that the
 	// main path would normally apply via precommitConfig.
@@ -458,7 +463,8 @@ func runStdinRedaction(
 	precommitConfig *precommit.PrecommitConfig,
 	inputEncoding preprocessors.TextEncoding,
 ) int {
-	strategy := redactors.ParseRedactionStrategy(finalCfg.redactionStrategy)
+	// Parsed and validated by applyRedactionStrategy at the top of runStdin.
+	strategy := finalCfg.redactionStrategy
 
 	// nil output manager + nil observer is fine for in-memory redaction —
 	// RedactString uses neither. Position correlation is also unnecessary

@@ -76,7 +76,7 @@ func TestRedaction_UnredactableFileKeepsItsMatches(t *testing.T) {
 	fr := newTestFileRouter(t)
 	mgr := newRedactionManagerWithPlaintextOnly(t, filepath.Join(dir, "out"))
 
-	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: "simple"}
+	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: redactors.RedactionSimple}
 	matches, stats, err := pp.ProcessFilesWithProgress(
 		[]string{txt, gofile}, []detector.Validator{v}, fr, cfg, mgr, nil)
 	if err != nil {
@@ -128,7 +128,7 @@ func TestRedaction_FailureIsNotACoverageFailure(t *testing.T) {
 	fr := newTestFileRouter(t)
 	mgr := newRedactionManagerWithPlaintextOnly(t, filepath.Join(dir, "out"))
 
-	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: "simple"}
+	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: redactors.RedactionSimple}
 	_, stats, err := pp.ProcessFilesWithProgress(
 		[]string{gofile}, []detector.Validator{v}, fr, cfg, mgr, nil)
 	if err != nil {
@@ -167,7 +167,7 @@ func TestRedaction_UnredactableFileIsNotAFailedFile(t *testing.T) {
 	fr := newTestFileRouter(t)
 	mgr := newRedactionManagerWithPlaintextOnly(t, filepath.Join(dir, "out"))
 
-	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: "simple"}
+	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: redactors.RedactionSimple}
 	_, stats, err := pp.ProcessFilesWithProgress(files, []detector.Validator{v}, fr, cfg, mgr, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -198,7 +198,7 @@ func TestRedaction_SuccessReportsNoUnredactedFiles(t *testing.T) {
 	fr := newTestFileRouter(t)
 	mgr := newRedactionManagerWithPlaintextOnly(t, filepath.Join(dir, "out"))
 
-	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: "simple"}
+	cfg := &JobConfig{EnableRedaction: true, RedactionStrategy: redactors.RedactionSimple}
 	matches, stats, err := pp.ProcessFilesWithProgress(
 		[]string{a, b}, []detector.Validator{v}, fr, cfg, mgr, nil)
 	if err != nil {

@@ -63,7 +63,7 @@ func TestSweepIsGivenTheSameMatchSetTheFloorVerifies(t *testing.T) {
 
 	pr := NewPlainTextRedactor(nil, nil)
 	pr.SetPositionCorrelationEnabled(false)
-	out, _, err := pr.RedactString(content, matches, redactors.ParseRedactionStrategy("format_preserving"))
+	out, _, err := pr.RedactString(content, matches, redactors.RedactionFormatPreserving)
 	if err != nil {
 		t.Fatalf("RedactString: %v", err)
 	}
