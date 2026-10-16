@@ -14,6 +14,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **secrets (file-wide environment verdict):** one marker word anywhere in a file no longer moves every
+  credential in it, and marker words are matched as whole tokens
+  ([#785](https://github.com/awslabs/ferret-scan/issues/785)). The secrets validator classifies a whole
+  file as test, development or production from 29 marker words and applied the verdict to every
+  candidate in the file: test −25, development −15, production +10. The markers were matched as
+  substrings, so `latest` counted as `test`, `device` as `dev`, `locale` as `local`, `delivery` as
+  `live` and `metadata.Producer` as `.prod`; measured with the shipped lists on the golden corpus, 140
+  of 455 fixtures classified test and 100 development, 67 of them only through a substring inside a
+  longer word. The penalty landed on provider literals and keyword-labelled values alike. Two
+  consequences, both reproduced from v2.5.4: a comment saying `pinned to the latest image` took a
+  GitHub token two lines below it from HIGH 93 to MEDIUM 68 and the same `password=` value from 97 to
+  72, and `--pre-commit-mode` with the shipped default (exit on HIGH) exited 0 on both files and 1 on
+  the same files with a neutral comment — the gate failed **open** on a word in a comment; and a
+  six-line credentials file whose hostnames contained `example` scored every candidate at exactly 60,
+  which the strict reporting threshold drops, so the file reported **zero** findings, exited 0 and
+  wrote no redacted copy, while each of its lines alone reported one. Two changes. (1) A candidate
+  that carries its own evidence — a typed provider literal, or a secret keyword on its line — no
+  longer takes the file-wide test/dev penalty; the penalty keeps its full, unbounded reach on
+  entropy-only candidates, which is the population it was written for, and the production boost is
+  unchanged. (2) Markers are matched as whole tokens under the same rule the rest of the tree uses
+  (`_` is a boundary, so `TEST_VALUE` and `unit_test` still count; `prod-`, `prod_` and `.prod` are
+  bounded on their word side only, so `db.prod.internal` still counts and `metadata.producer` does
+  not). Inflected forms no longer count — `testing`, `examples`, `templates`, `deployment`, `released`
+  — only the bare word does, which also narrows the +10 production boost by the same rule. Measured:
+  the six-line file reports 6; the `latest` and `example.com` files report in the same band as their
+  controls (97 and 93) and `--pre-commit-mode` exits 1 on them; the golden corpus moves **15 findings,
+  all MEDIUM→HIGH, 0 added, 0 lost, 0 demoted** — 13 synthetic credentials in one fixture that a
+  decoy value `[PLACEHOLDER]` elsewhere in the file had been holding at 75, and the two new marker
+  cases — plus two AWS documentation access-key placeholders whose `environment_type` metadata reads
+  `unknown` where it read `test` (the substring was `7EXAMPLE`) and four capped placeholder findings
+  that no longer list a `test_environment_penalty` check, their confidence unchanged; `make score`
+  recall and precision unchanged. **Suppression rules are unaffected**: a finding's identity has not
+  included its confidence since #247 and no matched text, type or line changes here; only a rule file
+  written before #247, whose finding's confidence now moves, stops matching. Not in this change, each
+  filed under #785: the Configuration ratio that counts a trailing newline as a line (item 3,
+  analyzer-wide, so the six-line file still scores 85 with the newline and 100 without — all six
+  report either way), the strict `>` at the threshold (item 4, closed: `>=` would admit a code
+  expression at exactly 60), and excluding hostnames from the `example` marker (the second half of
+  item 2; a credential beside one is protected by the waiver instead).
+- **secrets (provider token lengths):** Stripe, GitLab and Slack tokens longer than the old fixed
+  window are now matched, reported and **redacted whole** ([#769](https://github.com/awslabs/ferret-scan/issues/769)).
+  The validator matched these families as fixed-length windows with no boundary (`sk_live_[0-9a-zA-Z]{24}`,
+  `glpat-[a-zA-Z0-9_-]{20}`, Slack tails of exactly 24 or 32) and typed them with predicates locked to
+  the same lengths, yet no vendor publishes those lengths: Stripe documents prefixes only, a GitLab
+  personal access token is a routable token whose payload is 27 to 300 characters followed by `.vv.`
+  and 9 more, and Slack says the final `-` section is the secret, whatever its length. A longer token
+  was reported as its first N bytes and redacted as its first N bytes, with the rest written back as
+  text: measured on `v2.5.4`, a 107-byte Stripe secret key kept **75 bytes in the clear** in 9 of 11
+  realistic shapes (prose, a log line, a `Bearer` header, a CSV cell, `STRIPE_SK=`, `stripe_sk:`, a
+  test-mode `export`) under every strategy, through `--file` and `--stdin`, exit 0; a 51-byte GitLab
+  routable token kept 25; a Slack user token with a 34-byte tail kept 2. On a keyword line a second,
+  generic finding over the whole value hid the leak. Separately, `task_live_RefreshInterval`
+  and four identifiers like it were `STRIPE_API_KEY` at 70-100. Everything the validator knows about
+  a provider literal now comes from one table (`providerRules`, `internal/validators/secrets/provider_rules.go`):
+  the regexes, the type predicates, the base confidence, the line pre-check and the `--help` text,
+  with a guard test that fails on a literal written anywhere else. Rows with a vendor-fixed length
+  (AWS `AKIA`, GitHub `gh?_`, Google `AIza`, Docker `dckr_pat_`) are unchanged: the window is the key.
+  Rows without one (Stripe, GitLab, Slack) take the whole run of body bytes, at the same minimums as
+  before, so short placeholders (`sk_test_1234567890abcdef`) stay unreported; GitLab also takes the
+  routable suffix. Two tokens glued together are split where the second one's prefix begins
+  (`sk_live_<99>pk_live_<99>` reports two whole keys), and provider spans never partly overlap. A
+  Stripe prefix glued to a word byte on its left with no digit in the body is an identifier and is
+  dropped; the same shape with a digit (`task_live_RefreshMs500`) is still reported,
+  because a real key glued to a word cannot be told from it and a key wins the tie -- a stated,
+  pinned residual (a random 24-byte body has no digit with probability about 1.5%). Escape tails are
+  not glue: a key after a JSON `\n`, `\t` or `\u0022`, or a URL `%22`, is whole. Measured: all 13
+  shapes of the issue's reproduction report one whole-run provider finding with 0 bytes left in the
+  clear; a keyword line goes from two findings to one `STRIPE_API_KEY`; the five identifier decoys
+  report nothing; the golden corpus moves **no existing finding** (0 added, 0 lost, 0 confidence
+  changes; only the metadata key census gains the two new types), and `make score` is unchanged. Two
+  new corpus cases lock the shapes and their redaction; a new complexity target drives distinct
+  glued over-long tokens of all three families through the run scan (4.05x at 4x input). One
+  predicate tightened as a consequence of derivation: `AWS_ACCESS_KEY` now requires its 16 body
+  bytes to be `[0-9A-Z]`, as the regex always did, so a 20-byte entropy candidate with a lowercase
+  letter after `AKIA` is typed generic rather than AWS; no corpus finding moved. **Finding
+  identities change for over-long tokens**: the matched text is part of the hash, so a suppression
+  rule written against the old 32-byte `sk_live_` window, 26-byte `glpat-` window or fixed Slack
+  tail stops matching and the finding resurfaces, now whole -- regenerate those rules. Exact-length
+  tokens keep text, type, confidence and hash. `synthetic` redaction output for these tokens is now
+  the length of the whole token.
+
 ## [v2.5.4] - 2026-10-16
 
 ### 🐛 Bug Fixes

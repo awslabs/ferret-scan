@@ -57,6 +57,10 @@ func TestSecretsValidator_AWSKeys(t *testing.T) {
 			wantDetect: false,
 		},
 		{
+			// Exercises the PREDICATE only: isAWSAccessKey on a 21-byte string. Through
+			// ValidateContent the same bytes report the 20-byte window, because the
+			// AWS row is modeExact and the regex never includes the 21st byte (#769);
+			// TestAKIAWindowPins covers that path.
 			name:       "Too long AKIA prefix",
 			match:      "AKIAIOSFODNN7EXAMPLE1",
 			wantType:   "",

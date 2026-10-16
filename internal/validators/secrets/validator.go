@@ -189,14 +189,20 @@ const awsDocPlaceholderMarker = "EXAMPLE"
 // bearing part of the design. "Value contains EXAMPLE" is only safe where the
 // attacker cannot put it there:
 //
-//   - AWS_ACCESS_KEY is gated by isAWSAccessKey, which is exactly
-//     `strings.HasPrefix(match, "AKIA") && len(match) == 20` — a prefix and a LENGTH,
-//     with no character-class check (an earlier draft of this comment claimed
-//     "16 chars from [0-9A-Z]"; it does not). The length is what carries the argument:
-//     appending EXAMPLE to a real 20-char key makes it 27 and the gate rejects it
-//     outright. The marker can therefore only appear INSIDE a 20-char window, i.e.
-//     `AKIA` + 9 free chars + `EXAMPLE`, which is a key AWS itself would have had to
-//     issue in that shape.
+//   - AWS_ACCESS_KEY is a modeExact row of the provider grammar table
+//     (provider_rules.go): the regex is the fixed window `AKIA[0-9A-Z]{16}` and
+//     isAWSAccessKey is that same row anchored. The WINDOW is what carries the
+//     argument, not the predicate: a real key with EXAMPLE appended is matched
+//     as its first 20 bytes and the appended bytes are never in the matched
+//     text, so the marker can only appear INSIDE a 20-char window, i.e. `AKIA`
+//     + 9 free chars + `EXAMPLE`, which is a key AWS itself would have had to
+//     issue in that shape. (An earlier version of this comment said the gate
+//     "rejects a 27-char key outright"; it never saw one -- the window had
+//     already cut it to 20. The conclusion was right, the reason was not, and
+//     #769 measured both: AKIA + 16 + EXAMPLE reports the 20-byte window at
+//     full confidence, uncapped, pinned by TestAKIAWindowPins.) This is why the
+//     AWS row MUST stay modeExact: on a modeAtLeast row the appended marker
+//     would be part of the match and the rule would be an evasion.
 //   - AWS_SECRET_ACCESS_KEY is the 40-char capture of reAWSSecretCandidate, whose
 //     trailing `($|[^A-Za-z0-9/+=])` means <real40>EXAMPLE yields no 40-char
 //     window at all. The marker cannot coexist with a full real secret in one
@@ -234,6 +240,9 @@ func clampToPublishedCeiling(match *detector.Match) {
 	}
 }
 
+// TestProviderMarkerRuleOnlyOnExactRows (provider_rules_test.go) fails if the
+// AWS_ACCESS_KEY row is ever moved to modeAtLeast: the paragraph above is the
+// reason, and a test is what keeps a comment from becoming a wish.
 func awsDocPlaceholderCap(secretType, match string) float64 {
 	switch secretType {
 	case "AWS_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY":
@@ -524,34 +533,20 @@ func compileKeywordPatterns() []*regexp.Regexp {
 	// JWT Token pattern (3 base64 parts separated by dots)
 	patterns = append(patterns, regexp.MustCompile(`eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*`))
 
-	// AWS Access Key patterns
-	patterns = append(patterns, regexp.MustCompile(`AKIA[0-9A-Z]{16}`))
-
-	// GitHub Token patterns
-	patterns = append(patterns, regexp.MustCompile(`ghp_[a-zA-Z0-9]{36}`))
-	patterns = append(patterns, regexp.MustCompile(`gho_[a-zA-Z0-9]{36}`))
-	patterns = append(patterns, regexp.MustCompile(`ghu_[a-zA-Z0-9]{36}`))
-	patterns = append(patterns, regexp.MustCompile(`ghs_[a-zA-Z0-9]{36}`))
-	patterns = append(patterns, regexp.MustCompile(`ghr_[a-zA-Z0-9]{36}`))
-
-	// Google Cloud API Keys
-	patterns = append(patterns, regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`))
-
-	// Stripe API Keys
-	patterns = append(patterns, regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`))
-	patterns = append(patterns, regexp.MustCompile(`pk_live_[0-9a-zA-Z]{24}`))
-	patterns = append(patterns, regexp.MustCompile(`sk_test_[0-9a-zA-Z]{24}`))
-	patterns = append(patterns, regexp.MustCompile(`pk_test_[0-9a-zA-Z]{24}`))
-
-	// GitLab Personal Access Tokens
-	patterns = append(patterns, regexp.MustCompile(`glpat-[a-zA-Z0-9_-]{20}`))
-
-	// Docker Hub Personal Access Tokens
-	patterns = append(patterns, regexp.MustCompile(`dckr_pat_[a-zA-Z0-9_-]{36}`))
-
-	// Slack Tokens
-	patterns = append(patterns, regexp.MustCompile(`xoxb-[0-9]{11,12}-[0-9]{11,12}-[a-zA-Z0-9]{24}`))
-	patterns = append(patterns, regexp.MustCompile(`xoxp-[0-9]{11,12}-[0-9]{11,12}-[0-9]{11,12}-[a-zA-Z0-9]{32}`))
+	// Provider literals with a vendor-fixed length (AWS, GitHub, Google Cloud,
+	// Docker), derived from the provider grammar table: the fixed window IS the
+	// key, and the regex engine's non-overlapping scan is exactly that grammar.
+	// Rows without a vendor length (Stripe, GitLab, Slack) are not here; they
+	// are found by findProviderRuns, which takes the whole run and applies the
+	// straddle and left-glue rules a regex cannot. See provider_rules.go, #769.
+	for _, r := range providerRules {
+		if r.Mode != modeExact {
+			continue
+		}
+		for _, prefix := range r.Prefixes {
+			patterns = append(patterns, regexp.MustCompile(r.pattern(prefix)))
+		}
+	}
 
 	// PGP Private Keys. Concatenate the marker the same way pemBeginMarker /
 	// pemEndMarker do at package level so this literal doesn't look like a
@@ -833,26 +828,10 @@ func (v *Validator) getSecretType(match string) string {
 	if v.isJWTToken(match) {
 		return "JWT_TOKEN"
 	}
-	if v.isAWSAccessKey(match) {
-		return "AWS_ACCESS_KEY"
-	}
-	if v.isGitHubToken(match) {
-		return "GITHUB_TOKEN"
-	}
-	if v.isGoogleCloudAPIKey(match) {
-		return "GOOGLE_CLOUD_API_KEY"
-	}
-	if v.isStripeAPIKey(match) {
-		return "STRIPE_API_KEY"
-	}
-	if v.isGitLabToken(match) {
-		return "GITLAB_TOKEN"
-	}
-	if v.isDockerToken(match) {
-		return "DOCKER_TOKEN"
-	}
-	if v.isSlackToken(match) {
-		return "SLACK_TOKEN"
+	// Provider literals (AWS, GitHub, Google Cloud, Stripe, GitLab, Docker,
+	// Slack): one anchored predicate per row of the grammar table.
+	if typ, _ := providerTypeOf(match); typ != "" {
+		return typ
 	}
 	if v.isPGPPrivateKey(match) {
 		return "PGP_PRIVATE_KEY"
@@ -939,41 +918,10 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 		return true
 	}
 
-	// AWS keys
-	if strings.Contains(line, "AKIA") {
-		return true
-	}
-
-	// GitHub tokens
-	if strings.Contains(line, "ghp_") || strings.Contains(line, "gho_") ||
-		strings.Contains(line, "ghu_") || strings.Contains(line, "ghs_") ||
-		strings.Contains(line, "ghr_") {
-		return true
-	}
-
-	// Google Cloud API keys
-	if strings.Contains(line, "AIza") {
-		return true
-	}
-
-	// Stripe API keys
-	if strings.Contains(line, "sk_live_") || strings.Contains(line, "pk_live_") ||
-		strings.Contains(line, "sk_test_") || strings.Contains(line, "pk_test_") {
-		return true
-	}
-
-	// GitLab tokens
-	if strings.Contains(line, "glpat-") {
-		return true
-	}
-
-	// Docker tokens
-	if strings.Contains(line, "dckr_pat_") {
-		return true
-	}
-
-	// Slack tokens
-	if strings.Contains(line, "xoxb-") || strings.Contains(line, "xoxp-") {
+	// Provider literals: every prefix of every row of the grammar table (AWS,
+	// GitHub, Google Cloud, Stripe, GitLab, Docker, Slack). Derived, so a row
+	// added to the table is admitted here without a second edit (#769).
+	if lineHasProviderPrefix(line) {
 		return true
 	}
 
@@ -1234,6 +1182,14 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 
 	var matches []candidate
 
+	// Provider tokens without a vendor-fixed length (Stripe, GitLab, Slack), each
+	// taken as its WHOLE run with the straddle and left-glue rules applied. Listed
+	// first so that when a keyword pattern below claims exactly the same span --
+	// `STRIPE_SECRET_KEY=<sk>` is both -- dedupeScopedBySpan keeps the provider
+	// candidate, which is not gateable and carries the provider type. See
+	// provider_rules.go and #769.
+	matches = append(matches, findProviderRuns(line)...)
+
 	for _, pattern := range v.keywordPatterns {
 		found := pattern.FindAllStringSubmatchIndex(line, -1)
 		for _, m := range found {
@@ -1453,50 +1409,10 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		return confidence, checks
 	}
 
-	if v.isAWSAccessKey(match) {
-		confidence = 94.0
-		checks["specific_pattern"] = true
-		checks["valid_format"] = true
-		return confidence, checks
-	}
-
-	if v.isGitHubToken(match) {
-		confidence = 93.0
-		checks["specific_pattern"] = true
-		checks["valid_format"] = true
-		return confidence, checks
-	}
-
-	if v.isGoogleCloudAPIKey(match) {
-		confidence = 94.0
-		checks["specific_pattern"] = true
-		checks["valid_format"] = true
-		return confidence, checks
-	}
-
-	if v.isStripeAPIKey(match) {
-		confidence = 95.0
-		checks["specific_pattern"] = true
-		checks["valid_format"] = true
-		return confidence, checks
-	}
-
-	if v.isGitLabToken(match) {
-		confidence = 93.0
-		checks["specific_pattern"] = true
-		checks["valid_format"] = true
-		return confidence, checks
-	}
-
-	if v.isDockerToken(match) {
-		confidence = 92.0
-		checks["specific_pattern"] = true
-		checks["valid_format"] = true
-		return confidence, checks
-	}
-
-	if v.isSlackToken(match) {
-		confidence = 94.0
+	// Provider literals: the base confidence is a column of the grammar table,
+	// so a row cannot be matched at one length and scored at another (#769).
+	if typ, base := providerTypeOf(match); typ != "" {
+		confidence = base
 		checks["specific_pattern"] = true
 		checks["valid_format"] = true
 		return confidence, checks
@@ -1654,9 +1570,13 @@ func (v *Validator) isJWTToken(match string) bool {
 	return strings.Contains(string(decoded), `"alg"`)
 }
 
-// isAWSAccessKey checks if the match is an AWS access key
+// isAWSAccessKey checks if the match is an AWS access key: the table's
+// AWS_ACCESS_KEY row, an exact 20-byte window. Before #769 this was a prefix
+// and a length with no character-class check; the table adds the class, so a
+// 20-byte token with a lowercase letter after AKIA is generic, not AWS.
 func (v *Validator) isAWSAccessKey(match string) bool {
-	return strings.HasPrefix(match, "AKIA") && len(match) == 20
+	typ, _ := providerTypeOf(match)
+	return typ == "AWS_ACCESS_KEY"
 }
 
 // AWS secret access key detection (issue #147 item 4). The secret half of an
@@ -1935,53 +1855,51 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 	return results
 }
 
+// The per-provider predicates below are thin wrappers over the grammar table's
+// anchored predicate (provider_rules.go), kept under their old names because
+// tests and the explain layer call them by provider. Each is exactly "the table
+// says this match is a complete token of that type": a prefix, the body charset
+// and the row's length rule, which for Stripe, GitLab and Slack is a minimum
+// and for the others an exact window. Before #769 each was its own prefix-plus-
+// length check, locked to the same fixed windows as the regexes, so a longer
+// token was neither matched whole nor recognised whole.
+
 // isGitHubToken checks if the match is a GitHub token
 func (v *Validator) isGitHubToken(match string) bool {
-	return (strings.HasPrefix(match, "ghp_") ||
-		strings.HasPrefix(match, "gho_") ||
-		strings.HasPrefix(match, "ghu_") ||
-		strings.HasPrefix(match, "ghs_") ||
-		strings.HasPrefix(match, "ghr_")) &&
-		len(match) == 40
+	typ, _ := providerTypeOf(match)
+	return typ == "GITHUB_TOKEN"
 }
 
 // isGoogleCloudAPIKey checks if the match is a Google Cloud API key
 func (v *Validator) isGoogleCloudAPIKey(match string) bool {
-	return strings.HasPrefix(match, "AIza") && len(match) == 39
+	typ, _ := providerTypeOf(match)
+	return typ == "GOOGLE_CLOUD_API_KEY"
 }
 
 // isStripeAPIKey checks if the match is a Stripe API key
 func (v *Validator) isStripeAPIKey(match string) bool {
-	return (strings.HasPrefix(match, "sk_live_") ||
-		strings.HasPrefix(match, "pk_live_") ||
-		strings.HasPrefix(match, "sk_test_") ||
-		strings.HasPrefix(match, "pk_test_")) &&
-		len(match) == 32
+	typ, _ := providerTypeOf(match)
+	return typ == "STRIPE_API_KEY"
 }
 
 // isGitLabToken checks if the match is a GitLab personal access token
 func (v *Validator) isGitLabToken(match string) bool {
-	return strings.HasPrefix(match, "glpat-") && len(match) == 26
+	typ, _ := providerTypeOf(match)
+	return typ == "GITLAB_TOKEN"
 }
 
 // isDockerToken checks if the match is a Docker Hub personal access token
 func (v *Validator) isDockerToken(match string) bool {
-	return strings.HasPrefix(match, "dckr_pat_") && len(match) == 45
+	typ, _ := providerTypeOf(match)
+	return typ == "DOCKER_TOKEN"
 }
-
-// slackBotTokenPattern / slackUserTokenPattern validate the full Slack token
-// structure (mirroring the strict compiled patterns used elsewhere), not just
-// the "xoxb-"/"xoxp-" prefix.
-var (
-	slackBotTokenPattern  = regexp.MustCompile(`^xoxb-[0-9]{11,12}-[0-9]{11,12}-[a-zA-Z0-9]{24}$`)
-	slackUserTokenPattern = regexp.MustCompile(`^xoxp-[0-9]{11,12}-[0-9]{11,12}-[0-9]{11,12}-[a-zA-Z0-9]{32}$`)
-)
 
 // isSlackToken checks if the match is a Slack token. It validates the full token
 // structure rather than just the prefix: the previous prefix-only check returned
 // true for any string starting with the bot/user token prefix and scored it 94.
 func (v *Validator) isSlackToken(match string) bool {
-	return slackBotTokenPattern.MatchString(match) || slackUserTokenPattern.MatchString(match)
+	typ, _ := providerTypeOf(match)
+	return typ == "SLACK_TOKEN"
 }
 
 // isPGPPrivateKey checks if the match is a PGP private key. Markers are
@@ -2451,20 +2369,49 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// to cap how far a test/dev signal can pull a candidate down.
 	var ctxDelta float64
 
+	// Whether a positive secret keyword shares the match's line. Computed here,
+	// ahead of the environment switch, because two decisions below depend on it:
+	// the file-wide penalty waiver just under this comment and the M24 cap at the
+	// end. The multi-line path passes lineKeywordUnknown and still pays the one
+	// strings.Index it always paid; the per-line path passes the hoisted answer.
+	nearbyKeyword := lineKw == lineKeywordPresent
+	if lineKw == lineKeywordUnknown {
+		nearbyKeyword = v.hasNearbySecretKeyword(fullContent, match, lineHint)
+	}
+
+	// corroborated means the candidate carries its own evidence of being a
+	// credential: a typed provider literal (AWS, GitHub, Stripe, JWT, ...) or a
+	// secret keyword on its line. The file-wide test/dev verdict was written for
+	// the OTHER population -- bare high-entropy strings that nothing on their
+	// line labels -- and it keeps its full, unbounded reach there. On a
+	// corroborated candidate it is waived (#785). Applied to everything, one
+	// marker anywhere in the file moved every credential in it: a comment saying
+	// "pinned to the latest image" took a GitHub token from HIGH 93 to MEDIUM 68
+	// and the shipped pre-commit gate let the commit through, and two hostnames
+	// containing "example" took a six-line credentials file to exactly 60, where
+	// the strict threshold dropped all six -- "No matches found", exit 0, no
+	// redacted copy. The production boost is not a penalty and stays file-wide;
+	// the M27 cap below already bounds it for generic matches.
+	corroborated := checks["specific_pattern"] || nearbyKeyword
+
 	// Environment-specific adjustments (using pre-computed environment type)
 	switch envType {
 	case "development":
 		// Development environments may have test secrets
-		ctxDelta -= 15.0
-		checks["dev_environment_penalty"] = true
+		if !corroborated {
+			ctxDelta -= 15.0
+			checks["dev_environment_penalty"] = true
+		}
 	case "production":
 		// Production environments more likely to have real secrets
 		ctxDelta += 10.0
 		checks["prod_environment_boost"] = true
 	case "test":
 		// Test environments likely have fake secrets
-		ctxDelta -= 25.0
-		checks["test_environment_penalty"] = true
+		if !corroborated {
+			ctxDelta -= 25.0
+			checks["test_environment_penalty"] = true
+		}
 	}
 
 	// Domain-specific adjustments
@@ -2539,10 +2486,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// (AWS/JWT/GitHub/...) and there is no corroborating secret keyword nearby,
 	// cap it just below the MEDIUM threshold so it does not surface as MEDIUM/HIGH
 	// on shape alone. A specific pattern, or a nearby secret keyword, lifts it.
-	nearbyKeyword := lineKw == lineKeywordPresent
-	if lineKw == lineKeywordUnknown {
-		nearbyKeyword = v.hasNearbySecretKeyword(fullContent, match, lineHint)
-	}
+	// nearbyKeyword was computed above, ahead of the environment switch.
 	if !checks["specific_pattern"] && !nearbyKeyword {
 		if confidence > 55 {
 			confidence = 55
@@ -2637,7 +2581,19 @@ func (v *Validator) hasNearbySecretKeyword(fullContent, match, lineHint string) 
 	return false
 }
 
-// detectEnvironmentType detects if content is from development, test, or production environment
+// detectEnvironmentType detects if content is from development, test, or production environment.
+//
+// The verdict is FILE-WIDE: one marker anywhere in the content classifies every
+// candidate in it, and the classification moves every candidate's confidence
+// (see the envType switch in calculateEnhancedConfidenceWithCacheAndEnvAndLine).
+// That reach is why the markers are matched as whole tokens and not as
+// substrings (#785). Matched by strings.Contains, "test" fired on "latest" and
+// "attestation", "dev" on "device", "local" on "locale", "live" on "delivery",
+// ".prod" on "metadata.Producer" and "stage" on "stages": measured with these
+// lists on the golden corpus, 67 of 455 fixtures took their verdict ONLY from a
+// substring inside a longer word, and one comment saying "pinned to the latest
+// image" moved a GitHub token from HIGH 93 to MEDIUM 68 -- below the shipped
+// pre-commit gate. See hasEnvMarker for the token rule.
 func (v *Validator) detectEnvironmentType(content string) string {
 	lowerContent := strings.ToLower(content)
 
@@ -2647,19 +2603,19 @@ func (v *Validator) detectEnvironmentType(content string) string {
 	prodScore := 0
 
 	for _, keyword := range v.devKeywords {
-		if strings.Contains(lowerContent, keyword) {
+		if hasEnvMarker(lowerContent, keyword) {
 			devScore++
 		}
 	}
 
 	for _, keyword := range v.testKeywords {
-		if strings.Contains(lowerContent, keyword) {
+		if hasEnvMarker(lowerContent, keyword) {
 			testScore++
 		}
 	}
 
 	for _, keyword := range v.prodKeywords {
-		if strings.Contains(lowerContent, keyword) {
+		if hasEnvMarker(lowerContent, keyword) {
 			prodScore++
 		}
 	}
@@ -2674,6 +2630,52 @@ func (v *Validator) detectEnvironmentType(content string) string {
 	}
 
 	return "unknown"
+}
+
+// hasEnvMarker reports whether marker occurs in lowerContent as a whole token.
+// Both arguments must already be lowercased.
+//
+// A plain-word marker ("test", "dev", "live") is bounded on both sides by the
+// string edge or a non-word byte, under the word definition the kwmatch package
+// documents: [a-z0-9] are word bytes and '_' is a boundary. So "test" is found
+// in "TEST_VALUE" and "unit_test" but not in "latest" or "attestation"; "dev" in
+// "dev-db" and "/dev/" but not in "device"; "local" in "local.yml" but not in
+// "locale". That half is kwmatch.ContainsLower, the one implementation every
+// validator's context scoring shares.
+//
+// An AFFIX marker -- one whose first or last byte is itself a separator, which is
+// how the production list spells "prod-", "prod_" and ".prod" to stay clear of
+// "product" and "produce" -- is bounded only on its word side. ".prod" must not
+// run on into a word ("db.prod" and "db.prod.internal" match, "metadata.producer"
+// does not), while the byte before its '.' is unconstrained, because the '.' is
+// the boundary. kwmatch cannot express that: it requires a non-word byte on both
+// sides of the whole marker, so "prod-" would match only when followed by
+// another separator and ".prod" only when preceded by one, i.e. "my-prod-db" and
+// "db.prod" would both be missed.
+func hasEnvMarker(lowerContent, marker string) bool {
+	if marker == "" {
+		return false
+	}
+	wordLeft := isKeywordLowerOrDigit(marker[0])
+	wordRight := isKeywordLowerOrDigit(marker[len(marker)-1])
+	if wordLeft && wordRight {
+		return kwmatch.ContainsLower(lowerContent, marker)
+	}
+	for from := 0; from+len(marker) <= len(lowerContent); {
+		i := strings.Index(lowerContent[from:], marker)
+		if i < 0 {
+			return false
+		}
+		i += from
+		end := i + len(marker)
+		leftOK := !wordLeft || i == 0 || !isKeywordLowerOrDigit(lowerContent[i-1])
+		rightOK := !wordRight || end == len(lowerContent) || !isKeywordLowerOrDigit(lowerContent[end])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
 }
 
 // matchesGlobalTestPatterns checks if match is in the global test patterns database
@@ -2763,25 +2765,21 @@ SUPPORTED SECRET TYPES:
 The validator automatically identifies the specific type of secret and displays it in the TYPE column for better categorization and handling.words followed by values
 
 The validator analyzes character distribution, applies contextual analysis, and uses configurable confidence scoring to minimize false positives.`,
-		Patterns: []string{
+		Patterns: append(append([]string{
 			"SSH Private Keys: -----" + "BEGIN [RSA|DSA|EC|OPENSSH] PRIVATE KEY" + "-----",
 			"Certificate Private Keys: -----" + "BEGIN CERTIFICATE" + "----- or -----" + "BEGIN " + "ENCRYPTED " + "PRIVATE KEY" + "-----",
 			"PGP Private Keys: -----" + "BEGIN " + "PGP PRIVATE KEY BLOCK" + "-----",
 			"JWT Tokens: eyJ[base64].[base64].[base64]",
-			"AWS Access Keys: AKIA[16 characters]",
-			"GitHub Tokens: ghp_[36 characters], gho_[36 characters], etc.",
-			"Google Cloud API Keys: AIza[35 characters]",
-			"Stripe API Keys: sk_live_[24 chars], pk_live_[24 chars], sk_test_[24 chars], pk_test_[24 chars]",
-			"GitLab Personal Access Tokens: glpat-[20 characters]",
-			"Docker Hub Tokens: dckr_pat_[36 characters]",
-			"Slack Tokens: xoxb-[bot tokens], xoxp-[user tokens]",
+		},
+			// Provider literals, one line per row of the grammar table (#769).
+			providerCheckInfo()...),
 			"Base64 strings with high entropy (threshold 4.5, 20+ characters)",
 			"Hex strings with high entropy (threshold 3.0, 16+ characters)",
 			"api_key = \"value\"",
 			"\"password\": \"value\"",
 			"auth_token = \"value\"",
 			"private_key: \"value\"",
-		},
+		),
 		SupportedFormats: []string{
 			"Text files with quoted strings",
 			"Configuration files (JSON, YAML, INI)",

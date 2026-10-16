@@ -162,6 +162,20 @@ one shared core function called from the orchestration sites. Consequences accep
 7. **Every mutation is annotated.** `Metadata["original_confidence"]` and
    `Metadata["cross_boost"]` on every changed match (hash-safe, audit-friendly, and lets the
    explain layer describe the boost).
+8. **A file-wide verdict never silences a corroborated finding.** The secrets validator
+   classifies a whole file as test, development or production from marker words anywhere in it
+   (`detectEnvironmentType`), and that verdict reaches every candidate in the file. It may move
+   only candidates that have no evidence of their own — entropy-only strings, the population the
+   test/dev signal was written for — and there it stays unbounded. A candidate that is a typed
+   provider literal (`specific_pattern`) or sits on a line with a secret keyword keeps its score,
+   so one `example.com` URL or a comment saying `latest` cannot move a credential out of its band
+   or below the reporting floor (#785: a GitHub token went 93 → 68 and a six-line credentials file
+   reported nothing). The production boost (+10) is not a penalty and still applies file-wide,
+   bounded for generic matches by the M27 cap. Marker words are matched as whole tokens, under the
+   `kwmatch` rule (`_` is a boundary; `latest` is not `test`, `device` is not `dev`), with the
+   affix spellings `prod-`, `prod_` and `.prod` bounded on their word side only. The same reach
+   argument applies to the other whole-file inputs to a secrets score — `DetectStructure`'s
+   Configuration ratio and the `tabular_boost` — and is why #785 item 3 is tracked separately.
 
 ## 7. Bugs and quirks found during the survey (side findings, not blockers)
 
@@ -263,11 +277,18 @@ boundary (`secrets.clampToPublishedCeiling`).
 **The predicate must not be attacker-reachable.** Anything that makes a finding quieter is an
 evasion surface, and this repo has already recorded the shape once (TM-11: context-keyword padding
 driving a checksum-valid secret to zero). A value-marker rule is only admissible where the
-attacker cannot put the marker there. The AWS rule qualifies because both credential types have an
-exact-length gate: appending `EXAMPLE` to a real 20-char `AKIA` key makes it 27, which
-`isAWSAccessKey` rejects, and `reAWSSecretCandidate`'s trailing `($|[^A-Za-z0-9/+=])` means
-`<real40>EXAMPLE` produces no 40-char capture at all. The same rule is deliberately **not**
-applied to the generic `API_KEY_OR_SECRET` type, which has no length gate.
+attacker cannot put the marker there. The AWS rule qualifies because both credential types are
+matched as a fixed WINDOW the author cannot widen: `AKIA` is a `modeExact` row of the provider
+grammar table (`secrets/provider_rules.go`), so a real 20-char key with `EXAMPLE` appended is
+matched as its first 20 bytes and the appended bytes are never in the match (it reports at full
+confidence, uncapped -- #769 measured it and `TestAKIAWindowPins` pins it; an earlier version of
+this paragraph said `isAWSAccessKey` "rejects" the 27-char key, which it never sees), and
+`reAWSSecretCandidate`'s trailing `($|[^A-Za-z0-9/+=])` means `<real40>EXAMPLE` produces no
+40-char capture at all. The same rule is deliberately **not** applied to the generic
+`API_KEY_OR_SECRET` type, which has no length gate, nor to any `modeAtLeast` provider row
+(Stripe, GitLab, Slack), whose body runs to the end of its character run and would carry an
+appended marker inside the match. `TestProviderMarkerRuleOnlyOnExactRows` fails if a type the
+rule names is ever moved off `modeExact`.
 
 **Every such change ships with a same-shape control.** A fix that demotes real values alongside
 placeholders is worse than the bug, because the finding still appears and the scan still looks

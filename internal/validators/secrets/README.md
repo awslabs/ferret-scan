@@ -60,19 +60,28 @@ The validator detects various cryptographic key formats:
 
 ### **Cloud Provider API Keys (High Confidence: 94-95%)**
 
-- **AWS_ACCESS_KEY** - `AKIA[0-9A-Z]{16}` (Amazon Web Services)
-- **GOOGLE_CLOUD_API_KEY** - `AIza[0-9A-Za-z_-]{35}` (Google Cloud Platform)
+- **AWS_ACCESS_KEY** - `AKIA[0-9A-Z]{16}` (Amazon Web Services; the vendor fixes the length, so the 20-byte window is the key)
+- **GOOGLE_CLOUD_API_KEY** - `AIza[0-9A-Za-z_-]{35}` (Google Cloud Platform; fixed length)
 
 ### **Development Platform Tokens (High Confidence: 92-94%)**
 
-- **GITHUB_TOKEN** - `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` + 36 characters
-- **GITLAB_TOKEN** - `glpat-[a-zA-Z0-9_-]{20}` (GitLab Personal Access Tokens)
-- **DOCKER_TOKEN** - `dckr_pat_[a-zA-Z0-9_-]{36}` (Docker Hub Personal Access Tokens)
-- **SLACK_TOKEN** - `xoxb-` or `xoxp-` + structured format
+- **GITHUB_TOKEN** - `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` + 36 characters (fixed length)
+- **GITLAB_TOKEN** - `glpat-` + at least 20 of `[a-zA-Z0-9_-]`, to the end of the run, then optionally the routable-token suffix `.vv.lliiiiiii` (GitLab publishes no length: a routable token's payload is 27 to 300 characters)
+- **DOCKER_TOKEN** - `dckr_pat_[a-zA-Z0-9_-]{36}` (Docker Hub Personal Access Tokens; Docker publishes no format, the window is kept as is)
+- **SLACK_TOKEN** - `xoxb-` or `xoxp-` + the digit groups, then the final `-` section taken whole, at least 24 or 32 characters (Slack: "the final section is the secret")
 
 ### **Payment Processing Keys (High Confidence: 95%)**
 
-- **STRIPE_API_KEY** - `sk_live_`, `pk_live_`, `sk_test_`, `pk_test_` + 24 characters
+- **STRIPE_API_KEY** - `sk_live_`, `pk_live_`, `sk_test_`, `pk_test_` + at least 24 of `[0-9a-zA-Z]`, to the end of the run (Stripe documents prefixes only)
+
+These seven families are one table, `providerRules` in `provider_rules.go`, from which the
+regexes, the type predicates, the line pre-check and the `--help` text are all derived; a test
+fails on a provider literal written anywhere else. Rows with a vendor-fixed length report the
+window; rows without one report the whole run, because a token reported as its first N bytes is
+redacted as its first N bytes and the rest is left in the clear (#769: 75 of a 107-byte Stripe
+key, under every strategy). Two tokens glued together are split where the second one's prefix
+begins; a Stripe prefix glued to a word on its left with no digit in the body
+(`task_live_RefreshInterval`) is an identifier, not a key, and is not reported.
 
 ### **Authentication Tokens (High Confidence: 92%)**
 
@@ -347,11 +356,17 @@ still redacted. `--confidence low` shows it; `--explain` reports
 `not_test_data: false` and a `likely_test` verdict.
 
 The `EXAMPLE` rule applies only to the `AWS_ACCESS_KEY` and
-`AWS_SECRET_ACCESS_KEY` types, both of which have an exact-length gate an author
-cannot get past — appending `EXAMPLE` to a real 20-char `AKIA` key makes it 27 and
-fails detection entirely. It is deliberately **not** applied to
+`AWS_SECRET_ACCESS_KEY` types, both of which are matched as a fixed window an author
+cannot widen: a real 20-char `AKIA` key with `EXAMPLE` appended is matched as its first
+20 bytes and the appended bytes are never in the match, so the marker can only ever sit
+*inside* a window (the AWS secret key's 40-char capture ends the same way). An earlier
+version of this paragraph said the longer key "fails detection entirely"; it does not,
+it reports the 20-byte window at full confidence, uncapped, and that is pinned by
+`TestAKIAWindowPins`. It is deliberately **not** applied to
 `API_KEY_OR_SECRET`, which has no length gate and where the same rule would let
-anyone silence a real credential by appending seven characters. Vendor **test-mode**
+anyone silence a real credential by appending seven characters, nor to any provider
+row whose body runs to the end of its character run (Stripe, GitLab, Slack), for the
+same reason. Vendor **test-mode**
 credentials such as `sk_test_…` are unaffected: those authenticate, so they are
 real secrets and keep their full confidence.
 

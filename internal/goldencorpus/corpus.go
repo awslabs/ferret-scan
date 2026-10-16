@@ -40,6 +40,22 @@ import (
 	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
 
+// stripeKey builds a synthetic Stripe PUBLISHABLE live key (`pk_live_`) with a
+// body of bodyLen bytes, the way #769 built its fixtures: a digit at each end and
+// `EXAMPLE0` filler between, with tag (one byte) varying the body so two keys on
+// one line are distinct. Publishable on purpose: a publishable key is designed to
+// be public and no secret scanner flags it, while GitHub's push protection refuses
+// any secret-key-shaped value (`sk_live_`/`sk_test_` + 24 alphanumerics) in a
+// committed file -- snapshots included, since they carry each finding's text. The
+// four Stripe prefixes are ONE row of the provider grammar table (the same
+// charset, minimum, run scan, straddle cut and left-glue rule), so what the golden
+// pins for `pk_live_` holds for the three secret prefixes, which the unit tests
+// exercise with values built at run time and never written to disk.
+func stripeKey(tag byte, bodyLen int) string {
+	body := "5" + string(tag) + strings.Repeat("EXAMPLE0", (bodyLen-3)/8+1)
+	return "pk_" + "live_" + body[:bodyLen-1] + "1"
+}
+
 // Case is one corpus entry: a named input plus the validator set to run against
 // it. Keeping checks explicit per-case (rather than always "all") makes each
 // snapshot small, focused, and stable — adding a new validator does not churn
@@ -246,6 +262,127 @@ var Cases = []Case{
 			"session = get_session()\n" +
 			"api_key = loadSecret(ctx)\n" +
 			"api_key: SecretStr\n",
+	},
+	{
+		Name: "secrets_file_wide_marker_hostname",
+		Description: "The #785 shape with a marker that IS a whole word: a comment naming a " +
+			"wiki.example.com URL two lines above a credential. detectEnvironmentType still " +
+			"classifies this file \"test\" (example is a token here, bounded by dots; the fix does not " +
+			"exclude hostnames, see item 2 of #785), so what this case pins is the WAIVER: the " +
+			"password is corroborated by its own keyword and no longer takes the -25. Before the fix " +
+			"it reported at MEDIUM 72; the control case below, identical but for the comment, reported " +
+			"HIGH 97, and --pre-commit-mode with the shipped default exited 0 on this file and 1 on " +
+			"that one. The environment_type metadata stays \"test\" and the confidence must equal the " +
+			"control's. A regression that re-applies the penalty shows up here as a band drop with no " +
+			"change in the control.",
+		Checks: []string{"SECRETS"},
+		Input: "# Database settings\n" +
+			"# see https://wiki.example.com/setup\n" +
+			"# rotate quarterly\n" +
+			"password=Zq8vTtq2Lm4pQ9yHgRrWw7Kz\n",
+	},
+	{
+		Name: "secrets_file_wide_marker_substring",
+		Description: "The #785 shape with a marker that is only a SUBSTRING: a comment saying " +
+			"\"pinned to the latest image\" above a GitHub token. \"latest\" contains \"test\", and " +
+			"matched by strings.Contains that one word classified the whole file \"test\" and took the " +
+			"token from HIGH 93 to MEDIUM 68 -- below the shipped pre-commit gate, which exits on HIGH " +
+			"only, so the commit went through. Markers are now matched as whole tokens, so this file " +
+			"classifies \"unknown\" (environment_type in the metadata) and the token reports at 93, " +
+			"the same as the control below. The token is assembled from two literals so a static " +
+			"scanner reading this source does not report it.",
+		Checks: []string{"SECRETS"},
+		Input: "# CI settings\n" +
+			"# pinned to the latest image\n" +
+			"# rotate quarterly\n" +
+			"GITHUB_TOKEN=ghp_" + "Q7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG2aE7u\n",
+	},
+	{
+		Name: "secrets_file_wide_marker_control",
+		Description: "Control for the two cases above: the same GitHub token under a comment with no " +
+			"environment marker in it. Its snapshots are byte-identical before and after the #785 " +
+			"fix, which is what makes the other two cases evidence of the fix rather than of some " +
+			"other change: the three inputs differ only in one comment line, so any difference in " +
+			"their findings is the comment's doing. Must stay exactly as it is.",
+		Checks: []string{"SECRETS"},
+		Input: "# CI settings\n" +
+			"# see the wiki\n" +
+			"# rotate quarterly\n" +
+			"GITHUB_TOKEN=ghp_" + "Q7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG2aE7u\n",
+	},
+	{
+		Name: "secrets_provider_token_lengths",
+		Description: "The #769 leak: Stripe, GitLab and Slack tokens were matched as FIXED windows " +
+			"(`sk_live_[0-9a-zA-Z]{24}`) with no boundary, so a longer token was reported, and " +
+			"redacted, as its first N bytes and the rest was left in the clear -- 75 of a 107-byte " +
+			"Stripe key, in every strategy, exit 0. No vendor publishes those lengths. Every token " +
+			"here is longer than the old window and must report as ONE finding of its provider type " +
+			"covering the whole run, and the redaction snapshots must show no byte of any body.\n" +
+			"  Lines 1-5 are a 107-byte live key in the shapes where nothing else saved it before: " +
+			"prose, a log line, a Bearer header, a CSV cell, and an env assignment under a key that is " +
+			"not a secret keyword. Line 6 is the same key under a keyword key, where a generic finding " +
+			"over the whole value used to hide the leak and the two findings now merge into one " +
+			"STRIPE_API_KEY. Line 7 is a quoted assignment. Lines 8-10 are the escape " +
+			"shapes a boundary-consuming fix silenced: after a JSON `\\u0022`, after a URL `%22`, and " +
+			"glued to a word byte on the left (a key with digits is a key, whatever precedes it). " +
+			"Line 11 is two keys glued with nothing between: the straddle cut must split them so both " +
+			"are whole. Line 12 is a GitLab routable token, 51 bytes with its `.vv.lliiiiiii` suffix, " +
+			"of which 25 were left in the clear. Line 13 is a Slack user token with a 34-byte final " +
+			"section, of which 2 were left.\n" +
+			"  The bodies are filler the way the issue built them (`EXAMPLE0` repeated, a digit at each " +
+			"end), so a static scanner reading this source finds nothing to report and the fixture " +
+			"is still over every minimum. Every Stripe value here carries the PUBLISHABLE prefix, " +
+			"see stripeKey for why; the secret prefixes, the test mode and the minimum lengths are " +
+			"exercised by the unit tests, which build their values at run time and write nothing to " +
+			"disk. Confidence is not what this case pins; spans are.",
+		Checks: []string{"SECRETS"},
+		Input: "the old value " + stripeKey('1', 99) + " was rotated\n" +
+			"2026-10-13 08:00:01 INFO payments: client configured with " + stripeKey('2', 99) + "\n" +
+			"Authorization: Bearer " + stripeKey('3', 99) + "\n" +
+			"merchant-7," + stripeKey('4', 99) + ",active\n" +
+			"STRIPE_PK=" + stripeKey('5', 99) + "\n" +
+			"STRIPE_SECRET_KEY=" + stripeKey('6', 99) + "\n" +
+			"stripe.api_key = \"" + stripeKey('7', 99) + "\"\n" +
+			"{\"k\": \"\\u0022" + stripeKey('8', 40) + "\\u0022\"}\n" +
+			"q=%22" + stripeKey('9', 40) + "%22\n" +
+			"x" + stripeKey('a', 40) + "\n" +
+			stripeKey('b', 40) + stripeKey('c', 40) + "\n" +
+			"the old value " + "glpat-" + "A1" + strings.Repeat("EXAMPLE0", 4) + ".01.0w1a2b3c4" + " was rotated\n" +
+			"the old value " + "xoxp-" + "123456789012-123456789012-123456789012-" + "7" + strings.Repeat("EXAMPLE0", 4) + "7" + " was rotated\n",
+	},
+	{
+		Name: "secrets_provider_prefix_decoys",
+		Description: "The false positives the #769 fix could have bought, which must stay EMPTY, and " +
+			"the one residual it leaves, which must stay reported.\n" +
+			"  Lines 1-5 are identifiers with a Stripe prefix inside a longer word and a body spelt " +
+			"from words: `task_live_...`, `helpdesk_live_...`, `risk_live_...`, `disk_test_...`, " +
+			"`kiosk_test_...`. With a fixed window every one was a STRIPE_API_KEY at 70-100; with a run " +
+			"to the end of the identifier it still would be. The left-glue rule drops a Stripe run " +
+			"whose prefix is glued to a word byte and whose body has no digit, because issued keys " +
+			"carry digits an author cannot remove and identifiers spelt from words do not.\n" +
+			"  Line 6 is the residual: the same shape with a digit in the body, spelt with the " +
+			"publishable prefix so its finding text can live in a committed snapshot (see stripeKey). " +
+			"It cannot be told from a real key glued to a word, a key wins the tie, and it reports. A " +
+			"regression that makes this line empty has widened the rule into dropping real keys.\n" +
+			"  Lines 7-8 are the short placeholders: bodies under the 24-byte minimum, unreported before " +
+			"and after, because the minimums did not move (lowering them would admit exactly these).\n" +
+			"  Lines 9-10 are the modeExact rows with bytes glued on: an AWS key ID plus `XYZ` and a " +
+			"Google key plus `_backup`. The vendor fixes those lengths, so the window is the key and the " +
+			"glued bytes stay outside it, exactly as before. Line 11 is the documentation key ID plus " +
+			"one byte, reported as the 20-byte window at the 15 ceiling: the EXAMPLE marker can only be " +
+			"INSIDE a window, never appended to a real key, which is what awsDocPlaceholderCap relies on.",
+		Checks: []string{"SECRETS"},
+		Input: "void ta" + "sk_" + "live_" + "DashboardWidgetRefreshInterval() {\n" +
+			"helpde" + "sk_" + "live_" + "ChatQueueRoutingStrategyEnabled = true\n" +
+			"func ri" + "sk_" + "live_" + "PortfolioExposureCalculation() float64 {\n" +
+			"def di" + "sk_" + "test_" + "ReadWriteThroughputBenchmark(self):\n" +
+			"kio" + "sk_" + "test_" + "PrinterQueueDrainTimeoutSeconds()\n" +
+			"ta" + "pk_" + "live_" + "RefreshIntervalMs500Default\n" +
+			"key = sk_" + "test_1234567890abcdef\n" +
+			"key = sk_" + "test_abc123def456\n" +
+			"id " + "AKIA" + "QZ7MK2PL9VNB4RTX" + "XYZ\n" +
+			"key " + "AIza" + "SyDaGmWKa4JsXZ-HjGw7ISLan_Qkby0Oc-0" + "_backup\n" +
+			"id " + "AKIA" + "IOSFODNN7EXAMPLE" + "X\n",
 	},
 	{
 		Name:        "ip_addresses",
