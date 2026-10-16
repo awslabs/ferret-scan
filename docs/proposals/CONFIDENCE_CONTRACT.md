@@ -277,11 +277,18 @@ boundary (`secrets.clampToPublishedCeiling`).
 **The predicate must not be attacker-reachable.** Anything that makes a finding quieter is an
 evasion surface, and this repo has already recorded the shape once (TM-11: context-keyword padding
 driving a checksum-valid secret to zero). A value-marker rule is only admissible where the
-attacker cannot put the marker there. The AWS rule qualifies because both credential types have an
-exact-length gate: appending `EXAMPLE` to a real 20-char `AKIA` key makes it 27, which
-`isAWSAccessKey` rejects, and `reAWSSecretCandidate`'s trailing `($|[^A-Za-z0-9/+=])` means
-`<real40>EXAMPLE` produces no 40-char capture at all. The same rule is deliberately **not**
-applied to the generic `API_KEY_OR_SECRET` type, which has no length gate.
+attacker cannot put the marker there. The AWS rule qualifies because both credential types are
+matched as a fixed WINDOW the author cannot widen: `AKIA` is a `modeExact` row of the provider
+grammar table (`secrets/provider_rules.go`), so a real 20-char key with `EXAMPLE` appended is
+matched as its first 20 bytes and the appended bytes are never in the match (it reports at full
+confidence, uncapped -- #769 measured it and `TestAKIAWindowPins` pins it; an earlier version of
+this paragraph said `isAWSAccessKey` "rejects" the 27-char key, which it never sees), and
+`reAWSSecretCandidate`'s trailing `($|[^A-Za-z0-9/+=])` means `<real40>EXAMPLE` produces no
+40-char capture at all. The same rule is deliberately **not** applied to the generic
+`API_KEY_OR_SECRET` type, which has no length gate, nor to any `modeAtLeast` provider row
+(Stripe, GitLab, Slack), whose body runs to the end of its character run and would carry an
+appended marker inside the match. `TestProviderMarkerRuleOnlyOnExactRows` fails if a type the
+rule names is ever moved off `modeExact`.
 
 **Every such change ships with a same-shape control.** A fix that demotes real values alongside
 placeholders is worse than the bug, because the finding still appears and the scan still looks
