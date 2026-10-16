@@ -51,8 +51,18 @@ func TestAWSSecretAccessKey(t *testing.T) {
 		if len(c) != 1 {
 			t.Fatalf("expected 1 detection, got %d", len(c))
 		}
-		if c[0] != 95 {
-			t.Errorf("paired secret should score 95, got %.1f", c[0])
+		// The AWS path scores a labelled AND paired secret at 95; the keyword path
+		// claims the same span at 100 (base 85 + the Configuration boost), and
+		// mergeBySpanKeepStrongest keeps the higher. This used to pin exactly 95
+		// only because "EXAMPLE" inside the documentation access-key ID classified
+		// the whole two-line file as "test" and took the keyword path's candidate
+		// down by 25. Under #785 a substring inside AKIAIOSFODNN7EXAMPLE is no
+		// longer a file-wide marker, and a corroborated candidate would not take
+		// the penalty if it were, so the merged result is the keyword path's 100.
+		// What this subtest owns is the AWS path's floor: a paired secret never
+		// scores below its own 95.
+		if c[0] < 95 {
+			t.Errorf("paired secret should score at least 95, got %.1f", c[0])
 		}
 	})
 

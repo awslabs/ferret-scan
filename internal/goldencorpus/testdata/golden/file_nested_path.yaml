@@ -45,7 +45,7 @@ results:
         context_doctype: Configuration
         context_domain: Unknown
         detection_method: keyword_pattern
-        environment_type: test
+        environment_type: unknown
         original_confidence: 15
         secret_type: AWS_ACCESS_KEY
         semantic_context:
@@ -62,6 +62,5 @@ results:
             not_common_word: true
             not_test_data: false
             specific_pattern: true
-            test_environment_penalty: true
             valid_format: true
         validation_path: document
