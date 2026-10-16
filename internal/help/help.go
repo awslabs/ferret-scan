@@ -143,7 +143,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --max-live-bytes\t<size>\tCap total extracted content held in memory across concurrently scanned files, e.g. '256MB' or '1GB' (units: B, KB, MB, GB; bare number = bytes). Bounds peak memory on constrained hosts so many large files cannot multiply memory. Default: no cap.")
 	fmt.Fprintln(w, "  --enable-redaction\t\tEnable redaction of sensitive data found in documents")
 	fmt.Fprintln(w, "  --redaction-output-dir\t<path>\tDirectory where redacted files will be stored (default: ./redacted)")
-	fmt.Fprintln(w, "  --redaction-strategy\t<strategy>\tDefault redaction strategy: simple, format_preserving, or synthetic (default: format_preserving)")
+	fmt.Fprintln(w, "  --redaction-strategy\t<strategy>\tRedaction strategy, exactly one of: simple, format_preserving, or synthetic (default: format_preserving); any other spelling exits 1")
 	fmt.Fprintln(w, "  --redaction-audit-log\t<path>\tPath to save redaction audit log file (JSON format for compliance)")
 	fmt.Fprintln(w, "  --limit\t<n>\tMaximum findings to display (default: 200, 0 = unlimited)")
 	fmt.Fprintln(w, "  --web\t\tStart web server mode instead of CLI scanning")

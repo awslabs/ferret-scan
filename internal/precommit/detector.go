@@ -4,6 +4,7 @@
 package precommit
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -14,6 +15,10 @@ import (
 type PrecommitDetector struct {
 	isPrecommitEnv bool
 	config         *PrecommitConfig
+	// configErr records an environment variable whose value the detector could
+	// not accept. Recorded rather than returned so detection itself never fails;
+	// the CLI reads it through ConfigError and refuses to run in pre-commit mode.
+	configErr error
 }
 
 // PrecommitConfig contains pre-commit specific configuration settings
@@ -57,6 +62,13 @@ func (pd *PrecommitDetector) IsPrecommitEnvironment() bool {
 // GetOptimizedConfig returns pre-commit optimized configuration settings
 func (pd *PrecommitDetector) GetOptimizedConfig() *PrecommitConfig {
 	return pd.config
+}
+
+// ConfigError reports a FERRET_* variable the detector could not accept, or nil.
+// Only meaningful in pre-commit mode: outside it the variables are not acted on,
+// so an invalid value has no effect and the CLI does not consult this (#772).
+func (pd *PrecommitDetector) ConfigError() error {
+	return pd.configErr
 }
 
 // GetSuggestedProfile returns the suggested profile name for pre-commit environment
@@ -153,11 +165,29 @@ func (pd *PrecommitDetector) generateOptimizedConfig() {
 		}
 	}
 
-	// Allow environment variable override for exit behavior
+	// Exit behaviour from the environment. EXACT match on the four documented names;
+	// anything else is recorded as a configuration error for the CLI to refuse
+	// before it scans (ConfigError). The config itself keeps the "high" default
+	// so a caller that ignores the error still fails safe. Before #772 the switch
+	// simply had no default branch, so FERRET_PRECOMMIT_EXIT_ON=MEDIUM left the
+	// gate at "high" and a commit holding one MEDIUM finding went through at exit
+	// 0, where `medium` blocks it -- a fail-open on a typo in the one variable
+	// whose job is to decide what blocks. The names are not folded: `None` and
+	// `NONE` block a HIGH finding today (the gate stays at high), and folding them
+	// to `none` would let that commit through after an upgrade without a word.
 	if exitOnFindings := os.Getenv("FERRET_PRECOMMIT_EXIT_ON"); exitOnFindings != "" {
 		switch exitOnFindings {
 		case "high", "medium", "low", "none":
 			config.ExitOnFindings = exitOnFindings
+		default:
+			hint := ""
+			if folded := strings.ToLower(strings.TrimSpace(exitOnFindings)); folded != exitOnFindings {
+				switch folded {
+				case "high", "medium", "low", "none":
+					hint = fmt.Sprintf(" (did you mean %q?)", folded)
+				}
+			}
+			pd.configErr = fmt.Errorf("FERRET_PRECOMMIT_EXIT_ON=%q is not one of high, medium, low, none%s", exitOnFindings, hint)
 		}
 	}
 
@@ -212,7 +242,12 @@ func (pd *PrecommitConfig) ShouldExitOnFindings(confidenceLevel string) bool {
 	case "low":
 		return confidenceLevel == "high" || confidenceLevel == "medium" || confidenceLevel == "low"
 	default:
-		return confidenceLevel == "high" // Default to high confidence only
+		// Defensive, for a PrecommitConfig built in code with a value outside the
+		// four names: fail SAFE, blocking on high. It is NOT how a mistyped
+		// FERRET_PRECOMMIT_EXIT_ON is handled any more -- generateOptimizedConfig
+		// records that as ConfigError and the CLI exits 1 before scanning (#772),
+		// because for an operator who wrote MEDIUM, "high only" is fail-OPEN.
+		return confidenceLevel == "high"
 	}
 }
 

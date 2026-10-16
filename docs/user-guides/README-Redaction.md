@@ -28,7 +28,17 @@ cat sensitive.log | ferret-scan --stdin --enable-redaction > clean.log
 
 ## Strategies
 
-Three strategies are available via `--redaction-strategy`:
+Three strategies are available via `--redaction-strategy`, spelled exactly `simple`,
+`format_preserving` or `synthetic`. Any other value -- a different case (`SIMPLE`), a
+typo (`simpel`), surrounding spaces, a hyphen for the underscore, or a list -- exits 1
+before anything is scanned or written, with a message naming the value, the three names
+and where the value came from (the flag, a profile, or a config file, marked
+"auto-discovered" when no `--config` was given). The same rule applies to
+`redaction.strategy` in a config file and to a profile's `redaction.strategy`. Nothing is
+folded to a valid name: before v2.5.5 every unrecognised spelling silently became
+`format_preserving` at exit 0, so a run that asked for `SIMPLE` wrote masked values
+(`***-**-8901`) where `simple` writes placeholders (`[SSN-REDACTED]`), and folding now
+would change what such a run writes without a word.
 
 ### `simple` (highest security)
 

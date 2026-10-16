@@ -980,7 +980,12 @@ redaction:
                                     # (alias: index_file; --redaction-audit-log wins)
 ```
 
-Each strategy's behaviour is fixed and takes no options:
+The value must be spelled exactly as one of the three names: no other case, no
+surrounding whitespace, no comma list. Any other value is rejected -- by the schema
+when the file is given with `--config`, and by the CLI before scanning when the file
+is auto-discovered -- with exit 1 and a message naming the value and its source. The
+same applies to a profile's `redaction.strategy`, and `--redaction-strategy` on the
+command line follows the same rule. Each strategy's behaviour is fixed and takes no options:
 
 - `simple` writes a per-type placeholder such as `[SSN-REDACTED]`. The marker
   names the type on purpose, so it is not configurable — a single replacement

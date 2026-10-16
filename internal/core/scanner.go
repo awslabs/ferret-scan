@@ -20,6 +20,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 	"github.com/awslabs/ferret-scan/v2/internal/validators"
@@ -35,8 +36,10 @@ type ScanConfig struct {
 	Recursive           bool
 	EnablePreprocessors bool
 	EnableRedaction     bool
-	RedactionStrategy   string
-	RedactionOutputDir  string
+	// RedactionStrategy is the parsed strategy; see parallel.JobConfig for why
+	// the name is parsed once at the edge and never re-parsed here (#772).
+	RedactionStrategy  redactors.RedactionStrategy
+	RedactionOutputDir string
 	// MaxLiveBytes optionally caps the total bytes of extracted content held in
 	// memory across concurrently validating files (v2 gap 2.3 "admission"
 	// slice). Zero/negative = disabled = historical behavior (bounded only by
