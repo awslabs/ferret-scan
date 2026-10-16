@@ -29,6 +29,10 @@ import (
 //	              can trigger it (#353)
 //	--exclude     a malformed pattern fails loudly before scanning; a pattern that matched
 //	              nothing is reported (#729)
+//	JSON stats    every --file JSON report carries `stats` whose band counts are numbers and
+//	              are not capped by --limit; a result's `confidence` is the numeric score and
+//	              `confidence_level` the band name. The self-scan workflow's gate counts from
+//	              these fields (#767)
 //
 // Deliberately NOT here: compatibility checks against any specific downstream tool. Whether a
 // particular consumer's integration still works is that consumer's test suite's job, not this
@@ -431,6 +435,144 @@ func TestExcludeFailureModesAreLoud(t *testing.T) {
 		}
 		if !strings.Contains(out, "matched nothing") {
 			t.Errorf("a pattern that matched nothing must be reported, and was not.\n%s", out)
+		}
+	})
+}
+
+// TestJSONStatsAreNumericBandCounts pins the JSON fields a CI gate counts from (#767). The self-scan
+// workflow compared `confidence` with "HIGH" for a year; `confidence` is the numeric score, so the
+// comparison was always false and every run counted 0. The workflow now reads `.stats.high` and
+// `.stats.medium` with `jq -e '… | numbers'`, which fails on anything but a number, so these are the
+// properties it depends on: the band counts are numbers on every --file JSON scan whatever --limit
+// or --confidence say, they are not capped by --limit, files_not_examined is a number when present,
+// and each result carries the score as a number and the band as a string.
+func TestJSONStatsAreNumericBandCounts(t *testing.T) {
+	bin := buildForCLIContract(t)
+	dir := t.TempDir()
+	home := t.TempDir()
+	write := func(name, content string) string {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	// `password=` plus a 24-character mixed-case value with digits is a HIGH finding. Assembled from
+	// pieces so this source holds no credential-shaped literal.
+	key := "pass" + "word="
+	oneHigh := write("one.conf", "db:\n  "+key+"Xq7Lm2Pz9Rt4"+"Vb8Nk3Jh6Wd5"+"\n")
+	twoHigh := write("two.conf", "db_001:\n  "+key+"Qz8Wm3Lp7Rk2"+"Tn6V0037HjYc"+"\n"+
+		"db_002:\n  "+key+"Qz8Wm3Lp7Rk2"+"Tn6V0074HjYc"+"\n")
+	clean := write("clean.yaml", "the quick brown fox jumps over the lazy dog\n")
+
+	scan := func(t *testing.T, in string, extra ...string) map[string]any {
+		t.Helper()
+		args := append([]string{"--file", in, "--config", os.DevNull, "--format", "json", "--no-color", "--quiet"}, extra...)
+		c := exec.Command(bin, args...)
+		c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home}
+		var stdout, stderr strings.Builder
+		c.Stdout, c.Stderr = &stdout, &stderr
+		_ = c.Run()
+		var doc map[string]any
+		if err := json.Unmarshal([]byte(stdout.String()), &doc); err != nil {
+			t.Fatalf("flags %v: the JSON report does not parse: %v\nstdout: %.400s\nstderr: %s", extra, err, stdout.String(), stderr.String())
+		}
+		return doc
+	}
+	stats := func(t *testing.T, doc map[string]any) map[string]any {
+		t.Helper()
+		s, ok := doc["stats"].(map[string]any)
+		if !ok {
+			t.Fatalf("report has no `stats` object: %v", doc)
+		}
+		for _, band := range []string{"high", "medium", "low"} {
+			if _, ok := s[band].(float64); !ok {
+				t.Errorf("stats.%s is %T (%v), want a JSON number: `jq -e '.stats.%s | numbers'` "+
+					"fails on anything else", band, s[band], s[band], band)
+			}
+		}
+		if v, present := s["files_not_examined"]; present {
+			if _, ok := v.(float64); !ok {
+				t.Errorf("stats.files_not_examined is %T (%v), want a JSON number when present", v, v)
+			}
+		}
+		return s
+	}
+	results := func(t *testing.T, doc map[string]any) []any {
+		t.Helper()
+		r, ok := doc["results"].([]any)
+		if !ok {
+			t.Fatalf("report `results` is %T, want an array", doc["results"])
+		}
+		return r
+	}
+
+	t.Run("one HIGH finding", func(t *testing.T) {
+		doc := scan(t, oneHigh)
+		if high := stats(t, doc)["high"].(float64); high < 1 {
+			t.Fatalf("stats.high = %v on a file with a HIGH finding; the checks below would be vacuous", high)
+		}
+		rs := results(t, doc)
+		if len(rs) == 0 {
+			t.Fatal("no results on a file with a HIGH finding")
+		}
+		sawHigh := false
+		for i, raw := range rs {
+			r, _ := raw.(map[string]any)
+			if _, ok := r["confidence"].(float64); !ok {
+				t.Errorf("results[%d].confidence is %T (%v), want the numeric score", i, r["confidence"], r["confidence"])
+			}
+			level, ok := r["confidence_level"].(string)
+			switch {
+			case !ok:
+				t.Errorf("results[%d].confidence_level is %T, want the band name", i, r["confidence_level"])
+			case level != "HIGH" && level != "MEDIUM" && level != "LOW":
+				t.Errorf("results[%d].confidence_level = %q, want HIGH, MEDIUM or LOW", i, level)
+			case level == "HIGH":
+				sawHigh = true
+			}
+		}
+		if !sawHigh {
+			t.Error("no result has confidence_level HIGH, though stats.high >= 1")
+		}
+	})
+
+	t.Run("--limit does not cap stats", func(t *testing.T) {
+		doc := scan(t, twoHigh, "--limit", "1")
+		high := stats(t, doc)["high"].(float64)
+		if n := len(results(t, doc)); n != 1 || high < 2 {
+			t.Errorf("with --limit 1 on two HIGH findings: %d result(s), stats.high = %v; want 1 result "+
+				"and stats.high >= 2 — the counts must stay exact when the list is capped", n, high)
+		}
+	})
+
+	t.Run("--confidence high keeps every band count a number", func(t *testing.T) {
+		stats(t, scan(t, oneHigh, "--confidence", "high"))
+	})
+
+	t.Run("clean file", func(t *testing.T) {
+		doc := scan(t, clean)
+		if high := stats(t, doc)["high"].(float64); high != 0 {
+			t.Errorf("stats.high = %v on a clean file, want 0", high)
+		}
+		if n := len(results(t, doc)); n != 0 {
+			t.Errorf("%d results on a clean file, want an empty array", n)
+		}
+	})
+
+	t.Run("unreadable file", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("needs a file this user cannot read")
+		}
+		locked := write("locked.conf", "db:\n  "+key+"Xq7Lm2Pz9Rt4"+"Vb8Nk3Jh6Wd5"+"\n")
+		if err := os.Chmod(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o600) })
+		s := stats(t, scan(t, locked))
+		if v, _ := s["files_not_examined"].(float64); v != 1 {
+			t.Errorf("stats.files_not_examined = %v for one unreadable file, want 1", s["files_not_examined"])
 		}
 	})
 }

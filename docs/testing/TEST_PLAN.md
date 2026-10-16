@@ -200,8 +200,12 @@ also a redaction change**. Test it explicitly, do not infer it.
   emits all of them per case, which is the cheapest way to cover this.
 - `--show-match` is a formatter-layer concern and must never cause a validator to log
   the raw matched value (BSC4 / [[no-match-in-debug-logs]]).
-- A zero-finding scan emits `[]`; `jq '.results'` on it errors — that is expected, not
-  a bug. Guard analysis scripts with a type check.
+- JSON output is always an object ([#296](https://github.com/awslabs/ferret-scan/issues/296)): a
+  zero-finding scan emits `{"stats": {…}, "results": []}`, never a bare `[]`. Count findings from
+  `.stats.high` / `.stats.medium`, not from `results` (capped by `--limit`), and never by comparing
+  `.confidence` (the numeric score) with a band name — the band is `confidence_level`. Read counts
+  with `jq -e '.stats.high | numbers'` so a missing count fails instead of reading as 0
+  ([#767](https://github.com/awslabs/ferret-scan/issues/767)).
 
 ### 8. Web UI (when affected)
 

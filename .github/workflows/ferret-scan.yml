@@ -1,5 +1,27 @@
 # Ferret Scan GitHub Actions Workflow
 # Comprehensive sensitive data detection for pull requests and main branch
+#
+# GATE_MODE (block | report, set in `env:` below) decides what the last step does with HIGH findings:
+#
+#   block   HIGH > 0 fails the check. The template default: in any repository but this one the
+#           expression below evaluates to `block`, so a copy of this file blocks out of the box.
+#   report  HIGH findings are counted, logged and put in the PR comment and job summary exactly as
+#           in block mode, but do not fail the check.
+#
+# In BOTH modes the gate fails closed: a count that is missing or not an integer, or a ferret-scan
+# exit other than 0 (exit 3 is --fail-on-incomplete reporting a file it could not fully examine),
+# fails the check. Counts come from each report's `stats`, which --limit does not cap.
+#
+# THIS repository runs `report`, on its PR scan and on its post-merge push scan (#767). Its source
+# and test corpora carry deliberate HIGH findings: a working `block` gate would have failed 40 of the
+# 56 PR runs that scanned files from 2026-09-14 to 2026-10-13 (27 of 56 even with
+# internal/goldencorpus/, internal/scorecorpus/ and testdata/ excluded) and every push run, and the
+# committed 245-rule .ferret-scan-suppressions.yaml baseline has expired (#696), so it cannot clear
+# them without being regenerated and reviewed. The push scan runs after the merge, so in block mode
+# it could only turn main red, never stop a merge.
+#
+# Before #767 this gate never fired anywhere: it compared the NUMERIC `confidence` field to "HIGH",
+# so every run counted 0 findings and commented "No sensitive data detected".
 
 name: Ferret Scan Security Check
 
@@ -51,6 +73,11 @@ permissions:
   contents: read
   pull-requests: write
   checks: write
+
+env:
+  # block | report — see the header. `block` everywhere but awslabs/ferret-scan, whose PR scan and
+  # push scan both run `report`. A copy may replace the expression with a literal block or report.
+  GATE_MODE: ${{ github.repository == 'awslabs/ferret-scan' && 'report' || 'block' }}
 
 jobs:
   build:
@@ -150,53 +177,94 @@ jobs:
         run: |
           echo "🔍 Scanning changed files for sensitive data..."
 
+          # Recorded first: from here on the gate step runs, and fails closed if anything below
+          # aborts this step before the counts are written.
+          echo "scan_ran=true" >> "$GITHUB_ENV"
+
           # Create results directory
           mkdir -p results
 
-          # Scan each changed file
+          # Every count comes from the report's `stats` block, read with `jq -e '… | numbers'`.
+          # `stats` is on every --file report, excludes suppressed findings and is not capped by
+          # --limit (`results` is: 200 by default). A missing, non-numeric or unparsable value makes
+          # jq exit non-zero, and this script runs under `bash -e` (a run: step's default shell), so
+          # the assignment aborts the step: a count that cannot be read must never read as 0 (#767).
+          #
+          # `stats` counts every band whatever --confidence asked for, so the truncation check
+          # compares `results` with the requested bands' counts, not with total_findings.
+          requested_jq='.stats as $s | ($bands | split(",")) as $b
+            | (if any($b[]; . == "all") then ["high", "medium", "low"] else $b end)
+            | map($s[.] | numbers) | add // 0'
+
           exit_code=0
           high_findings=0
           medium_findings=0
+          files_not_examined=0
+          files_scanned=0
+          results_truncated=false
 
           while IFS= read -r file; do
             if [ -f "$file" ]; then
               echo "Scanning: $file"
+              report="results/${file//\//_}.json"
+              stderr_log="results/${file//\//_}.stderr.log"
 
-              # Run scan and capture results in JSON (for PR comments)
-              if ./bin/ferret-scan \
+              # --fail-on-incomplete: a file ferret-scan could not fully examine exits 3 instead of
+              # passing as clean. stderr is kept, in this log and in the uploaded artifact.
+              rc=0
+              ./bin/ferret-scan \
                 --file "$file" \
                 --confidence "$CONFIDENCE" \
                 --format json \
                 --no-color \
-                --quiet > "results/${file//\//_}.json" 2>/dev/null; then
+                --quiet \
+                --fail-on-incomplete > "$report" 2> "$stderr_log" || rc=$?
+              cat "$stderr_log"
+              if [ "$rc" -ne 0 ]; then
+                echo "  ❌ ferret-scan exited $rc for $file"
+                if [ "$exit_code" -eq 0 ]; then exit_code=$rc; fi
+                echo "scan_exit_code=$exit_code" >> "$GITHUB_ENV"
+              fi
 
-                # Count findings (handle both array and object formats)
-                file_high=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "HIGH") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
-                file_medium=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "MEDIUM") | .confidence' "results/${file//\//_}.json" 2>/dev/null | wc -l || echo "0")
+              file_high=$(jq -e '.stats.high | numbers' "$report")
+              file_medium=$(jq -e '.stats.medium | numbers' "$report")
+              # Omitted from the report when 0.
+              file_not_examined=$(jq -e '.stats.files_not_examined // 0 | numbers' "$report")
+              file_scanned=$(jq -e '.stats.files_processed | numbers' "$report")
+              file_listed=$(jq -e '.results | arrays | length' "$report")
+              file_requested=$(jq -e --arg bands "$CONFIDENCE" "$requested_jq" "$report")
 
-                high_findings=$((high_findings + file_high))
-                medium_findings=$((medium_findings + file_medium))
+              high_findings=$((high_findings + file_high))
+              medium_findings=$((medium_findings + file_medium))
+              files_not_examined=$((files_not_examined + file_not_examined))
+              files_scanned=$((files_scanned + file_scanned))
 
-                if [ "$file_high" -gt 0 ] || [ "$file_medium" -gt 0 ]; then
-                  echo "  ⚠️  Found $file_high high + $file_medium medium confidence findings"
-                fi
-              else
-                echo "  ❌ Scan failed for $file"
-                exit_code=1
+              if [ "$file_high" -gt 0 ] || [ "$file_medium" -gt 0 ]; then
+                echo "  ⚠️  Found $file_high high + $file_medium medium confidence findings"
+              fi
+              if [ "$file_listed" -lt "$file_requested" ]; then
+                results_truncated=true
+                echo "  ⚠️  The report lists $file_listed of its $file_requested findings (capped by --limit)"
               fi
             fi
           done < changed_files.txt
 
-          # Combine all results for JSON (handle both array and object formats)
+          {
+            echo "high_findings=$high_findings"
+            echo "medium_findings=$medium_findings"
+            echo "files_not_examined=$files_not_examined"
+            echo "files_scanned=$files_scanned"
+            echo "results_truncated=$results_truncated"
+            echo "scan_exit_code=$exit_code"
+          } >> "$GITHUB_ENV"
+
+          # Combine the findings for the PR comment's table. Every report is an object with a
+          # `results` array (#296); anything else stops the step.
           echo '{"results": []}' > results/combined.json
           for result_file in results/*.json; do
             if [ "$result_file" != "results/combined.json" ] && [ -f "$result_file" ]; then
-              # Handle both array format [] and object format {results: []}
-              jq -s '
-                .[0].results +
-                (if .[1] | type == "array" then .[1] else (.[1].results // []) end) |
-                {results: .}
-              ' results/combined.json "$result_file" > temp.json
+              jq -se '{results: (.[0].results + (.[1].results | arrays))}' \
+                results/combined.json "$result_file" > temp.json
               mv temp.json results/combined.json
             fi
           done
@@ -210,14 +278,13 @@ jobs:
           # a build artifact. The Security tab is reserved for Trivy/Grype/
           # CodeQL (actual vulnerability scanners).
 
-          # Generate summary
-          echo "high_findings=$high_findings" >> "$GITHUB_ENV"
-          echo "medium_findings=$medium_findings" >> "$GITHUB_ENV"
-          echo "scan_exit_code=$exit_code" >> "$GITHUB_ENV"
-
           echo "📊 Scan Summary:"
+          echo "   Files examined: $files_scanned"
           echo "   High confidence findings: $high_findings"
           echo "   Medium confidence findings: $medium_findings"
+          echo "   Files not fully examined: $files_not_examined"
+          echo "   ferret-scan exit code: $exit_code"
+          echo "   Findings list truncated by --limit: $results_truncated"
 
       - name: Run Ferret Scan on full repository
         if: steps.scope.outputs.scope == 'full-repository'
@@ -225,6 +292,10 @@ jobs:
           CONFIDENCE: ${{ steps.scope.outputs.confidence }}
         run: |
           echo "🔍 Scanning full repository for sensitive data..."
+
+          # Recorded first: from here on the gate step runs, and fails closed if anything below
+          # aborts this step before the counts are written.
+          echo "scan_ran=true" >> "$GITHUB_ENV"
 
           # Create results directory
           mkdir -p results
@@ -234,6 +305,8 @@ jobs:
           # scan doesn't flag .git/logs refs, node_modules, or results/*.json
           # as findings (that self-referential noise was the bulk of the old
           # alert count).
+          # --fail-on-incomplete: a file ferret-scan could not fully examine
+          # exits 3 instead of passing as clean.
           scan_args_json=(
             "--file" "."
             "--recursive"
@@ -245,6 +318,7 @@ jobs:
             "--output" "results/full-scan.json"
             "--no-color"
             "--quiet"
+            "--fail-on-incomplete"
           )
 
           # Add config file if it exists
@@ -255,23 +329,46 @@ jobs:
             scan_args_json+=("--config" "ferret-config.yaml")
           fi
 
-          # Run the scan in JSON format (for PR comments)
-          if ./bin/ferret-scan "${scan_args_json[@]}"; then
-            # Count findings (handle both array and object formats)
-            high_findings=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "HIGH") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
-            medium_findings=$(jq -r 'if type == "array" then .[] else .results[]? end | select(.confidence == "MEDIUM") | .confidence' results/full-scan.json 2>/dev/null | wc -l || echo "0")
-
-            echo "high_findings=$high_findings" >> "$GITHUB_ENV"
-            echo "medium_findings=$medium_findings" >> "$GITHUB_ENV"
-            echo "scan_exit_code=0" >> "$GITHUB_ENV"
-
-            echo "📊 Full Repository Scan Summary:"
-            echo "   High confidence findings: $high_findings"
-            echo "   Medium confidence findings: $medium_findings"
-          else
-            echo "scan_exit_code=1" >> "$GITHUB_ENV"
-            echo "❌ Full repository scan failed"
+          # Run the scan in JSON format (for PR comments). stderr is kept, in
+          # this log and in the uploaded artifact.
+          rc=0
+          ./bin/ferret-scan "${scan_args_json[@]}" 2> results/full-scan.stderr.log || rc=$?
+          cat results/full-scan.stderr.log
+          echo "scan_exit_code=$rc" >> "$GITHUB_ENV"
+          if [ "$rc" -ne 0 ]; then
+            echo "❌ ferret-scan exited $rc"
           fi
+
+          # Counts from `stats`, as in the changed-files step: under `bash -e` a
+          # missing, non-numeric or unparsable value aborts this step (#767).
+          requested_jq='.stats as $s | ($bands | split(",")) as $b
+            | (if any($b[]; . == "all") then ["high", "medium", "low"] else $b end)
+            | map($s[.] | numbers) | add // 0'
+          high_findings=$(jq -e '.stats.high | numbers' results/full-scan.json)
+          medium_findings=$(jq -e '.stats.medium | numbers' results/full-scan.json)
+          # Omitted from the report when 0.
+          files_not_examined=$(jq -e '.stats.files_not_examined // 0 | numbers' results/full-scan.json)
+          files_scanned=$(jq -e '.stats.files_processed | numbers' results/full-scan.json)
+          listed=$(jq -e '.results | arrays | length' results/full-scan.json)
+          requested=$(jq -e --arg bands "$CONFIDENCE" "$requested_jq" results/full-scan.json)
+          results_truncated=false
+          if [ "$listed" -lt "$requested" ]; then results_truncated=true; fi
+
+          {
+            echo "high_findings=$high_findings"
+            echo "medium_findings=$medium_findings"
+            echo "files_not_examined=$files_not_examined"
+            echo "files_scanned=$files_scanned"
+            echo "results_truncated=$results_truncated"
+          } >> "$GITHUB_ENV"
+
+          echo "📊 Full Repository Scan Summary:"
+          echo "   Files examined: $files_scanned"
+          echo "   High confidence findings: $high_findings"
+          echo "   Medium confidence findings: $medium_findings"
+          echo "   Files not fully examined: $files_not_examined"
+          echo "   ferret-scan exit code: $rc"
+          echo "   Findings list truncated by --limit: $results_truncated ($listed of $requested listed)"
 
           # SARIF generation + upload removed: see the note in the changed-files
           # step. Ferret Scan PII findings are not code-vulnerability alerts and
@@ -280,11 +377,14 @@ jobs:
       - name: Create PR comment
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          HAS_FILES: ${{ steps.changed-files.outputs.has_files }}
         with:
           script: |
             const fs = require('fs');
 
-            // Read results (using new .results format)
+            // The findings list feeds the table only. It is capped by --limit; the counts below
+            // are not (they are the scan step's totals of each report's `stats`).
             let findings = [];
             try {
               if (fs.existsSync('results/combined.json')) {
@@ -295,22 +395,52 @@ jobs:
                 findings = data.results || [];
               }
             } catch (e) {
-              console.log('No results file found or error reading results');
+              console.log(`Could not read the findings list: ${e.message}`);
             }
 
-            const highFindings = process.env.high_findings || '0';
-            const mediumFindings = process.env.medium_findings || '0';
-            const scanExitCode = process.env.scan_exit_code || '0';
+            // No defaults: a value the scan step did not write is reported as missing, never as 0.
+            const env = process.env;
+            const isCount = (v) => typeof v === 'string' && /^[0-9]+$/.test(v);
+            const gateMode = env.GATE_MODE || '';
+            const highFindings = env.high_findings;
+            const mediumFindings = env.medium_findings;
+            const notExamined = env.files_not_examined;
+            const filesScanned = env.files_scanned;
+            const scanExitCode = env.scan_exit_code;
+            const countsComplete = [highFindings, mediumFindings, notExamined, filesScanned, scanExitCode].every(isCount);
 
             // Create comment body
             let commentBody = '## 🔍 Ferret Scan Results\n\n';
 
-            if (scanExitCode !== '0') {
-              commentBody += '❌ **Scan failed** - Please check the workflow logs for details.\n\n';
-            } else if (highFindings === '0' && mediumFindings === '0') {
-              commentBody += '✅ **No sensitive data detected** in the changed files.\n\n';
+            if (gateMode === 'block') {
+              commentBody += '**Gate mode: `block`** — high confidence findings fail this check.\n\n';
+            } else if (gateMode === 'report') {
+              commentBody += '**Gate mode: `report`** — findings are reported here and do not fail this check; ' +
+                'a scan that fails or is incomplete still does.\n\n';
             } else {
-              commentBody += `⚠️ **Sensitive data detected:**\n`;
+              commentBody += `**Gate mode: \`${gateMode || 'unset'}\`** — neither \`block\` nor \`report\`, so the gate step fails.\n\n`;
+            }
+
+            if (env.scan_ran !== 'true') {
+              if (env.HAS_FILES === 'false') {
+                commentBody += 'ℹ️ **No files were scanned**: none of the changed files has a scanned extension.\n\n';
+              } else {
+                commentBody += '❌ **The scan did not run** - an earlier step failed. Please check the workflow logs.\n\n';
+              }
+            } else if (!countsComplete) {
+              commentBody += '❌ **Scan did not complete** - the finding counts are missing, so this run cannot be ' +
+                'reported as clean. Please check the workflow logs for details.\n\n';
+            } else if (scanExitCode !== '0' || notExamined !== '0') {
+              commentBody += `❌ **Scan failed** (ferret-scan exit ${scanExitCode}; ${notExamined} file(s) not fully examined) - ` +
+                'Please check the workflow logs for details.\n';
+              commentBody += `- High confidence: ${highFindings} findings in the files that were examined\n`;
+              commentBody += `- Medium confidence: ${mediumFindings} findings in the files that were examined\n\n`;
+            } else if (filesScanned === '0') {
+              commentBody += 'ℹ️ **No files were examined**: ferret-scan exited 0 but read none of the changed files.\n\n';
+            } else if (highFindings === '0' && mediumFindings === '0') {
+              commentBody += `✅ **No sensitive data detected** in the ${filesScanned} scanned file(s).\n\n`;
+            } else {
+              commentBody += `⚠️ **Sensitive data detected** in ${filesScanned} scanned file(s):\n`;
               commentBody += `- High confidence: ${highFindings} findings\n`;
               commentBody += `- Medium confidence: ${mediumFindings} findings\n\n`;
 
@@ -319,17 +449,25 @@ jobs:
                 commentBody += '| File | Type | Confidence | Line |\n';
                 commentBody += '|------|------|------------|------|\n';
 
-                findings.slice(0, 10).forEach(finding => {
+                const shown = findings.slice(0, 10);
+                shown.forEach(finding => {
                   const file = finding.filename || 'Unknown';
                   const type = finding.type || 'Unknown';
-                  const confidence = finding.confidence || 'Unknown';
+                  // The band. `confidence` is the numeric score (0-100).
+                  const confidence = finding.confidence_level || 'Unknown';
                   const line = finding.line_number || 'N/A';
                   commentBody += `| ${file} | ${type} | ${confidence} | ${line} |\n`;
                 });
 
-                if (findings.length > 10) {
-                  commentBody += `\n*... and ${findings.length - 10} more findings*\n`;
+                const total = Number(highFindings) + Number(mediumFindings);
+                if (total > shown.length) {
+                  commentBody += `\n*... and ${total - shown.length} more findings*\n`;
                 }
+              }
+              if (env.results_truncated === 'true') {
+                commentBody += '\n⚠️ **Findings list truncated**: ferret-scan caps `results` at `--limit` (200 by default), ' +
+                  'so the ferret-scan-results artifact lists fewer findings than the counts above, which come from ' +
+                  'its uncapped `stats`.\n';
               }
 
               commentBody += '\n### Next Steps:\n';
@@ -359,8 +497,9 @@ jobs:
             }
 
             // AWAITED, inside a try. Un-awaited, the rejected promise became an unhandled
-            // rejection that failed this job on a scan with zero findings (run
-            // 35366738323 on #707); unguarded, any future permission change does it again.
+            // rejection that failed this job (run 35366738323 on #707, which the old count
+            // reported as zero findings; ferret's own stats for it were 83 HIGH and 35 MEDIUM,
+            // #767); unguarded, any future permission change does it again.
             try {
               await github.rest.issues.createComment({
                 issue_number: context.issue.number,
@@ -371,7 +510,7 @@ jobs:
             } catch (e) {
               core.warning(`Could not post the results comment (status ${e.status || 'unknown'}): ` +
                 `${e.message}. The results are in the job summary and the ` +
-                'ferret-scan-results artifact; the high-confidence gate below is unaffected.');
+                'ferret-scan-results artifact; the gate step reads the scan counts, not this comment.');
             }
 
       - name: Upload scan results
@@ -383,11 +522,54 @@ jobs:
             results/
           retention-days: 30
 
-      - name: Fail on high confidence findings
-        if: env.high_findings != '0'
+      - name: Gate on scan result and high confidence findings
+        # Runs whenever a scan step started, even after a failure, so an aborted scan fails here
+        # rather than leaving nothing to check. Skipped only when no scan ran (no relevant file).
+        if: always() && env.scan_ran == 'true'
         env:
           HIGH_FINDINGS: ${{ env.high_findings }}
+          MEDIUM_FINDINGS: ${{ env.medium_findings }}
+          FILES_NOT_EXAMINED: ${{ env.files_not_examined }}
+          SCAN_EXIT_CODE: ${{ env.scan_exit_code }}
         run: |
-          echo "❌ Blocking merge: $HIGH_FINDINGS high confidence sensitive data findings detected"
-          echo "Please review and address the findings before merging this PR"
-          exit 1
+          # Fails closed in both modes (see GATE_MODE in the header): an unknown mode, a count that
+          # is missing or not an integer, a non-zero ferret-scan exit or a file not fully examined
+          # fails the check. Only HIGH > 0 depends on the mode.
+          fail=0
+          case "$GATE_MODE" in
+            block|report) ;;
+            *) echo "❌ GATE_MODE is '$GATE_MODE'; it must be block or report"; fail=1 ;;
+          esac
+          for pair in "high_findings=$HIGH_FINDINGS" "medium_findings=$MEDIUM_FINDINGS" \
+                      "files_not_examined=$FILES_NOT_EXAMINED" "scan_exit_code=$SCAN_EXIT_CODE"; do
+            case "${pair#*=}" in
+              ''|*[!0-9]*)
+                echo "❌ ${pair%%=*} is '${pair#*=}', not an integer: the scan did not record it"
+                fail=1 ;;
+            esac
+          done
+
+          if [ "$fail" -eq 0 ]; then
+            if [ "$SCAN_EXIT_CODE" -ne 0 ]; then
+              echo "❌ ferret-scan exited $SCAN_EXIT_CODE; its stderr is in the scan step's log and the artifact"
+              fail=1
+            fi
+            if [ "$FILES_NOT_EXAMINED" -gt 0 ]; then
+              echo "❌ $FILES_NOT_EXAMINED file(s) were not fully examined, so findings may be missing"
+              fail=1
+            fi
+            if [ "$HIGH_FINDINGS" -gt 0 ]; then
+              if [ "$GATE_MODE" = "block" ]; then
+                echo "❌ Blocking merge: $HIGH_FINDINGS high confidence sensitive data findings detected"
+                echo "Please review and address the findings before merging this PR"
+                fail=1
+              else
+                echo "⚠️  $HIGH_FINDINGS high confidence findings reported; GATE_MODE=report, so they do not fail this check"
+              fi
+            fi
+          fi
+
+          if [ "$fail" -eq 0 ]; then verdict="passed"; else verdict="failed"; fi
+          echo "Gate (GATE_MODE=$GATE_MODE): $verdict"
+          echo "**Ferret Scan gate** (\`GATE_MODE=$GATE_MODE\`): **$verdict** — HIGH ${HIGH_FINDINGS:-missing}, MEDIUM ${MEDIUM_FINDINGS:-missing}, files not fully examined ${FILES_NOT_EXAMINED:-missing}, ferret-scan exit ${SCAN_EXIT_CODE:-missing}" >> "$GITHUB_STEP_SUMMARY"
+          exit "$fail"
