@@ -130,7 +130,6 @@ results:
             not_common_word: true
             not_test_data: false
             specific_pattern: true
-            test_environment_penalty: true
             valid_format: true
         validation_path: document
     - text: 212-555-0142

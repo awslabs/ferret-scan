@@ -14,6 +14,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **secrets (file-wide environment verdict):** one marker word anywhere in a file no longer moves every
+  credential in it, and marker words are matched as whole tokens
+  ([#785](https://github.com/awslabs/ferret-scan/issues/785)). The secrets validator classifies a whole
+  file as test, development or production from 29 marker words and applied the verdict to every
+  candidate in the file: test −25, development −15, production +10. The markers were matched as
+  substrings, so `latest` counted as `test`, `device` as `dev`, `locale` as `local`, `delivery` as
+  `live` and `metadata.Producer` as `.prod`; measured with the shipped lists on the golden corpus, 140
+  of 455 fixtures classified test and 100 development, 67 of them only through a substring inside a
+  longer word. The penalty landed on provider literals and keyword-labelled values alike. Two
+  consequences, both reproduced from v2.5.4: a comment saying `pinned to the latest image` took a
+  GitHub token two lines below it from HIGH 93 to MEDIUM 68 and the same `password=` value from 97 to
+  72, and `--pre-commit-mode` with the shipped default (exit on HIGH) exited 0 on both files and 1 on
+  the same files with a neutral comment — the gate failed **open** on a word in a comment; and a
+  six-line credentials file whose hostnames contained `example` scored every candidate at exactly 60,
+  which the strict reporting threshold drops, so the file reported **zero** findings, exited 0 and
+  wrote no redacted copy, while each of its lines alone reported one. Two changes. (1) A candidate
+  that carries its own evidence — a typed provider literal, or a secret keyword on its line — no
+  longer takes the file-wide test/dev penalty; the penalty keeps its full, unbounded reach on
+  entropy-only candidates, which is the population it was written for, and the production boost is
+  unchanged. (2) Markers are matched as whole tokens under the same rule the rest of the tree uses
+  (`_` is a boundary, so `TEST_VALUE` and `unit_test` still count; `prod-`, `prod_` and `.prod` are
+  bounded on their word side only, so `db.prod.internal` still counts and `metadata.producer` does
+  not). Inflected forms no longer count — `testing`, `examples`, `templates`, `deployment`, `released`
+  — only the bare word does, which also narrows the +10 production boost by the same rule. Measured:
+  the six-line file reports 6; the `latest` and `example.com` files report in the same band as their
+  controls (97 and 93) and `--pre-commit-mode` exits 1 on them; the golden corpus moves **15 findings,
+  all MEDIUM→HIGH, 0 added, 0 lost, 0 demoted** — 13 synthetic credentials in one fixture that a
+  decoy value `[PLACEHOLDER]` elsewhere in the file had been holding at 75, and the two new marker
+  cases — plus two AWS documentation access-key placeholders whose `environment_type` metadata reads
+  `unknown` where it read `test` (the substring was `7EXAMPLE`) and four capped placeholder findings
+  that no longer list a `test_environment_penalty` check, their confidence unchanged; `make score`
+  recall and precision unchanged. **Suppression rules are unaffected**: a finding's identity has not
+  included its confidence since #247 and no matched text, type or line changes here; only a rule file
+  written before #247, whose finding's confidence now moves, stops matching. Not in this change, each
+  filed under #785: the Configuration ratio that counts a trailing newline as a line (item 3,
+  analyzer-wide, so the six-line file still scores 85 with the newline and 100 without — all six
+  report either way), the strict `>` at the threshold (item 4, closed: `>=` would admit a code
+  expression at exactly 60), and excluding hostnames from the `example` marker (the second half of
+  item 2; a credential beside one is protected by the waiver instead).
+
 ## [v2.5.4] - 2026-10-16
 
 ### 🐛 Bug Fixes
