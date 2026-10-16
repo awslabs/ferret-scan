@@ -4,6 +4,8 @@
 package redactors
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -36,18 +38,50 @@ func (rs RedactionStrategy) String() string {
 	}
 }
 
-// ParseRedactionStrategy converts a string to RedactionStrategy
-func ParseRedactionStrategy(s string) RedactionStrategy {
+// RedactionStrategyNames are the exact spellings a strategy may be given as, in
+// the order the documentation lists them. Exported so that error messages, the
+// config schema's agreement test and the CLI help all derive from one list.
+var RedactionStrategyNames = []string{"simple", "format_preserving", "synthetic"}
+
+// Valid reports whether rs is one of the three defined strategies. A
+// RedactionStrategy is an int, so a caller can hold a value outside the
+// definition (a cast, a zero-filled struct from another package); every
+// consumer that applies a strategy checks this first and refuses otherwise.
+func (rs RedactionStrategy) Valid() bool {
+	return rs >= RedactionSimple && rs <= RedactionSynthetic
+}
+
+// ParseRedactionStrategy converts a strategy name to a RedactionStrategy, or
+// returns an error naming the value, the valid names and, when a case or
+// whitespace variant of a valid name was given, the name it may have meant.
+//
+// EXACT match only: no case folding, no trimming, no comma lists (#772). This
+// used to fall back to format_preserving for any unrecognised value, with no
+// error return, so `--redaction-strategy SIMPLE` wrote masked output (`***-**-8901`)
+// where `simple` writes a placeholder, at exit 0 with an empty stderr; a config
+// file's `strategy: simple` was discarded by a typo on the flag; and no report
+// named the strategy applied. Folding `SIMPLE` to `simple` instead would silently
+// change what an existing run writes; refusing keeps every run that exits 0
+// today byte-identical, and makes the others loud. The empty string is refused
+// too: "unset" is a decision for the caller's precedence logic, not for the
+// parser, so a caller that reaches here with "" has a bug.
+func ParseRedactionStrategy(s string) (RedactionStrategy, error) {
 	switch s {
 	case "simple":
-		return RedactionSimple
+		return RedactionSimple, nil
 	case "format_preserving":
-		return RedactionFormatPreserving
+		return RedactionFormatPreserving, nil
 	case "synthetic":
-		return RedactionSynthetic
-	default:
-		return RedactionFormatPreserving // Default fallback
+		return RedactionSynthetic, nil
 	}
+	hint := ""
+	if folded := strings.ToLower(strings.TrimSpace(s)); folded != s {
+		if _, err := ParseRedactionStrategy(folded); err == nil {
+			hint = fmt.Sprintf(" (did you mean %q?)", folded)
+		}
+	}
+	return RedactionFormatPreserving, fmt.Errorf("invalid redaction strategy %q: valid values are %s%s",
+		s, strings.Join(RedactionStrategyNames, ", "), hint)
 }
 
 // Redactor interface defines the contract for all redactor implementations

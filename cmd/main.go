@@ -254,6 +254,9 @@ type configFlags struct {
 	redactionStrategy  string
 	redactionAuditLog  string
 	disableIPTypes     string
+	// activeProfileName is the name the active profile was selected under, for
+	// naming the source of a value in an error (a *Profile does not carry it).
+	activeProfileName string
 }
 
 // finalConfiguration holds resolved configuration values
@@ -269,20 +272,26 @@ type finalConfiguration struct {
 	preprocessOnly      bool
 	precommitMode       bool
 	// Redaction configuration
-	enableRedaction      bool
-	redactionOutputDir   string
-	redactionStrategy    string
-	redactionAuditLog    string
-	excludePatterns      []string
-	respectGitignore     bool
-	showMatch            bool
-	quiet                bool
-	showSuppressed       bool
-	generateSuppressions bool
-	failOnIncomplete     bool
-	suppressionFile      string
-	suppressionExpiresIn string
-	disableIPTypes       string
+	enableRedaction    bool
+	redactionOutputDir string
+	// redactionStrategy is the PARSED strategy, set by applyRedactionStrategy after
+	// resolveConfiguration has chosen the winning name. redactionStrategyName is
+	// that name as written, and redactionStrategySource says where it came from,
+	// for the error message when it does not parse (#772).
+	redactionStrategy       redactors.RedactionStrategy
+	redactionStrategyName   string
+	redactionStrategySource string
+	redactionAuditLog       string
+	excludePatterns         []string
+	respectGitignore        bool
+	showMatch               bool
+	quiet                   bool
+	showSuppressed          bool
+	generateSuppressions    bool
+	failOnIncomplete        bool
+	suppressionFile         string
+	suppressionExpiresIn    string
+	disableIPTypes          string
 }
 
 // resolveConfiguration resolves final configuration values from config file, profile, and command line flags
@@ -420,15 +429,24 @@ func resolveConfiguration(cfg *config.Config, activeProfile *config.Profile, fla
 		final.redactionOutputDir = flags.redactionOutputDir
 	}
 
-	final.redactionStrategy = "format_preserving" // default fallback
+	// Strategy: the same precedence as every other field, but the winning NAME is
+	// kept with its source and parsed later by applyRedactionStrategy, so a typo
+	// is refused with a message that says which layer it came from. Only the
+	// literal empty string means "unset" at each layer, as it does for --format:
+	// a value of spaces is a value, and is refused downstream.
+	final.redactionStrategyName = "format_preserving"
+	final.redactionStrategySource = "the built-in default"
 	if cfg != nil && cfg.Redaction.Strategy != "" {
-		final.redactionStrategy = cfg.Redaction.Strategy
+		final.redactionStrategyName = cfg.Redaction.Strategy
+		final.redactionStrategySource = "redaction.strategy in " + configSourceLabel(cfg)
 	}
 	if activeProfile != nil && activeProfile.Redaction.Strategy != "" {
-		final.redactionStrategy = activeProfile.Redaction.Strategy
+		final.redactionStrategyName = activeProfile.Redaction.Strategy
+		final.redactionStrategySource = fmt.Sprintf("profile %q redaction.strategy in %s", flags.activeProfileName, configSourceLabel(cfg))
 	}
 	if isFlagSet("redaction-strategy") && flags.redactionStrategy != "" {
-		final.redactionStrategy = flags.redactionStrategy
+		final.redactionStrategyName = flags.redactionStrategy
+		final.redactionStrategySource = "--redaction-strategy"
 	}
 
 	final.redactionAuditLog = "" // default fallback (no audit log file)
@@ -1114,7 +1132,7 @@ func main() {
 	// Redaction flags
 	enableRedaction := flag.Bool("enable-redaction", false, "Enable redaction of sensitive data found in documents")
 	redactionOutputDir := flag.String("redaction-output-dir", "./redacted", "Directory where redacted files will be stored")
-	redactionStrategy := flag.String("redaction-strategy", "format_preserving", "Default redaction strategy: simple, format_preserving, or synthetic")
+	redactionStrategy := flag.String("redaction-strategy", "format_preserving", "Redaction strategy, exactly one of: simple, format_preserving, or synthetic (default: format_preserving); any other spelling exits 1")
 	redactionAuditLog := flag.String("redaction-audit-log", "", "Path to save redaction audit log file (JSON format for compliance)")
 
 	// Exclusion flag
@@ -1257,6 +1275,7 @@ func main() {
 	// Apply pre-commit optimizations if detected or explicitly enabled
 	if precommitDetector.IsPrecommitEnvironment() {
 		precommitConfig = precommitDetector.GetOptimizedConfig()
+		refusePrecommitConfigError(precommitDetector)
 	}
 
 	// Determine profile name - use pre-commit profile automatically if in pre-commit environment and no explicit profile
@@ -1298,6 +1317,7 @@ func main() {
 		suppressionFile:      flags.suppressionFile,
 		suppressionExpiresIn: flags.suppressionExpiresIn,
 		disableIPTypes:       flags.disableIPTypes,
+		activeProfileName:    effectiveProfileName,
 	})
 
 	// Reject an --exclude pattern the matcher could never apply, before any scanning.
@@ -1313,6 +1333,11 @@ func main() {
 				"(e.g. '.git', '*.log', 'build/')")
 		os.Exit(1)
 	}
+
+	// Parse the redaction strategy name that won the precedence above, for BOTH
+	// paths (--stdin calls the same helper), before anything is scanned, written
+	// or printed. See applyRedactionStrategy for what this replaces.
+	applyRedactionStrategy(finalConfig, precommitConfig)
 
 	// Use the pre-commit detector initialized earlier (no need to reinitialize)
 	// precommitConfig is already initialized above
@@ -1933,7 +1958,9 @@ func main() {
 
 		// Build the redaction manager with all default redactors via the shared
 		// core factory (single source of truth, also used by core.RedactFile).
-		strategy := redactors.ParseRedactionStrategy(finalConfig.redactionStrategy)
+		// The strategy was parsed and validated by applyRedactionStrategy, before
+		// any output; this site no longer parses a name (#772).
+		strategy := finalConfig.redactionStrategy
 		var mgrErr error
 		redactionManager, _, mgrErr = core.NewDefaultRedactionManager(
 			finalConfig.redactionOutputDir, strategy, redactionObserver)
@@ -3038,6 +3065,66 @@ func validateExcludePatterns(patterns []string) error {
 		}
 	}
 	return nil
+}
+
+// applyRedactionStrategy parses the strategy name that won resolveConfiguration's
+// precedence and stores the typed value, or exits 1 naming the value, the valid
+// names and the layer the value came from. Called from BOTH entry points
+// (main's --file path and the --stdin path) right after resolveConfiguration,
+// before any scanning, output directory or report, and unconditionally -- not
+// only when redaction is enabled -- because redaction can be switched on by the
+// flag, by redaction.enabled in a config, or by a profile, and the value handed
+// to the redactor is the one that gets validated (#772).
+//
+// What this replaces: the four sites that applied a strategy each called a
+// parser whose unknown-value branch returned format_preserving, with no error.
+// So `--redaction-strategy SIMPLE` wrote `***-**-8901` where `simple` writes
+// `[SSN-REDACTED]`, at exit 0 with an empty stderr; a config's `strategy:
+// simple` was thrown away by a typo on the flag; and an auto-discovered
+// `.ferret-scan.yaml` with `strategy: simpel` was applied as format_preserving
+// because only an explicit --config runs the schema. The same defect in
+// --confidence (#689) and --checks (#299) was closed the same way: refuse,
+// name the value, exit 1 before output. Exact match only -- see
+// redactors.ParseRedactionStrategy for why no spelling is folded.
+func applyRedactionStrategy(final *finalConfiguration, precommitConfig *precommit.PrecommitConfig) {
+	strategy, err := redactors.ParseRedactionStrategy(final.redactionStrategyName)
+	if err != nil {
+		printPrecommitError(precommitConfig,
+			fmt.Sprintf("%v (from %s)", err, final.redactionStrategySource),
+			"Use exactly one of simple, format_preserving, synthetic; the names are case-sensitive and take no list")
+		os.Exit(1)
+	}
+	final.redactionStrategy = strategy
+}
+
+// refusePrecommitConfigError exits 1 when a FERRET_* variable that steers the
+// pre-commit gate holds a value the detector could not accept, in pre-commit
+// mode only (--pre-commit-mode, or a detected hook environment). Printed
+// directly rather than through printPrecommitError: that helper adds
+// "Pre-commit hook failed" guidance that reads as a finding-driven block, and
+// this is a usage error, not a blocked commit (#667). Shared by both entry
+// points. Before #772, FERRET_PRECOMMIT_EXIT_ON=MEDIUM left the gate at "high"
+// and let a MEDIUM finding through at exit 0.
+func refusePrecommitConfigError(detector *precommit.PrecommitDetector) {
+	if err := detector.ConfigError(); err != nil {
+		fmt.Fprintf(os.Stderr, "ferret-scan: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Resolution: set it to exactly one of high, medium, low, none (case-sensitive), or unset it for the default (high)\n")
+		os.Exit(1)
+	}
+}
+
+// configSourceLabel names the config file a value came from, marking a file the
+// CLI found on its own (no --config) as auto-discovered, per #293: an operator
+// reading the error must be able to tell a file they named from one that was
+// picked up from the working directory or the user config dir.
+func configSourceLabel(cfg *config.Config) string {
+	if cfg == nil || cfg.SourcePath == "" {
+		return "the built-in configuration"
+	}
+	if isFlagSet("config") {
+		return cfg.SourcePath
+	}
+	return cfg.SourcePath + " (auto-discovered)"
 }
 
 // getFilesToProcess returns a list of files to process based on the input path

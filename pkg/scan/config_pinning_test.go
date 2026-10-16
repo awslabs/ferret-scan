@@ -226,7 +226,10 @@ func TestUnreadableConfigPathFallsBackToDefaultsRatherThanCrashing(t *testing.T)
 // LoadConfig("") populates and a zero value does not is what makes the distinction
 // testable.
 func TestResolveConfigFallbackIsRealDefaultsNotAZeroValue(t *testing.T) {
-	cfg := resolveConfig(filepath.Join(t.TempDir(), "missing.yaml"), false)
+	cfg, err := resolveConfig(filepath.Join(t.TempDir(), "missing.yaml"), false)
+	if err != nil {
+		t.Fatalf("a MISSING ConfigPath must fall back, not error (#317); a file that exists and fails the load is the error case (#772): %v", err)
+	}
 	if cfg == nil {
 		t.Fatal("resolveConfig returned nil for an unreadable path")
 	}
@@ -249,7 +252,10 @@ func TestResolveConfigFallbackIsRealDefaultsNotAZeroValue(t *testing.T) {
 	}
 
 	// And the same properties for the explicit defaults-only request.
-	d := resolveConfig("", true)
+	d, err := resolveConfig("", true)
+	if err != nil {
+		t.Fatalf("DisableConfigDiscovery cannot fail: %v", err)
+	}
 	if d == nil || d.Defaults.Format != "text" || d.Profiles == nil || d.SourcePath != "" {
 		t.Errorf("DisableConfigDiscovery did not return a populated default config: %+v",
 			d.Defaults)

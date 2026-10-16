@@ -161,7 +161,11 @@ func TestShouldExitOnFindingsThresholds(t *testing.T) {
 		{"low", "medium", true},
 		{"low", "low", true},
 
-		// An unrecognised setting must fail SAFE (block only on high), not open.
+		// A PrecommitConfig built in code with an unrecognised setting fails SAFE
+		// (block only on high). A mistyped FERRET_PRECOMMIT_EXIT_ON never reaches
+		// here: generateOptimizedConfig records it as ConfigError and the CLI exits
+		// 1 before scanning (#772), since "high only" is fail-OPEN for an operator
+		// who asked for MEDIUM.
 		{"nonsense", "high", true},
 		{"nonsense", "medium", false},
 		{"", "high", true},

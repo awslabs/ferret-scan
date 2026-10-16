@@ -4,7 +4,9 @@
 package scan
 
 import (
+	"fmt"
 	"io"
+	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
@@ -59,12 +61,12 @@ func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) 
 		logWriter = io.Discard
 	}
 
-	strategy := "format_preserving"
-	switch opts.Strategy {
-	case StrategySimple:
-		strategy = "simple"
-	case StrategySynthetic:
-		strategy = "synthetic"
+	// Reject an out-of-range strategy BEFORE any output file is created, like the
+	// unknown-check case below and like pkg/redact.NewEngine already does. A
+	// RedactStrategy is an int, so RedactStrategy(7) compiles; it used to be
+	// mapped to format_preserving and written at exit 0 (#772).
+	if !opts.Strategy.valid() {
+		return nil, fmt.Errorf("scan: invalid RedactStrategy %d (use StrategySimple, StrategyFormatPreserving or StrategySynthetic)", int(opts.Strategy))
 	}
 
 	// Reject an unknown check BEFORE any output file is created. Failing after the
@@ -74,12 +76,17 @@ func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) 
 		return nil, err
 	}
 
+	cfg, err := resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := core.RedactFile(core.RedactConfig{
 		FilePath:  path,
 		OutputDir: opts.OutputDir,
-		Strategy:  strategy,
+		Strategy:  opts.Strategy.String(),
 		Checks:    checks,
-		Config:    resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery),
+		Config:    cfg,
 		LogWriter: logWriter,
 	})
 	if err != nil {
@@ -93,9 +100,45 @@ func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) 
 	}, nil
 }
 
+// ParseStrategyStrict converts a strategy name to a RedactStrategy. Exactly
+// "simple", "format_preserving" or "synthetic"; any other value, including "",
+// is an error naming the value and the valid names (and, for a case or
+// whitespace variant of a valid name, the name it may have meant).
+//
+// Added in #772 beside ParseStrategy, whose fallback to format_preserving on an
+// unknown value is the behaviour its callers were written against and is kept
+// for them, deprecated. New code should use this one: a strategy name that came
+// from a user is exactly the input a silent default must not swallow.
+func ParseStrategyStrict(s string) (RedactStrategy, error) {
+	switch s {
+	case "simple":
+		return StrategySimple, nil
+	case "format_preserving":
+		return StrategyFormatPreserving, nil
+	case "synthetic":
+		return StrategySynthetic, nil
+	}
+	hint := ""
+	if folded := strings.ToLower(strings.TrimSpace(s)); folded != s {
+		if _, err := ParseStrategyStrict(folded); err == nil {
+			hint = fmt.Sprintf(" (did you mean %q?)", folded)
+		}
+	}
+	return StrategyFormatPreserving, fmt.Errorf("scan: invalid redaction strategy %q: valid values are simple, format_preserving, synthetic%s", s, hint)
+}
+
+// valid reports whether s is one of the three defined strategies.
+func (s RedactStrategy) valid() bool {
+	return s >= StrategyFormatPreserving && s <= StrategySynthetic
+}
+
 // ParseStrategy converts a string to a RedactStrategy. Accepts "simple",
 // "format_preserving" (default), and "synthetic". Unknown values default to
 // format-preserving.
+//
+// Deprecated: the fallback hides a typo in a user-supplied name as a different
+// strategy, written at exit 0 (#772). Use ParseStrategyStrict, which returns an
+// error instead. This function is unchanged and stays for existing callers.
 func ParseStrategy(s string) RedactStrategy {
 	switch s {
 	case "simple":
