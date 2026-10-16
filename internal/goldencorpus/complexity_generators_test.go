@@ -202,3 +202,18 @@ func TestComplexityGeneratorsAreNonVacuous(t *testing.T) {
 		})
 	}
 }
+
+// genProviderRuns emits, per index, four distinct over-long tokens of the three
+// provider families that have no vendor-fixed length (#769): a live Stripe key
+// glued with nothing between to a publishable one (the straddle cut has to split
+// them), a GitLab token, and a Slack bot token, then a space. Every body carries
+// the index, so no two repetitions dedupe. Four findings per repetition: 1600 at
+// the base of 400, 6400 at 4x. The Stripe bodies carry digits so the left-glue
+// rule is not what decides them.
+func genProviderRuns(i int) string {
+	return fmt.Sprintf("sk_%s_%08dAbCdEfGhIjKlMnOpQrStUvWxYz%04d"+
+		"pk_%s_%08dZyXwVuTsRqPoNmLkJiHgFeDcBa%04d "+
+		"glpat-%08dAbCdEfGhIjKlMnOpQrSt%04d "+
+		"xoxb-123456789012-%012d-%08dAbCdEfGhIjKlMnOpQrSt%04d ",
+		"live", i, i%10000, "live", i, (i*7)%10000, i, (i*3)%10000, i, i, (i*11)%10000)
+}
