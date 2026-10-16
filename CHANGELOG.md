@@ -14,6 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **ci (self-scan gate):** the high-confidence gate in `.github/workflows/ferret-scan.yml` never fired
+  ([#767](https://github.com/awslabs/ferret-scan/issues/767)). It counted findings by comparing
+  `confidence` with `"HIGH"`, but `confidence` is the numeric score (the band is `confidence_level`), so
+  every run counted 0 HIGH and 0 MEDIUM, skipped the gate and commented "No sensitive data detected" —
+  since the initial commit, and in every copy `docs/TEAM_SETUP_GUIDE.md` and `make setup-team` told
+  teams to make. From 2026-09-14 to 2026-10-13 ferret's own `stats.high` was above 0 in 40 of 56 PR runs
+  that scanned files and in all 51 push runs. Counts now come from each report's `stats`, which `--limit`
+  does not cap, read with `jq -e '… | numbers'` under `bash -e`, so a missing or non-numeric count fails
+  the step instead of reading as 0; every `| wc -l || echo "0"` and `2>/dev/null` on a count is gone; both
+  scans pass `--fail-on-incomplete` and keep ferret's stderr in the log and the artifact; and the gate
+  runs whenever a scan ran and fails on a missing count, a non-zero ferret exit or a file not fully
+  examined. A new `GATE_MODE` (`block` | `report`) decides whether HIGH findings fail the check: `block`
+  for every copy, `report` for this repository's PR and push scans, whose corpora carry deliberate HIGH
+  findings and whose suppression baseline has expired. The PR comment names the mode, prints
+  `confidence_level`, says "No sensitive data detected" only when the scan exited 0, every file was
+  examined, at least one was scanned and both counts are 0, and flags a findings list cut short by
+  `--limit`. Workflow, docs and tests only: no finding's text, line or type changes, so no suppression
+  hash changes, and the CLI is unchanged. **Adopters:** a copy made before this fix stays dead until it
+  is re-copied, and a re-copied `block` workflow can turn your CI red on HIGH findings your repository
+  already carries; start in `report` mode if you are not sure.
+
 ## [v2.5.4] - 2026-10-16
 
 ### 🐛 Bug Fixes
