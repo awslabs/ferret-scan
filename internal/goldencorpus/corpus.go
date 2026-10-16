@@ -248,6 +248,53 @@ var Cases = []Case{
 			"api_key: SecretStr\n",
 	},
 	{
+		Name: "secrets_file_wide_marker_hostname",
+		Description: "The #785 shape with a marker that IS a whole word: a comment naming a " +
+			"wiki.example.com URL two lines above a credential. detectEnvironmentType still " +
+			"classifies this file \"test\" (example is a token here, bounded by dots; the fix does not " +
+			"exclude hostnames, see item 2 of #785), so what this case pins is the WAIVER: the " +
+			"password is corroborated by its own keyword and no longer takes the -25. Before the fix " +
+			"it reported at MEDIUM 72; the control case below, identical but for the comment, reported " +
+			"HIGH 97, and --pre-commit-mode with the shipped default exited 0 on this file and 1 on " +
+			"that one. The environment_type metadata stays \"test\" and the confidence must equal the " +
+			"control's. A regression that re-applies the penalty shows up here as a band drop with no " +
+			"change in the control.",
+		Checks: []string{"SECRETS"},
+		Input: "# Database settings\n" +
+			"# see https://wiki.example.com/setup\n" +
+			"# rotate quarterly\n" +
+			"password=Zq8vTtq2Lm4pQ9yHgRrWw7Kz\n",
+	},
+	{
+		Name: "secrets_file_wide_marker_substring",
+		Description: "The #785 shape with a marker that is only a SUBSTRING: a comment saying " +
+			"\"pinned to the latest image\" above a GitHub token. \"latest\" contains \"test\", and " +
+			"matched by strings.Contains that one word classified the whole file \"test\" and took the " +
+			"token from HIGH 93 to MEDIUM 68 -- below the shipped pre-commit gate, which exits on HIGH " +
+			"only, so the commit went through. Markers are now matched as whole tokens, so this file " +
+			"classifies \"unknown\" (environment_type in the metadata) and the token reports at 93, " +
+			"the same as the control below. The token is assembled from two literals so a static " +
+			"scanner reading this source does not report it.",
+		Checks: []string{"SECRETS"},
+		Input: "# CI settings\n" +
+			"# pinned to the latest image\n" +
+			"# rotate quarterly\n" +
+			"GITHUB_TOKEN=ghp_" + "Q7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG2aE7u\n",
+	},
+	{
+		Name: "secrets_file_wide_marker_control",
+		Description: "Control for the two cases above: the same GitHub token under a comment with no " +
+			"environment marker in it. Its snapshots are byte-identical before and after the #785 " +
+			"fix, which is what makes the other two cases evidence of the fix rather than of some " +
+			"other change: the three inputs differ only in one comment line, so any difference in " +
+			"their findings is the comment's doing. Must stay exactly as it is.",
+		Checks: []string{"SECRETS"},
+		Input: "# CI settings\n" +
+			"# see the wiki\n" +
+			"# rotate quarterly\n" +
+			"GITHUB_TOKEN=ghp_" + "Q7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG2aE7u\n",
+	},
+	{
 		Name:        "ip_addresses",
 		Description: "Public vs private/loopback IPv4; locks IP_ADDRESS context handling.",
 		Checks:      []string{"IP_ADDRESS"},
