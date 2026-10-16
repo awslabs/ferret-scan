@@ -355,8 +355,12 @@ docker run --rm -v $(pwd):/data ferret-scan:latest \
   --file /data --recursive --confidence high \
   --format json --output /data/high-confidence.json
 
-# Stage 2: Comprehensive scan if no high confidence findings
-if [ ! -s /data/high-confidence.json ] || [ "$(jq '.findings | length' /data/high-confidence.json)" -eq 0 ]; then
+# Stage 2: Comprehensive scan if no high confidence findings. Count from `stats` (`results` is
+# capped by --limit), and fail closed: `jq -e` fails on a missing report or count, which must not
+# read as "no findings". $(pwd) is mounted at /data, so the report is ./high-confidence.json here.
+if ! high=$(jq -e '.stats.high | numbers' high-confidence.json); then
+  echo "Stage 1 produced no readable stats.high; not treating it as clean" >&2
+elif [ "$high" -eq 0 ]; then
   docker run --rm -v $(pwd):/data ferret-scan:latest \
     --file /data --recursive --confidence high,medium,low \
     --format json --output /data/full-scan.json
