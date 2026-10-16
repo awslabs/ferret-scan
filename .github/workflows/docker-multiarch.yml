@@ -22,6 +22,8 @@ on:
       - main
       - master
     paths:
+      # The workflow itself, so a pull request that edits it runs it.
+      - '.github/workflows/docker-multiarch.yml'
       - '**.go'
       - 'internal/web/assets/**'
       - 'go.mod'
