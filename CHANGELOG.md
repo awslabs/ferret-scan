@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.5.4] - 2026-10-16
+
 ### 🐛 Bug Fixes
 
 - **config (internal_urls):** the shipped `config.yaml` enabled 17 `intellectual_property.internal_urls`
