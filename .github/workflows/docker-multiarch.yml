@@ -242,7 +242,7 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security tab
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: "trivy-results.sarif"
           category: "trivy-container-scan"
@@ -356,7 +356,7 @@ jobs:
           config: ".grype.yaml"
 
       - name: Upload Grype scan results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: ${{ steps.scan-ghcr.outputs.sarif }}
           category: "grype-container-scan"
