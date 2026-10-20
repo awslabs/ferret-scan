@@ -1,0 +1,434 @@
+package secrets
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
+
+// Tests for the provider grammar table (provider_rules.go, #769). Token values are
+// assembled at run time from pieces so that a static secret scanner reading this
+// source does not report them; none is a real credential.
+
+// providerFixture builds a token for a row at a given body length, from the row's
+// own charset, with a digit in the body (the left-glue rule would otherwise be a
+// confound) and no byte that spells another row's prefix.
+func providerFixture(r providerRule, prefix string, bodyLen int) string {
+	// A body alphabet drawn from the row's charset. Every row's class admits
+	// these; they carry a digit and mixed case and spell no provider prefix.
+	alphabet := "aB1cD2eF3gH4jK5mN6pQ7rS8tU9vWxYz"
+	if r.Charset == `[0-9A-Z]` {
+		alphabet = "Q7Z2M9K4P1L8V3N6B5R0TX"
+	}
+	var b strings.Builder
+	b.WriteString(prefix)
+	switch prefix {
+	case "xoxb-":
+		b.WriteString("123456789012-123456789012-")
+	case "xoxp-":
+		b.WriteString("123456789012-123456789012-123456789012-")
+	}
+	for i := 0; i < bodyLen; i++ {
+		b.WriteByte(alphabet[i%len(alphabet)])
+	}
+	return b.String()
+}
+
+// expectedProviderText is what the row promises to report for a token whose body
+// has bodyLen bytes: the window for modeExact, the whole token for modeAtLeast.
+func expectedProviderText(r providerRule, tok string, prefix string, bodyLen int) string {
+	if r.Mode == modeExact && bodyLen > r.MinBody {
+		return tok[:len(tok)-(bodyLen-r.MinBody)]
+	}
+	return tok
+}
+
+// grammarContexts places a token in the shapes #769 measured: prose, a log line, a
+// Bearer header, a CSV cell, an env assignment under a key that is NOT a secret
+// keyword, one that is, a quoted assignment, inside a JSON string after `\n`, `\t`
+// and `\u0022` (at the end of the string and with text after), and after `%22`.
+func grammarContexts(tok string) map[string]string {
+	return map[string]string{
+		"prose":           "the old value " + tok + " was rotated",
+		"log":             "2026-10-13 08:00:01 INFO payments: client configured with " + tok,
+		"bearer":          "Authorization: Bearer " + tok,
+		"csv":             "merchant-7," + tok + ",active",
+		"env_nonkeyword":  "STRIPE_SK=" + tok,
+		"env_keyword":     "SERVICE_TOKEN=" + tok,
+		"quoted":          `api_key = "` + tok + `"`,
+		"json_n_end":      `{"a": "line\n` + tok + `"}`,
+		"json_t_more":     `{"a": "x\t` + tok + ` more text"}`,
+		"json_u0022":      `{"a": "\u0022` + tok + `\u0022"}`,
+		"percent_encoded": "q=%22" + tok + "%22",
+	}
+}
+
+// TestProviderGrammar is the per-row contract: in every context, a token of the row
+// yields exactly one finding of the row's type whose Text is what the row promises
+// (the whole run for a row without a vendor length, the window for a row with one),
+// and no other finding is equal to or inside that span. For modeAtLeast rows the
+// bodies are the minimum and the minimum plus 1, 8 and 75; for modeExact rows the
+// exact body and the exact body with 3 glued bytes, which must stay outside.
+//
+// Before #769 every over-long Stripe, GitLab and Slack token here reported its first
+// N bytes only: 75 of a 107-byte Stripe key were left to the redactor as prose.
+func TestProviderGrammar(t *testing.T) {
+	v := NewValidator()
+	for _, r := range providerRules {
+		var bodyLens []int
+		if r.Mode == modeAtLeast {
+			bodyLens = []int{r.MinBody, r.MinBody + 1, r.MinBody + 8, r.MinBody + 75}
+		} else {
+			bodyLens = []int{r.MinBody, r.MinBody + 3}
+		}
+		for _, prefix := range r.Prefixes {
+			for _, bl := range bodyLens {
+				tok := providerFixture(r, prefix, bl)
+				want := expectedProviderText(r, tok, prefix, bl)
+				for ctxName, line := range grammarContexts(tok) {
+					name := fmt.Sprintf("%s/%s/body%d/%s", r.Type, prefix, bl, ctxName)
+					t.Run(name, func(t *testing.T) {
+						ms, err := v.ValidateContent(line+"\n", "settings.txt")
+						if err != nil {
+							t.Fatal(err)
+						}
+						s := strings.Index(line, want)
+						typed := 0
+						for _, m := range ms {
+							if m.Type == r.Type {
+								typed++
+								if m.Text != want {
+									t.Errorf("%s reported %q (%d bytes), want the %s %q (%d bytes)",
+										r.Type, m.Text, len(m.Text), map[providerMode]string{modeExact: "window", modeAtLeast: "whole run"}[r.Mode], want, len(want))
+								}
+								continue
+							}
+							// Any other finding must not sit on or inside the token's span.
+							ms0 := strings.Index(line, m.Text)
+							if ms0 >= s && ms0+len(m.Text) <= s+len(want) {
+								t.Errorf("a second finding %s %q lies inside the %s span", m.Type, m.Text, r.Type)
+							}
+						}
+						if typed != 1 {
+							t.Errorf("want exactly one %s finding, got %d in %v", r.Type, typed, ms)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+// TestProviderRulesAreTheOnlySource is the derivation guard: every provider literal
+// the validator acts on comes from the table. It fails on a regex in
+// compileKeywordPatterns that starts with a provider prefix but was not generated by
+// a row, on a row whose regex is missing, on a prefix the line pre-check does not
+// admit, on a described row absent from GetCheckInfo, and on a predicate that
+// disagrees with its row's mode. Five hand-copied lists is how #769 happened.
+func TestProviderRulesAreTheOnlySource(t *testing.T) {
+	v := NewValidator()
+
+	generated := map[string]providerRule{}
+	for _, r := range providerRules {
+		if r.Mode != modeExact {
+			continue
+		}
+		for _, p := range r.Prefixes {
+			generated[r.pattern(p)] = r
+		}
+	}
+	seen := map[string]bool{}
+	for _, re := range v.keywordPatterns {
+		lp, _ := re.LiteralPrefix()
+		isProvider := false
+		for _, p := range allProviderPrefixes {
+			if strings.HasPrefix(lp, p) || (lp != "" && strings.HasPrefix(p, lp) && len(lp) >= 4) {
+				isProvider = true
+			}
+		}
+		if !isProvider {
+			continue
+		}
+		if _, ok := generated[re.String()]; !ok {
+			t.Errorf("keyword pattern %q carries a provider prefix but is not derived from providerRules", re.String())
+		}
+		seen[re.String()] = true
+	}
+	for pat, r := range generated {
+		if !seen[pat] {
+			t.Errorf("%s regex %q is in the table but not compiled into keywordPatterns", r.Type, pat)
+		}
+	}
+	for _, r := range providerRules {
+		if r.Mode == modeAtLeast {
+			// Not a regex: the run finder owns these. A regex here would scan the
+			// same bytes without the straddle rule and produce a second span.
+			for _, re := range v.keywordPatterns {
+				for _, p := range r.Prefixes {
+					if lp, _ := re.LiteralPrefix(); strings.HasPrefix(lp, p) {
+						t.Errorf("%s is a modeAtLeast row but %q is compiled as a keyword pattern", r.Type, re.String())
+					}
+				}
+			}
+		}
+	}
+
+	// The line pre-check admits every prefix on its own.
+	for _, p := range allProviderPrefixes {
+		if !v.containsSecretIndicators("the value " + p + " here and more") {
+			t.Errorf("containsSecretIndicators does not admit a line carrying %q", p)
+		}
+	}
+
+	// GetCheckInfo carries every described row.
+	info := strings.Join(v.GetCheckInfo().Patterns, "\n")
+	for _, r := range providerRules {
+		if r.Describe != "" && !strings.Contains(info, r.Describe) {
+			t.Errorf("GetCheckInfo does not carry the %s row's description", r.Type)
+		}
+	}
+
+	// The predicates agree with the rows' modes.
+	for _, r := range providerRules {
+		for _, p := range r.Prefixes {
+			exact := providerFixture(r, p, r.MinBody)
+			longer := providerFixture(r, p, r.MinBody+5)
+			shorter := providerFixture(r, p, r.MinBody-1)
+			if typ, base := providerTypeOf(exact); typ != r.Type || base != r.Base {
+				t.Errorf("providerTypeOf(%s at the minimum) = %q/%v, want %q/%v", p, typ, base, r.Type, r.Base)
+			}
+			if typ, _ := providerTypeOf(shorter); typ != "" {
+				t.Errorf("providerTypeOf(%s one under the minimum) = %q, want none", p, typ)
+			}
+			typ, _ := providerTypeOf(longer)
+			if r.Mode == modeAtLeast && typ != r.Type {
+				t.Errorf("%s is modeAtLeast but a longer token is typed %q", p, typ)
+			}
+			if r.Mode == modeExact && typ != "" {
+				t.Errorf("%s is modeExact but a longer token is typed %q", p, typ)
+			}
+			if v.getSecretType(exact) != r.Type {
+				t.Errorf("getSecretType(%s) = %q, want %q", p, v.getSecretType(exact), r.Type)
+			}
+		}
+	}
+}
+
+// TestProviderRunHazards pins the shapes that broke the two simpler fixes #769
+// measured (widening only the regex; consuming boundaries), the decoys the
+// left-glue rule exists for, the one residual it leaves, and what glued tokens do.
+func TestProviderRunHazards(t *testing.T) {
+	v := NewValidator()
+	const noDigit = "AbCdEfGhIjKlMnOpQrStUvWx"
+	long := "AbCdEfGh1jKlMnOpQrStUvW9xYz0123456789AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfGhIjKlMnOpQrStUvWxYz01234"
+	sk := func(body string) string { return "sk_" + "live_" + body }
+	pk := func(body string) string { return "pk_" + "live_" + body }
+
+	report := func(t *testing.T, line string) []string {
+		t.Helper()
+		ms, err := v.ValidateContent(line+"\n", "settings.txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(ms))
+		for _, m := range ms {
+			out = append(out, fmt.Sprintf("%s(%d)", m.Type, len(m.Text)))
+		}
+		return out
+	}
+	stripeTexts := func(t *testing.T, line string) []string {
+		t.Helper()
+		ms, _ := v.ValidateContent(line+"\n", "settings.txt")
+		var out []string
+		for _, m := range ms {
+			if m.Type == "STRIPE_API_KEY" {
+				out = append(out, m.Text)
+			}
+		}
+		return out
+	}
+
+	t.Run("identifier decoys report nothing", func(t *testing.T) {
+		// Each has a Stripe prefix inside a longer word and a body spelt from
+		// words: no digit. Before #769 all five were STRIPE_API_KEY at 70-100.
+		for _, line := range []string{
+			"void ta" + "sk_" + "live_" + "DashboardWidgetRefreshInterval() {",
+			"helpde" + "sk_" + "live_" + "ChatQueueRoutingStrategyEnabled = true",
+			"func ri" + "sk_" + "live_" + "PortfolioExposureCalculation() float64 {",
+			"def di" + "sk_" + "test_" + "ReadWriteThroughputBenchmark(self):",
+			"kio" + "sk_" + "test_" + "PrinterQueueDrainTimeoutSeconds()",
+		} {
+			if got := report(t, line); len(got) != 0 {
+				t.Errorf("%q reported %v, want nothing", line, got)
+			}
+		}
+	})
+
+	t.Run("the digit residual is reported, as a stated cost", func(t *testing.T) {
+		// An identifier whose camel-case body happens to carry a digit cannot be
+		// told from a key an author glued to a word, and a key wins that tie.
+		line := "ta" + "sk_" + "live_" + "RefreshIntervalMs500Default"
+		if got := stripeTexts(t, line); len(got) != 1 {
+			t.Errorf("want the residual reported once, got %v", got)
+		}
+	})
+
+	t.Run("short placeholders stay unreported", func(t *testing.T) {
+		for _, line := range []string{"key = sk_" + "test_1234567890abcdef", "key = sk_" + "test_abc123def456"} {
+			if got := report(t, line); len(got) != 0 {
+				t.Errorf("%q reported %v, want nothing (body under the minimum)", line, got)
+			}
+		}
+	})
+
+	t.Run("escape tails and a glued byte are not left glue", func(t *testing.T) {
+		for name, line := range map[string]string{
+			"x glued":         "x" + sk(long),
+			"json \\n":        `{"a": "line\n` + sk(long) + `"}`,
+			"json \\t more":   `{"a": "x\t` + sk(long) + ` more"}`,
+			"json \\u0022":    `{"a": "\u0022` + sk(long) + `\u0022"}`,
+			"percent %22":     "q=%22" + sk(long) + "%22",
+			"no-digit escape": `{"a": "line\n` + sk(noDigit) + `"}`,
+		} {
+			got := stripeTexts(t, line)
+			if len(got) != 1 || !strings.HasSuffix(got[0], long) && !strings.HasSuffix(got[0], noDigit) {
+				t.Errorf("%s: want one whole-run STRIPE finding, got %v", name, got)
+			}
+		}
+		// The rule itself: a no-digit body glued to a word byte is dropped.
+		if got := stripeTexts(t, "x"+sk(noDigit)); len(got) != 0 {
+			t.Errorf("no-digit key glued to a word byte reported %v, want nothing", got)
+		}
+	})
+
+	t.Run("adjacent tokens are each whole", func(t *testing.T) {
+		for name, sep := range map[string]string{"comma": ",", "space": " ", "nothing": ""} {
+			line := sk(long) + sep + pk(long)
+			got := stripeTexts(t, line)
+			if len(got) != 2 || got[0] != sk(long) || got[1] != pk(long) {
+				t.Errorf("%s-separated keys: got %v, want both whole", name, got)
+			}
+		}
+		// Two no-digit keys glued: the second starts where the first ends, which
+		// the straddle cut decided, so the left-glue rule does not fire on it.
+		if got := stripeTexts(t, sk(noDigit)+sk(noDigit)); len(got) != 2 {
+			t.Errorf("two glued no-digit keys: got %v, want two", got)
+		}
+	})
+
+	t.Run("no provider span partly overlaps another", func(t *testing.T) {
+		for _, line := range []string{
+			sk(long) + pk(long),
+			"glpat-" + "AbCdEfGhIjKlMnOpQrSt" + "glpat-" + "UvWxYz0123456789AbCd",
+			"xoxb-123456789012-123456789012-" + noDigit + "xoxb-123456789012-123456789012-" + "ZyXwVuTsRqPoNmLkJiHgFeDc",
+			sk(noDigit) + "AKIA" + "QZ7MK2PL9VNB4RTX",
+		} {
+			ms, _ := v.ValidateContent(line+"\n", "settings.txt")
+			type span struct{ s, e int }
+			var spans []span
+			for _, m := range ms {
+				s := strings.Index(line, m.Text)
+				spans = append(spans, span{s, s + len(m.Text)})
+			}
+			for i := range spans {
+				for j := range spans {
+					a, b := spans[i], spans[j]
+					if a.s < b.s && b.s < a.e && a.e < b.e {
+						t.Errorf("%q: spans [%d,%d) and [%d,%d) partly overlap", line, a.s, a.e, b.s, b.e)
+					}
+				}
+			}
+			// Every byte of every token is inside some finding.
+			covered := make([]bool, len(line))
+			for _, sp := range spans {
+				for k := sp.s; k < sp.e; k++ {
+					covered[k] = true
+				}
+			}
+			for k, c := range covered {
+				if !c {
+					t.Errorf("%q: byte %d (%q) is in no finding", line, k, line[k])
+					break
+				}
+			}
+		}
+	})
+
+	t.Run("glued GitLab tokens are one run", func(t *testing.T) {
+		// GitLab's charset admits '-' and letters, so two tokens with nothing
+		// between them are one run by the grammar and report as one token.
+		// Every byte is covered (asserted above); the count is the stated shape.
+		line := "glpat-" + "AbCdEfGhIjKlMnOpQrSt" + "glpat-" + "UvWxYz0123456789AbCd"
+		if got := report(t, line); len(got) != 1 || got[0] != "GITLAB_TOKEN(52)" {
+			t.Errorf("got %v, want one GITLAB_TOKEN(52)", got)
+		}
+	})
+
+	t.Run("GitLab routable suffix is part of the token", func(t *testing.T) {
+		tok := "glpat-" + "AbCdEfGhIjKlMnOpQrStUvWxYz012345" + ".01.0w" + "1a2b3c4"
+		got := report(t, "the old value "+tok+" was rotated")
+		if len(got) != 1 || got[0] != fmt.Sprintf("GITLAB_TOKEN(%d)", len(tok)) {
+			t.Errorf("got %v, want GITLAB_TOKEN(%d) covering the .vv.lliiiiiii suffix", got, len(tok))
+		}
+	})
+}
+
+// TestAKIAWindowPins pins the modeExact behaviour awsDocPlaceholderCap relies on,
+// through ValidateContent rather than the predicate: appended bytes are never in the
+// match, so the EXAMPLE marker can only be inside the 20-byte window.
+func TestAKIAWindowPins(t *testing.T) {
+	v := NewValidator()
+	aws := func(t *testing.T, line string) (string, float64) {
+		t.Helper()
+		ms, _ := v.ValidateContent(line+"\n", "settings.txt")
+		for _, m := range ms {
+			if m.Type == "AWS_ACCESS_KEY" {
+				return m.Text, m.Confidence
+			}
+		}
+		return "", -1
+	}
+	docID := "AKIA" + "IOSFODNN7EXAMPLE"
+	if text, conf := aws(t, "id "+docID+"X"); text != docID || conf != 15 {
+		t.Errorf("documentation key ID + 1 byte: got %q at %.0f, want the 20-byte window at the 15 ceiling", text, conf)
+	}
+	random := "AKIA" + "QZ7MK2PL9VNB4RTX"
+	if text, conf := aws(t, "id "+random+"EXAMPLE"); text != random || conf <= 15 {
+		t.Errorf("random key ID + EXAMPLE: got %q at %.0f, want the 20-byte window, uncapped", text, conf)
+	}
+	if text, _ := aws(t, "id "+random+"XYZ"); text != random {
+		t.Errorf("glued suffix: got %q, want the 20-byte window", text)
+	}
+}
+
+// TestProviderMarkerRuleOnlyOnExactRows guards the precondition of the value-
+// marker rule in awsDocPlaceholderCap: it may apply only to a type whose row is
+// modeExact, because on a run-to-the-end row an author could APPEND the marker to
+// a real key and the marker would be inside the match. Every type the cap names
+// must be a modeExact row (or the AWS secret-key path, which is a fixed 40-byte
+// capture and not in the table).
+func TestProviderMarkerRuleOnlyOnExactRows(t *testing.T) {
+	modes := map[string]providerMode{}
+	for _, r := range providerRules {
+		modes[r.Type] = r.Mode
+	}
+	for _, typ := range []string{"AWS_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY"} {
+		marker := "AKIA" + "QZ7MK2PL9VNB" + "EXAMPLE"
+		if typ == "AWS_SECRET_ACCESS_KEY" {
+			marker = "wJalrXUtnFEMI/K7MDENG/bPxRfiCY" + "EXAMPLE" + "KEY"
+		}
+		if awsDocPlaceholderCap(typ, marker) == 0 {
+			t.Fatalf("awsDocPlaceholderCap no longer applies to %s; this guard's list is stale", typ)
+		}
+		if mode, inTable := modes[typ]; inTable && mode != modeExact {
+			t.Errorf("%s carries the EXAMPLE marker rule but its grammar row is not modeExact: an appended marker would be inside the match", typ)
+		}
+	}
+	for _, r := range providerRules {
+		if r.Mode == modeAtLeast {
+			if awsDocPlaceholderCap(r.Type, providerFixture(r, r.Prefixes[0], r.MinBody)+"EXAMPLE") != 0 {
+				t.Errorf("the marker rule reaches %s, a modeAtLeast row", r.Type)
+			}
+		}
+	}
+}

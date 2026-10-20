@@ -75,6 +75,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hash changes, and the CLI is unchanged. **Adopters:** a copy made before this fix stays dead until it
   is re-copied, and a re-copied `block` workflow can turn your CI red on HIGH findings your repository
   already carries; start in `report` mode if you are not sure.
+- **secrets (provider token lengths):** Stripe, GitLab and Slack tokens longer than the old fixed
+  window are now matched, reported and **redacted whole** ([#769](https://github.com/awslabs/ferret-scan/issues/769)).
+  The validator matched these families as fixed-length windows with no boundary (`sk_live_[0-9a-zA-Z]{24}`,
+  `glpat-[a-zA-Z0-9_-]{20}`, Slack tails of exactly 24 or 32) and typed them with predicates locked to
+  the same lengths, yet no vendor publishes those lengths: Stripe documents prefixes only, a GitLab
+  personal access token is a routable token whose payload is 27 to 300 characters followed by `.vv.`
+  and 9 more, and Slack says the final `-` section is the secret, whatever its length. A longer token
+  was reported as its first N bytes and redacted as its first N bytes, with the rest written back as
+  text: measured on `v2.5.4`, a 107-byte Stripe secret key kept **75 bytes in the clear** in 9 of 11
+  realistic shapes (prose, a log line, a `Bearer` header, a CSV cell, `STRIPE_SK=`, `stripe_sk:`, a
+  test-mode `export`) under every strategy, through `--file` and `--stdin`, exit 0; a 51-byte GitLab
+  routable token kept 25; a Slack user token with a 34-byte tail kept 2. On a keyword line a second,
+  generic finding over the whole value hid the leak. Separately, `task_live_RefreshInterval`
+  and four identifiers like it were `STRIPE_API_KEY` at 70-100. Everything the validator knows about
+  a provider literal now comes from one table (`providerRules`, `internal/validators/secrets/provider_rules.go`):
+  the regexes, the type predicates, the base confidence, the line pre-check and the `--help` text,
+  with a guard test that fails on a literal written anywhere else. Rows with a vendor-fixed length
+  (AWS `AKIA`, GitHub `gh?_`, Google `AIza`, Docker `dckr_pat_`) are unchanged: the window is the key.
+  Rows without one (Stripe, GitLab, Slack) take the whole run of body bytes, at the same minimums as
+  before, so short placeholders (`sk_test_1234567890abcdef`) stay unreported; GitLab also takes the
+  routable suffix. Two tokens glued together are split where the second one's prefix begins
+  (`sk_live_<99>pk_live_<99>` reports two whole keys), and provider spans never partly overlap. A
+  Stripe prefix glued to a word byte on its left with no digit in the body is an identifier and is
+  dropped; the same shape with a digit (`task_live_RefreshMs500`) is still reported,
+  because a real key glued to a word cannot be told from it and a key wins the tie -- a stated,
+  pinned residual (a random 24-byte body has no digit with probability about 1.5%). Escape tails are
+  not glue: a key after a JSON `\n`, `\t` or `\u0022`, or a URL `%22`, is whole. Measured: all 13
+  shapes of the issue's reproduction report one whole-run provider finding with 0 bytes left in the
+  clear; a keyword line goes from two findings to one `STRIPE_API_KEY`; the five identifier decoys
+  report nothing; the golden corpus moves **no existing finding** (0 added, 0 lost, 0 confidence
+  changes; only the metadata key census gains the two new types), and `make score` is unchanged. Two
+  new corpus cases lock the shapes and their redaction; a new complexity target drives distinct
+  glued over-long tokens of all three families through the run scan (4.05x at 4x input). One
+  predicate tightened as a consequence of derivation: `AWS_ACCESS_KEY` now requires its 16 body
+  bytes to be `[0-9A-Z]`, as the regex always did, so a 20-byte entropy candidate with a lowercase
+  letter after `AKIA` is typed generic rather than AWS; no corpus finding moved. **Finding
+  identities change for over-long tokens**: the matched text is part of the hash, so a suppression
+  rule written against the old 32-byte `sk_live_` window, 26-byte `glpat-` window or fixed Slack
+  tail stops matching and the finding resurfaces, now whole -- regenerate those rules. Exact-length
+  tokens keep text, type, confidence and hash. `synthetic` redaction output for these tokens is now
+  the length of the whole token.
 
 ## [v2.5.4] - 2026-10-16
 
