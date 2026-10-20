@@ -236,6 +236,20 @@ var complexityTargets = []struct {
 		threshold:       15 * time.Second, // see personname note: heavy-but-linear
 	},
 	{
+		// #769: the provider families without a vendor-fixed length are found by a
+		// hand-rolled run scan (findProviderRuns) with a straddle cut and a resume-
+		// at-the-cut rule, not by the regex engine. This input is what would make a
+		// careless version of that scan quadratic: distinct over-long tokens of all
+		// three families, some glued to the next with nothing between (the straddle
+		// path), some separated. The secrets unit above never reaches that code.
+		name:            "secrets_provider_runs",
+		new:             func() validatorUnderTest { return secrets.NewValidator() },
+		gen:             genProviderRuns,
+		minMatches:      1500,
+		wantMatchGrowth: true,
+		threshold:       15 * time.Second,
+	},
+	{
 		name: "socialmedia",
 		// This validator is CONFIG-GATED: NewValidator alone leaves
 		// patternsConfigured false, so ValidateContent returns immediately at
