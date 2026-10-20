@@ -155,12 +155,51 @@ stands.
 
 ### Workflow Configuration
 
-The GitHub Actions workflow automatically:
-- Scans only changed files in PRs (performance optimization)
-- Posts results as PR comments with detailed findings
-- Uploads results to GitHub Security tab
-- Blocks merges on high-confidence findings
+The GitHub Actions workflow:
+- Scans only changed files in PRs (performance optimization), and the whole repository on a push to `main`/`master`
+- Counts HIGH and MEDIUM findings from each report's `stats` block, which `--limit` does not cap
+- Posts the counts as a PR comment and job summary that name the gate mode. "No sensitive data detected" appears only when ferret-scan exited 0, every file was fully examined, at least one file was scanned and both counts are 0
+- Uploads the JSON reports and ferret-scan's stderr as the `ferret-scan-results` build artifact (findings are not published to the GitHub Security tab)
+- Ends with a gate step whose handling of HIGH findings is set by `GATE_MODE` (below)
 - Uses your team's `.ferret-scan.yaml` configuration
+
+### Gate mode (`GATE_MODE`)
+
+The last step, **Gate on scan result and high confidence findings**, runs whenever a scan ran and
+fails closed in both modes: it fails the check when a count is missing or not an integer, when
+ferret-scan exited non-zero (the scans pass `--fail-on-incomplete`, so a file it could not fully
+examine exits 3), or when `GATE_MODE` is anything but `block` or `report`. Only HIGH findings depend
+on the mode:
+
+| `GATE_MODE` | HIGH findings > 0 |
+|---|---|
+| `block` (template default) | fail the check |
+| `report` | are counted and shown in the log, PR comment and job summary; the check passes |
+
+The workflow sets it at the top:
+
+```yaml
+env:
+  GATE_MODE: ${{ github.repository == 'awslabs/ferret-scan' && 'report' || 'block' }}
+```
+
+so a copy in any other repository runs `block`. Replace the expression with `report` to adopt the
+workflow without failing on findings your repository already carries, then switch to `block`.
+
+ferret-scan's own repository runs `report`, for its PR scan and its post-merge push scan. Its source
+and test corpora carry deliberate HIGH findings, so `block` would fail most of its runs (40 of the 56
+PR runs that scanned files from 2026-09-14 to 2026-10-13, 27 of 56 even with
+`internal/goldencorpus/`, `internal/scorecorpus/` and `testdata/` excluded), and its committed
+suppression baseline has expired ([#696](https://github.com/awslabs/ferret-scan/issues/696)). The
+push scan runs after the merge, so in `block` mode it turns the merged commit's check red rather than
+stopping anything.
+
+> **Copies of this workflow made before [#767](https://github.com/awslabs/ferret-scan/issues/767)
+> never blocked anything.** They compared each finding's `confidence` with the string `"HIGH"`, but
+> `confidence` is the numeric score (the band is `confidence_level`), so every run counted 0, skipped
+> the gate and commented "No sensitive data detected". An existing copy stays that way until you
+> re-copy the workflow, and a re-copied `block` workflow can turn your CI red on HIGH findings your
+> repository already carries: run it in `report` mode first if you are not sure.
 
 ### Repository Permissions Setup
 
@@ -176,7 +215,10 @@ Add Ferret Scan as a required check:
 1. **Go to Settings → Branches**
 2. **Add rule for main/master branch:**
    - ✅ "Require status checks to pass"
-   - ✅ Select "Ferret Scan Security Check"
+   - ✅ Select "Sensitive Data Detection" (the job of the "Ferret Scan Security Check" workflow)
+
+In `block` mode a HIGH finding then blocks the merge; in `report` mode only a failed or incomplete
+scan does.
 
 ## Suppression Management
 
