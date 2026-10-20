@@ -1,0 +1,12 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                 FILE
+-----------------------------------------------------------------------------------------------
+[LOW   ] email        BUSINESS               48.00% line     1 user00001@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line     3 user00002@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line     5 user00003@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line     7 user00004@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line     9 user00005@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line    11 user00006@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line    13 user00007@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line    15 user00008@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line    17 user00009@example.com contacts.docx
+[LOW   ] email        BUSINESS               48.00% line    19 user00010@example.com contacts.docx

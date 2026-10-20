@@ -25,6 +25,11 @@ import (
 // (regardless of the order they appear). This is the one-flag way to bound every
 // validator without naming all 13.
 //
+// METADATA is one of those validators. Its budget is checked between metadata
+// items rather than inside one (execguard.LoopBudget), and before #771 it was
+// accepted here and then ignored by the scan, the silently-ignored budget the next
+// paragraph rules out.
+//
 // An empty/whitespace value yields a nil map (budgets disabled — the scan is
 // byte-identical to today). Names are validated against the known check set and
 // must be positive durations, so a typo or a stray "0s" is a hard error rather

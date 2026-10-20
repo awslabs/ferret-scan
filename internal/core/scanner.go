@@ -49,6 +49,13 @@ type ScanConfig struct {
 	// is forwarded verbatim to the worker pool's JobConfig; the mirror of the
 	// CLI's --max-live-bytes flag.
 	MaxLiveBytes int64
+	// ValidatorBudgets optionally bounds per-validator execution on the file path,
+	// keyed by check name; nil/empty = disabled = historical behavior. It is
+	// forwarded verbatim to the worker pool's JobConfig, as ContentScanConfig's is
+	// on the in-memory path: the mirror of the CLI's --validator-budget, which builds
+	// its own JobConfig. Added so the golden corpus can lock a file-path cut-short
+	// (#771).
+	ValidatorBudgets map[string]execguard.ValidatorBudget
 	// Explain, when true, attaches an advisory explanation (plain-language
 	// rationale, verdict gloss, drafted suppression reason) to each surfaced
 	// match via internal/explain. Off by default (opt-in). It never mutates
@@ -174,6 +181,7 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		RedactionStrategy:  scanConfig.RedactionStrategy,
 		RedactionOutputDir: scanConfig.RedactionOutputDir,
 		MaxLiveBytes:       scanConfig.MaxLiveBytes,
+		ValidatorBudgets:   scanConfig.ValidatorBudgets,
 	}
 
 	parallelProcessor := parallel.NewParallelProcessor(observer)

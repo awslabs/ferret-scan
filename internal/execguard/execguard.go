@@ -211,9 +211,8 @@ func ValidateContent(ctx context.Context, name string, v detector.Validator, con
 	// dropping matches a timed-out scan did find would double-signal. When the
 	// count is at/under the cap (or the cap is disabled), matches is returned
 	// completely unmutated: byte-identical to the no-budget path.
-	if err == nil && b.MatchLimit > 0 && len(matches) > b.MatchLimit {
-		matches = matches[:b.MatchLimit]
-		err = fmt.Errorf("%w: validator %q emitted more than %d matches", ErrMatchBudgetExceeded, name, b.MatchLimit)
+	if err == nil {
+		matches, err = CapMatches(name, b, matches)
 	}
 	return matches, err
 }

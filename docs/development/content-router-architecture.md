@@ -459,10 +459,12 @@ The enhanced metadata validator integrates with the Context Analysis Engine to:
 
 The system implements comprehensive error handling:
 
-1. **Content Router Failure**: Falls back to legacy content aggregation
+1. **Content Router Failure**: Falls back to legacy content aggregation, which keeps the matches gathered before a cut-short and returns the cut-short error
 2. **Metadata Validator Failure**: Continues with document validators only
-3. **Partial Processing**: Processes available content even if some components fail
-4. **Graceful Degradation**: Maintains system functionality during component failures
+3. **METADATA Not Selected**: Not a failure. The metadata path is skipped, and the document path still scans the metadata text, because it reads the full extraction
+4. **One Path Cut Short**: A deadline, budget, size cap or recovered panic on either path keeps every match both paths gathered and is returned, so the file is reported incomplete; a scan cut short is never re-run through the fallback
+5. **Partial Processing**: Processes available content even if some components fail
+6. **Graceful Degradation**: Maintains system functionality during component failures
 
 ## Context Analysis Engine Integration
 

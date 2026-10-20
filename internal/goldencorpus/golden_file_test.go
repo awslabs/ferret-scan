@@ -31,6 +31,7 @@ func TestGoldenFileScanFormats(t *testing.T) {
 				FilePath:            path,
 				Checks:              fc.Checks,
 				EnablePreprocessors: fc.EnablePreprocessors,
+				ValidatorBudgets:    fc.ValidatorBudgets,
 				LogWriter:           io.Discard, // payload-free; also keeps test output clean
 			})
 			if err != nil {

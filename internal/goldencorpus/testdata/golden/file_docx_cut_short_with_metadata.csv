@@ -1,0 +1,12 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+contacts.docx,AUTHOR_INFO,LOW,55.0,1,Sample Author
+contacts.docx,BUSINESS,LOW,48.0,1,user00001@example.com
+contacts.docx,BUSINESS,LOW,48.0,3,user00002@example.com
+contacts.docx,BUSINESS,LOW,48.0,5,user00003@example.com
+contacts.docx,BUSINESS,LOW,48.0,7,user00004@example.com
+contacts.docx,BUSINESS,LOW,48.0,9,user00005@example.com
+contacts.docx,BUSINESS,LOW,48.0,11,user00006@example.com
+contacts.docx,BUSINESS,LOW,48.0,13,user00007@example.com
+contacts.docx,BUSINESS,LOW,48.0,15,user00008@example.com
+contacts.docx,BUSINESS,LOW,48.0,17,user00009@example.com
+contacts.docx,BUSINESS,LOW,48.0,19,user00010@example.com

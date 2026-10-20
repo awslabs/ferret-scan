@@ -1,0 +1,361 @@
+results:
+    - text: user00001@example.com
+      line_number: 1
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00001
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00002@example.com
+      line_number: 2
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00002
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00003@example.com
+      line_number: 3
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00003
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00004@example.com
+      line_number: 4
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00004
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00005@example.com
+      line_number: 5
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00005
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00006@example.com
+      line_number: 6
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00006
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00007@example.com
+      line_number: 7
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00007
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00008@example.com
+      line_number: 8
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00008
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00009@example.com
+      line_number: 9
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00009
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: user00010@example.com
+      line_number: 10
+      type: BUSINESS
+      confidence: 48
+      confidence_level: LOW
+      filename: contacts.txt
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 0
+        context_doctype: Unknown
+        context_domain: Unknown
+        context_impact: -12
+        domain: example.com
+        email_provider: BUSINESS
+        original_confidence: 48
+        original_file: contacts.txt
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: com
+        username: user00010
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document

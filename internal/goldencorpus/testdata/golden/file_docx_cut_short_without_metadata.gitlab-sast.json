@@ -1,0 +1,290 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 1)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00001@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "contacts.docx",
+        "start_line": 1
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 3)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00002@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "contacts.docx",
+        "start_line": 3
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 5)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00003@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "contacts.docx",
+        "start_line": 5
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 7)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00004@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "contacts.docx",
+        "start_line": 7
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 9)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00005@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 9,
+        "file": "contacts.docx",
+        "start_line": 9
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 11)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00006@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 11,
+        "file": "contacts.docx",
+        "start_line": 11
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 13)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00007@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 13,
+        "file": "contacts.docx",
+        "start_line": 13
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 15)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00008@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 15,
+        "file": "contacts.docx",
+        "start_line": 15
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 17)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00009@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 17,
+        "file": "contacts.docx",
+        "start_line": 17
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** contacts.docx (line 19)\n**Confidence:** LOW (48.0%)\n**Detected by:** email validator\n\n**Context:**\n```\nContact user00010@example.com for the record.\n```\n\n**Additional Information:**\n- context_impact: -12\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 19,
+        "file": "contacts.docx",
+        "start_line": 19
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    }
+  ]
+}

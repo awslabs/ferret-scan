@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/olefixture"
 	"github.com/awslabs/ferret-scan/v2/pkg/redact"
 )
@@ -770,6 +771,12 @@ type FileCase struct {
 	// (e.g. .wav): CanProcessFile rejects binary documents unless preprocessors
 	// are enabled. Plain-text/source cases leave this false (the CLI default).
 	EnablePreprocessors bool
+	// ValidatorBudgets, when set, is passed to core.ScanFile as the CLI's
+	// --validator-budget would be, so a case can lock what a file-path cut-short
+	// reports. Nil (every case before #771) means no budgets: the scan is the
+	// historical one. A 1ns time budget is deterministic: it has expired before
+	// the validator is due to start, so the dispatch check skips it every run.
+	ValidatorBudgets map[string]execguard.ValidatorBudget
 }
 
 // FileCases is the Tier 1 + Tier 2 file corpus.
@@ -1258,6 +1265,65 @@ var FileCases = []FileCase{
 		Tier1Parity:         false,
 		EnablePreprocessors: true,
 	},
+	// --- #771: a cut-short on a metadata-capable file scanned without METADATA ---------------
+	//
+	// One recall case and three decoys over the same ten paragraphs. Only the recall case changed
+	// with the fix; the decoys are the runs that already worked, and their snapshots must not move.
+	{
+		Name: "file_docx_cut_short_without_metadata",
+		Description: "#771 recall: a .docx scanned with EMAIL,PHONE and a PHONE budget that always fires. " +
+			"Before the fix this recorded NOTHING: with METADATA unselected the metadata path failed on " +
+			"every metadata-capable file, the PHONE cut-short made the document path fail too, and the " +
+			"both-paths-failed branch returned no matches, so all ten EMAIL findings (which PHONE's budget " +
+			"never touched) were lost at exit 0. The ten EMAIL findings are the point of the case.",
+		Checks:              []string{"EMAIL", "PHONE"},
+		Filename:            "contacts.docx",
+		Content:             BuildDOCX("Sample Author", "", cutShortParagraphs()),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+		ValidatorBudgets:    map[string]execguard.ValidatorBudget{"PHONE": {TimeLimit: time.Nanosecond}},
+	},
+	{
+		Name: "file_docx_without_metadata_no_budget",
+		Description: "#771 decoy: the recall case's file and checks with no budget. Nothing is cut short, " +
+			"so this was right before the fix and must stay byte-identical.",
+		Checks:              []string{"EMAIL", "PHONE"},
+		Filename:            "contacts.docx",
+		Content:             BuildDOCX("Sample Author", "", cutShortParagraphs()),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+	},
+	{
+		Name: "file_docx_cut_short_with_metadata",
+		Description: "#771 decoy: the recall case with METADATA selected. The metadata path succeeded, so " +
+			"only one path failed and the findings were kept before the fix too; must stay byte-identical.",
+		Checks:              []string{"EMAIL", "PHONE", "METADATA"},
+		Filename:            "contacts.docx",
+		Content:             BuildDOCX("Sample Author", "", cutShortParagraphs()),
+		Tier1Parity:         false,
+		EnablePreprocessors: true,
+		ValidatorBudgets:    map[string]execguard.ValidatorBudget{"PHONE": {TimeLimit: time.Nanosecond}},
+	},
+	{
+		Name: "file_txt_cut_short_twin",
+		Description: "#771 decoy: the recall case's paragraphs as .txt. A text file routes no metadata item, " +
+			"so it never reached the failing branch; must stay byte-identical.",
+		Checks:           []string{"EMAIL", "PHONE"},
+		Filename:         "contacts.txt",
+		Content:          []byte(strings.Join(cutShortParagraphs(), "\n") + "\n"),
+		Tier1Parity:      false,
+		ValidatorBudgets: map[string]execguard.ValidatorBudget{"PHONE": {TimeLimit: time.Nanosecond}},
+	},
+}
+
+// cutShortParagraphs is the body of the #771 cases: ten synthetic addresses under the reserved
+// example.com domain (RFC 2606), one per paragraph.
+func cutShortParagraphs() []string {
+	paras := make([]string, 0, 10)
+	for i := 1; i <= 10; i++ {
+		paras = append(paras, fmt.Sprintf("Contact user%05d@example.com for the record.", i))
+	}
+	return paras
 }
 
 // BuildWAVWithInfo synthesizes a minimal but valid WAV file (RIFF/WAVE + fmt +
