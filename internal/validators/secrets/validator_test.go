@@ -1686,7 +1686,7 @@ func TestSecretsValidator_GenericContextBoostCapped(t *testing.T) {
 	ci := contextInsightsForTest("Configuration")
 	ci.Domain = "Financial"
 	conf, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(
-		hex, line, line, lineKeywordUnknown, ci, false, "production")
+		hex, line, line, lineKeywordUnknown, ci, false, "production", false)
 	if !checks["generic_context_boost_capped"] {
 		t.Errorf("expected generic boost cap to engage for stacked prod+financial+config")
 	}
