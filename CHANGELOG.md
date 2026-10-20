@@ -116,6 +116,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tail stops matching and the finding resurfaces, now whole -- regenerate those rules. Exact-length
   tokens keep text, type, confidence and hash. `synthetic` redaction output for these tokens is now
   the length of the whole token.
+- **cli, config (redaction strategy and pre-commit exit level):** an unrecognised `--redaction-strategy`
+  or `FERRET_PRECOMMIT_EXIT_ON` value is now refused with exit 1 before anything is scanned or written,
+  instead of silently becoming the default ([#772](https://github.com/awslabs/ferret-scan/issues/772)).
+  Any value other than exactly `simple`, `format_preserving` or `synthetic` -- `SIMPLE`, `simpel`,
+  `" simple"`, `format-preserving`, `none`, `bogus` -- given on the flag, through `--stdin`, in an
+  explicit config's `redaction.strategy`, in a profile, or in an auto-discovered `.ferret-scan.yaml`,
+  redacted with `format_preserving` at exit 0 with an empty stderr: `SSN: ***-**-8901` and
+  `**** **** **** 9015` where `simple` writes `[SSN-REDACTED]` and `[CREDIT-CARD-REDACTED]`, the last
+  four digits and the email's first character and domain left in the clear by a strategy nobody asked
+  for. A typo on the flag also threw away a valid `strategy: simple` from the config, and the explicit
+  config's schema let `" simple "`, `"simple,"`, `"simple,synthetic"` and `"  "` through to a parser
+  that matched none of them. Separately, `FERRET_PRECOMMIT_EXIT_ON` ignored every value outside
+  `high, medium, low, none`, so with one MEDIUM finding `medium` blocked the commit (exit 1) while
+  `MEDIUM`, `Medium` or `LOW` let it through (exit 0): a gate failing open on a typo. Now: exact match
+  only, no case folding, no trimming, no lists -- folding `None` to `none` would let a commit that is
+  blocked today pass after an upgrade, and `SIMPLE` runs would switch from masked to placeholder output,
+  both without a word; refusing keeps every run that exits 0 today byte-identical. The strategy is
+  parsed once, after precedence, by one helper shared by the `--file` and `--stdin` paths, and the
+  message names the value, the three names, a `did you mean` hint for a case or whitespace variant, and
+  the source: `--redaction-strategy`, `profile "x" redaction.strategy in <path>`, or
+  `redaction.strategy in <path> (auto-discovered)`. Validation is unconditional, so a run that does not
+  redact but carries an invalid strategy now exits 1 (the stated cost). The strategy travels typed from
+  there through the job configuration; no site re-parses a name, and the worker refuses a value outside
+  the definition. The config schema applies the parser's exact rule to `redaction.strategy` (the one
+  enum whose leniency reached the output); `--format` keeps its lenient schema rule because it already
+  exits 1 downstream. In pre-commit mode (`--pre-commit-mode` or a detected hook) an unknown
+  `FERRET_PRECOMMIT_EXIT_ON` exits 1 on both paths, naming the variable, before scanning and without
+  "commit blocked" text; outside pre-commit mode the variable is not read and an invalid value has no
+  effect; unset, `""` and the four names keep their exit codes. Suppression hashes and output schemas are
+  unchanged (no finding's text, line or type changes); exit 1 is the existing usage-error code, so hooks
+  fail closed. The audit log's strategy integers are unchanged. Docs state the exact-spelling rule.
+
+### 🚀 Features
+
+- **pkg/scan (`ParseStrategyStrict`):** `scan.ParseStrategyStrict(name) (RedactStrategy, error)` parses a
+  strategy name exactly and returns an error for anything else, including `""`. `scan.ParseStrategy` is
+  **deprecated** and unchanged (it still falls back to `format_preserving`), for the callers written
+  against it. `scan.RedactText` and `scan.RedactFile` now return an error for a `RedactStrategy` outside
+  the three constants (`RedactStrategy(7)`) before anything is written, as `pkg/redact.NewEngine` already
+  did; only callers passing an undefined constant are affected. A pinned `ConfigPath` that **exists** but
+  fails the strict load -- unparseable, or rejected by the schema -- now makes `ScanText`, `ScanFile` and
+  `RedactFile` return that error instead of silently scanning with built-in defaults (measured: a pinned
+  config holding a custom pattern plus `strategy: " simple "` went from 1 finding to 0 with `err=nil` the
+  moment the schema was tightened, because the whole file was replaced by defaults). A **missing** path
+  still falls back to defaults, per #317 ([#772](https://github.com/awslabs/ferret-scan/issues/772)).
 
 ## [v2.5.4] - 2026-10-16
 

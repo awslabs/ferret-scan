@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
@@ -298,11 +299,18 @@ func ScanText(_ context.Context, text string, opts TextOptions) (*Result, error)
 		return nil, err
 	}
 
+	// A pinned ConfigPath that exists but fails the strict load is an error, not a
+	// silent fall-back to defaults (#772); see resolveConfig.
+	cfg, err := resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery)
+	if err != nil {
+		return nil, err
+	}
+
 	coreResult, err := core.ScanContent(text, core.ContentScanConfig{
 		VirtualPath: label,
 		Checks:      checks,
 		Explain:     opts.Explain,
-		Config:      resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery),
+		Config:      cfg,
 		LogWriter:   logWriter,
 	})
 	if err != nil {
@@ -336,12 +344,17 @@ func ScanFile(_ context.Context, path string, opts FileOptions) (*Result, error)
 		return nil, err
 	}
 
+	cfg, err := resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery)
+	if err != nil {
+		return nil, err
+	}
+
 	coreResult, err := core.ScanFile(core.ScanConfig{
 		FilePath:            path,
 		Checks:              checks,
 		EnablePreprocessors: true,
 		Explain:             opts.Explain,
-		Config:              resolveConfig(opts.ConfigPath, opts.DisableConfigDiscovery),
+		Config:              cfg,
 		LogWriter:           logWriter,
 		MaxLiveBytes:        opts.MaxLiveBytes,
 	})
@@ -501,22 +514,31 @@ func normalizeChecks(checks []string) ([]string, error) {
 // Discovery searches the process WORKING DIRECTORY first, so a config beside the scanned
 // content wins and can switch off whole detection categories. That is fine for a CLI the
 // user is driving and wrong for an embedded consumer that never chose it. See #293.
-func resolveConfig(configPath string, disableDiscovery bool) *config.Config {
+func resolveConfig(configPath string, disableDiscovery bool) (*config.Config, error) {
 	if disableDiscovery {
 		// LoadConfig("") is the built-in-defaults constructor and cannot fail.
 		cfg, _ := config.LoadConfig("")
-		return cfg
+		return cfg, nil
 	}
 	if configPath != "" {
-		// Strict: a caller that named a file wants to hear about it being unreadable
-		// rather than silently getting defaults, which is the failure mode this whole
-		// issue is about. Fall back to defaults so the scan still runs, but the caller
-		// can tell by inspecting cfg.SourcePath.
-		if cfg, err := config.LoadConfigStrict(configPath); err == nil {
-			return cfg
+		// Strict: a caller that named a file wants to hear about it.
+		//
+		// Two failures are told apart here. A path that does not exist (or cannot
+		// be stat'ed) falls back to built-in defaults so the scan still runs, which
+		// is the #317 contract and is pinned by
+		// TestUnreadableConfigPathFallsBackToDefaultsRatherThanCrashing; the caller
+		// can tell by inspecting cfg.SourcePath. A file that EXISTS and fails the
+		// strict load -- unparseable, or rejected by the schema -- is returned as an
+		// error (#772). It used to fall back silently too, and the fallback is what
+		// made the schema unsafe to tighten: a pinned config holding a custom
+		// pattern plus `strategy: " simple "` found 1 finding under the lenient
+		// schema and 0 under the exact one, with err=nil both times, because the
+		// whole file was replaced by defaults the moment the schema rejected it.
+		if _, statErr := os.Stat(configPath); statErr != nil {
+			cfg, _ := config.LoadConfig("")
+			return cfg, nil
 		}
-		cfg, _ := config.LoadConfig("")
-		return cfg
+		return config.LoadConfigStrict(configPath)
 	}
-	return config.LoadConfigOrDefault("")
+	return config.LoadConfigOrDefault(""), nil
 }

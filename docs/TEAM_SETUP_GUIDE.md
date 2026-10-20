@@ -106,7 +106,9 @@ profiles:
 
 Which findings are looked for, and at which confidence, are **command-line flags**. The
 only environment variable that changes what the hook does to your commit is
-`FERRET_PRECOMMIT_EXIT_ON`.
+`FERRET_PRECOMMIT_EXIT_ON`, and it takes exactly `high`, `medium`, `low` or `none`:
+a misspelled or differently cased value fails the hook with a message naming the
+variable instead of quietly leaving the gate at `high`.
 
 ### Strategy 1: Strict Security (Recommended for Production)
 ```yaml

@@ -35,7 +35,11 @@ type RedactConfig struct {
 	// OutputDir is the base directory where the redacted copy is written. The
 	// redactor mirrors the input's path structure beneath this directory.
 	OutputDir string
-	// Strategy is one of "simple", "format_preserving" (default), or "synthetic".
+	// Strategy is exactly one of "simple", "format_preserving" or "synthetic",
+	// or "" for the default, format_preserving. Any OTHER value is an error
+	// before any output path is created (#772): this is a Go API whose empty
+	// value means "not set", the way an unset CLI layer does; a name that was
+	// set and does not match is a typo, and a typo must not become a strategy.
 	Strategy string
 	// Checks selects validators; empty or ["all"] runs every validator.
 	Checks []string
@@ -93,7 +97,17 @@ func RedactFile(cfg RedactConfig) (*RedactResult, error) {
 	// Build the redaction manager with all default redactors registered. This
 	// is the SAME shared factory the CLI uses (NewDefaultRedactionManager), so
 	// manager config and the set of registered redactors live in one place.
-	strategy := redactors.ParseRedactionStrategy(cfg.Strategy)
+	// The strategy is parsed strictly here, BEFORE the manager creates the
+	// output directory or any mirrored path: a typo used to become
+	// format_preserving silently (#772), and an error after the write would
+	// leave a file this API calls a redacted copy.
+	strategy := redactors.RedactionFormatPreserving
+	if cfg.Strategy != "" {
+		var err error
+		if strategy, err = redactors.ParseRedactionStrategy(cfg.Strategy); err != nil {
+			return nil, err
+		}
+	}
 	redactionManager, outputManager, err := NewDefaultRedactionManager(cfg.OutputDir, strategy, observer)
 	if err != nil {
 		return nil, err
@@ -112,7 +126,7 @@ func RedactFile(cfg RedactConfig) (*RedactResult, error) {
 	// redaction and writes the output file.
 	jobConfig := &parallel.JobConfig{
 		EnableRedaction:   true,
-		RedactionStrategy: cfg.Strategy,
+		RedactionStrategy: strategy,
 	}
 	pp := parallel.NewParallelProcessor(observer)
 	matches, stats, err := pp.ProcessFilesWithProgress(

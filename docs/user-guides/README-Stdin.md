@@ -89,7 +89,7 @@ git diff | ferret-scan --stdin --stdin-name "<git-diff>" --suppression-file ./.f
 
 ## Streaming redaction gateway
 
-The combination `--stdin --enable-redaction` is the gateway pattern. All three plaintext redaction strategies are supported:
+The combination `--stdin --enable-redaction` is the gateway pattern. All three plaintext redaction strategies are supported, spelled exactly as below; any other value exits 1 with nothing written to stdout, so a gateway never passes input through under a strategy it did not ask for:
 
 | Strategy | Example output |
 |---|---|

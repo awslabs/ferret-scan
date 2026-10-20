@@ -178,7 +178,7 @@ repos:
 | Variable | Options | Default | Description |
 |----------|---------|---------|-------------|
 | `FERRET_PRECOMMIT_BATCH_SIZE` | Number (1-100) | `50` | Files processed per batch |
-| `FERRET_PRECOMMIT_EXIT_ON` | `high`, `medium`, `low`, `none` | `high` | When to block commits |
+| `FERRET_PRECOMMIT_EXIT_ON` | `high`, `medium`, `low`, `none` | `high` | When to block commits. Exact spelling, case-sensitive: any other value (`MEDIUM`, `Medium`, `off`) makes the hook exit 1 before scanning, naming the variable, rather than silently blocking on `high` only |
 | `FERRET_PRECOMMIT_EXIT_ON_FIRST` | `true`, `false` | `false` | Exit on first finding |
 | `FERRET_PRECOMMIT` | `0`, `false`, `f` | unset | **Opt out** of pre-commit mode entirely, even inside a real hook |
 
