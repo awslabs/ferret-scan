@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -70,11 +71,33 @@ func cutShortEmails() []string {
 	return paras
 }
 
+// cutShortFiller is the neutral 1,150-byte paragraph the issue's generator uses: plain
+// English, nothing any validator reports.
+func cutShortFiller() string {
+	return strings.Repeat("the quarterly report covers routine operational matters for the period under review ", 14)[:1150]
+}
+
+// cutShortBudgetParas is the small fixture's ten addresses followed by about 1 MB of
+// filler. The size is for the time-budget runs, not the findings: a 1ns budget is a
+// timer, not an already-expired deadline, on a clock as coarse as Windows's (ticks of
+// 0.5-15.6 ms), and a validator over ten short lines finishes before the timer fires,
+// so the budget never shows. Over a megabyte the cut validator is still polling its
+// context tens of milliseconds later. Well under CLOUD_RESOURCES's 5 MB cap, so the
+// only cut-short in these runs is the budget. The deflated .docx is a few KB.
+func cutShortBudgetParas() []string {
+	paras := cutShortEmails()
+	filler := cutShortFiller()
+	for i := 0; i < 900; i++ {
+		paras = append(paras, filler)
+	}
+	return paras
+}
+
 // cutShortCapParas is the issue's cap fixture: one address, then 4,560 copies of a neutral
 // 1,150-byte filler, which puts the body at 5,248,606 bytes, just over CLOUD_RESOURCES's
 // 5,242,880-byte cap. The deflated .docx is about 28 KB.
 func cutShortCapParas() []string {
-	filler := strings.Repeat("the quarterly report covers routine operational matters for the period under review ", 14)[:1150]
+	filler := cutShortFiller()
 	paras := []string{"Contact user00001@example.com for the record."}
 	for i := 0; i < 4560; i++ {
 		paras = append(paras, filler)
@@ -134,7 +157,7 @@ func TestMetadataCapableFileKeepsFindingsOnACutShort(t *testing.T) {
 	t.Run("budget docx", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortEmails()))
+		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortBudgetParas()))
 
 		control := runCutShort(t, bin, dir, append([]string{"--file", docx, "--checks", "EMAIL,PHONE"}, jsonArgs...)...)
 		if control.rc != 0 || len(control.report.Results) != 10 {
@@ -180,8 +203,8 @@ func TestMetadataCapableFileKeepsFindingsOnACutShort(t *testing.T) {
 		if err := os.Mkdir(scanDir, 0o750); err != nil {
 			t.Fatal(err)
 		}
-		writeCutShortFile(t, scanDir, "small.docx", cutShortDocx(t, cutShortEmails()))
-		writeCutShortFile(t, scanDir, "small.txt", []byte(strings.Join(cutShortEmails(), "\n")+"\n"))
+		writeCutShortFile(t, scanDir, "small.docx", cutShortDocx(t, cutShortBudgetParas()))
+		writeCutShortFile(t, scanDir, "small.txt", []byte(strings.Join(cutShortBudgetParas(), "\n")+"\n"))
 
 		run := runCutShort(t, bin, dir, append([]string{"--file", scanDir, "--recursive", "--checks", "EMAIL,PHONE",
 			"--validator-budget", "PHONE=1ns"}, jsonArgs...)...)
@@ -201,7 +224,7 @@ func TestMetadataCapableFileKeepsFindingsOnACutShort(t *testing.T) {
 	t.Run("precommit profile", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortEmails()))
+		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortBudgetParas()))
 
 		// The built-in precommit profile's checks omit METADATA (internal/config), as does the
 		// examples/ferret.yaml one.
@@ -216,7 +239,7 @@ func TestMetadataCapableFileKeepsFindingsOnACutShort(t *testing.T) {
 	t.Run("redaction", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortEmails()))
+		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortBudgetParas()))
 		out := filepath.Join(dir, "redacted")
 
 		run := runCutShort(t, bin, dir, append([]string{"--file", docx, "--checks", "EMAIL,PHONE",
@@ -259,7 +282,7 @@ func TestMetadataCapableFileKeepsFindingsOnACutShort(t *testing.T) {
 	t.Run("sarif", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortEmails()))
+		docx := writeCutShortFile(t, dir, "small.docx", cutShortDocx(t, cutShortBudgetParas()))
 		sarif := filepath.Join(dir, "out.sarif")
 
 		run := runCutShort(t, bin, dir, "--file", docx, "--checks", "EMAIL,PHONE", "--validator-budget", "PHONE=1ns",
@@ -303,6 +326,15 @@ func TestMetadataCapableFileKeepsFindingsOnACutShort(t *testing.T) {
 		for _, spec := range []string{"METADATA=1ns", "all=1ns"} {
 			run := runCutShort(t, bin, dir, append([]string{"--file", docx, "--checks", "METADATA",
 				"--validator-budget", spec}, jsonArgs...)...)
+			if run.rc == 0 && runtime.GOOS == "windows" {
+				// The one metadata item of a .docx takes microseconds, and a 1ns budget is a
+				// timer, not an already-expired deadline, on Windows's 0.5-15.6 ms clock; no
+				// fixture can make that item outlast the tick. The deterministic proof that
+				// the budget is read under METADATA and reported after the last item is
+				// TestMetadataBudgetIsHonoured (internal/validators), which uses a sleeping
+				// item against a 50 ms budget.
+				t.Skipf("--validator-budget %s did not expire within one clock tick on %s", spec, runtime.GOOS)
+			}
 			if run.rc != 3 {
 				t.Errorf("--validator-budget %s with --checks METADATA: rc %d with %d findings; want rc 3. "+
 					"An accepted budget that does nothing is the silently ignored budget the flag promises "+

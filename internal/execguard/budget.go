@@ -72,11 +72,20 @@ func budgetFor(ctx context.Context, name string) ValidatorBudget {
 // checked against the list of check names, and did nothing.
 //
 // The TIME budget becomes ONE deadline for the whole loop, returned as the context
-// the caller checks before each item. That check is the granularity: an item
-// already running is not interrupted, because the metadata validator does not poll
-// its context (#110 exempted it: it is not driven by a token loop). A budget that
-// fires mid-item therefore stops the loop when that item returns. Disabled (<= 0)
-// returns ctx itself and a no-op cancel, so the no-budget path is unchanged.
+// the caller checks before each item and once more after the last. That check is
+// the granularity: an item already running is not interrupted, because the metadata
+// validator does not poll its context (#110 exempted it: it is not driven by a token
+// loop). A budget that fires mid-item therefore stops the loop when that item
+// returns, or is reported after the last item when there is no next one. Disabled
+// (<= 0) returns ctx itself and a no-op cancel, so the no-budget path is unchanged.
+//
+// A budget shorter than the platform clock's resolution is not guaranteed to be
+// observed as expired at the first check: context.WithTimeout cancels synchronously
+// only when the clock has already moved past the deadline, and on a coarse clock
+// (Windows ticks at about 0.5-15.6 ms) it arms a timer instead. Work that completes
+// within one tick then finishes inside the budget as far as the clock can tell.
+// Tests that need a deterministic cut-short use MatchLimit, a sleeping item, or a
+// fixture whose work outlasts the tick.
 //
 // The returned ValidatorBudget is for CapMatches, applied to the union of the items.
 func LoopBudget(ctx context.Context, name string) (context.Context, context.CancelFunc, ValidatorBudget) {

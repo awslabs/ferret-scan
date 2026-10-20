@@ -165,13 +165,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `errors.Is`; the metadata path reports its own cut-shorts (a `METADATA` panic was logged and dropped,
   even with `METADATA` selected); the legacy fallback keeps cut-short partials and returns the error.
   `--validator-budget METADATA=<d>`, and `all=<d>` for `METADATA`, were accepted and did nothing: they are
-  honoured now, checked between metadata items so an item already running finishes first, and `--help`
+  honoured now, checked between metadata items and once more after the last, so an item already running
+  finishes first and an item that overran the budget is reported rather than ignored, and `--help`
   says so. Compatibility: no finding's text, line or type changes, so suppression hashes are unchanged;
   affected files go from exit 0 to exit 3 under `--fail-on-incomplete` and count in `files_not_examined`;
   runs with no cut-short are byte-identical; `METADATA=` and `all=` can now cut `METADATA` short, which is
   disclosed. `--debug` stops printing `metadata_path_error`, `dual_path_fallback` and `legacy_*` for an
   unselected `METADATA`; no record type is removed or renamed. The legacy re-run's CPU (about 0.3 s on
   the 6.1 MB `.docx`) is gone.
+- **metadata (confidence on arm64):** the field-type boost (`author`, `company`, ...) was added to a
+  metadata finding's confidence as `confidence + boost*100`, which the arm64 compiler fuses into one
+  multiply-add with a single rounding, so an arm64 build (the `linux/arm64` image, Apple silicon)
+  reported `55.00000000000001` where amd64 reports `55.000000000000014`. The product is now rounded
+  before the add, as amd64 already did, so the two agree to the last digit and golden snapshots
+  regenerated on one platform hold on the other. No band or finding changes; amd64 output is unchanged.
 
 ### 🚀 Features
 

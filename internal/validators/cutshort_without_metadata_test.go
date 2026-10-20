@@ -149,6 +149,7 @@ type metaItemStub struct {
 	firstSleep time.Duration
 	panics     bool
 	err        error
+	emit       int // matches per item; 0 means 1
 }
 
 func (metaItemStub) Validate(string) ([]detector.Match, error)             { return nil, nil }
@@ -168,7 +169,15 @@ func (m metaItemStub) ValidateContent(content, path string) ([]detector.Match, e
 	if n == 1 && m.firstSleep > 0 {
 		time.Sleep(m.firstSleep)
 	}
-	return []detector.Match{{Type: "METATYPE", Text: content, Validator: "metadata", Filename: path}}, nil
+	emit := m.emit
+	if emit <= 0 {
+		emit = 1
+	}
+	out := make([]detector.Match, 0, emit)
+	for i := 0; i < emit; i++ {
+		out = append(out, detector.Match{Type: "METATYPE", Text: content, Validator: "metadata", Filename: path})
+	}
+	return out, nil
 }
 
 func countType(matches []detector.Match, typ string) int {
@@ -378,14 +387,26 @@ func TestMetadataBudgetIsHonoured(t *testing.T) {
 			ValidateProcessedContentCtx(ctx, officeProcessed(items))
 	}
 
-	t.Run("expired before the first item", func(t *testing.T) {
+	// No subtest here relies on a 1ns budget being expired at the first check. That
+	// holds on a nanosecond clock (Linux, macOS) and not on Windows, whose clock ticks
+	// at 0.5-15.6 ms: context.WithTimeout then arms a timer instead of cancelling, and
+	// a stub item finishes before it fires. The budget/sleep pairs below leave two
+	// orders of magnitude between the budget and the work on every platform.
+
+	t.Run("fires during the last item: the item finishes, its finding is kept, the overrun is reported", func(t *testing.T) {
 		var calls atomic.Int32
-		matches, err := scan(t, metaItemStub{calls: &calls}, 2, execguard.ValidatorBudget{TimeLimit: time.Nanosecond})
+		matches, err := scan(t, metaItemStub{calls: &calls, firstSleep: 400 * time.Millisecond}, 1,
+			execguard.ValidatorBudget{TimeLimit: 50 * time.Millisecond})
 		if !errors.Is(err, stdctx.DeadlineExceeded) {
-			t.Errorf("err = %v, want DeadlineExceeded: METADATA=1ns must cut METADATA short", err)
+			t.Errorf("err = %v, want DeadlineExceeded: a budget the only item overran has no next item to "+
+				"stop, so it must be reported after the loop or METADATA=<d> is silently ignored on every "+
+				"single-item file", err)
 		}
-		if n := calls.Load(); n != 0 {
-			t.Errorf("metadata validator ran %d times under an expired budget, want 0", n)
+		if n := calls.Load(); n != 1 {
+			t.Errorf("metadata validator ran %d times, want 1", n)
+		}
+		if got := countType(matches, "METATYPE"); got != 1 {
+			t.Errorf("metadata finding count %d, want 1: the overrun discloses, it does not discard", got)
 		}
 		if got := countType(matches, "OKTYPE"); got != 1 {
 			t.Errorf("document finding count %d, want 1", got)
@@ -461,12 +482,19 @@ func TestLegacyFallbackKeepsCutShortPartials(t *testing.T) {
 	})
 
 	t.Run("METADATA budget reaches the legacy dispatch", func(t *testing.T) {
-		ctx := execguard.WithBudgets(bg, map[string]execguard.ValidatorBudget{"METADATA": {TimeLimit: time.Nanosecond}})
-		_, err := legacy(t, map[string]detector.Validator{"OK": &okDocValidator{}, "METADATA": metaItemStub{}},
+		// A match budget rather than a time budget: it needs no clock, so it proves the
+		// lookup name on every platform (a 1ns budget is not reliably expired on Windows).
+		ctx := execguard.WithBudgets(bg, map[string]execguard.ValidatorBudget{"METADATA": {MatchLimit: 1}})
+		matches, err := legacy(t, map[string]detector.Validator{"OK": &okDocValidator{}, "METADATA": metaItemStub{emit: 2}},
 			ctx, officeProcessed(1))
-		if !errors.Is(err, stdctx.DeadlineExceeded) {
-			t.Errorf("err = %v, want DeadlineExceeded: the legacy metadata dispatch must look the budget "+
+		if !errors.Is(err, execguard.ErrMatchBudgetExceeded) {
+			t.Errorf("err = %v, want ErrMatchBudgetExceeded: the legacy metadata dispatch must look the budget "+
 				"up under METADATA", err)
+		}
+		// officeProcessed(1) has two non-empty sections, so the legacy path dispatches two
+		// units; ValidateContent caps each at MatchLimit and keeps the capped slice.
+		if got := countType(matches, "METATYPE"); got != 2 {
+			t.Errorf("metadata finding count %d, want 2 (one per unit): a capped unit keeps what it returned", got)
 		}
 	})
 

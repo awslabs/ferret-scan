@@ -1313,6 +1313,16 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 		validationErrors = append(validationErrors, capErr)
 	}
 
+	// A deadline that fired while the LAST item was running has no later item to
+	// stop, so the check at the top of the loop never sees it. Most files have one
+	// metadata item, so without this check a METADATA budget would be reported
+	// only if it had already expired before the item started, and a budget that
+	// the item overran would be the silently ignored budget the flag promises not
+	// to have (#115). The item's findings are kept; the overrun is disclosed.
+	if cerr := loopCtx.Err(); cerr != nil {
+		validationErrors = append(validationErrors, cerr)
+	}
+
 	// Log validation errors but don't fail completely if some items succeeded
 	if len(validationErrors) > 0 && mvb.observer != nil && mvb.observer.Debug() != nil {
 		mvb.observer.Debug().LogDetail("metadata_validation_errors",
