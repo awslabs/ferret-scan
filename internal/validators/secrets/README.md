@@ -93,6 +93,7 @@ begins; a Stripe prefix glued to a word on its left with no digit in the body
 - **Passwords** - Password fields like `"password": "value"`
 - **Tokens** - Authentication tokens with keyword patterns
 - **High Entropy Strings** - Base64 (4.5+ entropy, 20+ chars) and Hex (3.0+ entropy, 16+ chars)
+- **Credentials in URIs** - The password in `scheme://user:password@host`, or a token-shaped user name in `https://token@host`, with no keyword needed (see [Credentials in URIs](#credentials-in-uris))
 
 ## Detection Capabilities
 
@@ -109,6 +110,70 @@ begins; a Stripe prefix glued to a word on its left with no digit in the body
 - **JSON/YAML Patterns**: `"keyword": "value"`
 - **Case Insensitive**: Matches regardless of case
 - **Flexible Separators**: Handles various assignment operators
+
+### Credentials in URIs
+
+A password in URI user info (RFC 3986 §3.2.1) is how `DATABASE_URL`, broker,
+proxy and registry URLs and JDBC DSNs carry a credential, and it has no key
+stem, no provider prefix and no quotes of its own:
+
+```text
+DATABASE_URL=postgresql://app_user:<password>@db1.internal:5432/appdb
+spring.datasource.url=jdbc:mysql://app_user:<password>@db1.internal:3306/shop
+git clone https://<token>@git.internal/orders/app.git
+```
+
+Before #766 none of these reported anything. A separate source,
+`findURIUserinfo` (`uri_userinfo.go`), now parses the authority of every URI
+on the line and reports the password, exactly as written (percent-encoding
+included, so a redacted URI still parses), with `detection_method:
+uri_userinfo` and the type `getSecretType` gives the value (a GitHub token
+stays `GITHUB_TOKEN`). It runs on every line holding `://` and `@`, outside the
+line pre-check, and is never gated by the source-code lexer.
+
+**The grammar.** Hand-written rather than `net/url`, which reads
+`jdbc:postgresql://…` as an opaque URI with no user, rejects MongoDB's comma
+host list, and quotes the whole raw URI (password included) in its errors.
+
+| step | rule |
+|---|---|
+| scheme | any `ALPHA *( ALPHA / DIGIT / + / - / . )` before `://`; `jdbc:mysql://` reads as `mysql` |
+| authority | runs to the first `/ ? #`, whitespace, quote, backtick, `<`, `>` or `\`, then loses any trailing `, ; . ! ) ] }` (never an IP literal's `]`) |
+| `@` | the authority is split at its LAST `@`, as `net/url` and WHATWG split it, so an `@` in a path or query is never in it |
+| user info | unreserved, percent-encoded, sub-delims, `:` and `@` only, so `${X}`, double-brace templates, `<password>`, `%s` and `%(pw)s` fail by grammar |
+| host | one or more of a host name, IPv4 address or `[IP literal]`, each with an optional `:port`, separated by `,` |
+| password | everything after the first `:`; an empty one is no candidate |
+| user name only | a candidate only when shaped like a token: 20+ bytes, letters and digits only and both present, 3.5+ bits of entropy per byte (`git@`, `alice@` stay silent) |
+
+**What the value decides.** Every disposition reads only the value's own bytes,
+never the key, scheme or host, all of which the author of the line controls:
+
+| value | disposition |
+|---|---|
+| the whole value is `$NAME` or `$(…)`, or only `*` | no candidate |
+| default vocabulary (`password`, `passwd`, `pass`, `pwd`, `secret`, `guest`, `postgres`, `root`, `admin`, `changeme`, `user`, `username`, `default`, `test`, `example`, `demo`, any case), or the user name repeated | **LOW**, at most 55 |
+| rejected by `plausibleUnquotedSecret` (shorter than 8, all-lowercase under 16, digits only, a UUID) or `shoutySentinel` (`REDACTED`, `CHANGEME`) | **LOW**, at most 55 |
+| anything else | scored like any other candidate |
+
+A LOW finding is kept, not dropped: `postgres:postgres` can be the real
+password of a real database, and only a reported value is redacted. Its 55 is
+published as `confidence_ceiling`, so the document bridge's context adjustment
+cannot lift it into MEDIUM. A scored candidate is exempt from the M24 cap (the
+URI grammar is its corroboration) and from nothing else: its threshold is 50,
+and the test/dev, shell-variable, global-test-pattern and generic-boost
+adjustments apply to it as to every other candidate.
+
+**Additive.** The source runs after every other path has reported and merged.
+A password whose span equals or lies inside a span already reported keeps that
+finding and adds nothing: `DB_PASSWORD=<uri>` still reports the whole URI, and
+`https://x-access-token:<token>@host` still reports the `token:` stem's wider
+span. No existing finding's type, text, line, context or confidence changes, so
+every existing suppression rule still matches.
+
+**Recall cost.** An unencoded `/`, `?` or `#` in a password ends the authority
+there, as it does for every URI parser, and that URI reports nothing. Not in
+scope: Oracle's `user/pass@host` (not URI syntax), `.netrc`, `curl -u`,
+`.pgpass` and command-line flags.
 
 ### Unquoted assignments in source code
 
