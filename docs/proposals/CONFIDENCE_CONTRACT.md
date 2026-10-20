@@ -162,6 +162,20 @@ one shared core function called from the orchestration sites. Consequences accep
 7. **Every mutation is annotated.** `Metadata["original_confidence"]` and
    `Metadata["cross_boost"]` on every changed match (hash-safe, audit-friendly, and lets the
    explain layer describe the boost).
+8. **A file-wide verdict never silences a corroborated finding.** The secrets validator
+   classifies a whole file as test, development or production from marker words anywhere in it
+   (`detectEnvironmentType`), and that verdict reaches every candidate in the file. It may move
+   only candidates that have no evidence of their own — entropy-only strings, the population the
+   test/dev signal was written for — and there it stays unbounded. A candidate that is a typed
+   provider literal (`specific_pattern`) or sits on a line with a secret keyword keeps its score,
+   so one `example.com` URL or a comment saying `latest` cannot move a credential out of its band
+   or below the reporting floor (#785: a GitHub token went 93 → 68 and a six-line credentials file
+   reported nothing). The production boost (+10) is not a penalty and still applies file-wide,
+   bounded for generic matches by the M27 cap. Marker words are matched as whole tokens, under the
+   `kwmatch` rule (`_` is a boundary; `latest` is not `test`, `device` is not `dev`), with the
+   affix spellings `prod-`, `prod_` and `.prod` bounded on their word side only. The same reach
+   argument applies to the other whole-file inputs to a secrets score — `DetectStructure`'s
+   Configuration ratio and the `tabular_boost` — and is why #785 item 3 is tracked separately.
 
 ## 7. Bugs and quirks found during the survey (side findings, not blockers)
 

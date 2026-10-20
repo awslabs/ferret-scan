@@ -2451,20 +2451,49 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// to cap how far a test/dev signal can pull a candidate down.
 	var ctxDelta float64
 
+	// Whether a positive secret keyword shares the match's line. Computed here,
+	// ahead of the environment switch, because two decisions below depend on it:
+	// the file-wide penalty waiver just under this comment and the M24 cap at the
+	// end. The multi-line path passes lineKeywordUnknown and still pays the one
+	// strings.Index it always paid; the per-line path passes the hoisted answer.
+	nearbyKeyword := lineKw == lineKeywordPresent
+	if lineKw == lineKeywordUnknown {
+		nearbyKeyword = v.hasNearbySecretKeyword(fullContent, match, lineHint)
+	}
+
+	// corroborated means the candidate carries its own evidence of being a
+	// credential: a typed provider literal (AWS, GitHub, Stripe, JWT, ...) or a
+	// secret keyword on its line. The file-wide test/dev verdict was written for
+	// the OTHER population -- bare high-entropy strings that nothing on their
+	// line labels -- and it keeps its full, unbounded reach there. On a
+	// corroborated candidate it is waived (#785). Applied to everything, one
+	// marker anywhere in the file moved every credential in it: a comment saying
+	// "pinned to the latest image" took a GitHub token from HIGH 93 to MEDIUM 68
+	// and the shipped pre-commit gate let the commit through, and two hostnames
+	// containing "example" took a six-line credentials file to exactly 60, where
+	// the strict threshold dropped all six -- "No matches found", exit 0, no
+	// redacted copy. The production boost is not a penalty and stays file-wide;
+	// the M27 cap below already bounds it for generic matches.
+	corroborated := checks["specific_pattern"] || nearbyKeyword
+
 	// Environment-specific adjustments (using pre-computed environment type)
 	switch envType {
 	case "development":
 		// Development environments may have test secrets
-		ctxDelta -= 15.0
-		checks["dev_environment_penalty"] = true
+		if !corroborated {
+			ctxDelta -= 15.0
+			checks["dev_environment_penalty"] = true
+		}
 	case "production":
 		// Production environments more likely to have real secrets
 		ctxDelta += 10.0
 		checks["prod_environment_boost"] = true
 	case "test":
 		// Test environments likely have fake secrets
-		ctxDelta -= 25.0
-		checks["test_environment_penalty"] = true
+		if !corroborated {
+			ctxDelta -= 25.0
+			checks["test_environment_penalty"] = true
+		}
 	}
 
 	// Domain-specific adjustments
@@ -2539,10 +2568,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// (AWS/JWT/GitHub/...) and there is no corroborating secret keyword nearby,
 	// cap it just below the MEDIUM threshold so it does not surface as MEDIUM/HIGH
 	// on shape alone. A specific pattern, or a nearby secret keyword, lifts it.
-	nearbyKeyword := lineKw == lineKeywordPresent
-	if lineKw == lineKeywordUnknown {
-		nearbyKeyword = v.hasNearbySecretKeyword(fullContent, match, lineHint)
-	}
+	// nearbyKeyword was computed above, ahead of the environment switch.
 	if !checks["specific_pattern"] && !nearbyKeyword {
 		if confidence > 55 {
 			confidence = 55
@@ -2637,7 +2663,19 @@ func (v *Validator) hasNearbySecretKeyword(fullContent, match, lineHint string) 
 	return false
 }
 
-// detectEnvironmentType detects if content is from development, test, or production environment
+// detectEnvironmentType detects if content is from development, test, or production environment.
+//
+// The verdict is FILE-WIDE: one marker anywhere in the content classifies every
+// candidate in it, and the classification moves every candidate's confidence
+// (see the envType switch in calculateEnhancedConfidenceWithCacheAndEnvAndLine).
+// That reach is why the markers are matched as whole tokens and not as
+// substrings (#785). Matched by strings.Contains, "test" fired on "latest" and
+// "attestation", "dev" on "device", "local" on "locale", "live" on "delivery",
+// ".prod" on "metadata.Producer" and "stage" on "stages": measured with these
+// lists on the golden corpus, 67 of 455 fixtures took their verdict ONLY from a
+// substring inside a longer word, and one comment saying "pinned to the latest
+// image" moved a GitHub token from HIGH 93 to MEDIUM 68 -- below the shipped
+// pre-commit gate. See hasEnvMarker for the token rule.
 func (v *Validator) detectEnvironmentType(content string) string {
 	lowerContent := strings.ToLower(content)
 
@@ -2647,19 +2685,19 @@ func (v *Validator) detectEnvironmentType(content string) string {
 	prodScore := 0
 
 	for _, keyword := range v.devKeywords {
-		if strings.Contains(lowerContent, keyword) {
+		if hasEnvMarker(lowerContent, keyword) {
 			devScore++
 		}
 	}
 
 	for _, keyword := range v.testKeywords {
-		if strings.Contains(lowerContent, keyword) {
+		if hasEnvMarker(lowerContent, keyword) {
 			testScore++
 		}
 	}
 
 	for _, keyword := range v.prodKeywords {
-		if strings.Contains(lowerContent, keyword) {
+		if hasEnvMarker(lowerContent, keyword) {
 			prodScore++
 		}
 	}
@@ -2674,6 +2712,52 @@ func (v *Validator) detectEnvironmentType(content string) string {
 	}
 
 	return "unknown"
+}
+
+// hasEnvMarker reports whether marker occurs in lowerContent as a whole token.
+// Both arguments must already be lowercased.
+//
+// A plain-word marker ("test", "dev", "live") is bounded on both sides by the
+// string edge or a non-word byte, under the word definition the kwmatch package
+// documents: [a-z0-9] are word bytes and '_' is a boundary. So "test" is found
+// in "TEST_VALUE" and "unit_test" but not in "latest" or "attestation"; "dev" in
+// "dev-db" and "/dev/" but not in "device"; "local" in "local.yml" but not in
+// "locale". That half is kwmatch.ContainsLower, the one implementation every
+// validator's context scoring shares.
+//
+// An AFFIX marker -- one whose first or last byte is itself a separator, which is
+// how the production list spells "prod-", "prod_" and ".prod" to stay clear of
+// "product" and "produce" -- is bounded only on its word side. ".prod" must not
+// run on into a word ("db.prod" and "db.prod.internal" match, "metadata.producer"
+// does not), while the byte before its '.' is unconstrained, because the '.' is
+// the boundary. kwmatch cannot express that: it requires a non-word byte on both
+// sides of the whole marker, so "prod-" would match only when followed by
+// another separator and ".prod" only when preceded by one, i.e. "my-prod-db" and
+// "db.prod" would both be missed.
+func hasEnvMarker(lowerContent, marker string) bool {
+	if marker == "" {
+		return false
+	}
+	wordLeft := isKeywordLowerOrDigit(marker[0])
+	wordRight := isKeywordLowerOrDigit(marker[len(marker)-1])
+	if wordLeft && wordRight {
+		return kwmatch.ContainsLower(lowerContent, marker)
+	}
+	for from := 0; from+len(marker) <= len(lowerContent); {
+		i := strings.Index(lowerContent[from:], marker)
+		if i < 0 {
+			return false
+		}
+		i += from
+		end := i + len(marker)
+		leftOK := !wordLeft || i == 0 || !isKeywordLowerOrDigit(lowerContent[i-1])
+		rightOK := !wordRight || end == len(lowerContent) || !isKeywordLowerOrDigit(lowerContent[end])
+		if leftOK && rightOK {
+			return true
+		}
+		from = i + 1
+	}
+	return false
 }
 
 // matchesGlobalTestPatterns checks if match is in the global test patterns database
