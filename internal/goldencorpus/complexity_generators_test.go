@@ -217,3 +217,21 @@ func genProviderRuns(i int) string {
 		"xoxb-123456789012-%012d-%08dAbCdEfGhIjKlMnOpQrSt%04d ",
 		"live", i, i%10000, "live", i, (i*7)%10000, i, (i*3)%10000, i, i, (i*11)%10000)
 }
+
+// genURIUserinfo emits, per index, one credentialed postgres URI and a space (#766). User,
+// password and host all carry the index, so no two repetitions are the same value: one finding per
+// repetition, 400 at the base, 1600 at 4x.
+func genURIUserinfo(i int) string {
+	return fmt.Sprintf("postgres://app_user_%d:Kq%08dZtR@db%d.orders.invalid:5432/appdb ", i, i, i%97)
+}
+
+// genURIUserinfoNoTerminator builds ONE authority with no terminator (#766): `x://` at index 0,
+// then `a@h:` at every index. The last `@` is four bytes from the end, the host is `h:` (an empty
+// port is valid), and the password is everything after the first `:`, so a parser that does
+// per-`@` work over the rest of the authority shows it here.
+func genURIUserinfoNoTerminator(i int) string {
+	if i == 0 {
+		return "x://a@h:"
+	}
+	return "a@h:"
+}

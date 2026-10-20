@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "originalUriBaseIds": {
+        "%SRCROOT%": {
+          "uri": "file://<TMPDIR>/"
+        }
+      },
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".env",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "DATABASE_URL=postgresql://app_user:\nDATABASE_URL=postgresql://app_user:kppbJJJ2vkV3mdqH@db1.orders.invalid:5432/appdb\n@db1.orders.invalid:5432/appdb"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 52,
+                  "snippet": {
+                    "text": "DATABASE_URL=postgresql://app_user:kppbJJJ2vkV3mdqH@db1.orders.invalid:5432/appdb"
+                  },
+                  "startColumn": 36,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Secret or API Key Detected in .env at line 1 (confidence: 100.0% - HIGH). Matched text: 'kppbJJJ2vkV3mdqH'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 0.7,
+              "context_doc_type": "Configuration",
+              "context_doctype": "Configuration",
+              "context_domain": "Retail",
+              "detection_method": "uri_userinfo",
+              "environment_type": "unknown",
+              "original_confidence": 100,
+              "secret_type": "API_KEY_OR_SECRET",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "config_file_boost": true,
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": true,
+                "specific_pattern": false,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 95,
+          "ruleId": "API_KEY_OR_SECRET"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches."
+              },
+              "help": {
+                "text": "Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#api_key_or_secret",
+              "id": "API_KEY_OR_SECRET",
+              "shortDescription": {
+                "text": "Secret or API Key Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

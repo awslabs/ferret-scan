@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="alembic.ini" classname="security-scan" time="0.001">
+      <failure message="API_KEY_OR_SECRET found: Q7rpn8Wjk8DMn76B" type="API_KEY_OR_SECRET">Line 3: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: Q7rpn8Wjk8DMn76B&#xA;Validator: secrets</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
