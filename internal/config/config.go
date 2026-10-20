@@ -104,6 +104,21 @@ type Config struct {
 	// LoadConfig so callers can warn; a typo'd option is otherwise invisible.
 	// Not itself a config key.
 	UnknownKeys []string `yaml:"-"`
+
+	// builtinPrecommit is set when Profiles["precommit"] is the built-in profile
+	// rather than one the file defined, and records what the reconciliation saw.
+	// Unexported, so no config file can set it or claim the profile is built-in.
+	builtinPrecommit *builtinPrecommitState
+
+	// profileKeys lists, per profile the file defines, the keys its block sets;
+	// see ProfileKeys.
+	profileKeys map[string][]string
+}
+
+// builtinPrecommitState is what injectBuiltinPrecommitProfile records for
+// BuiltinProfile: whether the loaded file wrote defaults.checks as every check.
+type builtinPrecommitState struct {
+	configChecksAll bool
 }
 
 // PlatformConfig holds platform-specific configuration settings
@@ -218,29 +233,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Set platform-specific defaults
 	config.Platform = getDefaultPlatformConfig()
 
-	// Add default pre-commit profile with platform-aware paths
-	config.Profiles["precommit"] = Profile{
-		Format:              "text",
-		ConfidenceLevels:    "high,medium",
-		Checks:              "CREDIT_CARD,SECRETS,SSN,EMAIL,PHONE,IP_ADDRESS",
-		Verbose:             false,
-		Debug:               false,
-		NoColor:             true,
-		Recursive:           false,
-		EnablePreprocessors: true,
-		Description:         "Optimized for pre-commit hooks with concise output and essential checks",
-		Validators:          make(map[string]map[string]interface{}),
-		Redaction: ProfileRedaction{
-			Enabled:   false,
-			OutputDir: normalizePlatformPath("./redacted"),
-			Strategy:  "format_preserving",
-			IndexFile: "",
-		},
-	}
-
 	// If no config file specified, return default config. SourcePath stays empty,
-	// which is what "built-in defaults" means to a caller inspecting it.
+	// which is what "built-in defaults" means to a caller inspecting it. The
+	// built-in precommit profile is still added: with no file there is nothing for
+	// it to yield to, so it carries its own values in full.
 	if configPath == "" {
+		injectBuiltinPrecommitProfile(nil, config)
 		return config, nil
 	}
 
@@ -277,11 +275,19 @@ func LoadConfig(configPath string) (*Config, error) {
 		config.Preprocessors.TextExtraction.Enabled = defaultTextExtractionEnabled
 	}
 
+	// The built-in precommit profile, added AFTER the file is decoded and only when
+	// the file does not define profiles.precommit itself, so it can yield to what
+	// the file wrote. See injectBuiltinPrecommitProfile.
+	injectBuiltinPrecommitProfile(yamlTree, config)
+
 	// Backfill profile bool fields from defaults when the profile YAML omits
 	// them. Without this, a profile that doesn't mention `verbose` would
 	// unmarshal with Verbose=false and silently override defaults.verbose=true.
-	// See backfillProfileBools for the list of fields this handles.
+	// See backfillProfileBools for the list of fields this handles. It runs over
+	// the built-in profile too, which the file never mentions, so every one of its
+	// bools comes from the file.
 	backfillProfileBools(yamlTree, config)
+	config.profileKeys = definedProfileKeys(yamlTree)
 
 	// Fold `audit_log_file` into the slot that actually drives the redaction log.
 	resolveAuditLogAlias(config)
@@ -573,32 +579,183 @@ func (c *Config) GetProfile(name string) *Profile {
 	return nil
 }
 
-// GetPrecommitProfile returns the pre-commit profile, creating a default one if it doesn't exist
-func (c *Config) GetPrecommitProfile() *Profile {
-	if profile := c.GetProfile("precommit"); profile != nil {
-		return profile
-	}
+// BuiltinPrecommitChecks is the check list of the built-in precommit profile: the
+// six types a pre-commit run scans for when no config names any. It is the one
+// definition of that list: the profile and the CLI's disclosure line read it from
+// here, and a cmd test holds the two docs that state it to this value.
+const BuiltinPrecommitChecks = "CREDIT_CARD,SECRETS,SSN,EMAIL,PHONE,IP_ADDRESS"
 
-	// Return default pre-commit profile if not found in config
-	defaultProfile := Profile{
+// precommitProfileName is the profile pre-commit mode selects
+// (precommit.PrecommitConfig.ProfileName), and the only profile the tool defines
+// itself.
+const precommitProfileName = "precommit"
+
+// injectBuiltinPrecommitProfile adds the built-in precommit profile unless the
+// config file defined profiles.precommit itself. A file that defines it gets
+// exactly what it wrote, as before. The three spellings of "defines no profiles"
+// -- the key missing, `profiles: {}` and a null `profiles:` -- now agree: the
+// profile used to be added BEFORE decoding, so a null `profiles:` wiped it while
+// `{}` kept it.
+//
+// It is reconciled with the file rather than layered over it. Pre-commit mode
+// selects this profile automatically (--pre-commit-mode, four hook environment
+// variables, or the published hook's --profile precommit), and resolveConfiguration
+// lets any non-empty profile string outrank the config. So every value the
+// profile carried replaced what the config wrote, though nobody wrote it (#768):
+// a config naming PASSPORT got the six types below and a HIGH passport passed the
+// hook at exit 0; `strategy: simple` became format_preserving; a config's
+// output_dir became ./redacted; `confidence_levels: all` became high,medium. Now:
+//
+//   - redaction strategy and output_dir: not set. Both equalled the global
+//     defaults, so leaving them empty changes nothing without a config and lets a
+//     config's value through with one.
+//   - confidence_levels: high,medium only when the file lacks
+//     defaults.confidence_levels.
+//   - checks: the six UNION the file's defaults.checks. A config may widen what a
+//     hook runs but not narrow it: an auto-discovered config is a file a pull
+//     request can add (#293), and letting it subtract SSN would make the hook
+//     reviewing that pull request blind to SSNs. "all" adds nothing: #738 kept the
+//     six for genuine hook runs, and widening every shipped-config hook to every
+//     type would cost it about 2.2x the CPU (measured for #768). The CLI discloses
+//     that one remaining override (BuiltinProfileInfo.ConfigChecksAll).
+//   - format: kept as text. A hook prints for a person, and --format overrides it.
+//   - bools: every one comes from the file, through backfillProfileBools, which
+//     runs after this.
+//
+// With no file (tree == nil and nothing decoded) there is nothing to yield to, and
+// the profile is the same as it has always been.
+func injectBuiltinPrecommitProfile(tree map[string]interface{}, config *Config) {
+	if config.Profiles == nil {
+		// A null `profiles:` decodes to a nil map.
+		config.Profiles = make(map[string]Profile)
+	}
+	if _, defined := config.Profiles[precommitProfileName]; defined {
+		config.builtinPrecommit = nil
+		return
+	}
+	profile := Profile{
 		Format:              "text",
 		ConfidenceLevels:    "high,medium",
-		Checks:              "CREDIT_CARD,SECRETS,SSN,EMAIL,PHONE,IP_ADDRESS",
-		Verbose:             false,
-		Debug:               false,
+		Checks:              BuiltinPrecommitChecks,
 		NoColor:             true,
-		Recursive:           false,
 		EnablePreprocessors: true,
 		Description:         "Optimized for pre-commit hooks with concise output and essential checks",
 		Validators:          make(map[string]map[string]interface{}),
-		Redaction: ProfileRedaction{
-			Enabled:   false,
-			OutputDir: normalizePlatformPath("./redacted"),
-			Strategy:  "format_preserving",
-			IndexFile: "",
-		},
 	}
-	return &defaultProfile
+	state := &builtinPrecommitState{}
+	if containsField(tree, "defaults", "confidence_levels") {
+		profile.ConfidenceLevels = ""
+	}
+	if containsField(tree, "defaults", "checks") {
+		profile.Checks = unionChecks(BuiltinPrecommitChecks, config.Defaults.Checks)
+		state.configChecksAll = isAllChecks(config.Defaults.Checks)
+	}
+	config.Profiles[precommitProfileName] = profile
+	config.builtinPrecommit = state
+}
+
+// isAllChecks reports whether a checks value selects every check: "all" in any
+// case, or empty, which resolveConfiguration and the --checks parser both read as
+// every check.
+func isAllChecks(checks string) bool {
+	trimmed := strings.TrimSpace(checks)
+	return trimmed == "" || strings.EqualFold(trimmed, "all")
+}
+
+// unionChecks returns base followed by each name in extra that base lacks, upper-
+// cased and trimmed the way the --checks parser reads names. A name the parser
+// does not know is kept, so it is refused downstream exactly as it is without a
+// profile, rather than dropped here. An "every check" value adds nothing.
+func unionChecks(base, extra string) string {
+	if isAllChecks(extra) {
+		return base
+	}
+	seen := make(map[string]bool)
+	var names []string
+	for _, list := range []string{base, extra} {
+		for _, raw := range strings.Split(list, ",") {
+			name := strings.ToUpper(strings.TrimSpace(raw))
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	return strings.Join(names, ",")
+}
+
+// BuiltinProfileInfo describes a built-in profile as reconciled with the loaded
+// config, for the CLI to name what governed a run (#768).
+type BuiltinProfileInfo struct {
+	// Supplied lists each setting the profile set itself rather than inheriting
+	// from the config, as "key=value" in a fixed order.
+	Supplied []string
+	// ConfigChecksAll is true when the loaded file wrote defaults.checks as every
+	// check. The profile runs its six types instead, which is the one setting
+	// where it still runs less than the config asked for.
+	ConfigChecksAll bool
+}
+
+// BuiltinProfile reports how the built-in profile called name was reconciled
+// with this config, or nil when name is not a built-in profile here -- including
+// a config that defines its own profiles.precommit, which replaces the built-in.
+func (c *Config) BuiltinProfile(name string) *BuiltinProfileInfo {
+	if c == nil || c.builtinPrecommit == nil || name != precommitProfileName {
+		return nil
+	}
+	profile, ok := c.Profiles[name]
+	if !ok {
+		return nil
+	}
+	info := &BuiltinProfileInfo{ConfigChecksAll: c.builtinPrecommit.configChecksAll}
+	info.Supplied = append(info.Supplied, "format="+profile.Format)
+	if profile.ConfidenceLevels != "" {
+		info.Supplied = append(info.Supplied, "confidence_levels="+profile.ConfidenceLevels)
+	}
+	info.Supplied = append(info.Supplied, "checks="+profile.Checks)
+	// A bool is the profile's own only where it differs from what the config
+	// gives a profile that omits it. With a file that is none of them (they are
+	// backfilled from it); with no file it is no_color.
+	for _, f := range profileBoolFields {
+		if v := f.getProfile(&profile); v != f.defaultValue(c) {
+			info.Supplied = append(info.Supplied, fmt.Sprintf("%s=%t", strings.Join(f.yamlPath, "."), v))
+		}
+	}
+	return info
+}
+
+// ProfileKeys returns the keys the config file's profiles.<name> block sets,
+// sorted, with redaction and platform sub-keys dotted (redaction.strategy), or nil
+// for a profile the file does not define. It is what that profile supplies; every
+// other setting falls through to the file's defaults (#768).
+func (c *Config) ProfileKeys(name string) []string {
+	if c == nil {
+		return nil
+	}
+	return c.profileKeys[name]
+}
+
+// definedProfileKeys reads ProfileKeys' lists out of the parsed YAML tree.
+func definedProfileKeys(tree map[string]interface{}) map[string][]string {
+	profiles, _ := tree["profiles"].(map[string]interface{})
+	out := make(map[string][]string, len(profiles))
+	for name, raw := range profiles {
+		block, _ := raw.(map[string]interface{})
+		keys := make([]string, 0, len(block))
+		for key, value := range block {
+			if sub, ok := value.(map[string]interface{}); ok && (key == "redaction" || key == "platform") {
+				for subKey := range sub {
+					keys = append(keys, key+"."+subKey)
+				}
+				continue
+			}
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		out[name] = keys
+	}
+	return out
 }
 
 // parseYAMLTree unmarshals raw config bytes into a generic nested map ONCE, so
@@ -646,66 +803,94 @@ type profileBoolField struct {
 	yamlPath     []string
 	defaultValue func(*Config) bool
 	setProfile   func(*Profile, bool)
+	getProfile   func(*Profile) bool
 }
 
 // profileBoolFields is the registry of Profile bool fields whose "missing in
 // YAML" must be distinguished from "explicit false". Adding a new profile
-// bool? Register it here and backfillProfileBools picks it up automatically.
+// bool? Register it here and backfillProfileBools picks it up automatically;
+// TestEveryProfileBoolInheritsFromTheConfig fails until you do.
+//
+// defaultValue is what resolveConfiguration would use with no profile active,
+// so a profile that omits the key changes nothing. For the two suppression bools
+// that is defaults.X OR the suppressions block's key, the same OR
+// resolveConfiguration applies; backfilling defaults.X alone meant any profile
+// switched off a `suppressions.show_suppressed: true` it never mentioned (#768).
 var profileBoolFields = []profileBoolField{
 	{
 		yamlPath:     []string{"verbose"},
 		defaultValue: func(c *Config) bool { return c.Defaults.Verbose },
 		setProfile:   func(p *Profile, v bool) { p.Verbose = v },
+		getProfile:   func(p *Profile) bool { return p.Verbose },
 	},
 	{
 		yamlPath:     []string{"debug"},
 		defaultValue: func(c *Config) bool { return c.Defaults.Debug },
 		setProfile:   func(p *Profile, v bool) { p.Debug = v },
+		getProfile:   func(p *Profile) bool { return p.Debug },
 	},
 	{
 		yamlPath:     []string{"no_color"},
 		defaultValue: func(c *Config) bool { return c.Defaults.NoColor },
 		setProfile:   func(p *Profile, v bool) { p.NoColor = v },
+		getProfile:   func(p *Profile) bool { return p.NoColor },
 	},
 	{
 		yamlPath:     []string{"recursive"},
 		defaultValue: func(c *Config) bool { return c.Defaults.Recursive },
 		setProfile:   func(p *Profile, v bool) { p.Recursive = v },
+		getProfile:   func(p *Profile) bool { return p.Recursive },
 	},
 	{
 		yamlPath:     []string{"enable_preprocessors"},
 		defaultValue: func(c *Config) bool { return c.Defaults.EnablePreprocessors },
 		setProfile:   func(p *Profile, v bool) { p.EnablePreprocessors = v },
+		getProfile:   func(p *Profile) bool { return p.EnablePreprocessors },
 	},
 	{
 		yamlPath:     []string{"redaction", "enabled"},
 		defaultValue: func(c *Config) bool { return c.Redaction.Enabled },
 		setProfile:   func(p *Profile, v bool) { p.Redaction.Enabled = v },
+		getProfile:   func(p *Profile) bool { return p.Redaction.Enabled },
 	},
 	{
 		yamlPath:     []string{"respect_gitignore"},
 		defaultValue: func(c *Config) bool { return c.Defaults.RespectGitignore },
 		setProfile:   func(p *Profile, v bool) { p.RespectGitignore = v },
+		getProfile:   func(p *Profile) bool { return p.RespectGitignore },
 	},
 	{
 		yamlPath:     []string{"show_match"},
 		defaultValue: func(c *Config) bool { return c.Defaults.ShowMatch },
 		setProfile:   func(p *Profile, v bool) { p.ShowMatch = v },
+		getProfile:   func(p *Profile) bool { return p.ShowMatch },
 	},
 	{
 		yamlPath:     []string{"quiet"},
 		defaultValue: func(c *Config) bool { return c.Defaults.Quiet },
 		setProfile:   func(p *Profile, v bool) { p.Quiet = v },
+		getProfile:   func(p *Profile) bool { return p.Quiet },
 	},
 	{
 		yamlPath:     []string{"show_suppressed"},
-		defaultValue: func(c *Config) bool { return c.Defaults.ShowSuppressed },
+		defaultValue: func(c *Config) bool { return c.Defaults.ShowSuppressed || c.Suppressions.ShowSuppressed },
 		setProfile:   func(p *Profile, v bool) { p.ShowSuppressed = v },
+		getProfile:   func(p *Profile) bool { return p.ShowSuppressed },
 	},
 	{
 		yamlPath:     []string{"generate_suppressions"},
-		defaultValue: func(c *Config) bool { return c.Defaults.GenerateSuppressions },
+		defaultValue: func(c *Config) bool { return c.Defaults.GenerateSuppressions || c.Suppressions.GenerateOnScan },
 		setProfile:   func(p *Profile, v bool) { p.GenerateSuppressions = v },
+		getProfile:   func(p *Profile) bool { return p.GenerateSuppressions },
+	},
+	{
+		// Unregistered until #768, so every profile that omitted it -- the built-in
+		// precommit one included -- turned a config's `fail_on_incomplete: true` off:
+		// an unreadable file gave exit 0 instead of 3.
+		yamlPath:     []string{"fail_on_incomplete"},
+		defaultValue: func(c *Config) bool { return c.Defaults.FailOnIncomplete },
+		setProfile:   func(p *Profile, v bool) { p.FailOnIncomplete = v },
+		getProfile:   func(p *Profile) bool { return p.FailOnIncomplete },
 	},
 }
 
