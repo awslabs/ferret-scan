@@ -81,9 +81,13 @@ func cutShortFiller() string {
 // filler. The size is for the time-budget runs, not the findings: a 1ns budget is a
 // timer, not an already-expired deadline, on a clock as coarse as Windows's (ticks of
 // 0.5-15.6 ms), and a validator over ten short lines finishes before the timer fires,
-// so the budget never shows. Over a megabyte the cut validator is still polling its
-// context tens of milliseconds later. Well under CLOUD_RESOURCES's 5 MB cap, so the
-// only cut-short in these runs is the budget. The deflated .docx is a few KB.
+// so the budget never shows. The budgeted validator must still be polling its context
+// (once per 256 lines) well after the timer fires, with a margin over the tick plus the
+// runtime's timer dispatch. That is a property of the validator as much as of the size:
+// over this filler PHONE's pass takes 400-600 ms (measured, dev host), SSN's about
+// 35 ms, because the filler holds no digit runs for SSN to examine. Every budget run
+// here therefore budgets PHONE. Well under CLOUD_RESOURCES's 5 MB cap, so the only
+// cut-short in these runs is the budget. The deflated .docx is a few KB.
 func cutShortBudgetParas() []string {
 	paras := cutShortEmails()
 	filler := cutShortFiller()
@@ -228,10 +232,20 @@ func TestMetadataCapableFileKeepsFindingsOnACutShort(t *testing.T) {
 
 		// The built-in precommit profile's checks omit METADATA (internal/config), as does the
 		// examples/ferret.yaml one.
+		//
+		// The budget is on PHONE, as in every other budget run here, not on SSN as in the issue's
+		// acceptance row. Both are in the profile's list and neither reports anything on this
+		// fixture, so the outcome is the same ten EMAIL findings either way; what differs is how
+		// long each validator keeps polling its context (every 256 lines, see
+		// execguard.LineLoopCancelled). SSN's pass over the fixture takes about 35 ms on the dev
+		// host (the filler has no digit runs for it to work on): the largest budget it still
+		// observes under this profile is 30 ms. PHONE's pass takes 400-600 ms and it observes a
+		// 400 ms budget. On the Windows CI runner the 1ns timer fired after SSN's last poll, so
+		// the run returned rc 0 with the findings intact, while the PHONE runs were cut every time.
 		run := runCutShort(t, bin, dir, append([]string{"--file", docx, "--profile", "precommit",
-			"--validator-budget", "SSN=1ns"}, jsonArgs...)...)
+			"--validator-budget", "PHONE=1ns"}, jsonArgs...)...)
 		if run.rc != 3 || len(run.report.Results) != 10 {
-			t.Errorf("--profile precommit with SSN=1ns: rc %d, %d findings; want rc 3, 10\nstderr: %s",
+			t.Errorf("--profile precommit with PHONE=1ns: rc %d, %d findings; want rc 3, 10\nstderr: %s",
 				run.rc, len(run.report.Results), run.stderr)
 		}
 	})
