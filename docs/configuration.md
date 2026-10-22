@@ -231,6 +231,11 @@ Profiles now support all command-line options and include specialized configurat
 
 ### Enhanced Profile Options
 
+A profile sets only the keys it lists. A key it leaves out, booleans included, keeps its value from
+`defaults:` (for `show_suppressed` and `generate_suppressions`, from `defaults:` or the
+`suppressions:` block), and command-line flags outrank both. See
+[Configuration Precedence](#configuration-precedence).
+
 - `show_match`: Display actual matched text in findings
 - `quiet`: Suppress progress output for automation
 - `show_suppressed`: Include suppressed findings in output
@@ -241,7 +246,7 @@ Profiles now support all command-line options and include specialized configurat
   A profile can override it with `suppression_expires_in`, and `--suppression-expires` overrides both.
   Rules previously expired after one week unconditionally, which made a committed baseline inert
   without warning (#696).
-- `fail_on_incomplete`: Exit with code `3` when any file was not fully scanned — either its validator coverage was cut short (timeout, cancellation, or a per-validator budget) or the file could not be opened at all (permissions, a dangling symlink, deletion mid-scan). Off by default; equivalent to the `--fail-on-incomplete` flag, which overrides this setting. See the README [Exit Codes](../README.md#exit-codes).
+- `fail_on_incomplete`: Exit with code `3` when any file was not fully scanned — either its validator coverage was cut short (timeout, cancellation, or a per-validator budget) or the file could not be opened at all (permissions, a dangling symlink, deletion mid-scan). Off by default; equivalent to the `--fail-on-incomplete` flag, which overrides this setting. A profile that does not set it inherits `defaults.fail_on_incomplete`. See the README [Exit Codes](../README.md#exit-codes).
 
 ### CLI-Only Options (Not Configurable in YAML)
 
@@ -784,7 +789,35 @@ This allows you to create profiles tailored to specific companies or projects wi
 
 ## Configuration Precedence
 
-The configuration is applied in the following order:
+Settings resolve in this order, each layer overriding the one before it:
+1. Built-in defaults
+2. The config file's `defaults:`, `redaction:` and `suppressions:` blocks
+3. The active profile (`--profile <name>`, or `precommit` in pre-commit mode), for the keys it sets
+4. Command-line flags
+
+A profile that leaves a key out does not reset it: the value from step 2 applies, booleans included.
+
+### The built-in `precommit` profile
+
+Pre-commit mode (`--pre-commit-mode`, or a hook environment such as `PRE_COMMIT`) selects the profile
+named `precommit`. A config file that defines `profiles.precommit` gets that profile exactly as written.
+Otherwise ferret-scan supplies a built-in one, also available without any config file, which yields to
+what the config wrote:
+
+- `checks`: `CREDIT_CARD,SECRETS,SSN,EMAIL,PHONE,IP_ADDRESS`, plus every type `defaults.checks` names.
+  A config can add types to a hook but cannot remove any of the six; `defaults.checks: all` keeps the
+  six, and the run prints one note naming `profiles.precommit.checks`.
+- `confidence_levels`: `high,medium`, unless the config sets `defaults.confidence_levels`.
+- `format`: `text`, unless `--format` is passed.
+- Everything else comes from the config, including the redaction strategy, the output directory and
+  every boolean. With no config file the profile also turns `no_color` on.
+
+`--list-profiles` marks it `precommit (built-in)`. See
+[Pre-commit integration](PRE_COMMIT_INTEGRATION.md#the-precommit-profile).
+
+### Validator configuration
+
+Validator configuration is applied in the following order:
 1. Default built-in patterns
 2. Global validator configuration from the `validators` section
 3. Profile-specific validator configuration from the `profiles.<profile>.validators` section
@@ -793,7 +826,7 @@ This means that profile-specific configurations will override global configurati
 
 ## Pre-Configured Profiles
 
-Ferret Scan ships with five streamlined profiles covering the most common workflows. Use them with `--profile <name>`.
+[`examples/ferret.yaml`](../examples/ferret.yaml) defines five streamlined profiles covering the most common workflows. Copy it as your config and use them with `--profile <name>`. Without a config file only `precommit` exists, as the [built-in profile](#the-built-in-precommit-profile).
 
 ### Interactive Use
 
@@ -829,6 +862,7 @@ Ferret Scan ships with five streamlined profiles covering the most common workfl
 - **Features**: Text output, high+medium confidence, focused checks (CREDIT_CARD, SECRETS, SSN, PASSPORT, EMAIL, PERSON_NAME), non-recursive (only staged files), quiet, no color, respects `.gitignore`
 - **Use Case**: Git pre-commit hooks to prevent accidental PII commits
 - **Output**: Text (exit code non-zero on findings)
+- **Note**: This is the example file's own `profiles.precommit`, so it replaces the [built-in profile](#the-built-in-precommit-profile), whose checks are CREDIT_CARD, SECRETS, SSN, EMAIL, PHONE and IP_ADDRESS plus the types `defaults.checks` names
 
 ### Data Protection
 

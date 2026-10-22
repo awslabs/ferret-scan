@@ -19,6 +19,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
 	"github.com/awslabs/ferret-scan/v2/internal/precommit"
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
@@ -182,6 +183,14 @@ func runStdinScan(in stdinScanInputs) int {
 	// before the findings table or any redacted bytes reach stdout/stderr (#772).
 	applyRedactionStrategy(finalCfg, precommitConfig)
 
+	// The --debug record of the active profile, as the --file path logs it (#768).
+	if finalCfg.debug {
+		profileObs := observability.NewDebugObserver(os.Stderr)
+		for _, line := range profileDebugRecord(cfg, effectiveProfileName, in.flags.profileName, in.flags.precommitMode) {
+			profileObs.LogDetail("profile", line)
+		}
+	}
+
 	// Apply pre-commit overrides for non-color/format defaults that the
 	// main path would normally apply via precommitConfig.
 	if precommitConfig != nil {
@@ -316,6 +325,8 @@ func runStdinScan(in stdinScanInputs) int {
 	// reason, not because the operator asked for quiet.
 	if !stdinStderrCarriesFindings(finalCfg, in.outputFile) {
 		reportConfigProvenance(os.Stderr, cfg, in.flags.configFile)
+		// Same rule for the built-in precommit profile's remaining override (#768).
+		reportBuiltinProfileChecks(os.Stderr, cfg, effectiveProfileName)
 	}
 
 	if !shouldSuppressStdinProse(finalCfg, precommitConfig, in.outputFile) {

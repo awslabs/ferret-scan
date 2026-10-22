@@ -185,7 +185,8 @@ repos:
 ### How pre-commit mode is detected
 
 Pre-commit mode is inferred from the environment, and it is not cosmetic: it forces quiet output,
-disables colour, and applies pre-commit exit-code semantics. These are the only signals:
+disables colour, applies pre-commit exit-code semantics, and selects the
+[`precommit` profile](#the-precommit-profile). These are the only signals:
 
 | Signal | Set by |
 |---|---|
@@ -217,6 +218,34 @@ is reached at all.
 > was silently treated as running inside a hook, which reshaped ordinary scans and made the same
 > repository behave differently per platform. They have been removed
 > ([#353](https://github.com/awslabs/ferret-scan/issues/353)).
+
+### The precommit profile
+
+Pre-commit mode, and `--profile precommit` on its own, use the profile named `precommit`. If your
+config file defines `profiles.precommit`, that profile is used exactly as written. If it does not, or
+there is no config file, ferret-scan supplies a built-in one, which yields to what your config wrote:
+
+| Setting | Built-in profile | Your config file, when it has no `profiles.precommit` |
+|---|---|---|
+| `checks` | `CREDIT_CARD,SECRETS,SSN,EMAIL,PHONE,IP_ADDRESS` | Those six plus every type `defaults.checks` names. A config can add types to a hook but cannot remove any of the six. `all` adds nothing: the hook runs the six and prints one note naming `profiles.precommit.checks` |
+| `confidence_levels` | `high,medium` | `defaults.confidence_levels`, when the file sets it. It filters what is displayed; `FERRET_PRECOMMIT_EXIT_ON` decides what blocks |
+| `format` | `text` | Stays `text`, because a hook prints for a person. `--format` overrides it |
+| `redaction.strategy`, `redaction.output_dir` | not set | The file's `redaction:` block |
+| Booleans | `no_color` and `enable_preprocessors` on, the rest off | Inherited from the file's `defaults:`, including `fail_on_incomplete` and `respect_gitignore` |
+| Anything else | not set | Inherited from the file |
+
+Command-line flags outrank both. The built-in profile does not set `respect_gitignore`, so pass
+`--respect-gitignore` (the published hook does) or set it in your config. `--list-profiles` marks the
+profile `precommit (built-in)`, and `--debug` names the active profile, why it was selected, and each
+setting it supplied.
+
+> **Changed in this release.** The built-in profile used to replace the config's `checks`,
+> `confidence_levels`, `redaction.strategy` and `redaction.output_dir`, and every profile turned a
+> config's `fail_on_incomplete: true` off. A config naming `PASSPORT` got the six types above, so a HIGH
+> passport passed the hook at exit 0, and `strategy: simple` came back as `format_preserving` with the
+> passport in cleartext. Hooks now run the types your config names and honour `fail_on_incomplete`, so
+> they may block commits they used to let through
+> ([#768](https://github.com/awslabs/ferret-scan/issues/768)).
 
 ## Team Configurations
 
@@ -336,6 +365,9 @@ repos:
         files: \.(py|js|ts|go|java)$
         pass_filenames: true
 ```
+
+Defining `profiles.precommit` replaces the [built-in profile](#the-precommit-profile): the hook runs
+exactly the checks listed there, and any key the profile leaves out is inherited from `defaults:`.
 
 ## Multiple Hook Strategy
 
@@ -782,7 +814,7 @@ repos:
 
 - Pre-commit hooks only scan tracked/staged files, so use `--respect-gitignore` to ensure ferret-scan skips files matching `.gitignore` patterns
 - This avoids false positives from build artifacts, vendored dependencies, and generated files that happen to be passed by pre-commit's file filter
-- The `precommit` profile already sets `respect_gitignore: true`, but pass the flag explicitly for clarity
+- The built-in `precommit` profile does not set `respect_gitignore`, so pass the flag (the published hook does), or set `respect_gitignore: true` in your config's `defaults:` or `profiles.precommit`
 
 ### 6. Suppression Strategy
 

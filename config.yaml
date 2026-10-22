@@ -2,9 +2,10 @@
 # This file defines default settings and profiles for different scanning scenarios
 
 # Default settings applied when no profile is specified
-# NOTE: Some CLI flags are not parseable from config — they must be passed on
-# the command line: --disable-ip-types, --enable-redaction, --redaction-*,
-# --suppression-file, --preprocess-only, --pre-commit-mode, --generate-suppressions=<specific>.
+# NOTE: --preprocess-only and --pre-commit-mode have no config equivalent and must be passed on the
+# command line. The redaction flags (--enable-redaction, --redaction-*) correspond to the
+# `redaction:` block below, --suppression-file to `suppressions.file`, and --disable-ip-types to
+# `validators.intellectual_property.disabled_types`.
 defaults:
   format: text # Output format: text, json, csv, yaml, junit, gitlab-sast, sarif
   confidence_levels: all # Confidence levels to display: high, medium, low, or combinations
