@@ -46,7 +46,7 @@ func TestOOXMLCasesReachTheCombinedArm(t *testing.T) {
 
 			res, err := core.ScanFile(core.ScanConfig{
 				FilePath:            path,
-				Checks:              fc.Checks,
+				Checks:              withMetadataCheck(fc.Checks),
 				EnablePreprocessors: fc.EnablePreprocessors,
 				LogWriter:           io.Discard,
 			})
@@ -86,6 +86,25 @@ func TestOOXMLCasesReachTheCombinedArm(t *testing.T) {
 		t.Fatal("no OOXML cases found in FileCases — this guard is vacuous; either a case " +
 			"was removed or needsGuardFreePath no longer recognizes the extensions")
 	}
+}
+
+// withMetadataCheck returns checks with METADATA included, for the guard above.
+//
+// The guard proves a PRECONDITION, that the Office metadata extractor ran, and a metadata finding
+// is its evidence. Extraction does not depend on the selected checks, but the evidence does: the
+// #771 cases leave METADATA unselected on purpose, and scanned with their own checks they could
+// never show one. So the guard scans them with METADATA added. Nil or empty already means every
+// check, METADATA among them.
+func withMetadataCheck(checks []string) []string {
+	if len(checks) == 0 {
+		return checks
+	}
+	for _, c := range checks {
+		if c == "METADATA" {
+			return checks
+		}
+	}
+	return append(append([]string{}, checks...), "METADATA")
 }
 
 // TestOfficeMetadataWorksUnderATempPath pins the fix that let the tests above stop

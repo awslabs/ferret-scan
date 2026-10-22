@@ -64,6 +64,13 @@ type MetadataValidatorBridge struct {
 	mu                sync.RWMutex
 }
 
+// metadataCheckName is the check name the metadata validator is registered under
+// (SetupValidators keys it "METADATA"), and therefore the name both metadata
+// dispatch sites use for its budget and its diagnostics. They used the Go type
+// name, which no budget is keyed by, so --validator-budget METADATA=<d> was
+// accepted and ignored (#771).
+const metadataCheckName = "METADATA"
+
 // PreprocessorAwareValidator interface for metadata validator
 type PreprocessorAwareValidator interface {
 	detector.Validator
@@ -435,8 +442,21 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 		}()
 	}
 
-	// Process metadata content in parallel
-	if len(routedContent.Metadata) > 0 {
+	// Process metadata content in parallel, when METADATA was selected.
+	//
+	// An unselected check is a no-op, not a failure (#771). The router gives every
+	// metadata-capable file (office, PDF, image, audio and video: 33 extensions) at
+	// least one metadata item, so this goroutine used to run with no validator and
+	// "fail" on each of them. Any cut-short on the document path then made BOTH paths
+	// fail, and the both-failed branch below discarded every finding and the
+	// disclosure with it: a .docx scanned with --checks EMAIL,PHONE and a PHONE budget
+	// reported 0 findings at exit 0. Skipping loses no coverage, because the document
+	// path scans FullText, which carries the metadata text too.
+	metadataSelected := evb.metadataBridge.hasValidator()
+	if len(routedContent.Metadata) > 0 && !metadataSelected && evb.observer != nil && evb.observer.Debug() != nil {
+		evb.observer.Debug().LogDetail("metadata_bridge", "No metadata validator configured")
+	}
+	if len(routedContent.Metadata) > 0 && metadataSelected {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -455,6 +475,12 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 						Error:     err.Error(),
 					})
 				}
+				// Same rule as the document path above: a cut-short keeps the
+				// matches gathered before it fired (#771). Other errors still
+				// discard the slice.
+				if firstBudgetError([]error{err}) != nil {
+					result.MetadataMatches = matches
+				}
 				return
 			}
 			result.MetadataMatches = matches
@@ -470,6 +496,13 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 	evb.metrics.MetadataPathTime = metadataProcessingTime
 	evb.metrics.mu.Unlock()
 
+	// Combine all matches. This comes BEFORE the error handling: a path that failed
+	// still contributes the cut-short partials it kept above, and what one path found
+	// never depends on how the other one fared.
+	result.AllMatches = make([]detector.Match, 0, len(result.DocumentMatches)+len(result.MetadataMatches))
+	result.AllMatches = append(result.AllMatches, result.DocumentMatches...)
+	result.AllMatches = append(result.AllMatches, result.MetadataMatches...)
+
 	// Handle errors with partial success capability
 	var processingErrors []error
 	if documentErr != nil {
@@ -479,9 +512,15 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 		processingErrors = append(processingErrors, fmt.Errorf("metadata validation failed: %w", metadataErr))
 	}
 
-	// If both paths failed, return error
+	// Both paths failed: return everything either path kept, and BOTH errors wrapped
+	// with %w, so errors.Is sees each of them (a join, keeping the one-line message
+	// that the NOT FULLY EXAMINED reason and the dual_path_fallback record print).
+	// This returned nil and formatted both errors with %v, which hid a cut-short from
+	// the caller's terminal-error check: the caller fell back to the legacy re-run,
+	// which threw the partials away again and returned a clean, empty result (#771).
 	if len(processingErrors) == 2 {
-		return nil, fmt.Errorf("both validation paths failed: document=%v, metadata=%v", documentErr, metadataErr)
+		result.ProcessingTime = time.Since(startTime)
+		return result, fmt.Errorf("both validation paths failed: document=%w, metadata=%w", documentErr, metadataErr)
 	}
 
 	// Log partial failures but continue with successful results
@@ -490,11 +529,6 @@ func (evb *EnhancedValidatorBridge) processDualPath(ctx stdctx.Context, routedCo
 			evb.observer.Debug().LogDetail("partial_validation_failure", procErr.Error())
 		}
 	}
-
-	// Combine all matches
-	result.AllMatches = make([]detector.Match, 0, len(result.DocumentMatches)+len(result.MetadataMatches))
-	result.AllMatches = append(result.AllMatches, result.DocumentMatches...)
-	result.AllMatches = append(result.AllMatches, result.MetadataMatches...)
 
 	// If the run was cancelled/timed out, surface that as a scan-level error
 	// carrying whatever partial matches we gathered. This is NOT a per-validator
@@ -673,7 +707,10 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, con
 				Error:     err.Error(),
 			})
 		}
-	} else {
+	}
+	// A cut-short keeps the matches gathered before it fired, as on the routed path;
+	// any other error still discards them. This arm dropped them on every error (#771).
+	if err == nil || execguard.IsCoverageCutShort(err) {
 		allMatches = append(allMatches, documentMatches...)
 	}
 
@@ -699,7 +736,9 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, con
 	// are available here even though this arm is only reached when routing failed.
 	if evb.metadataBridge.metadataValidator != nil {
 		mv := evb.metadataBridge.metadataValidator
-		name := fmt.Sprintf("%T", mv)
+		// Dispatched under the check name, so a METADATA budget is looked up here
+		// (ValidateContent applies it per unit). It was the Go type name (#771).
+		name := metadataCheckName
 
 		for _, unit := range legacyMetadataUnits(content) {
 			metadataMatches, err := execguard.ValidateContent(ctx, name, mv, unit.text, unit.sourceFile)
@@ -714,7 +753,11 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, con
 						Error:     err.Error(),
 					})
 				}
-				continue
+				// A cut-short keeps what this unit returned (a match-capped
+				// slice, say); any other error discards it.
+				if !execguard.IsCoverageCutShort(err) {
+					continue
+				}
 			}
 
 			// Rebase to file-relative lines. The validator saw only this section, so
@@ -737,7 +780,13 @@ func (evb *EnhancedValidatorBridge) processContentLegacy(ctx stdctx.Context, con
 		}
 	}
 
-	return allMatches, nil
+	// Return a cut-short with the matches instead of swallowing it (#771). This
+	// returned nil unconditionally, so a fallback run that was itself cut short
+	// reported a complete scan. Ordinary validator errors stay logged, not returned,
+	// matching the document bridge: returning one would make the caller drop every
+	// match for a failure that does not make the result partial. No cut-short means
+	// nil, as before.
+	return allMatches, firstBudgetError(processingErrors)
 }
 
 // RegisterValidator registers a validator for document body content under its
@@ -1074,6 +1123,14 @@ func (mvb *MetadataValidatorBridge) SetValidator(validator PreprocessorAwareVali
 	mvb.metadataValidator = validator
 }
 
+// hasValidator reports whether a metadata validator is set, i.e. whether METADATA
+// was selected for this scan.
+func (mvb *MetadataValidatorBridge) hasValidator() bool {
+	mvb.mu.RLock()
+	defer mvb.mu.RUnlock()
+	return mvb.metadataValidator != nil
+}
+
 // SetObserver sets the observability component
 func (mvb *MetadataValidatorBridge) SetObserver(observer observability.Observer) {
 	mvb.observer = observer
@@ -1090,7 +1147,10 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContent(metadataItems []route
 // Each metadata validator invocation is dispatched through the execguard
 // chokepoint so a panic in the (large, complex) metadata validator is recovered
 // rather than crashing the process (v2 gap 1.3), and the per-item loop stops
-// early once ctx is cancelled/expired (v2 gap 1.1).
+// early once ctx is cancelled/expired (v2 gap 1.1) or METADATA's own budget has
+// run out. A cut-short (recovered panic, deadline, budget) is returned with the
+// matches gathered, like the document bridge's; with no validator configured it
+// is a no-op returning (nil, nil).
 func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context, metadataItems []router.MetadataContent, contextInsights context.ContextInsights) ([]detector.Match, error) {
 	var finishTiming func(bool, map[string]interface{})
 	if mvb.observer != nil {
@@ -1102,13 +1162,17 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 	mvb.mu.RUnlock()
 
 	if validator == nil {
+		// METADATA was not selected, which is not a failure (#771): there is nothing
+		// to run, exactly as for zero document validators. This returned an error, and
+		// the router routes a metadata item for every metadata-capable file, so any
+		// cut-short on the document path made the file look as if both paths had failed.
 		if mvb.observer != nil && mvb.observer.Debug() != nil {
 			mvb.observer.Debug().LogDetail("metadata_bridge", "No metadata validator configured")
 		}
 		if finishTiming != nil {
-			finishTiming(false, map[string]interface{}{"error": "no metadata validator configured"})
+			finishTiming(true, map[string]interface{}{"match_count": 0, "skipped_reason": "no_metadata_validator"})
 		}
-		return []detector.Match{}, fmt.Errorf("no metadata validator configured")
+		return nil, nil
 	}
 
 	if len(metadataItems) == 0 {
@@ -1135,11 +1199,19 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 	startTime := time.Now()
 	validationErrors := make([]error, 0)
 
+	// METADATA's own budget (#771): --validator-budget METADATA=<d>, or all=<d>. Its
+	// time budget is one deadline for this whole loop, checked before each item below;
+	// an item already running is not interrupted (see execguard.LoopBudget for why
+	// that is the granularity). Without a budget, loopCtx is ctx and nothing changes.
+	loopCtx, cancelBudget, budget := execguard.LoopBudget(ctx, metadataCheckName)
+	defer cancelBudget()
+
 	// Process each metadata item
 	for _, metadataItem := range metadataItems {
-		// Stop early if the deadline/cancellation has fired; surface ctx.Err()
-		// so the caller can report incomplete coverage rather than a clean run.
-		if cerr := ctx.Err(); cerr != nil {
+		// Stop early once a deadline has fired, the scan's or METADATA's own; surface
+		// it so the caller can report incomplete coverage rather than a clean run.
+		if cerr := loopCtx.Err(); cerr != nil {
+			allMatches, _ = execguard.CapMatches(metadataCheckName, budget, allMatches)
 			if finishTiming != nil {
 				finishTiming(false, map[string]interface{}{"match_count": len(allMatches), "cancelled": true})
 			}
@@ -1148,8 +1220,10 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 
 		// Dispatch through execguard so a panic in the metadata validator is
 		// recovered into a non-retryable error instead of crashing the process.
+		// The name is the check name, as on the document path, so diagnostics name
+		// the check rather than the Go type.
 		item := metadataItem
-		matches, err := execguard.SafeRun(ctx, fmt.Sprintf("%T", validator), func() ([]detector.Match, error) {
+		matches, err := execguard.SafeRun(loopCtx, metadataCheckName, func() ([]detector.Match, error) {
 			return validator.ValidateMetadataContent(item)
 		})
 		if err != nil {
@@ -1232,17 +1306,41 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 		mvb.metrics.mu.Unlock()
 	}
 
+	// METADATA's match budget applies to what the validator produced for the whole
+	// file, the union of its items, as ValidateContent applies it to one call.
+	if capped, capErr := execguard.CapMatches(metadataCheckName, budget, allMatches); capErr != nil {
+		allMatches = capped
+		validationErrors = append(validationErrors, capErr)
+	}
+
+	// A deadline that fired while the LAST item was running has no later item to
+	// stop, so the check at the top of the loop never sees it. Most files have one
+	// metadata item, so without this check a METADATA budget would be reported
+	// only if it had already expired before the item started, and a budget that
+	// the item overran would be the silently ignored budget the flag promises not
+	// to have (#115). The item's findings are kept; the overrun is disclosed.
+	if cerr := loopCtx.Err(); cerr != nil {
+		validationErrors = append(validationErrors, cerr)
+	}
+
 	// Log validation errors but don't fail completely if some items succeeded
 	if len(validationErrors) > 0 && mvb.observer != nil && mvb.observer.Debug() != nil {
 		mvb.observer.Debug().LogDetail("metadata_validation_errors",
 			fmt.Sprintf("%d out of %d metadata items failed validation", len(validationErrors), len(metadataItems)))
 	}
 
+	// Report this path's own cut-shorts (#771), the way the document bridge reports
+	// its validators': a recovered panic or a budget means items went unscanned. A
+	// METADATA panic was logged and dropped here, so the file reported a complete
+	// scan. Ordinary validator errors keep the historical log-only behavior, and with
+	// no cut-short this is nil, as before.
+	cutShort := firstBudgetError(validationErrors)
+
 	// Update metrics
 	mvb.updateMetrics(int64(len(metadataItems)), len(allMatches), time.Since(startTime))
 
 	if finishTiming != nil {
-		finishTiming(true, map[string]interface{}{
+		finishTiming(cutShort == nil, map[string]interface{}{
 			"match_count":       len(allMatches),
 			"metadata_items":    len(metadataItems),
 			"processing_time":   time.Since(startTime).Milliseconds(),
@@ -1250,7 +1348,7 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 		})
 	}
 
-	return allMatches, nil
+	return allMatches, cutShort
 }
 
 // getPreprocessorSpecificAdjustment returns confidence adjustments specific to preprocessor types

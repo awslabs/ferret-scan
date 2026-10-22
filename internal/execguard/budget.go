@@ -5,7 +5,10 @@ package execguard
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // ValidatorBudget bounds a single validator's work on one scan. Both fields are
@@ -55,4 +58,56 @@ func budgetFor(ctx context.Context, name string) ValidatorBudget {
 		return m[name] // absent key => zero value => disabled
 	}
 	return ValidatorBudget{}
+}
+
+// LoopBudget starts the budget for a validator that is dispatched once per ITEM
+// through SafeRun rather than once per file through ValidateContent. The dual-path
+// bridge's metadata loop is that site: it runs the metadata validator once per
+// metadata section of a file.
+//
+// The budget is read under name exactly as ValidateContent reads it, so one
+// --validator-budget entry reaches both kinds of dispatch. Before #771 the metadata
+// loop never read a budget at all: budgetFor ran only inside ValidateContent, and
+// the loop dispatched under the Go type name besides. So METADATA=<d> was accepted,
+// checked against the list of check names, and did nothing.
+//
+// The TIME budget becomes ONE deadline for the whole loop, returned as the context
+// the caller checks before each item and once more after the last. That check is
+// the granularity: an item already running is not interrupted, because the metadata
+// validator does not poll its context (#110 exempted it: it is not driven by a token
+// loop). A budget that fires mid-item therefore stops the loop when that item
+// returns, or is reported after the last item when there is no next one. Disabled
+// (<= 0) returns ctx itself and a no-op cancel, so the no-budget path is unchanged.
+//
+// A budget shorter than the platform clock's resolution is not guaranteed to be
+// observed as expired at the first check: context.WithTimeout cancels synchronously
+// only when the clock has already moved past the deadline, and on a coarse clock
+// (Windows ticks at about 0.5-15.6 ms) it arms a timer instead. Work that completes
+// within one tick then finishes inside the budget as far as the clock can tell.
+// Tests that need a deterministic cut-short use MatchLimit, a sleeping item, or a
+// fixture whose work outlasts the tick.
+//
+// The returned ValidatorBudget is for CapMatches, applied to the union of the items.
+func LoopBudget(ctx context.Context, name string) (context.Context, context.CancelFunc, ValidatorBudget) {
+	b := budgetFor(ctx, name)
+	if b.TimeLimit <= 0 {
+		return ctx, func() {}, b
+	}
+	loopCtx, cancel := context.WithTimeout(ctx, b.TimeLimit)
+	return loopCtx, cancel, b
+}
+
+// CapMatches applies b's MATCH budget to matches that validator name produced
+// without error. Over the cap it keeps the first MatchLimit matches, in emission
+// order, and returns ErrMatchBudgetExceeded alongside them. At or under the cap, or
+// with the cap disabled, matches is returned unmutated with a nil error.
+//
+// Callers pass only successfully produced matches: a partial slice that came back
+// with an error already carries its own incompleteness (see ValidateContent).
+func CapMatches(name string, b ValidatorBudget, matches []detector.Match) ([]detector.Match, error) {
+	if b.MatchLimit <= 0 || len(matches) <= b.MatchLimit {
+		return matches, nil
+	}
+	return matches[:b.MatchLimit], fmt.Errorf("%w: validator %q emitted more than %d matches",
+		ErrMatchBudgetExceeded, name, b.MatchLimit)
 }

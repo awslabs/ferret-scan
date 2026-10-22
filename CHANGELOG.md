@@ -147,6 +147,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   effect; unset, `""` and the four names keep their exit codes. Suppression hashes and output schemas are
   unchanged (no finding's text, line or type changes); exit 1 is the existing usage-error code, so hooks
   fail closed. The audit log's strategy integers are unchanged. Docs state the exact-spelling rule.
+- **validators (cut-short on a metadata-capable file without METADATA):** a coverage cut-short on an
+  office, PDF, image, audio or video file scanned without `METADATA` now keeps the file's findings and
+  is disclosed, instead of discarding every finding at exit 0
+  ([#771](https://github.com/awslabs/ferret-scan/issues/771)). Those 33 extensions route a metadata item
+  even when `METADATA` is not selected, and the metadata path treated "no validator" as a failure, so
+  any cut-short on the document path (a `--validator-budget`, `CLOUD_RESOURCES`'s 5 MB size cap, a match
+  cap, a recovered panic) made both paths fail; the both-failed branch returned no matches with the
+  cut-short formatted out of its error, and the legacy fallback re-ran the file, dropped the partials
+  again and returned success. A 10-address `.docx` under `--checks EMAIL,PHONE --validator-budget
+  PHONE=1ns --fail-on-incomplete` reported 0 findings at exit 0 with an empty stderr, no SARIF
+  notification and no redacted copy, where the `.txt` twin reported 10 at exit 3; a `.docx` with a
+  6.1 MB body went from 5,200 findings to 0 when `CLOUD_RESOURCES` joined `--checks EMAIL`, a regression
+  from #424. Both shipped `precommit` check lists omit `METADATA`, and `pkg/scan.ScanFile` returned the
+  same 0 findings with `Incomplete=false`. Now an unselected `METADATA` is a no-op and its path is
+  skipped; when both paths fail, every match either kept is returned and both errors stay visible to
+  `errors.Is`; the metadata path reports its own cut-shorts (a `METADATA` panic was logged and dropped,
+  even with `METADATA` selected); the legacy fallback keeps cut-short partials and returns the error.
+  `--validator-budget METADATA=<d>`, and `all=<d>` for `METADATA`, were accepted and did nothing: they are
+  honoured now, checked between metadata items and once more after the last, so an item already running
+  finishes first and an item that overran the budget is reported rather than ignored, and `--help`
+  says so. Compatibility: no finding's text, line or type changes, so suppression hashes are unchanged;
+  affected files go from exit 0 to exit 3 under `--fail-on-incomplete` and count in `files_not_examined`;
+  runs with no cut-short are byte-identical; `METADATA=` and `all=` can now cut `METADATA` short, which is
+  disclosed. `--debug` stops printing `metadata_path_error`, `dual_path_fallback` and `legacy_*` for an
+  unselected `METADATA`; no record type is removed or renamed. The legacy re-run's CPU (about 0.3 s on
+  the 6.1 MB `.docx`) is gone.
+- **metadata (confidence on arm64):** the field-type boost (`author`, `company`, ...) was added to a
+  metadata finding's confidence as `confidence + boost*100`, which the arm64 compiler fuses into one
+  multiply-add with a single rounding, so an arm64 build (the `linux/arm64` image, Apple silicon)
+  reported `55.00000000000001` where amd64 reports `55.000000000000014`. The product is now rounded
+  before the add, as amd64 already did, so the two agree to the last digit and golden snapshots
+  regenerated on one platform hold on the other. No band or finding changes; amd64 output is unchanged.
 - **config, cli (built-in precommit profile):** the built-in `precommit` profile no longer overrides what
   a config wrote ([#768](https://github.com/awslabs/ferret-scan/issues/768)). Under `--pre-commit-mode`,
   `PRE_COMMIT`, `_PRE_COMMIT_RUNNING`, `PRE_COMMIT_HOOK`, `GIT_HOOK_TYPE` or the published hook's

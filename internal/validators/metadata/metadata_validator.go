@@ -1608,7 +1608,13 @@ func (v *Validator) applyPreprocessorConfidenceBoosts(match *detector.Match, pre
 			continue
 		}
 		if strings.Contains(lineLower, fieldType) {
-			match.Confidence += boost * 100 // Convert to percentage
+			// The explicit conversion rounds the product before the add. Without it
+			// the arm64 compiler fuses `Confidence + boost*100` into one FMA with a
+			// single rounding, and the result differs from amd64 in the last digit
+			// (55.000000000000014 vs 55.00000000000001 for a 0.25 base and a 0.3
+			// boost), so golden snapshots regenerated on one platform fail on the
+			// other. Go permits fusion unless a conversion forces the rounding.
+			match.Confidence += float64(boost * 100) // Convert to percentage
 
 			// Add boost information to metadata
 			if match.Metadata == nil {

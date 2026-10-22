@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="contacts.txt" classname="security-scan" time="0.001">
+      <failure message="10 security findings detected" type="SECURITY_FINDINGS">Line 1: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00001@example.com&#xA;Validator: email&#xA;Line 2: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00002@example.com&#xA;Validator: email&#xA;Line 3: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00003@example.com&#xA;Validator: email&#xA;Line 4: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00004@example.com&#xA;Validator: email&#xA;Line 5: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00005@example.com&#xA;Validator: email&#xA;Line 6: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00006@example.com&#xA;Validator: email&#xA;Line 7: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00007@example.com&#xA;Validator: email&#xA;Line 8: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00008@example.com&#xA;Validator: email&#xA;Line 9: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00009@example.com&#xA;Validator: email&#xA;Line 10: BUSINESS detected with 48.0% confidence (LOW)&#xA;Match: user00010@example.com&#xA;Validator: email</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
