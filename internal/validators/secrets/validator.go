@@ -64,6 +64,13 @@ type scopedCandidate struct {
 	candidate
 	method    string
 	threshold float64
+	// structural marks a candidate whose position in a grammar is its own corroboration: today a
+	// password or token in URI user info (#766, uri_userinfo.go). It exempts the candidate from the
+	// M24 cap, which exists for values nothing labels, and from nothing else.
+	structural bool
+	// ceiling, when positive, is a value-intrinsic upper bound published as ConfidenceCeilingKey,
+	// combined with the other ceilings by taking the lowest. Set by uri_userinfo's LOW dispositions.
+	ceiling float64
 }
 
 // spannedMatch is an emitted finding that still remembers the byte span of the
@@ -755,6 +762,16 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 		// specific, higher-confidence AWS_SECRET_ACCESS_KEY row replaces the
 		// generic API_KEY_OR_SECRET row for that span instead of joining it.
 		lineResults = mergeBySpanKeepStrongest(lineResults, awsResults)
+
+		// #766: a password or token in URI user info. A separate, ADDITIVE source: it runs outside
+		// containsSecretIndicators (so none of that function's arms changes, and a line it skips,
+		// like an npm "resolved" registry URL, is still parsed), it is never gated (#753), and it
+		// is appended after every other path has been arbitrated and merged, so it cannot change
+		// what any of them reports -- not a type, a span or a confidence, which is what keeps
+		// every existing suppression hash valid. See uri_userinfo.go.
+		if uris := findURIUserinfo(line); len(uris) > 0 {
+			lineResults = v.appendURIUserinfoResults(lineResults, uris, line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
+		}
 
 		for _, r := range lineResults {
 			m := r.match
@@ -2076,7 +2093,7 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 		// always originates from this exact line, so this is behavior-preserving
 		// and additionally avoids the latent first-occurrence bug where a
 		// duplicated token resolves to a different line's context.
-		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, lineKw, contextInsights, isShellScript, envType)
+		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, lineKw, contextInsights, isShellScript, envType, cand.structural)
 
 		// Skip matches with 0% confidence - they are false positives
 		if confidence <= 0 {
@@ -2119,6 +2136,9 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 				// why it had demoted the value — the disclosure half of #363/#364. The
 				// AWS-secret path at findAWSSecretKeys already spells it this way.
 				checks["not_test_data"] = false
+			}
+			if c := cand.ceiling; c > 0 && (ceiling == 0 || c < ceiling) {
+				ceiling = c
 			}
 			if ceiling > 0 {
 				meta[ConfidenceCeilingKey] = ceiling
@@ -2346,7 +2366,7 @@ func (v *Validator) calculateEnhancedConfidenceWithCache(match, fullContent stri
 // nearby-keyword check (those matches are always specific_pattern=true), so it
 // passes an empty line hint.
 func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullContent string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
-	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", lineKeywordUnknown, contextInsights, isShellScript, envType)
+	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", lineKeywordUnknown, contextInsights, isShellScript, envType, false)
 }
 
 // calculateEnhancedConfidenceWithCacheAndEnvAndLine is identical to
@@ -2355,7 +2375,10 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 // check inspects that line directly instead of rescanning the whole content via
 // strings.Index — eliminating an O(content) scan per match (the O(n^2) hot path)
 // and the latent first-occurrence bug for duplicated tokens.
-func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, lineKw lineKeywordState, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
+//
+// structural is scopedCandidate.structural: it exempts the candidate from the M24
+// cap and changes nothing else.
+func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, lineKw lineKeywordState, contextInsights context.ContextInsights, isShellScript bool, envType string, structural bool) (float64, map[string]bool) {
 	// Start with base confidence calculation
 	confidence, checks := v.CalculateConfidence(match)
 
@@ -2487,7 +2510,11 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// cap it just below the MEDIUM threshold so it does not surface as MEDIUM/HIGH
 	// on shape alone. A specific pattern, or a nearby secret keyword, lifts it.
 	// nearbyKeyword was computed above, ahead of the environment switch.
-	if !checks["specific_pattern"] && !nearbyKeyword {
+	//
+	// A structural candidate is exempt: a password in URI user info is labelled by the URI
+	// grammar itself, and capping it at 55 held every keyword-free DATABASE_URL under the
+	// reporting threshold of the paths that could see one (#766).
+	if !checks["specific_pattern"] && !nearbyKeyword && !structural {
 		if confidence > 55 {
 			confidence = 55
 		}
@@ -2744,9 +2771,10 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 		ShortDescription: "Detects API keys, tokens, passwords, and other secrets using entropy analysis",
 		DetailedDescription: `The Secrets Validator detects API keys, tokens, passwords, and other sensitive credentials using techniques inspired by the detect-secrets project.
 
-It combines two main detection methods:
+It combines three main detection methods:
 1. High Entropy String Analysis - Uses Shannon entropy to identify random-looking strings that are likely cryptographic material
 2. Keyword Pattern Matching - Searches for common secret keywords and patterns
+3. Credentials in URI user info - Parses the authority of every URI (RFC 3986) and reports the password in scheme://user:password@host, or a token-shaped user name in https://token@host, with no keyword needed: DATABASE_URL, broker, proxy and registry URLs and JDBC DSNs
 
 SUPPORTED SECRET TYPES:
 • SSH_PRIVATE_KEY - SSH private keys and certificates
@@ -2762,7 +2790,7 @@ SUPPORTED SECRET TYPES:
 • PGP_PRIVATE_KEY - PGP/GPG private keys
 • API_KEY_OR_SECRET - Generic high-entropy secrets and API keys
 
-The validator automatically identifies the specific type of secret and displays it in the TYPE column for better categorization and handling.words followed by values
+The validator automatically identifies the specific type of secret and displays it in the TYPE column for better categorization and handling.
 
 The validator analyzes character distribution, applies contextual analysis, and uses configurable confidence scoring to minimize false positives.`,
 		Patterns: append(append([]string{
@@ -2779,6 +2807,7 @@ The validator analyzes character distribution, applies contextual analysis, and 
 			"\"password\": \"value\"",
 			"auth_token = \"value\"",
 			"private_key: \"value\"",
+			"Credentials in URI user info: scheme://user:password@host for any scheme (JDBC included), and a token as the user name; default credentials such as postgres:postgres are reported LOW",
 		),
 		SupportedFormats: []string{
 			"Text files with quoted strings",

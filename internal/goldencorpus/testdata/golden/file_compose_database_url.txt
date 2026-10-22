@@ -1,0 +1,3 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            FILE
+------------------------------------------------------------------------------------------
+[HIGH  ] secrets      API_KEY_OR_SECRET      97.00% line     5 d7Q8N92jGKT5WdZ4 docker-compose.yml

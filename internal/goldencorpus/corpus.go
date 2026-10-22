@@ -386,6 +386,128 @@ var Cases = []Case{
 			"id " + "AKIA" + "IOSFODNN7EXAMPLE" + "X\n",
 	},
 	{
+		Name: "secrets_uri_userinfo",
+		Description: "The #766 false negative: a password or token in URI user info " +
+			"(`scheme://user:PASSWORD@host`, `https://TOKEN@host`). Every line here reported NOTHING " +
+			"before the fix, from any validator: no capture path anchored on URI syntax, and the M24 " +
+			"cap held an uncorroborated candidate at 55, under the threshold of the paths that could " +
+			"see one. Each line must now report ONE finding whose text is exactly the password (or the " +
+			"token), detection_method uri_userinfo, and the redaction snapshots must show no byte of " +
+			"any value.\n" +
+			"  Lines 1-10 are the schemes: postgres (unquoted), mysql (quoted), mongodb+srv (JSON), " +
+			"redis with an empty user, amqp (Python, single quotes), sqlserver, an http proxy, ftp, " +
+			"smtp (YAML) and ldap with `cn=admin` as the user. Lines 11-19 are the user-info forms: JDBC " +
+			"mysql and postgresql (the scheme is the inner one), a multi-host MongoDB replica set " +
+			"(net/url rejects its comma host list), a percent-encoded password (reported as written, so " +
+			"the redacted URI still parses), an upper-case scheme, a trailing `# comment`, a " +
+			"create_engine call, and prose ending the authority at `,` and at `)`. Lines 20-22 are " +
+			"tokens: as the user name (only a token-shaped user name is a candidate), pip's " +
+			"`__token__:` and an npm `\"resolved\"` URL on a `registry.` host, which the line pre-check " +
+			"skips, so it pins that this source runs outside it.\n" +
+			"  Line 23 is the additivity control: a key carrying a stem reports the WHOLE URI, as it " +
+			"always has, and must not gain a nested second finding. Values are consonants and digits " +
+			"on .invalid hosts, so no test marker, word or provider prefix is spelt.",
+		Checks: []string{"SECRETS"},
+		Input: "DATABASE_URL=postgres://app_user:WSdWc78MZvrJc945@db1.orders.invalid:5432/appdb\n" +
+			"MYSQL_URL=\"mysql://app_user:wn2dXnzDRkGmkDV3@db1.orders.invalid:3306/shop\"\n" +
+			"{\"mongo\": {\"uri\": \"mongodb+srv://app_user:JbXWgpFc9qgMrXXH@cluster0.orders.invalid/appdb?retryWrites=true\"}}\n" +
+			"REDIS_URL=redis://:vSVs4DBJWrpLZ4cp@cache.orders.invalid:6379/0\n" +
+			"broker_url = 'amqp://app_user:whSV2CKnVc4jtfKL@mq.orders.invalid:5672//'\n" +
+			"CONNECTION_STRING=sqlserver://app_user:GGmxs65LkdZkhQNx@db1.orders.invalid:1433?database=shop\n" +
+			"HTTPS_PROXY=http://proxy_user:NWhjCNSFKX3Jp3Gd@proxy.orders.invalid:3128\n" +
+			"ftp://deploy:XvpHjp7D8FnBfvq4@files.orders.invalid/upload\n" +
+			"  smtp: smtp://mailer:QgfNxFFHVX6CZ5VR@mail.orders.invalid:587\n" +
+			"ldap://cn=admin:pnxDS8qZsnzCmtfx@ldap.orders.invalid:389/dc=orders,dc=invalid\n" +
+			"jdbc:mysql://app_user:FDj9F7vpz9W2HqD6@db1.orders.invalid:3306/shop\n" +
+			"jdbc:postgresql://app_user:KQLHhGHTZLZqC8QW@db1.orders.invalid:5432/appdb\n" +
+			"mongodb://app_user:FRNvMr7fLvMvdgZ4@m1.orders.invalid:27017,m2.orders.invalid:27017,m3.orders.invalid:27017/appdb?replicaSet=rs0\n" +
+			"postgres://app_user:MHHzQP%40gpzxX4VrX@db1.orders.invalid/appdb\n" +
+			"POSTGRESQL://app_user:npNgs2rnbjRdF3d2@db1.orders.invalid/appdb\n" +
+			"postgres://app_user:t4DZ55dSdQRQ6pvz@db1.orders.invalid:5432/appdb # primary\n" +
+			"engine = create_engine(\"postgresql+psycopg2://app_user:qR3hM3d8jrHn3x49@db1.orders.invalid/appdb\")\n" +
+			"Connect with postgres://app_user:jKvd46NwRBrJB54z@db1.orders.invalid, then run the migration.\n" +
+			"connect(postgres://app_user:8tZGsskC9jcpZwK4@db1.orders.invalid)\n" +
+			"git clone https://WppNTxpq7ddtsXcQWPHDJ2634vMRDVD3x8ghnKt5@git.orders.invalid/orders/app.git\n" +
+			"--extra-index-url https://__token__:8GsFLFQdnr7JMspqNSPkLXbmmtQVJ2nhx8LzJw5N@pypi.orders.invalid/simple/\n" +
+			"      \"resolved\": \"https://deploy:BhxRM8Mb8djnRL5LS47t5RTwCQSjMQsx6TRFxkgM@registry.orders.invalid/left-pad/-/left-pad-1.3.0.tgz\",\n" +
+			"DB_PASSWORD=postgresql://app_user:W2tDmgHmQKqh9XSZ@db1.orders.invalid:5432/appdb\n",
+	},
+	{
+		Name: "secrets_uri_userinfo_negative",
+		Description: "The #766 structural decoys, which must stay EMPTY: an `@` the URI grammar does " +
+			"not put in user info, and user info that holds no credential. An `@` in a path or query " +
+			"(Vite's `/@vite`, an npm `@scope`, `/@me`, a `?slot=10:30@room4`, a map's `/@51.5,...`, " +
+			"`[::1]:8080/@admin`, a Go proxy `/@v/list`, `file:///...@2026`, `/a:b@c`) is never in the " +
+			"authority, because the authority ends at the first `/ ? #`. A container digest has no " +
+			"`://`. A user name with no password (`git@`, `alice@`, `app_user@`) is silent unless it is " +
+			"shaped like a token. Templates fail by grammar -- `${X}` and double braces carry braces, " +
+			"`%s` is not a valid percent-encoding, `<password>` ends the authority before its `@` -- and " +
+			"a whole-value `$NAME`, `$(...)` or `****` is a reference or this tool's own mask, not a " +
+			"value. `mailto:` is the EMAIL check's, and is not scanned for here.\n" +
+			"  `http://localhost:5173/...` makes this file `development` for the file-wide environment " +
+			"verdict, which is why the default-credential decoys live in their own case below rather " +
+			"than here: under that verdict they would measure the -15, not their disposition.",
+		Checks: []string{"SECRETS"},
+		Input: "http://localhost:5173/@vite/client\n" +
+			"https://cdn.orders.invalid:443/npm/@scope/pkg@1.2.3/index.js\n" +
+			"https://api.orders.invalid:8000/v1/users/@me\n" +
+			"registry.orders.invalid:5000/team/app@sha256:9b2e5f0c4d1a8e7f6b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a\n" +
+			"ssh://git@git.orders.invalid/app.git\n" +
+			"https://alice@git.orders.invalid/app.git\n" +
+			"https://cal.orders.invalid/book?slot=10:30@room4\n" +
+			"http://[::1]:8080/@admin\n" +
+			"https://proxy.orders.invalid/github.com/x/y/@v/list\n" +
+			"postgres://${DB_USER}:${DB_PASSWORD}@db:5432/app\n" +
+			"postgres://$DB_USER:$DB_PASSWORD@db:5432/app\n" +
+			"postgres://{{ db_user }}:{{ db_password }}@db:5432/app\n" +
+			"postgres://user:<password>@host:5432/db\n" +
+			"postgres://user:****@host:5432/db\n" +
+			"redis://:%s@cache:6379/0\n" +
+			"https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.orders.invalid/repo.git\n" +
+			"postgresql://app_user@db1.orders.invalid:5432/appdb\n" +
+			"jdbc:postgresql://db1.orders.invalid:5432/appdb\n" +
+			"mongodb://m1.orders.invalid:27017,m2.orders.invalid:27017/appdb?replicaSet=rs0\n" +
+			"https://maps.orders.invalid/@51.5007,-0.1246,15z\n" +
+			"postgres://app:$(DB_PASSWORD)@db:5432/app\n" +
+			"file:///home/app/data@2026/report.csv\n" +
+			"https://h.orders.invalid/a:b@c\n" +
+			"mailto:ops@orders.invalid\n",
+	},
+	{
+		Name: "secrets_uri_userinfo_default_credentials",
+		Description: "The #766 default-credential decoys, on .invalid hosts: each must report at LOW " +
+			"or not at all, never MEDIUM or HIGH. The disposition is VALUE-intrinsic -- the default " +
+			"vocabulary (password, guest, postgres, root, changeme, ...), the user name repeated, or a " +
+			"value plausibleUnquotedSecret or shoutySentinel rejects (`REDACTED`, `xxxxxxxx`) -- and it " +
+			"caps the finding at 55 with a PUBLISHED ceiling (confidence_ceiling), because the document " +
+			"bridge adds its context adjustment after the validator returns. It never drops a finding: " +
+			"`postgres:postgres` can be the real password of a real database, and only a reported " +
+			"value is redacted. `guest:guest` is under the threshold by ordinary scoring (five bytes, " +
+			"low entropy) and reports nothing. No row reads the host, the key or the scheme, all of " +
+			"which the author of the line controls.",
+		Checks: []string{"SECRETS"},
+		Input: "postgres://user:password@db1.orders.invalid:5432/appdb\n" +
+			"amqp://guest:guest@mq.orders.invalid:5672/\n" +
+			"postgres://postgres:postgres@db1.orders.invalid:5432/appdb\n" +
+			"mysql://root:changeme@db1.orders.invalid:3306/shop\n" +
+			"postgres://user:REDACTED@db1.orders.invalid:5432/appdb\n" +
+			"postgres://user:xxxxxxxx@db1.orders.invalid:5432/appdb\n",
+	},
+	{
+		Name: "secrets_uri_userinfo_email_overlap",
+		Description: "#766 matrix C, PENDING #773. On `redis://default:<pw>@cache.orders-svc.io` at the " +
+			"end of a line (and before `?ssl=true`) EMAIL reports `<pw>@cache.orders-svc.io`, and that " +
+			"stays (#687); SECRETS now reports the password itself, nested inside it. Which of two " +
+			"overlapping findings the redactor renders is #773's rule, not this one, so the " +
+			"format_preserving snapshot here records what main does today -- the EMAIL span's mask " +
+			"keeps the password's first character (`X***...@cache.orders-svc.io`) -- and is expected " +
+			"to change, to no password byte under any strategy, when #773 lands. The simple strategy " +
+			"already leaves none.",
+		Checks: []string{"SECRETS", "EMAIL"},
+		Input: "REDIS_URL=redis://default:B7vgQ3hD54kWtK97@cache.orders-svc.io\n" +
+			"REDIS_URL=redis://default:4cRNSXNBszm2C4xj@cache.orders-svc.io?ssl=true\n",
+	},
+	{
 		Name:        "ip_addresses",
 		Description: "Public vs private/loopback IPv4; locks IP_ADDRESS context handling.",
 		Checks:      []string{"IP_ADDRESS"},
@@ -946,6 +1068,55 @@ var FileCases = []FileCase{
 		Checks:      []string{"SECRETS"},
 		Filename:    filepath.Join("config", "settings.yaml"),
 		Content:     []byte("token: AuthToken\npassword: MixedCaseNoDigits\n"),
+		Tier1Parity: true,
+	},
+	// --- Tier 1: #766, credentials in URI user info, in the files they live in ---
+	{
+		Name: "file_env_database_url_only",
+		Description: "Tier 1, #766: a .env whose only credential is the password inside DATABASE_URL. " +
+			"Before the fix this file had NO finding at all, so --enable-redaction wrote no redacted " +
+			"copy, the --stdin gateway passed it through and --pre-commit-mode exited 0. It must now " +
+			"report the password (and only the password: the key carries no stem, so no wider span " +
+			"competes for it).",
+		Checks:      []string{"SECRETS"},
+		Filename:    ".env",
+		Content:     []byte("DATABASE_URL=postgresql://app_user:kppbJJJ2vkV3mdqH@db1.orders.invalid:5432/appdb\n"),
+		Tier1Parity: true,
+	},
+	{
+		Name: "file_compose_database_url",
+		Description: "Tier 1, #766: a docker-compose service environment list, the other place a " +
+			"DATABASE_URL is routinely committed. The `- KEY=value` item shape matches no assignment " +
+			"pattern either, so the password must come from the URI grammar.",
+		Checks:   []string{"SECRETS"},
+		Filename: "docker-compose.yml",
+		Content: []byte("services:\n" +
+			"  api:\n" +
+			"    image: orders/api:1.4\n" +
+			"    environment:\n" +
+			"      - DATABASE_URL=mysql://app_user:d7Q8N92jGKT5WdZ4@db:3306/shop\n"),
+		Tier1Parity: true,
+	},
+	{
+		Name: "file_properties_jdbc_url",
+		Description: "Tier 1, #766: Spring .properties with JDBC URLs carrying user info. `jdbc:` is " +
+			"not a URI scheme net/url can see through, which is one reason the authority is parsed by " +
+			"hand; the scheme is the inner one. Both passwords must report, exactly.",
+		Checks:   []string{"SECRETS"},
+		Filename: "application.properties",
+		Content: []byte("spring.datasource.url=jdbc:postgresql://app_user:9NZzXZrztbPDDrR6@db1.orders.invalid:5432/appdb\n" +
+			"spring.flyway.url=jdbc:mysql://app_user:tqpDgKMrV7zFDRzn@db1.orders.invalid:3306/shop\n"),
+		Tier1Parity: true,
+	},
+	{
+		Name: "file_ini_sqlalchemy_url",
+		Description: "Tier 1, #766: an alembic.ini, where sqlalchemy.url is how a migration tool is " +
+			"pointed at a database and the usual way a password ends up committed with it.",
+		Checks:   []string{"SECRETS"},
+		Filename: "alembic.ini",
+		Content: []byte("[alembic]\n" +
+			"script_location = migrations\n" +
+			"sqlalchemy.url = postgresql+psycopg2://app_user:Q7rpn8Wjk8DMn76B@db1.orders.invalid/appdb\n"),
 		Tier1Parity: true,
 	},
 	{
