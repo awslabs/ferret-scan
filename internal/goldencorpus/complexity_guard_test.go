@@ -250,6 +250,32 @@ var complexityTargets = []struct {
 		threshold:       15 * time.Second,
 	},
 	{
+		// #766: the URI user-info source parses every authority on a line. Dense: distinct
+		// credentialed URIs on ONE line, each reporting its password, so what grows is the per-URI
+		// work -- the scheme walk-back, the authority scan, the last-@ split, the grammar checks,
+		// and the overlap check against the line's other findings.
+		name:            "secrets_uri_userinfo_dense",
+		new:             func() validatorUnderTest { return secrets.NewValidator() },
+		gen:             genURIUserinfo,
+		minMatches:      400,
+		wantMatchGrowth: true,
+		threshold:       15 * time.Second,
+	},
+	{
+		// #766: ONE authority with no terminator, `x://` and then a long run of `a@h:`, so the last
+		// `@` is four bytes from the end and the user info is everything before it. A parser that
+		// re-scanned or re-validated from each `@` is quadratic here. The password is the whole run
+		// and is reported: there is no length cap, since a cap is a way to hide a credential.
+		// One finding at every size, so match growth is not required. 32 KB base, 128 KB 4x: about
+		// 150 ms of base CPU here, far above what the clock needs to resolve the ratio.
+		name:       "secrets_uri_userinfo_no_terminator",
+		new:        func() validatorUnderTest { return secrets.NewValidator() },
+		gen:        genURIUserinfoNoTerminator,
+		minMatches: 1,
+		baseReps:   8192,
+		threshold:  15 * time.Second,
+	},
+	{
 		name: "socialmedia",
 		// This validator is CONFIG-GATED: NewValidator alone leaves
 		// patternsConfigured false, so ValidateContent returns immediately at

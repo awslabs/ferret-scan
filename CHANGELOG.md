@@ -176,6 +176,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while the exit gate is unchanged. Runs with no config file or with the config's own
   `profiles.precommit` are byte-identical outside `--debug`. Suppression hashes are unchanged (no
   finding's text, line or type changes).
+- **secrets (credentials in URI user info):** a password or token in URI user info --
+  `scheme://user:PASSWORD@host`, `https://TOKEN@host` -- is now detected, and therefore redacted
+  ([#766](https://github.com/awslabs/ferret-scan/issues/766)). That is how `DATABASE_URL`, broker,
+  proxy and registry URLs and JDBC DSNs carry a credential, and no capture path could see one: each
+  needed a provider prefix, a key stem right before `=` or `:` (a URI password follows `user:`) or a
+  quoted run without `:`, `@` or `.`, and the M24 cap then held an uncorroborated candidate at 55,
+  under the threshold of the paths that could. Through the CLI 0 of 185 cases (25 schemes × 7
+  placements, plus a length sweep) reported anything from any validator while `DB_PASSWORD=<pw>`
+  reported the same password at 100, and since only findings reach the redactor a `DATABASE_URL`-only
+  `.env` got no redacted copy, a YAML file with an extra `api_token:` got a "redacted" copy still
+  holding the password, the `--stdin --enable-redaction` gateway passed it through and
+  `--pre-commit-mode` exited 0. A new, separate candidate source parses the RFC 3986 authority by
+  hand (`net/url` reads `jdbc:` URIs as opaque, rejects MongoDB's comma host list and quotes the raw
+  URI, password included, in its errors): any scheme, JDBC included; the authority split at its last
+  `@`, so an `@` in a path or query never matches; user-info and host grammar, so `${X}`, double-brace
+  templates, `<password>` and `%s` fail by grammar. It reports the password exactly as written,
+  percent-encoding included, as `detection_method: uri_userinfo`, typed as before from the value (a
+  GitHub token stays `GITHUB_TOKEN`); a user name with no password is a candidate only when shaped like
+  a token (20+ letters and digits, both present, 3.5+ bits per byte). It runs outside the line
+  pre-check, which is unchanged, is never gated by the source-code lexer, has a threshold of 50 and is
+  exempt from the M24 cap and from nothing else. What it does with a value reads only the value: a
+  whole `$NAME` or `$(…)`, or only `*`, is no candidate; default credentials (`postgres:postgres`,
+  `root:changeme`, the user name repeated) and values `plausibleUnquotedSecret` or `shoutySentinel`
+  reject (`REDACTED`, `xxxxxxxx`) are kept at LOW 55 with a published `confidence_ceiling`, never
+  dropped. Measured: one finding per case of the issue's script at 85-100 with the exact span, the
+  `r01.env` and `r02.yaml` copies hold 0 cleartext passwords, the gateway leaks 0 and
+  `--pre-commit-mode` exits 1 on a `DATABASE_URL`-only `.env` (0 before); 185 of 185 matrix cases report
+  the exact password (85-100), and their redacted copies hold no 4-byte run of it under any strategy;
+  the 24 structural decoys report nothing and the 6 default-credential decoys report LOW or nothing.
+  **Additive, so suppression rules are unaffected**: the source runs after every other path has
+  reported, and a password whose span equals or lies inside a span already reported keeps that finding
+  (`DB_PASSWORD=<uri>` still reports the whole URI), so no existing finding's type, text, line, context
+  or confidence changes and every existing rule still matches; the golden corpus moves no existing
+  finding, `make score` is unchanged, and 63 public files with an `@` in an authority (Go 1.27.2
+  sources, the Go module cache, Python 3.9 and `/usr/share/doc`) keep all 1,371 findings and gain 14,
+  all published examples. New findings change exit status and add redacted copies. Recall cost: an
+  unencoded `/`, `?` or `#` in a password ends the authority there, as it does for every URI parser.
 
 ### 🚀 Features
 

@@ -1,0 +1,4 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            FILE
+------------------------------------------------------------------------------------------
+[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line     1 9NZzXZrztbPDDrR6 application.properties
+[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line     2 tqpDgKMrV7zFDRzn application.properties

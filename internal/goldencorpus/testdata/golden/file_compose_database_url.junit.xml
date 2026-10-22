@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="docker-compose.yml" classname="security-scan" time="0.001">
+      <failure message="API_KEY_OR_SECRET found: d7Q8N92jGKT5WdZ4" type="API_KEY_OR_SECRET">Line 5: API_KEY_OR_SECRET detected with 97.0% confidence (HIGH)&#xA;Match: d7Q8N92jGKT5WdZ4&#xA;Validator: secrets</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

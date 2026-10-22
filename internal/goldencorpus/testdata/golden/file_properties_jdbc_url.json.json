@@ -1,0 +1,78 @@
+{
+  "results": [
+    {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "application.properties",
+      "line_number": 1,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doc_type": "Unknown",
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "detection_method": "uri_userinfo",
+        "environment_type": "unknown",
+        "original_confidence": 85,
+        "secret_type": "API_KEY_OR_SECRET",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "has_entropy": true,
+          "min_length": true,
+          "not_common_word": true,
+          "not_test_data": true,
+          "specific_pattern": false,
+          "valid_format": true
+        },
+        "validation_path": "document"
+      },
+      "text": "9NZzXZrztbPDDrR6",
+      "type": "API_KEY_OR_SECRET",
+      "validator": "secrets"
+    },
+    {
+      "confidence": 85,
+      "confidence_level": "MEDIUM",
+      "filename": "application.properties",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doc_type": "Unknown",
+        "context_doctype": "Unknown",
+        "context_domain": "Retail",
+        "detection_method": "uri_userinfo",
+        "environment_type": "unknown",
+        "original_confidence": 85,
+        "secret_type": "API_KEY_OR_SECRET",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "has_entropy": true,
+          "min_length": true,
+          "not_common_word": true,
+          "not_test_data": true,
+          "specific_pattern": false,
+          "valid_format": true
+        },
+        "validation_path": "document"
+      },
+      "text": "tqpDgKMrV7zFDRzn",
+      "type": "API_KEY_OR_SECRET",
+      "validator": "secrets"
+    }
+  ]
+}
