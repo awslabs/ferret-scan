@@ -179,6 +179,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reported `55.00000000000001` where amd64 reports `55.000000000000014`. The product is now rounded
   before the add, as amd64 already did, so the two agree to the last digit and golden snapshots
   regenerated on one platform hold on the other. No band or finding changes; amd64 output is unchanged.
+- **config, cli (built-in precommit profile):** the built-in `precommit` profile no longer overrides what
+  a config wrote ([#768](https://github.com/awslabs/ferret-scan/issues/768)). Under `--pre-commit-mode`,
+  `PRE_COMMIT`, `_PRE_COMMIT_RUNNING`, `PRE_COMMIT_HOOK`, `GIT_HOOK_TYPE` or the published hook's
+  `--profile precommit`, the profile's `checks`, `confidence_levels`, `redaction.strategy` and
+  `redaction.output_dir` replaced the config's, on both input paths and for all five config sources
+  (`--config`, `./config.yaml`, `./ferret.yaml`, `./.ferret-scan.yaml`, the user config dir). A config
+  naming `PASSPORT` got the profile's six types, so a HIGH passport passed the hook at exit 0 with no
+  output, and `--stdin` with `strategy: simple` returned it in cleartext beside `***-**-0001`; only a
+  config's own `profiles.precommit` escaped, and a null `profiles:` wiped the built-in profile while
+  `profiles: {}` kept it. Separately, `fail_on_incomplete` was missing from the profile bool registry, so
+  every profile turned a config's `fail_on_incomplete: true` off (an unreadable file exited 0, not 3), and
+  a profile switched off `suppressions.show_suppressed` and `suppressions.generate_on_scan`. Now the
+  built-in profile is added after the file is decoded, only when the file does not define
+  `profiles.precommit` (missing, null and `{}` agree), and yields: no strategy or output directory of its
+  own; `high,medium` only when the file lacks `defaults.confidence_levels`; checks are the six plus every
+  type `defaults.checks` names, so a config can widen a hook but a planted one (#293) cannot narrow it;
+  `defaults.checks: all` keeps the six and prints one stderr line naming the profile, its checks, the
+  config and `profiles.precommit.checks` (withheld when `--stdin` stderr is the findings document);
+  `format` stays `text`. Every profile bool, `fail_on_incomplete` included, inherits the config, and the
+  suppression bools inherit `defaults.X` or the `suppressions:` key. `--list-profiles` reads the loaded
+  config, auto-discovered ones included, and marks `precommit (built-in)`; `--debug` names the active
+  profile, why it was selected and what it supplied, on both input paths. `Config.GetPrecommitProfile`,
+  an uncalled copy of the profile, is removed; `config.BuiltinPrecommitChecks` holds the six.
+  **Behaviour change:** hooks now run the types a config names, honour its strategy, output directory and
+  confidence filter, and exit 3 under `fail_on_incomplete`, so they may block commits they let through
+  before; configs with `confidence_levels: all` (the shipped `config.yaml`) list LOW findings in hooks,
+  while the exit gate is unchanged. Runs with no config file or with the config's own
+  `profiles.precommit` are byte-identical outside `--debug`. Suppression hashes are unchanged (no
+  finding's text, line or type changes).
 - **secrets (credentials in URI user info):** a password or token in URI user info --
   `scheme://user:PASSWORD@host`, `https://TOKEN@host` -- is now detected, and therefore redacted
   ([#766](https://github.com/awslabs/ferret-scan/issues/766)). That is how `DATABASE_URL`, broker,

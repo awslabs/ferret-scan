@@ -750,28 +750,12 @@ func processPreprocessOnly(supportedFiles []string, fileRouter *router.FileRoute
 }
 
 // handleProfiles handles profile listing and selection
-func handleProfiles(cfg *config.Config, listProfiles bool, profileName, configFile string, precommitConfig *precommit.PrecommitConfig) *config.Profile {
-	// List profiles if requested
+func handleProfiles(cfg *config.Config, listProfiles bool, profileName string, precommitConfig *precommit.PrecommitConfig) *config.Profile {
+	// List profiles if requested, from the configuration actually loaded: this
+	// used to test the --config flag, so an auto-discovered config's profiles were
+	// reported as "No configuration file found" (#768).
 	if listProfiles {
-		if configFile == "" {
-			fmt.Println("No configuration file found. No profiles available.")
-			os.Exit(0)
-		}
-
-		profiles := cfg.ListProfiles()
-		if len(profiles) == 0 {
-			fmt.Println("No profiles defined in configuration file.")
-		} else {
-			fmt.Println("Available profiles:")
-			for _, name := range profiles {
-				profile := cfg.GetProfile(name)
-				if profile != nil && profile.Description != "" {
-					fmt.Printf("  - %s: %s\n", name, profile.Description)
-				} else {
-					fmt.Printf("  - %s\n", name)
-				}
-			}
-		}
+		writeProfileList(os.Stdout, cfg)
 		os.Exit(0)
 	}
 
@@ -1288,7 +1272,7 @@ func main() {
 	}
 
 	// Handle profile operations
-	activeProfile := handleProfiles(cfg, flags.listProfiles, effectiveProfileName, flags.configFile, precommitConfig)
+	activeProfile := handleProfiles(cfg, flags.listProfiles, effectiveProfileName, precommitConfig)
 
 	// Resolve final configuration values using extracted flags
 	finalConfig := resolveConfiguration(cfg, activeProfile, &configFlags{
@@ -1394,6 +1378,18 @@ func main() {
 	// Check if FERRET_DEBUG environment variable is set
 	if os.Getenv("FERRET_DEBUG") != "" {
 		finalConfig.debug = true
+	}
+
+	// Name the profile that shaped this run, and what it supplied (#768). The
+	// --stdin path logs the same record.
+	if finalConfig.debug {
+		profileObs := mainDebugObs
+		if profileObs == nil {
+			profileObs = observability.NewDebugObserver(os.Stderr)
+		}
+		for _, line := range profileDebugRecord(cfg, effectiveProfileName, flags.profileName, flags.precommitMode) {
+			profileObs.LogDetail("profile", line)
+		}
 	}
 
 	// Set environment variable for validators to detect debug mode
@@ -2107,6 +2103,10 @@ func main() {
 	// It writes to stderr, so scripts parsing results on stdout are unaffected, and it never changes
 	// the exit code.
 	reportConfigProvenance(os.Stderr, cfg, flags.configFile)
+
+	// The built-in precommit profile's one remaining override of a config, named
+	// under the same rule as the note above (#768).
+	reportBuiltinProfileChecks(os.Stderr, cfg, effectiveProfileName)
 
 	// Suppress progress messages in pre-commit mode or quiet mode
 	if !shouldSuppressProgressOutput(finalConfig, precommitConfig, isInteractive) {

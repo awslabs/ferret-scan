@@ -272,6 +272,10 @@ profiles:
 
   # ── Pre-commit ───────────────────────────────────────────────────────────
   # Fast, focused scan for git pre-commit hooks. Non-recursive (only staged files).
+  # Defining profiles.precommit replaces the built-in precommit profile, so hooks
+  # run exactly these checks. Without it, pre-commit mode runs CREDIT_CARD,
+  # SECRETS, SSN, EMAIL, PHONE and IP_ADDRESS plus any type defaults.checks names,
+  # and takes everything else from this file.
   precommit:
     format: text
     confidence_levels: high,medium

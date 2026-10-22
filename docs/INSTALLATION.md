@@ -322,7 +322,11 @@ RUN pip install pre-commit
 
 ### Pre-commit Profile Configuration
 
-Ferret Scan includes a built-in pre-commit profile that automatically optimizes settings for pre-commit workflows:
+Pre-commit mode uses the profile named `precommit`. Without one in your config, Ferret Scan supplies a
+built-in profile that runs CREDIT_CARD, SECRETS, SSN, EMAIL, PHONE and IP_ADDRESS plus any type your
+config's `defaults.checks` names, and takes every other setting from your config (see
+[the precommit profile](PRE_COMMIT_INTEGRATION.md#the-precommit-profile)). To choose the hook's
+settings yourself, define your own, which replaces the built-in one:
 
 ```yaml
 # ferret.yaml - Project configuration
@@ -337,8 +341,9 @@ profiles:
     checks: "CREDIT_CARD,SECRETS,SSN"
     quiet: true
     no_color: true
-    batch_size: 50
 ```
+
+The batch size is set with the `FERRET_PRECOMMIT_BATCH_SIZE` environment variable, not in the profile.
 
 **Automatic Pre-commit Detection:**
 Ferret Scan automatically detects pre-commit environments by checking for:

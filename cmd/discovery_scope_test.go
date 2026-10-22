@@ -332,7 +332,9 @@ func TestExplicitFormatOutranksPrecommitDetection(t *testing.T) {
 	// by the "precommit" profile in resolveConfiguration, so disabling the override entirely
 	// leaves this passing — verified by mutation. The assertion is kept because the behaviour
 	// is worth pinning wherever it comes from: a pre-commit hook that started emitting a
-	// config's json would flood a commit message with a machine document.
+	// config's json would flood a commit message with a machine document. It is also the pin for
+	// the one value #768 left the built-in profile to own: every other value it carried now
+	// yields to the config, and format is exempt.
 	//
 	// A config file is needed to observe it at all. A bare PRE_COMMIT=1 run proves nothing,
 	// because the ordinary default is "text" too. Measured: config `defaults.format: json`
