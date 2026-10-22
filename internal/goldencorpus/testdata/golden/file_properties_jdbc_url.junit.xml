@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="application.properties" classname="security-scan" time="0.001">
+      <failure message="2 security findings detected" type="SECURITY_FINDINGS">Line 1: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: 9NZzXZrztbPDDrR6&#xA;Validator: secrets&#xA;Line 2: API_KEY_OR_SECRET detected with 85.0% confidence (MEDIUM)&#xA;Match: tqpDgKMrV7zFDRzn&#xA;Validator: secrets</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
