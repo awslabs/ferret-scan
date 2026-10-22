@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.5.5] - 2026-10-22
+
 ### 🐛 Bug Fixes
 
 - **secrets (file-wide environment verdict):** one marker word anywhere in a file no longer moves every
