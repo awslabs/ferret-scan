@@ -196,9 +196,24 @@ func TestRenderGroupRuleTable(t *testing.T) {
 				if got := RenderGroup(g, ms, redactors.RedactionFormatPreserving).Text; got != r.fp {
 					t.Errorf("format_preserving: got %q, want %q", got, r.fp)
 				}
+				// synthetic: a plausible fake may regenerate freely, but it must not COPY a value byte the
+				// rule masks (withhold falls back to the placeholder when it would have to). The check is on
+				// the rendering's own account of what it copied, not on the generated text: a regenerated SSN
+				// or passport is nine random digits, and a substring test against them ("0009", the card row's
+				// last four) trips one run in seven -- measured 14 of 100 on Linux, and it is what failed the
+				// Windows leg of #811. No row in this table copies any value byte under synthetic: the card's
+				// issuer prefix, the only candidate, is hidden by its SECRETS co-member.
 				syn := RenderGroup(g, ms, redactors.RedactionSynthetic)
-				if strings.Contains(syn.Text, "0009") || strings.Contains(syn.Text, "B7vg") {
-					t.Errorf("synthetic kept a byte a member would hide: %q", syn.Text)
+				var synKept strings.Builder
+				for _, c := range syn.Copies {
+					for q := 0; q < c.Len; q++ {
+						if b := g.Text[c.In+q]; isValueByte(b) {
+							synKept.WriteByte(b)
+						}
+					}
+				}
+				if synKept.Len() != 0 {
+					t.Errorf("synthetic copied value bytes %q from %q, want none", synKept.String(), g.Text)
 				}
 			}
 		})
