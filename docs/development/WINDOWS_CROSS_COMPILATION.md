@@ -40,9 +40,9 @@ unset GOOS GOARCH
 sudo apt-get update
 sudo apt-get install -y git build-essential
 
-# Install Go (match the version in .go-version — currently 1.27.2)
-wget https://go.dev/dl/go1.27.2.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.27.2.linux-amd64.tar.gz
+# Install Go (match the version in .go-version — currently 1.27.3)
+wget https://go.dev/dl/go1.27.3.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.27.3.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 source ~/.bashrc
 
@@ -837,7 +837,7 @@ objdump -f ferret-scan.exe  # On Linux with mingw-w64
 
 # Test with different Go toolchains (must be >= the `go` directive in go.mod,
 # currently 1.27; install extra toolchains with `go install golang.org/dl/goX.Y.Z@latest`)
-go1.27.2 build -o ferret-scan-1272.exe ./cmd
+go1.27.3 build -o ferret-scan-1273.exe ./cmd
 ```
 
 ## Best Practices
