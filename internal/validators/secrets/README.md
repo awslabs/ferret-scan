@@ -542,6 +542,24 @@ secret = "password"
 - **Entropy Caching**: Calculated once per unique string
 - **Context Limiting**: Bounded context analysis to prevent slowdowns
 - **Memory Efficient**: Streaming file processing for large files
+- **Line Pre-check**: The keyword pass (the keyword assignment patterns, provider
+  literals, JWT and PEM patterns, plural keys, collections and list tails) runs only
+  on lines `containsSecretIndicators` admits. Its contract is soundness: a line it
+  rejects holds no keyword-pass candidate, so skipping it saves the regex work and
+  changes no result (one known gap, not closed here: `session=` with an 8- to 11-byte
+  value on a line under 20 bytes, which the generic admits do not take). It rejects
+  a line under 12 bytes, a lone structural token, a line that none of its admits
+  takes, and one shape on purpose: a line that is wholly one benign package-manifest
+  member (`"version": "1.3.0",`, `"dev": true,`, `"integrity": "sha512-…",`, a
+  `"resolved"` or `"url"` with no user info, query or `=`) with no keyword stem
+  anywhere on it. That shape is about half of an npm lockfile, and scanning it costs
+  2.2-2.7x of SECRETS CPU there. A JWT marker, a provider prefix or a PEM marker
+  admits the line before that rejection is considered. Until #765 three looser
+  checks ran first and switched the keyword pass off for a whole line on any
+  `"url"`, `"checksum"` or version/boolean member, so a token beside one went
+  unreported and unredacted. The entropy pass, the AWS secret-key path, YAML
+  sequence items, credentials in URIs and the multi-line pass are not behind the
+  pre-check and run on every line.
 
 ## Security Features
 
