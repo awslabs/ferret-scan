@@ -5,7 +5,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"io"
@@ -139,7 +138,18 @@ func resolveLogWriter(w io.Writer) io.Writer {
 }
 
 // ScanFile performs the core scanning logic shared by the CLI and the web server.
+// It runs with context.Background(); ScanFileCtx takes the caller's.
 func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
+	return ScanFileCtx(context.Background(), scanConfig)
+}
+
+// ScanFileCtx is ScanFile under the caller's ctx (#770): the worker pool roots the
+// file's job context at ctx, so a caller's deadline or cancellation stops the
+// validators (those that poll return what they found) and the file is reported
+// Incomplete, "coverage cut short", with the matches made so far. Extraction is
+// not interruptible: a preprocessor takes no context, so a cancellation that
+// arrives during extraction is observed when extraction returns.
+func ScanFileCtx(ctx context.Context, scanConfig ScanConfig) (*ScanResult, error) {
 	// Build observer. LogWriter defaults to os.Stderr when nil so existing
 	// CLI callers see the same output they always have; in-process callers
 	// (Lambda, sidecars) pass io.Discard or a structured logger writer.
@@ -185,7 +195,8 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 	}
 
 	parallelProcessor := parallel.NewParallelProcessor(observer)
-	parallelMatches, stats, err := parallelProcessor.ProcessFilesWithProgress(
+	parallelMatches, stats, err := parallelProcessor.ProcessFilesWithProgressCtx(
+		ctx,
 		[]string{scanConfig.FilePath},
 		validatorsList,
 		fileRouter,
@@ -229,41 +240,7 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 	// Incomplete so a partially-scanned run is never mistaken for a clean one.
 	// Matches are still returned (the worker pool keeps the partial results);
 	// this only adds the signal. Defaults false when every file completed.
-	//
-	// A file that extracted to NOTHING counts as incomplete for the same reason
-	// and is checked second: it produces no error at all, so without this the
-	// library path reported a document whose body was never extracted as a
-	// complete, clean scan.
-	incomplete := false
-	incompleteReason := ""
-	if stats != nil && len(stats.IncompleteFiles) > 0 {
-		incomplete = true
-		if len(stats.IncompleteFiles) == 1 {
-			incompleteReason = fmt.Sprintf("validation did not complete for %s: %s",
-				stats.IncompleteFiles[0].FilePath, stats.IncompleteFiles[0].Reason)
-		} else {
-			incompleteReason = fmt.Sprintf("validation did not complete for %d of %d files",
-				len(stats.IncompleteFiles), stats.TotalFiles)
-		}
-	} else if stats != nil && len(stats.EmptyExtractionFiles) > 0 {
-		incomplete = true
-		incompleteReason = incompleteReasonFor(stats.EmptyExtractionFiles[0],
-			len(stats.EmptyExtractionFiles), stats.TotalFiles)
-	} else if stats != nil && len(stats.FailedFiles) > 0 {
-		// A file that could not be processed at all was never scanned, so the run
-		// is incomplete for the same reason an empty extraction is: the report says
-		// nothing about that file's contents. Previously these files were counted
-		// as neither processed nor skipped and left the exit code at 0, so a
-		// directory of unparseable documents was indistinguishable from a clean one.
-		incomplete = true
-		if len(stats.FailedFiles) == 1 {
-			incompleteReason = fmt.Sprintf("could not process %s: %s",
-				stats.FailedFiles[0].FilePath, stats.FailedFiles[0].Reason)
-		} else {
-			incompleteReason = fmt.Sprintf("could not process %d of %d files",
-				len(stats.FailedFiles), stats.TotalFiles)
-		}
-	}
+	incomplete, incompleteReason := coverageOf(stats)
 
 	return &ScanResult{
 		Matches:           unsuppressed,
@@ -274,6 +251,43 @@ func ScanFile(scanConfig ScanConfig) (*ScanResult, error) {
 		IncompleteReason:  incompleteReason,
 		NotExamined:       collectNotExamined(stats),
 	}, nil
+}
+
+// coverageOf reads whether a worker-pool run examined every file, and the one-line reason when it
+// did not, from the three channels --fail-on-incomplete counts. ScanFile and RedactFile share it,
+// so the detection result and the redaction sink cannot disagree about the same run (#770).
+//
+// A file that extracted to NOTHING counts as incomplete for the same reason as a cut-short and is
+// checked second: it produces no error at all, so without this the library path reported a
+// document whose body was never extracted as a complete, clean scan.
+func coverageOf(stats *parallel.ProcessingStats) (incomplete bool, reason string) {
+	switch {
+	case stats == nil:
+		return false, ""
+	case len(stats.IncompleteFiles) > 0:
+		if len(stats.IncompleteFiles) == 1 {
+			return true, fmt.Sprintf("validation did not complete for %s: %s",
+				stats.IncompleteFiles[0].FilePath, stats.IncompleteFiles[0].Reason)
+		}
+		return true, fmt.Sprintf("validation did not complete for %d of %d files",
+			len(stats.IncompleteFiles), stats.TotalFiles)
+	case len(stats.EmptyExtractionFiles) > 0:
+		return true, incompleteReasonFor(stats.EmptyExtractionFiles[0],
+			len(stats.EmptyExtractionFiles), stats.TotalFiles)
+	case len(stats.FailedFiles) > 0:
+		// A file that could not be processed at all was never scanned, so the run
+		// is incomplete for the same reason an empty extraction is: the report says
+		// nothing about that file's contents. Previously these files were counted
+		// as neither processed nor skipped and left the exit code at 0, so a
+		// directory of unparseable documents was indistinguishable from a clean one.
+		if len(stats.FailedFiles) == 1 {
+			return true, fmt.Sprintf("could not process %s: %s",
+				stats.FailedFiles[0].FilePath, stats.FailedFiles[0].Reason)
+		}
+		return true, fmt.Sprintf("could not process %d of %d files",
+			len(stats.FailedFiles), stats.TotalFiles)
+	}
+	return false, ""
 }
 
 // incompleteReasonFor renders the one-line reason for an empty-extraction record.
@@ -372,7 +386,19 @@ type ContentScanConfig struct {
 //
 // This is the entry point for stdin and any future in-process callers
 // (e.g. lambda handlers, gRPC endpoints) that already have content in memory.
+// It runs with context.Background(); ScanContentCtx takes the caller's.
 func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
+	return ScanContentCtx(context.Background(), content, cfg)
+}
+
+// ScanContentCtx is ScanContent under the caller's ctx (#770). The 5-minute
+// validation ceiling derives from ctx, so a caller's deadline or cancellation
+// stops the validators: those that poll their context return what they had found,
+// and the result is Incomplete with the input named in NotExamined as
+// "coverage cut short". It returns a nil error in that case, as for every other
+// cut-short; telling the caller's own cancellation apart is the caller's
+// business (pkg/scan does, and returns ctx.Err() with the partial result).
+func ScanContentCtx(ctx context.Context, content string, cfg ContentScanConfig) (*ScanResult, error) {
 	if cfg.VirtualPath == "" {
 		cfg.VirtualPath = "<stdin>"
 	}
@@ -422,8 +448,10 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 	}
 
 	// Run validators with no resilience strategy — in-memory content has no
-	// transient failure mode worth retrying for.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// transient failure mode worth retrying for. The 5-minute ceiling derives from
+	// the caller's ctx, so a caller's deadline or cancellation reaches the validators
+	// (#770); ScanContent passes context.Background(), which keeps the ceiling alone.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	// Attach per-validator budgets (no-op when nil/empty — byte-identical path).
 	ctx = execguard.WithBudgets(ctx, cfg.ValidatorBudgets)
@@ -433,29 +461,31 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 		fmt.Fprintf(logWriter, "validator error during ScanContent: %v\n", validationErr)
 	}
 
-	// A context cancellation/timeout means validator coverage was cut short and
-	// Matches may be partial. Surface that explicitly so a timed-out scan is
-	// never mistaken for a clean one (see ScanResult.Incomplete). Non-context
-	// validator errors keep the prior behavior (logged in debug, not flagged),
-	// because a single validator returning an ordinary error does not by itself
-	// make the overall result partial in the same load-bearing way.
+	// A cut-short — a timeout or cancellation, a per-validator budget, a size cap, a
+	// recovered panic — means coverage is partial and Matches may be missing findings.
+	// Surface it so a timed-out scan is never mistaken for a clean one (see
+	// ScanResult.Incomplete), and name the input in NotExamined as the file path does,
+	// so a library caller learns the cause and not only that something was missed.
+	// Non-cut-short validator errors keep the prior behavior (logged in debug, not
+	// flagged).
+	//
+	// ONE predicate, execguard.IsCoverageCutShort (#770). This was a hand-written chain
+	// of errors.Is tests that omitted ErrValidatorPanicked, so a recovered panic on this
+	// path reported a complete scan, and whose arms prepended a label the sentinel's own
+	// message already begins with: "validator declined oversize content: validator
+	// declined oversize content: cloud-resource scan skipped, …". The reason is now the
+	// cause's taxonomy name once, then the error.
 	incomplete := false
 	incompleteReason := ""
-	if validationErr != nil && (errors.Is(validationErr, context.DeadlineExceeded) || errors.Is(validationErr, context.Canceled)) {
+	var notExamined []NotExaminedFile
+	if validationErr != nil && execguard.IsCoverageCutShort(validationErr) {
 		incomplete = true
-		incompleteReason = "validator execution did not complete: " + validationErr.Error()
-	} else if validationErr != nil && errors.Is(validationErr, execguard.ErrMatchBudgetExceeded) {
-		// A per-validator match cap fired: results are truncated, so coverage is
-		// partial in the same load-bearing way as a timeout.
-		incomplete = true
-		incompleteReason = "validator match budget exceeded: " + validationErr.Error()
-	} else if validationErr != nil && errors.Is(validationErr, execguard.ErrContentTooLarge) {
-		// A validator declined its input for size: that content went unscanned by it, so the
-		// result is partial. The file path reaches this through ValidationError -> a
-		// FileDiagnostic; this arm is what gives library callers of ScanContent the same signal
-		// instead of a silently narrower scan (#414).
-		incomplete = true
-		incompleteReason = "validator declined oversize content: " + validationErr.Error()
+		incompleteReason = coverage.CauseCutShort.String() + ": " + validationErr.Error()
+		notExamined = []NotExaminedFile{{
+			Path:   cfg.VirtualPath,
+			Cause:  coverage.CauseCutShort,
+			Detail: validationErr.Error(),
+		}}
 	}
 
 	// Stamp every match as virtual and ensure the filename is the synthetic
@@ -500,6 +530,7 @@ func ScanContent(content string, cfg ContentScanConfig) (*ScanResult, error) {
 		ProcessedFiles:    1,
 		Incomplete:        incomplete,
 		IncompleteReason:  incompleteReason,
+		NotExamined:       notExamined,
 	}, nil
 }
 

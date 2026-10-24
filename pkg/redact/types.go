@@ -215,6 +215,12 @@ type AuditRecord struct {
 	// rather than your own clock to anchor the audit record to the
 	// engine's view of when the redaction happened.
 	Timestamp time.Time
+
+	// Incomplete and IncompleteReason are the Result fields of the same names (#770): the
+	// scan did not examine all of the text, and why. Payload-free like the rest of the record,
+	// so an audit sink can tell a request that was redacted from one that came back cut short.
+	Incomplete       bool
+	IncompleteReason string
 }
 
 // Result is the output of Engine.Redact.
@@ -222,7 +228,22 @@ type Result struct {
 	// Redacted is the input text with each unsuppressed match replaced
 	// according to the strategy. Suppressed findings (matching a rule
 	// in AllowSuppressions) pass through unchanged.
+	//
+	// It is safe to release only when Redact returned a nil error. With an error
+	// wrapping ErrIncomplete, Redacted masks only the values found before coverage
+	// was cut short and may hold others in clear (see Incomplete).
 	Redacted string
+
+	// Incomplete reports that the scan did not examine all of the text, so values may
+	// be missing from the findings and present, unmasked, in Redacted (#770). It is set
+	// exactly when Redact also returned an error wrapping ErrIncomplete: the caller's
+	// ctx was done or fired, a validator declined the input (CLOUD_RESOURCES refuses
+	// more than 5 MiB), the engine's 5-minute ceiling fired, or a validator failed.
+	Incomplete bool
+
+	// IncompleteReason names the cause when Incomplete is set: the error's text,
+	// payload-free (sizes, caps, validator names, context errors; never input bytes).
+	IncompleteReason string
 
 	// findings is unexported; callers reach it via Findings() and
 	// FindingsWithMatchText() so we control what's reachable.
@@ -237,14 +258,16 @@ type Result struct {
 // auditInputs holds the data needed to construct an AuditRecord without
 // retaining the full match list once the result has been returned.
 type auditInputs struct {
-	label         string
-	findingsByT   map[string]int
-	suppressedByT map[string]int
-	strategy      Strategy
-	inputBytes    int
-	redactedBytes int
-	duration      time.Duration
-	timestamp     time.Time
+	label            string
+	findingsByT      map[string]int
+	suppressedByT    map[string]int
+	strategy         Strategy
+	inputBytes       int
+	redactedBytes    int
+	duration         time.Duration
+	timestamp        time.Time
+	incomplete       bool
+	incompleteReason string
 }
 
 // finding is the internal representation that retains the matched text,
@@ -312,6 +335,8 @@ func (r *Result) AuditRecord() AuditRecord {
 		RedactedBytes:    r.auditInputs.redactedBytes,
 		Duration:         r.auditInputs.duration,
 		Timestamp:        r.auditInputs.timestamp,
+		Incomplete:       r.auditInputs.incomplete,
+		IncompleteReason: r.auditInputs.incompleteReason,
 	}
 }
 
@@ -372,6 +397,19 @@ var (
 
 	// ErrEngineClosed is returned by Redact after Close has been called.
 	ErrEngineClosed = errors.New("redact: engine is closed")
+
+	// ErrIncomplete is wrapped by the error Engine.Redact returns when the scan did not
+	// examine all of the text: the ctx was already done, its deadline fired or it was
+	// cancelled mid-scan, a validator declined the input (CLOUD_RESOURCES refuses more
+	// than 5 MiB), the engine's 5-minute ceiling fired, or a validator failed (#770).
+	// The cause is wrapped alongside it, so errors.Is(err, context.Canceled) and
+	// errors.Is(err, context.DeadlineExceeded) still hold for a caller's ctx.
+	//
+	// The Result is returned too, io.Reader style, with Incomplete set: its Redacted
+	// masks only the values found before the cut and must not be released as redacted
+	// output. Log its AuditRecord, retry, or fail the request; a gateway answers with an
+	// error (see examples/lambda-redact).
+	ErrIncomplete = errors.New("redact: redaction incomplete")
 )
 
 // MaxInputBytes is the hard cap on Request.Text size, mirroring the

@@ -113,6 +113,16 @@ type JobConfig struct {
 	// multiply memory past a fixed envelope. Enforced by the worker pool's
 	// shared execguard.BytesLimiter around the validation phase.
 	MaxLiveBytes int64
+
+	// ctx is the caller's context, set only by ProcessFilesWithProgressCtx on its own copy
+	// of the JobConfig: each file's job context is rooted at it, so a caller's deadline or
+	// cancellation reaches the validators (#770). Nil means the historical root.
+	//
+	// A field rather than a parameter, against the usual rule, because
+	// ProcessFilesWithProgress's signature is shared with cmd/main.go and the goroutine that
+	// submits the jobs is audited by internal/goroutineguard under that function's name.
+	// Unexported, so a caller's struct literal cannot set it.
+	ctx context.Context
 }
 
 // DefaultJobTimeout is the per-file processing ceiling used when
@@ -303,6 +313,16 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 			return resilience.NewPermanentError("no file router available", nil)
 		}
 
+		// The caller's context is already done (#770): do not open the file. Extraction
+		// cannot be interrupted once it starts (a preprocessor takes no context), so this
+		// is the last point at which a cancellation saves the work. Recorded as a
+		// cut-short, like a job that fails to acquire its live-bytes budget below, so the
+		// file reaches IncompleteFiles rather than vanishing.
+		if cerr := ctx.Err(); cerr != nil {
+			validationErr = cerr
+			return nil
+		}
+
 		processingCtx, err := job.FileRouter.CreateProcessingContext(job.FilePath, job.Config.Debug)
 		if err != nil {
 			// This is the stat: the file could not be inspected, so nothing about it is known.
@@ -372,7 +392,14 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 	if job.Config != nil && job.Config.JobTimeout > 0 {
 		jobTimeout = job.Config.JobTimeout
 	}
-	jobCtx, cancel := context.WithTimeout(wp.ctx, jobTimeout)
+	// Rooted at the caller's context when there is one (#770), so its deadline or
+	// cancellation reaches this file's validators; otherwise at the pool's, as before.
+	// The pool's context itself stays the pool's (see ProcessFilesWithProgressCtx).
+	parent := wp.ctx
+	if job.Config != nil && job.Config.ctx != nil {
+		parent = job.Config.ctx
+	}
+	jobCtx, cancel := context.WithTimeout(parent, jobTimeout)
 	defer cancel()
 	// Attach per-validator budgets (no-op when nil/empty — byte-identical path).
 	if job.Config != nil {

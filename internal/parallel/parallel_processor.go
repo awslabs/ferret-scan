@@ -4,6 +4,7 @@
 package parallel
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"sort"
@@ -146,7 +147,25 @@ func (pp *ParallelProcessor) ProcessFiles(filePaths []string, validators []detec
 	return pp.ProcessFilesWithProgress(filePaths, validators, fileRouter, config, redactionManager, nil)
 }
 
-// ProcessFilesWithProgress processes multiple files in parallel with progress callback
+// ProcessFilesWithProgressCtx is ProcessFilesWithProgress under the caller's ctx (#770). Each
+// file's job context is rooted at ctx, so a caller's deadline or cancellation stops that file's
+// validators and the file is recorded in ProcessingStats.IncompleteFiles ("coverage cut short")
+// with the matches made before it fired. A file whose job starts after ctx is done is not opened
+// and is recorded the same way. config must be non-nil, as for ProcessFilesWithProgress; the
+// caller's JobConfig is not modified (the ctx travels on a copy).
+//
+// Only the JOBS take ctx. The pool's own context, which Submit and the workers select on, stays
+// the pool's: rooting it at ctx would let a cancellation drop a queued job or a finished result,
+// and the collector in ProcessFilesWithProgress waits for exactly one result per file.
+func (pp *ParallelProcessor) ProcessFilesWithProgressCtx(ctx context.Context, filePaths []string, validators []detector.Validator, fileRouter *router.FileRouter, config *JobConfig, redactionManager *redactors.RedactionManager, progressCallback ProgressCallback) ([]detector.Match, *ProcessingStats, error) {
+	withCtx := *config
+	withCtx.ctx = ctx
+	return pp.ProcessFilesWithProgress(filePaths, validators, fileRouter, &withCtx, redactionManager, progressCallback)
+}
+
+// ProcessFilesWithProgress processes multiple files in parallel with progress callback.
+// Each file's job runs under context.Background() (plus the per-file JobTimeout), unless
+// the call came through ProcessFilesWithProgressCtx.
 func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, validators []detector.Validator, fileRouter *router.FileRouter, config *JobConfig, redactionManager *redactors.RedactionManager, progressCallback ProgressCallback) ([]detector.Match, *ProcessingStats, error) {
 	start := time.Now()
 

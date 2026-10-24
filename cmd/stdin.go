@@ -256,14 +256,27 @@ func runStdinScan(in stdinScanInputs) int {
 
 	allMatches := result.Matches // not yet suppressed since we passed nil manager
 
-	// Incomplete-coverage warning (v2 Phase 4): if the stdin scan's validator
-	// coverage was cut short (a per-validator timeout, cancellation, or match
-	// budget), findings may be MISSING. Uses the same helper/format as the file
-	// path (a single virtual "file"); suppressed only in pre-commit mode. Exit
-	// code is deliberately unchanged — advisory warning only.
-	if precommitConfig == nil && result.Incomplete {
-		writeIncompleteCoverageWarning(os.Stderr,
-			[]parallel.FileDiagnostic{{FilePath: scanCfg.VirtualPath, Reason: result.IncompleteReason}}, 1)
+	// Incomplete coverage (v2 Phase 4): the stdin scan's coverage was cut short (a
+	// per-validator budget or size cap, a timeout, a recovered panic), so findings may
+	// be MISSING -- and under --enable-redaction, values may be in the redacted stream
+	// in clear. Disclosed on stderr in the same format as the file path (a single
+	// virtual "file"), and in pre-commit mode as the one-line notice the file path
+	// prints there, which this path used to drop: 0 bytes of disclosure (#770).
+	//
+	// It also drives the exit code, on BOTH exits below: --fail-on-incomplete escalates
+	// a clean result to 3, exactly as for --file. The redaction exit used to return
+	// before that resolution and exit 0 whatever the flag said.
+	if result.Incomplete {
+		if precommitConfig == nil {
+			writeIncompleteCoverageWarning(os.Stderr,
+				[]parallel.FileDiagnostic{{FilePath: scanCfg.VirtualPath, Reason: result.IncompleteReason}}, 1)
+		} else {
+			writePrecommitStdinIncompleteNotice(os.Stderr, scanCfg.VirtualPath)
+		}
+	}
+	incompleteCount := 0
+	if result.Incomplete {
+		incompleteCount = 1
 	}
 
 	// --generate-suppressions writes against raw matches before suppression.
@@ -361,7 +374,7 @@ func runStdinScan(in stdinScanInputs) int {
 		if in.flags.redactionAuditLog != "" {
 			fmt.Fprintln(os.Stderr, "Note: --redaction-audit-log is not supported with --stdin and will be ignored")
 		}
-		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding)
+		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding, incompleteCount)
 	}
 
 	// Resolve formatter.
@@ -423,10 +436,6 @@ func runStdinScan(in stdinScanInputs) int {
 	// uses precommit.GetExitCode based on findings/confidence. --fail-on-incomplete
 	// escalates an otherwise-clean exit to exitCodeIncompleteCoverage (3) when the
 	// scan's coverage was cut short, but never downgrades a non-zero verdict.
-	incompleteCount := 0
-	if result.Incomplete {
-		incompleteCount = 1
-	}
 	if precommitConfig != nil {
 		exitCode := precommit.Resolve(unsuppressedMatches, precommitConfig).WithToolError(false).ExitCode
 		return resolveIncompleteExitCode(exitCode, finalCfg.failOnIncomplete, incompleteCount)
@@ -459,7 +468,14 @@ func runStdinPreprocessOnly(label, content string) int {
 //
 // Returns the process exit code. Pre-commit exit semantics still apply
 // (non-zero on findings) so a redaction gateway can both emit clean output
-// AND signal upstream that something was matched.
+// AND signal upstream that something was matched, and --fail-on-incomplete
+// escalates a cut-short scan to 3 exactly as it does for --file (#770):
+// incompleteCount is the caller's count of inputs not fully examined (0 or 1).
+//
+// A cut-short stream is still emitted, as for clean input -- the redacted text
+// with whatever WAS found masked -- because --file writes its partial copy too,
+// and the two paths share one rule: the output never exceeds --file's, the
+// disclosure (stderr) is always made, and the signal is the exit code.
 //
 // We run unsuppressed matches through the redactor (suppressed matches are
 // excluded by definition — they're false positives or accepted exposures).
@@ -473,6 +489,7 @@ func runStdinRedaction(
 	suppressedMatches []detector.SuppressedMatch,
 	precommitConfig *precommit.PrecommitConfig,
 	inputEncoding preprocessors.TextEncoding,
+	incompleteCount int,
 ) int {
 	// Parsed and validated by applyRedactionStrategy at the top of runStdin.
 	strategy := finalCfg.redactionStrategy
@@ -571,9 +588,22 @@ func runStdinRedaction(
 	}
 
 	if precommitConfig != nil {
-		return precommit.Resolve(matches, precommitConfig).WithToolError(false).ExitCode
+		exitCode := precommit.Resolve(matches, precommitConfig).WithToolError(false).ExitCode
+		return resolveIncompleteExitCode(exitCode, finalCfg.failOnIncomplete, incompleteCount)
 	}
-	return 0
+	return resolveIncompleteExitCode(0, finalCfg.failOnIncomplete, incompleteCount)
+}
+
+// writePrecommitStdinIncompleteNotice is the pre-commit form of the cut-short disclosure for
+// --stdin: one line, no frame, as the file path's pre-commit notice is, because pre-commit output
+// is read in a terminal mid-commit. Before #770 pre-commit mode suppressed the stdin warning
+// outright, so a cut-short `git diff | ferret-scan --stdin --pre-commit-mode` printed nothing.
+//
+// Worded for what happened here, a scan cut short, rather than the file path's "contents
+// unreadable": the input was read and partly scanned.
+func writePrecommitStdinIncompleteNotice(w io.Writer, label string) {
+	fmt.Fprintf(w, "ferret-scan: %s NOT fully examined (coverage cut short) — findings may be missing. "+
+		"Re-run without --pre-commit for detail.\n", label)
 }
 
 // formatStdinFindings is a small helper used by runStdinRedaction so the

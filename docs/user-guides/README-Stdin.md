@@ -258,6 +258,9 @@ Stdin mode follows the same exit-code semantics as file mode:
 
 - **Default mode**: always exits `0` regardless of findings (so `cat input | ferret-scan --stdin` doesn't break shell scripts).
 - **Pre-commit mode** (`--pre-commit-mode`): exits non-zero on findings at or above the configured confidence threshold. The redacted content is still emitted on stdout — a CI gateway can both produce clean output AND signal upstream that something was matched.
+- **`--fail-on-incomplete`**: exits `3` when the scan's coverage was cut short (a `--validator-budget` fired, a validator declined the input — `CLOUD_RESOURCES` refuses more than 5 MiB — or a validator panicked), unless a findings verdict already made the exit non-zero. This holds **with and without `--enable-redaction`**: before [#770](https://github.com/awslabs/ferret-scan/issues/770) the redaction gateway exited `0` here whatever the flag said.
+
+A cut-short scan is always disclosed on stderr: the `WARNING: scan coverage incomplete` block, or in pre-commit mode the one line `ferret-scan: <stdin> NOT fully examined (coverage cut short) — findings may be missing.`, which pre-commit mode used to drop. The gateway still emits its stream, with whatever the scan did find masked — the same rule as `--file`, which writes its partial copy — so a value the scan did not reach can be in that stream in clear. **A gateway that must never pass such a stream on runs with `--fail-on-incomplete` and discards stdout on exit `3`.** The `--format json` document on this path does not yet carry the `stats` block file mode writes (`stats.files_not_examined`); stderr and the exit code are the signal until it does.
 
 ## See also
 

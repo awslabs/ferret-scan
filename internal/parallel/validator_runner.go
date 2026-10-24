@@ -38,15 +38,64 @@ type retryValidatorStrategy struct {
 	cfg resilience.RetryConfig
 }
 
-// Run executes op under the configured retry policy.
+// Run executes op under the configured retry policy, except that a guard outcome
+// (execguard.IsCoverageCutShort: a budget, a deadline, a size cap, a recovered
+// panic) is returned at once and never retried (#770).
+//
+// The test is by identity and comes before resilience.ClassifyError ever sees the
+// error, so rewording a guard's message cannot change whether it is retried.
+// ClassifyError decides from type and message, and a fired time budget is a
+// context.DeadlineExceeded: a net.Error that says "deadline exceeded", which it
+// takes for a transient timeout. So each fired budget re-ran the whole validator
+// set for the file twice more, 1 s and then 2 s later, every re-run hit the same
+// bound, and the partials were thrown away each time. A budget is a bound, not a
+// fault.
+//
+// The check lives here rather than in ClassifyError because the guard family is
+// execguard's, and execguard imports resilience: resilience cannot name it.
 func (s *retryValidatorStrategy) Run(ctx context.Context, op func(context.Context) error) error {
-	return resilience.RetryWithBackoff(ctx, s.cfg, op)
+	var guard error
+	err := resilience.RetryWithBackoff(ctx, s.cfg, func(ctx context.Context) error {
+		err := op(ctx)
+		if execguard.IsCoverageCutShort(err) {
+			guard = err
+			// ClassifyError returns a *ClassifiedError as it is, so Retryable=false
+			// ends the loop on this attempt without reading the message.
+			return resilience.NewPermanentError(err.Error(), err)
+		}
+		guard = nil
+		return err
+	})
+	if guard != nil {
+		return guard // the guard's own error, not the wrapper that stopped the loop
+	}
+	return err
 }
+
+// CancelGrace bounds how long RunValidators keeps collecting results after its
+// context is done, rather than returning with only what had already arrived (#770).
+//
+// A validator that polls execguard.LineLoopCancelled stops within one stride (256
+// lines) of the cancellation and returns the matches it made with ctx.Err(), and
+// those partials are kept (partialMatchesSurvive). But this join used to drain
+// without waiting, so on a caller's deadline it returned before any polling
+// validator had come back: #770 measured Engine.Redact on 4,000 lines returning 0
+// findings at 100-300 ms deadlines, while the abandoned validators burned the CPU
+// that would have produced them.
+//
+// The wait ends as soon as every launched validator has reported, so a run that
+// finishes pays nothing; one that does not poll, or polls too rarely, is
+// abandoned at the bound exactly as before. The document fan-out nested inside
+// this one waits validators.DocumentCancelGrace, which must stay below this, so
+// that the inner wait ends while this one is still listening
+// (TestDocumentGraceEndsInsideTheRunnerGrace).
+const CancelGrace = 100 * time.Millisecond
 
 // DefaultValidatorRetryStrategy returns the retry policy used by the worker
 // pool: short, bounded retries appropriate for transient validator errors
 // (e.g. flaky AWS calls). It is intentionally tighter than the file-processing
-// retry policy to avoid blocking job completion.
+// retry policy to avoid blocking job completion. A guard outcome is never
+// retried; see retryValidatorStrategy.Run.
 func DefaultValidatorRetryStrategy() ValidatorStrategy {
 	cfg := resilience.DefaultRetryConfig()
 	cfg.MaxRetries = 2
@@ -59,8 +108,13 @@ func DefaultValidatorRetryStrategy() ValidatorStrategy {
 // each wrapped by strategy (or invoked directly when strategy is nil).
 //
 // The returned error is the first validator error observed (if any); a
-// non-nil error does not imply that no matches were produced — callers
-// typically log the error and continue.
+// non-nil error does not imply that no matches were produced. What a caller
+// may do with the matches depends on what it is for: a detection caller can
+// report them and flag the result incomplete, but a REDACTION caller must not
+// treat them as complete -- an error means some content may not have been
+// examined, so values in it were never reported and will not be masked (#770).
+// A cut-short (execguard.IsCoverageCutShort) keeps the partial matches; a hard
+// error discards that validator's.
 //
 // Behavioral rules preserved from the worker-pool implementation:
 //   - Validators implementing ValidateProcessedContent take precedence
@@ -325,14 +379,33 @@ func RunValidators(
 		return allMatches, firstErr
 
 	case <-ctx.Done():
-		// Deadline/cancellation tripped while at least one validator is still
-		// running. Drain what is buffered without closing (a late goroutine may
-		// still send), and surface the context error so callers can report
-		// degraded/incomplete coverage rather than a silent clean result.
-		for draining := true; draining; {
+		// Deadline/cancellation tripped while at least one validator is still running.
+		// Keep collecting for up to CancelGrace (#770): a validator that polls its
+		// context stops within a stride and sends the partial matches it made, and a
+		// non-blocking drain at this instant returned before any of them had. Each launched
+		// goroutine sends its matches exactly once (then, on error, its error), so the wait
+		// ends as soon as all have. One still running at the bound is abandoned, as before;
+		// the channels are buffered to len(validators), so its late send cannot block, and
+		// they are therefore NOT closed on this path. The context error is surfaced so
+		// callers report incomplete coverage rather than a silent clean result.
+		timer := time.NewTimer(CancelGrace)
+	drain:
+		for received := 0; received < launched; {
 			select {
 			case im := <-matchesChan:
 				collect(im)
+				received++
+			case err := <-errorChan:
+				if firstErr == nil {
+					firstErr = err
+				}
+			case <-timer.C:
+				break drain
+			}
+		}
+		timer.Stop()
+		for draining := true; draining; {
+			select {
 			case err := <-errorChan:
 				if firstErr == nil {
 					firstErr = err

@@ -208,32 +208,51 @@ Detection and redaction are **separate concerns** — use one or both:
 import "github.com/awslabs/ferret-scan/v2/pkg/scan"
 
 // In-memory text detection (no disk, no temp files)
-result, _ := scan.ScanText(ctx, "card 5500-0000-0000-0004", scan.TextOptions{
+result, err := scan.ScanText(ctx, "card 5500-0000-0000-0004", scan.TextOptions{
     Checks:  []string{"CREDIT_CARD", "SSN"},
     Explain: true,  // attach "why flagged" rationale
 })
+if err != nil {
+    return err // includes ctx's own error when it fired mid-scan; result then holds the partial findings
+}
+if result.Incomplete {
+    log.Printf("not fully examined: %+v", result.NotExamined) // e.g. a validator size cap fired
+}
 for _, f := range result.Findings {
     fmt.Printf("%s (line %d, %s, %s)\n", f.Type, f.LineNumber, f.Band(), f.Rationale)
 }
 
 // File-based detection (PDF, DOCX, XLSX, images, text — 90+ types)
-result, _ = scan.ScanFile(ctx, "report.docx", scan.FileOptions{})
+result, err = scan.ScanFile(ctx, "report.docx", scan.FileOptions{})
+if err != nil {
+    return err
+}
 
 // Check if a file type is supported before scanning
 ok, reason := scan.CanProcessFile("archive.zip")  // false, "Unsupported file type"
 
 // Redact text in-place using pre-computed findings (no re-detection)
-redacted, _ := scan.RedactText(text, result.Findings, scan.StrategyFormatPreserving)
+redacted, err := scan.RedactText(text, result.Findings, scan.StrategyFormatPreserving)
+if err != nil {
+    return err
+}
 
 // Redact a file (writes a redacted copy of the same type: .docx→.docx, .jpg→.jpg)
 // PDF, TIFF, GIF, BMP and WEBP are reported but cannot be rewritten — see docs/redaction-support.md
-fileResult, _ := scan.RedactFile("report.docx", scan.RedactFileOptions{
+fileResult, err := scan.RedactFileContext(ctx, "report.docx", scan.RedactFileOptions{
     OutputDir: "/tmp/redacted",
     Strategy:  scan.StrategyFormatPreserving,
 })
+if errors.Is(err, scan.ErrIncomplete) {
+    // Not fully examined (cut short, unparseable, no text): fileResult.Coverage says why,
+    // and nothing at fileResult.RedactedFilePath is safe to share.
+    return err
+} else if err != nil {
+    return err
+}
 ```
 
-`pkg/scan` exposes: `ScanText`, `ScanFile`, `RedactText`, `RedactFile`, `CanProcessFile`, `CheckNames`, `ConfidenceOf`, `ParseStrategy`. All delegate to the internal engine with zero duplication.
+`pkg/scan` exposes: `ScanText`, `ScanFile`, `RedactText`, `RedactFile`, `RedactFileContext`, `CanProcessFile`, `CheckNames`, `ConfidenceOf`, `ParseStrategy`. All delegate to the internal engine with zero duplication. Check the error before using any result: a redaction that could not examine its whole input returns an error wrapping `ErrIncomplete` (`redact.ErrIncomplete` below), never a quiet success.
 
 > The `METADATA` validator requires filesystem access — available via `ScanFile` but not `ScanText`.
 
@@ -244,16 +263,24 @@ fileResult, _ := scan.RedactFile("report.docx", scan.RedactFileOptions{
 ```go
 import "github.com/awslabs/ferret-scan/v2/pkg/redact"
 
-engine, _ := redact.NewEngine(redact.EngineOptions{
+engine, err := redact.NewEngine(redact.EngineOptions{
     Checks:   []string{"CREDIT_CARD", "EMAIL"},
     Strategy: redact.FormatPreserving,
 })
+if err != nil {
+    log.Fatal(err)
+}
 defer engine.Close()
 
-result, _ := engine.Redact(ctx, redact.Request{
+result, err := engine.Redact(ctx, redact.Request{
     Text:  "card 5500-0000-0000-0004 from jordan@example.com",
     Label: "req-abc-123",
 })
+if err != nil {
+    // errors.Is(err, redact.ErrIncomplete): the scan was cut short (ctx's deadline, a size cap)
+    // and result.Redacted may still hold values in clear. Log result.AuditRecord(); never release it.
+    return err
+}
 log.Println(result.Redacted)              // ****-****-****-0004 from j*****@example.com
 log.Printf("%+v", result.AuditRecord())   // payload-free audit summary
 ```

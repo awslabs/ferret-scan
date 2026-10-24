@@ -252,7 +252,13 @@ type Preprocessor interface {
 	// CanProcess checks if this preprocessor can handle the given file
 	CanProcess(filePath string) bool
 
-	// Process extracts content from the file
+	// Process extracts content from the file.
+	//
+	// It takes no context, so extraction cannot be interrupted: a caller's deadline or
+	// cancellation (core.ScanFileCtx, pkg/scan.ScanFile, pkg/scan.RedactFileContext) is
+	// observed when Process returns, before any validator runs, and the file is then
+	// reported "coverage cut short" (#770). A preprocessor bounds its own work instead
+	// (size caps, decompression limits, its own timeouts).
 	Process(filePath string) (*ProcessedContent, error)
 
 	// GetName returns the name of this preprocessor

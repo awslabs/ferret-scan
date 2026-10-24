@@ -81,6 +81,18 @@ Lambda function:
   matched substring in error responses. A request ID is included
   for correlation.
 
+- **An incomplete scan is an error**: when `Redact` cannot examine the
+  whole request it returns an error wrapping `redact.ErrIncomplete`
+  (with a partial result the handler logs but never returns), and the
+  handler answers `request_id=<id>: redaction incomplete` with no
+  `redacted` field. Two causes to plan for: the invocation's deadline,
+  which reaches the engine through the handler's `ctx`, and a request
+  over 5 MiB with `CLOUD_RESOURCES` enabled (the default `all`), which
+  that validator declines for size. Size requests below that, or drop
+  `CLOUD_RESOURCES` from `FERRET_CHECKS`, if larger bodies must be
+  redacted. Before [#770](https://github.com/awslabs/ferret-scan/issues/770)
+  both cases returned the request's own text as `redacted`.
+
 - **No payload logging**: the handler does NOT log `req.Text` or
   `res.Redacted`. The only thing that hits the function's log stream is
   the audit record (counts + metadata). Never log PII.
