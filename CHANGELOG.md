@@ -67,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--pre-commit-mode` exited 0 and the `--stdin --enable-redaction` gateway passed the token through.
   Measured on v2.5.5 with the issue's nine trigger files and their one-word controls: seven reported
   nothing where the control reported every value, one (`"url"` beside a 40-character password) lost
-  its AKIA key ID on every draw and the password on 9 of 30, and one reported only the token that
+  its AKIA key ID on every draw and the password on 10 of 31, and one reported only the token that
   #766's URI source finds outside the pre-check; 99 of 143 cells of 13 secret shapes × 11 trigger
   contexts reported nothing; `glpat-`, `xoxb-`, AKIA, JWT and 12–20-character passwords were found 0
   of 40 times after a `"url"` or `"integrity"` member and 40 of 40 after `"name"`. Now the
@@ -75,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are replaced by one veto that skips a line only when it is wholly one benign manifest member — a
   version under 20 bytes, a boolean, an SRI digest or a URL with no user info, query or `=` — with no
   keyword stem anywhere on it, and was skipped before. Every trigger now reports what its control
-  reports (30 of 30 seeded draws), all 143 cells and every matrix cell (40 of 40) detect the value,
+  reports (31 of 31 seeded draws), all 143 cells and every matrix cell (40 of 40) detect the value,
   the lockfile decoy stays silent, both redacted copies hold no value, both pre-commit runs exit 1
   and the gateway emits no token. **New findings only:** on the matrices,
   the reproduction, 39 public npm lockfiles and 3,691 public files that hit one of the old checks, no
