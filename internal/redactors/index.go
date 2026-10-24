@@ -126,6 +126,11 @@ type ContentRedaction struct {
 	// Confidence is the confidence level of the detection
 	Confidence float64 `json:"confidence"`
 
+	// MemberTypes names, one entry per finding and sorted, every finding this one write covered when
+	// it redacted an overlap group: findings on one line whose values shared bytes, written once over
+	// their union (#773). DataType is then the group's label. Absent for a write covering one finding.
+	MemberTypes []string `json:"member_types,omitempty"`
+
 	// Timestamp is when this redaction was performed
 	Timestamp time.Time `json:"timestamp"`
 }
@@ -199,16 +204,19 @@ func (ri *RedactionAuditLog) AddContentRedaction(redaction ContentRedaction) {
 	ri.RedactionSummary.TotalRedactions++
 	ri.RedactionSummary.SuccessfulRedactions++
 
-	// Add data type if not already present
-	found := false
-	for _, dt := range ri.RedactionSummary.DataTypes {
-		if dt == redaction.DataType {
-			found = true
-			break
+	// Add data type if not already present -- every member's, for a group write, since each of
+	// those values was redacted by it.
+	for _, dt := range append([]string{redaction.DataType}, redaction.MemberTypes...) {
+		found := false
+		for _, have := range ri.RedactionSummary.DataTypes {
+			if have == dt {
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		ri.RedactionSummary.DataTypes = append(ri.RedactionSummary.DataTypes, redaction.DataType)
+		if !found {
+			ri.RedactionSummary.DataTypes = append(ri.RedactionSummary.DataTypes, dt)
+		}
 	}
 }
 

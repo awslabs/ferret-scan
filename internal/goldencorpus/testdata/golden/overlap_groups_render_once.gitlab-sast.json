@@ -1,0 +1,472 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected ip address in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 6)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ipaddress validator\n\n**Context:**\n```\nserver 203.12.19.85 reached\n```\n\n**Additional Information:**\n- context_impact: 12\n- source: preprocessed_content\n\n**Remediation:**\nRemove IP addresses or replace with example addresses (e.g., 192.0.2.1).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "IP_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "ipaddress"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 6
+      },
+      "message": "IP address detected: [HIDDEN] (confidence: HIGH)",
+      "name": "IP Address Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected passport number in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 3)\n**Confidence:** HIGH (100.0%)\n**Detected by:** passport validator\n\n**Context:**\n```\nPassport number: 512010001\n```\n\n**Additional Information:**\n- context_impact: 40\n- source: preprocessed_content\n\n**Remediation:**\nRemove the passport number or replace it with a synthetic value. It is a government-issued travel document number and a strong identity-verification factor.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PASSPORT"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "passport"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 3
+      },
+      "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Passport Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 7)\n**Confidence:** HIGH (100.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\ncall +1 449-87-4100\n```\n\n**Additional Information:**\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PHONE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "phone"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 7
+      },
+      "message": "Phone number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Phone Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 8)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\ncall 212-555-0142 or card 4532-0151-1283-0366\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 15\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "VISA"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 8,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 8
+      },
+      "message": "Visa credit card detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Credit Card Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 2)\n**Confidence:** HIGH (99.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nRenée Müller, José García, François Lefèvre\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PERSON_NAME"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "PERSON_NAME"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 2
+      },
+      "message": "Personal name detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Person Name Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected physical address in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nResidence: 77 August Lane, Boise ID 83702\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove the postal address or replace it with an example address. Treat an APO/FPO/DPO address as more sensitive, since it can reveal a unit assignment.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_STREET_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 1
+      },
+      "message": "Physical address detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Physical Address Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 4)\n**Confidence:** HIGH (93.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nLocated at 100 Martin Luther King Blvd\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PERSON_NAME"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "PERSON_NAME"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 4
+      },
+      "message": "Personal name detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Person Name Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nResidence: 77 August Lane, Boise ID 83702\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PERSON_NAME"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "PERSON_NAME"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 1
+      },
+      "message": "Personal name detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Person Name Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 2)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nRenée Müller, José García, François Lefèvre\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "id": "ferret-<HASH>-1",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PERSON_NAME"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "PERSON_NAME"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 2
+      },
+      "message": "Personal name detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Person Name Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected secret or api key in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 5)\n**Confidence:** MEDIUM (85.0%)\n**Detected by:** secrets validator\n\n**Context:**\n```\npassword = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\"\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nTreat the value as compromised: rotate or revoke the credential first, then remove it from the file. Deleting the text does not undo the exposure. Store the replacement in a secret manager or an environment variable, never in source or logs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "API_KEY_OR_SECRET"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "secrets"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 5
+      },
+      "message": "Secret or API key detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Secret/API Key Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** MEDIUM (67.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nResidence: 77 August Lane, Boise ID 83702\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "id": "ferret-<HASH>-1",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PERSON_NAME"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "PERSON_NAME"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 1
+      },
+      "message": "Personal name detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Person Name Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected physical address in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 4)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nLocated at 100 Martin Luther King Blvd\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove the postal address or replace it with an example address. Treat an APO/FPO/DPO address as more sensitive, since it can reveal a unit assignment.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "US_STREET_ADDRESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "physical_address"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 4
+      },
+      "message": "Physical address detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Physical Address Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 7)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\ncall +1 449-87-4100\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "SSN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "ssn"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 7
+      },
+      "message": "Social Security Number detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Social Security Number Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected social security number in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 3)\n**Confidence:** LOW (50.0%)\n**Detected by:** ssn validator\n\n**Context:**\n```\nPassport number: 512010001\n```\n\n**Additional Information:**\n- context_impact: 0\n- source: preprocessed_content\n\n**Remediation:**\nRemove Social Security Numbers from code and documentation. Use test data or anonymized identifiers instead.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "SSN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "ssn"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 3
+      },
+      "message": "Social Security Number detected: [HIDDEN] (confidence: LOW)",
+      "name": "Social Security Number Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected email address in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 5)\n**Confidence:** LOW (40.0%)\n**Detected by:** email validator\n\n**Context:**\n```\npassword = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\"\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nRemove email addresses or replace with example addresses (e.g., user@domain.example).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BUSINESS"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "email"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 5
+      },
+      "message": "Email address detected: [HIDDEN] (confidence: LOW)",
+      "name": "Email Address Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 8)\n**Confidence:** LOW (15.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\ncall 212-555-0142 or card 4532-0151-1283-0366\n```\n\n**Additional Information:**\n- context_impact: -20\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PHONE"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "phone"
+        }
+      ],
+      "location": {
+        "end_line": 8,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 8
+      },
+      "message": "Phone number detected: [HIDDEN] (confidence: LOW)",
+      "name": "Phone Number Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected date of birth in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 6)\n**Confidence:** LOW (5.0%)\n**Detected by:** dob validator\n\n**Context:**\n```\nserver 203.12.19.85 reached\n```\n\n**Additional Information:**\n- context_impact: -10\n- source: preprocessed_content\n\n**Remediation:**\nRemove the date of birth or replace it with synthetic test data. It is an identity-verification factor, especially alongside a name.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "DATE_OF_BIRTH"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "dob"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 6
+      },
+      "message": "Date of birth detected: [HIDDEN] (confidence: LOW)",
+      "name": "Date of Birth Detected",
+      "severity": "Medium"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+=== REDACTED ===
+Residence: [US_STREET_ADDRESS-REDACTED] ID 83702
+[PERSON-NAME-REDACTED], François Lefèvre
+Passport number: [PASSPORT-REDACTED]
+Located at [US_STREET_ADDRESS-REDACTED]
+password = "[API_KEY_OR_SECRET-REDACTED]"
+server [IP-ADDRESS-REDACTED] reached
+call [PHONE-REDACTED]
+call [PHONE-REDACTED] or card [CREDIT-CARD-REDACTED]
+=== FINDINGS (sorted) ===
+type=API_KEY_OR_SECRET line=5 conf=medium match=Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+type=BUSINESS line=5 conf=low match=Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+type=DATE_OF_BIRTH line=6 conf=low match=12.19.85
+type=IP_ADDRESS line=6 conf=high match=203.12.19.85
+type=PASSPORT line=3 conf=high match=512010001
+type=PERSON_NAME line=1 conf=high match=August Lane
+type=PERSON_NAME line=1 conf=medium match=Lane, Boise
+type=PERSON_NAME line=2 conf=high match=Müller, José García
+type=PERSON_NAME line=2 conf=high match=Renée Müller
+type=PERSON_NAME line=4 conf=high match=Martin Luther King
+type=PHONE line=7 conf=high match=+1 449-87-4100
+type=PHONE line=8 conf=low match=212-555-0142
+type=SSN line=3 conf=low match=512010001
+type=SSN line=7 conf=medium match=449-87-4100
+type=US_STREET_ADDRESS line=1 conf=high match=77 August Lane
+type=US_STREET_ADDRESS line=4 conf=medium match=100 Martin Luther King Blvd
+type=VISA line=8 conf=high match=4532-0151-1283-0366

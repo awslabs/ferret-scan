@@ -920,10 +920,18 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// see the comment there. Doing it here reached only this function's local slice,
 	// which is what let a cluster through to the embedded-part gate.
 
-	// Collapse overlapping matches to their widest span so a smaller match
-	// contained in a larger one doesn't get redacted first and hide the larger
-	// match's un-redacted head. See redactors.ResolveOverlaps.
-	matches = redactors.ResolveOverlaps(matches)
+	// ONE VALUE PER OVERLAP GROUP. Matches whose spans share bytes on a line are written as one value,
+	// their union, with the group's rendering. Recording each member as its own value left the
+	// rewrite to applyPendingRedactions' longest-first replacer, which writes the EARLIER-starting
+	// member and strands the tail of the later one: "77 August Lane" and "Lane, Boise" came out as
+	// "[US_STREET_ADDRESS-REDACTED], Boise". A contained member still collapses into the widest one,
+	// which is what the overlap pass has always done here. See redactors.ResolveOverlaps (#773).
+	groups := redactors.ResolveOverlaps(matches)
+	units := officeWriteUnits(groups, matches, strategy)
+	unitMatches := make([]detector.Match, len(units))
+	for i := range units {
+		unitMatches[i] = units[i].match
+	}
 
 	// Where a value lives depends only on the value, so resolve each distinct text
 	// once. Without this, a document dense in one repeated value walks the whole
@@ -954,19 +962,30 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// Computed once: see distinctPartCount for why building it per match was quadratic.
 	partCount := distinctPartCount(textPositions)
 
-	// Process each match
-	for _, match := range matches {
-		mapping, err := or.redactMatch(modifiedContents, extractedText, textPositions, match, strategy, docType, partCache, pending, partCount, runJoined)
+	// Process each write unit: a single match, or an overlap group's union.
+	for _, unit := range units {
+		match := unit.match
+		mapping, err := or.redactMatch(modifiedContents, extractedText, textPositions, match, unit.replacement, strategy, docType, partCache, pending, partCount, runJoined)
 		if err != nil {
 			or.logEvent("match_redaction_failed", false, map[string]interface{}{
 				"match_type": match.Type,
 				"match_line": match.LineNumber,
 				"error":      err.Error(),
 			})
+			if unit.group.IsGroup() {
+				// A group that cannot be written refuses the document rather than leaving its members'
+				// bytes behind. Types only, never the values: this reaches stderr and every format.
+				return nil, nil, fmt.Errorf("an overlapping group of %d findings (types %s) could not be located in the document's parts: %w",
+					len(unit.group.Members), strings.Join(unit.group.MemberTypes(matches), ", "), err)
+			}
 			continue
 		}
 
 		if mapping != nil {
+			if unit.group.IsGroup() {
+				mapping.Metadata[redactors.OverlapGroupKindKey] = unit.group.Kind.String()
+				mapping.Metadata[redactors.OverlapMemberTypesKey] = unit.group.MemberTypes(matches)
+			}
 			redactionMap = append(redactionMap, *mapping)
 		}
 	}
@@ -977,7 +996,12 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// ask each text-bearing part once whether it STILL holds a reported value, so removal no longer
 	// depends on which route happened to locate the value first. See
 	// recordCoverageForRemainingParts for the measurement that made this necessary.
-	or.recordCoverageForRemainingParts(modifiedContents, matches, strategy, pending)
+	//
+	// The write units, not the members. This pass records what it finds with addSplit, and the
+	// cross-run rewrite runs before the per-token replacer, so a member recorded here on its own could
+	// be rewritten across two runs before its group's union is offered at all -- stranding the rest of
+	// the union exactly as before. The residue guard in RedactDocument still checks every member.
+	or.recordCoverageForRemainingParts(modifiedContents, unitMatches, strategy, pending)
 
 	if err := or.applyPendingRedactions(modifiedContents, pending, docType); err != nil {
 		return nil, nil, err
@@ -986,13 +1010,87 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	return redactionMap, modifiedContents, nil
 }
 
+// officeWriteUnit is one value the Office redactor records: a single match, or an overlap group's
+// union with the group's rendering.
+type officeWriteUnit struct {
+	match       detector.Match // the representative; for a group, its Text is the union
+	replacement string
+	group       redactors.OverlapGroup
+}
+
+// officeWriteUnits renders every group and settles, per value, the one rendering every part gets.
+//
+// Office replacement is by VALUE: every occurrence of a text in a part receives one replacement
+// (partReplacements), so two units with the same text cannot render differently. That used to be
+// settled by first-write-wins in partReplacements.add, i.e. by input order, which is enough to undo
+// a group's rule: "512010001" grouped as PASSPORT+SSN renders "*********", but a lone SSN
+// "512010001" recorded first on another line would hand its "*****0001" to both.
+//
+// So where a group touches a value, the STRICTER rendering wins: the one keeping fewer of the
+// value's bytes (replacement.Rendering.Kept), then a group's over a single match's, then the
+// representative rule (higher confidence, then Type), then the replacement text -- nothing that
+// depends on input order. A value no group touches keeps first-write-wins, so its bytes do not change.
+func officeWriteUnits(groups []redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) []officeWriteUnit {
+	units := make([]officeWriteUnit, 0, len(groups))
+	renderings := make([]replacement.Rendering, 0, len(groups))
+	for _, g := range groups {
+		r := replacement.RenderGroup(g, matches, strategy)
+		units = append(units, officeWriteUnit{match: g.Unit(matches), replacement: r.Text, group: g})
+		renderings = append(renderings, r)
+	}
+
+	stricter := func(i, j int) bool {
+		ri, rj := renderings[i], renderings[j]
+		if ri.Kept() != rj.Kept() {
+			return ri.Kept() < rj.Kept()
+		}
+		gi, gj := units[i].group.IsGroup(), units[j].group.IsGroup()
+		if gi != gj {
+			return gi
+		}
+		mi, mj := units[i].match, units[j].match
+		if mi.Confidence != mj.Confidence {
+			return mi.Confidence > mj.Confidence
+		}
+		if mi.Type != mj.Type {
+			return mi.Type < mj.Type
+		}
+		return ri.Text < rj.Text
+	}
+
+	type choice struct {
+		best    int
+		grouped bool
+	}
+	byText := make(map[string]*choice, len(units))
+	for i := range units {
+		c, ok := byText[units[i].match.Text]
+		if !ok {
+			byText[units[i].match.Text] = &choice{best: i, grouped: units[i].group.IsGroup()}
+			continue
+		}
+		c.grouped = c.grouped || units[i].group.IsGroup()
+		if stricter(i, c.best) {
+			c.best = i
+		}
+	}
+	for i := range units {
+		if c := byText[units[i].match.Text]; c.grouped {
+			units[i].replacement = units[c.best].replacement
+		}
+	}
+	return units
+}
+
 // partReplacements is the set of value -> replacement rewrites pending for one part.
 //
 // order preserves first-seen order so the applied result does not depend on Go's map
 // iteration. The map is written ONCE per value: with a format-preserving or synthetic
 // strategy two matches carrying the same text can generate different replacements, and
 // the previous code applied the first and skipped the rest, so first-write-wins keeps
-// that behaviour.
+// that behaviour. Where an overlap group touches a value the caller has already chosen the
+// stricter rendering for every unit carrying it (officeWriteUnits), so first-write-wins
+// cannot pick a laxer one there.
 type partReplacements struct {
 	order []string
 	repl  map[string]string
@@ -1059,9 +1157,12 @@ func (p *partReplacements) add(value, replacement string) {
 //   - Within a part, values are offered LONGEST FIRST. strings.Replacer compares the
 //     old strings in argument order at each position and never overlaps a replacement,
 //     so the longest match wins — mirroring how ResolveOverlaps keeps the widest span.
-//     That is what keeps partially-overlapping values leak-safe: a shorter value nested
-//     in a longer one must not consume bytes the longer one needed and strand its head
-//     in cleartext, which is the failure the overlap pass exists to prevent.
+//     That keeps a value CONTAINED in a longer one from consuming bytes the longer one
+//     needed. It does NOT make partially-overlapping values safe, and this comment used
+//     to say it did: for two values that cross, longest-first writes the one that starts
+//     first and strands the other's tail ("[US_STREET_ADDRESS-REDACTED], Boise"). Those
+//     never reach this point as two values any more -- redactOfficeContent records an
+//     overlap group's union as ONE value (#773).
 //     Equal-length values are ordered lexicographically, again for determinism.
 func (or *OfficeRedactor) applyPendingRedactions(zipContents *OfficeZipContents, pending map[string]*partReplacements, docType OfficeDocumentType) error {
 	if len(pending) == 0 {
@@ -1605,15 +1706,9 @@ func (or *OfficeRedactor) rewritableText(docType OfficeDocumentType) func(path [
 // Mirrors the recording the located path does -- one entry per holding part, the replacement generated by
 // the same generator -- so a split value and a contiguous one are redacted by the same machinery with the
 // same mask.
-func (or *OfficeRedactor) recordSplitRunValue(zipContents *OfficeZipContents, match detector.Match, strategy redactors.RedactionStrategy, pending map[string]*partReplacements, runJoined *runJoinedIndex, docType OfficeDocumentType) []string {
+func (or *OfficeRedactor) recordSplitRunValue(zipContents *OfficeZipContents, match detector.Match, replacement string, pending map[string]*partReplacements, runJoined *runJoinedIndex, docType OfficeDocumentType) []string {
 	names := runJoined.partsHoldingRunJoined(zipContents.Files, match.Text, or.rewritableText(docType))
 	if len(names) == 0 {
-		return nil
-	}
-	replacement, err := or.generateReplacement(match.Text, match.Type, strategy)
-	if err != nil {
-		// No replacement means nothing to record. Returning nil sends the caller back to its error, so
-		// the value stays reported and the residue guard still refuses -- never a silent success.
 		return nil
 	}
 	for _, name := range names {
@@ -1638,11 +1733,7 @@ func (or *OfficeRedactor) recordSplitRunValue(zipContents *OfficeZipContents, ma
 // document offsets do not exist for this path: the value has no contiguous position in the
 // space-separated text, which is the whole reason it took this route. StartChar is therefore -1 rather
 // than a fabricated number.
-func (or *OfficeRedactor) splitRunMapping(match detector.Match, strategy redactors.RedactionStrategy, names []string, docType OfficeDocumentType) (*redactors.RedactionMapping, error) {
-	replacement, err := or.generateReplacement(match.Text, match.Type, strategy)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate replacement: %w", err)
-	}
+func (or *OfficeRedactor) splitRunMapping(match detector.Match, replacement string, strategy redactors.RedactionStrategy, names []string, docType OfficeDocumentType) (*redactors.RedactionMapping, error) {
 	return &redactors.RedactionMapping{
 		RedactedText: replacement,
 		Position: redactors.TextPosition{
@@ -1664,7 +1755,10 @@ func (or *OfficeRedactor) splitRunMapping(match detector.Match, strategy redacto
 }
 
 // redactMatch redacts a single match in the Office document
-func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, match detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType, partCache map[string]matchLocation, pending map[string]*partReplacements, partCount int, runJoined *runJoinedIndex) (*redactors.RedactionMapping, error) {
+//
+// replacement is chosen by the caller (officeWriteUnits), so a group's union and every unit sharing
+// its text carry one rendering, whichever route locates the value.
+func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, match detector.Match, replacement string, strategy redactors.RedactionStrategy, docType OfficeDocumentType, partCache map[string]matchLocation, pending map[string]*partReplacements, partCount int, runJoined *runJoinedIndex) (*redactors.RedactionMapping, error) {
 	// Every part that holds the value, not just the one holding its first
 	// occurrence -- see partsHoldingMatch. Cached per distinct value.
 	loc, cached := partCache[match.Text]
@@ -1689,8 +1783,8 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 		// redactAcrossRuns over that part, which does its own locating in run-text coordinates and needs
 		// no document offset from here.
 		if runJoined != nil {
-			if names := or.recordSplitRunValue(zipContents, match, strategy, pending, runJoined, docType); len(names) > 0 {
-				return or.splitRunMapping(match, strategy, names, docType)
+			if names := or.recordSplitRunValue(zipContents, match, replacement, pending, runJoined, docType); len(names) > 0 {
+				return or.splitRunMapping(match, replacement, strategy, names, docType)
 			}
 		}
 		return nil, fmt.Errorf("match text not found in extracted content")
@@ -1700,12 +1794,6 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 		return nil, fmt.Errorf("could not find Office position for match")
 	}
 	officePosition := &parts[0]
-
-	// Generate replacement text
-	replacement, err := or.generateReplacement(match.Text, match.Type, strategy)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate replacement: %w", err)
-	}
 
 	// RECORD the rewrite for every part that holds the value, rather than applying it
 	// here. applyPendingRedactions performs one pass per part once all matches are

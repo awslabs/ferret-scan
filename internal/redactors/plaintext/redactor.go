@@ -208,27 +208,33 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 
 	matches = redactors.RestoreBoundedMatchText(matches)
 
-	// Collapse overlapping matches to their widest span first. Otherwise a
-	// smaller match contained in a larger one (e.g. a PHONE match inside a
-	// spaced CREDIT_CARD match) gets redacted first, mutating the text so the
-	// larger match can no longer be located — leaving its un-redacted head
-	// (the card's BIN) exposed. See redactors.ResolveOverlaps.
-	// Captured BEFORE the narrowing, because this is the set the FLOOR judges.
+	// Captured BEFORE grouping, because this is the set the FLOOR judges.
 	//
-	// ResolveOverlaps drops any match fully contained in a wider surviving match, which is right for
-	// positional replacement: the wider span's replacement covers the contained value at that one
-	// reported position. But it is wrong for the completeness invariant — every OTHER copy of the
-	// contained value in the document survives, and the sweep never learns the value exists.
+	// Grouping folds every match that shares bytes with another into one write over their union, which
+	// is right for positional replacement: the union's rendering covers each member at that one reported
+	// position. But it is wrong for the completeness invariant — every OTHER copy of a member's value in
+	// the document survives, and the sweep never learns the value exists.
 	//
 	// Measured: this single asymmetry was the sole cause of 3 of the 4 files that refused, and of 13 of
 	// the 14 residual values across a 480-file corpus, including OTP secrets and recovery codes. The
 	// predicate and the enforcer have to agree on the match SET as well as on the spellings; the
 	// package doc stated the second and quietly assumed the first.
 	sweepMatches := matches
-	matches = redactors.ResolveOverlaps(matches)
 
-	// Sort matches by position (descending) to avoid position shifts during replacement
-	sortedMatches := ptr.sortMatchesByPosition(matches)
+	// ONE WRITE PER OVERLAP GROUP. Matches whose spans share bytes on a line used to be written one at
+	// a time, each located by searching for its Text in text an earlier write had already changed, so
+	// the second of two crossing values could not be found and was skipped: "77 August Lane" and
+	// "Lane, Boise" came out as "77 August [PERSON-NAME-REDACTED]", the head of the address in
+	// cleartext. For two matches on the SAME bytes the sort below tied, and sort.Slice's tie order --
+	// insertion sort up to 12 elements, pdqsort above -- decided which type was written, so the last
+	// four digits of a passport number survived or not depending on how many unrelated findings the
+	// file held. See redactors.ResolveOverlaps for what groups and replacement.RenderGroup for how a
+	// group renders (#773).
+	groups := redactors.ResolveOverlaps(matches)
+	units, err := ptr.writeUnits(groups, matches, strategy)
+	if err != nil {
+		return "", nil, err
+	}
 
 	redactedText := originalText
 	var redactionMap []redactors.RedactionMapping
@@ -238,11 +244,18 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	// match, which made redaction quadratic; see lineOffsets.
 	offsets := lineOffsets(originalText)
 
-	// Process matches in reverse order to maintain position accuracy
-	for _, match := range sortedMatches {
-		replacement, err := ptr.generateReplacement(match.Text, match.Type, strategy)
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to generate replacement for %s: %w", match.Type, err)
+	// Process units in reverse document order to maintain position accuracy
+	for _, unit := range units {
+		match := unit.match
+		replacement := unit.replacement
+
+		// A group that cannot be written REFUSES the redaction. Skipping it, as a single match is
+		// skipped, would leave every member's bytes in a file reported as redacted; the residue
+		// floor would not notice a partly rewritten value, and before #773 it did not: the audit
+		// recorded failed_redactions 0.
+		unwritable := func(reason string) error {
+			return fmt.Errorf("an overlapping group of %d findings (types %s) on line %d could not be written (%s); refusing to write a partial redaction",
+				len(unit.group.Members), strings.Join(unit.group.MemberTypes(matches), ", "), match.LineNumber, reason)
 		}
 
 		var startPos, endPos int
@@ -306,10 +319,16 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 							"correlation_error": correlationErr,
 							"fallback_error":    simpleErr,
 						})
+						if unit.group.IsGroup() {
+							return "", nil, unwritable("not located in the text")
+						}
 						continue
 					}
 				} else {
 					// Skip this match if correlation fails and fallback is disabled
+					if unit.group.IsGroup() {
+						return "", nil, unwritable("position correlation failed and fallback is disabled")
+					}
 					continue
 				}
 			}
@@ -324,6 +343,9 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 					"match_length": len(match.Text),
 					"match_type":   match.Type,
 				})
+				if unit.group.IsGroup() {
+					return "", nil, unwritable("not located in the text")
+				}
 				continue
 			}
 			startPos = simpleStartPos
@@ -341,6 +363,9 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				"text_length":      len(redactedText),
 				"correlation_used": correlationUsed,
 			})
+			if unit.group.IsGroup() {
+				return "", nil, unwritable("invalid position")
+			}
 			continue
 		}
 
@@ -368,6 +393,9 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				})
 			} else {
 				// Skip this match if we can't find the correct position
+				if unit.group.IsGroup() {
+					return "", nil, unwritable("not located in the text")
+				}
 				continue
 			}
 		}
@@ -416,6 +444,11 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				"original_confidence": match.Confidence,
 				"position_method":     ptr.getPositionMethodString(correlationUsed),
 			},
+		}
+		if unit.group.IsGroup() {
+			// One entry for the whole group, naming every finding it covered.
+			mapping.Metadata[redactors.OverlapGroupKindKey] = unit.group.Kind.String()
+			mapping.Metadata[redactors.OverlapMemberTypesKey] = unit.group.MemberTypes(matches)
 		}
 
 		redactionMap = append(redactionMap, mapping)
@@ -469,25 +502,63 @@ func (ptr *PlainTextRedactor) generateReplacement(originalText, dataType string,
 
 // Helper methods
 
-// sortMatchesByPosition sorts matches in descending order by line number,
-// then by position within the line (later positions first). This ensures
-// that when replacing text, earlier positions are not shifted by later replacements.
-func (ptr *PlainTextRedactor) sortMatchesByPosition(matches []detector.Match) []detector.Match {
-	sorted := make([]detector.Match, len(matches))
-	copy(sorted, matches)
+// writeUnit is one write the positional pass makes: a single match, or an overlap group written
+// once over its union.
+type writeUnit struct {
+	match       detector.Match // the representative; for a group, its Text is the union
+	replacement string
+	group       redactors.OverlapGroup
+	pos         int // resolved start within the line, or LastIndex of the text when unresolved
+	end         int
+}
 
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].LineNumber != sorted[j].LineNumber {
-			return sorted[i].LineNumber > sorted[j].LineNumber
+// writeUnits renders every group and orders the writes in a TOTAL order by resolved offset:
+// descending line, then descending start within the line, then descending end, then input order.
+//
+// Descending, so a write never shifts the offsets of one still to come. TOTAL, because the order
+// used to come from sort.Slice over (line, strings.LastIndex(FullLine, Text)), which ties for
+// two matches on the same bytes, and sort.Slice breaks ties by its algorithm: insertion sort up to
+// 12 elements, pdqsort above. Which of PASSPORT or SSN was written therefore changed when the file
+// grew from 12 findings to 13. Groups no longer contain ties between their members, and the
+// remaining keys cannot tie because two units never share a first member.
+func (ptr *PlainTextRedactor) writeUnits(groups []redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) ([]writeUnit, error) {
+	units := make([]writeUnit, 0, len(groups))
+	for _, g := range groups {
+		u := writeUnit{match: g.Unit(matches), group: g}
+		if g.IsGroup() {
+			u.replacement = replacement.RenderGroup(g, matches, strategy).Text
+		} else {
+			r, err := ptr.generateReplacement(u.match.Text, u.match.Type, strategy)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate replacement for %s: %w", u.match.Type, err)
+			}
+			u.replacement = r
 		}
-		// Same line: sort by position in context (later positions first)
-		// Use the match text position within FullLine as a proxy for column offset
-		posI := strings.LastIndex(sorted[i].Context.FullLine, sorted[i].Text)
-		posJ := strings.LastIndex(sorted[j].Context.FullLine, sorted[j].Text)
-		return posI > posJ
-	})
+		if g.Resolved {
+			u.pos, u.end = g.Start, g.End
+		} else {
+			// The previous ordering key, kept for a match with no resolvable position (-1 when its
+			// line or text is empty, which sorts it after every positioned match on its line).
+			u.pos = strings.LastIndex(u.match.Context.FullLine, u.match.Text)
+			u.end = u.pos
+		}
+		units = append(units, u)
+	}
 
-	return sorted
+	sort.Slice(units, func(i, j int) bool {
+		a, b := units[i], units[j]
+		if a.match.LineNumber != b.match.LineNumber {
+			return a.match.LineNumber > b.match.LineNumber
+		}
+		if a.pos != b.pos {
+			return a.pos > b.pos
+		}
+		if a.end != b.end {
+			return a.end > b.end
+		}
+		return a.group.Members[0] < b.group.Members[0]
+	})
+	return units, nil
 }
 
 // lineOffsets returns the byte offset at which each line of text begins.

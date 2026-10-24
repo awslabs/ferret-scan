@@ -118,11 +118,14 @@ var Cases = []Case{
 	},
 	{
 		Name: "creditcard_phone_overlap",
-		Description: "A space-separated card the PHONE validator also fires on (its trailing " +
-			"groups look like a phone number). Locks the overlap fix: format-preserving " +
-			"redaction must mask the whole card including the BIN (**** **** **** 0366), " +
-			"not just the head — the contained PHONE match must not win the tail and hide " +
-			"the card's un-redacted BIN. A standalone phone on the next line must still redact.",
+		Description: "A space-separated card whose trailing groups look like a phone number. Written " +
+			"when the PHONE validator also fired inside the card, to lock the overlap fix: " +
+			"format-preserving redaction must mask the whole card including the BIN " +
+			"(**** **** **** 0366), not just the head. The PHONE validator no longer fires inside the " +
+			"card (its only PHONE finding is the standalone phone on line 2), so this case no longer " +
+			"holds an overlap at all and now locks only the two renderings. The overlap shapes " +
+			"themselves are locked by overlap_groups_render_once, and TestCorpusHoldsEveryOverlapShape " +
+			"fails if the corpus stops holding one of them (#773).",
 		Checks: []string{"CREDIT_CARD", "PHONE"},
 		Input: "card 4532 0151 1283 0366 here\n" +
 			"call 212-555-0142 today\n",
@@ -495,17 +498,41 @@ var Cases = []Case{
 	},
 	{
 		Name: "secrets_uri_userinfo_email_overlap",
-		Description: "#766 matrix C, PENDING #773. On `redis://default:<pw>@cache.orders-svc.io` at the " +
-			"end of a line (and before `?ssl=true`) EMAIL reports `<pw>@cache.orders-svc.io`, and that " +
-			"stays (#687); SECRETS now reports the password itself, nested inside it. Which of two " +
-			"overlapping findings the redactor renders is #773's rule, not this one, so the " +
-			"format_preserving snapshot here records what main does today -- the EMAIL span's mask " +
-			"keeps the password's first character (`X***...@cache.orders-svc.io`) -- and is expected " +
-			"to change, to no password byte under any strategy, when #773 lands. The simple strategy " +
-			"already leaves none.",
+		Description: "#766 matrix C, rendered by #773's rule. On `redis://default:<pw>@cache.orders-svc.io` " +
+			"at the end of a line (and before `?ssl=true`) EMAIL reports `<pw>@cache.orders-svc.io`, and " +
+			"that stays (#687); SECRETS reports the password itself, nested inside it. The two are one " +
+			"CONTAINED overlap group: the widest finding (the EMAIL) is written, but no original letter or " +
+			"digit inside a contained SECRETS finding is copied, so format_preserving masks the " +
+			"password's first character that the email mask used to keep (`X***...` before #773, `****...` " +
+			"now) and keeps the domain, which is outside the password. No password byte under any strategy.",
 		Checks: []string{"SECRETS", "EMAIL"},
 		Input: "REDIS_URL=redis://default:B7vgQ3hD54kWtK97@cache.orders-svc.io\n" +
 			"REDIS_URL=redis://default:4cRNSXNBszm2C4xj@cache.orders-svc.io?ssl=true\n",
+	},
+	{
+		Name: "overlap_groups_render_once",
+		Description: "#773: findings whose spans share bytes on one line are ONE write over their union. " +
+			"Line 1 crosses an address and two names (partial + contained): the whole union is masked, " +
+			"neither `77 August` (the head .txt used to strand) nor `, Boise` (the tail Office stranded) " +
+			"survives. Line 2 is two crossing names of one type. Line 3 is PASSPORT and SSN on the same " +
+			"9 digits (identical): `*********` -- the SSN's last four are masked because the PASSPORT " +
+			"rendering hides them, at any file size (sort.Slice's tie order changed at 13 findings). " +
+			"Line 4 is a name inside an address (contained, widest wins). Line 5 is SECRETS and EMAIL on " +
+			"the same bytes: the higher-confidence secret's label, no byte kept. Decoys that must render " +
+			"exactly as before: line 6 is an IP containing a date (the IP keeps its two octets, #687's " +
+			"call), line 7 a phone containing an SSN (both keep the same last four), line 8 two disjoint " +
+			"values on one line. All values synthetic: 512010001 is area 512, the names and addresses are " +
+			"repo fixtures, the card has a computed Luhn digit, the password is a fixed alphabet walk.",
+		Checks: []string{"PASSPORT", "SSN", "PHYSICAL_ADDRESS", "PERSON_NAME", "PHONE", "IP_ADDRESS",
+			"DATE_OF_BIRTH", "CREDIT_CARD", "SECRETS", "EMAIL"},
+		Input: "Residence: 77 August Lane, Boise ID 83702\n" +
+			"Renée Müller, José García, François Lefèvre\n" +
+			"Passport number: 512010001\n" +
+			"Located at 100 Martin Luther King Blvd\n" +
+			"password = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\"\n" +
+			"server 203.12.19.85 reached\n" +
+			"call +1 449-87-4100\n" +
+			"call 212-555-0142 or card 4532-0151-1283-0366\n",
 	},
 	{
 		Name:        "ip_addresses",

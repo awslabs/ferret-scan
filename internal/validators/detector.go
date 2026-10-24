@@ -79,11 +79,15 @@ func (d *Detector) SetupValidators(validators map[string]detector.Validator) err
 	// Register in check-name order. Ranging the map directly made registration
 	// order random per process, and registration order decides which validator
 	// gets to claim a span of text first: NPI 1234567893 is a valid NPI AND a
-	// valid 10-digit phone number, so the same input was redacted as
+	// valid 10-digit phone number, and before #773 the same input was redacted as
 	// [NPI-REDACTED] on one run and [PHONE-REDACTED] on the next. Nothing
-	// arbitrates between validators claiming the same bytes today (see the
-	// cross-validator overlap follow-up), so until something does, the order
-	// must at least be fixed rather than a coin flip.
+	// arbitrates between validators claiming the same bytes at REPORT time (see
+	// the cross-validator overlap follow-up), so the order must at least be fixed
+	// rather than a coin flip. It no longer decides what redaction writes: two
+	// findings on the same bytes are one overlap group, rendered by a rule that
+	// does not read input order (redactors.ResolveOverlaps). This order only ever
+	// survived to the writer for files of 12 findings or fewer anyway, because
+	// sort.Slice switches from insertion sort to pdqsort above that.
 	names := make([]string, 0, len(validators))
 	for name := range validators {
 		if name == "METADATA" {
