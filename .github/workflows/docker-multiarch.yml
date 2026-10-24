@@ -224,18 +224,27 @@ jobs:
 
       # Retry the smoke build when the first attempt failed. Every one of the eight PR failures in
       # #809 was this step failing to fetch the builder image's manifest with `429 Too Many Requests`
-      # from the anonymous pull; a later attempt from the same runner succeeded once the per-IP window
-      # had moved on. So: one immediate retry, which classifies the failure in seconds (a rate-limited
-      # pull fails at manifest resolution, before any layer is fetched), then up to three more 45, 90
-      # and 180 seconds apart, with the same Dockerfile, platform, tag and build arguments as the step
-      # above. Only the GitHub Actions layer cache is omitted, because its credentials are injected by
-      # the action and are not available to a shell step; a cold amd64 build is a few minutes, which is
-      # less than a human re-run.
+      # (the registry's second line reads `toomanyrequests: Data limit exceeded`) from the anonymous
+      # pull. Waiting is not enough: the first run of this step on #814 retried the same registry three
+      # times over four minutes and was refused every time, because the runner's shared egress address
+      # stays over the limit for longer than a job can wait. So the retries pull the SAME builder image
+      # from a different registry. `public.ecr.aws/docker/library` is the Docker Official Images mirror,
+      # and Docker Hub and mirror.gcr.io serve the identical, content-addressed index: checked for both
+      # the 1.27.2 and 1.27.3 pins, the three registries answer the tag with the same sha256 and all
+      # serve the digest. The Dockerfile's `@sha256` pin is what fixes the content (TM-10), and buildkit
+      # verifies it on pull whichever host answers, so the fallback changes where the bytes come from
+      # and nothing about which bytes are built. The committed Dockerfile is not edited: the FROM line's
+      # host is rewritten in a copy under RUNNER_TEMP for the retry only, and the step refuses to run if
+      # the rewrite finds nothing to change.
       #
-      # The attempts are plain `docker buildx build` rather than a retry action: this file pins every
-      # action to a commit, and a retry wrapper would be a new third party in the supply chain for a
-      # loop of a few lines. A failure whose log does not show the rate limit is not retried, so a
-      # Dockerfile that genuinely does not build still fails with its own error, once.
+      # Attempts: once more from the primary registry at once (a rate-limited pull fails at manifest
+      # resolution in seconds, which is also what classifies the failure), then mirror.gcr.io at once,
+      # 60 s and 120 s. Same platform, tag and build arguments as the step above; only the GitHub Actions
+      # layer cache is omitted, because its credentials are injected by the action and are not available
+      # to a shell step, and a cold amd64 build is a few minutes. A failure whose log shows no rate limit
+      # is not retried, so a Dockerfile that genuinely does not build fails once with its own error. No
+      # retry action is added: this file pins every action by commit, and a wrapper would be a new third
+      # party in the supply chain for a loop of a few lines.
       - name: Retry the smoke build after a registry rate limit
         if: steps.smoke_build.outcome == 'failure'
         shell: bash
@@ -243,14 +252,28 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
           GIT_COMMIT: ${{ github.sha }}
           BUILD_DATE: ${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          PRIMARY_HOST_PATH: public.ecr.aws/docker/library/golang
+          FALLBACK_HOST_PATH: mirror.gcr.io/library/golang
         run: |
           set -uo pipefail
+          fallback="${RUNNER_TEMP}/Dockerfile.fallback-registry"
+          sed -E "s#^FROM ${PRIMARY_HOST_PATH}:#FROM ${FALLBACK_HOST_PATH}:#" ./Dockerfile > "$fallback"
+          if ! grep -qE "^FROM ${FALLBACK_HOST_PATH}:[^ ]*@sha256:[a-f0-9]{64} " "$fallback"; then
+            echo "::error::the Dockerfile's builder FROM line is not '${PRIMARY_HOST_PATH}:<tag>@sha256:<digest>'; update PRIMARY_HOST_PATH in this step"
+            exit 1
+          fi
           attempt=0
-          for pause in 0 45 90 180; do
+          for spec in "0 ./Dockerfile" "0 $fallback" "60 $fallback" "120 $fallback"; do
+            pause="${spec%% *}"; dockerfile="${spec#* }"
             attempt=$((attempt + 1))
             if [ "$pause" -gt 0 ]; then
-              echo "waiting ${pause}s for the registry's rate-limit window before retry ${attempt}"
+              echo "waiting ${pause}s before retry ${attempt}"
               sleep "$pause"
+            fi
+            if [ "$dockerfile" = "./Dockerfile" ]; then
+              echo "retry ${attempt}: builder image from the primary registry (${PRIMARY_HOST_PATH})"
+            else
+              echo "retry ${attempt}: builder image from the fallback registry (${FALLBACK_HOST_PATH}), same digest"
             fi
             log="${RUNNER_TEMP}/smoke-retry-${attempt}.log"
             if docker buildx build \
@@ -262,17 +285,17 @@ jobs:
                 --build-arg "BUILD_DATE=${BUILD_DATE}" \
                 --provenance=false \
                 --sbom=false \
-                --file ./Dockerfile \
+                --file "$dockerfile" \
                 . 2>&1 | tee "$log"; then
               echo "smoke build succeeded on retry ${attempt}"
               exit 0
             fi
-            if ! grep -q "429 Too Many Requests" "$log"; then
-              echo "::error::smoke build retry ${attempt} failed for a reason other than the registry rate limit; not retrying"
+            if ! grep -qiE "429 Too Many Requests|toomanyrequests" "$log"; then
+              echo "::error::smoke build retry ${attempt} failed for a reason other than a registry rate limit; not retrying"
               exit 1
             fi
           done
-          echo "::error::smoke build still rate-limited by the registry after ${attempt} retries (see #809)"
+          echo "::error::smoke build still rate-limited after ${attempt} retries across both registries (see #809)"
           exit 1
 
       - name: Smoke-test redaction in the image
