@@ -556,11 +556,11 @@ var Cases = []Case{
 			"`\"url\"` member beside a password and an AWS key ID, a JSON-lines request log with a " +
 			"GitHub token in its Authorization header, a token in a `\"url\"`'s user info, a minified " +
 			"config whose `\"homepage\"` hid a Stripe key and a password, and the first line again " +
-			"with a 40-byte password. Line 6 is the checksum check fired by `shared-assets`. Lines 7-9 " +
+			"with a 41-byte password. Line 6 is the checksum check fired by `shared-assets`. Lines 7-9 " +
 			"are the version/boolean check: a `\"verbose\": true` in a trailing shell comment, a " +
 			"provider literal as a key with a boolean value, and a password whose value looks like a " +
 			"version. Before the fix lines 1-4 and 6-9 reported nothing (line 3's token alone was " +
-			"found, by #766's URI source, which runs outside the gate) and line 5 only its 40-byte " +
+			"found, by #766's URI source, which runs outside the gate) and line 5 only its 41-byte " +
 			"value. Each must now report what the line reports with the member's key, host or word " +
 			"changed, and the redaction snapshots must show no byte of any value. The values are " +
 			"synthetic: consonants and digits, the AWS key ID and GitHub token other cases already " +
