@@ -99,6 +99,35 @@ jobs:
         with:
           registry-type: public
 
+      # Pull requests build the Dockerfile too, and its builder stage is pulled from ECR Public.
+      # Unauthenticated pulls there are rate-limited per source IP, and GitHub-hosted runners share
+      # their egress addresses, so PR builds fail with `429 Too Many Requests` on the builder image's
+      # manifest -- eight PR runs between 2026-10-20 and 2026-10-24, every one green on a re-run with
+      # no change to the branch (#809). An authenticated pull is not rate-limited that way.
+      #
+      # Deliberately NOT the two steps above. AWS_ROLE_ARN is the role that PUSHES the release image,
+      # and a pull_request workflow runs the PR's own copy of this file: widening those steps to PRs
+      # would let any same-repository PR edit the push condition and publish an image with the release
+      # credentials, a review-bypass this repository does not have today. The PR path therefore uses a
+      # SEPARATE role, read-only (ecr-public:GetAuthorizationToken and sts:GetServiceBearerToken, nothing
+      # else), named by the repository variable ECR_PUBLIC_PULL_ROLE_ARN with a trust policy that admits
+      # the `repo:awslabs/ferret-scan:pull_request` subject. Until that variable is set these steps are
+      # skipped and the PR build pulls anonymously, which the retry below is for. Fork PRs never run
+      # them: a fork cannot mint this repository's OIDC token, and the retry is what they get.
+      - name: Configure AWS credentials for a read-only base-image pull (same-repository PRs)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.ECR_PUBLIC_PULL_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.ECR_PUBLIC_PULL_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: GitHubActions-ECR-Pull
+
+      - name: Log in to Amazon ECR Public for the base-image pull (same-repository PRs)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.ECR_PUBLIC_PULL_ROLE_ARN != ''
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        with:
+          registry-type: public
+
       - name: Log in to GitHub Container Registry
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -173,6 +202,10 @@ jobs:
       # pull requests included, with the same build arguments as the build below so the two
       # share the builder's layer cache.
       - name: Build image for the redaction smoke test
+        id: smoke_build
+        # A failure here does not end the job: the step below retries it after a backoff when the
+        # cause is the registry's rate limit, and fails the job itself for any other cause.
+        continue-on-error: true
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -188,6 +221,59 @@ jobs:
           cache-from: type=gha
           provenance: false
           sbom: false
+
+      # Retry the smoke build when the first attempt failed. Every one of the eight PR failures in
+      # #809 was this step failing to fetch the builder image's manifest with `429 Too Many Requests`
+      # from the anonymous pull; a later attempt from the same runner succeeded once the per-IP window
+      # had moved on. So: one immediate retry, which classifies the failure in seconds (a rate-limited
+      # pull fails at manifest resolution, before any layer is fetched), then up to three more 45, 90
+      # and 180 seconds apart, with the same Dockerfile, platform, tag and build arguments as the step
+      # above. Only the GitHub Actions layer cache is omitted, because its credentials are injected by
+      # the action and are not available to a shell step; a cold amd64 build is a few minutes, which is
+      # less than a human re-run.
+      #
+      # The attempts are plain `docker buildx build` rather than a retry action: this file pins every
+      # action to a commit, and a retry wrapper would be a new third party in the supply chain for a
+      # loop of a few lines. A failure whose log does not show the rate limit is not retried, so a
+      # Dockerfile that genuinely does not build still fails with its own error, once.
+      - name: Retry the smoke build after a registry rate limit
+        if: steps.smoke_build.outcome == 'failure'
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          GIT_COMMIT: ${{ github.sha }}
+          BUILD_DATE: ${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+        run: |
+          set -uo pipefail
+          attempt=0
+          for pause in 0 45 90 180; do
+            attempt=$((attempt + 1))
+            if [ "$pause" -gt 0 ]; then
+              echo "waiting ${pause}s for the registry's rate-limit window before retry ${attempt}"
+              sleep "$pause"
+            fi
+            log="${RUNNER_TEMP}/smoke-retry-${attempt}.log"
+            if docker buildx build \
+                --platform linux/amd64 \
+                --load \
+                --tag ferret-scan:smoke \
+                --build-arg "VERSION=${VERSION}" \
+                --build-arg "GIT_COMMIT=${GIT_COMMIT}" \
+                --build-arg "BUILD_DATE=${BUILD_DATE}" \
+                --provenance=false \
+                --sbom=false \
+                --file ./Dockerfile \
+                . 2>&1 | tee "$log"; then
+              echo "smoke build succeeded on retry ${attempt}"
+              exit 0
+            fi
+            if ! grep -q "429 Too Many Requests" "$log"; then
+              echo "::error::smoke build retry ${attempt} failed for a reason other than the registry rate limit; not retrying"
+              exit 1
+            fi
+          done
+          echo "::error::smoke build still rate-limited by the registry after ${attempt} retries (see #809)"
+          exit 1
 
       - name: Smoke-test redaction in the image
         run: scripts/container-redaction-smoke.sh ferret-scan:smoke
