@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -157,21 +158,41 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 	// the cluster expansion without its sibling, so a bounded legal-notice consolidation in
 	// a legacy .doc was located by nothing and the whole line survived.
 	//
-	// Order matters and matches the other paths: expand first, then restore, then let the
-	// caller's overlap resolution run over the result.
+	// Order matters and matches the other paths: expand first, then restore, then resolve overlaps.
 	matches = redactors.ExpandClusterMatches(matches)
 	matches = redactors.RestoreBoundedMatchText(matches)
 
-	for _, m := range matches {
+	// ONE WRITE PER OVERLAP GROUP, longest value first.
+	//
+	// This redactor used to have no overlap pass at all -- the comment here deferred to "the caller's
+	// overlap resolution", and the only callers of ResolveOverlaps were the plaintext and Office
+	// redactors -- so values were overwritten in INPUT order, each searched for in bytes earlier
+	// overwrites had already masked. For "Located at 100 Martin Luther King Blvd" the PERSON_NAME
+	// sorts first by check name, so the name was masked, the address could no longer be found, and
+	// "100 ****************** Blvd" was written at exit 0. Containment leaked here even though it
+	// never leaked in .txt or .docx. Now the same groups every writer uses are each written once over
+	// their union (see legacyWriteUnits), and the units are applied longest first, so a short value
+	// reported on another line cannot carve a longer one before the longer one is written (#773).
+	units := legacyWriteUnits(matches, strategy)
+
+	for _, u := range units {
+		m := u.match
 		if m.Text == "" {
 			continue
 		}
-		repl := sameLengthReplacement(m.Text, m.Type, strategy)
+		repl := u.replacement
 		n := 0
 		for i, s := range layout.streams {
 			n += overwriteInStream(modified, s, logical[i], m.Text, repl)
 		}
 		if n == 0 {
+			if u.group.IsGroup() {
+				// A group is several reported values sharing bytes. Leaving it is not a disclosed
+				// limitation of one value, it is a partial redaction of several, so the file is refused.
+				// Types only: this message reaches stderr and every output format.
+				return nil, fmt.Errorf("refusing to write %s: an overlapping group of %d findings (types %s) was not found verbatim in any stream",
+					filepath.Base(outputPath), len(u.group.Members), strings.Join(u.group.MemberTypes(matches), ", "))
+			}
 			// The extractor recovers body text through a pass that normalises runs,
 			// so a reported match need not appear verbatim in any stream. Say so
 			// rather than claim a redaction that did not happen.
@@ -181,7 +202,7 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			})
 			continue
 		}
-		mappings = append(mappings, redactors.RedactionMapping{
+		mapping := redactors.RedactionMapping{
 			RedactedText: repl,
 			DataType:     m.Type,
 			Strategy:     strategy,
@@ -190,7 +211,12 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 				"occurrences":     n,
 				"position_method": "ole_logical_stream_overwrite",
 			},
-		})
+		}
+		if u.group.IsGroup() {
+			mapping.Metadata[redactors.OverlapGroupKindKey] = u.group.Kind.String()
+			mapping.Metadata[redactors.OverlapMemberTypesKey] = u.group.MemberTypes(matches)
+		}
+		mappings = append(mappings, mapping)
 	}
 
 	if len(modified) != len(raw) {
@@ -242,8 +268,14 @@ func (r *LegacyOLERedactor) logEvent(op string, success bool, meta map[string]in
 // assumed: if it ever returns a different length, falling back to a mask is
 // correct and silently writing the wrong number of bytes is not.
 func sameLengthReplacement(original, dataType string, strategy redactors.RedactionStrategy) string {
+	return sameLengthRendering(original, dataType, strategy).Text
+}
+
+// sameLengthRendering is sameLengthReplacement with the bytes the replacement keeps, so two
+// renderings of one value can be compared for strictness.
+func sameLengthRendering(original, dataType string, strategy redactors.RedactionStrategy) replacement.Rendering {
 	if strategy == redactors.RedactionFormatPreserving || strategy == redactors.RedactionSimple {
-		fp := replacement.FormatPreserving(original, dataType)
+		fp := replacement.Render(original, dataType, redactors.RedactionFormatPreserving)
 		// Two conditions, and the second one is the important one.
 		//
 		// Length must match, because the whole in-place technique depends on it.
@@ -257,11 +289,94 @@ func sameLengthReplacement(original, dataType string, strategy redactors.Redacti
 		// Checking here rather than trusting the strategy keeps this redactor
 		// correct even if another type acquires the same degenerate case later.
 		// The fallback mask is always safe.
-		if len(fp) == len(original) && fp != original {
+		if len(fp.Text) == len(original) && fp.Text != original {
 			return fp
 		}
 	}
-	return strings.Repeat(string(maskByte), len(original))
+	return replacement.Rendering{Text: strings.Repeat(string(maskByte), len(original))}
+}
+
+// legacyWriteUnit is one value this redactor overwrites: a single match, or an overlap group's union.
+type legacyWriteUnit struct {
+	match       detector.Match // the representative; for a group, its Text is the union
+	replacement string
+	group       redactors.OverlapGroup
+}
+
+// legacyWriteUnits groups the matches as every writer does, renders each group at the same byte
+// length, and orders the overwrites longest value first.
+//
+// The rendering is replacement.RenderGroup's rule under this redactor's existing strategy mapping
+// (simple and format_preserving both render format_preserving, because a placeholder is not
+// length-preserving; anything else masks). Under that rule a group of DIFFERENT types crossing each
+// other is masked whole, as tagmeta masks every merged span; a contained group keeps its widest
+// member's rendering, as in .txt and .docx; an identical group keeps a digit only if every member
+// would. A rendering that does not fit the union's length falls back to a mask, as a single
+// value's always has.
+//
+// Replacement here is by value -- every occurrence of a text in every stream -- so, as in the Office
+// redactor, a value a group touches takes the stricter of the renderings that carry it.
+//
+// Longest first, then by text, then by first member, so the order is total and independent of how
+// the matches arrived. It used to be input order: a PERSON_NAME reported alone on one line masked
+// the same name inside an address reported on another, before the address could be found.
+func legacyWriteUnits(matches []detector.Match, strategy redactors.RedactionStrategy) []legacyWriteUnit {
+	groups := redactors.ResolveOverlaps(matches)
+	units := make([]legacyWriteUnit, 0, len(groups))
+	renderings := make([]replacement.Rendering, 0, len(groups))
+	for _, g := range groups {
+		u := legacyWriteUnit{match: g.Unit(matches), group: g}
+		var r replacement.Rendering
+		if g.IsGroup() {
+			r = replacement.Rendering{Text: strings.Repeat(string(maskByte), len(g.Text))}
+			if strategy == redactors.RedactionFormatPreserving || strategy == redactors.RedactionSimple {
+				if fp := replacement.RenderGroup(g, matches, redactors.RedactionFormatPreserving); len(fp.Text) == len(g.Text) && fp.Text != g.Text {
+					r = fp
+				}
+			}
+		} else {
+			r = sameLengthRendering(u.match.Text, u.match.Type, strategy)
+		}
+		u.replacement = r.Text
+		units = append(units, u)
+		renderings = append(renderings, r)
+	}
+
+	// Per value, the stricter rendering wins where a group touches it.
+	type choice struct {
+		best    int
+		grouped bool
+	}
+	byText := make(map[string]*choice, len(units))
+	for i := range units {
+		c, ok := byText[units[i].match.Text]
+		if !ok {
+			byText[units[i].match.Text] = &choice{best: i, grouped: units[i].group.IsGroup()}
+			continue
+		}
+		c.grouped = c.grouped || units[i].group.IsGroup()
+		ri, rb := renderings[i], renderings[c.best]
+		if ri.Kept() < rb.Kept() || (ri.Kept() == rb.Kept() && units[i].group.IsGroup() && !units[c.best].group.IsGroup()) {
+			c.best = i
+		}
+	}
+	for i := range units {
+		if c := byText[units[i].match.Text]; c.grouped {
+			units[i].replacement = units[c.best].replacement
+		}
+	}
+
+	sort.SliceStable(units, func(i, j int) bool {
+		a, b := units[i], units[j]
+		if len(a.match.Text) != len(b.match.Text) {
+			return len(a.match.Text) > len(b.match.Text)
+		}
+		if a.match.Text != b.match.Text {
+			return a.match.Text < b.match.Text
+		}
+		return a.group.Members[0] < b.group.Members[0]
+	})
+	return units
 }
 
 // overwriteInStream replaces every occurrence of value inside one stream's LOGICAL

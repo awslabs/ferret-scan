@@ -1,0 +1,1383 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "server \nserver 203.12.19.85 reached\n reached"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 20,
+                  "snippet": {
+                    "text": "server 203.12.19.85 reached"
+                  },
+                  "startColumn": 8,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "IP Address Detected in <golden:overlap_groups_render_once> at line 6 (confidence: 100.0% - HIGH). Matched text: '203.12.19.85'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "clean_ip": "203.12.19.85",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 12,
+              "is_private": "false",
+              "is_reserved": "false",
+              "original_confidence": 100,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "pattern_name": "IPv4_Standard",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "type": "Public",
+              "validation_checks": {
+                "not_reserved": true,
+                "not_test_ip": true,
+                "reasonable_use": true,
+                "valid_format": true,
+                "valid_ip": true
+              },
+              "validation_path": "document",
+              "version": "IPv4"
+            },
+            "positiveKeywords": [
+              "server"
+            ],
+            "validator": "ipaddress"
+          },
+          "rank": 70,
+          "ruleId": "IP_ADDRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Passport number: \nPassport number: 512010001"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 27,
+                  "snippet": {
+                    "text": "Passport number: 512010001"
+                  },
+                  "startColumn": 18,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Passport Number Detected in <golden:overlap_groups_render_once> at line 3 (confidence: 100.0% - HIGH). Matched text: '512010001'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 40,
+              "country": "UK",
+              "original_confidence": 100,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "format": true,
+                "length": true,
+                "not_common_word": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_characters": true,
+                "valid_country_code": false
+              },
+              "validation_path": "document"
+            },
+            "validator": "passport"
+          },
+          "rank": 100,
+          "ruleId": "PASSPORT"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "call \ncall +1 449-87-4100"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 20,
+                  "snippet": {
+                    "text": "call +1 449-87-4100"
+                  },
+                  "startColumn": 6,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in <golden:overlap_groups_render_once> at line 7 (confidence: 100.0% - HIGH). Matched text: '+1 449-87-4100'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "clean_number": "+1449874100",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 15,
+              "country": "International",
+              "format": "+XX XXXX XXXX XXXX",
+              "original_confidence": 100,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "pattern_name": "International_Plus",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": true,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "call"
+            ],
+            "validator": "phone"
+          },
+          "rank": 75,
+          "ruleId": "PHONE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "call 212-555-0142 or card \ncall 212-555-0142 or card 4532-0151-1283-0366"
+                  },
+                  "startLine": 8
+                },
+                "region": {
+                  "endColumn": 46,
+                  "snippet": {
+                    "text": "call 212-555-0142 or card 4532-0151-1283-0366"
+                  },
+                  "startColumn": 27,
+                  "startLine": 8
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:overlap_groups_render_once> at line 8 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 100,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Renée \nRenée Müller, José García, François Lefèvre\n, François Lefèvre"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 30,
+                  "snippet": {
+                    "text": "Renée Müller, José García, François Lefèvre"
+                  },
+                  "startColumn": 8,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 99.0% - HIGH). Matched text: 'Müller, José García'"
+          },
+          "properties": {
+            "confidence": 99,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "formal",
+                "database",
+                "directory"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "formal",
+                  "database",
+                  "directory"
+                ],
+                "FirstName": "José",
+                "FullName": "Müller, José García",
+                "LastName": "Müller",
+                "MiddleName": "García",
+                "Pattern": "last_comma_first_middle",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 99,
+              "pattern": "last_comma_first_middle",
+              "pattern_priority": 8,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": true,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 79.5,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Residence: \nResidence: 77 August Lane, Boise ID 83702\n, Boise ID 83702"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 26,
+                  "snippet": {
+                    "text": "Residence: 77 August Lane, Boise ID 83702"
+                  },
+                  "startColumn": 12,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Physical Address Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 95.0% - HIGH). Matched text: '77 August Lane'"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "original_confidence": 95,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "no_negative_context": true,
+                "not_false_positive": true,
+                "street_type_suffix": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "residence"
+            ],
+            "validator": "physical_address"
+          },
+          "rank": 72.5,
+          "ruleId": "US_STREET_ADDRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Located at 100 \nLocated at 100 Martin Luther King Blvd\n Blvd"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 34,
+                  "snippet": {
+                    "text": "Located at 100 Martin Luther King Blvd"
+                  },
+                  "startColumn": 16,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 93.0% - HIGH). Matched text: 'Martin Luther King'"
+          },
+          "properties": {
+            "confidence": 93,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "hispanic",
+                "compound"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "hispanic",
+                  "compound"
+                ],
+                "FirstName": "Martin",
+                "FullName": "Martin Luther King",
+                "LastName": "King",
+                "MiddleName": "Luther",
+                "Pattern": "three_part_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 93,
+              "pattern": "three_part_name",
+              "pattern_priority": 6,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": true,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 76.5,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Residence: 77 \nResidence: 77 August Lane, Boise ID 83702\n, Boise ID 83702"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 26,
+                  "snippet": {
+                    "text": "Residence: 77 August Lane, Boise ID 83702"
+                  },
+                  "startColumn": 15,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 92.0% - HIGH). Matched text: 'August Lane'"
+          },
+          "properties": {
+            "confidence": 92,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "August",
+                "FullName": "August Lane",
+                "LastName": "Lane",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 92,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 76,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Renée Müller, José García, François Lefèvre\n, José García, François Lefèvre"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 15,
+                  "snippet": {
+                    "text": "Renée Müller, José García, François Lefèvre"
+                  },
+                  "startColumn": 1,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 92.0% - HIGH). Matched text: 'Renée Müller'"
+          },
+          "properties": {
+            "confidence": 92,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "english",
+                "european"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "english",
+                  "european"
+                ],
+                "FirstName": "Renée",
+                "FullName": "Renée Müller",
+                "LastName": "Müller",
+                "MiddleName": "",
+                "Pattern": "basic_western_name",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 92,
+              "pattern": "basic_western_name",
+              "pattern_priority": 5,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 76,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "password = \"\npassword = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\"\n\""
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 49,
+                  "snippet": {
+                    "text": "password = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\""
+                  },
+                  "startColumn": 13,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Secret or API Key Detected in <golden:overlap_groups_render_once> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org'"
+          },
+          "properties": {
+            "confidence": 85,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doc_type": "Unknown",
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "detection_method": "keyword_pattern",
+              "environment_type": "test",
+              "original_confidence": 85,
+              "secret_type": "API_KEY_OR_SECRET",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "has_entropy": true,
+                "min_length": true,
+                "not_common_word": true,
+                "not_test_data": true,
+                "specific_pattern": false,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "secrets"
+          },
+          "rank": 87.5,
+          "ruleId": "API_KEY_OR_SECRET"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Residence: 77 August \nResidence: 77 August Lane, Boise ID 83702\n ID 83702"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 33,
+                  "snippet": {
+                    "text": "Residence: 77 August Lane, Boise ID 83702"
+                  },
+                  "startColumn": 22,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 67.0% - MEDIUM). Matched text: 'Lane, Boise'"
+          },
+          "properties": {
+            "confidence": 67,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "formal",
+                "database",
+                "directory"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "formal",
+                  "database",
+                  "directory"
+                ],
+                "FirstName": "Boise",
+                "FullName": "Lane, Boise",
+                "LastName": "Lane",
+                "MiddleName": "",
+                "Pattern": "last_comma_first",
+                "Suffix": "",
+                "Title": ""
+              },
+              "original_confidence": 67,
+              "pattern": "last_comma_first",
+              "pattern_priority": 8,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_checks": {
+                "both_names_known": false,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": false,
+                "known_first_name": false,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 63.5,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Located at \nLocated at 100 Martin Luther King Blvd"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 39,
+                  "snippet": {
+                    "text": "Located at 100 Martin Luther King Blvd"
+                  },
+                  "startColumn": 12,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Physical Address Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 65.0% - MEDIUM). Matched text: '100 Martin Luther King Blvd'"
+          },
+          "properties": {
+            "confidence": 65,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "original_confidence": 65,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "no_negative_context": true,
+                "not_false_positive": true,
+                "street_type_suffix": true
+              },
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "located at"
+            ],
+            "validator": "physical_address"
+          },
+          "rank": 57.5,
+          "ruleId": "US_STREET_ADDRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "call +1 \ncall +1 449-87-4100"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 20,
+                  "snippet": {
+                    "text": "call +1 449-87-4100"
+                  },
+                  "startColumn": 9,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in <golden:overlap_groups_render_once> at line 7 (confidence: 60.0% - MEDIUM). Matched text: '449-87-4100'"
+          },
+          "properties": {
+            "confidence": 60,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "original_confidence": 60,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "ssn"
+          },
+          "rank": 80,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Passport number: \nPassport number: 512010001"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 27,
+                  "snippet": {
+                    "text": "Passport number: 512010001"
+                  },
+                  "startColumn": 18,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Social Security Number Detected in <golden:overlap_groups_render_once> at line 3 (confidence: 50.0% - LOW). Matched text: '512010001'"
+          },
+          "properties": {
+            "confidence": 50,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "original_confidence": 50,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "format": true,
+                "not_common_pattern": true,
+                "not_repeating": false,
+                "not_sequential": true,
+                "not_test_number": true,
+                "valid_area": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "ssn"
+          },
+          "rank": 75,
+          "ruleId": "SSN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "password = \"\npassword = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\"\n\""
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 49,
+                  "snippet": {
+                    "text": "password = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\""
+                  },
+                  "startColumn": 13,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Email Address Detected in <golden:overlap_groups_render_once> at line 5 (confidence: 40.0% - LOW). Matched text: 'Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org'"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": -20,
+              "domain": "example.org",
+              "email_provider": "BUSINESS",
+              "original_confidence": 40,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "tld": "org",
+              "username": "Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1",
+              "validation_checks": {
+                "business_pattern": false,
+                "no_consecutive_dots": true,
+                "not_test_email": false,
+                "reasonable_length": true,
+                "valid_domain": true,
+                "valid_format": true,
+                "valid_tld": true,
+                "valid_username": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "example"
+            ],
+            "validator": "email"
+          },
+          "rank": 45,
+          "ruleId": "BUSINESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "call \ncall 212-555-0142 or card 4532-0151-1283-0366\n or card 4532-0151-1283-0366"
+                  },
+                  "startLine": 8
+                },
+                "region": {
+                  "endColumn": 18,
+                  "snippet": {
+                    "text": "call 212-555-0142 or card 4532-0151-1283-0366"
+                  },
+                  "startColumn": 6,
+                  "startLine": 8
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Phone Number Detected in <golden:overlap_groups_render_once> at line 8 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "clean_number": "2125550142",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": -20,
+              "country": "US/CA",
+              "format": "XXX-XXX-XXXX",
+              "original_confidence": 15,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "pattern_name": "US_Dashed",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_repeating": true,
+                "not_sequential": true,
+                "not_ssn_pattern": true,
+                "not_test_number": false,
+                "not_timestamp": true,
+                "reasonable_length": true,
+                "valid_country": true,
+                "valid_digits": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "negativeKeywords": [
+              "card"
+            ],
+            "positiveKeywords": [
+              "call"
+            ],
+            "validator": "phone"
+          },
+          "rank": 32.5,
+          "ruleId": "PHONE"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "server 203.\nserver 203.12.19.85 reached\n reached"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 20,
+                  "snippet": {
+                    "text": "server 203.12.19.85 reached"
+                  },
+                  "startColumn": 12,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Date of Birth Detected in <golden:overlap_groups_render_once> at line 6 (confidence: 5.0% - LOW). Matched text: '12.19.85'"
+          },
+          "properties": {
+            "confidence": 5,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": -10,
+              "original_confidence": 5,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "not_test": true,
+                "plausible_year": true,
+                "valid_date": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "dob"
+          },
+          "rank": 32.5,
+          "ruleId": "DATE_OF_BIRTH"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches."
+              },
+              "help": {
+                "text": "Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#api_key_or_secret",
+              "id": "API_KEY_OR_SECRET",
+              "shortDescription": {
+                "text": "Secret or API Key Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements."
+              },
+              "help": {
+                "text": "Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#business",
+              "id": "BUSINESS",
+              "shortDescription": {
+                "text": "Email Address Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A date of birth was detected in the scanned content. A date of birth is a common identity-verification factor and, combined with a name, is frequently enough to pass a knowledge-based authentication check."
+              },
+              "help": {
+                "text": "Remove the date of birth or replace it with a synthetic one. Judge severity by what sits beside it: a date alone is weak, while a date next to a name or an account number is a usable identity-verification pair. Note that a date of birth has a very small search space, so hashing or truncating one does not make it private."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#date_of_birth",
+              "id": "DATE_OF_BIRTH",
+              "shortDescription": {
+                "text": "Date of Birth Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "An IP address was detected in the scanned content. IP addresses can be considered personally identifiable information under GDPR and other privacy regulations."
+              },
+              "help": {
+                "text": "IP addresses are considered personal data under GDPR and similar regulations. Evaluate whether this IP address should be hardcoded. Consider using configuration files, environment variables, or service discovery mechanisms instead. If this is for testing, clearly document it as test data."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ip_address",
+              "id": "IP_ADDRESS",
+              "shortDescription": {
+                "text": "IP Address Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A passport number pattern was detected in the scanned content. Passport numbers are highly sensitive personally identifiable information that must be protected."
+              },
+              "help": {
+                "text": "Passport numbers are protected under various privacy and identity theft prevention regulations. They should never be stored in source code or logs. Remove this passport number immediately and ensure it is stored in a secure, encrypted system with strict access controls and audit logging."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#passport",
+              "id": "PASSPORT",
+              "shortDescription": {
+                "text": "Passport Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A person's name was detected in the scanned content. Names are considered personally identifiable information (PII) under various privacy regulations."
+              },
+              "help": {
+                "text": "Person names are considered PII under GDPR, CCPA, and other privacy regulations. Evaluate whether this name should be present in the code. If it's test data, use clearly fictional names or anonymized identifiers. For production use, ensure names are stored securely with appropriate access controls and data retention policies."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#person_name",
+              "id": "PERSON_NAME",
+              "shortDescription": {
+                "text": "Person Name Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A phone number was detected in the scanned content. Phone numbers can be considered personally identifiable information (PII) depending on context and jurisdiction."
+              },
+              "help": {
+                "text": "Phone numbers may be considered PII under various privacy regulations. Evaluate whether this phone number should be present in the code. If it's for testing purposes, use clearly fake numbers (e.g., 555-0100 to 555-0199 in North America). For production use, store phone numbers in secure configuration systems with appropriate access controls."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#phone",
+              "id": "PHONE",
+              "shortDescription": {
+                "text": "Phone Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations."
+              },
+              "help": {
+                "text": "Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ssn",
+              "id": "SSN",
+              "shortDescription": {
+                "text": "Social Security Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment."
+              },
+              "help": {
+                "text": "Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_street_address",
+              "id": "US_STREET_ADDRESS",
+              "shortDescription": {
+                "text": "Physical Address Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
+              "id": "VISA",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

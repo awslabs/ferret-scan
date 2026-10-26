@@ -1,0 +1,18 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:overlap_groups_render_once>,IP_ADDRESS,HIGH,100.0,6,203.12.19.85
+<golden:overlap_groups_render_once>,PASSPORT,HIGH,100.0,3,512010001
+<golden:overlap_groups_render_once>,PHONE,HIGH,100.0,7,'+1 449-87-4100
+<golden:overlap_groups_render_once>,VISA,HIGH,100.0,8,4532-0151-1283-0366
+<golden:overlap_groups_render_once>,PERSON_NAME,HIGH,99.0,2,"Müller, José García"
+<golden:overlap_groups_render_once>,US_STREET_ADDRESS,HIGH,95.0,1,77 August Lane
+<golden:overlap_groups_render_once>,PERSON_NAME,HIGH,93.0,4,Martin Luther King
+<golden:overlap_groups_render_once>,PERSON_NAME,HIGH,92.0,1,August Lane
+<golden:overlap_groups_render_once>,PERSON_NAME,HIGH,92.0,2,Renée Müller
+<golden:overlap_groups_render_once>,API_KEY_OR_SECRET,MEDIUM,85.0,5,Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+<golden:overlap_groups_render_once>,PERSON_NAME,MEDIUM,67.0,1,"Lane, Boise"
+<golden:overlap_groups_render_once>,US_STREET_ADDRESS,MEDIUM,65.0,4,100 Martin Luther King Blvd
+<golden:overlap_groups_render_once>,SSN,MEDIUM,60.0,7,449-87-4100
+<golden:overlap_groups_render_once>,SSN,LOW,50.0,3,512010001
+<golden:overlap_groups_render_once>,BUSINESS,LOW,40.0,5,Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+<golden:overlap_groups_render_once>,PHONE,LOW,15.0,8,212-555-0142
+<golden:overlap_groups_render_once>,DATE_OF_BIRTH,LOW,5.0,6,12.19.85

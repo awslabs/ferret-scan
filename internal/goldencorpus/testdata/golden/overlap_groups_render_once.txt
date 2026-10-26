@@ -1,0 +1,19 @@
+LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                          FILE
+--------------------------------------------------------------------------------------------------------
+[HIGH  ] ipaddress    IP_ADDRESS            100.00% line     6 203.12.19.85                   <golden:overlap_groups_render_once>
+[HIGH  ] passport     PASSPORT              100.00% line     3 512010001                      <golden:overlap_groups_render_once>
+[HIGH  ] phone        PHONE                 100.00% line     7 +1 449-87-4100                 <golden:overlap_groups_render_once>
+[HIGH  ] creditcard   VISA                  100.00% line     8 4532-0151-1283-0366            <golden:overlap_groups_render_once>
+[HIGH  ] PERSON_NAME  PERSON_NAME            99.00% line     2 Müller, José García            <golden:overlap_groups_render_once>
+[HIGH  ] physical_... US_STREET_ADDRESS      95.00% line     1 77 August Lane                 <golden:overlap_groups_render_once>
+[HIGH  ] PERSON_NAME  PERSON_NAME            93.00% line     4 Martin Luther King             <golden:overlap_groups_render_once>
+[HIGH  ] PERSON_NAME  PERSON_NAME            92.00% line     1 August Lane                    <golden:overlap_groups_render_once>
+[HIGH  ] PERSON_NAME  PERSON_NAME            92.00% line     2 Renée Müller                   <golden:overlap_groups_render_once>
+[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line     5 Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@ex... <golden:overlap_groups_render_once>
+[MEDIUM] PERSON_NAME  PERSON_NAME            67.00% line     1 Lane, Boise                    <golden:overlap_groups_render_once>
+[MEDIUM] physical_... US_STREET_ADDRESS      65.00% line     4 100 Martin Luther King Blvd    <golden:overlap_groups_render_once>
+[MEDIUM] ssn          SSN                    60.00% line     7 449-87-4100                    <golden:overlap_groups_render_once>
+[LOW   ] ssn          SSN                    50.00% line     3 512010001                      <golden:overlap_groups_render_once>
+[LOW   ] email        BUSINESS               40.00% line     5 Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@ex... <golden:overlap_groups_render_once>
+[LOW   ] phone        PHONE                  15.00% line     8 212-555-0142                   <golden:overlap_groups_render_once>
+[LOW   ] dob          DATE_OF_BIRTH           5.00% line     6 12.19.85                       <golden:overlap_groups_render_once>

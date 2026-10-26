@@ -504,6 +504,10 @@ func (rm *RedactionManager) AddRedactionResult(originalPath, redactedPath string
 				Confidence:   redactionMapping.Confidence / 100.0, // Convert to 0-1 range
 				Timestamp:    time.Now(),
 			}
+			// One entry per overlap group, naming every finding it covered (#773).
+			if types, ok := redactionMapping.Metadata[OverlapMemberTypesKey].([]string); ok && len(types) > 1 {
+				contentRedaction.MemberTypes = append([]string(nil), types...)
+			}
 
 			err := rm.auditLogManager.AddContentRedaction(documentID, contentRedaction)
 			if err != nil {

@@ -1,0 +1,654 @@
+results:
+    - text: 203.12.19.85
+      line_number: 6
+      type: IP_ADDRESS
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: ipaddress
+      metadata:
+        clean_ip: 203.12.19.85
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 12
+        is_private: "false"
+        is_reserved: "false"
+        original_confidence: 100
+        original_file: <golden:overlap_groups_render_once>
+        pattern_name: IPv4_Standard
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        type: Public
+        validation_checks:
+            not_reserved: true
+            not_test_ip: true
+            reasonable_use: true
+            valid_format: true
+            valid_ip: true
+        validation_path: document
+        version: IPv4
+    - text: "512010001"
+      line_number: 3
+      type: PASSPORT
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: passport
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 40
+        country: UK
+        original_confidence: 100
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            format: true
+            length: true
+            not_common_word: true
+            not_sequential: true
+            not_test_number: true
+            valid_characters: true
+            valid_country_code: false
+        validation_path: document
+    - text: +1 449-87-4100
+      line_number: 7
+      type: PHONE
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: phone
+      metadata:
+        clean_number: "+1449874100"
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 15
+        country: International
+        format: +XX XXXX XXXX XXXX
+        original_confidence: 100
+        original_file: <golden:overlap_groups_render_once>
+        pattern_name: International_Plus
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            not_repeating: true
+            not_sequential: true
+            not_ssn_pattern: true
+            not_test_number: true
+            not_timestamp: true
+            reasonable_length: true
+            valid_country: true
+            valid_digits: true
+            valid_format: true
+        validation_path: document
+    - text: 4532-0151-1283-0366
+      line_number: 8
+      type: VISA
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: creditcard
+      metadata:
+        card_type: VISA
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 15
+        original_confidence: 100
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: true
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: true
+            vendor: true
+        validation_path: document
+        vendor: Visa
+    - text: Müller, José García
+      line_number: 2
+      type: PERSON_NAME
+      confidence: 99
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - formal
+            - database
+            - directory
+        name_components:
+            fullname: Müller, José García
+            title: ""
+            firstname: José
+            middlename: García
+            lastname: Müller
+            suffix: ""
+            pattern: last_comma_first_middle
+            cultural:
+                - formal
+                - database
+                - directory
+        original_confidence: 99
+        pattern: last_comma_first_middle
+        pattern_priority: 8
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_checks:
+            both_names_known: true
+            has_known_name_component: true
+            has_middle_name: true
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: 77 August Lane
+      line_number: 1
+      type: US_STREET_ADDRESS
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: physical_address
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        original_confidence: 95
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            no_negative_context: true
+            not_false_positive: true
+            street_type_suffix: true
+        validation_path: document
+    - text: Martin Luther King
+      line_number: 4
+      type: PERSON_NAME
+      confidence: 93
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - hispanic
+            - compound
+        name_components:
+            fullname: Martin Luther King
+            title: ""
+            firstname: Martin
+            middlename: Luther
+            lastname: King
+            suffix: ""
+            pattern: three_part_name
+            cultural:
+                - western
+                - hispanic
+                - compound
+        original_confidence: 93
+        pattern: three_part_name
+        pattern_priority: 6
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_checks:
+            both_names_known: true
+            has_known_name_component: true
+            has_middle_name: true
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: August Lane
+      line_number: 1
+      type: PERSON_NAME
+      confidence: 92
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - english
+            - european
+        name_components:
+            fullname: August Lane
+            title: ""
+            firstname: August
+            middlename: ""
+            lastname: Lane
+            suffix: ""
+            pattern: basic_western_name
+            cultural:
+                - western
+                - english
+                - european
+        original_confidence: 92
+        pattern: basic_western_name
+        pattern_priority: 5
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_checks:
+            both_names_known: true
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: Renée Müller
+      line_number: 2
+      type: PERSON_NAME
+      confidence: 92
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - english
+            - european
+        name_components:
+            fullname: Renée Müller
+            title: ""
+            firstname: Renée
+            middlename: ""
+            lastname: Müller
+            suffix: ""
+            pattern: basic_western_name
+            cultural:
+                - western
+                - english
+                - european
+        original_confidence: 92
+        pattern: basic_western_name
+        pattern_priority: 5
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_checks:
+            both_names_known: true
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: true
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+      line_number: 5
+      type: API_KEY_OR_SECRET
+      confidence: 85
+      confidence_level: MEDIUM
+      filename: <golden:overlap_groups_render_once>
+      validator: secrets
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doc_type: Unknown
+        context_doctype: Unknown
+        context_domain: Government
+        detection_method: keyword_pattern
+        environment_type: test
+        original_confidence: 85
+        secret_type: API_KEY_OR_SECRET
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            has_entropy: true
+            min_length: true
+            not_common_word: true
+            not_test_data: true
+            specific_pattern: false
+            valid_format: true
+        validation_path: document
+    - text: Lane, Boise
+      line_number: 1
+      type: PERSON_NAME
+      confidence: 67
+      confidence_level: MEDIUM
+      filename: <golden:overlap_groups_render_once>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - formal
+            - database
+            - directory
+        name_components:
+            fullname: Lane, Boise
+            title: ""
+            firstname: Boise
+            middlename: ""
+            lastname: Lane
+            suffix: ""
+            pattern: last_comma_first
+            cultural:
+                - formal
+                - database
+                - directory
+        original_confidence: 67
+        pattern: last_comma_first
+        pattern_priority: 8
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_checks:
+            both_names_known: false
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: false
+            known_first_name: false
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
+        validation_path: document
+    - text: 100 Martin Luther King Blvd
+      line_number: 4
+      type: US_STREET_ADDRESS
+      confidence: 65
+      confidence_level: MEDIUM
+      filename: <golden:overlap_groups_render_once>
+      validator: physical_address
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        original_confidence: 65
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            no_negative_context: true
+            not_false_positive: true
+            street_type_suffix: true
+        validation_path: document
+    - text: 449-87-4100
+      line_number: 7
+      type: SSN
+      confidence: 60
+      confidence_level: MEDIUM
+      filename: <golden:overlap_groups_render_once>
+      validator: ssn
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        original_confidence: 60
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            format: true
+            not_common_pattern: true
+            not_repeating: true
+            not_sequential: true
+            not_test_number: true
+            valid_area: true
+        validation_path: document
+    - text: "512010001"
+      line_number: 3
+      type: SSN
+      confidence: 50
+      confidence_level: LOW
+      filename: <golden:overlap_groups_render_once>
+      validator: ssn
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        original_confidence: 50
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            format: true
+            not_common_pattern: true
+            not_repeating: false
+            not_sequential: true
+            not_test_number: true
+            valid_area: true
+        validation_path: document
+    - text: Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+      line_number: 5
+      type: BUSINESS
+      confidence: 40
+      confidence_level: LOW
+      filename: <golden:overlap_groups_render_once>
+      validator: email
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: -20
+        domain: example.org
+        email_provider: BUSINESS
+        original_confidence: 40
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        tld: org
+        username: Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1
+        validation_checks:
+            business_pattern: false
+            no_consecutive_dots: true
+            not_test_email: false
+            reasonable_length: true
+            valid_domain: true
+            valid_format: true
+            valid_tld: true
+            valid_username: true
+        validation_path: document
+    - text: 212-555-0142
+      line_number: 8
+      type: PHONE
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:overlap_groups_render_once>
+      validator: phone
+      metadata:
+        clean_number: "2125550142"
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: -20
+        country: US/CA
+        format: XXX-XXX-XXXX
+        original_confidence: 15
+        original_file: <golden:overlap_groups_render_once>
+        pattern_name: US_Dashed
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            not_repeating: true
+            not_sequential: true
+            not_ssn_pattern: true
+            not_test_number: false
+            not_timestamp: true
+            reasonable_length: true
+            valid_country: true
+            valid_digits: true
+            valid_format: true
+        validation_path: document
+    - text: 12.19.85
+      line_number: 6
+      type: DATE_OF_BIRTH
+      confidence: 5
+      confidence_level: LOW
+      filename: <golden:overlap_groups_render_once>
+      validator: dob
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: -10
+        original_confidence: 5
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            not_test: true
+            plausible_year: true
+            valid_date: true
+        validation_path: document

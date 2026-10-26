@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/personname"
 
@@ -60,20 +61,398 @@ func loadNames() ([]string, []string) {
 // using the requested strategy. It never returns an error — on any failure it
 // falls back to the simple placeholder so callers stay clean.
 func Generate(originalText, dataType string, strategy redactors.RedactionStrategy) string {
+	return Render(originalText, dataType, strategy).Text
+}
+
+// ─── Renderings and the bytes they keep ──────────────────────────────────────
+
+// Copy is one run of the original value that a rendering writes back verbatim, by construction.
+//
+// In is the run's byte offset in the original value, Out the offset of the same bytes in
+// Rendering.Text, Len its length. In and Out differ only where a renderer shifts what it keeps:
+// preserveEmail with an empty local part writes "*" ahead of the "@" and the domain.
+type Copy struct {
+	In  int
+	Out int
+	Len int
+}
+
+// Rendering is a replacement together with the original bytes it keeps.
+//
+// The ranges are returned WITH the string rather than inferred from it afterwards, because only the
+// renderer knows which bytes it copied: a random synthetic digit can equal the original's by chance,
+// and a mask can coincide with a value written as asterisks. Overlap groups need the real answer to
+// decide whether a byte may survive (RenderGroup).
+type Rendering struct {
+	// Text is the replacement, exactly what Generate returns for the same arguments.
+	Text string
+
+	// Copies lists every run of the original that Text repeats BY CONSTRUCTION and that holds at
+	// least one letter, digit or non-ASCII byte: the last four digits format_preserving keeps of a
+	// card, SSN or phone; an email's first character and its domain; an IP's first two octets; a
+	// synthetic card's issuer prefix; a synthetic name's title; a synthetic token's provider
+	// prefix. Runs holding only ASCII separators kept for shape ("-", " ", ".") are not listed:
+	// they carry no part of the value.
+	Copies []Copy
+
+	// Normalized marks a synthetic rendering generated from a folded spelling of the value (see
+	// Synthetic). Its Copies are offsets into that spelling, so a caller combining renderings
+	// cannot place them on the original's bytes.
+	Normalized bool
+
+	kept int
+}
+
+// Kept counts the bytes of the original value the rendering keeps (the letter, digit and
+// non-ASCII bytes of Copies). Of two renderings of the same value, the one keeping fewer is the
+// stricter.
+func (r Rendering) Kept() int { return r.kept }
+
+// Render is Generate together with the original bytes the replacement keeps.
+func Render(original, dataType string, strategy redactors.RedactionStrategy) Rendering {
 	switch strategy {
 	case redactors.RedactionSimple:
-		return Simple(dataType)
+		return Rendering{Text: Simple(dataType)}
 	case redactors.RedactionFormatPreserving:
-		return FormatPreserving(originalText, dataType)
+		text := FormatPreserving(original, dataType)
+		return newRendering(text, original, formatPreservingCopies(original, dataType), false)
 	case redactors.RedactionSynthetic:
-		result, err := Synthetic(originalText, dataType)
+		text, err := Synthetic(original, dataType)
 		if err != nil {
-			return Simple(dataType)
+			return Rendering{Text: Simple(dataType)}
 		}
-		return result
+		folded := textnorm.Fold(original)
+		return newRendering(text, folded, syntheticCopies(folded, dataType, text), folded != original)
 	default:
-		return Simple(dataType)
+		return Rendering{Text: Simple(dataType)}
 	}
+}
+
+// newRendering keeps only the copies that hold part of the value and counts what they keep.
+func newRendering(text, value string, copies []Copy, normalized bool) Rendering {
+	r := Rendering{Text: text, Normalized: normalized}
+	for _, c := range copies {
+		if c.Len <= 0 || c.In < 0 || c.In+c.Len > len(value) || c.Out < 0 || c.Out+c.Len > len(text) {
+			continue
+		}
+		n := 0
+		for p := c.In; p < c.In+c.Len; p++ {
+			if isValueByte(value[p]) {
+				n++
+			}
+		}
+		if n == 0 {
+			continue
+		}
+		r.Copies = append(r.Copies, c)
+		r.kept += n
+	}
+	return r
+}
+
+// isValueByte reports whether a kept byte is part of a value rather than shape: an ASCII letter or
+// digit, or any byte of a non-ASCII character. Counting every non-ASCII byte errs towards masking --
+// a non-breaking-space separator is masked along with the letters -- which is the safe direction.
+func isValueByte(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b >= 0x80
+}
+
+// runsWhere turns a per-byte "kept" predicate into same-offset runs.
+func runsWhere(value string, kept func(i int) bool) []Copy {
+	var out []Copy
+	start := -1
+	for i := 0; i <= len(value); i++ {
+		if i < len(value) && kept(i) {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			out = append(out, Copy{In: start, Out: start, Len: i - start})
+			start = -1
+		}
+	}
+	return out
+}
+
+// digitTailKept reports, per byte, what a digit-walking mask keeps: every non-digit byte (it is
+// written back unchanged) and the last `tail` ASCII digits.
+func digitTailKept(value string, tail int) func(i int) bool {
+	total := 0
+	for i := 0; i < len(value); i++ {
+		if value[i] >= '0' && value[i] <= '9' {
+			total++
+		}
+	}
+	index := make([]int, len(value))
+	d := 0
+	for i := 0; i < len(value); i++ {
+		if value[i] >= '0' && value[i] <= '9' {
+			index[i] = d
+			d++
+		}
+	}
+	return func(i int) bool {
+		if value[i] < '0' || value[i] > '9' {
+			return true
+		}
+		return index[i] >= total-tail
+	}
+}
+
+func countASCIIDigits(s string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			n++
+		}
+	}
+	return n
+}
+
+// formatPreservingCopies mirrors FormatPreserving branch for branch.
+func formatPreservingCopies(original, dataType string) []Copy {
+	switch {
+	case isCreditCardType(dataType):
+		if countASCIIDigits(original) < 8 {
+			return nil
+		}
+		return runsWhere(original, digitTailKept(original, 4))
+	case dataType == "SSN", dataType == "PHONE":
+		if countASCIIDigits(original) < 4 {
+			return nil
+		}
+		return runsWhere(original, digitTailKept(original, 4))
+	case dataType == "EMAIL", dataType == "GMAIL", dataType == "BUSINESS":
+		at := strings.IndexByte(original, '@')
+		switch {
+		case at < 0:
+			return nil
+		case at == 0:
+			return []Copy{{In: 0, Out: 1, Len: len(original)}}
+		case at == 1:
+			return []Copy{{In: 1, Out: 1, Len: len(original) - 1}}
+		default:
+			return []Copy{{In: 0, Out: 0, Len: 1}, {In: at, Out: at, Len: len(original) - at}}
+		}
+	case dataType == "IP_ADDRESS":
+		parts := strings.Split(original, ".")
+		if len(parts) != 4 {
+			return nil
+		}
+		return []Copy{{In: 0, Out: 0, Len: len(parts[0]) + len(parts[1]) + 2}}
+	}
+	return nil
+}
+
+// syntheticCopies mirrors the synthetic generators: the bytes each writes back from the value
+// rather than generating. value is the folded spelling Synthetic generated from.
+func syntheticCopies(value, dataType, text string) []Copy {
+	switch {
+	case isCreditCardType(dataType):
+		// syntheticCreditCard keeps the issuer prefix (up to four digits) and every non-digit rune.
+		prefix := countASCIIDigits(value)
+		if prefix > 4 {
+			prefix = 4
+		}
+		d := 0
+		index := make([]int, len(value))
+		for i := 0; i < len(value); i++ {
+			if value[i] >= '0' && value[i] <= '9' {
+				index[i] = d
+				d++
+			}
+		}
+		return runsWhere(value, func(i int) bool {
+			if value[i] < '0' || value[i] > '9' {
+				return true
+			}
+			return index[i] < prefix
+		})
+	case dataType == "SSN", dataType == "PHONE":
+		// Digits are regenerated one for one; everything else is written back.
+		return runsWhere(value, func(i int) bool { return value[i] < '0' || value[i] > '9' })
+	case dataType == "PERSON_NAME":
+		// SyntheticName keeps a leading title ("Dr.") when it produced a name at all.
+		fields := strings.Fields(value)
+		if len(fields) == 0 || !strings.HasSuffix(fields[0], ".") || len(fields[0]) > 5 {
+			return nil
+		}
+		if !strings.HasPrefix(text, fields[0]+" ") && text != fields[0] {
+			return nil // the placeholder fallback: nothing of the value was kept
+		}
+		return []Copy{{In: strings.Index(value, fields[0]), Out: 0, Len: len(fields[0])}}
+	case dataType == "GITHUB_TOKEN":
+		if len(value) >= 4 {
+			return []Copy{{In: 0, Out: 0, Len: 4}}
+		}
+	case dataType == "STRIPE_API_KEY":
+		if strings.HasPrefix(value, "pk_") {
+			return []Copy{{In: 0, Out: 0, Len: 3}}
+		}
+	case dataType == "SLACK_TOKEN":
+		if strings.HasPrefix(value, "xoxp-") {
+			return []Copy{{In: 0, Out: 0, Len: 5}}
+		}
+	}
+	return nil
+}
+
+// ─── Overlap groups ──────────────────────────────────────────────────────────
+
+// RenderGroup returns the ONE write that replaces every member of an overlap group, over g.Text.
+//
+// A single match renders exactly as Render always has. For a group, the rule is:
+//
+//   - CONTAINED (one member spans the union): the widest member's rendering, as before, except that
+//     no original letter or digit inside a contained SECRETS-check member is copied. Every other
+//     contained member is ignored, which keeps every contained pair outside SECRETS byte-identical
+//     (an IP_ADDRESS keeps its two octets over a DATE_OF_BIRTH inside them -- #687's call, not this
+//     one's).
+//   - IDENTICAL (two or more members span the union): the representative's rendering, keeping a copied
+//     letter or digit only if EVERY member covering that byte would keep it in its own rendering.
+//     PASSPORT and SSN on one 9-digit number therefore render "*********", whichever came first: the
+//     PASSPORT rendering keeps nothing, so the SSN's last four cannot survive.
+//   - PARTIAL (no member spans the union): the union written once. Members of one shared Type take
+//     that type's rendering of the union under the same per-byte rule; members of different types
+//     take a full "*" mask under format_preserving and the representative's placeholder otherwise,
+//     because no single type's rendering is correct for bytes that belong to two values.
+//
+// When the rule masks anything, format_preserving masks those bytes with '*' and synthetic falls back
+// to the representative's simple placeholder (a plausible fake must not carry a byte a member's own
+// rendering would have hidden). simple copies nothing, so it is the representative's placeholder.
+//
+// The representative and its tie-breaks are redactors.ResolveOverlaps'; nothing here reads the order
+// matches arrived in.
+func RenderGroup(g redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) Rendering {
+	rep := matches[g.Representative]
+	if !g.IsGroup() {
+		return Render(rep.Text, rep.Type, strategy)
+	}
+
+	switch g.Kind {
+	case redactors.GroupContained:
+		guarded := make([]bool, len(g.Text))
+		anyGuard := false
+		for k, i := range g.Members {
+			if i == g.Representative || !redactors.IsSecretsMember(matches[i]) {
+				continue
+			}
+			for p := g.Spans[k].Start - g.Start; p < g.Spans[k].End-g.Start; p++ {
+				guarded[p] = true
+				anyGuard = true
+			}
+		}
+		r := Render(g.Text, rep.Type, strategy)
+		if !anyGuard {
+			return r
+		}
+		return withhold(r, g.Text, strategy, rep.Type, func(p int) bool { return !guarded[p] })
+
+	case redactors.GroupIdentical:
+		r := Render(g.Text, rep.Type, strategy)
+		return withhold(r, g.Text, strategy, rep.Type, keptByEveryCoveringMember(g, matches, strategy))
+
+	case redactors.GroupPartial:
+		if t, ok := sharedType(g, matches); ok {
+			r := Render(g.Text, t, strategy)
+			return withhold(r, g.Text, strategy, rep.Type, keptByEveryCoveringMember(g, matches, strategy))
+		}
+		if strategy == redactors.RedactionFormatPreserving {
+			return Rendering{Text: strings.Repeat("*", len(g.Text))}
+		}
+		return Rendering{Text: Simple(rep.Type)}
+	}
+	return Render(g.Text, rep.Type, strategy)
+}
+
+// sharedType returns the members' Type when they all have the same one.
+func sharedType(g redactors.OverlapGroup, matches []detector.Match) (string, bool) {
+	t := matches[g.Members[0]].Type
+	for _, i := range g.Members[1:] {
+		if matches[i].Type != t {
+			return "", false
+		}
+	}
+	return t, true
+}
+
+// keptByEveryCoveringMember returns the per-byte rule for identical and partial groups: a byte of the
+// union may be copied only if every member whose span covers it copies it in its own rendering.
+//
+// A member whose copies cannot be placed (a synthetic rendering of a folded spelling) counts as
+// copying nothing, which can only mask more.
+func keptByEveryCoveringMember(g redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) func(p int) bool {
+	n := len(g.Text)
+	cover := make([]int, n)
+	kept := make([]int, n)
+	for k, i := range g.Members {
+		off := g.Spans[k].Start - g.Start
+		for p := off; p < g.Spans[k].End-g.Start && p < n; p++ {
+			cover[p]++
+		}
+		r := Render(matches[i].Text, matches[i].Type, strategy)
+		if r.Normalized {
+			continue
+		}
+		for _, c := range r.Copies {
+			for q := 0; q < c.Len; q++ {
+				if p := off + c.In + q; p >= 0 && p < n {
+					kept[p]++
+				}
+			}
+		}
+	}
+	return func(p int) bool { return p >= 0 && p < n && cover[p] > 0 && kept[p] >= cover[p] }
+}
+
+// withhold applies a group's per-byte rule to a rendering of the union: every copied value byte the
+// rule does not allow is masked (format_preserving) or the whole rendering falls back to the
+// representative's placeholder (synthetic).
+func withhold(r Rendering, value string, strategy redactors.RedactionStrategy, repType string, allowed func(p int) bool) Rendering {
+	if len(r.Copies) == 0 {
+		return r
+	}
+	if r.Normalized {
+		// The copies are offsets into a folded spelling and cannot be checked byte by byte.
+		return Rendering{Text: Simple(repType)}
+	}
+
+	out := []byte(r.Text)
+	masked := false
+	var keep []Copy
+	for _, c := range r.Copies {
+		start := -1
+		for q := 0; q <= c.Len; q++ {
+			hide := false
+			if q < c.Len {
+				p := c.In + q
+				hide = isValueByte(value[p]) && !allowed(p)
+				if hide {
+					out[c.Out+q] = '*'
+					masked = true
+				}
+			}
+			if q == c.Len || hide {
+				if start >= 0 {
+					keep = append(keep, Copy{In: c.In + start, Out: c.Out + start, Len: q - start})
+					start = -1
+				}
+				continue
+			}
+			if start < 0 {
+				start = q
+			}
+		}
+	}
+	if !masked {
+		return r
+	}
+	if strategy != redactors.RedactionFormatPreserving {
+		return Rendering{Text: Simple(repType)}
+	}
+	return newRendering(string(out), value, keep, false)
 }
 
 // ─── Simple ──────────────────────────────────────────────────────────────────

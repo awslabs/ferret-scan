@@ -249,10 +249,38 @@ Two rules bound it:
 Narrow text, UTF-16LE, UTF-16BE and XML *named* entity spellings (`O&apos;Connor`) all count as the same
 value. Numeric character references (`&#56;`) are not yet recognised.
 
+**Findings that share bytes are written once, over all of them.** Two findings on one line whose spans
+overlap form a group, and the group is replaced in a single write covering the union of their bytes — in
+`.txt`/`--stdin`/`pkg/scan`/`pkg/redact`, Office and legacy `.doc`/`.xls`/`.ppt` alike. Before this, the
+first write destroyed the text the second needed, so the second was skipped and part of it stayed in
+cleartext (`Residence: 77 August [PERSON-NAME-REDACTED] ID 83702`, exit 0). The rendering of a group:
+
+| Group | Written as |
+|---|---|
+| One finding contains the others (a name inside a street address) | the widest finding's replacement, unchanged — except that no original letter or digit inside a contained SECRETS finding is kept |
+| The same bytes reported twice (`PASSPORT` and `SSN` on one 9-digit number) | the label of the highest-confidence finding, keeping a character `format_preserving` would copy (the last four digits, an email's first character) only if *every* finding on those bytes would keep it: `*********`, never `*****0001` |
+| Findings that cross (`77 August Lane` and `Lane, Boise`) | the union in one write: a full `*` mask under `format_preserving` (or that type's rendering, if every finding has one type), the highest-confidence finding's placeholder under `simple`: `Residence: [US_STREET_ADDRESS-REDACTED] ID 83702` |
+
+`synthetic` uses the representative's generator, and falls back to its `simple` placeholder when the
+generated value would carry a byte another finding hides. Which label is shown is the highest-confidence
+finding's, then the type name's alphabetical order: a property of the group, never of input order or of
+how many other findings the file holds. Legacy Office keeps its same-length rule: crossing findings of
+different types are masked whole. Findings that only *touch* (`4532-0151-1283-0366212-555-0142`) are not a
+group, and each keeps its own replacement. A group that cannot be located refuses the file rather than
+writing part of it, and the audit log records one entry per group with every member's type in
+`member_types`.
+
+The rule decides how redaction RENDERS overlapping findings. Which of two findings on the same bytes is
+reported, and at what confidence, is unchanged and still open (see THREAT_MODEL.md, cross-validator
+vetoes).
+
 **The output is verified before it is written.** Both dispatch points — whole files, and embedded parts
 inside a container — read back what the redactor actually wrote and refuse it if a reported value is still
 there, rather than trusting the redactor's own success flag. The `--stdin` streaming gateway does the same
-before anything reaches stdout, because there is no file left on disk to inspect afterwards.
+before anything reaches stdout, because there is no file left on disk to inspect afterwards. The check
+compares WHOLE values: a value that was partly rewritten — the remains of an overlapping finding, before
+the group rule above — no longer matches, so this check cannot see it. That is why overlapping findings are
+written as one group instead of being left to it.
 
 A refusal is disclosed on the console and the output is removed, so a file that looks redacted and is not
 cannot be picked up by something downstream. See the note above on exit codes: a refusal does **not**
