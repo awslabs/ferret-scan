@@ -16,46 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Bug Fixes
 
-- **redaction (overlapping findings):** two findings on one line whose values share bytes are now one
-  write over their union, in every writer, so no part of either survives and which one is written no
-  longer depends on input order ([#773](https://github.com/awslabs/ferret-scan/issues/773)). Each writer
-  applied findings one at a time, locating each by its text in content an earlier write had already
-  changed, so the second of two crossing values was skipped: `Residence: 77 August Lane, Boise ID 83702`
-  (an address and two names) came out as `Residence: 77 August *********** ID 83702` from `.txt`,
-  `--stdin`, `pkg/scan` and `pkg/redact`, as `**************, Boise ID 83702` from `.docx`, and as
-  `77 ***********, Boise ID 83702` from legacy `.doc`/`.xls`/`.ppt`, which had no overlap pass at all and
-  leaked containment too (`Located at 100 ****************** Blvd`) -- each at exit 0, with an audit log
-  reporting `failed_redactions: 0`. For the same bytes reported twice (`PASSPORT` and `SSN` on one
-  9-digit number) the writer's sort tied and `sort.Slice` broke the tie by algorithm, which changes at 13
-  elements: `Passport number: 512010001` kept its last four digits (`*****0001`) or not depending on how
-  many unrelated findings the file held. A group now renders by one rule: a contained finding collapses
-  into the widest, as before, except that no original letter or digit inside a contained SECRETS finding
-  is copied; the same bytes take the highest-confidence finding's label and keep a character only if
-  every finding on them would; crossing findings are masked whole under `format_preserving` and take the
-  highest-confidence placeholder under `simple`. Measured over the repository's 1,717 tracked files
-  (11,451 findings): of 87 same-span pairs whose types disagree on the last four digits, 32 kept them and
-  now 0 do; of 22 crossing pairs, 21 left part of a value in cleartext and now 0 do. Findings,
-  recall/precision and suppression hashes are unchanged. A group that cannot be located refuses the file
-  instead of writing part of it, and the audit log records one entry per group with every member's type
-  in `member_types`. The `secrets_uri_userinfo_email_overlap` snapshot now masks the password's first
-  character, which the email's mask used to keep.
-### 🔒 Security
-
-- **build (go 1.27.3):** move every Go pin to **1.27.3**, which carries the fix for the one open Go
-  1.27.2 standard-library advisory, GO-2026-6809 / CVE-2026-111943 in `crypto/x509`: `Verify` now
-  refuses a set of intermediate certificates that are no longer trusted, for the platforms whose
-  system trust store is not updated without further action. The two open code-scanning alerts on
-  `main` — #3842 (Trivy, HIGH) and #3843 (Grype) — are readings of the `ghcr.io/awslabs/ferret-scan:main`
-  image built at v2.5.5, where the binary's embedded `stdlib` is go1.27.2, and the fixed versions
-  both scanners name are 1.26.10 and 1.27.3. `.go-version` is the single source: `release.yml`,
-  `pypi-publish.yml` and `go-test.yml` install it, and `scripts/go-version.sh all` propagated it to
-  `go.mod` (unchanged at `go 1.27`), `.gitlab-ci.yml` and the Dockerfile builder, whose
-  `golang:1.27.3-alpine` digest `sha256:b8c9b82a…` was checked against `public.ecr.aws` before
-  adoption: every platform in the index, including linux/amd64 and linux/arm64, carries
-  `GOLANG_VERSION=1.27.3` (built 2026-10-20 to 2026-10-22). `make check-go-version` is green on the
-  branch. The `:main` image and its two alerts refresh on the merge to `main`; the published release
-  artifacts — the v2.5.5 binaries, Homebrew formula, PyPI wheel and `:latest` container — stay on
-  1.27.2 until the next tag is cut from this pin.
 - **secrets (line pre-check):** a `"url"`, `"checksum"` or version/boolean member anywhere on a line no
   longer switches off token and keyword detection for that line
   ([#765](https://github.com/awslabs/ferret-scan/issues/765)). `containsSecretIndicators`, the pre-check
@@ -88,6 +48,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pass's wider `<pw>@host/path` span, so a rule written against the narrower finding must be
   regenerated. The veto still skips 99.1% of the lockfile lines the old checks skipped; SECRETS CPU on
   those lockfiles is 3–6% above v2.5.5 (deleting the checks outright measured 2.7x).
+- **redaction (overlapping findings):** two findings on one line whose values share bytes are now one
+  write over their union, in every writer, so no part of either survives and which one is written no
+  longer depends on input order ([#773](https://github.com/awslabs/ferret-scan/issues/773)). Each writer
+  applied findings one at a time, locating each by its text in content an earlier write had already
+  changed, so the second of two crossing values was skipped: `Residence: 77 August Lane, Boise ID 83702`
+  (an address and two names) came out as `Residence: 77 August *********** ID 83702` from `.txt`,
+  `--stdin`, `pkg/scan` and `pkg/redact`, as `**************, Boise ID 83702` from `.docx`, and as
+  `77 ***********, Boise ID 83702` from legacy `.doc`/`.xls`/`.ppt`, which had no overlap pass at all and
+  leaked containment too (`Located at 100 ****************** Blvd`) -- each at exit 0, with an audit log
+  reporting `failed_redactions: 0`. For the same bytes reported twice (`PASSPORT` and `SSN` on one
+  9-digit number) the writer's sort tied and `sort.Slice` broke the tie by algorithm, which changes at 13
+  elements: `Passport number: 512010001` kept its last four digits (`*****0001`) or not depending on how
+  many unrelated findings the file held. A group now renders by one rule: a contained finding collapses
+  into the widest, as before, except that no original letter or digit inside a contained SECRETS finding
+  is copied; the same bytes take the highest-confidence finding's label and keep a character only if
+  every finding on them would; crossing findings are masked whole under `format_preserving` and take the
+  highest-confidence placeholder under `simple`. Measured over the repository's 1,717 tracked files
+  (11,451 findings): of 87 same-span pairs whose types disagree on the last four digits, 32 kept them and
+  now 0 do; of 22 crossing pairs, 21 left part of a value in cleartext and now 0 do. Findings,
+  recall/precision and suppression hashes are unchanged. A group that cannot be located refuses the file
+  instead of writing part of it, and the audit log records one entry per group with every member's type
+  in `member_types`. The `secrets_uri_userinfo_email_overlap` snapshot now masks the password's first
+  character, which the email's mask used to keep.
+
+### 🔒 Security
+
+- **build (go 1.27.3):** move every Go pin to **1.27.3**, which carries the fix for the one open Go
+  1.27.2 standard-library advisory, GO-2026-6809 / CVE-2026-111943 in `crypto/x509`: `Verify` now
+  refuses a set of intermediate certificates that are no longer trusted, for the platforms whose
+  system trust store is not updated without further action. The two open code-scanning alerts on
+  `main` — #3842 (Trivy, HIGH) and #3843 (Grype) — are readings of the `ghcr.io/awslabs/ferret-scan:main`
+  image built at v2.5.5, where the binary's embedded `stdlib` is go1.27.2, and the fixed versions
+  both scanners name are 1.26.10 and 1.27.3. `.go-version` is the single source: `release.yml`,
+  `pypi-publish.yml` and `go-test.yml` install it, and `scripts/go-version.sh all` propagated it to
+  `go.mod` (unchanged at `go 1.27`), `.gitlab-ci.yml` and the Dockerfile builder, whose
+  `golang:1.27.3-alpine` digest `sha256:b8c9b82a…` was checked against `public.ecr.aws` before
+  adoption: every platform in the index, including linux/amd64 and linux/arm64, carries
+  `GOLANG_VERSION=1.27.3` (built 2026-10-20 to 2026-10-22). `make check-go-version` is green on the
+  branch. The `:main` image and its two alerts refresh on the merge to `main`; the published release
+  artifacts — the v2.5.5 binaries, Homebrew formula, PyPI wheel and `:latest` container — stay on
+  1.27.2 until the next tag is cut from this pin.
 
 ## [v2.5.5] - 2026-10-22
 
