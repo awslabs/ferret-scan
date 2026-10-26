@@ -8,7 +8,7 @@
 # Pinned to digest for supply-chain integrity (TM-10). The trailing tag
 # is informational; the @sha256:... digest is what determines what's
 # pulled. To update, run:
-#   crane digest public.ecr.aws/docker/library/golang:1.27.2-alpine
+#   crane digest public.ecr.aws/docker/library/golang:1.27.3-alpine
 # or use `docker manifest inspect` and replace both the tag and digest.
 # Keep in sync with .go-version; `make check-go-version` enforces it and
 # `make sync-go-version` rewrites both the tag and the digest.
@@ -17,7 +17,7 @@
 # housekeeping: 1.26.5 fixed CVE-2026-39822 (os symlink root escape) and CVE-2026-42505
 # (crypto/tls ECH privacy leak); 1.26.6 fixed CVE-2026-46600 and CVE-2026-39821, both
 # rated HIGH against the 1.26.5 stdlib and both flagged by Trivy on main.
-FROM public.ecr.aws/docker/library/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+FROM public.ecr.aws/docker/library/golang:1.27.3-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
 
 # Install minimal build dependencies
 # Add ca-certificates back if you uncomment the COPY line below

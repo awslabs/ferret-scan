@@ -14,6 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔒 Security
+
+- **build (go 1.27.3):** move every Go pin to **1.27.3**, which carries the fix for the one open Go
+  1.27.2 standard-library advisory, GO-2026-6809 / CVE-2026-111943 in `crypto/x509`: `Verify` now
+  refuses a set of intermediate certificates that are no longer trusted, for the platforms whose
+  system trust store is not updated without further action. The two open code-scanning alerts on
+  `main` — #3842 (Trivy, HIGH) and #3843 (Grype) — are readings of the `ghcr.io/awslabs/ferret-scan:main`
+  image built at v2.5.5, where the binary's embedded `stdlib` is go1.27.2, and the fixed versions
+  both scanners name are 1.26.10 and 1.27.3. `.go-version` is the single source: `release.yml`,
+  `pypi-publish.yml` and `go-test.yml` install it, and `scripts/go-version.sh all` propagated it to
+  `go.mod` (unchanged at `go 1.27`), `.gitlab-ci.yml` and the Dockerfile builder, whose
+  `golang:1.27.3-alpine` digest `sha256:b8c9b82a…` was checked against `public.ecr.aws` before
+  adoption: every platform in the index, including linux/amd64 and linux/arm64, carries
+  `GOLANG_VERSION=1.27.3` (built 2026-10-20 to 2026-10-22). `make check-go-version` is green on the
+  branch. The `:main` image and its two alerts refresh on the merge to `main`; the published release
+  artifacts — the v2.5.5 binaries, Homebrew formula, PyPI wheel and `:latest` container — stay on
+  1.27.2 until the next tag is cut from this pin.
+
 ## [v2.5.5] - 2026-10-22
 
 ### 🐛 Bug Fixes
