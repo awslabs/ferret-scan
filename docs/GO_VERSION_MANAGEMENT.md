@@ -14,7 +14,7 @@ Maintaining consistent Go versions across development, CI/CD, and deployment env
 
 ### Primary Source: `.go-version`
 ```
-1.27.2
+1.27.3
 ```
 This file contains the **exact** Go version used across the project.
 
@@ -23,10 +23,10 @@ This file contains the **exact** Go version used across the project.
 | File | Version Format | Purpose |
 |------|----------------|---------|
 | `go.mod` | `1.27` | Go module compatibility (major.minor) |
-| `.gitlab-ci.yml` | `1.27.2` | CI/CD Docker images (`GO_VERSION`, `GO_DOCKER_IMAGE`) |
-| `Dockerfile` | `1.27.2-alpine` + `@sha256:…` | Container builds (tag **and** digest — see below) |
+| `.gitlab-ci.yml` | `1.27.3` | CI/CD Docker images (`GO_VERSION`, `GO_DOCKER_IMAGE`) |
+| `Dockerfile` | `1.27.3-alpine` + `@sha256:…` | Container builds (tag **and** digest — see below) |
 | GitHub workflows | `go-version-file: .go-version` | No literal pin — they read `.go-version` directly |
-| Local development | `1.27.2` | Developer environments |
+| Local development | `1.27.3` | Developer environments |
 
 > **Dockerfile digest (TM-10).** The builder image is digest-pinned for
 > supply-chain integrity: the `@sha256:…` is what actually determines the
@@ -87,7 +87,7 @@ install, and the builder image is the only pin dependabot moves on its own.
 
 ### Step 1: Update Primary Source
 ```bash
-echo "1.27.2" > .go-version
+echo "1.27.3" > .go-version
 ```
 
 ### Step 2: Sync All Files
@@ -110,7 +110,7 @@ make test
 ### Step 5: Commit Changes
 ```bash
 git add .go-version go.mod .gitlab-ci.yml
-git commit -m "chore: update Go version to 1.27.2"
+git commit -m "chore: update Go version to 1.27.3"
 ```
 
 ## CI/CD Integration
@@ -118,8 +118,8 @@ git commit -m "chore: update Go version to 1.27.2"
 ### GitLab CI Variables
 ```yaml
 variables:
-  GO_VERSION: "1.27.2"
-  GO_DOCKER_IMAGE: "golang:1.27.2-alpine"
+  GO_VERSION: "1.27.3"
+  GO_DOCKER_IMAGE: "golang:1.27.3-alpine"
 ```
 
 ### Usage in Jobs
@@ -127,7 +127,7 @@ variables:
 build:
   image: $GO_DOCKER_IMAGE
   script:
-    - go version  # Outputs: go version go1.27.2 linux/amd64
+    - go version  # Outputs: go version go1.27.3 linux/amd64
 ```
 
 ## Local Development
