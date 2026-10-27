@@ -4,11 +4,14 @@
 package secrets
 
 import (
+	"bytes"
 	stdctx "context"
 	"encoding/base64"
 	"math"
 	"regexp"
+	"regexp/syntax"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/awslabs/ferret-scan/v2/internal/context"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -517,14 +520,20 @@ func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
+// quotedSecretKeywords are the keyword stems the QUOTED assignment patterns are built from, two
+// patterns per stem (`stem = "value"` and `"stem": "value"`). A package-level list rather than a
+// local of compileKeywordPatterns so that keywordStem, the line gate's stem check, is derived from
+// it instead of copying it.
+var quotedSecretKeywords = []string{
+	"api_?key", "auth_?key", "service_?key", "account_?key", "db_?key",
+	"database_?key", "priv_?key", "private_?key", "client_?key",
+	"password", "passwd", "pwd", "secret", "token", "bearer",
+	"oauth", "jwt", "session", "credential", "access_?token",
+}
+
 // compileKeywordPatterns creates regex patterns for common secret keywords
 func compileKeywordPatterns() []*regexp.Regexp {
-	keywords := []string{
-		"api_?key", "auth_?key", "service_?key", "account_?key", "db_?key",
-		"database_?key", "priv_?key", "private_?key", "client_?key",
-		"password", "passwd", "pwd", "secret", "token", "bearer",
-		"oauth", "jwt", "session", "credential", "access_?token",
-	}
+	keywords := quotedSecretKeywords
 
 	var patterns []*regexp.Regexp
 
@@ -858,14 +867,34 @@ func (v *Validator) getSecretType(match string) string {
 	return "API_KEY_OR_SECRET"
 }
 
-// containsSecretIndicators performs a fast pre-check to determine if a line
-// might contain secrets, avoiding expensive regex operations on lines that
-// clearly don't have any secret-like content.
+// containsSecretIndicators is the line gate in front of the keyword pass: findKeywordSecrets runs
+// keywordCandidates on a line only when this returns true. It is a performance optimization and
+// nothing else, so its contract is soundness rather than judgement:
 //
-// SECURITY NOTE: This is a performance optimization that uses conservative checks.
-// It errs on the side of caution - if there's any doubt, it returns true to ensure
-// the line gets full regex scanning. The goal is to skip only obviously safe lines
-// (like comments, blank lines, simple assignments without values).
+//	containsSecretIndicators(line) == false  ⇒  keywordCandidates(line) is empty
+//
+// A rejected line is one on which the keyword pass would have found nothing, so skipping it saves
+// the regex work and changes no result; TestLineGateIsSound checks that over seeded lines built to
+// break it. One known gap is in the generic admits' fall-through, not in the veto: `session` is a
+// keyword stem but not an admit word, so `session=` with an 8- to 11-byte value on a line under 20
+// bytes is rejected although the unquoted pattern would take the value. Only the keyword pass is
+// behind this gate. The entropy pass, the AWS secret-key path, block-sequence items, URI user info
+// (#766) and the multi-line pass run on every line.
+//
+// The ORDER of the arms is load-bearing (#765). Until then three whole-line substring checks ran
+// first -- a version or boolean after the line's first colon, an "integrity"/"checksum" key beside
+// the bytes `sha` or `md5`, a "url"/"resolved"/"homepage" key beside a scheme and a registry or
+// forge host -- and a hit returned false before any admit was consulted. None of them was tied to a
+// candidate's bytes, so one `"url": "https://github.com/..."` member, a `"bucket": "shared-assets"`
+// beside a `"checksum"`, or a trailing `"verbose": true` hid an AKIA key id, a ghp_, glpat- or xoxb-
+// token, a JWT or a keyword-assigned password anywhere else on the same line, and with it the
+// redacted copy, the pre-commit exit status and the stdin gateway's redaction.
+//
+// So: only the length floor and the structural-token check may reject before the provider-literal
+// admits, because a JWT, a provider prefix or a PEM marker IS a keyword-pass candidate. Then the one
+// veto, benignManifestLine, which rejects a line only when it is wholly one benign manifest member
+// and carries no keyword stem. Then the generic admits. TestLineGateArmOrder enumerates every
+// `return false` here and fails on one that is not listed with its reason.
 func (v *Validator) containsSecretIndicators(line string) bool {
 	// Only skip extremely short lines that cannot possibly contain secrets
 	// Even a minimal secret like "key=12345678" needs at least 12 characters
@@ -873,8 +902,6 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 		return false
 	}
 
-	// PERFORMANCE: Skip common non-secret patterns in structured data files
-	// These patterns are extremely common in JSON/YAML and almost never contain secrets
 	trimmed := strings.TrimSpace(line)
 
 	// Skip structural JSON/YAML lines (brackets, braces, commas)
@@ -885,49 +912,8 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 		}
 	}
 
-	// Skip lines that are clearly metadata fields with short values (not secrets)
-	// Pattern: "field": "short_value" where value is < 8 chars or looks like version/boolean
-	if strings.Contains(trimmed, `":`) {
-		// Extract the value part after the colon
-		parts := strings.SplitN(trimmed, ":", 2)
-		if len(parts) == 2 {
-			value := strings.TrimSpace(parts[1])
-			// Remove trailing comma if present
-			value = strings.TrimSuffix(value, ",")
-			value = strings.Trim(value, `"'`)
-
-			// Skip if value looks like a version number (e.g., "1.2.3", "^2.0.0")
-			if len(value) > 0 && len(value) < 20 {
-				// Check for version-like patterns
-				if strings.Contains(value, ".") && (value[0] >= '0' && value[0] <= '9' || value[0] == '^' || value[0] == '~') {
-					return false
-				}
-				// Skip boolean values
-				if value == "true" || value == "false" {
-					return false
-				}
-			}
-		}
-	}
-
-	// Skip integrity/checksum hashes - these look like secrets but are public checksums
-	// Common in package managers (npm, yarn, pip, etc.)
-	if strings.Contains(trimmed, `"integrity"`) || strings.Contains(trimmed, `"checksum"`) {
-		if strings.Contains(trimmed, "sha") || strings.Contains(trimmed, "md5") {
-			return false
-		}
-	}
-
-	// Skip common URL patterns that are not secrets (registry URLs, repository URLs)
-	if strings.Contains(trimmed, `"resolved"`) || strings.Contains(trimmed, `"url"`) || strings.Contains(trimmed, `"homepage"`) {
-		if strings.Contains(trimmed, "https://") || strings.Contains(trimmed, "http://") {
-			// Only skip if it's a public registry/repository URL
-			if strings.Contains(trimmed, "registry.") || strings.Contains(trimmed, "github.com") ||
-				strings.Contains(trimmed, "gitlab.com") || strings.Contains(trimmed, "bitbucket.org") {
-				return false
-			}
-		}
-	}
+	// Provider literals. Each of the three is itself a keyword-pass candidate -- the JWT regex,
+	// the provider regexes and findProviderRuns, the PEM patterns -- so no veto may run before them.
 
 	// Check for specific high-confidence patterns that don't need quotes
 	// JWT tokens
@@ -946,6 +932,14 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 	beginMarker := "-----" + "BEGIN"
 	if strings.Contains(line, beginMarker) {
 		return true
+	}
+
+	// PERFORMANCE: the one veto. An npm lockfile is half lines like `"version": "1.3.0",`,
+	// `"resolved": "https://registry.npmjs.org/...tgz",` and `"integrity": "sha512-...",`, every one
+	// of which the generic admits below would let through; skipping them is worth 2.2-2.7x of SECRETS
+	// CPU on a lockfile (#765). See benignManifestLine for why such a line holds no candidate.
+	if benignManifestLine(trimmed) {
+		return false
 	}
 
 	// Check for common secret indicators using fast string operations
@@ -980,14 +974,251 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 	return false
 }
 
-// findKeywordSecrets finds secrets using keyword patterns.
+// benignManifestLine is containsSecretIndicators' one veto: it reports whether a trimmed line is
+// wholly one benign package-manifest member. All three conditions must hold, each for a stated
+// reason (#765):
 //
-// Every pattern that hits contributes a candidate, and several patterns
-// routinely claim the very same bytes: `apiKey = "AKIA…"` matches both the
-// AKIA provider literal (full-match branch) and the api_?key assignment
-// pattern (capture-group branch). Candidates therefore carry their byte span
-// so the caller can collapse same-span claims instead of reporting one secret
-// two or three times; see dedupeBySpan.
+//   - benignManifestMember: the line is exactly one JSON member `"<key>": <value>`, an optional
+//     trailing comma and nothing else, and the value is a version under 20 bytes, `true`/`false`, an
+//     SRI digest `"shaNNN-<base64>"`, or an http(s) or git+https URL with no user info, query or
+//     `=`. The shape leaves no byte for a secret BESIDE the member -- no second member, comment or
+//     trailing text -- which is where every one of #765's triggers put it.
+//   - no keywordStem ANYWHERE on the line, key or value. Every keyword-pass candidate is anchored
+//     on a provider literal, a JWT or a PEM marker -- all admitted before this veto runs -- or on a
+//     stem from the lists the keyword patterns are compiled from. A line holding none of them has
+//     no candidate whatever its shape, so soundness does not rest on reading the value grammar
+//     right. Checking only the key, as #765's prototype did, is unsound for a host that ends in a
+//     stem and has a port: in `"url": "https://api.session:8443/github.com/x"` the unquoted pattern
+//     reads `session:` as an assignment and yields `8443/github.com/x`.
+//   - legacyManifestVeto: one of the three checks this veto replaced fires as well. They ran before
+//     every admit, so a line they let through was scanned; requiring one of them keeps this veto a
+//     subset of theirs, so every line scanned before #765 is still scanned, which is what keeps the
+//     change additive. Deleting the veto outright costs 2.2-2.7x of SECRETS CPU on npm lockfiles;
+//     it can go, and should be re-timed, once the generic admits get a pattern-derived pre-check.
+//
+// Cheapest first: the leading quote, then the substring checks, then the shape regex and the stem
+// scan, which in practice run only on manifest lines.
+func benignManifestLine(trimmed string) bool {
+	if len(trimmed) == 0 || trimmed[0] != '"' || !legacyManifestVeto(trimmed) {
+		return false
+	}
+	if !benignManifestMember.MatchString(trimmed) {
+		return false
+	}
+	// A version is benign only under 20 bytes, the bound the legacy check applied.
+	if len(manifestVersionValue(trimmed)) >= 20 {
+		return false
+	}
+	return !lineHasKeywordStem(trimmed)
+}
+
+// manifestVersionValue returns the version text, without its quotes, of a line benignManifestMember
+// matched, or "" when the member's value is not a version. The key class holds no quote, so the
+// first `":` is the member's colon; of the value arms only a version starts with a quote followed
+// by `^`, `~` or a digit.
+func manifestVersionValue(member string) string {
+	i := strings.Index(member, `":`)
+	if i < 0 {
+		return ""
+	}
+	v := strings.TrimSuffix(strings.TrimSpace(member[i+2:]), ",")
+	if len(v) < 2 || v[0] != '"' || v[len(v)-1] != '"' {
+		return ""
+	}
+	if c := v[1]; c != '^' && c != '~' && (c < '0' || c > '9') {
+		return ""
+	}
+	return v[1 : len(v)-1]
+}
+
+// benignManifestMember is the shape half of benignManifestLine. The key class is an npm package
+// name's, scoped names included. A URL's host may carry a port; its path may carry `@` (npm scopes)
+// and percent-escapes; nothing in it may be user info, a query or an `=`.
+var benignManifestMember = regexp.MustCompile(`^"[@A-Za-z0-9._/+-]+":[ \t]*(?:` +
+	`"[\^~]?[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?"` +
+	`|true|false` +
+	`|"sha(?:1|256|384|512)-[A-Za-z0-9+/]{20,}={0,2}"` +
+	`|"(?:git\+)?https?://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[A-Za-z0-9@._~%/+-]*)?(?:#[A-Za-z0-9._-]*)?"` +
+	`),?$`)
+
+// keywordStem matches any stem a keyword-pass pattern is anchored on, case-insensitively, exactly as
+// the patterns match it: the same fragments under the same (?i) in the same engine, so a case fold
+// the patterns honour (`ſ` for `s`, the Kelvin sign for `k`) is honoured here too, which
+// strings.ToLower would not do. Derived from the two lists the patterns are compiled from -- the
+// quoted patterns range over quotedSecretKeywords; the unquoted, plural, collection and list-tail
+// patterns over secretAssignmentKeywords -- never copied. TestKeywordStemCoversEveryPattern fails
+// on a keyword-pass pattern whose anchor this does not cover.
+var keywordStem = regexp.MustCompile(`(?i)(?:` + strings.Join(keywordPassStems(), "|") + `)`)
+
+// keywordStemLiterals is every string keywordStem's alternatives can match, lower-cased, with any
+// literal that contains a shorter one dropped (`secret_key` holds `secret`). Enumerated from the
+// parsed stems, so a stem that is not a finite language -- a class, a star -- fails at init rather
+// than being approximated.
+var keywordStemLiterals = func() [][]byte {
+	var all []string
+	for _, stem := range keywordPassStems() {
+		re, err := syntax.Parse(stem, syntax.Perl)
+		if err != nil {
+			panic("secrets: keyword stem " + stem + ": " + err.Error())
+		}
+		all = append(all, finiteLanguage(re.Simplify(), stem)...)
+	}
+	var out [][]byte
+	for _, s := range all {
+		redundant := false
+		for _, t := range all {
+			if t != s && strings.Contains(s, t) {
+				redundant = true
+				break
+			}
+		}
+		if !redundant {
+			out = append(out, []byte(strings.ToLower(s)))
+		}
+	}
+	return out
+}()
+
+// finiteLanguage enumerates the strings a parsed stem matches. Only the shapes the stems use are
+// accepted (literals, concatenation, `?`, alternation); anything else panics, naming the stem.
+func finiteLanguage(re *syntax.Regexp, stem string) []string {
+	switch re.Op {
+	case syntax.OpLiteral:
+		return []string{string(re.Rune)}
+	case syntax.OpEmptyMatch:
+		return []string{""}
+	case syntax.OpConcat:
+		out := []string{""}
+		for _, sub := range re.Sub {
+			var next []string
+			for _, prefix := range out {
+				for _, s := range finiteLanguage(sub, stem) {
+					next = append(next, prefix+s)
+				}
+			}
+			out = next
+		}
+		return out
+	case syntax.OpQuest:
+		return append([]string{""}, finiteLanguage(re.Sub[0], stem)...)
+	case syntax.OpAlternate:
+		var out []string
+		for _, sub := range re.Sub {
+			out = append(out, finiteLanguage(sub, stem)...)
+		}
+		return out
+	}
+	panic("secrets: keyword stem " + stem + " is not a finite set of literals (" + re.Op.String() + ")")
+}
+
+// lineHasKeywordStem is keywordStem.MatchString, fast on ASCII. On a line that is all ASCII, (?i)
+// can only fold an ASCII letter to another ASCII letter -- the two non-ASCII folds of ASCII letters,
+// U+212A for k and U+017F for s, are not ASCII -- so the match is a case-insensitive substring
+// search for keywordStemLiterals, done as one pass over the lower-cased line that tries the
+// literals only where a literal's first two bytes start. Any other line goes to the regexp itself.
+// TestLineHasKeywordStemIsTheRegexp checks the two agree.
+func lineHasKeywordStem(s string) bool {
+	var buf [256]byte
+	lower := buf[:0]
+	if len(s) > len(buf) {
+		lower = make([]byte, 0, len(s))
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= utf8.RuneSelf {
+			return keywordStem.MatchString(s)
+		}
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		lower = append(lower, c)
+	}
+	for i := 0; i+1 < len(lower); i++ {
+		p := uint16(lower[i])<<8 | uint16(lower[i+1])
+		if keywordStemPairs[p/64]&(1<<(p%64)) == 0 {
+			continue
+		}
+		for _, lit := range keywordStemLiterals {
+			if bytes.HasPrefix(lower[i:], lit) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// keywordStemPairs is the set of first-two-byte pairs of keywordStemLiterals, as a bitset over
+// all 65,536 pairs. Every stem is at least three bytes long; a shorter one fails at init.
+var keywordStemPairs = func() (set [65536 / 64]uint64) {
+	for _, lit := range keywordStemLiterals {
+		if len(lit) < 2 {
+			panic("secrets: keyword stem literal " + string(lit) + " is shorter than two bytes")
+		}
+		p := uint16(lit[0])<<8 | uint16(lit[1])
+		set[p/64] |= 1 << (p % 64)
+	}
+	return set
+}()
+
+// keywordPassStems is the union of the stem lists the keyword-pass patterns are compiled from,
+// first occurrence kept.
+func keywordPassStems() []string {
+	seen := make(map[string]bool, len(quotedSecretKeywords)+len(secretAssignmentKeywords))
+	var out []string
+	for _, list := range [][]string{quotedSecretKeywords, secretAssignmentKeywords} {
+		for _, stem := range list {
+			if !seen[stem] {
+				seen[stem] = true
+				out = append(out, stem)
+			}
+		}
+	}
+	return out
+}
+
+// legacyManifestVeto reports whether one of the three whole-line checks containsSecretIndicators
+// ran before #765 fires on a trimmed line: the logic is theirs, verbatim, returning true where they
+// returned false. It no longer rejects anything by itself; benignManifestLine requires it so that
+// its own veto can only be narrower.
+//
+//   - V1: the text after the line's FIRST colon, trimmed of spaces, one trailing comma and quotes,
+//     is under 20 bytes and is `true`/`false`, or starts with a digit, `^` or `~` and holds a `.`.
+//   - V2: an "integrity" or "checksum" key, and the bytes `sha` or `md5` anywhere (`shared` too).
+//   - V3: a "resolved", "url" or "homepage" key, a scheme, and `registry.`, github.com, gitlab.com
+//     or bitbucket.org, as three independent substrings.
+func legacyManifestVeto(trimmed string) bool {
+	if strings.Contains(trimmed, `":`) {
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) == 2 {
+			value := strings.TrimSpace(parts[1])
+			value = strings.TrimSuffix(value, ",")
+			value = strings.Trim(value, `"'`)
+			if len(value) > 0 && len(value) < 20 {
+				if strings.Contains(value, ".") && (value[0] >= '0' && value[0] <= '9' || value[0] == '^' || value[0] == '~') {
+					return true
+				}
+				if value == "true" || value == "false" {
+					return true
+				}
+			}
+		}
+	}
+	if strings.Contains(trimmed, `"integrity"`) || strings.Contains(trimmed, `"checksum"`) {
+		if strings.Contains(trimmed, "sha") || strings.Contains(trimmed, "md5") {
+			return true
+		}
+	}
+	if strings.Contains(trimmed, `"resolved"`) || strings.Contains(trimmed, `"url"`) || strings.Contains(trimmed, `"homepage"`) {
+		if strings.Contains(trimmed, "https://") || strings.Contains(trimmed, "http://") {
+			if strings.Contains(trimmed, "registry.") || strings.Contains(trimmed, "github.com") ||
+				strings.Contains(trimmed, "gitlab.com") || strings.Contains(trimmed, "bitbucket.org") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // secretAssignmentKeywords are the keyword stems used for UNQUOTED assignments.
 //
 // Same stems the quoted patterns use, kept as their own list so the two sets cannot be
@@ -1191,12 +1422,27 @@ func isAllMaskCharacters(v string) bool {
 	return true
 }
 
+// findKeywordSecrets is the keyword pass behind its line gate: keywordCandidates on every line
+// containsSecretIndicators admits, nothing on a line it rejects. The gate's contract is that a
+// rejected line has no candidate, so this returns what keywordCandidates would (save the one gap
+// containsSecretIndicators documents); the split exists so that the contract can be tested.
 func (v *Validator) findKeywordSecrets(line string) []candidate {
 	// Early exit: skip lines that clearly don't contain secrets
 	if !v.containsSecretIndicators(line) {
 		return nil
 	}
+	return v.keywordCandidates(line)
+}
 
+// keywordCandidates finds secrets on one line using keyword patterns, with no gate in front.
+//
+// Every pattern that hits contributes a candidate, and several patterns
+// routinely claim the very same bytes: `apiKey = "AKIA…"` matches both the
+// AKIA provider literal (full-match branch) and the api_?key assignment
+// pattern (capture-group branch). Candidates therefore carry their byte span
+// so the caller can collapse same-span claims instead of reporting one secret
+// two or three times; see dedupeScopedBySpan.
+func (v *Validator) keywordCandidates(line string) []candidate {
 	var matches []candidate
 
 	// Provider tokens without a vendor-fixed length (Stripe, GitLab, Slack), each

@@ -4,6 +4,8 @@
 package secrets
 
 import (
+	"crypto/sha512"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -976,6 +978,14 @@ func TestSecretsValidator_FindHighEntropyStrings(t *testing.T) {
 func TestSecretsValidator_ContainsSecretIndicators(t *testing.T) {
 	v := NewValidator()
 
+	// A real-length SRI digest. The old row's "sha512-abc..." is not one: it passed only because the
+	// check this replaced fired on any "integrity" key beside the bytes "sha".
+	digest := sha512.Sum512([]byte("left-pad-1.3.0"))
+	sri := "sha512-" + base64.StdEncoding.EncodeToString(digest[:])
+	pw := "Zq9xT7mKpL4vB8nR"
+	ak := buildTestToken("AKIA", "QZ7MK2PL9VNB4RTX")
+	gh := buildTestToken("ghp_", "Q7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG2aE7u")
+
 	tests := []struct {
 		name string
 		line string
@@ -984,16 +994,36 @@ func TestSecretsValidator_ContainsSecretIndicators(t *testing.T) {
 		{"Short line", "short", false},
 		{"Empty line", "", false},
 		{"Structural JSON brace", "  {", false},
-		{"Version field", `"version": "1.2.3",`, false},
-		{"Boolean value", `"enabled": true,`, false},
+		// The veto's own shapes, each indented the way a lockfile writes it, so that every row is
+		// long enough for the generic admits to take it if the veto did not fire. (The old version
+		// and boolean rows were under 20 bytes and returned false with or without the veto.)
+		{"Version field", `      "version": "1.2.3",`, false},
+		{"Version range", `        "left-pad": "^1.3.0",`, false},
+		{"Boolean value", `      "enabled": true,`, false},
 		{"JWT indicator", "the token is eyJhbGciOiJIUzI1NiJ9", true},
 		{"AWS key indicator", buildTestToken("key = AKIA", "1234567890ABCDEF"), true},
 		{"GitHub token ghp_", buildTestToken("token = ghp_", "abc123def456"), true},
 		{"Stripe key", buildTestToken("key = sk_live_", "abc123"), true},
 		{"Slack token", buildTestToken("token = xoxb", "-1234"), true},
 		{"Password keyword with equals", "password = something_secret_here", true},
-		{"Integrity hash skip", `"integrity": "sha512-abc..."`, false},
+		{"Integrity hash skip", `      "integrity": "` + sri + `",`, false},
 		{"Resolved URL skip", `"resolved": "https://registry.npmjs.org/pkg"`, false},
+		{"Funding URL skip", `        "url": "https://github.com/sponsors/orders"`, false},
+
+		// #765: a benign member hides nothing beside it, inside it or under it. Each of these was
+		// rejected before the fix, by a check that looked at the whole line.
+		{"url member beside a password", `{"url": "https://github.com/orders/app", "password": "` + pw + `"}`, true},
+		{"homepage member in a minified document", `{"homepage":"https://github.com/orders/svc","db":{"password":"` + pw + `"}}`, true},
+		{"checksum beside a word holding sha", `{"bucket":"shared-assets","checksum":"crc32:00000000","password":"` + pw + `"}`, true},
+		{"boolean member in a trailing comment", `export API_TOKEN=` + pw + ` # "verbose": true`, true},
+		{"provider literal as the key", `    "` + ak + `": true`, true},
+		{"provider literal in a URL path", `"url": "https://github.com/orders/` + gh + `"`, true},
+		{"keyword key with a version value", `  "password": "7.` + pw[:10] + `"`, true},
+		{"URL with user info", `"url": "https://deploy:` + pw + `@registry.orders.invalid/app"`, true},
+		{"URL with a query", `"url": "https://github.com/sponsors/orders?sponsor=1"`, true},
+		{"version of 20 bytes or more", `"version": "1.2.3-` + pw + `"`, true},
+		{"host ending in a stem, with a port", `"url": "https://api.session:8443/github.com/x"`, true},
+		{"package name spelling a stem", `"resolved": "https://registry.npmjs.org/js-tokens/-/js-tokens-4.0.0.tgz",`, true},
 	}
 
 	for _, tt := range tests {
