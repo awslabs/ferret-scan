@@ -23,6 +23,8 @@ package goldencorpus
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"encoding/xml"
@@ -55,6 +57,13 @@ import (
 func stripeKey(tag byte, bodyLen int) string {
 	body := "5" + string(tag) + strings.Repeat("EXAMPLE0", (bodyLen-3)/8+1)
 	return "pk_" + "live_" + body[:bodyLen-1] + "1"
+}
+
+// sriDigest is a real Subresource Integrity value, `sha512-` and the base64 SHA-512 of name, the
+// shape npm writes in every lockfile "integrity" member.
+func sriDigest(name string) string {
+	sum := sha512.Sum512([]byte(name))
+	return "sha512-" + base64.StdEncoding.EncodeToString(sum[:])
 }
 
 // Case is one corpus entry: a named input plus the validator set to run against
@@ -533,6 +542,110 @@ var Cases = []Case{
 			"server 203.12.19.85 reached\n" +
 			"call +1 449-87-4100\n" +
 			"call 212-555-0142 or card 4532-0151-1283-0366\n",
+	},
+	{
+		Name: "secrets_line_veto_triggers",
+		Description: "The #765 false negative: a benign manifest member anywhere on a line switched the " +
+			"keyword pass off for the WHOLE line. containsSecretIndicators ran three whole-line " +
+			"substring checks before its provider-literal admits -- a version or boolean after the " +
+			"line's first colon, an \"integrity\"/\"checksum\" key beside the bytes `sha` or `md5`, " +
+			"a \"url\"/\"resolved\"/\"homepage\" key beside a scheme and a registry or forge host -- " +
+			"and a hit dropped the line, so nothing on it reached a redacted copy, the pre-commit " +
+			"exit status or the stdin gateway.\n" +
+			"  These are the issue's nine triggers, one per line. Lines 1-5 are the URL check: a " +
+			"`\"url\"` member beside a password and an AWS key ID, a JSON-lines request log with a " +
+			"GitHub token in its Authorization header, a token in a `\"url\"`'s user info, a minified " +
+			"config whose `\"homepage\"` hid a Stripe key and a password, and the first line again " +
+			"with a 41-byte password. Line 6 is the checksum check fired by `shared-assets`. Lines 7-9 " +
+			"are the version/boolean check: a `\"verbose\": true` in a trailing shell comment, a " +
+			"provider literal as a key with a boolean value, and a password whose value looks like a " +
+			"version. Before the fix lines 1-4 and 6-9 reported nothing (line 3's token alone was " +
+			"found, by #766's URI source, which runs outside the gate) and line 5 only its 41-byte " +
+			"value. Each must now report what the line reports with the member's key, host or word " +
+			"changed, and the redaction snapshots must show no byte of any value. The values are " +
+			"synthetic: consonants and digits, the AWS key ID and GitHub token other cases already " +
+			"use. The issue's minified config carries a Slack bot token; a publishable Stripe key (see " +
+			"stripeKey) stands in for it, because push protection refuses a Slack-shaped value in a " +
+			"committed snapshot and any provider literal shows the same thing.",
+		Checks: []string{"SECRETS"},
+		Input: "{\"url\": \"https://github.com/orders/app\", \"password\": \"Vn3kQ8tZp6Wd2sHx\", \"key_id\": \"AKIA" + "QZ7MK2PL9VNB4RTX\"}\n" +
+			"{\"ts\":\"2026-01-01T00:00:00Z\",\"method\":\"GET\",\"url\":\"https://api.github.com/user\",\"headers\":{\"Authorization\":\"token ghp_" + "Q7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG2aE7u\"}}\n" +
+			"    \"url\": \"git+https://x-access-token:ghp_" + "Q7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG2aE7u@github.com/orders/app.git\"\n" +
+			"{\"name\":\"svc\",\"version\":\"0.0.1\",\"homepage\":\"https://github.com/orders/svc\",\"db\":{\"host\":\"db.invalid\",\"password\":\"Hc4Rw9Tq2Mz7Kb5N\"},\"stripe\":{\"publishable_key\":\"" + stripeKey('d', 30) + "\"}}\n" +
+			"{\"url\": \"https://github.com/orders/app\", \"password\": \"Rk7Pq2Wz9Mx4Lc8Vb3Nt6Hd5Gf2Js7Kw9Qp4Zr3Tn\", \"key_id\": \"AKIA" + "QZ7MK2PL9VNB4RTX\"}\n" +
+			"{\"bucket\":\"shared-assets\",\"checksum\":\"crc32:00000000\",\"password\":\"Jx8Bv3Nq6Wr2Kt9P\",\"key_id\":\"AKIA" + "QZ7MK2PL9VNB4RTX\"}\n" +
+			"export API_TOKEN=Mz5Hq8Tc3Vw7Rb2K # \"verbose\": true\n" +
+			"    \"AKIA" + "QZ7MK2PL9VNB4RTX\": true\n" +
+			"  \"password\": \"7.Kq4Zt9Wm2B\"\n",
+	},
+	{
+		Name: "secrets_line_veto_lockfile_decoys",
+		Description: "The lines the #765 veto exists for, which must stay EMPTY: an npm v3 lockfile and a " +
+			"package.json excerpt. Since #765 the keyword pass skips a line only when it is wholly one " +
+			"benign manifest member -- a version under 20 bytes, a boolean, an SRI digest, or a URL with " +
+			"no user info, query or `=` -- carries no keyword stem, and was skipped before. Every " +
+			"version, resolved, integrity, dev, homepage and repository line here is such a line. The " +
+			"ones that are not (the `||` range, the sponsor URL with its query, `js-tokens`, which " +
+			"spells the stem `token`) are scanned again, find nothing, and must stay empty too. The " +
+			"digests are real SHA-512 digests of the package names. `\"dev\": true` makes this file " +
+			"`development` for the file-wide environment verdict, as it does on main.",
+		Checks: []string{"SECRETS"},
+		Input: "{\n" +
+			"  \"name\": \"orders-app\",\n" +
+			"  \"version\": \"1.0.0\",\n" +
+			"  \"lockfileVersion\": 3,\n" +
+			"  \"requires\": true,\n" +
+			"  \"packages\": {\n" +
+			"    \"node_modules/left-pad\": {\n" +
+			"      \"version\": \"1.3.0\",\n" +
+			"      \"resolved\": \"https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz\",\n" +
+			"      \"integrity\": \"" + sriDigest("left-pad") + "\",\n" +
+			"      \"dev\": true,\n" +
+			"      \"license\": \"WTFPL\"\n" +
+			"    },\n" +
+			"    \"node_modules/@babel/core\": {\n" +
+			"      \"version\": \"7.22.5\",\n" +
+			"      \"resolved\": \"https://registry.npmjs.org/@babel/core/-/core-7.22.5.tgz\",\n" +
+			"      \"integrity\": \"" + sriDigest("@babel/core") + "\",\n" +
+			"      \"dependencies\": {\n" +
+			"        \"debug\": \"^4.1.0\",\n" +
+			"        \"semver\": \"^6.3.1\",\n" +
+			"        \"js-tokens\": \"^4.0.0\",\n" +
+			"        \"chalk\": \"^3.0.0 || ^4.0.0\"\n" +
+			"      },\n" +
+			"      \"engines\": {\n" +
+			"        \"node\": \">=6.9.0\"\n" +
+			"      },\n" +
+			"      \"funding\": {\n" +
+			"        \"type\": \"opencollective\",\n" +
+			"        \"url\": \"https://opencollective.com/babel\"\n" +
+			"      }\n" +
+			"    },\n" +
+			"    \"node_modules/js-tokens\": {\n" +
+			"      \"version\": \"4.0.0\",\n" +
+			"      \"resolved\": \"https://registry.npmjs.org/js-tokens/-/js-tokens-4.0.0.tgz\",\n" +
+			"      \"integrity\": \"" + sriDigest("js-tokens") + "\",\n" +
+			"      \"optional\": true\n" +
+			"    },\n" +
+			"    \"node_modules/ansi-styles\": {\n" +
+			"      \"version\": \"6.2.1\",\n" +
+			"      \"resolved\": \"https://registry.npmjs.org/ansi-styles/-/ansi-styles-6.2.1.tgz\",\n" +
+			"      \"integrity\": \"" + sriDigest("ansi-styles") + "\",\n" +
+			"      \"funding\": {\n" +
+			"        \"url\": \"https://github.com/chalk/ansi-styles?sponsor=1\"\n" +
+			"      }\n" +
+			"    }\n" +
+			"  },\n" +
+			"  \"homepage\": \"https://github.com/orders/app#readme\",\n" +
+			"  \"repository\": {\n" +
+			"    \"type\": \"git\",\n" +
+			"    \"url\": \"git+https://github.com/orders/app.git\"\n" +
+			"  },\n" +
+			"  \"bugs\": {\n" +
+			"    \"url\": \"https://gitlab.com/orders/app/-/issues\"\n" +
+			"  },\n" +
+			"  \"checksum\": \"" + sriDigest("orders-app") + "\"\n" +
+			"}\n",
 	},
 	{
 		Name:        "ip_addresses",

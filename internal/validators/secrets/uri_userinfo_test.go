@@ -269,15 +269,22 @@ func TestURIUserinfoIsAdditive(t *testing.T) {
 }
 
 // TestURIUserinfoOutsideTheLinePreCheck pins that the source runs outside containsSecretIndicators
-// and changes none of its arms: the npm "resolved" registry line is still skipped by the pre-check,
-// and its password is still found.
+// and changes none of its arms: a line the pre-check rejects still has its password found, and so
+// does the npm "resolved" registry line this test was written around. Since #765 the pre-check
+// admits that line -- a URL with user info is not a benign manifest member -- so the rejected line
+// is a URI too short for the pre-check's generic admits.
 func TestURIUserinfoOutsideTheLinePreCheck(t *testing.T) {
 	v := NewValidator()
+	pw := uriPW(9, 8)
+	short := "s://u:" + pw + "@h.io"
+	if v.containsSecretIndicators(short) {
+		t.Fatal("precondition: containsSecretIndicators admits the short URI line; this test no longer pins the outside-the-gate path")
+	}
+	if got := uriTexts(secretsOn(t, v, short, "notes.txt")); len(got) != 1 || got[0] != pw {
+		t.Errorf("a line the pre-check rejects: got %q, want the password", got)
+	}
 	tok := uriPW(6, 40)
 	line := `      "resolved": "https://deploy:` + tok + `@registry.orders.invalid/left-pad/-/left-pad-1.3.0.tgz",`
-	if v.containsSecretIndicators(line) {
-		t.Fatal("precondition: containsSecretIndicators admits the npm registry line; this test no longer pins the outside-the-gate path")
-	}
 	if got := uriTexts(secretsOn(t, v, line, "package-lock.json")); len(got) != 1 || got[0] != tok {
 		t.Errorf("got %q, want the token", got)
 	}
