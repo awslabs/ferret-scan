@@ -33,8 +33,16 @@ differently depending on where you read it:
 
 | consumer | before | now |
 |---|---|---|
-| `pkg/scan` | `Incomplete bool` + one prose line | `Result.NotExamined[]` with `{Path, Cause, Detail}` ([#391](https://github.com/awslabs/ferret-scan/issues/391)) |
-| web UI `/scan` | `incomplete` + `incomplete_reason` | `not_examined[]` with `{path, cause, detail}` ([#417](https://github.com/awslabs/ferret-scan/issues/417)) |
+| `pkg/scan` | `Incomplete bool` + one prose line | `Result.NotExamined[]` with `{Path, Cause, Detail}` ([#391](https://github.com/awslabs/ferret-scan/issues/391)); `ScanText` fills it too, naming its label ([#770](https://github.com/awslabs/ferret-scan/issues/770)) |
+| `pkg/scan` caller ctx | ignored | `ScanText`/`ScanFile`: a ctx done at entry returns `(nil, ctx.Err())`; one that fires mid-scan returns the partial `Result` (`Incomplete`, `NotExamined` "coverage cut short") **and** an error wrapping `ctx.Err()`. A guard inside the engine (a size cap) keeps `(Result{Incomplete}, nil)` ([#770](https://github.com/awslabs/ferret-scan/issues/770)) |
+| `pkg/scan.RedactFile` / `RedactFileContext` | `err == nil`; a not-examined file was copied out as the "clean" passthrough | an error wrapping `scan.ErrIncomplete`, with `RedactFileResult.Coverage` (`Incomplete`, `IncompleteReason`, `NotExamined`) alongside; no passthrough copy, and a partial copy only when the partial scan masked something, as `--file` writes it ([#770](https://github.com/awslabs/ferret-scan/issues/770)) |
+| `pkg/redact.Engine.Redact` | `err == nil`, the input returned with what was found (often nothing) masked | an error wrapping `redact.ErrIncomplete` and the cause, with the partial `Result` (`Incomplete`, `IncompleteReason`, and both on `AuditRecord`) alongside ([#770](https://github.com/awslabs/ferret-scan/issues/770)) |
+| `--stdin --enable-redaction` (the gateway) | stderr warning only; exit `0` under `--fail-on-incomplete`; nothing at all in pre-commit mode | exit `3` under the flag as for `--file`; the warning, or in pre-commit mode a one-line notice ([#770](https://github.com/awslabs/ferret-scan/issues/770)) |
+| web UI `/scan` | `incomplete` + `incomplete_reason` | `not_examined[]` with `{path, cause, detail}` ([#417](https://github.com/awslabs/ferret-scan/issues/417)); the scan runs under the request's context, so a client that disconnects cuts it short ([#770](https://github.com/awslabs/ferret-scan/issues/770)) |
+
+For every library sink the rule is the CLI's: **check the error before using the output.** A cut-short
+result is returned for logging and retry, never as redacted output. The partial text or copy masks only
+what was found before the cut, and a value the scan did not reach is in it in clear.
 
 `Cause` is one of the six strings in the table below, spelled **identically** to what the CLI prints, so
 a phrase carried from the browser or a library caller into a grep over CI logs matches. It is empty when

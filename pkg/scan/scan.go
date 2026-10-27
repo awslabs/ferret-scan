@@ -237,8 +237,14 @@ type Finding struct {
 // or use pkg/redact, whose Engine matches caller-supplied rules and reports what
 // they suppressed.
 type Result struct {
-	Findings         []Finding
-	Incomplete       bool // true if coverage was cut short (timeout, cancellation)
+	Findings []Finding
+
+	// Incomplete is true when any input was not fully examined, so Findings may be missing
+	// some: coverage was cut short (a timeout or cancellation, a validator budget or size cap,
+	// a recovered validator panic), or a file could not be read or parsed, or extracted to no
+	// text. NotExamined says which input and why. It used to read "timeout, cancellation" only,
+	// which undersold it: ScanText on a log over the CLOUD_RESOURCES size cap is Incomplete too.
+	Incomplete       bool
 	IncompleteReason string
 
 	// NotExamined lists, per file, why it was not fully examined.
@@ -284,7 +290,23 @@ type NotExaminedFile struct {
 //
 // This is the detection-only counterpart to pkg/redact.Engine.Redact — use it
 // when you want findings without redacting.
-func ScanText(_ context.Context, text string, opts TextOptions) (*Result, error) {
+//
+// ctx bounds the scan (#770), following the Go convention:
+//
+//   - done before the scan starts: (nil, ctx.Err()).
+//   - fires during the scan: the validators stop, and ScanText returns the partial
+//     Result -- Incomplete set, NotExamined naming the input as "coverage cut short",
+//     the findings made before it fired -- together with an error wrapping ctx.Err().
+//     A caller that checks only err therefore stops; one that wants the partial
+//     findings has them.
+//
+// A guard inside the engine (a validator size cap, a recovered panic) is not the
+// caller's cancellation: it returns (Result{Incomplete: true}, nil), as it always
+// has. A nil ctx is treated as context.Background().
+func ScanText(ctx context.Context, text string, opts TextOptions) (*Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	label := opts.Label
 	if label == "" {
 		label = "<text>"
@@ -306,7 +328,11 @@ func ScanText(_ context.Context, text string, opts TextOptions) (*Result, error)
 		return nil, err
 	}
 
-	coreResult, err := core.ScanContent(text, core.ContentScanConfig{
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	coreResult, err := core.ScanContentCtx(ctx, text, core.ContentScanConfig{
 		VirtualPath: label,
 		Checks:      checks,
 		Explain:     opts.Explain,
@@ -317,7 +343,21 @@ func ScanText(_ context.Context, text string, opts TextOptions) (*Result, error)
 		return nil, err
 	}
 
-	return mapResult(coreResult), nil
+	return withCallerCancellation(ctx, mapResult(coreResult))
+}
+
+// withCallerCancellation returns res with an error wrapping ctx.Err() when res is incomplete and the
+// caller's ctx is done -- that is, when the caller's own deadline or cancellation is what cut the
+// scan short -- and with a nil error otherwise. A guard inside the engine leaves the caller's ctx
+// alive and keeps the historical (Result{Incomplete: true}, nil) contract (#391). A COMPLETE result
+// is returned as complete even if ctx expired after the last validator finished: nothing was lost.
+func withCallerCancellation(ctx context.Context, res *Result) (*Result, error) {
+	if res.Incomplete {
+		if cerr := ctx.Err(); cerr != nil {
+			return res, fmt.Errorf("scan: cut short by the caller's context: %w", cerr)
+		}
+	}
+	return res, nil
 }
 
 // ScanFile detects sensitive data in a file (PDF, DOCX, XLSX, images, text,
@@ -327,7 +367,17 @@ func ScanText(_ context.Context, text string, opts TextOptions) (*Result, error)
 //
 // Returns an error for unsupported file types. Use CanProcessFile to check
 // cheaply before calling this.
-func ScanFile(_ context.Context, path string, opts FileOptions) (*Result, error) {
+//
+// ctx bounds the scan exactly as it does for ScanText (#770): done before the
+// scan starts, (nil, ctx.Err()); fired during it, the partial Result with an
+// error wrapping ctx.Err(). One limit is the file path's own: extraction (the
+// preprocessor that turns a PDF or a .docx into text) takes no context and cannot
+// be interrupted, so a cancellation that arrives during extraction is observed
+// when extraction returns, before any validator runs.
+func ScanFile(ctx context.Context, path string, opts FileOptions) (*Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// Reject unsupported files early with a clear error (before constructing
 	// the full validator pipeline).
 	if ok, reason := CanProcessFile(path); !ok {
@@ -349,7 +399,11 @@ func ScanFile(_ context.Context, path string, opts FileOptions) (*Result, error)
 		return nil, err
 	}
 
-	coreResult, err := core.ScanFile(core.ScanConfig{
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	coreResult, err := core.ScanFileCtx(ctx, core.ScanConfig{
 		FilePath:            path,
 		Checks:              checks,
 		EnablePreprocessors: true,
@@ -362,7 +416,7 @@ func ScanFile(_ context.Context, path string, opts FileOptions) (*Result, error)
 		return nil, err
 	}
 
-	return mapResult(coreResult), nil
+	return withCallerCancellation(ctx, mapResult(coreResult))
 }
 
 // CheckNames returns the canonical validator IDs the engine recognizes (e.g.
@@ -417,20 +471,26 @@ func mapResult(r *core.ScanResult) *Result {
 		}
 		findings = append(findings, f)
 	}
-	var notExamined []NotExaminedFile
-	for _, ne := range r.NotExamined {
-		cause := ""
-		if ne.Cause.Known() {
-			cause = ne.Cause.String()
-		}
-		notExamined = append(notExamined, NotExaminedFile{Path: ne.Path, Cause: cause, Detail: ne.Detail})
-	}
 	return &Result{
 		Findings:         findings,
 		Incomplete:       r.Incomplete,
 		IncompleteReason: r.IncompleteReason,
-		NotExamined:      notExamined,
+		NotExamined:      mapNotExamined(r.NotExamined),
 	}
+}
+
+// mapNotExamined converts the engine's not-examined records to the public type. An unstated cause
+// becomes "", which a caller treats as unknown (see NotExaminedFile.Cause).
+func mapNotExamined(in []core.NotExaminedFile) []NotExaminedFile {
+	var out []NotExaminedFile
+	for _, ne := range in {
+		cause := ""
+		if ne.Cause.Known() {
+			cause = ne.Cause.String()
+		}
+		out = append(out, NotExaminedFile{Path: ne.Path, Cause: cause, Detail: ne.Detail})
+	}
+	return out
 }
 
 // normalizeChecks canonicalizes the caller's Checks and rejects a name no

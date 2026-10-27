@@ -4,6 +4,7 @@
 package web
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -572,7 +573,7 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		if relativePath != "" && len(files) == 1 {
 			displayName = relativePath
 		}
-		matches, suppressed, suppCount, incomplete, err := ws.processUploadedFileWithCLILogic(fileHeader, i, confidence, checks, verbose, recursive, displayName)
+		matches, suppressed, suppCount, incomplete, err := ws.processUploadedFileWithCLILogic(request.Context(), fileHeader, i, confidence, checks, verbose, recursive, displayName)
 		if err != nil {
 			// A PER-FILE condition must not abandon the batch.
 			//
@@ -772,8 +773,10 @@ func summarizeIncompleteFiles(incompleteFiles []parallel.FileDiagnostic, totalFi
 	}
 }
 
-// processUploadedFileWithCLILogic handles user file uploads using full CLI scanning logic
-func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.FileHeader, fileIndex int, confidence, checks string, verbose, recursive bool, displayName string) ([]detector.Match, []detector.SuppressedMatch, int, []parallel.FileDiagnostic, error) {
+// processUploadedFileWithCLILogic handles user file uploads using full CLI scanning logic.
+// ctx is the request's: a client that disconnects, or a server timeout, cuts the scan short
+// rather than leaving it running for nobody (#770).
+func (ws *WebServer) processUploadedFileWithCLILogic(ctx context.Context, uploadedFile *multipart.FileHeader, fileIndex int, confidence, checks string, verbose, recursive bool, displayName string) ([]detector.Match, []detector.SuppressedMatch, int, []parallel.FileDiagnostic, error) {
 	if displayName == "" {
 		displayName = uploadedFile.Filename
 	}
@@ -851,14 +854,14 @@ func (ws *WebServer) processUploadedFileWithCLILogic(uploadedFile *multipart.Fil
 	}
 
 	// Run full CLI scanning logic on this file with original filename
-	return ws.runFullCLIScan(normalizedTempPath, displayName, confidence, checks, verbose, recursive)
+	return ws.runFullCLIScan(ctx, normalizedTempPath, displayName, confidence, checks, verbose, recursive)
 }
 
 // runFullCLIScan executes the full CLI scanning logic with configuration and
 // suppression support. The returned []parallel.FileDiagnostic is non-empty when
 // this file's validator coverage was cut short (v2 Phase 4 incomplete signal),
 // so the caller can surface degraded coverage to the operator.
-func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, checks string, verbose, recursive bool) ([]detector.Match, []detector.SuppressedMatch, int, []parallel.FileDiagnostic, error) {
+func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilename, confidence, checks string, verbose, recursive bool) ([]detector.Match, []detector.SuppressedMatch, int, []parallel.FileDiagnostic, error) {
 	cfg := ws.loadConfiguration(ws.configPath)
 
 	var checksSlice []string
@@ -896,7 +899,7 @@ func (ws *WebServer) runFullCLIScan(filePath, originalFilename, confidence, chec
 		SuppressionManager:  nil,
 	}
 
-	result, err := core.ScanFile(scanConfig)
+	result, err := core.ScanFileCtx(ctx, scanConfig)
 	if err != nil {
 		return nil, nil, 0, nil, fmt.Errorf("scanning failed: %v", err)
 	}

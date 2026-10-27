@@ -25,6 +25,13 @@
 //   - Sanitized errors. The handler returns a request ID for correlation
 //     but never the raw input or matched substring in error responses.
 //
+//   - Incomplete coverage is a failure. When the scan is cut short — the
+//     invocation's deadline fires, or CLOUD_RESOURCES declines a request
+//     over 5 MiB — Redact returns an error wrapping redact.ErrIncomplete
+//     alongside a partial result. The handler answers
+//     "request_id=…: redaction incomplete" and never returns that partial
+//     text, which may hold values in clear.
+//
 //   - Strategy validation. Unknown strategy strings produce a 400-style
 //     error rather than silently falling through to the default.
 //
@@ -184,6 +191,14 @@ func handle(ctx context.Context, req Request) (Response, error) {
 	})
 	if err != nil {
 		// Sanitize: never echo req.Text or anything the engine produced.
+		//
+		// res is NOT used on any error. On ErrIncomplete Redact does return a
+		// Result, but its Redacted masks only what was found before coverage was
+		// cut short -- a deadline (this Lambda's own invocation timeout, carried by
+		// ctx), a request CLOUD_RESOURCES declines for size (over 5 MiB) -- so it
+		// can hold values in clear and must never reach the caller. Before #770
+		// that case returned err == nil, and this handler sent the input back as
+		// "redacted".
 		switch {
 		case errors.Is(err, redact.ErrEmptyText):
 			return Response{}, fmt.Errorf("request_id=%s: text is required", requestID)
@@ -191,34 +206,20 @@ func handle(ctx context.Context, req Request) (Response, error) {
 			return Response{}, fmt.Errorf("request_id=%s: text exceeds %d-byte limit", requestID, redact.MaxInputBytes)
 		case errors.Is(err, redact.ErrEngineClosed):
 			return Response{}, fmt.Errorf("request_id=%s: gateway shutting down", requestID)
+		case errors.Is(err, redact.ErrIncomplete):
+			// The audit record is still worth having: it says the request was refused
+			// as incomplete, and why, with no payload bytes.
+			if res != nil {
+				logAudit(res.AuditRecord(), requestID)
+			}
+			return Response{}, fmt.Errorf("request_id=%s: redaction incomplete", requestID)
 		default:
 			// Generic message — don't leak internals to caller.
 			return Response{}, fmt.Errorf("request_id=%s: redaction failed", requestID)
 		}
 	}
 
-	// Log the audit record (no payload bytes). Format as JSON so log
-	// aggregators can query it. Never log the input or the redacted
-	// output — those are the bytes the gateway is supposed to protect.
-	//
-	// AuditRecord is a flat struct of primitives + small string-keyed
-	// maps, so json.Marshal cannot realistically fail in practice. We
-	// still check the error rather than discarding it because (a)
-	// silently-dropped errors are an antipattern, especially in example
-	// code that consumers will copy-paste, and (b) if a future change
-	// adds a custom MarshalJSON to one of the embedded types, surfacing
-	// the failure here lets the operator notice instead of silently
-	// emitting unhelpful logs.
-	auditJSON, err := json.Marshal(res.AuditRecord())
-	if err != nil {
-		// Don't leak the marshal target in the message — log the type
-		// name and the error category only. The audit record contains
-		// no PII even on success, but we hold the line on
-		// "the only thing in the log is what we explicitly approve."
-		log.Printf("audit_marshal_failed err=%q request_id=%s", err, requestID)
-	} else {
-		log.Printf("audit %s", auditJSON)
-	}
+	logAudit(res.AuditRecord(), requestID)
 
 	resp := Response{
 		Redacted:   res.Redacted,
@@ -232,6 +233,30 @@ func handle(ctx context.Context, req Request) (Response, error) {
 		resp.FindingsByType = res.AuditRecord().FindingsByType
 	}
 	return resp, nil
+}
+
+// logAudit writes the audit record (no payload bytes). Format as JSON so log
+// aggregators can query it. Never log the input or the redacted output —
+// those are the bytes the gateway is supposed to protect.
+//
+// AuditRecord is a flat struct of primitives + small string-keyed maps, so
+// json.Marshal cannot realistically fail in practice. We still check the error
+// rather than discarding it because (a) silently-dropped errors are an
+// antipattern, especially in example code that consumers will copy-paste, and
+// (b) if a future change adds a custom MarshalJSON to one of the embedded
+// types, surfacing the failure here lets the operator notice instead of
+// silently emitting unhelpful logs.
+func logAudit(record redact.AuditRecord, requestID string) {
+	auditJSON, err := json.Marshal(record)
+	if err != nil {
+		// Don't leak the marshal target in the message — log the type
+		// name and the error category only. The audit record contains
+		// no PII even on success, but we hold the line on
+		// "the only thing in the log is what we explicitly approve."
+		log.Printf("audit_marshal_failed err=%q request_id=%s", err, requestID)
+		return
+	}
+	log.Printf("audit %s", auditJSON)
 }
 
 func parseStrategy(s string) (redact.Strategy, error) {

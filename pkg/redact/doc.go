@@ -76,6 +76,22 @@
 // deployment shape — a single Engine constructed in init() and reused
 // for every invocation is the recommended pattern.
 //
+// # Incomplete coverage
+//
+// Check the error before using Result.Redacted. When the scan does not examine all
+// of the text, Redact returns an error wrapping ErrIncomplete, and the cause with
+// it, alongside a non-nil Result whose Incomplete and IncompleteReason (also on
+// AuditRecord) say so. That happens when ctx is already done, when its deadline
+// fires or it is cancelled mid-scan, when a validator declines the input
+// (CLOUD_RESOURCES refuses more than 5 MiB), when the engine's own 5-minute
+// ceiling fires, and when a validator fails. The partial Result masks only what
+// was found before the cut, so its Redacted can still hold values in clear: log
+// the audit record and fail the request, as examples/lambda-redact does. Before
+// #770 each of these returned the text at err == nil.
+//
+// errors.Is(err, context.DeadlineExceeded) and errors.Is(err, context.Canceled)
+// keep working for a caller's ctx.
+//
 // # Versioning
 //
 // This package is versioned with the ferret-scan module. Breaking changes
@@ -110,6 +126,7 @@
 //	        Label: "req-abc-123",
 //	    })
 //	    if err != nil {
+//	        // Includes redact.ErrIncomplete: never use result.Redacted here.
 //	        log.Fatal(err)
 //	    }
 //

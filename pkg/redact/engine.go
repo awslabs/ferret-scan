@@ -208,6 +208,17 @@ func (e *Engine) Close() error {
 // Redact scans the request text and returns a Result with the redacted
 // content, finding metadata, and an audit record. See the package doc
 // for the thread-safety contract.
+//
+// Check the error before using Redacted. When coverage was cut short -- ctx was
+// already done, ctx's deadline fired or it was cancelled mid-scan, a validator
+// declined the input (CLOUD_RESOURCES refuses more than 5 MiB), the internal
+// 5-minute ceiling fired, or a validator failed -- Redact returns BOTH a non-nil
+// Result and an error wrapping ErrIncomplete (and the cause, so
+// errors.Is(err, context.DeadlineExceeded) holds for a caller's deadline). That
+// Result has Incomplete set and masks only the values found before the cut, so
+// its Redacted may still hold sensitive values in clear; it exists for the
+// caller that wants to log the audit record or retry, never for release. Before
+// #770 every one of these returned the input unredacted with a nil error.
 func (e *Engine) Redact(ctx context.Context, req Request) (*Result, error) {
 	if e.closed.Load() {
 		return nil, ErrEngineClosed
@@ -259,13 +270,39 @@ func (e *Engine) Redact(ctx context.Context, req Request) (*Result, error) {
 		PositionTrackingEnabled: false,
 	}
 
-	// Scope the validator run to the parent context but cap at 5
-	// minutes — same ceiling the CLI uses for ScanContent. Callers
-	// that need a tighter deadline should pass a derived context.
+	startTime := time.Now()
+
+	// A context that is already done: nothing is scanned, so nothing is redacted. Reported the
+	// same way as a scan the context cuts short, with the result alongside the error so the
+	// audit record can still be logged.
+	if cerr := ctx.Err(); cerr != nil {
+		return &Result{
+			Redacted:         text,
+			Incomplete:       true,
+			IncompleteReason: cerr.Error(),
+			auditInputs: auditInputs{
+				label:            label,
+				findingsByT:      map[string]int{},
+				suppressedByT:    map[string]int{},
+				strategy:         strategy,
+				inputBytes:       len(req.Text),
+				redactedBytes:    len(text),
+				duration:         time.Since(startTime),
+				timestamp:        time.Now().UTC(),
+				incomplete:       true,
+				incompleteReason: cerr.Error(),
+			},
+		}, fmt.Errorf("%w: %w", ErrIncomplete, cerr)
+	}
+
+	// Scope the validator run to the parent context but cap at 5 minutes — the same
+	// ceiling the CLI uses for ScanContent. A caller that needs a tighter bound passes
+	// a ctx with a deadline: when it fires, Redact returns the partial result with an
+	// error wrapping ErrIncomplete and context.DeadlineExceeded (#770). It used to
+	// return the input with no findings and a nil error.
 	scanCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
-	startTime := time.Now()
 	matches, runErr := parallel.RunValidators(scanCtx, e.validatorsList, processed, nil)
 	if runErr != nil && e.debug {
 		fmt.Fprintf(e.logWriter, "redact: validator error: %v\n", runErr)
@@ -290,9 +327,12 @@ func (e *Engine) Redact(ctx context.Context, req Request) (*Result, error) {
 	// slice/Repeat bound on a malformed match) is converted into a returned error
 	// rather than crashing the embedding process — this is a library API that
 	// runs inside long-lived callers (gateways, Lambdas), so a panic must never
-	// escape. Redaction is all-or-nothing: on panic we return an error and no
-	// partially-redacted text, so a caller never mistakes unredacted output for
-	// redacted output.
+	// escape. A redactor panic returns an error and NO text, so a caller never
+	// mistakes unredacted output for redacted output.
+	//
+	// A cut-short scan is the other failure, and it is handled below rather than
+	// here: the matches it did make are applied, and the text comes back WITH an
+	// error wrapping ErrIncomplete, never on its own.
 	internalStrategy := mapStrategy(strategy)
 	redacted, err := redactStringSafely(e.redactor, text, unsuppressed, internalStrategy)
 	if err != nil {
@@ -332,20 +372,42 @@ func (e *Engine) Redact(ctx context.Context, req Request) (*Result, error) {
 		matches[i].Clear()
 	}
 
-	return &Result{
-		Redacted: redacted,
-		findings: findings,
+	// Any validator error means some of the text may not have been examined, so values in
+	// it were never reported and are still in Redacted (#770). That holds for the cut-short
+	// family -- a caller's deadline or cancellation, the 5-minute ceiling above, a validator
+	// declining oversize input, a recovered panic -- and for a hard error, whose matches
+	// RunValidators discards. This dropped runErr and returned the text at err == nil, so a
+	// 1 ms deadline, or a 5.6 MiB log with CLOUD_RESOURCES, came back unredacted as success.
+	//
+	// The reason is the error's text: payload-free by the validators' contract (sizes, caps,
+	// names, context errors -- never matched bytes).
+	incompleteReason := ""
+	if runErr != nil {
+		incompleteReason = runErr.Error()
+	}
+
+	res := &Result{
+		Redacted:         redacted,
+		Incomplete:       runErr != nil,
+		IncompleteReason: incompleteReason,
+		findings:         findings,
 		auditInputs: auditInputs{
-			label:         label,
-			findingsByT:   findingsByT,
-			suppressedByT: suppressedByT,
-			strategy:      strategy,
-			inputBytes:    len(req.Text),
-			redactedBytes: len(redacted),
-			duration:      duration,
-			timestamp:     time.Now().UTC(),
+			label:            label,
+			findingsByT:      findingsByT,
+			suppressedByT:    suppressedByT,
+			strategy:         strategy,
+			inputBytes:       len(req.Text),
+			redactedBytes:    len(redacted),
+			duration:         duration,
+			timestamp:        time.Now().UTC(),
+			incomplete:       runErr != nil,
+			incompleteReason: incompleteReason,
 		},
-	}, nil
+	}
+	if runErr != nil {
+		return res, fmt.Errorf("%w: %w", ErrIncomplete, runErr)
+	}
+	return res, nil
 }
 
 // mapStrategy converts a public Strategy into the internal enum used by

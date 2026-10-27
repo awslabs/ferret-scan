@@ -5,7 +5,6 @@ package validators
 
 import (
 	stdctx "context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -837,6 +836,70 @@ func firstBudgetError(errs []error) error {
 	return nil
 }
 
+// DocumentCancelGrace is how long the document fan-out keeps collecting results after its
+// context is done, instead of taking only what had already arrived (#770). A validator that
+// polls execguard.LineLoopCancelled stops within one stride (256 lines) of the cancellation and
+// sends the matches it made; one that has not reported by this bound is abandoned, as before.
+//
+// It must stay below parallel.CancelGrace: this fan-out runs INSIDE parallel.RunValidators's,
+// which waits that long from the same cancellation, so the inner wait has to end first or the
+// partials it collected arrive after the outer one has stopped listening. parallel cannot be
+// imported here (it imports this package), so TestDocumentGraceEndsInsideTheRunnerGrace in
+// internal/parallel holds the two together.
+const DocumentCancelGrace = 50 * time.Millisecond
+
+// applyDocumentContext applies the document-context confidence adjustment to one validator's
+// matches and records how it was reached in each match's metadata. It runs on a complete
+// result and on a cut-short partial alike, so a finding scores the same however the run that
+// produced it ended (#770).
+func (dvb *DocumentValidatorBridge) applyDocumentContext(matches []detector.Match, contextInsights context.ContextInsights) {
+	if contextInsights.Domain == "" {
+		// Even without context, mark as document path
+		for i := range matches {
+			if matches[i].Metadata == nil {
+				matches[i].Metadata = make(map[string]interface{})
+			}
+			matches[i].Metadata["validation_path"] = "document"
+		}
+		return
+	}
+	for i := range matches {
+		// Get validator name for context adjustment
+		name := matches[i].Validator
+		if name == "" {
+			name = "unknown"
+		}
+
+		adjustment := dvb.contextAnalyzer.GetConfidenceAdjustment(contextInsights, name)
+		originalConfidence := matches[i].Confidence
+		matches[i].Confidence += adjustment
+		clampToCeiling(&matches[i])
+
+		// Ensure confidence stays within bounds
+		if matches[i].Confidence > 100 {
+			matches[i].Confidence = 100
+		} else if matches[i].Confidence < 0 {
+			matches[i].Confidence = 0
+		}
+
+		// Add context information to metadata
+		if matches[i].Metadata == nil {
+			matches[i].Metadata = make(map[string]interface{})
+		}
+		matches[i].Metadata["context_domain"] = contextInsights.Domain
+		matches[i].Metadata["context_doctype"] = contextInsights.DocumentType
+		matches[i].Metadata["context_confidence"] = contextInsights.DomainConfidence
+		matches[i].Metadata["confidence_adjustment"] = adjustment
+		matches[i].Metadata["original_confidence"] = originalConfidence
+		matches[i].Metadata["validation_path"] = "document"
+
+		// Add semantic context information
+		if len(contextInsights.SemanticContext) > 0 {
+			matches[i].Metadata["semantic_context"] = contextInsights.SemanticContext
+		}
+	}
+}
+
 // ProcessDocumentContent processes document body content with non-metadata
 // validators. It is a backward-compatible shim that runs with a background
 // context; new callers should use ProcessDocumentContentCtx so a deadline or
@@ -926,66 +989,24 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 						Error:     err.Error(),
 					})
 				}
-				// A match-budget hit is a "soft" outcome (v2 Move C): the truncated
-				// matches are genuine findings and must be kept, unlike a real
-				// validator error (which discards its partial slice). The error is
-				// still recorded above so the scan is flagged incomplete.
-				if execguard.IsCoverageCutShort(err) {
-					resultsChan <- validatorResult{index: idx, matches: matches, err: err}
+				// A real validator error discards its partial slice. A cut-short (a budget,
+				// a deadline, a size cap, a recovered panic) is a "soft" outcome (v2 Move
+				// C): what the validator found before the guard fired is genuine and is
+				// kept, and the error recorded above flags the scan incomplete.
+				if !execguard.IsCoverageCutShort(err) {
+					resultsChan <- validatorResult{index: idx, matches: nil, err: err}
 					return
 				}
-				resultsChan <- validatorResult{index: idx, matches: nil, err: err}
-				return
 			}
 
-			// Apply context-based confidence adjustments if context integration is enabled
-			if contextInsights.Domain != "" {
-				for i := range matches {
-					// Get validator name for context adjustment
-					validatorName := matches[i].Validator
-					if validatorName == "" {
-						validatorName = "unknown"
-					}
-
-					adjustment := dvb.contextAnalyzer.GetConfidenceAdjustment(contextInsights, validatorName)
-					originalConfidence := matches[i].Confidence
-					matches[i].Confidence += adjustment
-					clampToCeiling(&matches[i])
-
-					// Ensure confidence stays within bounds
-					if matches[i].Confidence > 100 {
-						matches[i].Confidence = 100
-					} else if matches[i].Confidence < 0 {
-						matches[i].Confidence = 0
-					}
-
-					// Add context information to metadata
-					if matches[i].Metadata == nil {
-						matches[i].Metadata = make(map[string]interface{})
-					}
-					matches[i].Metadata["context_domain"] = contextInsights.Domain
-					matches[i].Metadata["context_doctype"] = contextInsights.DocumentType
-					matches[i].Metadata["context_confidence"] = contextInsights.DomainConfidence
-					matches[i].Metadata["confidence_adjustment"] = adjustment
-					matches[i].Metadata["original_confidence"] = originalConfidence
-					matches[i].Metadata["validation_path"] = "document"
-
-					// Add semantic context information
-					if len(contextInsights.SemanticContext) > 0 {
-						matches[i].Metadata["semantic_context"] = contextInsights.SemanticContext
-					}
-				}
-			} else {
-				// Even without context, mark as document path
-				for i := range matches {
-					if matches[i].Metadata == nil {
-						matches[i].Metadata = make(map[string]interface{})
-					}
-					matches[i].Metadata["validation_path"] = "document"
-				}
-			}
-
-			resultsChan <- validatorResult{index: idx, matches: matches, err: nil}
+			// Score and annotate BEFORE the send, a kept partial included (#770). The
+			// partial used to be sent ahead of this step, so it reached the report
+			// without its contextual adjustment or its context_* and validation_path
+			// metadata: measured on a fired SSN budget, every partial that a complete run
+			// scores 75 scored 55 (MEDIUM became LOW), and a legacy v1 suppression rule,
+			// whose hash includes confidence, stopped matching it.
+			dvb.applyDocumentContext(matches, contextInsights)
+			resultsChan <- validatorResult{index: idx, matches: matches, err: err}
 		}(i, validator)
 	}
 
@@ -1004,11 +1025,16 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 		close(done)
 	}()
 
-	// keepMatches reports whether a validator result's matches should be collected:
-	// on success, or on a match-budget hit (the truncated matches are real findings
-	// — v2 Move C). A real validator error still discards its partial slice.
+	// keepMatches reports whether a validator result's matches should be collected: on
+	// success, or on any cut-short (the matches gathered before the guard fired are real
+	// findings -- v2 Move C). A real validator error still discards its partial slice.
+	//
+	// This tested ErrMatchBudgetExceeded alone, a hand copy of execguard.IsCoverageCutShort
+	// that #424 missed when it folded the others (#770). The goroutine above already sent a
+	// timed-out validator's partials, and this gate threw them away: a fired SSN budget on
+	// 20,000 lines kept 0 of the SSN findings the validator had made.
 	keepMatches := func(r validatorResult) bool {
-		return r.matches != nil && (r.err == nil || errors.Is(r.err, execguard.ErrMatchBudgetExceeded))
+		return r.matches != nil && (r.err == nil || execguard.IsCoverageCutShort(r.err))
 	}
 
 	// Collect into a slot per validator rather than appending in arrival order,
@@ -1057,14 +1083,26 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentContentCtx(ctx stdctx.Context
 		}
 		flatten()
 	case <-ctx.Done():
-		for draining := true; draining; {
+		// Keep collecting for a bounded grace period instead of taking only what is already
+		// buffered (#770). The validators that poll their context (execguard.LineLoopCancelled,
+		// every 256 lines) stop within a stride of the cancellation and send what they found;
+		// a non-blocking drain at this instant missed nearly all of them, so a caller's
+		// deadline returned no findings while the abandoned validators went on to finish the
+		// work being discarded (measured: 138-204 ms of CPU after a 50 ms deadline returned).
+		// Each goroutine sends exactly once, so the wait ends as soon as every one has; one
+		// that has not by DocumentCancelGrace is abandoned, as before, and its late send lands
+		// in the buffered channel, which is why the channel is not closed on this path.
+		timer := time.NewTimer(DocumentCancelGrace)
+	drain:
+		for received := 0; received < len(validators); received++ {
 			select {
 			case result := <-resultsChan:
 				collect(result)
-			default:
-				draining = false
+			case <-timer.C:
+				break drain
 			}
 		}
+		timer.Stop()
 		flatten()
 		if finishTiming != nil {
 			finishTiming(false, map[string]interface{}{

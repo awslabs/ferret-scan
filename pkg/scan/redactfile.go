@@ -4,6 +4,8 @@
 package scan
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -41,21 +43,74 @@ type RedactFileOptions struct {
 
 // RedactFileResult reports the outcome of a file-level redaction.
 type RedactFileResult struct {
-	// RedactedFilePath is the path to the redacted output file (same type as input).
+	// RedactedFilePath is the path to the redacted output file (same type as input). Empty when
+	// no file was written: the file was not fully examined and nothing in it was masked.
 	RedactedFilePath string
 	// RedactionCount is the number of sensitive values masked.
 	RedactionCount int
 	// Strategy is the strategy that was applied.
 	Strategy string
+
+	// Coverage is nil when the file was fully examined, and otherwise says what was not, in the
+	// names scan.Result uses (#770). Whenever it is non-nil RedactFile also returns an error
+	// wrapping ErrIncomplete.
+	//
+	// A POINTER so RedactFileResult stays comparable: a caller using it as a map key or with ==
+	// keeps compiling, which slice fields on this struct would break (the v2.4.5 scan.Finding
+	// break). The pointer compares by identity, and it is only ever non-nil on a result that
+	// came back with an error.
+	Coverage *RedactCoverage
 }
+
+// RedactCoverage describes a file RedactFile did not fully examine. The fields mean what the
+// fields of the same names on Result mean.
+type RedactCoverage struct {
+	Incomplete       bool
+	IncompleteReason string
+	NotExamined      []NotExaminedFile
+}
+
+// ErrIncomplete is wrapped by the error RedactFile and RedactFileContext return when the file was
+// not fully examined: coverage was cut short (a validator size cap, the caller's deadline or
+// cancellation), the bytes could not be parsed, or the body extracted to no text -- the three
+// channels --fail-on-incomplete counts. The result is returned alongside, io.Reader style, with
+// RedactFileResult.Coverage saying which and why.
+//
+// Before #770 each of these was a success: the passthrough copied the file to the output path as
+// if it were clean. An unparseable .pdf came back byte-identical, and a log over the
+// CLOUD_RESOURCES size cap came back with every ARN in clear, both at err == nil.
+//
+// What is on disk then: nothing, when the scan masked nothing -- no passthrough copy is made for a
+// file that was not fully examined -- or, when it did mask something, the partially redacted copy,
+// as --file leaves it. Either way it is not a redacted copy safe to share.
+var ErrIncomplete = errors.New("scan: redaction incomplete")
 
 // RedactFile scans a file and writes a redacted copy of the SAME file type
 // (a redacted .docx stays a .docx, a .jpg stays a .jpg, images get EXIF/GPS
 // stripped). Delegates to internal/core.RedactFile — no new logic.
 //
-// The output is a real file safe to share; the original is never modified.
-// Clean files (no findings) are copied through so callers always get an output.
+// The output is a real file and the original is never modified. It is safe to
+// share only when the error is nil: when the file was not fully examined the
+// error wraps ErrIncomplete, see there for what is on disk. A clean file that
+// WAS fully examined (no findings) is copied through, so a caller always gets an
+// output on success.
+//
+// RedactFile runs with context.Background(); RedactFileContext takes a ctx.
 func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) {
+	return RedactFileContext(context.Background(), path, opts)
+}
+
+// RedactFileContext is RedactFile bounded by ctx (#770). A ctx that is done
+// before the scan starts writes nothing; one that fires during the scan stops the
+// validators, the values found before it fired are masked, and the file is
+// reported not fully examined. Either way the error wraps both ErrIncomplete and
+// ctx.Err(). Extraction cannot be interrupted: a cancellation that arrives while
+// a PDF or a .docx is being turned into text is observed when that returns. A nil
+// ctx is treated as context.Background().
+func RedactFileContext(ctx context.Context, path string, opts RedactFileOptions) (*RedactFileResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	logWriter := opts.LogWriter
 	if logWriter == nil {
 		logWriter = io.Discard
@@ -81,7 +136,7 @@ func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) 
 		return nil, err
 	}
 
-	result, err := core.RedactFile(core.RedactConfig{
+	result, err := core.RedactFileCtx(ctx, core.RedactConfig{
 		FilePath:  path,
 		OutputDir: opts.OutputDir,
 		Strategy:  opts.Strategy.String(),
@@ -89,15 +144,26 @@ func RedactFile(path string, opts RedactFileOptions) (*RedactFileResult, error) 
 		Config:    cfg,
 		LogWriter: logWriter,
 	})
-	if err != nil {
+	if err != nil && (result == nil || !errors.Is(err, core.ErrRedactionIncomplete)) {
 		return nil, err
 	}
 
-	return &RedactFileResult{
+	res := &RedactFileResult{
 		RedactedFilePath: result.RedactedFilePath,
 		RedactionCount:   result.RedactionCount,
 		Strategy:         result.Strategy,
-	}, nil
+	}
+	if !result.Incomplete {
+		return res, nil
+	}
+	res.Coverage = &RedactCoverage{
+		Incomplete:       true,
+		IncompleteReason: result.IncompleteReason,
+		NotExamined:      mapNotExamined(result.NotExamined),
+	}
+	// The same message core builds, under this package's sentinel: the path, the taxonomy cause
+	// and, when the caller's ctx cut the scan short, that error, so errors.Is reaches it.
+	return res, core.IncompleteRedactionError(ctx, ErrIncomplete, result.NotExamined)
 }
 
 // ParseStrategyStrict converts a strategy name to a RedactStrategy. Exactly

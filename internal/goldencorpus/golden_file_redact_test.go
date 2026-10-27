@@ -6,6 +6,7 @@ package goldencorpus
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -136,6 +137,43 @@ func TestGoldenFileRedactionSink(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGoldenFileRedactionRefusesAFileItCouldNotParse is the sink case #770 adds beside the corpus:
+// a .pdf whose bytes do not parse carries an SSN no extractor ever saw. The scan reports it
+// "cannot parse", and the redaction sink must say so too -- an error wrapping
+// ErrRedactionIncomplete and NO artifact. It used to copy the file to the output directory as the
+// clean-file passthrough, so the SSN came back byte-identical in "the redacted copy" at err == nil.
+//
+// Not a FileCase: those are fully examined by construction (TestGoldenFileRedactionSink treats any
+// error as a failure), and this one is the opposite.
+func TestGoldenFileRedactionRefusesAFileItCouldNotParse(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "broken.pdf")
+	const ssn = "521-33-4567"
+	if err := os.WriteFile(src, []byte("%PDF-1.7\nCustomer SSN "+ssn+" on file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outDir := filepath.Join(dir, "redacted")
+	res, err := core.RedactFile(core.RedactConfig{
+		FilePath:  src,
+		OutputDir: outDir,
+		Strategy:  "simple",
+		Checks:    []string{"SSN"},
+		Config:    config.LoadConfigOrDefault(""),
+		LogWriter: io.Discard,
+	})
+	if !errors.Is(err, core.ErrRedactionIncomplete) {
+		t.Fatalf("RedactFile(unparseable .pdf): err = %v, want ErrRedactionIncomplete", err)
+	}
+	if res == nil || !res.Incomplete || res.RedactedFilePath != "" {
+		t.Fatalf("result %+v: want Incomplete and no artifact", res)
+	}
+	if found := findRedactedArtifact(t, outDir); found != "" {
+		body, _ := os.ReadFile(found)
+		t.Fatalf("an artifact was written at %s (SSN present: %v) for a file nothing could read",
+			found, bytes.Contains(body, []byte(ssn)))
 	}
 }
 

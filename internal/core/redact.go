@@ -4,6 +4,8 @@
 package core
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
+	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
@@ -52,7 +55,8 @@ type RedactConfig struct {
 
 // RedactResult reports the outcome of a redaction.
 type RedactResult struct {
-	// RedactedFilePath is the path to the written redacted document.
+	// RedactedFilePath is the path to the written redacted document. Empty when
+	// coverage was cut short and nothing was redacted (no file is written then).
 	RedactedFilePath string
 	// RedactionCount is the number of sensitive values redacted.
 	RedactionCount int
@@ -61,7 +65,27 @@ type RedactResult struct {
 	// Matches are the detections that drove the redaction (payload-free unless
 	// the caller inspects Text).
 	Matches []detector.Match
+
+	// Incomplete, IncompleteReason and NotExamined report a file the scan did not
+	// fully examine, read from the same three channels as ScanResult's (#770). When
+	// Incomplete is set RedactFile also returns an error wrapping
+	// ErrRedactionIncomplete: the copy, if one was written, masks only the values
+	// found before coverage was cut, so it is not safe to share.
+	Incomplete       bool
+	IncompleteReason string
+	NotExamined      []NotExaminedFile
 }
+
+// ErrRedactionIncomplete is wrapped by the error RedactFile returns when the file was not fully
+// examined -- coverage cut short, unparseable bytes, a body that extracted to nothing, or a
+// caller's context that was done -- alongside a non-nil RedactResult describing what was done.
+//
+// Before #770 this was a success: the clean-file passthrough below copied a never-scanned file to
+// the output path at err == nil, so an unparseable .pdf came back byte-identical as "the redacted
+// copy", and a log CLOUD_RESOURCES declined for size came back with every ARN in clear. Only the
+// --file CLI path disclosed it (NOT FULLY EXAMINED, exit 3 under --fail-on-incomplete). A Go caller
+// has no flag to set; it checks err.
+var ErrRedactionIncomplete = errors.New("redaction incomplete")
 
 // RedactFile scans a single file and writes a redacted copy to OutputDir using
 // the appropriate format-aware redactor (plaintext/CSV/JSON, PDF, Office,
@@ -69,9 +93,20 @@ type RedactResult struct {
 // intentionally leaves to the caller (ScanFile passes a nil redaction manager).
 //
 // A redacted .docx stays a .docx, a .pdf stays a .pdf, and image redaction
-// strips EXIF/GPS metadata — the output is a real file of the same type, safe
-// to share.
+// strips EXIF/GPS metadata — the output is a real file of the same type. It is
+// safe to share only when the error is nil: see ErrRedactionIncomplete.
+//
+// It runs with context.Background(); RedactFileCtx takes the caller's.
 func RedactFile(cfg RedactConfig) (*RedactResult, error) {
+	return RedactFileCtx(context.Background(), cfg)
+}
+
+// RedactFileCtx is RedactFile under the caller's ctx (#770). A ctx that is done
+// before the scan starts writes nothing; one that fires during the scan stops the
+// validators, and the file is redacted with what they had found and reported
+// incomplete. Either way the error wraps ErrRedactionIncomplete and ctx.Err().
+// Extraction cannot be interrupted (a preprocessor takes no context).
+func RedactFileCtx(ctx context.Context, cfg RedactConfig) (*RedactResult, error) {
 	logWriter := resolveLogWriter(cfg.LogWriter)
 	observer := observability.NewStandardObserver(observability.ObservabilityMetrics, logWriter)
 
@@ -108,6 +143,19 @@ func RedactFile(cfg RedactConfig) (*RedactResult, error) {
 			return nil, err
 		}
 	}
+
+	// A context that is already done: nothing is scanned, so nothing may be written --
+	// not even the output directory the manager below creates.
+	if cerr := ctx.Err(); cerr != nil {
+		ne := []NotExaminedFile{{Path: cfg.FilePath, Cause: coverage.CauseCutShort, Detail: cerr.Error()}}
+		return &RedactResult{
+			Strategy:         strategy.String(),
+			Incomplete:       true,
+			IncompleteReason: coverage.CauseCutShort.String() + ": " + cfg.FilePath + ": " + cerr.Error(),
+			NotExamined:      ne,
+		}, IncompleteRedactionError(ctx, ErrRedactionIncomplete, ne)
+	}
+
 	redactionManager, outputManager, err := NewDefaultRedactionManager(cfg.OutputDir, strategy, observer)
 	if err != nil {
 		return nil, err
@@ -129,7 +177,7 @@ func RedactFile(cfg RedactConfig) (*RedactResult, error) {
 		RedactionStrategy: strategy,
 	}
 	pp := parallel.NewParallelProcessor(observer)
-	matches, stats, err := pp.ProcessFilesWithProgress(
+	matches, stats, err := pp.ProcessFilesWithProgressCtx(ctx,
 		[]string{cfg.FilePath}, validatorsList, fileRouter, jobConfig, redactionManager, nil)
 	if err != nil {
 		return nil, fmt.Errorf("redaction processing failed: %w", err)
@@ -147,26 +195,75 @@ func RedactFile(cfg RedactConfig) (*RedactResult, error) {
 			stats.UnredactedFiles[0].FilePath, stats.UnredactedFiles[0].Reason)
 	}
 
+	// The same three channels --fail-on-incomplete counts, read the way ScanFile reads them
+	// (#770). Checked BEFORE the passthrough for the reason the check above is: the passthrough
+	// copies the original, and a file that was not fully examined is not known to be clean.
+	incomplete, incompleteReason := coverageOf(stats)
+
 	// The worker pool only writes an output file when there is at least one
 	// match to redact. For a clean file (no findings), copy the original to the
 	// output path so callers always have a file to hand off — a clean document
 	// is safe to share as-is.
+	//
+	// A file that was NOT fully examined gets no passthrough: "no findings" there means
+	// "none found before coverage was cut", and copying it is how an unparseable .pdf, or a
+	// log CLOUD_RESOURCES declined for size, came back byte-identical at err == nil. If the
+	// partial scan did mask something, the copy the pool wrote is kept, as --file keeps it.
 	if _, statErr := os.Stat(redactedPath); statErr != nil {
-		if len(matches) == 0 {
+		switch {
+		case len(matches) > 0:
+			return nil, fmt.Errorf("redaction did not produce an output file at %s: %w", redactedPath, statErr)
+		case incomplete:
+			redactedPath = ""
+		default:
 			if copyErr := copyFile(cfg.FilePath, redactedPath); copyErr != nil {
 				return nil, fmt.Errorf("failed to copy clean file to output: %w", copyErr)
 			}
-		} else {
-			return nil, fmt.Errorf("redaction did not produce an output file at %s: %w", redactedPath, statErr)
 		}
 	}
 
-	return &RedactResult{
+	res := &RedactResult{
 		RedactedFilePath: redactedPath,
 		RedactionCount:   len(matches),
 		Strategy:         strategy.String(),
 		Matches:          matches,
-	}, nil
+	}
+	if incomplete {
+		res.Incomplete = true
+		res.IncompleteReason = incompleteReason
+		res.NotExamined = collectNotExamined(stats)
+		return res, IncompleteRedactionError(ctx, ErrRedactionIncomplete, res.NotExamined)
+	}
+	return res, nil
+}
+
+// IncompleteRedactionError builds the error a redaction sink returns for a file it did not fully
+// examine: sentinel, then the first not-examined record's path, taxonomy cause ("coverage cut
+// short", "cannot parse", ...) and detail. When ctx is done -- the caller's deadline or
+// cancellation is what cut the scan short -- its error is wrapped too, so
+// errors.Is(err, context.Canceled) and errors.Is(err, context.DeadlineExceeded) hold. The
+// sentinel is the caller's so each public package wraps its own (pkg/scan.ErrIncomplete).
+// Payload-free: paths, causes and guard messages only.
+func IncompleteRedactionError(ctx context.Context, sentinel error, ne []NotExaminedFile) error {
+	what := "file not fully examined"
+	cerr := ctx.Err()
+	if len(ne) > 0 {
+		what = ne[0].Path
+		if ne[0].Cause.Known() {
+			what += ": " + ne[0].Cause.String()
+		}
+		// The ctx error is wrapped below; repeating it as the detail would print it twice.
+		if ne[0].Detail != "" && (cerr == nil || ne[0].Detail != cerr.Error()) {
+			what += ": " + ne[0].Detail
+		}
+		if len(ne) > 1 {
+			what += fmt.Sprintf(" (and %d more)", len(ne)-1)
+		}
+	}
+	if cerr != nil {
+		return fmt.Errorf("%w: %s: %w", sentinel, what, cerr)
+	}
+	return fmt.Errorf("%w: %s", sentinel, what)
 }
 
 // copyFile copies src to dst, creating parent directories as needed. Used to
