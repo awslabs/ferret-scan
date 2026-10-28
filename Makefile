@@ -1,4 +1,4 @@
-.PHONY: score score-update score-mutation-check build clean vet vet-host fmt run install-config install check-go-version pr-checklist integration-branch test-compile-all-platforms promote-changelog
+.PHONY: score score-update score-mutation-check build clean vet vet-host fmt run install-config install check-go-version pr-checklist integration-branch test-compile-all-platforms promote-changelog changelog-preview
 
 # Default target
 all: check-go-version fmt vet build
@@ -724,10 +724,11 @@ release-files-test:
 	@echo "   3. sudo scripts/install-system.sh"
 	@echo "   4. scripts/setup-pre-commit.sh"
 
-# No `changelog` target. CHANGELOG.md is hand-maintained prose; `git-chglog --output CHANGELOG.md`
-# rewrote the whole file from commit subjects, dropping the [Unreleased] section entirely. The target
-# existed and would have destroyed ~43,000 words on anyone who ran it. Add entries by hand, in the PR
-# that makes the change.
+# No `changelog` generator target. CHANGELOG.md is hand-maintained prose; `git-chglog --output
+# CHANGELOG.md` rewrote the whole file from commit subjects, dropping the [Unreleased] section
+# entirely. The target existed and would have destroyed ~43,000 words on anyone who ran it. Write
+# the entry by hand, as a fragment under changelog.d/ in the PR that makes the change (#821);
+# `make changelog-preview` shows what the next release will add.
 
 # Version management targets
 version-status:
@@ -767,10 +768,16 @@ check-go-version:
 	@./scripts/go-version.sh check
 
 # Sync Go version across all project files
-# Cut the hand-written [Unreleased] CHANGELOG section into a versioned heading (#647).
-# Normally run by .github/workflows/changelog-promote.yml when a release tag is pushed.
+# Render the changelog.d/ fragments into a dated CHANGELOG.md section below [Unreleased] and git rm
+# them (#647, #821). Normally run by .github/workflows/changelog-promote.yml when a release tag is
+# pushed.
 promote-changelog:
 	@./scripts/promote-changelog.sh $(TAG)
+
+# Print, without writing anything, the section the next release would add to CHANGELOG.md: every
+# fragment under changelog.d/ (and any old-style entry left under [Unreleased]) under its heading.
+changelog-preview:
+	@go run ./internal/tools/changelogrender -tag vNEXT
 
 sync-go-version:
 	@echo "🔄 Synchronizing Go version across project..."
