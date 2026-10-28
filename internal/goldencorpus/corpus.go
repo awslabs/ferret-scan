@@ -829,6 +829,21 @@ var Cases = []Case{
 			"insurance member id for prescriber: AB1234563\n",
 	},
 	{
+		Name: "medical_npi_unix_timestamps",
+		Description: "Unix timestamps in seconds that pass the CMS NPI-Luhn check by chance (#806): " +
+			"1751328000 is 2025-07-01T00:00:00Z and 1761609639 is 2025-10-28T00:00:39Z, and one " +
+			"10-digit epoch in ten passes the check digit. Each line names the value as a time in " +
+			"its own label slot (ran at, ts=, created_at, epoch) or unit slot (epoch seconds), and " +
+			"no NPI label is attached to it, so none of them is an NPI. Pure decoy: zero findings. " +
+			"Before the fix every line reported an NPI at 90 HIGH.",
+		Checks: []string{"MEDICAL_ID"},
+		Input: "NPI reconciliation ran at 1751328000 epoch seconds.\n" +
+			"NPI reconciliation ran at 1761609639.\n" +
+			"npi_sync ts=1751328000 status=ok\n" +
+			"{\"event\": \"npi_refresh\", \"created_at\": 1751328000}\n" +
+			"provider directory refreshed at epoch 1761609639\n",
+	},
+	{
 		Name: "context_decoys_original",
 		Description: "Real-context vs decoy-context pairs for the ORIGINAL validators (SSN, " +
 			"PHONE, CREDIT_CARD, EMAIL): the same shaped value framed as PII on one line and " +
