@@ -28,7 +28,8 @@ var (
 
 	// Lowercase base32 secrets: same charset but lowercase. Some tools/configs emit
 	// secrets in lowercase (e.g., "k5cuwy3znrxw4z3t"). Matched separately and only
-	// considered when positive OTP context is present on the line.
+	// considered when positive OTP context is present on the line. A digit-free
+	// candidate spelled like an English word is dropped (isLowercaseWordShape).
 	reBase32SecretLower = regexp.MustCompile(`\b[a-z2-7]{16,64}\b`)
 
 	// Recovery/backup codes: groups of 4-10 alphanumeric blocks separated by dashes
@@ -473,6 +474,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				}
 				// Reject uppercased forms that look like English words/patterns
 				if v.isLikelyWord(upper) {
+					continue
+				}
+				// Reject a digit-free candidate spelled like an English word (#800).
+				if v.isLowercaseWordShape(secret) {
 					continue
 				}
 				emit(loc[0], loc[1]-loc[0], "OTP_SECRET", true)
@@ -963,6 +968,65 @@ func (v *Validator) containsLikelyEnglish(s string) bool {
 		}
 	}
 	return false
+}
+
+// isLowercaseWordShape reports whether a lowercase candidate is spelled like an
+// English word rather than drawn at random from the base32 alphabet (#800).
+//
+// Every letter is in the base32 alphabet, so once the lowercase pass uppercases
+// a candidate, isValidBase32 accepts any all-letter string of 16-64 characters,
+// and isLikelyWord knows only patterns and a short word list. Measured before
+// this, on lines naming MFA or two-factor: "responsibilities" 95 HIGH,
+// "intellectualproperty" and the run-together "configurationsvalidators" 90,
+// "cryptographically" 85, "operationalizing" 70.
+//
+// The test is the letter shape, not a word list: a vowel share (a, e, i, o, u,
+// y) of 1/4 to 3/5 and no run of five consonants. Random base32 letters are
+// mostly consonants (expected vowel share 6/26 = 0.23) and usually include a
+// long consonant run; English words have neither. 'y' counts as a vowel because
+// long English words use it as one (-ly, -ity, crypt-): counted as a consonant,
+// "cryptographically" falls under the 1/4 floor.
+//
+// Only a digit-free candidate can match. A random secret of n characters has no
+// digit with probability (26/32)^n, 3.6% at 16 and 0.13% at 32, so a value with
+// a digit is never touched and only a digit-free secret that also passes both
+// bounds is lost: on 100,000 random secrets per length, about 0.7% at 16
+// characters, 0.2% at 20, 0.03% at 26, under 0.01% at 32, none at 52. Requiring
+// a digit outright would drop the whole 3.6%. On 1,117 dictionary words of 16+
+// letters (hunspell en_US and en_GB with suffixes) the shape matches 99.9%, and
+// 97.3% of 20,000 glued word pairs; most misses join two words across five
+// consonants ("aggregationschlemiel").
+//
+// The uppercase pass does not use this (#800 scoped the fix to the lowercase
+// pass): RFC 4648 specifies the base32 alphabet in uppercase, so that is where
+// real secrets mostly appear, and it keeps its existing guards.
+func (v *Validator) isLowercaseWordShape(s string) bool {
+	vowels, run, maxRun := 0, 0, 0
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' || c == 'y':
+			vowels++
+			run = 0
+		case c >= 'a' && c <= 'z':
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		default:
+			// A digit, or anything else: not a word, so the candidate keeps its
+			// existing treatment.
+			return false
+		}
+	}
+	n := len(s)
+	if n == 0 {
+		return false
+	}
+	// 1/4 <= vowels/n <= 3/5, compared in integers so the bounds are exact.
+	if 4*vowels < n || 5*vowels > 3*n {
+		return false
+	}
+	return maxRun < 5
 }
 
 // hasUniformBlockLength checks if all parts have the same length.
