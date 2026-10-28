@@ -439,6 +439,9 @@ func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, orig
 	upperLine, upperMap := upperWithOffsets(line)
 	idxMatches := reSWIFT.FindAllStringIndex(upperLine, -1)
 
+	// bicLabel caches hasBICLabel(line) for the all-letter gate below.
+	var bicLabel, bicLabelKnown bool
+
 	for i, loc := range idxMatches {
 		if execguard.LineLoopCancelled(ctx, i) {
 			return matches
@@ -461,11 +464,31 @@ func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, orig
 		contextInfo := v.buildContextInfo(line, oStart, oEnd-oStart)
 		hasBankingContext := lc.bankingKeyword
 
-		// All-letter candidates (no digits) are very likely English words unless
-		// banking context is present. Real all-alpha SWIFT codes like DEUTDEFF
-		// will only be surfaced when "swift", "bic", "bank", etc. appear nearby.
-		if isCommonWord(candidate) && !hasBankingContext {
-			continue
+		// An all-letter candidate (no digit anywhere) is word-shaped: any 8- or
+		// 11-letter uppercase word whose 5th and 6th letters spell a country code
+		// passes isValidSWIFT. Only a label that names the code itself admits one:
+		// "swift", "bic", or "iban", since a BIC is printed beside its IBAN on
+		// payment details. A generic banking word used to admit it as well, and on a
+		// bank-customer document that is most lines, so CUSTOMER (CUST+OM+ER),
+		// BUSINESS (BUSI+NE+SS) and MITIGATIONS (MITI+GA+TIONS) were reported as
+		// SWIFT_BIC at 100 (#801).
+		//
+		// The cost: an all-letter BIC whose line names only the bank ("Deutsche Bank
+		// DEUTDEFF") is no longer reported. No shape test tells it from a word:
+		// DEUTDEFF has three vowels and no consonant run longer than two, exactly
+		// like CUSTOMER and BUSINESS. A candidate with a digit (CHASUS33, NWBKGB2L)
+		// is not a word, so a generic banking word stays enough for it.
+		//
+		// The label is a whole-line property, so it is looked up once per line and
+		// only on a line that has such a candidate: a per-match scan would make a
+		// long line of words quadratic (see lineContext).
+		if isCommonWord(candidate) {
+			if !bicLabelKnown {
+				bicLabel, bicLabelKnown = hasBICLabel(line), true
+			}
+			if !bicLabel {
+				continue
+			}
 		}
 
 		if lc.strongNegative {
@@ -517,9 +540,9 @@ func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, orig
 //
 // Strategy: if the candidate is 8 all-letter characters (no digits anywhere),
 // it is very likely a word, not a SWIFT code. Real 8-char SWIFT codes nearly
-// always have digits in the location code (e.g. CHASUS33, BNPAFRPP is one
-// exception but those are validated by banking context requirement). For 11-char
-// codes, the branch suffix often has digits too.
+// always have digits in the location code (e.g. CHASUS33; BNPAFRPP is one
+// exception, which scanSWIFT reports only on a line that names the code). For
+// 11-char codes, the branch suffix often has digits too.
 func isCommonWord(s string) bool {
 	// All-letter strings of length 8 or 11 with no digits are almost certainly
 	// English words or identifiers, not SWIFT codes.
@@ -528,9 +551,9 @@ func isCommonWord(s string) bool {
 			return false // has a digit -- likely a real SWIFT code
 		}
 	}
-	// All letters, no digits. Without banking context this is almost certainly
-	// not a SWIFT code. We let the banking-context requirement in the caller
-	// handle the remaining edge cases (like BNPAFRPP which is real but all-alpha).
+	// All letters, no digits. Unless the line names the code ("swift", "bic",
+	// "iban") this is almost certainly not a SWIFT code; the caller requires that
+	// label for the real all-alpha ones (BNPAFRPP, DEUTDEFF). See #801.
 	return true
 }
 
@@ -995,6 +1018,23 @@ func (v *Validator) buildContextInfo(line string, matchStart, matchLen int) dete
 // hasBankingKeywords checks if the line contains any banking-related keywords.
 func (v *Validator) hasBankingKeywords(line string) bool {
 	for _, kw := range v.positiveKeywords {
+		if containsLabel(line, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// bicLabels are the keywords that name a SWIFT/BIC code itself rather than banking
+// in general. "iban" is one because payment details print the BIC beside the IBAN
+// ("IBAN: ... BIC: ..."). Each is also a positive keyword, so a line carrying one
+// still sets bankingKeyword and scores exactly as before.
+var bicLabels = []string{"swift", "bic", "iban"}
+
+// hasBICLabel reports whether the line names a SWIFT/BIC code. scanSWIFT requires
+// it before reporting an all-letter candidate (see isCommonWord, #801).
+func hasBICLabel(line string) bool {
+	for _, kw := range bicLabels {
 		if containsLabel(line, kw) {
 			return true
 		}
