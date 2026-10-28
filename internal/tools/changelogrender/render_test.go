@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -276,15 +277,19 @@ func TestLoadFragments(t *testing.T) {
 		"0104-trail.md":    "### 🔨 Internal\n\n- i\n\n",
 		"0105-nobullet.md": "### 🔨 Internal\n",
 	})
-	if err := os.Symlink("0099-a.md", filepath.Join(dir, "0106-link.md")); err != nil {
+	bad := []string{"fix-thing.md", "0100-bad.md", "0101-blank.md", ".0099-a.md.swp", "sub", "0103-crlf.md",
+		"0104-trail.md", "0105-nobullet.md"}
+	// Creating a symlink needs a privilege on Windows that a developer's account may lack.
+	if err := os.Symlink("0099-a.md", filepath.Join(dir, "0106-link.md")); err == nil {
+		bad = append(bad, "0106-link.md")
+	} else if runtime.GOOS != "windows" {
 		t.Fatal(err)
 	}
 	_, err = loadFragments(dir)
 	if err == nil {
 		t.Fatal("malformed files accepted")
 	}
-	for _, name := range []string{"fix-thing.md", "0100-bad.md", "0101-blank.md", ".0099-a.md.swp", "sub", "0103-crlf.md",
-		"0104-trail.md", "0105-nobullet.md", "0106-link.md"} {
+	for _, name := range bad {
 		if !strings.Contains(err.Error(), filepath.Join(dir, name)+":") {
 			t.Errorf("no error for %s in:\n%v", name, err)
 		}
@@ -336,7 +341,8 @@ func TestRun(t *testing.T) {
 	if !strings.Contains(string(b), "Entries for the next release live in changelog.d/.\n\n## [v2.6.0] - 2026-11-02\n\n### 🔒 Security\n") {
 		t.Fatalf("write: section not below the [Unreleased] prose:\n%s", b)
 	}
-	if info, _ := os.Stat(cl); info.Mode().Perm() != 0o640 {
+	// Windows has no Unix permission bits to keep: Chmod there only toggles read-only.
+	if info, _ := os.Stat(cl); runtime.GOOS != "windows" && info.Mode().Perm() != 0o640 {
 		t.Errorf("mode %v after the write, want 0640", info.Mode().Perm())
 	}
 	left, _ := os.ReadDir(fd)
