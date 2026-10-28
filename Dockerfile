@@ -17,7 +17,7 @@
 # housekeeping: 1.26.5 fixed CVE-2026-39822 (os symlink root escape) and CVE-2026-42505
 # (crypto/tls ECH privacy leak); 1.26.6 fixed CVE-2026-46600 and CVE-2026-39821, both
 # rated HIGH against the 1.26.5 stdlib and both flagged by Trivy on main.
-FROM public.ecr.aws/docker/library/golang:1.27.3-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
+FROM public.ecr.aws/docker/library/golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 # Install minimal build dependencies
 # Add ca-certificates back if you uncomment the COPY line below
