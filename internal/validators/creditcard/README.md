@@ -38,9 +38,27 @@ The validator automatically detects and categorizes the following credit card ty
 
 The validator assigns confidence scores based on multiple factors:
 
-- **HIGH** (90-100%): Valid card number passing Luhn check with correct length and IIN range for a known card type
-- **MEDIUM** (60-89%): Valid number passing Luhn check but with uncertain card type or unusual context
+- **HIGH** (90-100%): Valid card number passing Luhn check with correct length and IIN range for a known card type, and either written in card groups or named as a card (see below)
+- **MEDIUM** (60-89%): Valid number passing Luhn check but with uncertain card type or unusual context, or a bare digit run that nothing names as a card
 - **LOW** (0-59%): Number with credit card-like pattern but failing validation checks or in contexts suggesting test data
+
+### Bare runs need a card label to reach HIGH
+
+A bare digit run (no space or dash between groups) on a line with no keyword at all is capped at
+**75 (MEDIUM)**. Its digits alone (known vendor prefix, no repetition, seven or more distinct
+digits) used to score 95 HIGH, and one random run in ten passes Luhn, so request counters and
+row counts were reported as confirmed cards (#802). Any one of these clears the ceiling and
+leaves the score unchanged:
+
+- a positive card keyword on the line (`card: 4532015112830366`, `visa 4532015112830366`);
+- the same word inside an identifier on the line: `cardNumber`, `CreditCard`, `card_number`;
+- the same word in the header of the value's column in a CSV/TSV export (`card_number`, `cardNumber`);
+- group separators: `4532 0151 1283 0366`, `4532-0151-1283-0366`.
+
+A held value is still reported and still redacted. It carries `confidence_ceiling: 75` in its
+metadata, which the document bridge applies again after its context adjustment, so a document
+classified as tabular or financial cannot lift it back to HIGH. A line with a negative keyword
+(`order id`, `hash`, `test`, ...) is unaffected: it already scores the value at the bottom of LOW.
 
 ## Implementation Details
 
@@ -131,7 +149,7 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            
 ---------------------------------------------------------------------------------------------
 [HIGH  ] creditcard   VISA                  100.00% line     1 4532-0151-1283-0366 document.txt
 [HIGH  ] creditcard   VISA                  100.00% line     2 4532 0151 1283 0366 document.txt
-[HIGH  ] creditcard   VISA                  100.00% line     3 4532015112830366    document.txt
+[MEDIUM] creditcard   VISA                   75.00% line     3 4532015112830366    document.txt
 [HIGH  ] creditcard   MASTERCARD            100.00% line     4 5425-2334-3010-9903 document.txt
 [HIGH  ] creditcard   AMERICAN_EXPRESS      100.00% line     5 3782-8224-6310-005  document.txt
 [LOW   ] creditcard   VISA                   15.00% line     6 4000-0000-0000-0002 document.txt
@@ -139,6 +157,7 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            
 
 **Key Features:**
 - **Multiple Formats**: Same card detected in dash, space, and no-separator formats
+- **Card Labels**: The no-separator form on line 3 has no card word on its line, so it is held to MEDIUM 75 (see "Bare runs need a card label to reach HIGH")
 - **Accurate Typing**: Precise card type identification (VISA, MASTERCARD, etc.)
 - **Confidence Scoring**: High confidence for real cards, low for test patterns
 - **Context Awareness**: Confidence adjusted based on surrounding text

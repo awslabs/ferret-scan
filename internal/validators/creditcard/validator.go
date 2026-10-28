@@ -10,10 +10,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
 )
 
 // Pre-compiled regex patterns to avoid repeated compilation in hot paths.
@@ -31,6 +33,49 @@ var (
 // what makes redaction cover it. See the application site for why erasure was a
 // leak rather than a low-ranked finding.
 const intrinsicValueFloor = 15.0
+
+// bareRunCeiling is the highest confidence a BARE digit run (no group separators) may reach
+// when nothing names it as a card: no card word on its line, none inside an identifier on the
+// line, none in the header of the column it sits in (#802).
+//
+// calculateConfidence scores the value alone. It starts at 60 and adds +15 for a known vendor
+// prefix, +10 for non-repeating digits and +10 for seven or more distinct digits, so a
+// Luhn-valid run with a known prefix and seven distinct digits scored 95 HIGH on its digits
+// alone. One random run in ten passes Luhn, so a request counter or a row count reached HIGH
+// with no evidence that it was a card. Measured on main: "Row counter reached
+// 4145723220667500 by the end of the run." reported VISA 95, and so did 13-, 14-, 15- and
+// 19-digit runs on lines with no card word.
+//
+// A ceiling and not a veto, for the reason intrinsicValueFloor gives: only a reported value is
+// redacted, and a PAN pasted into a log line with no label is still a PAN. The value stays
+// reported and redacted, ranked MEDIUM. 75 is the value the ipaddress validator holds a
+// context-free dotted quad to (ambiguousShapeCap), for the same reason: inside MEDIUM, below
+// the HIGH boundary of 90.
+//
+// What clears it, and why the cases it leaves alone are safe:
+//   - Group separators. "4145 7232 2066 7500" and "4145-7232-2066-7500" are written the way
+//     cards are printed; a counter is not.
+//   - A card word, on the line or in a label for the value (see bareRunLabels). It only
+//     clears the ceiling; it raises nothing, so a labelled value keeps exactly today's score.
+//   - A negative word on the line (hash, order, test, ...). analyzeContextLower has already
+//     scored the value to at most intrinsicValueFloor, and the document bridge's largest
+//     adjustment (+50, context.GetConfidenceAdjustment) takes that to 65, under this ceiling,
+//     so a bound published there could never bind. Leaving those values out keeps their
+//     metadata as it was.
+const bareRunCeiling = 75.0
+
+// confidenceCeilingKey is the Match.Metadata key the document bridge reads to apply
+// bareRunCeiling again after its own context adjustment (validators.ConfidenceCeilingKey).
+// The bridge raises confidence AFTER this validator returns, so a cap applied only here is
+// lifted straight back. Measured on main: a bare unknown-vendor run in a CSV data row scored
+// 70 here, below the ceiling, and was reported at 90 HIGH after the bridge's +20. That is why
+// the key is published on every held value, not only on the ones the cap lowered (the #545
+// lesson in the ipaddress validator).
+//
+// The literal is duplicated rather than imported, as the ipaddress, ssn and email validators
+// do: importing internal/validators would make this package depend on the bridge it feeds.
+// bare_run_ceiling_test.go reads the key under the bridge's spelling, so a drift fails there.
+const confidenceCeilingKey = "confidence_ceiling"
 
 // Validator implements the detector.Validator interface for detecting
 // credit card numbers using optimized regex patterns, contextual analysis, and validation algorithms.
@@ -242,6 +287,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 	var matches []detector.Match
 	lines := strings.Split(content, "\n")
+	// labels answers, lazily, whether a bare run with no keyword on its line is named as a
+	// card somewhere else (an identifier on the line, its column header). See bareRunCeiling.
+	labels := bareRunLabels{content: content}
 
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
@@ -262,10 +310,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		//   - contextImpact: keyword-context impact is purely a function of the
 		//     line (analyzeContext never inspects the match text), so it is the
 		//     same for every match on the line.
-		//   - tabular: isTabularData inspects only the line, never the match.
+		//   - tabularLine: isTabularData inspects only the line, never the match.
 		lowerLine := strings.ToLower(line)
 		contextImpact := v.analyzeContextLower(lowerLine)
-		tabular := v.isTabularData(line, "")
+		tabularLine := v.isTabularData(line, "")
+		labels.reset(lineNum, line)
 
 		// Find potential matches. The pattern requires a delimiter on BOTH sides
 		// of the number, so a naive FindAllStringSubmatch (non-overlapping over
@@ -327,12 +376,12 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// (matchStart/matchEnd) rather than re-running strings.Index over the
 			// whole line for every match — both faster and free of the latent
 			// first-occurrence bug when a token repeats on the line. The
-			// per-line contextImpact/tabular values are reused (see above).
+			// per-line contextImpact/tabularLine values are reused (see above).
 			contextInfo := v.buildContextInfoAt(line, matchStart, matchEnd)
 			confidence += contextImpact
 
 			// Check for tabular data and boost confidence
-			if tabular {
+			if tabularLine {
 				confidence += 10 // Boost for tabular data
 			}
 
@@ -401,7 +450,29 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				confidence = intrinsicValueFloor
 			}
 
+			// Bare-run ceiling (#802, see bareRunCeiling): a bare run whose line said nothing
+			// either way is held to MEDIUM unless a label elsewhere names it as a card. This is
+			// decided on the value's shape and labels, never on its current score, so a value
+			// already under the ceiling still publishes it for the bridge to apply after its own
+			// raise. The cheap tests run first; labels.namesCard is computed at most once per
+			// line and the table once per document.
+			capEligible := contextImpact == 0 && isBareDigitRun(match) && !labels.namesCard(v, matchStart)
+			if capEligible && confidence > bareRunCeiling {
+				confidence = bareRunCeiling
+			}
+
 			cardType := v.getCreditCardType(cleanMatch)
+			meta := map[string]any{
+				"card_type":         cardType,
+				"vendor":            vendor,
+				"validation_checks": checks,
+				"context_impact":    contextImpact,
+				"source":            "preprocessed_content",
+				"original_file":     originalPath,
+			}
+			if capEligible {
+				meta[confidenceCeilingKey] = bareRunCeiling
+			}
 			matches = append(matches, detector.Match{
 				Text:       match,
 				LineNumber: lineNum + 1,
@@ -410,14 +481,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Filename:   originalPath,
 				Validator:  "creditcard",
 				Context:    contextInfo,
-				Metadata: map[string]any{
-					"card_type":         cardType,
-					"vendor":            vendor,
-					"validation_checks": checks,
-					"context_impact":    contextImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				},
+				Metadata:   meta,
 			})
 		}
 	}
@@ -431,6 +495,91 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	}
 
 	return matches, nil
+}
+
+// bareRunLabels looks for a card label for a bare run whose own line carried no keyword, in
+// the two places machine-written text puts one. Both lookups run on first need and are
+// cached, the table once per document and the line state once per line, so content with no
+// bare unlabelled run pays nothing and a line packed with runs stays linear
+// (TestCreditCardValidator_SingleLineDoSPerformance).
+//
+//   - An identifier on the line, as in {"cardNumber": "..."} or <CreditCard>...</CreditCard>.
+//     Once the line is lower-cased, whole-word matching cannot see "card" inside
+//     "cardnumber", so the line is first split at its camelCase boundaries with the rule the
+//     header reader uses (tabular.NormalizeHeader, #548). snake_case needs no split: '_' is
+//     already a boundary (buildKeywordRegex).
+//   - The header of the run's column when the document is a delimited table. A CSV export
+//     names the column once, in the header row, and no data row carries the word.
+//
+// Either one only clears the ceiling. It raises no score, and it is consulted only for a line
+// with no negative word, so every value that is not held keeps exactly the score it had.
+type bareRunLabels struct {
+	content string
+	table   *tabular.Table // nil until first needed
+
+	lineNum         int
+	line            string
+	identifierDone  bool
+	identifierLabel bool
+	boundsDone      bool
+	bounds          *tabular.LineBounds
+}
+
+// reset points the cache at a new line and drops the previous line's state.
+func (l *bareRunLabels) reset(lineNum int, line string) {
+	l.lineNum, l.line = lineNum, line
+	l.identifierDone, l.identifierLabel = false, false
+	l.boundsDone, l.bounds = false, nil
+}
+
+// namesCard reports whether an identifier on the current line, or the header of the column
+// holding byte offset matchStart, carries one of the validator's positive card words.
+func (l *bareRunLabels) namesCard(v *Validator, matchStart int) bool {
+	if v.positiveKeywordRegex == nil {
+		return false
+	}
+	if !l.identifierDone {
+		l.identifierDone = true
+		// A camelCase boundary needs an upper-case letter, so a line without one is skipped
+		// rather than copied rune by rune. An unchanged split adds nothing the line's own
+		// keyword scan has not already seen.
+		if strings.IndexFunc(l.line, unicode.IsUpper) >= 0 {
+			if split := tabular.NormalizeHeader(l.line); split != l.line {
+				l.identifierLabel = v.positiveKeywordRegex.MatchString(strings.ToLower(split))
+			}
+		}
+	}
+	if l.identifierLabel {
+		return true
+	}
+
+	if l.table == nil {
+		l.table = tabular.Analyze(l.content)
+	}
+	// The header row holds column names, not values, so it has no header of its own.
+	if !l.table.IsTable() || l.lineNum == l.table.HeaderLine() {
+		return false
+	}
+	if !l.boundsDone {
+		l.boundsDone = true
+		l.bounds = l.table.Bounds(l.line)
+	}
+	header := l.table.HeaderAt(l.bounds, matchStart)
+	return header != "" && v.positiveKeywordRegex.MatchString(header)
+}
+
+// isBareDigitRun reports whether a matched candidate is digits only, without the space or
+// dash group separators the formatted alternatives of the pattern allow.
+func isBareDigitRun(match string) bool {
+	if match == "" {
+		return false
+	}
+	for i := 0; i < len(match); i++ {
+		if match[i] < '0' || match[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // isValidLength checks if the number has a valid credit card length.
