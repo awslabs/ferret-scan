@@ -9,6 +9,6 @@
 ## Checklist
 
 - [ ] `make test` and `make build` pass
-- [ ] **CHANGELOG:** an entry under `## [Unreleased]` in `CHANGELOG.md` if this changes the shipped binary — or the `no-changelog` label if nothing user-visible changed ([CONTRIBUTING](https://github.com/awslabs/ferret-scan/blob/main/CONTRIBUTING.md#changelog-entries)). The `CHANGELOG` check reports on this.
+- [ ] **CHANGELOG:** a fragment `changelog.d/NNNN-slug.md` ([format](https://github.com/awslabs/ferret-scan/blob/main/changelog.d/README.md)) if this changes what a release ships — or the `no-changelog` label if nothing user-visible changed ([CONTRIBUTING](https://github.com/awslabs/ferret-scan/blob/main/CONTRIBUTING.md#changelog-entries)). Do not edit `## [Unreleased]` in `CHANGELOG.md`. The `CHANGELOG` check reports on this.
 - [ ] Golden corpus regenerated and the diff explained, if detection, scoring, output or redaction changed
 - [ ] `Closes #N` for any issue this resolves

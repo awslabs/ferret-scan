@@ -35,7 +35,7 @@ To send us a pull request, please:
 1. Fork the repository.
 2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
 3. Ensure local tests pass (`make test`; `make build` must also succeed).
-4. Add an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) if your change affects the shipped binary — see [CHANGELOG entries](#changelog-entries).
+4. Add a release-note fragment under [changelog.d/](changelog.d/) if your change affects what a release ships — see [CHANGELOG entries](#changelog-entries). Do not edit `CHANGELOG.md` for it.
 5. Commit to your fork using clear commit messages, following the [Conventional Commits](docs/CONVENTIONAL_COMMITS.md) format used by this repository.
 6. Send us a pull request, answering any default questions in the pull request interface.
 7. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
@@ -52,29 +52,32 @@ unexplained golden diff will be treated as a regression. Test fixtures must use 
 
 ### CHANGELOG entries
 
-[CHANGELOG.md](CHANGELOG.md) is hand-written prose, and the release notes are built from it: when a
-release tag is pushed, `## [Unreleased]` is renamed to that version. An entry left out of a PR is
-therefore left out of the release.
+[CHANGELOG.md](CHANGELOG.md) is hand-written prose, and the release notes are built from it. Each
+pull request writes its entry as a file of its own under [changelog.d/](changelog.d/); when a release
+tag is pushed, every fragment there is rendered into a dated section of `CHANGELOG.md`, line for
+line, and removed. An entry left out of a PR is therefore left out of the release. Entries used to
+be added under `## [Unreleased]` directly, and every PR edited the same lines there, so any two open
+PRs conflicted ([#821](https://github.com/awslabs/ferret-scan/issues/821)).
 
-A pull request **needs an entry under `## [Unreleased]`** when it changes what a release ships: any
-non-test Go file under `cmd/` or `pkg/` or in a package they import, a file those packages embed,
+A pull request **needs a fragment** when it changes what a release ships: any non-test Go file
+under `cmd/` or `pkg/` or in a package they import, a file those packages embed,
 `go.mod`, `.go-version`, the pre-commit hook definitions (`.pre-commit-hooks.yaml` and the root
 `pyproject.toml` stub), or the PyPI wrapper (`python-package/ferret_scan/`, its `pyproject.toml`,
 `setup.py` and `MANIFEST.in`) — or when its title is marked breaking (`feat!:`, `fix(scope)!:`).
 Tests, docs, CI, the runtime config files and test-support packages need none. The `CHANGELOG`
 check computes the Go part from the import graph and tells you which of your files triggered it.
 
+Name the file `changelog.d/NNNN-slug.md`: NNNN is the issue number zero-padded to four digits, the
+slug is lowercase kebab-case (`changelog.d/0800-otp-lowercase-word-not-base32.md`). Its content is
+exactly the entry you would have written under `[Unreleased]`: one heading from the canonical list
+in [changelog.d/README.md](changelog.d/README.md), a blank line, then `- ` bullets with continuation
+lines indented two spaces, and nothing else. `make changelog-preview` prints the section your
+fragment will land in. The check validates every fragment a PR adds or edits, and fails a PR that
+adds an entry under `## [Unreleased]` in `CHANGELOG.md` itself.
+
 Write for the person upgrading: what changed in behaviour, and what they should do about it. If a
 required PR genuinely has nothing user-visible — a pure refactor, say — add the `no-changelog` label
 instead; that records the decision on the PR. Dependabot PRs are exempt.
-
-The entry must land under `[Unreleased]` itself; a subsection heading on its own is not an entry.
-Every release section repeats the same subsection headings (`### 🐛 Bug Fixes`, …), so placing an
-entry beside the first matching heading can put it in an old release — twelve entries had landed in
-releases from months earlier before the check existed. Add the subsection under `[Unreleased]` if it
-is not there yet. If a release is cut while your PR is open, merge `main` into your branch before
-merging: the check that passed earlier read the old layout, and the post-merge check will fail on
-`main` if your entry ends up under the new release's heading.
 
 ## Finding contributions to work on
 
