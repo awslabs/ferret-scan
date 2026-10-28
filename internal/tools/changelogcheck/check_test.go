@@ -8,8 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/tools/changelogfrag"
 )
 
 func testSet() ShippedSet {
@@ -57,73 +60,174 @@ func TestShippedSetContains(t *testing.T) {
 	}
 }
 
-// changelog builds a CHANGELOG with an [Unreleased] section and one released section, and returns
-// the 1-based line numbers of the first line under each.
-func changelog() (lines []string, underUnreleased, underReleased int) {
-	lines = strings.Split(strings.Join([]string{
+// changelog builds CHANGELOG.md as main holds it after #821: a pointer paragraph under
+// [Unreleased], then one released section. under adds lines right after the pointer and returns
+// the file with their 1-based numbers; released is the number of the released section's bullet.
+func changelog(under ...string) (lines []string, added []int, released int) {
+	lines = []string{
 		"# Changelog", // 1
-		"",            // 2
-		"## [Unreleased]",
 		"",
-		"### 🐛 Bug Fixes", // 5
+		"## [Unreleased]", // 3
 		"",
-		"- **x:** new entry", // 7
+		"Entries for the next release live in changelog.d/.", // 5
 		"",
-		"## [v1.0.0] - 2026-01-01", // 9
-		"",
-		"### 🐛 Bug Fixes", // 11
-		"",
-		"- **y:** old entry", // 13
-	}, "\n"), "\n")
-	return lines, 7, 13
+	}
+	for _, l := range under {
+		lines = append(lines, l)
+		added = append(added, len(lines))
+	}
+	if len(under) > 0 && under[len(under)-1] != "" {
+		lines = append(lines, "")
+	}
+	lines = append(lines, "## [v1.0.0] - 2026-01-01", "", "### 🐛 Bug Fixes", "", "- **y:** old entry")
+	return lines, added, len(lines)
+}
+
+const validFragment = "### 🐛 Bug Fixes\n\n- **x (shape):** a note\n  with a continuation line\n"
+
+func newFragment(p, content string) FragmentChange {
+	return FragmentChange{Path: p, Added: true, Regular: true, Content: []byte(content)}
 }
 
 func TestEvaluate(t *testing.T) {
-	cl, inU, inRel := changelog()
+	pointer, _, inRel := changelog()
 	shipped := []string{"cmd/main.go"}
+	fresh := newFragment("changelog.d/0800-a-fix.md", validFragment)
 	for _, tc := range []struct {
 		name         string
 		in           Input
 		wantRequired bool
 		wantPass     bool
 		wantWarning  bool
+		wantMessage  string
 	}{
 		{name: "test-only change needs nothing",
 			in: Input{ChangedFiles: []string{"cmd/main_test.go", "docs/x.md"}}, wantPass: true},
-		{name: "shipped change without CHANGELOG fails",
-			in: Input{ChangedFiles: shipped}, wantRequired: true},
-		{name: "shipped change with entry under Unreleased passes",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: cl, ChangelogAdded: []int{inU}},
-			wantRequired: true, wantPass: true},
-		// The stale-anchor case: a PR open across a release whose entry merged into the section that
-		// release promoted. The file changed, so a "did CHANGELOG.md change" check would pass it.
-		{name: "entry only under a released section fails",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: cl, ChangelogAdded: []int{inRel}},
+		{name: "shipped change without a fragment fails, and says what to write",
+			in: Input{ChangedFiles: shipped}, wantRequired: true, wantMessage: "NNNN-slug.md"},
+		{name: "shipped change with a new fragment passes",
+			in:           Input{ChangedFiles: append(shipped, fresh.Path), Fragments: []FragmentChange{fresh}},
+			wantRequired: true, wantPass: true, wantMessage: fresh.Path},
+		{name: "a fragment on a PR that needs none passes",
+			in:       Input{ChangedFiles: []string{"docs/x.md", fresh.Path}, Fragments: []FragmentChange{fresh}},
+			wantPass: true, wantMessage: "renders " + fresh.Path},
+
+		// The always-on [Unreleased] rule: whatever the PR changes, whatever it carries.
+		{name: "an old-style entry under Unreleased fails, even beside a fragment",
+			in: func() Input {
+				cl, add, _ := changelog("### 🐛 Bug Fixes", "", "- **x:** the old way")
+				return Input{ChangedFiles: append(shipped, "CHANGELOG.md", fresh.Path), Fragments: []FragmentChange{fresh},
+					ChangelogAfter: cl, ChangelogAdded: add}
+			}(), wantRequired: true, wantMessage: "fragment under changelog.d/ instead"},
+		{name: "an old-style entry under Unreleased fails a docs PR",
+			in: func() Input {
+				cl, add, _ := changelog("### 🔨 Internal", "", "- **docs:** x")
+				return Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: cl, ChangelogAdded: add}
+			}(), wantMessage: "lines (7, 9)"},
+		{name: "the opt-out label does not excuse an old-style entry",
+			in: func() Input {
+				cl, add, _ := changelog("- **x:** a bullet")
+				return Input{ChangedFiles: append(shipped, "CHANGELOG.md"), Labels: []string{"no-changelog"},
+					ChangelogAfter: cl, ChangelogAdded: add}
+			}(), wantRequired: true},
+		{name: "the bot exemption does not excuse an old-style entry",
+			in: func() Input {
+				cl, add, _ := changelog("- **deps:** bump")
+				return Input{ChangedFiles: []string{"go.mod", "CHANGELOG.md"}, Author: "dependabot[bot]",
+					ChangelogAfter: cl, ChangelogAdded: add}
+			}()},
+		{name: "a subsection heading alone under Unreleased fails",
+			in: func() Input {
+				cl, add, _ := changelog("### 🐛 Bug Fixes")
+				return Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: cl, ChangelogAdded: add}
+			}()},
+		{name: "a numbered item under Unreleased fails",
+			in: func() Input {
+				cl, add, _ := changelog("1. fixed a thing")
+				return Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: cl, ChangelogAdded: add}
+			}()},
+		{name: "an edited continuation line under Unreleased fails",
+			in: func() Input {
+				cl, _, _ := changelog("### 🐛 Bug Fixes", "", "- **x:** merged before #821", "  continued")
+				return Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: cl, ChangelogAdded: []int{10}}
+			}(), wantMessage: "line 10 under"},
+		{name: "only a blank line added under Unreleased is nothing",
+			in:       Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: pointer, ChangelogAdded: []int{4}},
+			wantPass: true},
+		{name: "prose added under Unreleased passes with a warning",
+			in: func() Input {
+				cl, add, _ := changelog("Another sentence about the section.")
+				return Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: cl, ChangelogAdded: add}
+			}(), wantPass: true, wantWarning: true},
+
+		// Released sections: a correction is allowed; it is never the next release's note.
+		{name: "an entry only under a released section, and no fragment, fails",
+			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: pointer, ChangelogAdded: []int{inRel}},
 			wantRequired: true, wantWarning: true},
-		{name: "entry plus a history correction passes with a warning",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: cl, ChangelogAdded: []int{inU, inRel}},
+		{name: "a fragment plus a history correction passes with a warning",
+			in: Input{ChangedFiles: append(shipped, "CHANGELOG.md", fresh.Path), Fragments: []FragmentChange{fresh},
+				ChangelogAfter: pointer, ChangelogAdded: []int{inRel}},
 			wantRequired: true, wantPass: true, wantWarning: true},
-		{name: "only a blank line added under Unreleased is not an entry",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: cl, ChangelogAdded: []int{6}},
-			wantRequired: true},
-		{name: "a subsection heading alone is not an entry",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: cl, ChangelogAdded: []int{5}},
-			wantRequired: true},
-		// The shape of the 12 historical misplacements: the heading added where it belongs, the bullet
-		// beside the same heading in an old release.
-		{name: "a heading under Unreleased with its bullet under an old release fails",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: cl, ChangelogAdded: []int{5, inRel}},
-			wantRequired: true, wantWarning: true},
-		{name: "an Unreleased heading the promotion script would reject does not count",
-			in: Input{ChangedFiles: append(shipped, "CHANGELOG.md"),
-				ChangelogAfter: append([]string{"## [Unreleased] "}, cl[3:]...), ChangelogAdded: []int{5}},
-			wantRequired: true, wantWarning: true},
+		{name: "a docs PR correcting a released section is warned, not failed",
+			in:       Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: pointer, ChangelogAdded: []int{inRel}},
+			wantPass: true, wantWarning: true},
+
+		// The [Unreleased] block must stay one the promotion accepts, on every PR that touches it.
+		{name: "an Unreleased heading the promotion script would reject fails",
+			in: Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"},
+				ChangelogAfter: append([]string{"## [Unreleased] "}, pointer[3:]...), ChangelogAdded: []int{1}},
+			wantMessage: "no '## [Unreleased]' line"},
 		{name: "no Unreleased heading on the merge result fails",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: cl[8:], ChangelogAdded: []int{5}},
-			wantRequired: true, wantWarning: true},
+			in:          Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: pointer[6:], ChangelogAdded: []int{5}},
+			wantWarning: true},
 		{name: "deleted CHANGELOG fails",
-			in:           Input{ChangedFiles: append(shipped, "CHANGELOG.md"), ChangelogAfter: []string{}},
+			in: Input{ChangedFiles: append(shipped, "CHANGELOG.md", fresh.Path), Fragments: []FragmentChange{fresh},
+				ChangelogAfter: []string{}},
 			wantRequired: true},
+		{name: "no blank line where a release inserts its section fails",
+			in: Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"},
+				ChangelogAfter: append(append([]string{}, pointer[:5]...), pointer[6:]...), ChangelogAdded: []int{}},
+			wantMessage: "must be blank"},
+		{name: "an unparseable old-style entry already under Unreleased fails a PR that touches the file",
+			in: func() Input {
+				cl, _, rel := changelog("### ✨ New Features", "", "- merged before #821")
+				return Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: cl, ChangelogAdded: []int{rel}}
+			}(), wantWarning: true, wantMessage: "would stop the release"},
+
+		// Every added or edited fragment must render.
+		{name: "a malformed fragment fails a docs PR",
+			in: Input{ChangedFiles: []string{"docs/x.md"},
+				Fragments: []FragmentChange{newFragment("changelog.d/0801-bad.md", "### Bug Fixes\n\n- y\n")}},
+			wantMessage: "not one of the canonical headings"},
+		{name: "the opt-out label does not excuse a malformed fragment",
+			in: Input{ChangedFiles: shipped, Labels: []string{"no-changelog"},
+				Fragments: []FragmentChange{newFragment("changelog.d/0801-bad.md", "### 🐛 Bug Fixes\n\n- a\n\n- b\n")}},
+			wantRequired: true, wantMessage: "blank line inside the bullet list"},
+		{name: "an edited fragment that no longer parses fails",
+			in: Input{ChangedFiles: []string{"docs/x.md"}, Fragments: []FragmentChange{{Path: "changelog.d/0001-old.md",
+				Regular: true, Content: []byte("### 🐛 Bug Fixes\n- no blank line\n")}}}},
+		{name: "a misnamed fragment fails",
+			in:           Input{ChangedFiles: shipped, Fragments: []FragmentChange{fresh, newFragment("changelog.d/fix-thing.md", validFragment)}},
+			wantRequired: true, wantMessage: "changelog.d/fix-thing.md would stop the release"},
+		{name: "a fragment in a subdirectory fails",
+			in:           Input{ChangedFiles: shipped, Fragments: []FragmentChange{newFragment("changelog.d/v2/0800-a-fix.md", validFragment)}},
+			wantRequired: true, wantMessage: "changelog.d/0800-a-fix.md"},
+		{name: "a symlink fragment fails",
+			in:           Input{ChangedFiles: shipped, Fragments: []FragmentChange{{Path: "changelog.d/0800-a-fix.md", Added: true}}},
+			wantRequired: true, wantMessage: "symlink"},
+		{name: "editing an existing fragment does not satisfy the requirement",
+			in: Input{ChangedFiles: shipped, Fragments: []FragmentChange{{Path: "changelog.d/0001-old.md", Regular: true,
+				Content: []byte(validFragment)}}},
+			wantRequired: true, wantMessage: "does not count"},
+		{name: "adding the directory's README is not a fragment",
+			in:           Input{ChangedFiles: shipped, Fragments: []FragmentChange{newFragment("changelog.d/README.md", "# Fragments\n")}},
+			wantRequired: true},
+		{name: "editing the directory's README passes a docs PR",
+			in: Input{ChangedFiles: []string{"changelog.d/README.md"}, Fragments: []FragmentChange{{Path: "changelog.d/README.md",
+				Regular: true, Content: []byte("# Anything\n")}}},
+			wantPass: true},
+
+		// Exemptions and triggers, unchanged.
 		{name: "opt-out label passes a required PR",
 			in:           Input{ChangedFiles: shipped, Labels: []string{"bug", "No-Changelog "}},
 			wantRequired: true, wantPass: true},
@@ -135,9 +239,6 @@ func TestEvaluate(t *testing.T) {
 			in: Input{Title: "refactor(config)!: rename the profile key", ChangedFiles: []string{"docs/x.md"}}, wantRequired: true},
 		{name: "unscoped breaking title",
 			in: Input{Title: "feat!: drop v1 output", ChangedFiles: []string{"docs/x.md"}}, wantRequired: true},
-		{name: "a docs PR filing its entry under an old release is warned, not failed",
-			in:       Input{ChangedFiles: []string{"docs/x.md", "CHANGELOG.md"}, ChangelogAfter: cl, ChangelogAdded: []int{inRel}},
-			wantPass: true, wantWarning: true},
 		{name: "a bang outside the type is not breaking",
 			in: Input{Title: "fix: stop the panic!", ChangedFiles: []string{"docs/x.md"}}, wantPass: true},
 	} {
@@ -151,27 +252,60 @@ func TestEvaluate(t *testing.T) {
 			if len(r.Messages) == 0 {
 				t.Error("every decision must say why")
 			}
+			if tc.wantMessage != "" && !strings.Contains(strings.Join(r.Messages, "\n"), tc.wantMessage) {
+				t.Errorf("messages do not mention %q: %q", tc.wantMessage, r.Messages)
+			}
 		})
 	}
 }
 
-func TestEvaluatePostMerge(t *testing.T) {
-	cl, inU, inRel := changelog()
-	for _, tc := range []struct {
-		name        string
-		own, merged placement
-		wantPass    bool
-	}{
-		{"stale anchor: branch said Unreleased, merge said a release",
-			place(cl, []int{inU}), place(cl, []int{inRel}), false},
-		{"consistent: both under Unreleased", place(cl, []int{inU}), place(cl, []int{inU}), true},
-		{"a deliberate backfill is filed under the release on its own branch too",
-			place(cl, []int{inRel}), place(cl, []int{inRel}), true},
-		{"no CHANGELOG change", place(nil, nil), place(nil, nil), true},
-	} {
-		if r := EvaluatePostMerge(tc.own, tc.merged); r.Pass != tc.wantPass || len(r.Messages) == 0 {
-			t.Errorf("%s: pass=%v, want %v (%q)", tc.name, r.Pass, tc.wantPass, r.Messages)
+// A failure must be actionable by someone who has never seen a fragment: what to name the file,
+// which headings exist, how bullets go, and the opt-out.
+func TestMissingFragmentMessageCarriesTheWholeFormat(t *testing.T) {
+	r := Evaluate(Input{ChangedFiles: []string{"cmd/main.go"}, Shipped: testSet()})
+	msg := strings.Join(r.Messages, "\n")
+	for _, want := range append([]string{"changelog.d/", "NNNN-slug.md", "zero-padded", "\"- \"", "two spaces",
+		"make changelog-preview", "no-changelog", "cmd/main.go"}, changelogfrag.Headings...) {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the message lacks %q:\n%s", want, msg)
 		}
+	}
+}
+
+func TestLineList(t *testing.T) {
+	for want, ns := range map[string][]int{
+		"line 7":               {7},
+		"2 lines (7–8)":        {7, 8},
+		"4 lines (7–9, 12)":    {7, 8, 9, 12},
+		"3 lines (1, 3, 5)":    {1, 3, 5},
+		"5 lines (2–3, 10–12)": {2, 3, 10, 11, 12},
+	} {
+		if got := lineList(ns); got != want {
+			t.Errorf("lineList(%v) = %q, want %q", ns, got, want)
+		}
+	}
+}
+
+func TestParseRawDiff(t *testing.T) {
+	out := ":100644 100644 aaa bbb M\x00cmd/main.go\x00" +
+		":000000 100644 000 ccc A\x00changelog.d/0800-a b.md\x00" +
+		":100644 000000 ddd 000 D\x00changelog.d/0001-old.md\x00" +
+		":000000 120000 000 eee A\x00changelog.d/0802-link.md\x00"
+	got, err := parseRawDiff(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []change{
+		{status: 'M', newMode: "100644", path: "cmd/main.go"},
+		{status: 'A', newMode: "100644", path: "changelog.d/0800-a b.md"},
+		{status: 'D', newMode: "000000", path: "changelog.d/0001-old.md"},
+		{status: 'A', newMode: "120000", path: "changelog.d/0802-link.md"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v\nwant %+v", got, want)
+	}
+	if _, err := parseRawDiff("cmd/main.go\x00"); err == nil {
+		t.Error("name-only output accepted as raw output")
 	}
 }
 
@@ -270,10 +404,15 @@ func TestRunEndToEnd(t *testing.T) {
 	}
 	step("windows-only package", func() { write("internal/winonly/w.go", "package winonly\n\nvar X = 1\n") }, true, false)
 	step("unimported package", func() { write("internal/support/s.go", "package support\n\nvar X = 1\n") }, false, true)
+	step("fragment", func() {
+		write("cmd/main.go", "package main\n\nfunc main() { _ = 1 }\n")
+		write("changelog.d/0800-a-fix.md", "### 🐛 Bug Fixes\n\n- **x:** new\n")
+	}, true, true)
+	// Before #821 this was the passing case; an entry under [Unreleased] is now the conflict #821 ended.
 	step("entry under Unreleased", func() {
 		write("cmd/main.go", "package main\n\nfunc main() { _ = 1 }\n")
 		write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n- new\n\n## [v1.0.0] - 2026-01-01\n\n- old\n")
-	}, true, true)
+	}, true, false)
 	step("entry under the released section", func() {
 		write("cmd/main.go", "package main\n\nfunc main() { _ = 1 }\n")
 		write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [v1.0.0] - 2026-01-01\n\n- new\n- old\n")
@@ -304,87 +443,12 @@ func TestShippedSetOfThisRepository(t *testing.T) {
 		"internal/perfguard/perfguard.go":                        false,
 		"internal/goldencorpus/corpus.go":                        false,
 		"internal/tools/changelogcheck/check.go":                 false, // the checker is not shipped
+		"internal/tools/changelogfrag/frag.go":                   false, // nor the fragment grammar
+		"internal/tools/changelogrender/main.go":                 false, // nor the release-time renderer
 	} {
 		if got := s.Contains(p); got != want {
 			t.Errorf("Contains(%q) = %v, want %v", p, got, want)
 		}
-	}
-}
-
-// TestPostMergeCatchesAnEntryARaceMovedIntoARelease reproduces, with real git merges, the defect a
-// PR-time check cannot see: the check passed, a release was promoted while the PR was open, and the
-// clean three-way merge put the PR's entry under the promoted heading.
-func TestPostMergeCatchesAnEntryARaceMovedIntoARelease(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not on PATH")
-	}
-	dir := t.TempDir()
-	write := func(body string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	git := func(args ...string) string {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
-			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com", "GIT_CONFIG_GLOBAL=", "GIT_CONFIG_NOSYSTEM=1")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-		return strings.TrimSpace(string(out))
-	}
-	const before = "# C\n\n## [Unreleased]\n\n### Fixes\n\n- a\n\n## [v1.0.0] - 2026-01-01\n\n- old\n"
-	// What scripts/promote-changelog.sh does: rename [Unreleased] and put an empty one above it.
-	const promoted = "# C\n\n## [Unreleased]\n\n## [v1.1.0] - 2026-02-01\n\n### Fixes\n\n- a\n\n## [v1.0.0] - 2026-01-01\n\n- old\n"
-
-	git("init", "-q", "-b", "main")
-	write(before)
-	git("add", ".")
-	git("commit", "-q", "-m", "base")
-	base := git("rev-parse", "HEAD")
-	t.Chdir(dir)
-
-	merge := func(name, branchFrom, body string) (mainBefore, merged, prHead string) {
-		t.Helper()
-		git("checkout", "-q", "-b", name, branchFrom)
-		write(body)
-		git("commit", "-q", "-am", name)
-		prHead = git("rev-parse", "HEAD")
-		git("checkout", "-q", "main")
-		mainBefore = git("rev-parse", "HEAD")
-		git("merge", "-q", "--no-ff", "--no-edit", name)
-		return mainBefore, git("rev-parse", "HEAD"), prHead
-	}
-
-	// Opened before the release: its entry sits under [Unreleased] on its own branch.
-	git("checkout", "-q", "-b", "promote", base)
-	write(promoted)
-	git("commit", "-q", "-am", "promote v1.1.0")
-	git("checkout", "-q", "main")
-	git("merge", "-q", "--ff-only", "promote")
-	b, h, p := merge("stale", base, strings.Replace(before, "- a\n", "- a\n- mine\n", 1))
-	if got := git("show", h+":CHANGELOG.md"); !strings.Contains(got, "## [v1.1.0] - 2026-02-01\n\n### Fixes\n\n- a\n- mine") {
-		t.Fatalf("the merge did not reproduce the race; the fixture is not exercising it:\n%s", got)
-	}
-	if r, err := runPostMerge(b, h, p); err != nil || r.Pass {
-		t.Errorf("stale anchor not reported: pass=%v err=%v %q", r.Pass, err, r.Messages)
-	}
-
-	// A deliberate backfill into the released section, written against the promoted layout.
-	b, h, p = merge("backfill", "main", strings.Replace(promoted, "- a\n", "- a\n- forgotten\n", 1))
-	if r, err := runPostMerge(b, h, p); err != nil || !r.Pass {
-		t.Errorf("a deliberate backfill was reported: pass=%v err=%v %q", r.Pass, err, r.Messages)
-	}
-
-	// An ordinary PR written after the release, entry under the new [Unreleased].
-	cur := git("show", "main:CHANGELOG.md")
-	b, h, p = merge("fresh", "main", strings.Replace(cur, "## [Unreleased]\n", "## [Unreleased]\n\n- new\n", 1))
-	if r, err := runPostMerge(b, h, p); err != nil || !r.Pass {
-		t.Errorf("an ordinary PR was reported: pass=%v err=%v %q", r.Pass, err, r.Messages)
 	}
 }
 

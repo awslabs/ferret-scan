@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/tools/changelogfrag"
 )
 
 // targetOSes are unioned because `go list` resolves build constraints for one GOOS at a time: a
@@ -28,18 +30,13 @@ var targetOSes = []string{"linux", "darwin", "windows"}
 var hunkHeader = regexp.MustCompile(`^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@`)
 
 func main() {
+	// -base/-head default to a pull_request checkout of GitHub's merge result, where HEAD^1 is the
+	// base tip; scripts/pr-checklist.sh passes the branch's merge-base and HEAD instead.
 	base := flag.String("base", "HEAD^1", "commit the PR is compared against (on a pull_request checkout, HEAD^1 is the base tip)")
 	head := flag.String("head", "HEAD", "commit holding the merge result")
-	prHead := flag.String("pr-head", "", "post-merge mode: the merged PR's head commit; compares where its branch put the CHANGELOG entry with where the merge put it")
 	flag.Parse()
 
-	var res Result
-	var err error
-	if *prHead != "" {
-		res, err = runPostMerge(*base, *head, *prHead)
-	} else {
-		res, err = run(*base, *head)
-	}
+	res, err := run(*base, *head)
 	if err != nil {
 		annotate("error", "changelog check could not run: "+err.Error())
 		os.Exit(2)
@@ -81,16 +78,20 @@ func run(base, head string) (Result, error) {
 
 	// -z: git otherwise C-quotes paths with unusual bytes, and a quoted path never matches the set.
 	// Plumbing (diff-tree) rather than `git diff`, so a developer's diff.relative, diff.external or
-	// rename config cannot change what this reads when it runs from make pr-checklist.
-	changedOut, err := output("git", "diff-tree", "-r", "--name-only", "--no-renames", "-z", base, head)
+	// rename config cannot change what this reads when it runs from make pr-checklist. The raw
+	// format carries each path's status and new mode: an added fragment is the requirement, and a
+	// fragment must be a plain file.
+	rawOut, err := output("git", "diff-tree", "-r", "--no-renames", "-z", base, head)
+	if err != nil {
+		return Result{}, err
+	}
+	changes, err := parseRawDiff(rawOut)
 	if err != nil {
 		return Result{}, err
 	}
 	var changed []string
-	for _, f := range strings.Split(changedOut, "\x00") {
-		if f != "" {
-			changed = append(changed, f)
-		}
+	for _, c := range changes {
+		changed = append(changed, c.path)
 	}
 
 	in := Input{
@@ -105,33 +106,52 @@ func run(base, head string) (Result, error) {
 		}
 	}
 
-	for _, f := range changed {
-		if f == "CHANGELOG.md" {
+	for _, c := range changes {
+		switch {
+		case c.path == "CHANGELOG.md":
 			if in.ChangelogAfter, in.ChangelogAdded, err = changelogAdditions(base, head); err != nil {
 				return Result{}, err
 			}
+		case strings.HasPrefix(c.path, changelogfrag.Dir+"/") && c.status != 'D':
+			f := FragmentChange{Path: c.path, Added: c.status == 'A', Regular: c.newMode == "100644" || c.newMode == "100755"}
+			if f.Regular {
+				// cat-file, not show: the blob's exact bytes, with no textconv or filter in between.
+				content, err := output("git", "cat-file", "blob", head+":"+c.path)
+				if err != nil {
+					return Result{}, err
+				}
+				f.Content = []byte(content)
+			}
+			in.Fragments = append(in.Fragments, f)
 		}
 	}
 	return Evaluate(in), nil
 }
 
-// runPostMerge checks a merge that already landed on main: base..head is the push, prHead the
-// merged PR's last commit. The PR's own view is diffed from its merge-base with base, which is the
-// main it was written against.
-func runPostMerge(base, head, prHead string) (Result, error) {
-	mergedLines, mergedAdded, err := changelogAdditions(base, head)
-	if err != nil {
-		return Result{}, err
+// change is one entry of `git diff-tree -r -z` raw output.
+type change struct {
+	status  byte   // A, D, M, T, ...
+	newMode string // 000000 for a deletion
+	path    string
+}
+
+// parseRawDiff reads `git diff-tree -r --no-renames -z` raw output: for each path, a
+// ":oldmode newmode oldsha newsha status" field, then the path, each NUL-terminated.
+func parseRawDiff(out string) ([]change, error) {
+	fields := strings.Split(out, "\x00")
+	var cs []change
+	for i := 0; i < len(fields); i++ {
+		if fields[i] == "" {
+			continue
+		}
+		meta := strings.Fields(strings.TrimPrefix(fields[i], ":"))
+		if !strings.HasPrefix(fields[i], ":") || len(meta) != 5 || meta[4] == "" || i+1 >= len(fields) {
+			return nil, fmt.Errorf("unexpected git diff-tree output near %q", fields[i])
+		}
+		cs = append(cs, change{status: meta[4][0], newMode: meta[1], path: fields[i+1]})
+		i++
 	}
-	mb, err := output("git", "merge-base", prHead, base)
-	if err != nil {
-		return Result{}, err
-	}
-	ownLines, ownAdded, err := changelogAdditions(strings.TrimSpace(mb), prHead)
-	if err != nil {
-		return Result{}, err
-	}
-	return EvaluatePostMerge(place(ownLines, ownAdded), place(mergedLines, mergedAdded)), nil
+	return cs, nil
 }
 
 // changelogAdditions returns CHANGELOG.md at head and the line numbers base..head added to it. A file
