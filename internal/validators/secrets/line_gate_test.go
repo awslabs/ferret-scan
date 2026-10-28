@@ -218,7 +218,7 @@ func soundnessLines(t *testing.T) int {
 }
 
 // TestLineGateIsSound is the gate's contract: a line containsSecretIndicators rejects has no
-// keyword-pass candidate. Two seeded populations, as #765 specifies:
+// keyword-pass candidate. Three seeded populations, the first two as #765 specifies:
 //
 //   - planted: a benign manifest member and a secret on one line, the secret before or after the
 //     member, inside its value, or as its key. Before #765 the three whole-line checks rejected
@@ -227,9 +227,12 @@ func soundnessLines(t *testing.T) int {
 //     neither in each slot the shape allows. This is the population a narrower veto can still get
 //     wrong: a stem in the key, or a host ending in a stem with a port after it, makes the keyword
 //     pass read an assignment, and the veto must let those lines through.
+//   - short assignment (#815): a stem assigned an 8- to 11-byte value, mostly under 20 bytes, where
+//     the generic fall-through cannot admit a line and only an admit for the stem can. Before #815
+//     every `session` line under 20 bytes here was rejected with a candidate.
 //
-// Both also carry a floor that keeps the test from passing vacuously: most planted lines must have
-// a candidate, and the veto must still reject a share of the in-shape lines.
+// All three also carry a floor that keeps the test from passing vacuously: most planted and short
+// lines must have a candidate, and the veto must still reject a share of the in-shape lines.
 func TestLineGateIsSound(t *testing.T) {
 	v := NewValidator()
 	n := soundnessLines(t)
@@ -242,6 +245,7 @@ func TestLineGateIsSound(t *testing.T) {
 	}{
 		{"planted", 765001, gateSecrets.plantedLine, 0.90, 0},
 		{"in-shape", 765002, gateSecrets.inShapeLine, 0.10, 0.10},
+		{"short assignment", 815001, gateSecrets.shortAssignmentLine, 0.90, 0},
 	}
 	for _, p := range populations {
 		t.Run(p.name, func(t *testing.T) {
