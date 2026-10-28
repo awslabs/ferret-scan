@@ -110,6 +110,10 @@ begins; a Stripe prefix glued to a word on its left with no digit in the body
 - **JSON/YAML Patterns**: `"keyword": "value"`
 - **Case Insensitive**: Matches regardless of case
 - **Flexible Separators**: Handles various assignment operators
+- **Masked values are not secrets**: an unquoted value that is only `*` (this tool's own
+  redaction, #522), or a provider prefix from the grammar table followed by at least 8 `*` and
+  nothing else (`gho_` and 36 `*`, the way several tools print a token in a log, #807), is no
+  candidate. `gho_****abcd****` keeps real characters and is still reported.
 
 ### Credentials in URIs
 
@@ -150,7 +154,7 @@ never the key, scheme or host, all of which the author of the line controls:
 
 | value | disposition |
 |---|---|
-| the whole value is `$NAME` or `$(…)`, or only `*` | no candidate |
+| the whole value is `$NAME` or `$(…)`, or only `*`, or a provider prefix and then at least 8 `*` and nothing else (#807) | no candidate |
 | default vocabulary (`password`, `passwd`, `pass`, `pwd`, `secret`, `guest`, `postgres`, `root`, `admin`, `changeme`, `user`, `username`, `default`, `test`, `example`, `demo`, any case), or the user name repeated | **LOW**, at most 55 |
 | rejected by `plausibleUnquotedSecret` (shorter than 8, all-lowercase under 16, digits only, a UUID) or `shoutySentinel` (`REDACTED`, `CHANGEME`) | **LOW**, at most 55 |
 | anything else | scored like any other candidate |

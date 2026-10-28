@@ -108,7 +108,7 @@ var uriValueRules = []struct {
 	disposition uriDisposition
 }{
 	{"a reference: the whole value is $NAME or $(...)", func(v, _ string) bool { return isWholeReference(v) }, uriNoCandidate},
-	{"this tool's own mask output: only '*'", func(v, _ string) bool { return isAllMaskCharacters(v) }, uriNoCandidate},
+	{"mask output: only '*', or a provider prefix and then only '*' (#807)", func(v, _ string) bool { return isMaskedValue(v) }, uriNoCandidate},
 	{"default-credential vocabulary", func(v, _ string) bool { return len(v) <= 8 && uriDefaultVocabulary[strings.ToLower(v)] }, uriLow},
 	{"the user name repeated", func(v, u string) bool { return u != "" && strings.EqualFold(v, u) }, uriLow},
 	{"implausible as a secret", func(v, _ string) bool { return !plausibleUnquotedSecret(v) || shoutySentinel.MatchString(v) }, uriLow},
