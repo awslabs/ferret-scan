@@ -629,6 +629,69 @@ func writeUnscannedReport(w io.Writer, entries []unscannedEntry, totalFiles int,
 	return true
 }
 
+// failOnIncompleteHint is the sentence that names the gate. It is the full report's hint, word for
+// word; TestPrecommitNoticeGateSentenceIsTheFullReports holds the two to the same text.
+const failOnIncompleteHint = "Add --fail-on-incomplete to make this a non-zero exit (3)."
+
+// writePrecommitUnscannedNotice is the pre-commit form of the report above: one line, no frame, no
+// paths, because pre-commit output is read in a terminal mid-commit. It writes nothing for no entries.
+//
+// It names the cause. The line used to read "(contents unreadable)" for every entry, which was true
+// while the unreadable channel was the only one feeding it and stopped being true as the other causes
+// were added. Measured on main (#817): a file a --validator-budget cut short and a .pdf holding plain
+// text both printed "(contents unreadable)", while the full report filed them under "coverage cut
+// short" and "cannot parse". Both files had been read, so the line sent the developer to permissions
+// and encodings when the fix was the budget or the gate.
+//
+// The labels are unscannedCause.String(), the strings the full report prints, so the two disclosures
+// cannot name the same entry differently. One cause prints its label alone; several print a count
+// each, in the order the full report groups them (the enum order).
+//
+// The gate sentence is added only for a cut-short, and only when the caller says this run exits 0.
+// A cut-short file was read, so the levers left are the budget and the gate, and the gate is the one a
+// developer can pull mid-commit. Under --fail-on-incomplete (flag, config or profile) the run already
+// exits 3, and a commit blocked by a finding exits 1 whatever the flag says; in both cases the sentence
+// would claim an effect the flag does not have.
+func writePrecommitUnscannedNotice(w io.Writer, entries []unscannedEntry, exitsZero bool) {
+	if len(entries) == 0 {
+		return
+	}
+
+	count := map[unscannedCause]int{}
+	for _, e := range entries {
+		count[e.Cause]++
+	}
+	present := make([]unscannedCause, 0, len(count))
+	for c := range count {
+		present = append(present, c)
+	}
+	sort.Slice(present, func(i, j int) bool { return present[i] < present[j] })
+
+	causes := present[0].String()
+	if len(present) > 1 {
+		parts := make([]string, 0, len(present))
+		for _, c := range present {
+			parts = append(parts, fmt.Sprintf("%d %s", count[c], c))
+		}
+		causes = strings.Join(parts, ", ")
+	}
+
+	// The count and its noun are the entries, as they were before #817 and as the full report's
+	// header counts them.
+	noun := "files"
+	if len(entries) == 1 {
+		noun = "file"
+	}
+
+	gate := ""
+	if exitsZero && count[causeCutShort] > 0 {
+		gate = " " + failOnIncompleteHint
+	}
+
+	fmt.Fprintf(w, "ferret-scan: %d %s NOT examined (%s) — findings may be missing. "+
+		"Re-run without --pre-commit for detail.%s\n", len(entries), noun, causes, gate)
+}
+
 // firstNonEmpty returns the first non-empty string.
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {

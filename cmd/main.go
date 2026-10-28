@@ -2729,16 +2729,13 @@ func main() {
 	// with no stated reason.
 	//
 	// One line, no frame, no per-file list: pre-commit output is read in a terminal
-	// mid-commit, so it states the count and how to see the rest.
+	// mid-commit, so it states the count, the cause and how to see the rest.
 	if precommitConfig != nil && len(unscannedEntries) > 0 {
-		noun := "files"
-		if len(unscannedEntries) == 1 {
-			noun = "file"
-		}
-		fmt.Fprintf(os.Stderr,
-			"ferret-scan: %d %s NOT examined (contents unreadable) — findings may be missing. "+
-				"Re-run without --pre-commit for detail.\n",
-			len(unscannedEntries), noun)
+		// The exit this run ends with, from the same inputs as the os.Exit at the end of main, so
+		// the line names --fail-on-incomplete only when adding the flag would change the outcome.
+		exitsZero := resolveIncompleteExitCode(precommitDecision.WithToolError(scanMalfunction).ExitCode,
+			finalConfig.failOnIncomplete, len(unscannedEntries)+len(unredactedDisclosure)) == 0
+		writePrecommitUnscannedNotice(os.Stderr, unscannedEntries, exitsZero)
 	}
 
 	// The same courtesy for a redaction refusal, and it matters MORE here.
