@@ -117,6 +117,24 @@ var Cases = []Case{
 			"sequential-should-not-match: 111-11-1111\n",
 	},
 	{
+		Name: "ssn_url_path_component_decoys",
+		Description: "The #804 decoys, which must stay EMPTY: a bare nine-digit run after '-' or '/' in " +
+			"the path of an http(s) URL is a resource identifier, the tail of a profile slug or a video " +
+			"ID, not an SSN. Lines 1-2 are the issue's reproducer; line 3 is its row with an e-mail " +
+			"domain that is not `example`, which main scored HIGH from the two-tab tabular boost alone; " +
+			"line 4 is the same row as CSV; line 5 shows `Social:` labels a profile rather than an " +
+			"identifier, so it does not lift the veto. Positive controls (labelled values, query values " +
+			"after '=', file names, s3:// keys) are unit tests in internal/validators/ssn, so this case " +
+			"adds no finding to the census.",
+		Checks: []string{"SSN"},
+		Input: "Profile: https://www.linkedin.com/in/michael-o-291135150\n" +
+			"Candidate\tMichael O\thttps://www.linkedin.com/in/michael-o-291135150\t555-0100\tm.o@example.com\n" +
+			"Candidate\tMichael O\thttps://www.linkedin.com/in/michael-o-291135150\t555-0100\tm.o@mail.invalid\n" +
+			"Michael O,https://www.linkedin.com/in/michael-o-291135150,555-0100\n" +
+			"Social: https://www.linkedin.com/in/michael-o-291135150\n" +
+			"[Portfolio](https://vimeo.com/291135150)\n",
+	},
+	{
 		Name:        "creditcard_brands",
 		Description: "Luhn-valid cards across brands; locks brand classification in Match.Type.",
 		Checks:      []string{"CREDIT_CARD"},

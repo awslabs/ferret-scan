@@ -90,7 +90,19 @@ Test SSN: 000-12-3456
 Example: 123-45-6789
 → Low confidence detection
 → Reason: Valid format but negative keyword "example"
+
+Profile: https://www.linkedin.com/in/michael-o-291135150
+→ Not detected
+→ Reason: a bare 9-digit run after `-` or `/` in the path of an http(s) URL is a resource ID
+  (a profile-slug tail, a video ID), not an SSN
 ```
+
+The URL rule is deliberately narrow, because a value that is not reported is not redacted. These
+still report exactly as before: a line or column header that names the identifier (`SSN`, `tax id`,
+`employee id`, ...; `social` and `hr` do not count), a query value (`?ssn=291135150`), a fragment, a
+file name (`.../291135150.pdf`), a stored-file scheme (`s3://`, `file://`, `ftp://`), a field after
+a quote, comma or semicolon (the next JSON or CSV field), the dashed form (`291-13-5150`) and a link
+written without a scheme (`linkedin.com/in/...`).
 
 ## Common False Positives
 
@@ -101,6 +113,7 @@ The validator is designed to minimize false positives from:
 - Account numbers
 - Serial numbers
 - Other 9-digit identification numbers
+- Numeric IDs in web URL paths (profile-slug tails, video and listing IDs)
 
 ## Usage Notes
 
