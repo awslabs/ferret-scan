@@ -156,7 +156,7 @@ never the key, scheme or host, all of which the author of the line controls:
 |---|---|
 | the whole value is `$NAME` or `$(…)`, or only `*`, or a provider prefix and then at least 8 `*` and nothing else (#807) | no candidate |
 | default vocabulary (`password`, `passwd`, `pass`, `pwd`, `secret`, `guest`, `postgres`, `root`, `admin`, `changeme`, `user`, `username`, `default`, `test`, `example`, `demo`, any case), or the user name repeated | **LOW**, at most 55 |
-| rejected by `plausibleUnquotedSecret` (shorter than 8, all-lowercase under 16, digits only, a UUID) or `shoutySentinel` (`REDACTED`, `CHANGEME`) | **LOW**, at most 55 |
+| rejected by `plausibleUnquotedSecret` (shorter than 8, all-lowercase or sentence-case (`Checklist`) under 16, digits only, a UUID) or `shoutySentinel` (`REDACTED`, `CHANGEME`) | **LOW**, at most 55 |
 | anything else | scored like any other candidate |
 
 A LOW finding is kept, not dropped: `postgres:postgres` can be the real
