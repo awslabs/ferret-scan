@@ -552,8 +552,9 @@ secret = "password"
   literals, JWT and PEM patterns, plural keys, collections and list tails) runs only
   on lines `containsSecretIndicators` admits. Its contract is soundness: a line it
   rejects holds no keyword-pass candidate, so skipping it saves the regex work and
-  changes no result (one known gap, not closed here: `session=` with an 8- to 11-byte
-  value on a line under 20 bytes, which the generic admits do not take). It rejects
+  changes no result. Every keyword stem the patterns are compiled from is admitted at
+  any length beside an `=` or `:`, through the same derived matcher the veto uses, so
+  `session=<8 bytes>` is scanned like `token=<8 bytes>` (#815). It rejects
   a line under 12 bytes, a lone structural token, a line that none of its admits
   takes, and one shape on purpose: a line that is wholly one benign package-manifest
   member (`"version": "1.3.0",`, `"dev": true,`, `"integrity": "sha512-…",`, a

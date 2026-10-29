@@ -718,6 +718,33 @@ var Cases = []Case{
 			"}\n",
 	},
 	{
+		Name: "secrets_short_session_line_decoys",
+		Description: "The lines #815 newly lets through the line pre-check, which must stay EMPTY. " +
+			"containsSecretIndicators admitted keyword lines through a hand list with no word for the " +
+			"stem `session`, and admits a line with `=` or `:` from 20 bytes, so every line here, 13 to " +
+			"19 bytes, was rejected before the keyword pass ran. It now admits every stem the patterns are " +
+			"compiled from beside an `=` or `:` at any length, so these lines reach the keyword pass, and " +
+			"none of them is a credential: a boolean, a word under 16 lower-case letters, a number, a " +
+			"date, a JSON member with a boolean, stems glued into longer keys (`SESSION_TTL`, " +
+			"`session_id`, `session_timeout`), a type annotation, a reference and `None`.\n" +
+			"  The fix also makes `session=<8-11 bytes>` report on such a line, exactly as `token=` " +
+			"does; that positive is pinned by the unit tests in " +
+			"internal/validators/secrets/line_gate_stem_admit_test.go rather than here, since a positive " +
+			"case would move the metadata-key census.",
+		Checks: []string{"SECRETS"},
+		Input: "session: false\n" +
+			"session=disabled\n" +
+			"session: 3600\n" +
+			"session=2026-10-28\n" +
+			"\"session\": true,\n" +
+			"SESSION_TTL=3600\n" +
+			"session_id: none\n" +
+			"session=Optional[S]\n" +
+			"session: ${SESSION}\n" +
+			"session = None\n" +
+			"session_timeout=30m\n",
+	},
+	{
 		Name:        "ip_addresses",
 		Description: "Public vs private/loopback IPv4; locks IP_ADDRESS context handling.",
 		Checks:      []string{"IP_ADDRESS"},

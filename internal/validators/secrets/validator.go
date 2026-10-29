@@ -879,9 +879,9 @@ func (v *Validator) getSecretType(match string) string {
 //
 // A rejected line is one on which the keyword pass would have found nothing, so skipping it saves
 // the regex work and changes no result; TestLineGateIsSound checks that over seeded lines built to
-// break it. One known gap is in the generic admits' fall-through, not in the veto: `session` is a
-// keyword stem but not an admit word, so `session=` with an 8- to 11-byte value on a line under 20
-// bytes is rejected although the unquoted pattern would take the value. Only the keyword pass is
+// break it, and TestLineGateAdmitsEveryStem over a minimal assignment for every stem. The stems are
+// admitted through lineHasKeywordStem, derived from the lists the patterns are compiled from, so a
+// stem cannot be left without an admit (#815). Only the keyword pass is
 // behind this gate. The entropy pass, the AWS secret-key path, block-sequence items, URI user info
 // (#766) and the multi-line pass run on every line.
 //
@@ -972,6 +972,18 @@ func (v *Validator) containsSecretIndicators(line string) bool {
 	// SECURITY: If line has assignment operator and is long enough, scan it
 	// This catches unquoted secrets like: SESSION_TOKEN=abc123def456ghi789
 	if hasEquals && len(line) >= 20 {
+		return true
+	}
+
+	// The stems themselves (#815). Every keyword-pass pattern that is not a provider literal, a JWT or
+	// a PEM pattern is anchored on a stem from quotedSecretKeywords or secretAssignmentKeywords
+	// followed by `=` or `:`, so a line holding a stem and either byte is admitted at any length.
+	// lineHasKeywordStem is the matcher derived from those two lists, the one the veto uses, so a stem
+	// added there is admitted here with no second edit. The hand list above had no word for
+	// `session`: `session=` with an 8- to 11-byte value on a line under 20 bytes was never scanned,
+	// while `token=` reported the same values at 100. Last on purpose: every line with `=` or `:` of
+	// 20 bytes or more was admitted above, so this only ever scans a line of 12 to 19 bytes.
+	if hasEquals && lineHasKeywordStem(line) {
 		return true
 	}
 
@@ -1468,8 +1480,8 @@ func isMaskedValue(v string) bool {
 
 // findKeywordSecrets is the keyword pass behind its line gate: keywordCandidates on every line
 // containsSecretIndicators admits, nothing on a line it rejects. The gate's contract is that a
-// rejected line has no candidate, so this returns what keywordCandidates would (save the one gap
-// containsSecretIndicators documents); the split exists so that the contract can be tested.
+// rejected line has no candidate, so this returns what keywordCandidates would; the split exists so
+// that the contract can be tested.
 func (v *Validator) findKeywordSecrets(line string) []candidate {
 	// Early exit: skip lines that clearly don't contain secrets
 	if !v.containsSecretIndicators(line) {
