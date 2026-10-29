@@ -29,6 +29,11 @@ BASE="${1:-origin/main}"
 export GOFLAGS="${GOFLAGS:--mod=mod}"
 export GOPROXY="${GOPROXY:-off}"   # the dev laptop blocks the proxy; offline by default
 
+out=$(mktemp -d "${TMPDIR:-/tmp}/pr-checklist.XXXXXX") || {
+  echo "Failed to create checklist output directory" >&2
+  exit 1
+}
+
 pass=0 fail=0 manual=0
 line() { printf '%-34s %s\n' "$1" "$2"; }
 ok()   { line "$1" "RAN — $2";          pass=$((pass+1)); }
@@ -76,15 +81,15 @@ fi
 # 1. build / vet / gofmt
 unf=$(gofmt -l ./cmd ./internal ./pkg 2>/dev/null)
 if [ -n "$unf" ]; then bad "1 gofmt" "$(echo "$unf" | tr '\n' ' ')"; else ok "1 gofmt" "clean"; fi
-if go vet ./... >/tmp/_vet 2>&1; then ok "1 go vet" "clean"; else bad "1 go vet" "see /tmp/_vet"; fi
-if go build ./... >/tmp/_build 2>&1; then ok "1 go build" "ok"; else bad "1 go build" "see /tmp/_build"; fi
+if go vet ./... >"$out/vet" 2>&1; then ok "1 go vet" "clean"; else bad "1 go vet" "see $out/vet"; fi
+if go build ./... >"$out/build" 2>&1; then ok "1 go build" "ok"; else bad "1 go build" "see $out/build"; fi
 
 # 2. full suite, uncached. -count=1 matters: a cached PASS proves nothing about
 #    the current tree.
-if go test -count=1 ./cmd/... ./internal/... ./pkg/... >/tmp/_suite 2>&1; then
-  ok "2 full suite (-count=1)" "$(grep -c '^ok' /tmp/_suite) packages ok"
+if go test -count=1 ./cmd/... ./internal/... ./pkg/... >"$out/suite" 2>&1; then
+  ok "2 full suite (-count=1)" "$(grep -c '^ok' "$out/suite") packages ok"
 else
-  bad "2 full suite (-count=1)" "$(grep -E '^(FAIL|---)' /tmp/_suite | head -3 | tr '\n' ' ')"
+  bad "2 full suite (-count=1)" "$(grep -E '^(FAIL|---)' "$out/suite" | head -3 | tr '\n' ' ')"
 fi
 
 # 3. golden corpus. Regenerating and finding no diff is the assertion; a change
@@ -166,10 +171,10 @@ fi
 
 # 13. race, WHOLE module. Racing only the package you touched misses the
 #     concurrency the worker pool introduces around it.
-if go test -race -count=1 ./cmd/... ./internal/... ./pkg/... >/tmp/_race 2>&1; then
-  ok "13 race (whole module)" "$(grep -c '^ok' /tmp/_race) packages ok"
+if go test -race -count=1 ./cmd/... ./internal/... ./pkg/... >"$out/race" 2>&1; then
+  ok "13 race (whole module)" "$(grep -c '^ok' "$out/race") packages ok"
 else
-  bad "13 race (whole module)" "$(grep -E '^(FAIL|WARNING: DATA RACE)' /tmp/_race | head -3 | tr '\n' ' ')"
+  bad "13 race (whole module)" "$(grep -E '^(FAIL|WARNING: DATA RACE)' "$out/race" | head -3 | tr '\n' ' ')"
 fi
 
 # -short, because CI uses it and a -short-only skip can hide a broken test.
@@ -191,6 +196,7 @@ fi
 
 echo
 echo "=== summary: $pass ran, $fail failed, $manual need manual work ==="
+printf 'Captured output: %s\n' "$out"
 if [ "$manual" -gt 0 ]; then
   echo "The NEEDS-MANUAL items are not optional. A sink dimension left unrun is how a"
   echo "cleartext leak ships. See docs/testing/TEST_PLAN.md."
