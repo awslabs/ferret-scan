@@ -29,15 +29,15 @@
             }
           ],
           "message": {
-            "text": "Passport Number Detected in <golden:passport_label_above_value> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '512345678'"
+            "text": "Passport Number Detected in <golden:passport_label_above_value> at line 4 (confidence: 100.0% - HIGH). Matched text: '512345678'"
           },
           "properties": {
-            "confidence": 80,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
             "metadata": {
-              "confidence_adjustment": 0,
+              "confidence_adjustment": 20,
               "context_confidence": 1,
-              "context_doctype": "Unknown",
+              "context_doctype": "CSV",
               "context_domain": "Government",
               "context_impact": 20,
               "country": "UK",
@@ -64,7 +64,7 @@
             },
             "validator": "passport"
           },
-          "rank": 90,
+          "rank": 100,
           "ruleId": "PASSPORT"
         },
         {
@@ -87,15 +87,15 @@
             }
           ],
           "message": {
-            "text": "Passport Number Detected in <golden:passport_label_above_value> at line 2 (confidence: 75.0% - MEDIUM). Matched text: '987654321'"
+            "text": "Passport Number Detected in <golden:passport_label_above_value> at line 2 (confidence: 95.0% - HIGH). Matched text: '987654321'"
           },
           "properties": {
-            "confidence": 75,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
             "metadata": {
-              "confidence_adjustment": 0,
+              "confidence_adjustment": 20,
               "context_confidence": 1,
-              "context_doctype": "Unknown",
+              "context_doctype": "CSV",
               "context_domain": "Government",
               "context_impact": 15,
               "country": "UK",
@@ -122,7 +122,7 @@
             },
             "validator": "passport"
           },
-          "rank": 87.5,
+          "rank": 97.5,
           "ruleId": "PASSPORT"
         }
       ],

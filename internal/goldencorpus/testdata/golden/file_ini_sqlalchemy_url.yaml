@@ -2,19 +2,19 @@ results:
     - text: Q7rpn8Wjk8DMn76B
       line_number: 3
       type: API_KEY_OR_SECRET
-      confidence: 85
-      confidence_level: MEDIUM
+      confidence: 100
+      confidence_level: HIGH
       filename: alembic.ini
       validator: secrets
       metadata:
         confidence_adjustment: 0
         context_confidence: 1
-        context_doc_type: Unknown
-        context_doctype: Unknown
+        context_doc_type: Configuration
+        context_doctype: Configuration
         context_domain: Retail
         detection_method: uri_userinfo
         environment_type: unknown
-        original_confidence: 85
+        original_confidence: 100
         secret_type: API_KEY_OR_SECRET
         semantic_context:
             FinancialData: 0
@@ -24,6 +24,7 @@ results:
             TestData: 0
         source: preprocessed_content
         validation_checks:
+            config_file_boost: true
             has_entropy: true
             min_length: true
             not_common_word: true

@@ -35,20 +35,20 @@
             }
           ],
           "message": {
-            "text": "Secret or API Key Detected in src/models.py at line 31 (confidence: 85.0% - MEDIUM). Matched text: 'TripleEnvS3cretVal99'"
+            "text": "Secret or API Key Detected in src/models.py at line 31 (confidence: 100.0% - HIGH). Matched text: 'TripleEnvS3cretVal99'"
           },
           "properties": {
-            "confidence": 85,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 1,
-              "context_doc_type": "Unknown",
-              "context_doctype": "Unknown",
+              "context_doc_type": "Configuration",
+              "context_doctype": "Configuration",
               "context_domain": "Government",
               "detection_method": "keyword_pattern",
               "environment_type": "unknown",
-              "original_confidence": 85,
+              "original_confidence": 100,
               "secret_type": "API_KEY_OR_SECRET",
               "semantic_context": {
                 "FinancialData": 0,
@@ -59,6 +59,7 @@
               },
               "source": "preprocessed_content",
               "validation_checks": {
+                "config_file_boost": true,
                 "has_entropy": true,
                 "min_length": true,
                 "not_common_word": true,
@@ -70,7 +71,7 @@
             },
             "validator": "secrets"
           },
-          "rank": 87.5,
+          "rank": 95,
           "ruleId": "API_KEY_OR_SECRET"
         },
         {
@@ -100,20 +101,20 @@
             }
           ],
           "message": {
-            "text": "Secret or API Key Detected in src/models.py at line 32 (confidence: 85.0% - MEDIUM). Matched text: 'TripleEnvPassVal42'"
+            "text": "Secret or API Key Detected in src/models.py at line 32 (confidence: 100.0% - HIGH). Matched text: 'TripleEnvPassVal42'"
           },
           "properties": {
-            "confidence": 85,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 1,
-              "context_doc_type": "Unknown",
-              "context_doctype": "Unknown",
+              "context_doc_type": "Configuration",
+              "context_doctype": "Configuration",
               "context_domain": "Government",
               "detection_method": "keyword_pattern",
               "environment_type": "unknown",
-              "original_confidence": 85,
+              "original_confidence": 100,
               "secret_type": "API_KEY_OR_SECRET",
               "semantic_context": {
                 "FinancialData": 0,
@@ -124,6 +125,7 @@
               },
               "source": "preprocessed_content",
               "validation_checks": {
+                "config_file_boost": true,
                 "has_entropy": true,
                 "min_length": true,
                 "not_common_word": true,
@@ -135,7 +137,7 @@
             },
             "validator": "secrets"
           },
-          "rank": 87.5,
+          "rank": 95,
           "ruleId": "API_KEY_OR_SECRET"
         }
       ],
