@@ -24,12 +24,13 @@ var (
 	// Base32-encoded TOTP/HOTP secrets: 16-64 uppercase letters A-Z and digits 2-7
 	// (the RFC 4648 base32 alphabet). Requires word boundaries and exactly 16-64 chars.
 	// We match only uppercase; CalculateConfidence normalizes to upper for validation.
+	// A digit-free candidate spelled like an English word is dropped (isWordShape).
 	reBase32Secret = regexp.MustCompile(`\b[A-Z2-7]{16,64}\b`)
 
 	// Lowercase base32 secrets: same charset but lowercase. Some tools/configs emit
 	// secrets in lowercase (e.g., "k5cuwy3znrxw4z3t"). Matched separately and only
 	// considered when positive OTP context is present on the line. A digit-free
-	// candidate spelled like an English word is dropped (isLowercaseWordShape).
+	// candidate spelled like an English word is dropped (isWordShape).
 	reBase32SecretLower = regexp.MustCompile(`\b[a-z2-7]{16,64}\b`)
 
 	// Recovery/backup codes: groups of 4-10 alphanumeric blocks separated by dashes
@@ -451,6 +452,12 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				if !v.isValidBase32(secret) {
 					continue
 				}
+				// Reject a digit-free candidate spelled like an English word: the
+				// guard the lowercase pass applies since #800, so "RESPONSIBILITIES"
+				// is dropped exactly as "responsibilities" is (#838).
+				if v.isWordShape(secret) {
+					continue
+				}
 				emit(loc[0], loc[1]-loc[0], "OTP_SECRET", true)
 			}
 
@@ -477,7 +484,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					continue
 				}
 				// Reject a digit-free candidate spelled like an English word (#800).
-				if v.isLowercaseWordShape(secret) {
+				if v.isWordShape(secret) {
 					continue
 				}
 				emit(loc[0], loc[1]-loc[0], "OTP_SECRET", true)
@@ -970,15 +977,20 @@ func (v *Validator) containsLikelyEnglish(s string) bool {
 	return false
 }
 
-// isLowercaseWordShape reports whether a lowercase candidate is spelled like an
-// English word rather than drawn at random from the base32 alphabet (#800).
+// isWordShape reports whether a candidate is spelled like an English word rather
+// than drawn at random from the base32 alphabet (#800, #838). It ignores ASCII
+// case, so both base32 passes ask the same question of the same letters.
 //
-// Every letter is in the base32 alphabet, so once the lowercase pass uppercases
-// a candidate, isValidBase32 accepts any all-letter string of 16-64 characters,
-// and isLikelyWord knows only patterns and a short word list. Measured before
-// this, on lines naming MFA or two-factor: "responsibilities" 95 HIGH,
-// "intellectualproperty" and the run-together "configurationsvalidators" 90,
-// "cryptographically" 85, "operationalizing" 70.
+// Every letter is in the base32 alphabet, so isValidBase32 accepts any
+// all-letter string of 16-64 characters, and isLikelyWord knows only patterns
+// and a short word list. Measured before #800, on lines naming MFA or
+// two-factor: "responsibilities" 95 HIGH, "intellectualproperty" and the
+// run-together "configurationsvalidators" 90, "cryptographically" 85,
+// "operationalizing" 70. #800 applied this test to the lowercase pass only, and
+// the uppercase pass then reported the same words in capitals (#838): measured
+// on main through the CLI, "otp_secret = RESPONSIBILITIES" 85 MEDIUM and
+// "mfa_totp_secret = RESPONSIBILITIES" 95 HIGH, while the lowercase spelling of
+// that line reported nothing.
 //
 // The test is the letter shape, not a word list: a vowel share (a, e, i, o, u,
 // y) of 1/4 to 3/5 and no run of five consonants. Random base32 letters are
@@ -997,13 +1009,18 @@ func (v *Validator) containsLikelyEnglish(s string) bool {
 // 97.3% of 20,000 glued word pairs; most misses join two words across five
 // consonants ("aggregationschlemiel").
 //
-// The uppercase pass does not use this (#800 scoped the fix to the lowercase
-// pass): RFC 4648 specifies the base32 alphabet in uppercase, so that is where
-// real secrets mostly appear, and it keeps its existing guards.
-func (v *Validator) isLowercaseWordShape(s string) bool {
+// The cost is the same in both passes, and it matters most in the uppercase
+// one: RFC 4648 writes the alphabet in uppercase, so that is where real secrets
+// mostly appear. A digit-free uppercase secret shaped like a word is dropped
+// exactly as its lowercase form already was.
+func (v *Validator) isWordShape(s string) bool {
 	vowels, run, maxRun := 0, 0, 0
 	for i := 0; i < len(s); i++ {
-		switch c := s[i]; {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		switch {
 		case c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' || c == 'y':
 			vowels++
 			run = 0

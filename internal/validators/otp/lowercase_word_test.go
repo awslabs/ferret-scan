@@ -95,8 +95,8 @@ func TestLowercaseSecretOnTheIssueLinesKeepsItsConfidence(t *testing.T) {
 	}
 }
 
-// The uppercase pass does not use the word test, so a lowercase secret holding a digit must score
-// exactly what its uppercase form scores, at every length the pattern admits.
+// Neither pass applies the word test to a value holding a digit, so a lowercase secret holding a
+// digit must score exactly what its uppercase form scores, at every length the pattern admits.
 func TestLowercaseSecretScoresLikeItsUppercaseForm(t *testing.T) {
 	v := NewValidator()
 	rng := rand.New(rand.NewSource(8001))
@@ -144,7 +144,7 @@ func TestDigitFreeRandomLowercaseSecretIsUsuallyStillReported(t *testing.T) {
 }
 
 // Values that sit exactly on the bounds. The two that are dropped are not English: they are the
-// rule's edges, the rare digit-free random secret the cost in isLowercaseWordShape counts. On main
+// rule's edges, the rare digit-free random secret the cost in isWordShape counts. On main
 // every one of these is reported at 95 or 100.
 func TestLowercaseWordShapeBoundaries(t *testing.T) {
 	cases := []struct {

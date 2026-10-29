@@ -857,6 +857,24 @@ var Cases = []Case{
 			"Two-factor setup is cryptographically enforced by the authenticator app.\n",
 	},
 	{
+		Name: "otp_uppercase_word_decoys",
+		Description: "The otp_lowercase_word_decoys words in capitals (#838). #800 applied its " +
+			"word-shape test to the lowercase base32 pass only, and the uppercase pass matches A-Z " +
+			"directly, so before the fix each capitalised word here was still an OTP_SECRET: 8 " +
+			"findings at 70-95, RESPONSIBILITIES 85 beside otp_secret and 95 beside mfa_totp_secret. " +
+			"Both passes now drop a digit-free candidate shaped like English, so this case must stay " +
+			"empty. Uppercase secrets with a digit are asserted in the otp unit tests.",
+		Checks: []string{"OTP"},
+		Input: "otp_secret = RESPONSIBILITIES\n" +
+			"mfa_totp_secret = RESPONSIBILITIES\n" +
+			"Shared RESPONSIBILITIES: the customer enables MFA and rotates the multi-factor secret on schedule.\n" +
+			"Teams are OPERATIONALIZING MFA enforcement across every account.\n" +
+			"The MFA policy covers INTELLECTUALPROPERTY repositories and their secret stores.\n" +
+			"mfa CONFIGURATIONSVALIDATORS run before the two-factor rollout\n" +
+			"Two-factor setup is CRYPTOGRAPHICALLY enforced by the authenticator app.\n" +
+			"TOTP SECRET KEY: ADMINISTRATIVELY DISABLED FOR THIS ACCOUNT\n",
+	},
+	{
 		Name: "medical_long_form_labels",
 		Description: "Long-form field labels as printed on physical insurance/Medicare cards and " +
 			"used in EDI 837 exports (\"member identification number\") alongside the abbreviated " +
