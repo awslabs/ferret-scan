@@ -787,6 +787,22 @@ var Cases = []Case{
 			"3 items in way of progress\n",
 	},
 	{
+		Name: "otp_lowercase_word_decoys",
+		Description: "Lowercase English words of 16+ letters on lines that name MFA or two-factor " +
+			"(#800). The lowercase base32 pass uppercases a candidate and every letter is in the " +
+			"base32 alphabet, so before the fix each word here was an OTP_SECRET: responsibilities " +
+			"95, intellectualproperty and the run-together configurationsvalidators 90, " +
+			"cryptographically 85, operationalizing 70. A digit-free candidate shaped like " +
+			"English (vowel share 1/4 to 3/5, no run of five consonants) is a word, so this case " +
+			"must stay empty. Lowercase secrets with a digit are asserted in the otp unit tests.",
+		Checks: []string{"OTP"},
+		Input: "Shared responsibilities: the customer enables MFA and rotates the multi-factor secret on schedule.\n" +
+			"Teams are operationalizing MFA enforcement across every account.\n" +
+			"The MFA policy covers intellectualproperty repositories and their secret stores.\n" +
+			"mfa configurationsvalidators run before the two-factor rollout\n" +
+			"Two-factor setup is cryptographically enforced by the authenticator app.\n",
+	},
+	{
 		Name: "medical_long_form_labels",
 		Description: "Long-form field labels as printed on physical insurance/Medicare cards and " +
 			"used in EDI 837 exports (\"member identification number\") alongside the abbreviated " +
