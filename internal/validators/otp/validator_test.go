@@ -299,12 +299,11 @@ func TestOTPValidator_RecoveryCodes(t *testing.T) {
 //
 // The cost: a positive keyword inside a placeholder fires too. In the AWS CLI
 // lines below "mfa" is only present inside "<no_mfa_console_signin_metric>", and
-// exposing it admits every hyphenated flag name on the line as a candidate. The
-// candidates themselves are extracted by reRecoveryCodeBlock either way — this
-// change only decides whether the line has recovery context — so the fix belongs
-// in the block regex (it matches mid-token, e.g. "metric-filter" out of
-// "put-metric-filter"), not in the boundary rule. Tracked separately; pinned
-// here so the tradeoff is visible rather than silent.
+// exposing it admitted every hyphenated flag name on the line as a candidate:
+// metric-filter, group-name and filter-name were reported at 65-75%. That is
+// closed by the block-shape rule from #798, not by the boundary rule: the line
+// keeps its recovery context, but a hyphenated word is not a recovery code
+// without a leading recovery-code label.
 func TestOTPValidator_SnakeCaseKeyword(t *testing.T) {
 	validator := NewValidator()
 
@@ -322,24 +321,19 @@ func TestOTPValidator_SnakeCaseKeyword(t *testing.T) {
 		}
 	})
 
-	t.Run("positive keyword inside placeholder grants context", func(t *testing.T) {
-		// Documents the known cost above: "mfa" appears only inside the
-		// placeholder, and that is enough to give the line recovery context.
+	t.Run("positive keyword inside placeholder does not make flag names codes", func(t *testing.T) {
+		// "mfa" appears only inside the placeholder, and that is still enough to
+		// give the line recovery context; the flag names are rejected by shape.
 		const line = "aws logs put-metric-filter --log-group-name <lg> --filter-name <no_mfa_console_signin_metric>"
 		matches, err := validator.ValidateContent(line, "runbook.md")
 		if err != nil {
 			t.Fatalf("ValidateContent() error = %v", err)
 		}
-		var got int
 		for _, m := range matches {
 			if m.Type == "RECOVERY_CODES" {
-				got++
+				t.Errorf("AWS CLI flag name %q reported as a recovery code at %.0f%%", m.Text, m.Confidence)
 			}
 		}
-		if got == 0 {
-			t.Skip("no recovery-code candidates on this line; the block regex changed")
-		}
-		t.Logf("known false positives on AWS CLI flag names: %d (see doc comment)", got)
 	})
 
 	t.Run("real recovery codes still detected", func(t *testing.T) {

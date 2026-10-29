@@ -841,6 +841,27 @@ var Cases = []Case{
 			"3 items in way of progress\n",
 	},
 	{
+		Name: "otp_recovery_hyphenated_word_decoys",
+		Description: "Kebab-case CLI flags, path segments and hyphenated prose on lines that name " +
+			"backup, recovery, emergency or MFA (#798). A bare topic word gives a line recovery " +
+			"context and reRecoveryCodeBlock matches any run of hyphenated words, so before the fix " +
+			"each of these lines reported its flags and compounds as RECOVERY_CODES: 20 findings at " +
+			"50-65, among them only-show-errors, data-bucket, update-function-code, Multi-Factor and " +
+			"the ferret-scan binary name from this repo's own rollback steps. A block with a " +
+			"lowercase letter and no digit is a recovery code only after an explicit recovery- or " +
+			"backup-code label, with equal-length groups, so this case must stay empty. Codes that " +
+			"carry a digit or no lowercase letter are asserted in the otp unit tests.",
+		Checks: []string{"OTP"},
+		Input: "aws s3 cp --recursive \"$WORK/backup/data-bucket/\" \"s3://$BUCKET/\" --only-show-errors\n" +
+			"  --template-body \"file://$WORK/backup/data-bucket/templates/main-template.yaml\" \\\n" +
+			"Restore from backup: aws lambda update-function-code --function-name my-func --s3-bucket data-bucket\n" +
+			"aws s3 sync s3://my-bucket/backup ./local-copy --only-show-errors --dry-run\n" +
+			"Backup and recovery plan for high-risk, cross-account, least-privilege and multi-region workloads.\n" +
+			"Role-Based access and Multi-Factor authentication are part of the emergency recovery runbook.\n" +
+			"cp /production/bin/ferret-scan /production/bin/ferret-scan.backup\n" +
+			"Store recovery codes in a well-known, tamper-evident location.\n",
+	},
+	{
 		Name: "otp_lowercase_word_decoys",
 		Description: "Lowercase English words of 16+ letters on lines that name MFA or two-factor " +
 			"(#800). The lowercase base32 pass uppercases a candidate and every letter is in the " +
