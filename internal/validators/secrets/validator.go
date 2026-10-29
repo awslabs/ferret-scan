@@ -484,6 +484,13 @@ func NewValidator() *Validator {
 			"xxxxxxxxxxxxxxxx", "000000000000000", "1234567890abcdef",
 			"abcdef123456789", "replace_with_actual", "insert_key_here",
 			"your_api_key_here", "test_api_key_here",
+			// Bare-token spellings of the same placeholders. A candidate is compared
+			// through normalizePlaceholder, so each entry also covers its dashed and
+			// upper-case forms (your-api-key, REPLACE_ME). "changeme" is deliberately
+			// not here: it is a real vendor default password, which the URI userinfo
+			// path reports at LOW (#766).
+			"your_api_key", "your_secret", "your_password", "your_token",
+			"replace_me",
 			// Same your_*_here family as the entry above. Reachable only now that
 			// unquoted assignments are detected at all: measured on an FP probe,
 			// "password=your_password_here" was one of only two lines out of 18 that
@@ -2315,7 +2322,7 @@ func (v *Validator) isMatchShellVariableReference(line, match string) bool {
 
 // isObviousPlaceholder checks if a match is an obvious placeholder that should never be detected
 func (v *Validator) isObviousPlaceholder(match string) bool {
-	lowerMatch := strings.ToLower(match)
+	lowerMatch := normalizePlaceholder(match)
 
 	// Check against globalTestPatterns for obvious placeholder patterns
 	// This eliminates duplication by using the existing patterns in the validator
@@ -2332,20 +2339,28 @@ func (v *Validator) isObviousPlaceholder(match string) bool {
 
 // isObviousPlaceholderPattern determines if a pattern is an obvious placeholder vs a test-specific pattern
 func (v *Validator) isObviousPlaceholderPattern(pattern string) bool {
-	// Obvious placeholders are the first 8 patterns in globalTestPatterns
+	// Obvious placeholders are the first 13 patterns in globalTestPatterns
 	// This eliminates duplication by using the existing patterns
-	obviousPlaceholderCount := 8
+	obviousPlaceholderCount := 13
 
 	lowerPattern := strings.ToLower(pattern)
 	for i, testPattern := range v.globalTestPatterns {
 		if i >= obviousPlaceholderCount {
-			break // Only check the first 8 patterns (obvious placeholders)
+			break // Only check the first 13 patterns (obvious placeholders)
 		}
 		if lowerPattern == strings.ToLower(testPattern) {
 			return true
 		}
 	}
 	return false
+}
+
+// normalizePlaceholder folds case and reads '-' as '_', so one globalTestPatterns entry (all of
+// which are lower case with underscores) covers every spelling of a placeholder: your_api_key_here,
+// your-api-key-here and YOUR-API-KEY-HERE. Callers still compare whole values, so a real secret
+// that merely contains one is unaffected.
+func normalizePlaceholder(s string) string {
+	return strings.ReplaceAll(strings.ToLower(s), "-", "_")
 }
 
 // processScopedCandidates is a unified method for processing both entropy and
@@ -3023,12 +3038,13 @@ func hasEnvMarker(lowerContent, marker string) bool {
 // matchesGlobalTestPatterns checks if match is in the global test patterns database
 func (v *Validator) matchesGlobalTestPatterns(match string) bool {
 	lowerMatch := strings.ToLower(match)
+	normMatch := normalizePlaceholder(match)
 
 	for _, testPattern := range v.globalTestPatterns {
 		lowerPattern := strings.ToLower(testPattern)
 
-		// Exact match
-		if lowerMatch == lowerPattern {
+		// Exact match, in any separator or case spelling
+		if normMatch == lowerPattern {
 			return true
 		}
 
