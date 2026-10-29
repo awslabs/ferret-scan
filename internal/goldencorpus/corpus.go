@@ -398,6 +398,31 @@ var Cases = []Case{
 			"id " + "AKIA" + "IOSFODNN7EXAMPLE" + "X\n",
 	},
 	{
+		Name: "secrets_provider_prefixed_mask_decoys",
+		Description: "The #807 false positive, which must stay EMPTY: a masked token that kept its " +
+			"provider prefix, `gho_` and 36 `*`, the way several tools print a token in a log. The " +
+			"already-masked veto in plausibleUnquotedSecret required the value to be ENTIRELY `*`, so " +
+			"one kept prefix defeated it and every line here reported API_KEY_OR_SECRET on main (75 " +
+			"to 85 alone, 85 together), the URI line through #766's uri_userinfo source. The prefix is " +
+			"public by construction and the rest is the mask, so the value carries no secret byte: " +
+			"isMaskedValue strips a prefix from the provider grammar table and requires what is left " +
+			"to be at least 8 `*` and nothing else.\n" +
+			"  Line 1 is the issue's line. Lines 2-7 are the other table rows under keys that carry a " +
+			"stem: ghp_, AKIA, sk_live_, glpat-, xoxb- and AIza. Line 8 is the same mask as a URI " +
+			"password, which the user-info disposition table now drops with the all-`*` row. The " +
+			"shapes that must still report (a random body, a tail with real characters, a tail under " +
+			"8) are positives and live in the unit tests, so this case adds no finding.",
+		Checks: []string{"SECRETS"},
+		Input: "Token: gho_" + strings.Repeat("*", 36) + " (masked in the log)\n" +
+			"GITHUB_TOKEN=ghp_" + strings.Repeat("*", 36) + "\n" +
+			"AWS_ACCESS_KEY=AKIA" + strings.Repeat("*", 16) + "\n" +
+			"STRIPE_SECRET_KEY=sk_" + "live_" + strings.Repeat("*", 24) + "\n" +
+			"GITLAB_TOKEN=glpat-" + strings.Repeat("*", 20) + "\n" +
+			"SLACK_BOT_TOKEN=xoxb-" + strings.Repeat("*", 24) + "\n" +
+			"api_key: AIza" + strings.Repeat("*", 35) + "\n" +
+			"DATABASE_URL=postgres://app_user:gho_" + strings.Repeat("*", 36) + "@db1.orders.invalid:5432/appdb\n",
+	},
+	{
 		Name: "secrets_uri_userinfo",
 		Description: "The #766 false negative: a password or token in URI user info " +
 			"(`scheme://user:PASSWORD@host`, `https://TOKEN@host`). Every line here reported NOTHING " +

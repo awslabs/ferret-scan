@@ -1312,7 +1312,8 @@ func isQueryKeyByte(b byte) bool {
 //   - all digits, which is a phone number, port, timestamp or id rather than a secret.
 //   - digits and hyphens only, which is a date or a formatted number.
 //   - UUID shape, which identifies a thing rather than authenticating one.
-//   - entirely mask characters, which is this tool's OWN redacted output rather than a secret.
+//   - entirely mask characters, which is this tool's OWN redacted output rather than a secret, or
+//     a provider prefix followed only by mask characters, which is another tool's (#807).
 //
 // A genuinely all-lowercase short secret is rejected, and that is a deliberate, stated cost.
 //
@@ -1334,11 +1335,21 @@ func plausibleUnquotedSecret(v string) bool {
 	// input with Success true at rc 0, and the audit log recorded equal original and redacted file
 	// hashes. See #522.
 	//
+	// A mask that kept the token's provider prefix is the same thing: `gho_` and 36 `*` is how
+	// several tools print a token in a log, and it carries no secret byte either, because the prefix
+	// is public by construction and the rest is the mask. It is not ENTIRELY mask characters,
+	// though, so until #807 it cleared every veto here and reported at MEDIUM 75 on a log line and
+	// at HIGH 100 in a .docx whose tab-separated cover block added the +20 tabular boost.
+	// isMaskedValue strips a prefix from the provider grammar table and asks the same question of
+	// what is left.
+	//
 	// Safe as a veto rather than a confidence ceiling, unlike unlabelledHexIdentifierCap above,
 	// because it is VALUE-INTRINSIC: a value containing nothing but mask characters carries no
 	// secret, so an author cannot use it to hide one. The relabelling attack that rules out a
-	// negative list of field names has no analogue here — there is nothing to relabel.
-	if isAllMaskCharacters(v) {
+	// negative list of field names has no analogue here — there is nothing to relabel. A prefix
+	// changes nothing: what follows it must still be nothing but `*`, so hiding a token this way
+	// means deleting it.
+	if isMaskedValue(v) {
 		return false
 	}
 
@@ -1420,6 +1431,35 @@ func isAllMaskCharacters(v string) bool {
 		}
 	}
 	return true
+}
+
+// providerMaskTailMin is the shortest run of mask characters after a provider prefix that
+// isMaskedValue accepts: 8, the floor plausibleUnquotedSecret puts under every unquoted value.
+// Masking tools print the body's own length or a fixed run of at least that; a shorter tail is
+// nearer to something a person could have typed as a value, so it is left to ordinary scoring.
+const providerMaskTailMin = 8
+
+// isMaskedValue reports whether a value is masked output that carries no secret byte: entirely
+// mask characters (isAllMaskCharacters, #522), or a provider prefix followed by at least
+// providerMaskTailMin mask characters and nothing else, the way a log prints `gho_` and 36 `*`
+// (#807).
+//
+// The prefixes are the grammar table's own, allProviderPrefixes, so a row added to providerRules
+// is covered here with no second list to keep in step. The remainder test is isAllMaskCharacters
+// itself, with its ENTIRELY rule: `gho_****abcd****` keeps real characters and stays reported.
+// Prefixes match exactly as the table spells them, case and all, as the provider regexes do.
+// Slack's head digit groups are not stripped: `xoxb-` and a mask is masked output,
+// `xoxb-<digits>-<digits>-` and a mask is not, by this rule.
+func isMaskedValue(v string) bool {
+	if isAllMaskCharacters(v) {
+		return true
+	}
+	for _, p := range allProviderPrefixes {
+		if rest, ok := strings.CutPrefix(v, p); ok && len(rest) >= providerMaskTailMin && isAllMaskCharacters(rest) {
+			return true
+		}
+	}
+	return false
 }
 
 // findKeywordSecrets is the keyword pass behind its line gate: keywordCandidates on every line
