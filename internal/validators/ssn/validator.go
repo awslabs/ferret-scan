@@ -479,6 +479,9 @@ func (v *Validator) newLineContext(line string) *lineContext {
 	cache(v.taxKeywords)
 	cache(v.healthcareKeywords)
 	cache(v.globalTestPatterns)
+	// Read by labelsTheIdentifier. Every entry is a positive keyword today, so this adds
+	// no scan; it is here so a label added to that list alone is still cached.
+	cache(urlVetoLabels)
 
 	return lc
 }
@@ -559,8 +562,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		var foundMatches []matchSpan
 		var firstIndex map[string]int
 
-		// standalone[txt] is true when at least ONE occurrence of txt on this line is not
-		// the fractional tail of a decimal number.
+		// standalone[txt] is true when at least ONE occurrence of txt on this line is
+		// neither the fractional tail of a decimal number nor a URL path component (see
+		// urlPath below).
 		//
 		// Decided per OCCURRENCE and then reduced per text, because matchSpan.start is the
 		// FIRST occurrence's offset shared by every duplicate. Judging from that shared
@@ -574,15 +578,31 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// the cost of being wrong is a false positive, not a lost SSN.
 		var standalone map[string]bool
 
+		// urlPath[txt] is true when at least one occurrence of txt is a component of a web URL's
+		// path, the tail of a profile slug such as ".../in/michael-o-291135150" (#804). Such an
+		// occurrence is not standalone either, under the same per-occurrence rule, so one bare
+		// occurrence elsewhere on the line still keeps the finding. Unlike a fraction tail, the drop
+		// below yields to a label naming the identifier: see isPathComponent and
+		// labelsTheIdentifier.
+		var urlPath map[string]bool
+
 		if len(idxMatches) > 0 {
 			firstIndex = make(map[string]int)
 			standalone = make(map[string]bool, len(idxMatches))
+			urls := newURLPathScanner(line) // nil unless the line holds "://"
 			for _, loc := range idxMatches {
 				txt := line[loc[0]:loc[1]]
 				if _, seen := firstIndex[txt]; !seen {
 					firstIndex[txt] = loc[0]
 				}
-				if !kwmatch.IsDecimalFractionTail(line, loc[0]) {
+				switch {
+				case kwmatch.IsDecimalFractionTail(line, loc[0]):
+				case urls != nil && urls.isPathComponent(loc[0], loc[1]):
+					if urlPath == nil {
+						urlPath = make(map[string]bool)
+					}
+					urlPath[txt] = true
+				default:
 					standalone[txt] = true
 				}
 				foundMatches = append(foundMatches, matchSpan{
@@ -634,13 +654,18 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					lc.columnHeader = table.HeaderAt(lineBounds, ms.start)
 				}
 			}
-			// Drop a value that is only ever a decimal fraction on this line.
+			// Drop a value that is only ever a decimal fraction or a URL path component on
+			// this line.
 			//
 			// standalone is nil for the synthesized concatenated-number candidates, which
 			// have no offsets; those are unaffected. A text absent from the map appeared
-			// only as a fraction tail.
+			// only as a fraction tail or inside a URL's path. The URL veto alone yields when
+			// the line or the column header names the identifier, and the value is then
+			// scored exactly as before.
 			if standalone != nil && ms.start >= 0 && !standalone[match] {
-				continue
+				if !urlPath[match] || !v.labelsTheIdentifier(lc) {
+					continue
+				}
 			}
 
 			// Clean the SSN for validation
