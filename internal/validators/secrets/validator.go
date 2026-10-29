@@ -528,11 +528,18 @@ func (v *Validator) SetObserver(observer observability.Observer) {
 // patterns per stem (`stem = "value"` and `"stem": "value"`). A package-level list rather than a
 // local of compileKeywordPatterns so that keywordStem, the line gate's stem check, is derived from
 // it instead of copying it.
+//
+// A multi-word stem's separator is `[_-]?`: absent, an underscore or a dash. Until #764 it was
+// `_?`, so every kebab-case spelling -- `api-key`, `private-key`, the `X-Api-Key` HTTP header --
+// matched no pattern in either list and reported nothing at any confidence, while `api_key`
+// reported the same value at 100. Widening a pattern only adds matches: a string the `_?` spelling
+// matched, the `[_-]?` spelling matches at the same span with the same capture, so no finding that
+// reported before changes its text or its suppression hash.
 var quotedSecretKeywords = []string{
-	"api_?key", "auth_?key", "service_?key", "account_?key", "db_?key",
-	"database_?key", "priv_?key", "private_?key", "client_?key",
+	"api[_-]?key", "auth[_-]?key", "service[_-]?key", "account[_-]?key", "db[_-]?key",
+	"database[_-]?key", "priv[_-]?key", "private[_-]?key", "client[_-]?key",
 	"password", "passwd", "pwd", "secret", "token", "bearer",
-	"oauth", "jwt", "session", "credential", "access_?token",
+	"oauth", "jwt", "session", "credential", "access[_-]?token",
 }
 
 // compileKeywordPatterns creates regex patterns for common secret keywords
@@ -581,9 +588,16 @@ func compileKeywordPatterns() []*regexp.Regexp {
 		)
 		patterns = append(patterns, pattern)
 
-		// Pattern for JSON/YAML: "keyword": "value"
+		// Pattern for JSON/YAML: "keyword": "value", and the same key as an HTTP custom
+		// header, "x-keyword": "value" (#764). The opening quote must sit right before the
+		// stem, so the `X-` a header name carries -- `{"headers": {"x-api-key": "..."}}`,
+		// Python's `{'X-Api-Key': '...'}` -- hid the key from this pattern whatever its
+		// separator. `(?:x[_-])?` takes that prefix and nothing else: a quoted key with any
+		// other word before the stem (`"client_secret"`) is still not matched here, by
+		// either spelling. Optional and outside the capture, so every key this matched
+		// before it matches at the same span with the same value.
 		pattern = regexp.MustCompile(
-			`(?i)["']` + keyword + `["']\s*:\s*["']([^"']{8,})["']`,
+			`(?i)["'](?:x[_-])?` + keyword + `["']\s*:\s*["']([^"']{8,})["']`,
 		)
 		patterns = append(patterns, pattern)
 
@@ -1068,8 +1082,8 @@ var keywordStem = regexp.MustCompile(`(?i)(?:` + strings.Join(keywordPassStems()
 
 // keywordStemLiterals is every string keywordStem's alternatives can match, lower-cased, with any
 // literal that contains a shorter one dropped (`secret_key` holds `secret`). Enumerated from the
-// parsed stems, so a stem that is not a finite language -- a class, a star -- fails at init rather
-// than being approximated.
+// parsed stems, so a stem that is not a finite language -- a star, a class that is not a short set
+// of separator bytes -- fails at init rather than being approximated.
 var keywordStemLiterals = func() [][]byte {
 	var all []string
 	for _, stem := range keywordPassStems() {
@@ -1096,13 +1110,29 @@ var keywordStemLiterals = func() [][]byte {
 }()
 
 // finiteLanguage enumerates the strings a parsed stem matches. Only the shapes the stems use are
-// accepted (literals, concatenation, `?`, alternation); anything else panics, naming the stem.
+// accepted (literals, concatenation, `?`, alternation, and a class of separator bytes such as the
+// `[_-]` a multi-word stem is spelled with); anything else panics, naming the stem.
 func finiteLanguage(re *syntax.Regexp, stem string) []string {
 	switch re.Op {
 	case syntax.OpLiteral:
 		return []string{string(re.Rune)}
 	case syntax.OpEmptyMatch:
 		return []string{""}
+	case syntax.OpCharClass:
+		// A separator class, `[_-]` (#764). Enumerated exactly, so only a short class of ASCII
+		// bytes that are not letters is taken: no letter means no case fold for lineHasKeywordStem's
+		// ASCII argument to account for, and the bound keeps a class such as `[^a]` from being
+		// enumerated at all.
+		var out []string
+		for i := 0; i+1 < len(re.Rune); i += 2 {
+			for r := re.Rune[i]; r <= re.Rune[i+1]; r++ {
+				if !isStemSeparator(r) || len(out) == maxStemClassSize {
+					panic("secrets: keyword stem " + stem + " has a class that is not a short set of ASCII separator bytes")
+				}
+				out = append(out, string(r))
+			}
+		}
+		return out
 	case syntax.OpConcat:
 		out := []string{""}
 		for _, sub := range re.Sub {
@@ -1125,6 +1155,17 @@ func finiteLanguage(re *syntax.Regexp, stem string) []string {
 		return out
 	}
 	panic("secrets: keyword stem " + stem + " is not a finite set of literals (" + re.Op.String() + ")")
+}
+
+// maxStemClassSize is the most bytes a character class in a keyword stem may hold. The stems use one
+// class, the two-byte separator `[_-]`; four leaves room for another separator without letting a
+// class grow into something finiteLanguage would have to approximate.
+const maxStemClassSize = 4
+
+// isStemSeparator reports whether r may sit in a keyword stem's character class: an ASCII byte that
+// is not a letter.
+func isStemSeparator(r rune) bool {
+	return r < utf8.RuneSelf && !('a' <= r && r <= 'z') && !('A' <= r && r <= 'Z')
 }
 
 // lineHasKeywordStem is keywordStem.MatchString, fast on ASCII. On a line that is all ASCII, (?i)
@@ -1239,17 +1280,20 @@ func legacyManifestVeto(trimmed string) bool {
 //
 // Same stems the quoted patterns use, kept as their own list so the two sets cannot be
 // changed independently by accident and so the unquoted patterns can carry a stricter value
-// filter without touching the quoted ones.
+// filter without touching the quoted ones. A multi-word stem's separator is `[_-]?`, for the
+// reason given on quotedSecretKeywords (#764): `api-key: <v>`, `X-API-KEY: <v>` and
+// `curl -H "X-Api-Key: <v>"` are this list's shapes, and plausibleUnquotedSecret judges their
+// values exactly as it judges the underscore spelling's.
 var secretAssignmentKeywords = []string{
-	"api_?key", "auth_?key", "service_?key", "account_?key", "db_?key",
-	"database_?key", "priv_?key", "private_?key", "client_?key",
+	"api[_-]?key", "auth[_-]?key", "service[_-]?key", "account[_-]?key", "db[_-]?key",
+	"database[_-]?key", "priv[_-]?key", "private[_-]?key", "client[_-]?key",
 	// access_key is the stem the highest-value credential class uses. Without it
 	// AWS_SECRET_ACCESS_KEY= does not match: "secret" IS present but is followed by
 	// "_ACCESS_KEY=", so `secret\s*[=:]` never fires. Measured — 7 of 8 real
 	// assignments matched and this was the miss.
-	"access_?key", "secret_?access_?key", "secret_?key",
+	"access[_-]?key", "secret[_-]?access[_-]?key", "secret[_-]?key",
 	"password", "passwd", "pwd", "secret", "token", "bearer",
-	"oauth", "jwt", "session", "credential", "access_?token",
+	"oauth", "jwt", "session", "credential", "access[_-]?token",
 }
 
 // compileUnquotedPatterns builds the assignment patterns for values with NO quotes.
@@ -1494,7 +1538,7 @@ func (v *Validator) findKeywordSecrets(line string) []candidate {
 //
 // Every pattern that hits contributes a candidate, and several patterns
 // routinely claim the very same bytes: `apiKey = "AKIA…"` matches both the
-// AKIA provider literal (full-match branch) and the api_?key assignment
+// AKIA provider literal (full-match branch) and the api[_-]?key assignment
 // pattern (capture-group branch). Candidates therefore carry their byte span
 // so the caller can collapse same-span claims instead of reporting one secret
 // two or three times; see dedupeScopedBySpan.
@@ -1913,9 +1957,13 @@ var (
 
 	// reAWSSecretKeyName matches the ways the secret is labeled in real
 	// configs: env style (AWS_SECRET_ACCESS_KEY), credentials-file style
-	// (aws_secret_access_key), SDK/CloudFormation style (SecretAccessKey),
-	// and loose prose ("secret access key"). Case-insensitive.
-	reAWSSecretKeyName = regexp.MustCompile(`(?i)(?:aws_?)?secret_?access_?key|aws_?secret(?:_?key)?`)
+	// (aws_secret_access_key), SDK/CloudFormation style (SecretAccessKey) and
+	// kebab-case (aws-secret-access-key, the GitHub Actions input name).
+	// Case-insensitive. The separator is `[_-]?` for the reason given on
+	// quotedSecretKeywords (#764): with `_?` a dashed label left this gate shut,
+	// so the keyword pass typed the same value API_KEY_OR_SECRET where the
+	// underscore label typed it AWS_SECRET_ACCESS_KEY.
+	reAWSSecretKeyName = regexp.MustCompile(`(?i)(?:aws[_-]?)?secret[_-]?access[_-]?key|aws[_-]?secret(?:[_-]?key)?`)
 
 	// reAKIAAnywhere detects a paired access-key ID nearby — the strongest
 	// possible signal that a 40-char token is the matching secret.
