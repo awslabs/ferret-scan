@@ -35,20 +35,20 @@
             }
           ],
           "message": {
-            "text": "Secret or API Key Detected in alembic.ini at line 3 (confidence: 85.0% - MEDIUM). Matched text: 'Q7rpn8Wjk8DMn76B'"
+            "text": "Secret or API Key Detected in alembic.ini at line 3 (confidence: 100.0% - HIGH). Matched text: 'Q7rpn8Wjk8DMn76B'"
           },
           "properties": {
-            "confidence": 85,
-            "confidenceLevel": "MEDIUM",
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 1,
-              "context_doc_type": "Unknown",
-              "context_doctype": "Unknown",
+              "context_doc_type": "Configuration",
+              "context_doctype": "Configuration",
               "context_domain": "Retail",
               "detection_method": "uri_userinfo",
               "environment_type": "unknown",
-              "original_confidence": 85,
+              "original_confidence": 100,
               "secret_type": "API_KEY_OR_SECRET",
               "semantic_context": {
                 "FinancialData": 0,
@@ -59,6 +59,7 @@
               },
               "source": "preprocessed_content",
               "validation_checks": {
+                "config_file_boost": true,
                 "has_entropy": true,
                 "min_length": true,
                 "not_common_word": true,
@@ -70,7 +71,7 @@
             },
             "validator": "secrets"
           },
-          "rank": 87.5,
+          "rank": 95,
           "ruleId": "API_KEY_OR_SECRET"
         }
       ],

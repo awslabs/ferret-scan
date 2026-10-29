@@ -1,4 +1,4 @@
 LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH                FILE
 ----------------------------------------------------------------------------------------------
-[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line    31 TripleEnvS3cretVal99 models.py
-[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line    32 TripleEnvPassVal42   models.py
+[HIGH  ] secrets      API_KEY_OR_SECRET     100.00% line    31 TripleEnvS3cretVal99 models.py
+[HIGH  ] secrets      API_KEY_OR_SECRET     100.00% line    32 TripleEnvPassVal42   models.py

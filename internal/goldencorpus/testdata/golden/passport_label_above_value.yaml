@@ -2,14 +2,14 @@ results:
     - text: "512345678"
       line_number: 4
       type: PASSPORT
-      confidence: 80
-      confidence_level: MEDIUM
+      confidence: 100
+      confidence_level: HIGH
       filename: <golden:passport_label_above_value>
       validator: passport
       metadata:
-        confidence_adjustment: 0
+        confidence_adjustment: 20
         context_confidence: 1
-        context_doctype: Unknown
+        context_doctype: CSV
         context_domain: Government
         context_impact: 20
         country: UK
@@ -34,14 +34,14 @@ results:
     - text: "987654321"
       line_number: 2
       type: PASSPORT
-      confidence: 75
-      confidence_level: MEDIUM
+      confidence: 95
+      confidence_level: HIGH
       filename: <golden:passport_label_above_value>
       validator: passport
       metadata:
-        confidence_adjustment: 0
+        confidence_adjustment: 20
         context_confidence: 1
-        context_doctype: Unknown
+        context_doctype: CSV
         context_domain: Government
         context_impact: 15
         country: UK

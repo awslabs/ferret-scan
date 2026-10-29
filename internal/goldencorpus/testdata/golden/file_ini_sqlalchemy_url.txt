@@ -1,3 +1,3 @@
 LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            FILE
 ------------------------------------------------------------------------------------------
-[MEDIUM] secrets      API_KEY_OR_SECRET      85.00% line     3 Q7rpn8Wjk8DMn76B alembic.ini
+[HIGH  ] secrets      API_KEY_OR_SECRET     100.00% line     3 Q7rpn8Wjk8DMn76B alembic.ini

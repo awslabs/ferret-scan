@@ -35,20 +35,20 @@
             }
           ],
           "message": {
-            "text": "Secret or API Key Detected in docker-compose.yml at line 5 (confidence: 97.0% - HIGH). Matched text: 'd7Q8N92jGKT5WdZ4'"
+            "text": "Secret or API Key Detected in docker-compose.yml at line 5 (confidence: 100.0% - HIGH). Matched text: 'd7Q8N92jGKT5WdZ4'"
           },
           "properties": {
-            "confidence": 97,
+            "confidence": 100,
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
               "context_confidence": 0.5,
-              "context_doc_type": "Unknown",
-              "context_doctype": "Unknown",
+              "context_doc_type": "Configuration",
+              "context_doctype": "Configuration",
               "context_domain": "Financial",
               "detection_method": "uri_userinfo",
               "environment_type": "unknown",
-              "original_confidence": 97,
+              "original_confidence": 100,
               "secret_type": "API_KEY_OR_SECRET",
               "semantic_context": {
                 "FinancialData": 0,
@@ -59,6 +59,7 @@
               },
               "source": "preprocessed_content",
               "validation_checks": {
+                "config_file_boost": true,
                 "financial_domain_boost": true,
                 "has_entropy": true,
                 "min_length": true,
@@ -71,7 +72,7 @@
             },
             "validator": "secrets"
           },
-          "rank": 93.5,
+          "rank": 95,
           "ruleId": "API_KEY_OR_SECRET"
         }
       ],
