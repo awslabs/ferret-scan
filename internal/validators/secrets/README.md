@@ -110,6 +110,10 @@ begins; a Stripe prefix glued to a word on its left with no digit in the body
 - **JSON/YAML Patterns**: `"keyword": "value"`
 - **Case Insensitive**: Matches regardless of case
 - **Flexible Separators**: Handles various assignment operators
+- **Kebab-case keys**: a multi-word stem matches with no separator, an underscore or a dash
+  (`apikey`, `api_key`, `api-key`), in every pattern built from it, and a quoted JSON or dict key
+  may carry the HTTP custom-header prefix `x-` (`"x-api-key": "..."`, `{'X-Api-Key': '...'}`).
+  The dash spelling reports exactly what the underscore spelling reports (#764).
 - **Masked values are not secrets**: an unquoted value that is only `*` (this tool's own
   redaction, #522), or a provider prefix from the grammar table followed by at least 8 `*` and
   nothing else (`gho_` and 36 `*`, the way several tools print a token in a log, #807), is no

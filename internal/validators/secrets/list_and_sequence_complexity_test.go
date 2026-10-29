@@ -92,7 +92,7 @@ const listGuardBaseHeads = 500
 
 // listGuardMinBaseLineBytes keeps the BASE line above the length at which Go's regexp stops using
 // its backtracker for these patterns. regexp switches from the bit-state backtracker to the NFA once
-// the input reaches 256Kbit / len(prog.Inst), which is 7,084 bytes (secret_?access_?key, 37
+// the input reaches 256Kbit / len(prog.Inst), which is 7,084 bytes (secret[_-]?access[_-]?key, 37
 // instructions) to 12,483 (pwd, 21) for the 26 unquoted patterns the tail is found by, and 7,489 to
 // 13,797 for the 26 collection openers. A base line under that runs on a different engine from the
 // 4x line, and the ratio then measures the engine switch: values of 8 bytes put the nested base line
