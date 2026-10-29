@@ -599,8 +599,8 @@ func runStdinRedaction(
 // is read in a terminal mid-commit. Before #770 pre-commit mode suppressed the stdin warning
 // outright, so a cut-short `git diff | ferret-scan --stdin --pre-commit-mode` printed nothing.
 //
-// Worded for what happened here, a scan cut short, rather than the file path's "contents
-// unreadable": the input was read and partly scanned.
+// Worded for what happened here, a scan cut short: the input was read and partly scanned. The file
+// path's notice names its cause with the same label (#817).
 func writePrecommitStdinIncompleteNotice(w io.Writer, label string) {
 	fmt.Fprintf(w, "ferret-scan: %s NOT fully examined (coverage cut short) — findings may be missing. "+
 		"Re-run without --pre-commit for detail.\n", label)
