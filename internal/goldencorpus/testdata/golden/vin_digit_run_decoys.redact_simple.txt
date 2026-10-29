@@ -1,0 +1,7 @@
+=== REDACTED ===
+See https://acme.slack.com/archives/C01ABCDEF/p1762292269161789 for the thread.
+https://acme.slack.com/archives/C02GHJKLM/p1762292454033310?thread_ts=1762292454.033310&cid=C02GHJKLM
+https://acme.slack.com/archives/C01ABCDEF/p1762292380161789	ops
+logged at 20261027214933002 by the batch job
+user id 80351110224678917 joined the server
+=== FINDINGS (sorted) ===

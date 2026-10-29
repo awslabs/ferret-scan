@@ -233,6 +233,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// require a recognized WMI as corroboration so we don't start
 			// surfacing arbitrary 17-char alphanumeric tokens (hashes, base32);
 			// the check-digit status is carried into confidence scoring below.
+			//
+			// A passing check digit is not enough on its own for a digit run
+			// (see isDigitRun). Any 17-character token passes it by coincidence
+			// about 1 time in 11, and documents are full of digit runs that
+			// carry nothing else VIN-like: a chat permalink segment such as
+			// p1762292269161789, a 17-digit timestamp, a numeric ID. Each of
+			// those that passed was scored as a VIN at 90 before context (#803).
 			checkDigitOK := v.checkDigitValid(upper)
 			if !checkDigitOK {
 				if v.isNorthAmericanVIN(upper) {
@@ -241,6 +248,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				if v.detectManufacturer(upper) == "" {
 					continue // no check digit AND no known WMI -> not enough signal
 				}
+			} else if v.isDigitRun(upper) {
+				continue // a coincidental check digit is the only VIN-like signal
 			}
 
 			if v.isEncodedDataAt(line, start, end, lineIsHexDump) {
@@ -362,6 +371,46 @@ func (v *Validator) isNorthAmericanVIN(vin string) bool {
 		return false
 	}
 	return vin[0] >= '1' && vin[0] <= '5'
+}
+
+// minDigitRunDigits is the digit count from which a 17-character candidate can
+// be a digit run (see isDigitRun): at most two of its characters are letters.
+const minDigitRunDigits = 15
+
+// isDigitRun reports whether a 17-character candidate is a digit run rather
+// than a VIN: 15 or more of its characters are digits, none of positions 2-8
+// is a letter, and its WMI is not a known one.
+//
+// Positions 2-8 are the WMI's manufacturer and vehicle-type characters and the
+// vehicle descriptor section, where a manufacturer encodes model, body and
+// engine. A chat permalink segment (p1762292269161789: a letter, then a
+// 10-digit epoch and 6 digits of microseconds) has no letter there, and a
+// 17-digit timestamp or numeric ID has no letter at all. The known-WMI clause
+// keeps a recognized manufacturer whatever that span holds; every WMI in
+// knownWMIs has a letter at position 2 today, so it matters only if a numeric
+// WMI is added to the table.
+//
+// The candidate must be uppercase and regex-matched, so every byte that is not
+// a digit is a letter.
+func (v *Validator) isDigitRun(vin string) bool {
+	if len(vin) != 17 {
+		return false
+	}
+	digits := 0
+	for i := 0; i < len(vin); i++ {
+		if vin[i] >= '0' && vin[i] <= '9' {
+			digits++
+		}
+	}
+	if digits < minDigitRunDigits {
+		return false
+	}
+	for i := 1; i < 8; i++ { // positions 2-8
+		if vin[i] < '0' || vin[i] > '9' {
+			return false
+		}
+	}
+	return v.detectManufacturer(vin) == ""
 }
 
 // AnalyzeContext adjusts confidence based on surrounding text.

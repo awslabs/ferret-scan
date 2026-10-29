@@ -426,3 +426,82 @@ func TestVINValidator_SingleLineDoSGuard(t *testing.T) {
 	}
 	t.Logf("packed single line: %d bytes, %d matches, validated in %s", len(line), len(matches), elapsed)
 }
+
+// TestVINValidator_DigitRunIsNotAVIN is a regression test for #803: a digit run
+// whose check digit passes by coincidence (about 1 in 11 of them do) was
+// reported as a VIN at 90, because a passing check digit admitted a candidate
+// with no further structural test. The shapes are a chat permalink segment ("p"
+// + a 10-digit epoch + 6 digits of microseconds) in each context it turns up
+// in, a 17-digit timestamp, a 17-digit numeric ID, and the 15-digit edge of the
+// rule.
+func TestVINValidator_DigitRunIsNotAVIN(t *testing.T) {
+	v := NewValidator()
+	for _, tt := range []struct {
+		name, value, content string
+	}{
+		{"permalink in the issue's line", "p1762292269161789",
+			"See https://example.slack.com/archives/C01ABCDEF/p1762292269161789 for the thread."},
+		{"permalink under a workspace host", "p1762292269161789",
+			"See https://acme.slack.com/archives/C01ABCDEF/p1762292269161789 for the thread."},
+		{"permalink in a tab-separated row", "p1762292269161789",
+			"https://acme.slack.com/archives/C01ABCDEF/p1762292269161789\tops"},
+		{"permalink with a thread query", "p1762292454033310",
+			"https://acme.slack.com/archives/C02GHJKLM/p1762292454033310?thread_ts=1762292454.033310&cid=C02GHJKLM"},
+		{"bare permalink segment", "p1762292269161789", "p1762292269161789"},
+		{"17-digit timestamp", "20261027214933002", "logged at 20261027214933002 by the batch job"},
+		{"17-digit numeric ID", "80351110224678917", "user id 80351110224678917 joined the server"},
+		{"15 digits, letters only at positions 1 and 17", "P176229396916178K", "P176229396916178K"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// Each fixture passes the check digit; otherwise the case would pass
+			// for a reason unrelated to the digit-run rule.
+			if !v.checkDigitValid(strings.ToUpper(tt.value)) {
+				t.Fatalf("fixture %s does not pass the check digit", tt.value)
+			}
+			matches, err := v.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent() error = %v", err)
+			}
+			for _, m := range matches {
+				t.Errorf("digit run reported as a VIN: %q at %.0f", m.Text, m.Confidence)
+			}
+		})
+	}
+}
+
+// TestVINValidator_DigitRunGateKeepsVINs is the scope proof for #803: the
+// digit-run rule must not cost a VIN its finding or its confidence. A real VIN
+// in a URL query and as a URL path segment, the NA and EU fixtures, and both
+// edges of the rule (14 digits; 16 digits with a letter in the vehicle
+// descriptor section) report at the confidence they had before the rule.
+func TestVINValidator_DigitRunGateKeepsVINs(t *testing.T) {
+	v := NewValidator()
+	for _, tt := range []struct {
+		name, content, want string
+		confidence          float64
+	}{
+		{"NA VIN with check digit", "VIN: 1HGBH41JXMN109186", "1HGBH41JXMN109186", 100},
+		{"VIN in a URL query", "https://www.nhtsa.gov/recalls?vin=1HGBH41JXMN109186",
+			"1HGBH41JXMN109186", 100},
+		{"VIN as a URL path segment",
+			"GET https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/1HGBH41JXMN109186?format=json",
+			"1HGBH41JXMN109186", 100},
+		{"EU VIN with known WMI", "VIN: WVWZZZ1JZ3W386752", "WVWZZZ1JZ3W386752", 100},
+		{"14 digits, one below the rule", "P17622927A616178K", "P17622927A616178K", 90},
+		{"16 digits with a letter at position 5", "1762A922669161789", "1762A922669161789", 90},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			matches, err := v.ValidateContent(tt.content, "test.txt")
+			if err != nil {
+				t.Fatalf("ValidateContent() error = %v", err)
+			}
+			if len(matches) != 1 {
+				t.Fatalf("expected exactly one VIN, got %d", len(matches))
+			}
+			if matches[0].Text != tt.want || matches[0].Confidence != tt.confidence {
+				t.Errorf("got %q at %.0f, want %q at %.0f",
+					matches[0].Text, matches[0].Confidence, tt.want, tt.confidence)
+			}
+		})
+	}
+}

@@ -988,6 +988,25 @@ var Cases = []Case{
 			"vin 1HGCM82633A004353\n",
 	},
 	{
+		Name: "vin_digit_run_decoys",
+		Description: "Digit runs whose ISO 3779 check digit passes by coincidence, which must stay " +
+			"EMPTY (#803). About 1 in 11 of all 17-character tokens pass the position-9 check digit, " +
+			"and a passing check digit admitted a candidate with nothing else VIN-like, so every line " +
+			"here was a VIN at 90 HIGH. Lines 1-3 are chat permalink segments (`p`, a 10-digit epoch, " +
+			"6 digits of microseconds) in a sentence, with a thread query, and in a tab-separated " +
+			"row; line 4 is a 17-digit timestamp and line 5 a 17-digit numeric ID. A digit run (15 or " +
+			"more digits, no letter in positions 2-8, unknown WMI) now needs more than the check " +
+			"digit. The positives that bound the rule (a VIN in a URL query and as a URL path " +
+			"segment, both edges of the 15-digit threshold) are unit tests in " +
+			"internal/validators/vin, so this case adds no finding to the census.",
+		Checks: []string{"VIN"},
+		Input: "See https://acme.slack.com/archives/C01ABCDEF/p1762292269161789 for the thread.\n" +
+			"https://acme.slack.com/archives/C02GHJKLM/p1762292454033310?thread_ts=1762292454.033310&cid=C02GHJKLM\n" +
+			"https://acme.slack.com/archives/C01ABCDEF/p1762292380161789\tops\n" +
+			"logged at 20261027214933002 by the batch job\n" +
+			"user id 80351110224678917 joined the server\n",
+	},
+	{
 		Name: "passport_mrz_line2_check_digits",
 		Description: "A complete ICAO 9303 TD3 machine-readable zone: line 1 (the holder's NAME) " +
 			"followed by line 2 (the passport NUMBER, date of birth, sex, expiry and personal " +
