@@ -549,6 +549,33 @@ var Cases = []Case{
 			"postgres://user:xxxxxxxx@db1.orders.invalid:5432/appdb\n",
 	},
 	{
+		Name: "secrets_uri_hex_outside_userinfo_decoys",
+		Description: "The #808 boundary, which must stay EMPTY: hexadecimal values in every part of a URI " +
+			"that is NOT user info. #808 exempts a structural candidate, a password or token in URI user " +
+			"info, from unlabelledHexIdentifierCap, the 55 ceiling for a bare 32/40/64-hex value on a line " +
+			"that names no secret word, because the URI grammar is that value's label. The exemption is " +
+			"safe only while the grammar claims nothing else: the authority ends at the first `/ ? #`, so " +
+			"a hex path segment (lines 1-2), a hex segment before an `@` in a path (line 3), a commit id " +
+			"(line 4), a hex host label (line 5), a blob digest (line 6), a fragment (line 7) and a query " +
+			"value (line 8) are never user info, and `git@` (line 9) is a user name that is not shaped " +
+			"like a token. None of these is a candidate on main or after the fix.\n" +
+			"  The fix itself makes the issue's line report (`REDIS_URL=redis://default:<32 hex>@...` goes " +
+			"from 55 LOW, confidence_ceiling 55, to 100 HIGH), so that positive, and the ceiling's own " +
+			"ImageUniqueID case staying at 55, are pinned by the unit tests in " +
+			"internal/validators/secrets/uri_userinfo_hex_test.go rather than here: a positive case would " +
+			"move the metadata-key census.",
+		Checks: []string{"SECRETS"},
+		Input: "CACHE_URL=redis://cache.orders.invalid:6379/3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e\n" +
+			"ASSET_URL=https://cdn.orders.invalid/assets/3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e/app.js\n" +
+			"https://cdn.orders.invalid/img/3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e@2x.png\n" +
+			"https://git.orders.invalid/orders/app/commit/8b1e4d7a2c5f9e0b3a6d8c1f4e7b0a9d2c5e8f1a\n" +
+			"http://3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e.cache.orders.invalid:6379/0\n" +
+			"https://registry.orders.invalid/v2/app/blobs/sha256:c4e7a1d9b3f6082e5a7c9d1b4f6e8a0c2d5b7e9f1a3c6e8b0d2f4a6c8e1b3d5f\n" +
+			"REDIS_URL=redis://cache.orders.invalid:6379/0#3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e\n" +
+			"https://api.orders.invalid/v1/objects?etag=3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e\n" +
+			"ssh://git@git.orders.invalid/orders/8b1e4d7a2c5f9e0b3a6d8c1f4e7b0a9d2c5e8f1a.git\n",
+	},
+	{
 		Name: "secrets_uri_userinfo_email_overlap",
 		Description: "#766 matrix C, rendered by #773's rule. On `redis://default:<pw>@cache.orders-svc.io` " +
 			"at the end of a line (and before `?ssl=true`) EMAIL reports `<pw>@cache.orders-svc.io`, and " +

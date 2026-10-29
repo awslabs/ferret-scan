@@ -69,7 +69,8 @@ type scopedCandidate struct {
 	threshold float64
 	// structural marks a candidate whose position in a grammar is its own corroboration: today a
 	// password or token in URI user info (#766, uri_userinfo.go). It exempts the candidate from the
-	// M24 cap, which exists for values nothing labels, and from nothing else.
+	// M24 cap and from unlabelledHexIdentifierCap (#808), both of which exist for values nothing
+	// labels, and from nothing else.
 	structural bool
 	// ceiling, when positive, is a value-intrinsic upper bound published as ConfidenceCeilingKey,
 	// combined with the other ceilings by taking the lowest. Set by uri_userinfo's LOW dispositions.
@@ -147,6 +148,9 @@ var secretLabelWords = []string{
 // have been removing. Here an author cannot trigger the ceiling by relabelling, since
 // adding any secret-ish word only removes it. Measured on one 32-hex value:
 // `api_key = "14f6..."` keeps 75, `ImageUniqueID: "14f6..."` becomes 55.
+//
+// A candidate whose grammar position labels it is not asked: the caller skips this for a
+// structural candidate, a URI user-info password (#808), whose label is the URI and not a word.
 func unlabelledHexIdentifierCap(secretType, match, line string) float64 {
 	if secretType != genericSecretType {
 		return 0
@@ -2411,7 +2415,20 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 			// (one requires genericSecretType, the other excludes it), but selecting
 			// the minimum keeps that from becoming a silent precedence bug if a third
 			// ceiling is added, and keeps the PUBLISHED bound equal to the applied one.
-			ceiling := unlabelledHexIdentifierCap(secretType, match, line)
+			//
+			// The hex ceiling does not apply to a structural candidate (#808). It reads the LINE
+			// for a label, and a password in URI user info is labelled by its position in the URI
+			// grammar instead (#766), whatever the line's key says: `REDIS_URL=redis://default:`
+			// + 32 hex + `@cache.internal:6379/0`, the shape `openssl rand -hex 16` produces, names
+			// none of secretLabelWords, so the password was held at 55 LOW and --pre-commit-mode
+			// exited 0 on it, while the same URI with a mixed-case password reported 100 HIGH. The
+			// M24 cap already exempts structural candidates for the same reason. The user-info
+			// dispositions' own LOW ceiling, cand.ceiling below, still applies, so
+			// `redis://default:password@...` stays LOW.
+			var ceiling float64
+			if !cand.structural {
+				ceiling = unlabelledHexIdentifierCap(secretType, match, line)
+			}
 			if c := awsDocPlaceholderCap(secretType, match); c > 0 {
 				if ceiling == 0 || c < ceiling {
 					ceiling = c

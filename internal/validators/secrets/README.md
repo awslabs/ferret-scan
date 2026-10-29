@@ -162,8 +162,10 @@ never the key, scheme or host, all of which the author of the line controls:
 A LOW finding is kept, not dropped: `postgres:postgres` can be the real
 password of a real database, and only a reported value is redacted. Its 55 is
 published as `confidence_ceiling`, so the document bridge's context adjustment
-cannot lift it into MEDIUM. A scored candidate is exempt from the M24 cap (the
-URI grammar is its corroboration) and from nothing else: its threshold is 50,
+cannot lift it into MEDIUM. A scored candidate is exempt from the M24 cap and
+from the unlabelled-hex ceiling below (the URI grammar is its corroboration, so
+a hex password such as `openssl rand -hex 16` prints scores like any other,
+#808) and from nothing else: its threshold is 50,
 and the test/dev, shell-variable, global-test-pattern and generic-boost
 adjustments apply to it as to every other candidate.
 
@@ -417,7 +419,7 @@ addend competing with context — nothing downstream can out-vote it. Two apply 
 
 | Value class | Ceiling | Reason |
 |---|---|---|
-| A bare 32/40/64-char hex identifier on a line naming nothing secret | 55 | GUIDs, digests, ETags and commit ids share the shape of a key. `api_key = "14f6…"` keeps its full score; `ImageUniqueID: "14f6…"` is capped. |
+| A bare 32/40/64-char hex identifier on a line naming nothing secret | 55 | GUIDs, digests, ETags and commit ids share the shape of a key. `api_key = "14f6…"` keeps its full score; `ImageUniqueID: "14f6…"` is capped. A password or token in URI user info is not asked: its position in the URI is its label (#808). |
 | An AWS credential whose own bytes contain `EXAMPLE` — `AKIAIOSFODNN7EXAMPLE`, `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` | 15 | AWS publishes these in its documentation. Measured before: 84% and 75% MEDIUM, i.e. presented as real credentials (#364). |
 
 Both are **demotions, not suppressions**: the finding is still reported, so it is
