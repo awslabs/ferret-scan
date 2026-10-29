@@ -516,6 +516,17 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 		return detector.Match{}, false
 	}
 
+	// A Unix timestamp that passes the check digit by chance (#806): one 10-digit epoch
+	// in ten does, and "NPI reconciliation ran at 1751328000 epoch seconds" scored 90
+	// HIGH. Dropped only when the value's own label slot or unit slot names a time and
+	// no NPI label is attached; see writtenAsUnixSeconds for the slots and why a
+	// line-wide timestamp keyword is not used. Like the phone drop above, this decides
+	// what the number IS, so it returns before the TM-11 floor, which a labelled NPI
+	// keeps because the label wins.
+	if writtenAsUnixSeconds(line, matchStart, matchStart+len(match)) {
+		return detector.Match{}, false
+	}
+
 	confidence := 80.0 // Valid Luhn checksum gives strong structural confidence
 
 	// Context adjustments (per-line invariant, computed once in scanLine)
