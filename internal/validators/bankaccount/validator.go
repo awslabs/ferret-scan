@@ -653,6 +653,9 @@ func (v *Validator) scanUSAccount(ctx stdctx.Context, line string, lineNum int, 
 
 	idxMatches := reUSAccount.FindAllStringIndex(line, -1)
 
+	// cloudPhrase caches hasCloudAccountPhrase(line) for the 12-digit ceiling below.
+	var cloudPhrase, cloudPhraseKnown bool
+
 	for i, loc := range idxMatches {
 		if execguard.LineLoopCancelled(ctx, i) {
 			return matches
@@ -710,6 +713,35 @@ func (v *Validator) scanUSAccount(ctx stdctx.Context, line string, lineNum int, 
 			continue
 		}
 
+		metadata := map[string]any{
+			"length":         length,
+			"context_impact": contextImpact,
+		}
+
+		// Twelve digits is the shape of an AWS account id or a Google Cloud project
+		// number, and those are written beside the word "account" by definition. On
+		// a line that names one ("AWS account", "account id", "payer", "tenant"...)
+		// a banking word such as "deposit" is not evidence of a bank account, yet it
+		// admitted the run here and the "account" proximity boost lifted it to 85
+		// MEDIUM, and the document bridge's +20 tabular boost to 100 HIGH (#805).
+		//
+		// A ceiling, not a drop: a bare account number has no checksum, so this is
+		// the same context-only evidence that admitted it, and a real account number
+		// labelled this way is still reported and still redacted, just at LOW. The
+		// ceiling is published in the metadata as well as applied here, because the
+		// bridge raises confidence after this returns.
+		if length == cloudAccountIDLength {
+			if !cloudPhraseKnown {
+				cloudPhrase, cloudPhraseKnown = hasCloudAccountPhrase(line), true
+			}
+			if cloudPhrase {
+				if confidence > cloudAccountIDCeiling {
+					confidence = cloudAccountIDCeiling
+				}
+				metadata[confidenceCeilingKey] = cloudAccountIDCeiling
+			}
+		}
+
 		matches = append(matches, detector.Match{
 			Text:       candidate,
 			LineNumber: lineNum + 1,
@@ -718,10 +750,7 @@ func (v *Validator) scanUSAccount(ctx stdctx.Context, line string, lineNum int, 
 			Filename:   originalPath,
 			Validator:  "bank_account",
 			Context:    contextInfo,
-			Metadata: map[string]any{
-				"length":         length,
-				"context_impact": contextImpact,
-			},
+			Metadata:   metadata,
 		})
 	}
 
@@ -1170,6 +1199,44 @@ func (v *Validator) looksLikeVersion(line string, start int) bool {
 	return reVersionLike.MatchString(window) ||
 		containsKeyword(window, "version") ||
 		reVersionPrefix.MatchString(window)
+}
+
+// cloudAccountIDLength is the digit count of an AWS account id (and of a typical
+// Google Cloud project number). Only a run of exactly this length is capped by
+// cloudAccountPhrases; every other length scores as before.
+const cloudAccountIDLength = 12
+
+// cloudAccountIDCeiling is the confidence a 12-digit run may not exceed on a line
+// that names a cloud account: 55, the LOW ceiling used across the tree
+// (contradictingHeaderCap in ssn, bareHandleCeiling in socialmedia), just under the
+// MEDIUM bar of 60. Not zero, so the value is still reported and redacted.
+const cloudAccountIDCeiling = 55.0
+
+// confidenceCeilingKey is the Match.Metadata key the document bridge reads to keep a
+// bound after it adds its own context adjustment (validators.ConfidenceCeilingKey).
+// Duplicated rather than imported, as in the ssn, email and ipaddress validators:
+// importing internal/validators would make this package depend on the bridge that
+// consumes its findings. A test pins the two strings together.
+const confidenceCeilingKey = "confidence_ceiling"
+
+// cloudAccountPhrases name a cloud account, project or tenant identifier (#805). They
+// are matched with containsKeyword, which requires a separator between words, like
+// the negative list and unlike the positive one: they demote a finding, and a demoting
+// list widened to "accountid" would reach JSON keys it was never meant for.
+var cloudAccountPhrases = []string{
+	"aws account", "aws accounts", "account id", "account ids", "payer",
+	"management account", "org id", "organization id", "subscription id",
+	"project number", "project id", "tenant",
+}
+
+// hasCloudAccountPhrase reports whether the line names a cloud account identifier.
+func hasCloudAccountPhrase(line string) bool {
+	for _, kw := range cloudAccountPhrases {
+		if containsKeyword(line, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Utility helpers ---
