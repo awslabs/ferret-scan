@@ -1325,13 +1325,22 @@ func isQueryKeyByte(b byte) bool {
 //     an uppercase letter or a symbol; English words in log lines and prose do not. The length
 //     floor keeps a genuine all-lowercase passphrase ("correcthorsebatterystaple") accepted,
 //     since dictionary words in this position are short.
+//   - the same word in sentence case, one upper-case letter first and lower-case letters after it,
+//     under the same 16-character floor (#787). Prose capitalises the word after a colon --
+//     `Onboarding session: Checklist review`, `Password: Required for all accounts` -- and an upper
+//     case letter at position 0 and nowhere else is not one any generator produced.
+//     "Correcthorsebatterystaple" is still accepted by length, `CHECKLIST` (all caps, the shape
+//     of a sentinel constant such as CHANGEME) and `ChangeMeNow` (a capital after position 0) by
+//     shape.
 //   - all digits, which is a phone number, port, timestamp or id rather than a secret.
 //   - digits and hyphens only, which is a date or a formatted number.
 //   - UUID shape, which identifies a thing rather than authenticating one.
 //   - entirely mask characters, which is this tool's OWN redacted output rather than a secret, or
 //     a provider prefix followed only by mask characters, which is another tool's (#807).
 //
-// A genuinely all-lowercase short secret is rejected, and that is a deliberate, stated cost.
+// A genuinely all-lowercase or sentence-case short secret is rejected, and that is a deliberate,
+// stated cost. Quotes are the author's statement that the bytes are a value, so `password:
+// "Checklist"` is judged by the quoted patterns, which never call this filter, and still reports.
 //
 // SCOPE. This filter judges the VALUE and runs on every unquoted candidate, on every channel. It
 // is the only defence in config, prose and untyped input. In expression-language source files the
@@ -1403,6 +1412,13 @@ func plausibleUnquotedSecret(v string) bool {
 	if hasLower && !hasUpper && !hasDigit && !hasOther && len(v) < 16 {
 		return false
 	}
+	// The same word at the start of a sentence (#787): letters only, the first upper case and
+	// every other lower case. Until #787 the rule above required no upper-case letter at all, so
+	// `Onboarding session: Checklist review` reported `Checklist` at MEDIUM 85, and at HIGH 100 in a
+	// document whose first lines were a tab-separated table.
+	if len(v) < 16 && isSentenceCaseWord(v) {
+		return false
+	}
 	// Numbers and formatted numbers.
 	if hasDigit && !hasLower && !hasUpper {
 		if !hasOther {
@@ -1414,6 +1430,20 @@ func plausibleUnquotedSecret(v string) bool {
 	}
 	if uuidLikeValue.MatchString(v) {
 		return false
+	}
+	return true
+}
+
+// isSentenceCaseWord reports whether v is an ASCII word in sentence case: an upper-case letter
+// first and only lower-case letters after it, at least one of them.
+func isSentenceCaseWord(v string) bool {
+	if len(v) < 2 || v[0] < 'A' || v[0] > 'Z' {
+		return false
+	}
+	for i := 1; i < len(v); i++ {
+		if v[i] < 'a' || v[i] > 'z' {
+			return false
+		}
 	}
 	return true
 }
