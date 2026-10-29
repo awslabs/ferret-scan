@@ -1,41 +1,54 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Command changelogcheck decides, for one pull request, whether CHANGELOG.md must change and
-// whether the change landed under [Unreleased].
+// Command changelogcheck decides, for one pull request, whether it must add a release-note
+// fragment under changelog.d/, and whether what it did to changelog.d/ and CHANGELOG.md is
+// something the release-time promotion will accept.
 //
-// It exists because the release-time promotion (scripts/promote-changelog.sh) only stamps what is
+// It exists because the release-time promotion (scripts/promote-changelog.sh) only renders what is
 // already written. v2.5.3 shipped four PRs that changed the binary — a secrets false-positive fix,
 // a secrets recall widening, a dependency fix, a TLD-snapshot refresh — and none of them added an
-// entry, because nothing asked. The promotion then found [Unreleased] empty and, correctly, did
+// entry, because nothing asked. The promotion then found nothing to promote and, correctly, did
 // nothing. The gap is not at release time; it is at PR time, where the author still knows what
 // changed.
 //
-// WHAT "MUST CHANGE" MEANS. A PR needs an entry when it changes what a release ships: code or data
+// WHAT "MUST ADD" MEANS. A PR needs a note when it changes what a release ships: code or data
 // compiled into the binaries or the pkg/ library — derived from the import graph (`go list -deps
 // ./cmd/... ./pkg/...`), not from a path list, so a new package is covered the day it is imported
 // and a test-support package (perfguard, goldencorpus) never is — plus the build inputs (go.mod,
 // .go-version), the artifacts published at the same tag that are not Go (the pre-commit hook
 // definition and the PyPI wrapper), and any title marked breaking.
 //
-// WHERE IT MUST LAND. The added lines must include an entry under [Unreleased], checked on GitHub's
-// merge result. Release sections repeat the same subsection headings, so an entry placed beside the
-// first matching heading can land in an old release. Replayed over the 129 PRs merged 2026-08-28 to
-// 2026-10-06, 82 required an entry and 67 had one under [Unreleased]; 4 had none at all, and 12
-// entries — 11 of them a PR's only entry — had landed in releases from months earlier.
+// WHAT IT MUST ADD. A new file under changelog.d/ in the fragment format of
+// internal/tools/changelogfrag (changelog.d/README.md says it for people). Notes used to be written
+// under `## [Unreleased]` in CHANGELOG.md, and every PR edited the same lines there, so any two PRs
+// open at once conflicted when the second merged (#821). A PR that adds an entry-shaped line under
+// [Unreleased] now fails whatever else it changes: that is the old habit, and the next PR to merge
+// would conflict with it.
 //
-// AFTER THE MERGE. A PR-time result goes stale when a release is promoted while the PR is open: its
-// check ran against the old layout, and nothing re-runs it when main moves, so its entry can merge
-// into the section the release just promoted. EvaluatePostMerge catches that on the push to main,
-// by comparing where the PR's own branch put the entry with where the merge put it.
+// WHAT IS CHECKED ON EVERY PR. Every fragment a PR adds or edits must parse, and when the PR
+// touches CHANGELOG.md, its [Unreleased] block must stay one the promotion can insert a section
+// below. Each would otherwise pass the PR and stop the release, after the tag is public. Neither
+// the no-changelog label nor the dependabot exemption lifts these; they only lift the requirement.
+//
+// NO POST-MERGE MODE. Until #821 an `after-merge` job compared, on the push to main, where a PR's
+// branch had put its entry with where the merge put it: a release promoted while the PR was open
+// could carry the entry into the section that release had just promoted, by a clean three-way
+// merge. Release sections repeat the same subsection headings, and replayed over the 129 PRs merged
+// 2026-08-28 to 2026-10-06, 12 entries had landed in releases from months earlier. A fragment is a
+// file of its own that no release moves and no heading can be mistaken for, so that failure no
+// longer has a mechanism, and the mode went with it.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/tools/changelogfrag"
 )
 
 // optOutLabel is the explicit escape hatch. Explicit on purpose: silence was the failure, so the
@@ -143,10 +156,22 @@ type Input struct {
 	ChangedFiles []string
 	Shipped      ShippedSet
 
+	// Fragments are the paths the PR added or modified under changelog.d/, with their content on
+	// the merge result. Deletions are not listed: removing a fragment is how a PR withdraws a note.
+	Fragments []FragmentChange
+
 	// ChangelogAfter is CHANGELOG.md on the merge result, split into lines; nil when the PR does
 	// not touch it. ChangelogAdded holds the 1-based line numbers the PR added in that file.
 	ChangelogAfter []string
 	ChangelogAdded []int
+}
+
+// FragmentChange is one added or modified path under changelog.d/.
+type FragmentChange struct {
+	Path    string // repository-relative, e.g. changelog.d/0800-otp-lowercase-word-not-base32.md
+	Added   bool   // new in this PR, rather than an edit of a file already on the base
+	Regular bool   // a regular file on the merge result, not a symlink or a submodule
+	Content []byte // on the merge result
 }
 
 // Result is the decision plus the human-readable reasons behind it.
@@ -160,20 +185,22 @@ type Result struct {
 // Evaluate applies the rules.
 func Evaluate(in Input) Result {
 	var r Result
+	var failures []string
 
-	if isBot(in.Author) {
-		r.Pass = true
-		r.Messages = append(r.Messages, fmt.Sprintf("exempt: %s is a dependency bot; a dependency bump that "+
-			"needs code changes arrives as a follow-up PR, which is checked", in.Author))
-		return r
+	// Checked on every PR, whatever it changes and whoever opened it: each of these passes the PR
+	// and then stops the release.
+	var added []string
+	for _, f := range in.Fragments {
+		if msg := fragmentProblem(f); msg != "" {
+			failures = append(failures, msg)
+		} else if f.Added && f.Path != changelogfrag.Dir+"/"+changelogfrag.Readme {
+			added = append(added, f.Path)
+		}
 	}
-
-	// Placement is analysed for every PR that touches the file, required or not: a docs PR that files
-	// its entry under an old release is the same defect, and deserves the same warning.
-	pl := place(in.ChangelogAfter, in.ChangelogAdded)
-	if pl.outside > 0 {
-		r.Warnings = append(r.Warnings, fmt.Sprintf("%d added CHANGELOG line(s) sit outside [Unreleased] (under %s) — "+
-			"fine for a deliberate history correction, wrong for a new entry", pl.outside, strings.Join(pl.outsideSections, ", ")))
+	if in.ChangelogAfter != nil {
+		fs, ws := changelogProblems(in.ChangelogAfter, in.ChangelogAdded)
+		failures = append(failures, fs...)
+		r.Warnings = append(r.Warnings, ws...)
 	}
 
 	var shipped []string
@@ -184,14 +211,7 @@ func Evaluate(in Input) Result {
 	}
 	sort.Strings(shipped)
 	breaking := breakingTitle.MatchString(in.Title)
-	r.Required = len(shipped) > 0 || breaking
-
-	if !r.Required {
-		r.Pass = true
-		r.Messages = append(r.Messages, "no entry required: this PR changes nothing compiled into, embedded "+
-			"in or published with a release, and its title is not marked breaking")
-		return r
-	}
+	r.Required = !isBot(in.Author) && (len(shipped) > 0 || breaking)
 
 	why := ""
 	if len(shipped) > 0 {
@@ -208,88 +228,115 @@ func Evaluate(in Input) Result {
 		why += "its title is marked breaking"
 	}
 
-	if hasLabel(in.Labels, optOutLabel) {
-		r.Pass = true
-		r.Messages = append(r.Messages, fmt.Sprintf("an entry would be required (%s), but the PR carries "+
-			"the %q label — recorded as a deliberate decision", why, optOutLabel))
-		return r
+	var info string
+	switch {
+	case isBot(in.Author):
+		info = fmt.Sprintf("exempt: %s is a dependency bot; a dependency bump that needs code changes "+
+			"arrives as a follow-up PR, which is checked", in.Author)
+	case !r.Required && len(added) > 0:
+		info = fmt.Sprintf("no note was required (this PR changes nothing compiled into, embedded in or "+
+			"published with a release, and its title is not marked breaking); the release renders %s anyway",
+			strings.Join(added, ", "))
+	case !r.Required:
+		info = "no note required: this PR changes nothing compiled into, embedded in or published with a " +
+			"release, and its title is not marked breaking"
+	case hasLabel(in.Labels, optOutLabel):
+		info = fmt.Sprintf("a release note would be required (%s), but the PR carries the %q label — "+
+			"recorded as a deliberate decision", why, optOutLabel)
+	case len(added) == 0:
+		failures = append(failures, missingFragment(why, in.Fragments))
+	default:
+		info = fmt.Sprintf("release note present: %s; required because %s", strings.Join(added, ", "), why)
 	}
 
-	if in.ChangelogAfter == nil {
-		r.Messages = append(r.Messages, fmt.Sprintf("CHANGELOG.md needs an entry under [Unreleased] because %s. "+
-			"Add one describing the user-visible change, or, if nothing user-visible changed, add the %q "+
-			"label to the PR.", why, optOutLabel))
-		return r
+	r.Pass = len(failures) == 0
+	if r.Pass {
+		r.Messages = []string{info}
+	} else {
+		r.Messages = failures
 	}
-
-	if !pl.found {
-		r.Messages = append(r.Messages, "CHANGELOG.md has no '## [Unreleased]' heading on the merge result "+
-			"(it must match exactly — scripts/promote-changelog.sh anchors on that line), so there is "+
-			"nowhere valid for this PR's entry to go")
-		return r
-	}
-	if pl.inside == 0 {
-		r.Messages = append(r.Messages, fmt.Sprintf("CHANGELOG.md changed, but no entry was added under "+
-			"[Unreleased] on the merge result (lines %d–%d); a subsection heading on its own is not an entry. "+
-			"Release sections repeat the same subsection headings, so an entry placed beside the first match "+
-			"can land in an old release; and a PR open across a release can merge into the section that "+
-			"release just promoted. Move it under [Unreleased].", pl.start+1, pl.end-1))
-		return r
-	}
-	r.Pass = true
-	r.Messages = append(r.Messages, fmt.Sprintf("entry present under [Unreleased] (%d line(s)); required because %s",
-		pl.inside, why))
 	return r
 }
 
-// EvaluatePostMerge runs on the push to main, after a PR has merged. own is where the PR's branch put
-// its additions (diffed against its merge-base with main), merged is where the merge put them. The
-// one defect it reports is the stale anchor: an entry the branch filed under [Unreleased] that the
-// merge filed under a released section, which happens when a release is promoted while the PR is
-// open. A PR that deliberately adds to a released section — a backfill — files it there on its own
-// branch too, so it does not match and is not reported.
-func EvaluatePostMerge(own, merged placement) Result {
-	if own.inside > 0 && merged.inside == 0 && merged.outside > 0 {
-		return Result{Messages: []string{fmt.Sprintf("this PR's CHANGELOG entry was under [Unreleased] on its "+
-			"own branch, but the merge put it under %s — a release was promoted while the PR was open, after "+
-			"its check had passed. Move the entry under [Unreleased] in a follow-up PR, or it ships "+
-			"unannounced in the next release.", strings.Join(merged.outsideSections, ", "))}}
+// missingFragment says what to add, in full: the person reading it may never have seen a fragment.
+func missingFragment(why string, edited []FragmentChange) string {
+	msg := fmt.Sprintf("this PR needs a release note because %s. Add a new file under %s/, named %s, "+
+		"holding the entry as it should read in CHANGELOG.md: %s. `make changelog-preview` shows it "+
+		"rendered. If nothing user-visible changed, add the %q label to the PR instead.",
+		why, changelogfrag.Dir, changelogfrag.NameRule, changelogfrag.Format(), optOutLabel)
+	for _, f := range edited {
+		if !f.Added && f.Path != changelogfrag.Dir+"/"+changelogfrag.Readme {
+			return msg + fmt.Sprintf(" Editing %s does not count: that note belongs to the PR that added "+
+				"it, and each PR adds its own.", f.Path)
+		}
 	}
-	return Result{Pass: true, Messages: []string{fmt.Sprintf("post-merge placement consistent "+
-		"(branch: %d under [Unreleased], %d elsewhere; merged: %d under [Unreleased], %d elsewhere)",
-		own.inside, own.outside, merged.inside, merged.outside)}}
+	return msg
 }
 
-// placement counts a change's added CHANGELOG entry lines inside and outside [Unreleased]. An
-// entry line is non-blank and not a markdown heading: a PR that adds `### 🐛 Bug Fixes` under
-// [Unreleased] and its bullet under an old release has added no entry where it counts.
-type placement struct {
-	found           bool // the file has an exact '## [Unreleased]' heading
-	start, end      int  // its heading line and the next release heading (or len+1), 1-based
-	inside, outside int
-	outsideSections []string // the release headings the outside lines fall under, in file order
+// fragmentProblem returns why the release would refuse f, or "" when it would render it.
+func fragmentProblem(f FragmentChange) string {
+	rel := strings.TrimPrefix(f.Path, changelogfrag.Dir+"/")
+	switch {
+	case rel == changelogfrag.Readme:
+		return ""
+	case strings.Contains(rel, "/"):
+		return fmt.Sprintf("%s would stop the release: fragments live directly in %s/, and a "+
+			"subdirectory is not read. Move it to %s/%s.", f.Path, changelogfrag.Dir, changelogfrag.Dir, path.Base(rel))
+	case !changelogfrag.ValidName(rel):
+		return fmt.Sprintf("%s would stop the release: %s/ holds fragments and its %s, nothing else, "+
+			"and a fragment is named %s.", f.Path, changelogfrag.Dir, changelogfrag.Readme, changelogfrag.NameRule)
+	case !f.Regular:
+		return fmt.Sprintf("%s would stop the release: it is a symlink or a submodule, and the release "+
+			"reads fragments as plain files.", f.Path)
+	}
+	if _, err := changelogfrag.ParseFragment(f.Content); err != nil {
+		return fmt.Sprintf("%s would stop the release: %v. (%s.)", f.Path, err, changelogfrag.Format())
+	}
+	return ""
 }
 
-func place(lines []string, added []int) placement {
-	var p placement
-	if len(lines) == 0 {
-		return p
+// changelogProblems applies the CHANGELOG.md rules to the merge result: the [Unreleased] block must
+// stay one the promotion accepts, and no PR may add an entry under it. Lines added under released
+// sections are a correction to a past release's notes, which is allowed, and only noted.
+func changelogProblems(lines []string, added []int) (failures, warnings []string) {
+	u, err := changelogfrag.FindUnreleased(lines)
+	switch {
+	case errors.Is(err, changelogfrag.ErrNoAnchor):
+		failures = append(failures, "CHANGELOG.md has no '## [Unreleased]' line on the merge result (it must "+
+			"match exactly — scripts/promote-changelog.sh inserts each release's section below that line), "+
+			"so the release would refuse the file")
+	case err != nil:
+		failures = append(failures, "the release would refuse CHANGELOG.md on the merge result: "+err.Error())
+	default:
+		if _, err := changelogfrag.Legacy(lines, u); err != nil {
+			failures = append(failures, "the old-style entries under [Unreleased] in CHANGELOG.md would stop "+
+				"the release: "+err.Error())
+		}
 	}
-	p.start, p.end, p.found = unreleasedRange(lines)
+	found := !errors.Is(err, changelogfrag.ErrNoAnchor)
+
+	var entry, prose []int
+	outside := 0
+	var outsideSections []string
 	seen := map[string]bool{}
 	for _, n := range added {
 		if n < 1 || n > len(lines) {
 			continue
 		}
-		l := strings.TrimSpace(lines[n-1])
-		if l == "" || strings.HasPrefix(l, "#") {
+		l := lines[n-1]
+		if found && n-1 > u.Heading && n-1 < u.End {
+			switch {
+			case changelogfrag.EntryShaped(l):
+				entry = append(entry, n)
+			case strings.TrimSpace(l) != "":
+				prose = append(prose, n)
+			}
 			continue
 		}
-		if p.found && n > p.start && n < p.end {
-			p.inside++
+		if t := strings.TrimSpace(l); t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
-		p.outside++
+		outside++
 		sec := "the file's preamble"
 		for i := n - 1; i >= 0; i-- {
 			if strings.HasPrefix(lines[i], "## ") {
@@ -299,31 +346,49 @@ func place(lines []string, added []int) placement {
 		}
 		if !seen[sec] {
 			seen[sec] = true
-			p.outsideSections = append(p.outsideSections, sec)
+			outsideSections = append(outsideSections, sec)
 		}
 	}
-	return p
+
+	if len(entry) > 0 {
+		failures = append(failures, fmt.Sprintf("this PR adds %s under '## [Unreleased]' in CHANGELOG.md "+
+			"that read as a changelog entry. Release notes no longer go there: every PR edited those same "+
+			"lines, so every two open PRs conflicted (#821). Write a fragment under %s/ instead — named %s, "+
+			"and holding %s — and leave [Unreleased] as it is on main.",
+			lineList(entry), changelogfrag.Dir, changelogfrag.NameRule, changelogfrag.Format()))
+	}
+	if len(prose) > 0 {
+		warnings = append(warnings, fmt.Sprintf("this PR adds %s of prose under '## [Unreleased]' in "+
+			"CHANGELOG.md. A release keeps that prose under the heading and never promotes it; a release "+
+			"note belongs in a fragment under %s/.", lineList(prose), changelogfrag.Dir))
+	}
+	if outside > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d added CHANGELOG.md line(s) sit under %s — fine for a "+
+			"correction to a past release's notes; a note for the next release belongs in %s/",
+			outside, strings.Join(outsideSections, ", "), changelogfrag.Dir))
+	}
+	return failures, warnings
 }
 
-// unreleasedRange returns the 1-based line of '## [Unreleased]' and of the next '## [' heading (or
-// len+1). Lines strictly between them belong to [Unreleased]. The heading must match exactly, as
-// scripts/promote-changelog.sh requires (`^## \[Unreleased\]$`): a heading this check accepted and
-// the release-time promotion rejected would pass every PR and then fail the release.
-func unreleasedRange(lines []string) (start, end int, found bool) {
-	for i, l := range lines {
-		if strings.TrimSuffix(l, "\r") == "## [Unreleased]" {
-			start, found = i+1, true
-			end = len(lines) + 1
-			for j := i + 1; j < len(lines); j++ {
-				if strings.HasPrefix(lines[j], "## [") {
-					end = j + 1
-					break
-				}
-			}
-			return
+// lineList names 1-based line numbers compactly: "line 5", "lines 5–7, 9".
+func lineList(ns []int) string {
+	var parts []string
+	for i := 0; i < len(ns); {
+		j := i
+		for j+1 < len(ns) && ns[j+1] == ns[j]+1 {
+			j++
 		}
+		if j > i {
+			parts = append(parts, fmt.Sprintf("%d–%d", ns[i], ns[j]))
+		} else {
+			parts = append(parts, fmt.Sprint(ns[i]))
+		}
+		i = j + 1
 	}
-	return 0, 0, false
+	if len(ns) == 1 {
+		return "line " + parts[0]
+	}
+	return fmt.Sprintf("%d lines (%s)", len(ns), strings.Join(parts, ", "))
 }
 
 func isBot(author string) bool {
