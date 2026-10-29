@@ -62,7 +62,7 @@ echo "=== dimensions ==="
 # CHANGELOG. The same check CI runs on the PR (.github/workflows/changelog-check.yml), here so the
 # requirement is visible before the PR exists. Locally it reads the branch tip rather than GitHub's
 # merge result, and it cannot see the PR's labels, so a miss is NEEDS-MANUAL, not FAIL: the answer is
-# either an entry under [Unreleased] or the `no-changelog` label, and only the author knows which.
+# either a fragment under changelog.d/ or the `no-changelog` label, and only the author knows which.
 # Built, not `go run`: go run reports any non-zero child exit as its own 1, which would turn the
 # tool's "could not run" (2) into an ordinary miss.
 clbin="$(mktemp -d)/changelogcheck"
